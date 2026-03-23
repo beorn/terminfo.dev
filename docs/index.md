@@ -82,14 +82,11 @@ function getNote(backend, featureId) {
   return data.notes[backend]?.[featureId] ?? ''
 }
 
-function hasNote(backend, featureId) {
-  const note = data.notes[backend]?.[featureId]
-  return note && note.length > 0
-}
-
-function cellClass(result, backend, featureId) {
-  const base = result === 'yes' ? 'cell-yes' : result === 'partial' ? 'cell-partial' : result === 'no' ? 'cell-no' : 'cell-unknown'
-  return hasNote(backend, featureId) ? base + ' has-note' : base
+function cellClass(result) {
+  if (result === 'yes') return 'cell-yes'
+  if (result === 'partial') return 'cell-partial'
+  if (result === 'no') return 'cell-no'
+  return 'cell-unknown'
 }
 
 function cellIcon(result) {
@@ -97,6 +94,12 @@ function cellIcon(result) {
   if (result === 'partial') return '~'
   if (result === 'no') return '✗'
   return '?'
+}
+
+function cellTooltip(result, backend, featureId) {
+  const label = result === 'yes' ? 'Supported' : result === 'partial' ? 'Partial' : result === 'no' ? 'Not supported' : 'Unknown'
+  const note = data.notes[backend]?.[featureId]
+  return note ? `${label}: ${note}` : label
 }
 
 function catLabel(cat) {
@@ -141,6 +144,7 @@ function backendTooltip(name, version) {
   if (meta.type) parts.push(`Type: ${meta.type}`)
   if (version) parts.push(`Version: ${version}`)
   if (data.generated) parts.push(`Tested: ${new Date(data.generated).toLocaleDateString()}`)
+  if (meta.url) parts.push(meta.url)
   if (meta.caveat) parts.push(`⚠ ${meta.caveat}`)
   return parts.join('\n')
 }
@@ -205,8 +209,8 @@ function backendTooltip(name, version) {
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
       <td class="feature-name" :title="f.spec ? 'Spec: ' + f.spec : ''">{{ f.name }}</td>
       <td v-for="b in sortedBackends" :key="b.name"
-          :class="cellClass(getResult(b.name, f.id), b.name, f.id)"
-          :title="getNote(b.name, f.id)">
+          :class="cellClass(getResult(b.name, f.id))"
+          :title="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
         {{ cellIcon(getResult(b.name, f.id)) }}
       </td>
     </tr>
@@ -215,7 +219,7 @@ function backendTooltip(name, version) {
 </div>
 
 <p class="footer-note">
-  Cells with a dot (•) have additional notes — hover to see details.<br/>
+  Hover over any cell for details.<br/>
   Data from <a href="https://termless.dev">Termless</a> census probes.
   {{ data.generated ? 'Generated: ' + data.generated : '' }}
 </p>
@@ -424,21 +428,6 @@ capabilities.
   font-weight: 700;
 }
 
-/* Cells with notes get a dot indicator */
-.has-note {
-  cursor: help;
-  position: relative;
-}
-
-.has-note::after {
-  content: '•';
-  position: absolute;
-  top: 1px;
-  right: 3px;
-  font-size: 0.7em;
-  color: var(--vp-c-text-3);
-  line-height: 1;
-}
 
 .footer-note {
   font-size: 0.8em;
