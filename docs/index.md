@@ -130,16 +130,16 @@ function failBarWidth(backendName) {
 
 // Backend metadata from backends.json (via census data or hardcoded fallback)
 const backendMeta = {
-  xtermjs: { label: 'xterm.js', description: 'The most widely used web terminal emulator. Powers VS Code\'s terminal.', url: 'https://xtermjs.org' },
-  ghostty: { label: 'Ghostty', description: 'Mitchell Hashimoto\'s GPU-accelerated terminal. Best standards compliance, Kitty keyboard protocol.', url: 'https://ghostty.org' },
-  vt100: { label: 'vt100', description: 'Pure TypeScript VT100 emulator. Zero dependencies, fastest backend, ideal for CI.' },
-  alacritty: { label: 'Alacritty', description: 'Rust-based GPU-accelerated terminal. Strong reflow behavior.', url: 'https://alacritty.org' },
-  wezterm: { label: 'WezTerm', description: 'Broadest protocol support: sixel graphics, semantic prompts, Kitty keyboard.', url: 'https://wezfurlong.org/wezterm' },
-  'vt100-rust': { label: 'vt100-rust', description: 'Reference Rust VT100 implementation. Cross-validates the TypeScript vt100 backend.' },
-  libvterm: { label: 'libvterm', description: 'Neovim\'s C VT parser compiled to WASM. Different implementation catches different bugs.' },
-  'ghostty-native': { label: 'Ghostty Native', description: 'Native Ghostty via Zig N-API bindings. Same parser as Ghostty WASM, no WASM overhead.', url: 'https://ghostty.org' },
-  kitty: { label: 'Kitty', description: 'Kitty\'s VT parser built from GPL source. Only backend with Kitty graphics protocol.', url: 'https://sw.kovidgoyal.net/kitty' },
-  peekaboo: { label: 'Peekaboo', description: 'Tests against a real terminal app via OS accessibility APIs. macOS only.' },
+  xtermjs: { label: 'xterm.js', description: 'The most widely used web terminal emulator. Powers VS Code\'s terminal.', url: 'https://xtermjs.org', upstream: 'npm:@xterm/headless', type: 'JS (headless)', caveat: 'Headless mode doesn\'t expose cursor visibility or underline variants' },
+  ghostty: { label: 'Ghostty (WASM)', description: 'Mitchell Hashimoto\'s GPU-accelerated terminal via WASM.', url: 'https://ghostty.org', upstream: 'npm:ghostty-web', type: 'WASM' },
+  vt100: { label: 'vt100', description: 'Pure TypeScript VT100 emulator. Zero dependencies, fastest backend.', upstream: 'npm:vt100.js', type: 'JS' },
+  alacritty: { label: 'Alacritty', description: 'Rust-based GPU-accelerated terminal. Strong reflow behavior.', url: 'https://alacritty.org', upstream: 'crate:alacritty_terminal', type: 'Native (Rust, napi-rs)' },
+  wezterm: { label: 'WezTerm', description: 'Broadest protocol support: sixel graphics, semantic prompts, Kitty keyboard.', url: 'https://wezfurlong.org/wezterm', upstream: 'crate:tattoy-wezterm-term', type: 'Native (Rust, napi-rs)' },
+  'vt100-rust': { label: 'vt100-rust', description: 'Reference Rust VT100 implementation.', upstream: 'crate:vt100', type: 'Native (Rust, napi-rs)', caveat: 'Doesn\'t expose scrollback beyond screen height' },
+  libvterm: { label: 'libvterm', description: 'Neovim\'s C VT parser compiled to WASM.', upstream: 'github:neovim/libvterm', type: 'WASM (C, Emscripten)' },
+  'ghostty-native': { label: 'Ghostty Native', description: 'Native Ghostty via Zig N-API bindings. Full API access, no WASM overhead.', url: 'https://ghostty.org', upstream: 'github:ghostty-org/ghostty', type: 'Native (Zig, napigen)' },
+  kitty: { label: 'Kitty', description: 'Kitty\'s VT parser via Python subprocess bridge. Only backend with Kitty graphics.', url: 'https://sw.kovidgoyal.net/kitty', upstream: 'github:kovidgoyal/kitty', type: 'Subprocess (Python)' },
+  peekaboo: { label: 'Peekaboo', description: 'Tests against a real terminal app via OS accessibility APIs. macOS only.', type: 'OS automation' },
 }
 
 function backendLabel(name) {
@@ -150,8 +150,11 @@ function backendTooltip(name, version) {
   const meta = backendMeta[name]
   if (!meta) return name
   const parts = [meta.description]
+  if (meta.upstream) parts.push(`Upstream: ${meta.upstream}`)
+  if (meta.type) parts.push(`Type: ${meta.type}`)
   if (version) parts.push(`Version: ${version}`)
   if (data.generated) parts.push(`Tested: ${new Date(data.generated).toLocaleDateString()}`)
+  if (meta.caveat) parts.push(`⚠ ${meta.caveat}`)
   return parts.join('\n')
 }
 </script>
@@ -377,13 +380,14 @@ capabilities.
 }
 
 .matrix th {
-  background: var(--vp-c-bg-soft);
+  background: var(--vp-c-bg);
   font-weight: 600;
   font-size: 0.9em;
   position: sticky;
   top: var(--vp-nav-height, 64px);
   z-index: 10;
   cursor: help;
+  box-shadow: 0 1px 0 var(--vp-c-divider);
 }
 
 .feature-col {
