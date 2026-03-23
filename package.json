@@ -9,7 +9,9 @@
     "census": "bun src/cli.ts",
     "census:run": "bun src/cli.ts run",
     "census:report": "bun src/cli.ts report",
-    "census:status": "bun src/cli.ts status"
+    "census:status": "bun src/cli.ts status",
+    "census:apps": "bun src/app-runner.ts",
+    "census:apps:list": "bun src/app-runner.ts --list"
   },
   "dependencies": {
     "@termless/core": "^0.3.0",
