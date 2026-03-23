@@ -17,12 +17,12 @@ No manual testing. No self-reported capabilities. Fully reproducible.
 
 ## Backends Tested
 
-| Backend | Engine | Description |
-|---------|--------|-------------|
-| **xterm.js** | @xterm/headless | The most widely used web terminal emulator |
-| **Ghostty** | ghostty-web WASM | Mitchell Hashimoto's GPU-accelerated terminal |
-| **vt100** | Pure TypeScript | termless's built-in zero-dependency emulator |
-| **vt100-rust** | Rust vt100 crate (napi-rs) | Rust VT100 parser via native bindings |
+| Backend        | Engine                     | Description                                   |
+| -------------- | -------------------------- | --------------------------------------------- |
+| **xterm.js**   | @xterm/headless            | The most widely used web terminal emulator    |
+| **Ghostty**    | ghostty-web WASM           | Mitchell Hashimoto's GPU-accelerated terminal |
+| **vt100**      | Pure TypeScript            | termless's built-in zero-dependency emulator  |
+| **vt100-rust** | Rust vt100 crate (napi-rs) | Rust VT100 parser via native bindings         |
 
 More backends (Alacritty, WezTerm, Kitty) are in progress.
 
