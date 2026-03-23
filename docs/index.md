@@ -103,6 +103,31 @@ function catLabel(cat) {
   return categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1)
 }
 
+function barTooltip(backendName, status) {
+  const r = data.results[backendName] ?? {}
+  const n = data.notes[backendName] ?? {}
+  const features = Object.entries(r)
+    .filter(([_, v]) => {
+      if (status === 'yes') return v === 'yes'
+      if (status === 'partial') return v === 'partial'
+      return v === 'no' || v === 'unknown'
+    })
+    .map(([id]) => {
+      const note = n[id]
+      return note ? `${id}: ${note}` : id
+    })
+  if (features.length === 0) return ''
+  const label = status === 'yes' ? 'Passing' : status === 'partial' ? 'Partial' : 'Failing'
+  return `${label} (${features.length}):\n${features.join('\n')}`
+}
+
+function failBarWidth(backendName) {
+  const s = data.stats[backendName]
+  if (!s) return '0%'
+  const fail = s.total - s.yes - (s.partial ?? 0)
+  return (fail / s.total * 100) + '%'
+}
+
 function backendLabel(name) {
   const labels = {
     xtermjs: 'xterm.js',
@@ -131,8 +156,9 @@ function backendLabel(name) {
     <span class="summary-name">{{ backendLabel(b.name) }}</span>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }"></div>
-      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }"></div>
+      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :title="barTooltip(b.name, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }" :title="barTooltip(b.name, 'partial')"></div>
+      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :title="barTooltip(b.name, 'no')"></div>
     </div>
     <span class="summary-pct">{{ data.stats[b.name]?.pct }}%</span>
     <span class="summary-counts">
@@ -261,6 +287,18 @@ capabilities.
   height: 100%;
   background: #f59e0b;
   transition: width 0.3s ease;
+  cursor: help;
+}
+
+.bar-fail {
+  height: 100%;
+  background: transparent;
+  transition: width 0.3s ease;
+  cursor: help;
+}
+
+.bar-yes {
+  cursor: help;
 }
 
 .summary-pct {
