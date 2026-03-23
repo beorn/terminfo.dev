@@ -46,18 +46,18 @@ bun run census:status             # Config, backends, cache info
 
 ## Backends Tested
 
-| Backend | Engine | Type |
-|---------|--------|------|
-| xtermjs | @xterm/headless 5.5 | JS |
-| ghostty | ghostty-web 0.4 | WASM |
-| vt100 | Pure TypeScript | JS |
-| alacritty | alacritty_terminal 0.26 | Native (Rust) |
-| wezterm | tattoy-wezterm-term | Native (Rust) |
-| vt100-rust | vt100 0.15 | Native (Rust) |
-| libvterm | neovim/libvterm 0.3 | WASM (C) |
-| ghostty-native | libghostty-vt 1.3 | Native (Zig) |
-| kitty | kitty 0.40 | Native (C, GPL) |
-| peekaboo | OS automation | macOS |
+| Backend        | Engine                  | Type            |
+| -------------- | ----------------------- | --------------- |
+| xtermjs        | @xterm/headless 5.5     | JS              |
+| ghostty        | ghostty-web 0.4         | WASM            |
+| vt100          | Pure TypeScript         | JS              |
+| alacritty      | alacritty_terminal 0.26 | Native (Rust)   |
+| wezterm        | tattoy-wezterm-term     | Native (Rust)   |
+| vt100-rust     | vt100 0.15              | Native (Rust)   |
+| libvterm       | neovim/libvterm 0.3     | WASM (C)        |
+| ghostty-native | libghostty-vt 1.3       | Native (Zig)    |
+| kitty          | kitty 0.40              | Native (C, GPL) |
+| peekaboo       | OS automation           | macOS           |
 
 ## Deployment
 

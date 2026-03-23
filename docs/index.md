@@ -1,16 +1,13 @@
 ---
 layout: home
 hero:
-  name: "terminfo.dev"
+  name: "Terminfo.dev"
   text: "Can your terminal do that?"
-  tagline: "Feature support tables for terminal emulators — powered by automated testing"
+  tagline: "Feature support tables for terminal emulators — powered by <a href='#how-this-works'>Termless</a>, Playwright for terminals"
   actions:
     - theme: brand
       text: View Matrix
       link: "#matrix"
-    - theme: alt
-      text: Run Your Own Tests
-      link: https://termless.dev
 ---
 
 <script setup>
@@ -31,6 +28,15 @@ const categoryLabels = {
   reset: 'Reset',
   extension: 'Extensions',
 }
+
+// Sort backends by score (highest first)
+const sortedBackends = computed(() => {
+  return [...data.backends].sort((a, b) => {
+    const aPct = data.stats[a.name]?.pct ?? 0
+    const bPct = data.stats[b.name]?.pct ?? 0
+    return bPct - aPct
+  })
+})
 
 const sortedCategories = computed(() => {
   const keys = Object.keys(data.categories)
@@ -76,17 +82,20 @@ function getNote(backend, featureId) {
   return data.notes[backend]?.[featureId] ?? ''
 }
 
-function cellClass(result) {
-  if (result === 'yes') return 'cell-yes'
-  if (result === 'partial') return 'cell-partial'
-  if (result === 'no') return 'cell-no'
-  return 'cell-unknown'
+function hasNote(backend, featureId) {
+  const note = data.notes[backend]?.[featureId]
+  return note && note.length > 0
+}
+
+function cellClass(result, backend, featureId) {
+  const base = result === 'yes' ? 'cell-yes' : result === 'partial' ? 'cell-partial' : result === 'no' ? 'cell-no' : 'cell-unknown'
+  return hasNote(backend, featureId) ? base + ' has-note' : base
 }
 
 function cellIcon(result) {
-  if (result === 'yes') return '\u2713'
+  if (result === 'yes') return '✓'
   if (result === 'partial') return '~'
-  if (result === 'no') return '\u2717'
+  if (result === 'no') return '✗'
   return '?'
 }
 
@@ -100,6 +109,7 @@ function backendLabel(name) {
     vt100: 'vt100',
     'vt100-rust': 'vt100-rust',
     ghostty: 'Ghostty',
+    'ghostty-native': 'Ghostty Native',
     wezterm: 'WezTerm',
     alacritty: 'Alacritty',
     kitty: 'Kitty',
@@ -109,7 +119,7 @@ function backendLabel(name) {
 </script>
 
 <div v-if="data.backends.length === 0" class="no-data">
-  <p>No census data available yet. Copy <code>census.json</code> into <code>docs/data/results/</code> to populate the matrix.</p>
+  <p>No census data available yet.</p>
 </div>
 
 <div v-else>
@@ -117,7 +127,7 @@ function backendLabel(name) {
 ## Backend Summary {#summary}
 
 <div class="summary">
-  <div v-for="b in data.backends" :key="b.name" class="summary-row">
+  <div v-for="b in sortedBackends" :key="b.name" class="summary-row">
     <span class="summary-name">{{ backendLabel(b.name) }}</span>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
@@ -154,19 +164,19 @@ function backendLabel(name) {
   <thead>
     <tr>
       <th class="feature-col">Feature</th>
-      <th v-for="b in data.backends" :key="b.name">{{ backendLabel(b.name) }}</th>
+      <th v-for="b in sortedBackends" :key="b.name">{{ backendLabel(b.name) }}</th>
     </tr>
   </thead>
   <tbody v-for="cat in filteredCategories" :key="cat">
     <tr class="category-row">
-      <td :colspan="data.backends.length + 1" class="category-header">
+      <td :colspan="sortedBackends.length + 1" class="category-header">
         {{ catLabel(cat) }}
       </td>
     </tr>
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
       <td class="feature-name" :title="f.spec ? 'Spec: ' + f.spec : ''">{{ f.name }}</td>
-      <td v-for="b in data.backends" :key="b.name"
-          :class="cellClass(getResult(b.name, f.id))"
+      <td v-for="b in sortedBackends" :key="b.name"
+          :class="cellClass(getResult(b.name, f.id), b.name, f.id)"
           :title="getNote(b.name, f.id)">
         {{ cellIcon(getResult(b.name, f.id)) }}
       </td>
@@ -176,13 +186,14 @@ function backendLabel(name) {
 </div>
 
 <p class="footer-note">
-  Generated: {{ data.generated }}<br/>
-  Hover over cells to see failure details. Data from <a href="https://termless.dev">termless</a> census probes.
+  Cells with a dot (•) have additional notes — hover to see details.<br/>
+  Data from <a href="https://termless.dev">Termless</a> census probes.
+  {{ data.generated ? 'Generated: ' + data.generated : '' }}
 </p>
 
 ## How This Works
 
-Data is collected by [termless](https://termless.dev) census probes — standardized
+Data is collected by [Termless](https://termless.dev) census probes — standardized
 test sequences sent to each terminal backend. Each probe writes ANSI escape sequences
 and reads back the terminal state to verify whether the feature was correctly processed.
 
@@ -190,8 +201,8 @@ The census covers SGR attributes, cursor movement, text handling, erase operatio
 terminal modes, scrollback behavior, and modern extensions like kitty keyboard protocol
 and OSC 8 hyperlinks.
 
-Results are fully automated and reproducible. No manual testing, no self-reported
-capabilities. Run `bunx termless census run` to generate your own results.
+Results are fully automated and reproducible — no manual testing, no self-reported
+capabilities.
 
 </div>
 
@@ -217,7 +228,7 @@ capabilities. Run `bunx termless census run` to generate your own results.
 }
 
 .summary-name {
-  width: 100px;
+  width: 120px;
   font-weight: 600;
   font-size: 0.9em;
   flex-shrink: 0;
@@ -370,6 +381,22 @@ capabilities. Run `bunx termless census run` to generate your own results.
   background: rgba(139, 92, 246, 0.1);
   color: #8b5cf6;
   font-weight: 700;
+}
+
+/* Cells with notes get a dot indicator */
+.has-note {
+  cursor: help;
+  position: relative;
+}
+
+.has-note::after {
+  content: '•';
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  font-size: 0.7em;
+  color: var(--vp-c-text-3);
+  line-height: 1;
 }
 
 .footer-note {
