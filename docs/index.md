@@ -367,14 +367,10 @@ capabilities.
 }
 
 .matrix th {
-  background: var(--vp-c-bg);
+  background: var(--vp-c-bg-soft);
   font-weight: 600;
   font-size: 0.9em;
-  position: sticky;
-  top: var(--vp-nav-height, 64px);
-  z-index: 10;
   cursor: help;
-  box-shadow: 0 1px 0 var(--vp-c-divider);
 }
 
 .feature-col {
