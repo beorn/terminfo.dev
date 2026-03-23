@@ -164,12 +164,12 @@ function backendTooltip(name, version) {
 
 <div class="summary">
   <div v-for="b in sortedBackends" :key="b.name" class="summary-row">
-    <span class="summary-name" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</span>
+    <span class="summary-name" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</span>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :title="barTooltip(b.name, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }" :title="barTooltip(b.name, 'partial')"></div>
-      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :title="barTooltip(b.name, 'no')"></div>
+      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barTooltip(b.name, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barTooltip(b.name, 'partial')"></div>
+      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barTooltip(b.name, 'no')"></div>
     </div>
     <span class="summary-pct">{{ data.stats[b.name]?.pct }}%</span>
     <span class="summary-counts">
@@ -201,7 +201,7 @@ function backendTooltip(name, version) {
   <thead>
     <tr>
       <th class="feature-col"></th>
-      <th v-for="b in sortedBackends" :key="b.name" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</th>
+      <th v-for="b in sortedBackends" :key="b.name" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</th>
     </tr>
   </thead>
   <tbody v-for="cat in filteredCategories" :key="cat">
@@ -211,10 +211,10 @@ function backendTooltip(name, version) {
       </td>
     </tr>
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
-      <td class="feature-name" :title="f.spec ? 'Spec: ' + f.spec : ''">{{ f.name }}</td>
+      <td class="feature-name" :data-tooltip="f.spec ? 'Spec: ' + f.spec : ''">{{ f.name }}</td>
       <td v-for="b in sortedBackends" :key="b.name"
           :class="cellClass(getResult(b.name, f.id))"
-          :title="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
+          :data-tooltip="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
         {{ cellIcon(getResult(b.name, f.id)) }}
       </td>
     </tr>
@@ -374,14 +374,12 @@ capabilities.
   padding: 6px 12px;
   text-align: center;
   border: 1px solid var(--vp-c-divider);
-  cursor: help;
 }
 
 .matrix th {
   background: var(--vp-c-bg-soft);
   font-weight: 600;
   font-size: 0.9em;
-  cursor: help;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -443,5 +441,43 @@ capabilities.
   font-size: 0.8em;
   color: var(--vp-c-text-3);
   margin-top: 1.5em;
+}
+
+/* Instant CSS tooltips */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--vp-c-bg-elv);
+  color: var(--vp-c-text-1);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.8em;
+  font-weight: 400;
+  white-space: pre-line;
+  max-width: 300px;
+  z-index: 100;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* Don't show empty tooltips */
+[data-tooltip=""]:hover::after,
+[data-tooltip]:not([data-tooltip]):hover::after {
+  display: none;
+}
+
+/* Summary bar tooltips appear below */
+.summary-bar [data-tooltip]:hover::after {
+  bottom: auto;
+  top: 100%;
+  margin-top: 4px;
 }
 </style>

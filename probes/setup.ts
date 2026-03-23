@@ -34,17 +34,19 @@ type BackendFactory = () => Promise<TerminalBackend>
 
 const backends: [string, BackendFactory][] = []
 
-// Map of backend name → relative import path from this file
+// Map of backend name → absolute import path
+// Probes live in terminfo.dev but backends live in termless packages
+const TERMLESS_PKGS = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "termless", "packages")
 const BACKEND_PATHS: Record<string, string> = {
-  xtermjs: "../../xtermjs/src/backend.ts",
-  vt100: "../../vt100/src/backend.ts",
-  ghostty: "../../ghostty/src/backend.ts",
-  alacritty: "../../alacritty/src/backend.ts",
-  wezterm: "../../wezterm/src/backend.ts",
-  "vt100-rust": "../../vt100-rust/src/backend.ts",
-  libvterm: "../../libvterm/src/backend.ts",
-  kitty: "../../kitty/src/backend.ts",
-  "ghostty-native": "../../ghostty-native/src/backend.ts",
+  xtermjs: join(TERMLESS_PKGS, "xtermjs/src/backend.ts"),
+  vt100: join(TERMLESS_PKGS, "vt100/src/backend.ts"),
+  ghostty: join(TERMLESS_PKGS, "ghostty/src/backend.ts"),
+  alacritty: join(TERMLESS_PKGS, "alacritty/src/backend.ts"),
+  wezterm: join(TERMLESS_PKGS, "wezterm/src/backend.ts"),
+  "vt100-rust": join(TERMLESS_PKGS, "vt100-rust/src/backend.ts"),
+  libvterm: join(TERMLESS_PKGS, "libvterm/src/backend.ts"),
+  kitty: join(TERMLESS_PKGS, "kitty/src/backend.ts"),
+  "ghostty-native": join(TERMLESS_PKGS, "ghostty-native/src/backend.ts"),
 }
 
 const m = manifest()
