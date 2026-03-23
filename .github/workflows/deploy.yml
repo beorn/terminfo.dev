@@ -9,12 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - run: bun install
+      - run: bun install --no-save || true
+        # workspace:* deps may fail in CI — that's OK, only vitepress is needed for build
+
+      - run: bun add -d vitepress
+        # Ensure vitepress is installed even if workspace resolution failed
 
       - run: bun run build
 

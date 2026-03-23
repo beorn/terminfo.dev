@@ -9,7 +9,21 @@
 import { readFileSync, existsSync, readdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { manifest } from "@termless/core"
+// Optional — only available when running in the km monorepo workspace.
+// In CI (standalone), we fall back to reading backends.json directly.
+let manifest: (() => any) | null = null
+try {
+  manifest = (await import("@termless/core")).manifest
+} catch {
+  // Not in workspace — try reading backends.json from termless submodule
+  try {
+    const backendsJson = join(__dirname, "..", "..", "..", "termless", "backends.json")
+    if (existsSync(backendsJson)) {
+      const raw = JSON.parse(readFileSync(backendsJson, "utf-8"))
+      manifest = () => ({ backends: Object.fromEntries(Object.entries(raw.backends).map(([k, v]: [string, any]) => [k, { ...v, version: v.upstreamVersion }])) })
+    }
+  } catch {}
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const resultsDir = join(__dirname, "results")
@@ -53,10 +67,11 @@ export interface CensusData {
 }
 
 function loadBackendMeta(): Record<string, BackendMeta> {
+  if (!manifest) return {}
   try {
     const m = manifest()
     const meta: Record<string, BackendMeta> = {}
-    for (const [name, entry] of Object.entries(m.backends)) {
+    for (const [name, entry] of Object.entries(m.backends) as [string, any][]) {
       meta[name] = {
         label: entry.label,
         description: entry.description,
