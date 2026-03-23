@@ -163,7 +163,7 @@ function backendLabel(name) {
 <table class="matrix">
   <thead>
     <tr>
-      <th class="feature-col">Feature</th>
+      <th class="feature-col"></th>
       <th v-for="b in sortedBackends" :key="b.name">{{ backendLabel(b.name) }}</th>
     </tr>
   </thead>
