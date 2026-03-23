@@ -357,11 +357,14 @@ capabilities.
 /* Matrix table */
 .matrix-wrapper {
   overflow-x: auto;
+  max-height: 80vh;
+  overflow-y: auto;
   margin: 1em 0;
 }
 
 .matrix {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
   font-size: 0.85em;
 }
@@ -379,6 +382,9 @@ capabilities.
   font-weight: 600;
   font-size: 0.9em;
   cursor: help;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .feature-col {

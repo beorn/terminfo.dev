@@ -12,15 +12,13 @@
     "census:status": "bun src/cli.ts status"
   },
   "dependencies": {
-    "commander": "^13.0.0"
+    "@termless/core": "^0.3.0",
+    "commander": "^13.0.0",
+    "loggily": "^0.4.0",
+    "silvery": "^0.4.1"
   },
   "devDependencies": {
-    "vitepress": "^1.5.0"
-  },
-  "optionalDependencies": {
-    "@termless/core": "workspace:*",
-    "loggily": "workspace:*",
-    "silvery": "workspace:*",
+    "vitepress": "^1.5.0",
     "vitest": "^4.0.0"
   }
 }
