@@ -1,0 +1,55 @@
+{
+  "xtermjs:cursor.hide": {
+    "note": "@xterm/headless doesn't track cursor visibility (rendering concern)",
+    "url": "https://github.com/xtermjs/xterm.js/issues/4448"
+  },
+  "xtermjs:sgr.underline.double": {
+    "note": "@xterm/headless treats all underline variants as 'single'",
+    "url": "https://github.com/xtermjs/xterm.js/issues/1145"
+  },
+  "xtermjs:sgr.underline.curly": {
+    "note": "@xterm/headless treats all underline variants as 'single'",
+    "url": "https://github.com/xtermjs/xterm.js/issues/1145"
+  },
+  "xtermjs:sgr.underline.dotted": {
+    "note": "@xterm/headless treats all underline variants as 'single'",
+    "url": "https://github.com/xtermjs/xterm.js/issues/1145"
+  },
+  "xtermjs:sgr.underline.dashed": {
+    "note": "@xterm/headless treats all underline variants as 'single'",
+    "url": "https://github.com/xtermjs/xterm.js/issues/1145"
+  },
+  "xtermjs:scrollback.scroll-up": {
+    "note": "getCell reads from buffer, not viewport after scroll"
+  },
+  "xtermjs:sgr.blink": {
+    "note": "@xterm/headless doesn't expose blink attribute"
+  },
+  "xtermjs:sgr.hidden": {
+    "note": "@xterm/headless doesn't expose hidden/invisible attribute"
+  },
+  "xtermjs:text.wide.emoji": {
+    "note": "@xterm/headless reports emoji as single-width, not wide",
+    "url": "https://github.com/xtermjs/xterm.js/issues/4960"
+  },
+  "vt100-rust:scrollback.accumulate": {
+    "note": "Rust vt100 crate doesn't expose scrollback beyond screen height",
+    "url": "https://github.com/doy/vt100-rust/issues/12"
+  },
+  "vt100-rust:scrollback.total-lines": {
+    "note": "Rust vt100 crate doesn't expose scrollback beyond screen height",
+    "url": "https://github.com/doy/vt100-rust/issues/12"
+  },
+  "vt100-rust:sgr.faint": {
+    "note": "Rust vt100 crate doesn't expose faint/dim attribute"
+  },
+  "vt100-rust:sgr.blink": {
+    "note": "Rust vt100 crate doesn't expose blink attribute"
+  },
+  "vt100-rust:sgr.hidden": {
+    "note": "Rust vt100 crate doesn't expose hidden attribute"
+  },
+  "vt100-rust:sgr.strikethrough": {
+    "note": "Rust vt100 crate doesn't expose strikethrough"
+  }
+}

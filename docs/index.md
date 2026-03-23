@@ -98,8 +98,12 @@ function cellIcon(result) {
 
 function cellTooltip(result, backend, featureId) {
   const label = result === 'yes' ? 'Supported' : result === 'partial' ? 'Partial' : result === 'no' ? 'Not supported' : 'Unknown'
-  const note = data.notes[backend]?.[featureId]
-  return note ? `${label}: ${note}` : label
+  const ann = data.annotations?.[`${backend}:${featureId}`]
+  const note = ann?.note ?? data.notes[backend]?.[featureId]
+  const parts = [label]
+  if (note) parts.push(note)
+  if (ann?.url) parts.push(ann.url)
+  return parts.join('\n')
 }
 
 function catLabel(cat) {

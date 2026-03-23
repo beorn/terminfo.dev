@@ -20,7 +20,11 @@ try {
     const backendsJson = join(__dirname, "..", "..", "..", "termless", "backends.json")
     if (existsSync(backendsJson)) {
       const raw = JSON.parse(readFileSync(backendsJson, "utf-8"))
-      manifest = () => ({ backends: Object.fromEntries(Object.entries(raw.backends).map(([k, v]: [string, any]) => [k, { ...v, version: v.upstreamVersion }])) })
+      manifest = () => ({
+        backends: Object.fromEntries(
+          Object.entries(raw.backends).map(([k, v]: [string, any]) => [k, { ...v, version: v.upstreamVersion }]),
+        ),
+      })
     }
   } catch {}
 }
@@ -63,7 +67,18 @@ export interface CensusData {
   stats: Record<string, { total: number; yes: number; no: number; partial: number; pct: number }>
   /** backend name -> metadata from backends.json */
   meta: Record<string, BackendMeta>
+  /** "backend:feature" -> { note, url? } from annotations.json */
+  annotations: Record<string, { note: string; url?: string }>
   generated: string
+}
+
+function loadAnnotations(): Record<string, { note: string; url?: string }> {
+  try {
+    const annotationsPath = join(__dirname, "..", "..", "annotations.json")
+    return JSON.parse(readFileSync(annotationsPath, "utf-8"))
+  } catch {
+    return {}
+  }
 }
 
 function loadBackendMeta(): Record<string, BackendMeta> {
@@ -140,6 +155,16 @@ function loadUnifiedCensus(path: string): CensusData {
     }
   }
 
+  // Load annotations and merge into notes
+  const annotations = loadAnnotations()
+  for (const [key, ann] of Object.entries(annotations)) {
+    const [backend, ...featureParts] = key.split(":")
+    const feature = featureParts.join(":")
+    if (!notes[backend]) notes[backend] = {}
+    // Annotation note replaces the auto-generated note
+    notes[backend][feature] = ann.note
+  }
+
   // Compute per-backend stats
   const stats: CensusData["stats"] = {}
   for (const name of backendNames) {
@@ -160,6 +185,7 @@ function loadUnifiedCensus(path: string): CensusData {
     notes,
     stats,
     meta: loadBackendMeta(),
+    annotations,
     generated: raw.generated ?? "",
   }
 }
