@@ -9,6 +9,7 @@
 import { readFileSync, existsSync, readdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { manifest } from "@termless/core"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const resultsDir = join(__dirname, "results")
@@ -26,6 +27,15 @@ export interface FeatureResult {
   spec?: string
 }
 
+export interface BackendMeta {
+  label?: string
+  description?: string
+  url?: string
+  upstream?: string
+  type?: string
+  caveat?: string
+}
+
 export interface CensusData {
   backends: BackendInfo[]
   features: FeatureResult[]
@@ -37,7 +47,29 @@ export interface CensusData {
   notes: Record<string, Record<string, string>>
   /** backend name -> { total, yes, no, partial, pct } */
   stats: Record<string, { total: number; yes: number; no: number; partial: number; pct: number }>
+  /** backend name -> metadata from backends.json */
+  meta: Record<string, BackendMeta>
   generated: string
+}
+
+function loadBackendMeta(): Record<string, BackendMeta> {
+  try {
+    const m = manifest()
+    const meta: Record<string, BackendMeta> = {}
+    for (const [name, entry] of Object.entries(m.backends)) {
+      meta[name] = {
+        label: entry.label,
+        description: entry.description,
+        url: entry.url,
+        upstream: entry.upstream ?? undefined,
+        type: entry.type,
+        caveat: entry.caveat,
+      }
+    }
+    return meta
+  } catch {
+    return {}
+  }
 }
 
 declare const data: CensusData
@@ -112,6 +144,7 @@ function loadUnifiedCensus(path: string): CensusData {
     results,
     notes,
     stats,
+    meta: loadBackendMeta(),
     generated: raw.generated ?? "",
   }
 }
@@ -182,7 +215,7 @@ function loadPerBackendResults(): CensusData {
 
   const generated = new Date().toISOString()
 
-  return { backends: allBackends, features, categories, results, notes, stats, generated }
+  return { backends: allBackends, features, categories, results, notes, stats, meta: loadBackendMeta(), generated }
 }
 
 function emptyData(): CensusData {
@@ -193,6 +226,7 @@ function emptyData(): CensusData {
     results: {},
     notes: {},
     stats: {},
+    meta: {},
     generated: "",
   }
 }

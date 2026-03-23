@@ -128,26 +128,13 @@ function failBarWidth(backendName) {
   return (fail / s.total * 100) + '%'
 }
 
-// Backend metadata from backends.json (via census data or hardcoded fallback)
-const backendMeta = {
-  xtermjs: { label: 'xterm.js', description: 'The most widely used web terminal emulator. Powers VS Code\'s terminal.', url: 'https://xtermjs.org', upstream: 'npm:@xterm/headless', type: 'JS (headless)', caveat: 'Headless mode doesn\'t expose cursor visibility or underline variants' },
-  ghostty: { label: 'Ghostty (WASM)', description: 'Mitchell Hashimoto\'s GPU-accelerated terminal via WASM.', url: 'https://ghostty.org', upstream: 'npm:ghostty-web', type: 'WASM' },
-  vt100: { label: 'vt100', description: 'Pure TypeScript VT100 emulator. Zero dependencies, fastest backend.', upstream: 'npm:vt100.js', type: 'JS' },
-  alacritty: { label: 'Alacritty', description: 'Rust-based GPU-accelerated terminal. Strong reflow behavior.', url: 'https://alacritty.org', upstream: 'crate:alacritty_terminal', type: 'Native (Rust, napi-rs)' },
-  wezterm: { label: 'WezTerm', description: 'Broadest protocol support: sixel graphics, semantic prompts, Kitty keyboard.', url: 'https://wezfurlong.org/wezterm', upstream: 'crate:tattoy-wezterm-term', type: 'Native (Rust, napi-rs)' },
-  'vt100-rust': { label: 'vt100-rust', description: 'Reference Rust VT100 implementation.', upstream: 'crate:vt100', type: 'Native (Rust, napi-rs)', caveat: 'Doesn\'t expose scrollback beyond screen height' },
-  libvterm: { label: 'libvterm', description: 'Neovim\'s C VT parser compiled to WASM.', upstream: 'github:neovim/libvterm', type: 'WASM (C, Emscripten)' },
-  'ghostty-native': { label: 'Ghostty Native', description: 'Native Ghostty via Zig N-API bindings. Full API access, no WASM overhead.', url: 'https://ghostty.org', upstream: 'github:ghostty-org/ghostty', type: 'Native (Zig, napigen)' },
-  kitty: { label: 'Kitty', description: 'Kitty\'s VT parser via Python subprocess bridge. Only backend with Kitty graphics.', url: 'https://sw.kovidgoyal.net/kitty', upstream: 'github:kovidgoyal/kitty', type: 'Subprocess (Python)' },
-  peekaboo: { label: 'Peekaboo', description: 'Tests against a real terminal app via OS accessibility APIs. macOS only.', type: 'OS automation' },
-}
-
+// Backend metadata comes from @termless/core via census data loader
 function backendLabel(name) {
-  return backendMeta[name]?.label ?? name
+  return data.meta[name]?.label ?? name
 }
 
 function backendTooltip(name, version) {
-  const meta = backendMeta[name]
+  const meta = data.meta[name]
   if (!meta) return name
   const parts = [meta.description]
   if (meta.upstream) parts.push(`Upstream: ${meta.upstream}`)
