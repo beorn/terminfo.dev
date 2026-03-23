@@ -271,6 +271,7 @@ capabilities.
   font-weight: 600;
   font-size: 0.9em;
   flex-shrink: 0;
+  cursor: help;
 }
 
 .summary-version {
@@ -372,6 +373,7 @@ capabilities.
   padding: 6px 12px;
   text-align: center;
   border: 1px solid var(--vp-c-divider);
+  cursor: help;
 }
 
 .matrix th {
@@ -381,6 +383,7 @@ capabilities.
   position: sticky;
   top: 0;
   z-index: 1;
+  cursor: help;
 }
 
 .feature-col {
