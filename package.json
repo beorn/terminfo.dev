@@ -6,10 +6,10 @@
     "dev": "vitepress dev docs",
     "build": "vitepress build docs",
     "preview": "vitepress preview docs",
-    "census": "bun census/cli.ts",
-    "census:run": "bun census/cli.ts run",
-    "census:report": "bun census/cli.ts report",
-    "census:status": "bun census/cli.ts status"
+    "census": "bun src/cli.ts",
+    "census:run": "bun src/cli.ts run",
+    "census:report": "bun src/cli.ts report",
+    "census:status": "bun src/cli.ts status"
   },
   "dependencies": {
     "@termless/core": "workspace:*",
