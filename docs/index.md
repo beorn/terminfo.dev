@@ -128,18 +128,31 @@ function failBarWidth(backendName) {
   return (fail / s.total * 100) + '%'
 }
 
+// Backend metadata from backends.json (via census data or hardcoded fallback)
+const backendMeta = {
+  xtermjs: { label: 'xterm.js', description: 'The most widely used web terminal emulator. Powers VS Code\'s terminal.', url: 'https://xtermjs.org' },
+  ghostty: { label: 'Ghostty', description: 'Mitchell Hashimoto\'s GPU-accelerated terminal. Best standards compliance, Kitty keyboard protocol.', url: 'https://ghostty.org' },
+  vt100: { label: 'vt100', description: 'Pure TypeScript VT100 emulator. Zero dependencies, fastest backend, ideal for CI.' },
+  alacritty: { label: 'Alacritty', description: 'Rust-based GPU-accelerated terminal. Strong reflow behavior.', url: 'https://alacritty.org' },
+  wezterm: { label: 'WezTerm', description: 'Broadest protocol support: sixel graphics, semantic prompts, Kitty keyboard.', url: 'https://wezfurlong.org/wezterm' },
+  'vt100-rust': { label: 'vt100-rust', description: 'Reference Rust VT100 implementation. Cross-validates the TypeScript vt100 backend.' },
+  libvterm: { label: 'libvterm', description: 'Neovim\'s C VT parser compiled to WASM. Different implementation catches different bugs.' },
+  'ghostty-native': { label: 'Ghostty Native', description: 'Native Ghostty via Zig N-API bindings. Same parser as Ghostty WASM, no WASM overhead.', url: 'https://ghostty.org' },
+  kitty: { label: 'Kitty', description: 'Kitty\'s VT parser built from GPL source. Only backend with Kitty graphics protocol.', url: 'https://sw.kovidgoyal.net/kitty' },
+  peekaboo: { label: 'Peekaboo', description: 'Tests against a real terminal app via OS accessibility APIs. macOS only.' },
+}
+
 function backendLabel(name) {
-  const labels = {
-    xtermjs: 'xterm.js',
-    vt100: 'vt100',
-    'vt100-rust': 'vt100-rust',
-    ghostty: 'Ghostty',
-    'ghostty-native': 'Ghostty Native',
-    wezterm: 'WezTerm',
-    alacritty: 'Alacritty',
-    kitty: 'Kitty',
-  }
-  return labels[name] ?? name
+  return backendMeta[name]?.label ?? name
+}
+
+function backendTooltip(name, version) {
+  const meta = backendMeta[name]
+  if (!meta) return name
+  const parts = [meta.description]
+  if (version) parts.push(`Version: ${version}`)
+  if (data.generated) parts.push(`Tested: ${new Date(data.generated).toLocaleDateString()}`)
+  return parts.join('\n')
 }
 </script>
 
@@ -153,7 +166,7 @@ function backendLabel(name) {
 
 <div class="summary">
   <div v-for="b in sortedBackends" :key="b.name" class="summary-row">
-    <span class="summary-name">{{ backendLabel(b.name) }}</span>
+    <span class="summary-name" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</span>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :title="barTooltip(b.name, 'yes')"></div>
@@ -190,7 +203,7 @@ function backendLabel(name) {
   <thead>
     <tr>
       <th class="feature-col"></th>
-      <th v-for="b in sortedBackends" :key="b.name" :title="b.version + (data.generated ? ' — tested ' + new Date(data.generated).toLocaleDateString() : '')">{{ backendLabel(b.name) }}</th>
+      <th v-for="b in sortedBackends" :key="b.name" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</th>
     </tr>
   </thead>
   <tbody v-for="cat in filteredCategories" :key="cat">

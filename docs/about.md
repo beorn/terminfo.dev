@@ -41,8 +41,4 @@ No manual testing. No self-reported capabilities. Fully reproducible.
 - **Reset** — SGR reset, full terminal reset (RIS), programmatic reset
 - **Extensions** — Window title, kitty keyboard/graphics, sixel, OSC 8 hyperlinks, text reflow
 
-## Deployment
-
-Built with [VitePress](https://vitepress.dev), deployed via [Cloudflare Pages](https://pages.cloudflare.com).
-
-- Powered by: [Termless](https://termless.dev) — Playwright for terminals
+Powered by [Termless](https://termless.dev) — Playwright for terminals.
