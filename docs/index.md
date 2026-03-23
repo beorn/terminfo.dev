@@ -164,7 +164,7 @@ function backendLabel(name) {
   <thead>
     <tr>
       <th class="feature-col"></th>
-      <th v-for="b in sortedBackends" :key="b.name">{{ backendLabel(b.name) }}</th>
+      <th v-for="b in sortedBackends" :key="b.name" :title="b.version + (data.generated ? ' — tested ' + new Date(data.generated).toLocaleDateString() : '')">{{ backendLabel(b.name) }}</th>
     </tr>
   </thead>
   <tbody v-for="cat in filteredCategories" :key="cat">
