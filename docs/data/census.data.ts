@@ -1,7 +1,7 @@
 /**
  * VitePress build-time data loader for census results.
  *
- * Reads the unified census.json (copied from termless during build/deploy)
+ * Reads the unified census.json (copied from Termless during build/deploy)
  * and reshapes it for the matrix page.
  *
  * Consumed via: import { data } from './data/census.data'
