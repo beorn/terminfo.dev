@@ -381,8 +381,8 @@ capabilities.
   font-weight: 600;
   font-size: 0.9em;
   position: sticky;
-  top: 0;
-  z-index: 1;
+  top: var(--vp-nav-height, 64px);
+  z-index: 10;
   cursor: help;
 }
 

@@ -17,18 +17,18 @@ No manual testing. No self-reported capabilities. Fully reproducible.
 
 ## Backends Tested
 
-| Backend            | Engine                     | Description                                           |
-| ------------------ | -------------------------- | ----------------------------------------------------- |
-| **xterm.js**       | @xterm/headless            | The most widely used web terminal emulator            |
-| **Ghostty**        | ghostty-web WASM           | Mitchell Hashimoto's GPU-accelerated terminal         |
-| **Ghostty Native** | libghostty-vt (Zig)        | Native Ghostty via Zig N-API bindings                 |
-| **vt100**          | Pure TypeScript            | Termless's built-in zero-dependency emulator          |
-| **vt100-rust**     | Rust vt100 crate (napi-rs) | Rust VT100 parser via native bindings                 |
-| **WezTerm**        | wezterm-term (napi-rs)     | Broadest protocol support: sixel, semantic prompts    |
-| **Alacritty**      | alacritty_terminal (napi-rs) | Rust parser with strong reflow                      |
-| **libvterm**       | neovim/libvterm (WASM)     | Neovim's C VT parser via Emscripten                   |
-| **Kitty**          | kitty (C, GPL source)      | Kitty's parser built from source                      |
-| **Peekaboo**       | OS automation              | Tests against a real terminal app (macOS)             |
+| Backend            | Engine                       | Description                                        |
+| ------------------ | ---------------------------- | -------------------------------------------------- |
+| **xterm.js**       | @xterm/headless              | The most widely used web terminal emulator         |
+| **Ghostty**        | ghostty-web WASM             | Mitchell Hashimoto's GPU-accelerated terminal      |
+| **Ghostty Native** | libghostty-vt (Zig)          | Native Ghostty via Zig N-API bindings              |
+| **vt100**          | Pure TypeScript              | Termless's built-in zero-dependency emulator       |
+| **vt100-rust**     | Rust vt100 crate (napi-rs)   | Rust VT100 parser via native bindings              |
+| **WezTerm**        | wezterm-term (napi-rs)       | Broadest protocol support: sixel, semantic prompts |
+| **Alacritty**      | alacritty_terminal (napi-rs) | Rust parser with strong reflow                     |
+| **libvterm**       | neovim/libvterm (WASM)       | Neovim's C VT parser via Emscripten                |
+| **Kitty**          | kitty (C, GPL source)        | Kitty's parser built from source                   |
+| **Peekaboo**       | OS automation                | Tests against a real terminal app (macOS)          |
 
 ## Feature Categories
 
