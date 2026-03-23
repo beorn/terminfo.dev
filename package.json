@@ -5,9 +5,20 @@
   "scripts": {
     "dev": "vitepress dev docs",
     "build": "vitepress build docs",
-    "preview": "vitepress preview docs"
+    "preview": "vitepress preview docs",
+    "census": "bun census/cli.ts",
+    "census:run": "bun census/cli.ts run",
+    "census:report": "bun census/cli.ts report",
+    "census:status": "bun census/cli.ts status"
+  },
+  "dependencies": {
+    "@termless/core": "workspace:*",
+    "commander": "^13.0.0",
+    "loggily": "workspace:*",
+    "silvery": "workspace:*"
   },
   "devDependencies": {
-    "vitepress": "^1.5.0"
+    "vitepress": "^1.5.0",
+    "vitest": "^4.0.0"
   }
 }
