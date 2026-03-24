@@ -79,6 +79,18 @@ async function runProbes(): Promise<ProbeResults> {
     process.stdout.write("\x1b[?1049l")
   })
 
+  // Drain any late-arriving escape sequence responses before output
+  await new Promise<void>((resolve) => {
+    process.stdin.resume()
+    const timer = setTimeout(() => {
+      process.stdin.pause()
+      process.stdin.removeAllListeners("readable")
+      resolve()
+    }, 100)
+    process.stdin.on("readable", () => { while (process.stdin.read() !== null) {} })
+    timer.unref()
+  })
+
   return { terminal, results, notes, responses, passed, total: ALL_PROBES.length }
 }
 

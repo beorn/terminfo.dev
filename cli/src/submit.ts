@@ -23,7 +23,25 @@ interface SubmitData {
   probeCount?: number
 }
 
+/** Drain any leftover bytes from stdin (e.g., late-arriving escape sequence responses) */
+async function drainStdin(): Promise<void> {
+  return new Promise((resolve) => {
+    if (!process.stdin.readable) { resolve(); return }
+    process.stdin.resume()
+    const timer = setTimeout(() => {
+      process.stdin.pause()
+      process.stdin.removeAllListeners("readable")
+      resolve()
+    }, 200)
+    process.stdin.on("readable", () => {
+      while (process.stdin.read() !== null) {} // discard
+    })
+    timer.unref()
+  })
+}
+
 async function prompt(question: string, defaultValue?: string): Promise<string> {
+  await drainStdin()
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   const suffix = defaultValue ? ` [${defaultValue}]` : ""
   return new Promise((resolve) => {
