@@ -1,8 +1,20 @@
-import { loadCensus, featureSlug, catLabel, categoryDescriptions, terminalSlug } from "./data/load-census"
+import {
+  loadCensus,
+  featureSlug,
+  catLabel,
+  categoryDescriptions,
+  terminalSlug,
+  loadFeaturesMeta,
+  getAllTags,
+  getFeaturesForTag,
+  tagLabel,
+  tagDescriptions,
+} from "./data/load-census"
 
 export default {
   paths() {
     const data = loadCensus()
+    const featuresMeta = loadFeaturesMeta()
 
     // Sort backends by score (highest first)
     const sortedBackends = [...data.backends].sort((a, b) => {
@@ -11,7 +23,15 @@ export default {
       return bPct - aPct
     })
 
-    return Object.entries(data.categories).map(([cat, features]) => {
+    const backends = sortedBackends.map((b) => ({
+      name: b.name,
+      slug: terminalSlug(b.name, data.meta),
+      label: data.meta[b.name]?.label ?? b.name,
+      version: b.version,
+    }))
+
+    // --- Category pages ---
+    const categoryPages = Object.entries(data.categories).map(([cat, features]) => {
       const featureRows = features.map((f) => {
         const desc = data.featureDescriptions[f.id]
         const results: Record<string, { result: string; note: string }> = {}
@@ -30,16 +50,10 @@ export default {
         }
       })
 
-      const backends = sortedBackends.map((b) => ({
-        name: b.name,
-        slug: terminalSlug(b.name, data.meta),
-        label: data.meta[b.name]?.label ?? b.name,
-        version: b.version,
-      }))
-
       return {
         params: {
           id: cat,
+          pageType: "category",
           categoryName: catLabel(cat),
           categoryDescription: categoryDescriptions[cat] ?? "",
           featureCount: String(features.length),
@@ -48,5 +62,44 @@ export default {
         },
       }
     })
+
+    // --- Tag pages ---
+    const tags = getAllTags()
+    const tagPages = tags.map((tag) => {
+      const featureIds = getFeaturesForTag(tag)
+
+      const featureRows = featureIds.map((fid) => {
+        const desc = data.featureDescriptions[fid]
+        const category = fid.split(".")[0]
+        const results: Record<string, { result: string; note: string }> = {}
+        for (const b of sortedBackends) {
+          const result = data.results[b.name]?.[fid] ?? "unknown"
+          const ann = data.annotations?.[`${b.name}:${fid}`]
+          const note = ann?.note ?? data.notes[b.name]?.[fid] ?? ""
+          results[b.name] = { result, note }
+        }
+        return {
+          id: fid,
+          slug: featureSlug(fid),
+          category,
+          name: desc?.name ?? fid,
+          results,
+        }
+      })
+
+      return {
+        params: {
+          id: tag,
+          pageType: "tag",
+          categoryName: tagLabel(tag),
+          categoryDescription: tagDescriptions[tag] ?? "",
+          featureCount: String(featureIds.length),
+          features: JSON.stringify(featureRows),
+          backends: JSON.stringify(backends),
+        },
+      }
+    })
+
+    return [...categoryPages, ...tagPages]
   },
 }

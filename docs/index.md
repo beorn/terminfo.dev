@@ -143,6 +143,11 @@ function featureSlug(id) {
   return id.replace(/\./g, '-')
 }
 
+function termSlug(name) {
+  const label = (data.meta[name]?.label ?? name).toLowerCase()
+  return label.replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '')
+}
+
 // Backend metadata comes from @termless/core via census data loader
 function backendLabel(name) {
   return data.meta[name]?.label ?? name
@@ -172,7 +177,7 @@ function backendTooltip(name, version) {
 
 <div class="summary">
   <div v-for="b in sortedBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/backend/' + b.name" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar" :data-tooltip="barTooltip(b.name, 'no')">
       <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }"></div>
@@ -210,14 +215,14 @@ function backendTooltip(name, version) {
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in sortedBackends" :key="b.name" :data-tooltip="backendTooltip(b.name, b.version)">
-        <a class="hover-link" :href="'/backend/' + b.name">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminal/' + termSlug(b.name)">{{ backendLabel(b.name) }}</a>
       </th>
     </tr>
   </thead>
   <tbody v-for="cat in filteredCategories" :key="cat">
     <tr class="category-row">
       <td :colspan="sortedBackends.length + 1" class="category-header">
-        <a class="hover-link" :href="'/category/' + cat">{{ catLabel(cat) }}</a>
+        <a class="hover-link" :href="'/' + cat">{{ catLabel(cat) }}</a>
       </td>
     </tr>
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
