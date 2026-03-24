@@ -51,7 +51,7 @@ export interface CensusData {
   /** backend name -> metadata from backends.json */
   meta: Record<string, BackendMeta>
   /** "backend:feature" -> { note, url? } from annotations.json */
-  annotations: Record<string, { note: string; url?: string }>
+  annotations: Record<string, { note: string; url?: string; result?: string }>
   /** feature id -> { name, url? } from features.json */
   featureDescriptions: Record<string, FeatureMeta>
   generated: string
@@ -86,7 +86,7 @@ function loadFeatureDescriptions(): Record<string, FeatureMeta> {
   }
 }
 
-function loadAnnotations(): Record<string, { note: string; url?: string }> {
+function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
   const annotationsPath = join(__dirname, "..", "..", "annotations.json")
   if (!existsSync(annotationsPath)) {
     throw new Error(`annotations.json not found at ${annotationsPath}`)
@@ -164,7 +164,7 @@ function loadUnifiedCensus(path: string): CensusData {
     }
   }
 
-  // Load annotations and merge into notes
+  // Load annotations and merge into notes + apply result overrides
   const annotations = loadAnnotations()
   for (const [key, ann] of Object.entries(annotations)) {
     const [backend, ...featureParts] = key.split(":")
@@ -172,6 +172,10 @@ function loadUnifiedCensus(path: string): CensusData {
     if (!notes[backend]) notes[backend] = {}
     // Annotation note replaces the auto-generated note
     notes[backend][feature] = ann.note
+    // Annotation can override the probe result (e.g., "partial" for headless API gaps)
+    if (ann.result && results[backend]) {
+      results[backend][feature] = ann.result
+    }
   }
 
   // Compute per-backend stats
@@ -276,6 +280,19 @@ function loadPerBackendResults(): CensusData {
     const [backend, ...fp] = key.split(":")
     const feature = fp.join(":")
     if (notes[backend]) notes[backend][feature] = ann.note
+    // Apply result overrides from annotations
+    if (ann.result && results[backend]) results[backend][feature] = ann.result
+  }
+
+  // Recompute stats after overrides
+  for (const b of allBackends) {
+    const entries = Object.values(results[b.name])
+    const total = entries.length
+    const yes = entries.filter((v) => v === "yes").length
+    const no = entries.filter((v) => v === "no").length
+    const partial = entries.filter((v) => v === "partial").length
+    const pct = total > 0 ? Math.round((yes / total) * 100) : 0
+    stats[b.name] = { total, yes, no, partial, pct }
   }
 
   return {
