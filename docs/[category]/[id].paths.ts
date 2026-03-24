@@ -1,4 +1,4 @@
-import { loadCensus, featureSlug } from "../data/load-census"
+import { loadCensus, featureSlug, terminalSlug } from "../data/load-census"
 
 export default {
   paths() {
@@ -11,6 +11,7 @@ export default {
       // Build per-backend results for this feature
       const backendResults: Array<{
         name: string
+        slug: string
         label: string
         version: string
         result: string
@@ -23,6 +24,7 @@ export default {
         const note = ann?.note ?? data.notes[b.name]?.[f.id] ?? ""
         backendResults.push({
           name: b.name,
+          slug: terminalSlug(b.name, data.meta),
           label: data.meta[b.name]?.label ?? b.name,
           version: b.version,
           result,
@@ -41,6 +43,7 @@ export default {
 
       return {
         params: {
+          category: f.category,
           id: slug,
           featureId: f.id,
           featureName: desc?.name ?? f.name,

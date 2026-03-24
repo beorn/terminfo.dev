@@ -49,14 +49,14 @@ function tooltip(result, note) {
     <tr>
       <th class="feature-col">Feature</th>
       <th v-for="b in backends" :key="b.name">
-        <a :href="'/backend/' + b.name">{{ b.label }}</a>
+        <a :href="'/terminal/' + b.slug">{{ b.label }}</a>
       </th>
     </tr>
   </thead>
   <tbody>
     <tr v-for="f in features" :key="f.id">
       <td class="feature-name">
-        <a :href="'/feature/' + f.slug">{{ f.name }}</a>
+        <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
       </td>
       <td v-for="b in backends" :key="b.name"
           :class="cls(f.results[b.name]?.result)"

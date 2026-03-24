@@ -29,7 +29,7 @@ function cls(result) {
 # {{ p.featureName }}
 
 <p class="feature-meta">
-  Category: <a :href="'/category/' + p.featureCategory">{{ p.featureCategory }}</a>
+  Category: <a :href="'/' + p.featureCategory">{{ p.featureCategory }}</a>
   <span v-if="p.specUrl"> · <a :href="p.specUrl" target="_blank" rel="noopener">Specification ↗</a></span>
 </p>
 
@@ -50,7 +50,7 @@ function cls(result) {
   </thead>
   <tbody>
     <tr v-for="r in backendResults" :key="r.name">
-      <td><a :href="'/backend/' + r.name">{{ r.label }}</a></td>
+      <td><a :href="'/terminal/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
       <td :class="cls(r.result)" class="result-cell">{{ icon(r.result) }} {{ r.result }}</td>
       <td class="note-cell">{{ r.note }}</td>
@@ -59,7 +59,7 @@ function cls(result) {
 </table>
 
 <p class="back-link">
-  <a href="/">← Back to matrix</a>
+  <a href="/">← Back to matrix</a> · <a :href="'/' + p.featureCategory">{{ p.featureCategory }} features</a>
 </p>
 
 </div>

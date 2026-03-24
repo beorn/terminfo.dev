@@ -1,4 +1,4 @@
-import { loadCensus, featureSlug, catLabel, categoryDescriptions } from "../data/load-census"
+import { loadCensus, featureSlug, catLabel, terminalSlug } from "../data/load-census"
 
 export default {
   paths() {
@@ -7,6 +7,7 @@ export default {
     return data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
       const stats = data.stats[b.name] ?? { total: 0, yes: 0, no: 0, partial: 0, pct: 0 }
+      const slug = terminalSlug(b.name, data.meta)
 
       // Build feature results grouped by category
       const categories: Array<{
@@ -15,6 +16,7 @@ export default {
         features: Array<{
           id: string
           slug: string
+          category: string
           name: string
           result: string
           note: string
@@ -30,6 +32,7 @@ export default {
           return {
             id: f.id,
             slug: featureSlug(f.id),
+            category: f.category,
             name: desc?.name ?? f.name,
             result,
             note,
@@ -44,7 +47,8 @@ export default {
 
       return {
         params: {
-          id: b.name,
+          id: slug,
+          backendId: b.name,
           backendName: meta.label ?? b.name,
           backendDescription: meta.description ?? "",
           backendUrl: meta.url ?? "",

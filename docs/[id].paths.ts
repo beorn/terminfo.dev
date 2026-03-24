@@ -1,4 +1,4 @@
-import { loadCensus, featureSlug, catLabel, categoryDescriptions } from "../data/load-census"
+import { loadCensus, featureSlug, catLabel, categoryDescriptions, terminalSlug } from "./data/load-census"
 
 export default {
   paths() {
@@ -24,6 +24,7 @@ export default {
         return {
           id: f.id,
           slug: featureSlug(f.id),
+          category: cat,
           name: desc?.name ?? f.name,
           results,
         }
@@ -31,6 +32,7 @@ export default {
 
       const backends = sortedBackends.map((b) => ({
         name: b.name,
+        slug: terminalSlug(b.name, data.meta),
         label: data.meta[b.name]?.label ?? b.name,
         version: b.version,
       }))

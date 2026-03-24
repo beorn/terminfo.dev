@@ -15,21 +15,26 @@ export default defineConfig({
     const params = pageData.params as Record<string, string> | undefined
     if (!params) return
 
-    if (pageData.relativePath.startsWith("feature/")) {
-      pageData.title = `${params.featureName} — Terminal Support`
-      pageData.description = `Which terminal emulators support ${params.featureName}? Support matrix showing ${params.yesCount} of ${params.totalCount} backends.`
-      pageData.frontmatter.head = [
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      ]
-    } else if (pageData.relativePath.startsWith("backend/")) {
+    const rel = pageData.relativePath
+
+    if (rel.startsWith("terminal/")) {
+      // Terminal (backend) pages: /terminal/ghostty
       pageData.title = `${params.backendName} — Terminal Feature Support`
       pageData.description = `${params.backendName} terminal emulator feature support: ${params.pct}% (${params.yes}/${params.total} features). ${params.backendDescription}`
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
       ]
-    } else if (pageData.relativePath.startsWith("category/")) {
+    } else if (params.featureName) {
+      // Feature pages: /sgr/sgr-bold (have featureName param)
+      pageData.title = `${params.featureName} — Terminal Support`
+      pageData.description = `Which terminal emulators support ${params.featureName}? Support matrix showing ${params.yesCount} of ${params.totalCount} backends.`
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+    } else if (params.categoryName) {
+      // Category pages: /sgr, /cursor (have categoryName param)
       pageData.title = `${params.categoryName} — Terminal Feature Category`
       pageData.description = params.categoryDescription || `${params.categoryName}: ${params.featureCount} terminal features compared across backends.`
       pageData.frontmatter.head = [

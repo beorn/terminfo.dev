@@ -77,6 +77,8 @@ export interface CensusData {
 interface FeatureMeta {
   name: string
   url?: string
+  tags?: string[]
+  group?: string
 }
 
 function loadFeatureDescriptions(): Record<string, FeatureMeta> {
@@ -88,7 +90,10 @@ function loadFeatureDescriptions(): Record<string, FeatureMeta> {
     const result: Record<string, FeatureMeta> = {}
     for (const [id, val] of Object.entries(raw)) {
       if (typeof val === "string") result[id] = { name: val }
-      else result[id] = val as FeatureMeta
+      else {
+        const v = val as any
+        result[id] = { name: v.name, url: v.url, tags: v.tags, group: v.group }
+      }
     }
     return result
   } catch {

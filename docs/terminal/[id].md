@@ -39,7 +39,7 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
   <span v-if="p.backendUrl"> · <a :href="p.backendUrl" target="_blank" rel="noopener">Website ↗</a></span>
 </div>
 
-<p v-if="p.backendCaveat" class="backend-caveat">⚠ {{ p.backendCaveat }}</p>
+<p v-if="p.backendCaveat" class="backend-caveat">{{ p.backendCaveat }}</p>
 
 <div class="score-card">
   <div class="score-number">{{ p.pct }}<span class="score-pct">%</span></div>
@@ -66,7 +66,7 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
   </thead>
   <tbody>
     <tr v-for="f in cat.features" :key="f.id">
-      <td><a :href="'/feature/' + f.slug">{{ f.name }}</a></td>
+      <td><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
       <td :class="cls(f.result)" class="result-cell">{{ icon(f.result) }} {{ f.result }}</td>
       <td class="note-cell">{{ f.note }}</td>
     </tr>

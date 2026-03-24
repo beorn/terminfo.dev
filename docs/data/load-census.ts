@@ -21,14 +21,13 @@ export function featureSlug(id: string): string {
   return id.replaceAll(".", "-")
 }
 
-/** Convert URL slug back to feature ID: "sgr-underline-curly" -> "sgr.underline.curly" */
-export function slugToFeatureId(slug: string, features: CensusData["features"]): string | undefined {
-  // Direct match first (replace hyphens with dots)
-  const candidate = slug.replaceAll("-", ".")
-  if (features.some((f) => f.id === candidate)) return candidate
-
-  // Ambiguous case: try all features and match by slug
-  return features.find((f) => featureSlug(f.id) === slug)?.id
+/**
+ * Convert backend name to a URL-friendly terminal slug using the label.
+ * ghostty-native -> ghostty, xtermjs -> xterm-js, ghostty (WASM) -> ghostty-wasm
+ */
+export function terminalSlug(name: string, meta: CensusData["meta"]): string {
+  const label = (meta[name]?.label ?? name).toLowerCase()
+  return label.replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
 }
 
 export const categoryLabels: Record<string, string> = {
