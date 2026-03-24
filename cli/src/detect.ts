@@ -1,10 +1,11 @@
 /**
  * Terminal detection — identify the running terminal emulator.
  *
- * Uses environment variables, DA2 response parsing, and fallback heuristics.
+ * Uses environment variables, macOS bundle metadata, and fallback heuristics.
  */
 
 import { release } from "node:os"
+import { execFileSync } from "node:child_process"
 
 export interface TerminalInfo {
   name: string
@@ -14,7 +15,7 @@ export interface TerminalInfo {
 }
 
 /** Known terminal detection via environment variables */
-const ENV_DETECTORS: Array<{ env: string; name: string; versionEnv?: string }> = [
+const ENV_DETECTORS: Array<{ env: string; name: string }> = [
   { env: "GHOSTTY_RESOURCES_DIR", name: "ghostty" },
   { env: "KITTY_WINDOW_ID", name: "kitty" },
   { env: "WEZTERM_EXECUTABLE", name: "wezterm" },
@@ -33,46 +34,97 @@ const TERM_PROGRAM_MAP: Record<string, string> = {
   WarpTerminal: "warp",
 }
 
+/** Known macOS bundle IDs for version lookup */
+const BUNDLE_IDS: Record<string, string> = {
+  ghostty: "com.mitchellh.ghostty",
+  kitty: "net.kovidgoyal.kitty",
+  iterm2: "com.googlecode.iterm2",
+  "terminal-app": "com.apple.Terminal",
+  wezterm: "org.wezfurlong.wezterm",
+  alacritty: "org.alacritty",
+  warp: "dev.warp.Warp-Stable",
+}
+
 export function detectTerminal(): TerminalInfo {
   const os = detectOS()
   const osVersion = detectOSVersion()
 
+  let name = "unknown"
+  let version = ""
+
   // Check specific env vars first
-  for (const { env, name } of ENV_DETECTORS) {
+  for (const { env, name: n } of ENV_DETECTORS) {
     if (process.env[env]) {
-      return { name, version: "", os, osVersion }
+      name = n
+      break
     }
   }
 
   // Check $TERM_PROGRAM
-  const termProgram = process.env.TERM_PROGRAM
-  if (termProgram) {
-    const name = TERM_PROGRAM_MAP[termProgram] ?? termProgram.toLowerCase()
-    const version = process.env.TERM_PROGRAM_VERSION ?? ""
-    return { name, version, os, osVersion }
+  if (name === "unknown") {
+    const termProgram = process.env.TERM_PROGRAM
+    if (termProgram) {
+      name = TERM_PROGRAM_MAP[termProgram] ?? termProgram.toLowerCase()
+      version = process.env.TERM_PROGRAM_VERSION ?? ""
+    }
   }
 
-  // Check $TERMINAL_EMULATOR (set by some Linux terminals)
-  const termEmu = process.env.TERMINAL_EMULATOR
-  if (termEmu) {
-    return { name: termEmu.toLowerCase(), version: "", os, osVersion }
+  // Check $TERMINAL_EMULATOR (Linux)
+  if (name === "unknown") {
+    const termEmu = process.env.TERMINAL_EMULATOR
+    if (termEmu) name = termEmu.toLowerCase()
   }
 
-  // Fallback: use $TERM
-  const term = process.env.TERM ?? "unknown"
-  return { name: term, version: "", os, osVersion }
+  // Fallback: $TERM
+  if (name === "unknown") {
+    name = process.env.TERM ?? "unknown"
+  }
+
+  // On macOS, get version from app bundle if we don't have it yet
+  if (!version && os === "macos") {
+    version = getMacOSAppVersion(name)
+  }
+
+  return { name, version, os, osVersion }
+}
+
+/**
+ * Get app version from macOS bundle metadata.
+ * Uses $__CFBundleIdentifier → mdfind → PlistBuddy.
+ */
+function getMacOSAppVersion(terminalName: string): string {
+  try {
+    // Try __CFBundleIdentifier first (set by the running app)
+    let bundleId = process.env.__CFBundleIdentifier
+    if (!bundleId) bundleId = BUNDLE_IDS[terminalName]
+    if (!bundleId) return ""
+
+    // Find app path from bundle ID
+    const appPath = execFileSync("mdfind", [`kMDItemCFBundleIdentifier == '${bundleId}'`], {
+      encoding: "utf-8",
+      timeout: 3000,
+    }).trim().split("\n")[0]
+
+    if (!appPath) return ""
+
+    // Read version from Info.plist
+    const version = execFileSync("/usr/libexec/PlistBuddy", [
+      "-c", "Print :CFBundleShortVersionString",
+      `${appPath}/Contents/Info.plist`,
+    ], { encoding: "utf-8", timeout: 2000 }).trim()
+
+    return version
+  } catch {
+    return ""
+  }
 }
 
 function detectOS(): string {
   switch (process.platform) {
-    case "darwin":
-      return "macos"
-    case "linux":
-      return "linux"
-    case "win32":
-      return "windows"
-    default:
-      return process.platform
+    case "darwin": return "macos"
+    case "linux": return "linux"
+    case "win32": return "windows"
+    default: return process.platform
   }
 }
 
@@ -86,8 +138,6 @@ function detectOSVersion(): string {
 
 /**
  * Query terminal identity via DA2 (Secondary Device Attributes).
- * Sends CSI > 0 c and parses the response.
- *
  * Must be called with raw mode enabled on stdin.
  */
 export async function queryDA2(

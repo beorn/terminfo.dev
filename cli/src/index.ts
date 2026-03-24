@@ -185,6 +185,8 @@ program
       notes: data.notes,
       responses: data.responses,
       generated: new Date().toISOString(),
+      cliVersion: "1.3.0",
+      probeCount: ALL_PROBES.length,
     })
     if (url) {
       console.log(`\x1b[32m✓ Issue created:\x1b[0m ${link(url, url)}`)

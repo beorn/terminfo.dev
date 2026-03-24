@@ -19,6 +19,8 @@ interface SubmitData {
   notes: Record<string, string>
   responses: Record<string, string>
   generated: string
+  cliVersion?: string
+  probeCount?: number
 }
 
 async function prompt(question: string, defaultValue?: string): Promise<string> {
@@ -71,6 +73,8 @@ export async function submitResults(data: SubmitData): Promise<string | null> {
 | Version | ${data.terminalVersion || "unknown"} |
 | OS | ${data.os} ${data.osVersion || ""} |
 | Score | ${passed}/${total} (${pct}%) |
+| CLI Version | ${data.cliVersion ?? "unknown"} |
+| Probes | ${data.probeCount ?? total} |
 | Generated | ${data.generated} |
 
 ### Summary
