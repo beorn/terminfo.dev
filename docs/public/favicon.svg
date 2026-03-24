@@ -7,6 +7,7 @@
   <circle cx="24" cy="28" r="4" fill="#ef4444"/>
   <circle cx="38" cy="28" r="4" fill="#f59e0b"/>
   <circle cx="52" cy="28" r="4" fill="#10b981"/>
-  <!-- % symbol -->
-  <text x="64" y="88" font-family="monospace" font-size="48" font-weight="700" fill="#10b981" text-anchor="middle" dominant-baseline="middle">%</text>
+  <!-- >% prompt -->
+  <text x="28" y="88" font-family="monospace" font-size="44" font-weight="700" fill="#94a3b8" dominant-baseline="middle">&gt;</text>
+  <text x="64" y="88" font-family="monospace" font-size="44" font-weight="700" fill="#10b981" dominant-baseline="middle">%</text>
 </svg>
