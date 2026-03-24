@@ -147,6 +147,212 @@ function sgrProbe(id: string, name: string, sequence: string): Probe {
   }
 }
 
+// ── Cursor save/restore ──
+
+const cursorSaveRestore: Probe = {
+  id: "cursor.save-restore",
+  name: "Cursor save/restore (DECSC/DECRC)",
+  async run() {
+    process.stdout.write("\x1b[3;5H") // Move to row 3, col 5
+    process.stdout.write("\x1b7") // DECSC — save cursor
+    process.stdout.write("\x1b[10;10H") // Move somewhere else
+    process.stdout.write("\x1b8") // DECRC — restore cursor
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response after restore" }
+    return {
+      pass: pos[0] === 3 && pos[1] === 5,
+      note: pos[0] === 3 && pos[1] === 5 ? undefined : `got ${pos[0]};${pos[1]}, expected 3;5`,
+      response: `${pos[0]};${pos[1]}`,
+    }
+  },
+}
+
+// ── Erase probes ──
+
+const eraseLineRight: Probe = {
+  id: "erase.line.right",
+  name: "Erase line right (EL 0)",
+  async run() {
+    process.stdout.write("\x1b[1;1H\x1b[2K") // Clear line
+    process.stdout.write("ABCDE")
+    process.stdout.write("\x1b[1;3H") // Move to col 3
+    process.stdout.write("\x1b[0K") // EL 0 — erase to right
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    return {
+      pass: pos[1] === 3,
+      note: pos[1] === 3 ? undefined : `cursor at col ${pos[1]}, expected 3`,
+    }
+  },
+}
+
+const eraseScreenScrollback: Probe = {
+  id: "erase.screen.scrollback",
+  name: "Erase scrollback (ED 3)",
+  async run() {
+    process.stdout.write("\x1b[5;5H") // Move to known position
+    process.stdout.write("\x1b[3J") // ED 3 — erase scrollback
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response after ED 3" }
+    return {
+      pass: pos[0] === 5 && pos[1] === 5,
+      note: pos[0] === 5 && pos[1] === 5 ? undefined : `cursor at ${pos[0]};${pos[1]}, expected 5;5`,
+    }
+  },
+}
+
+// ── Scroll region ──
+
+const scrollRegion: Probe = {
+  id: "scrollback.set-region",
+  name: "Scroll region (DECSTBM)",
+  async run() {
+    process.stdout.write("\x1b[5;10r") // Set scroll region rows 5–10
+    process.stdout.write("\x1b[r") // Reset scroll region
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response after DECSTBM" }
+    // After reset, cursor should still respond — terminal didn't crash
+    return { pass: true }
+  },
+}
+
+// ── Tab and backspace ──
+
+const tabStop: Probe = {
+  id: "text.tab",
+  name: "Tab stop (default 8-col)",
+  async run() {
+    process.stdout.write("\x1b[1;1H\x1b[2K") // Clear line, move to col 1
+    process.stdout.write("\t") // Tab
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    return {
+      pass: pos[1] === 9,
+      note: pos[1] === 9 ? undefined : `cursor at col ${pos[1]}, expected 9`,
+    }
+  },
+}
+
+const backspace: Probe = {
+  id: "text.backspace",
+  name: "Backspace (BS)",
+  async run() {
+    process.stdout.write("\x1b[1;5H") // Move to col 5
+    process.stdout.write("\b") // BS
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    return {
+      pass: pos[1] === 4,
+      note: pos[1] === 4 ? undefined : `cursor at col ${pos[1]}, expected 4`,
+    }
+  },
+}
+
+// ── Insert/delete character probes ──
+
+const insertChars: Probe = {
+  id: "editing.insert-chars",
+  name: "Insert characters (ICH)",
+  async run() {
+    process.stdout.write("\x1b[1;1H\x1b[2K") // Clear line
+    process.stdout.write("ABCD")
+    process.stdout.write("\x1b[1;2H") // Move to col 2
+    process.stdout.write("\x1b[1@") // ICH 1 — insert 1 blank char
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    // Cursor should remain at col 2 after insert
+    return {
+      pass: pos[1] === 2,
+      note: pos[1] === 2 ? undefined : `cursor at col ${pos[1]}, expected 2`,
+    }
+  },
+}
+
+const deleteChars: Probe = {
+  id: "editing.delete-chars",
+  name: "Delete characters (DCH)",
+  async run() {
+    process.stdout.write("\x1b[1;1H\x1b[2K") // Clear line
+    process.stdout.write("ABCD")
+    process.stdout.write("\x1b[1;2H") // Move to col 2
+    process.stdout.write("\x1b[1P") // DCH 1 — delete 1 char
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    // Cursor should remain at col 2 after delete
+    return {
+      pass: pos[1] === 2,
+      note: pos[1] === 2 ? undefined : `cursor at col ${pos[1]}, expected 2`,
+    }
+  },
+}
+
+// ── Reset ──
+
+const resetRIS: Probe = {
+  id: "reset.ris",
+  name: "Full reset (RIS)",
+  async run() {
+    process.stdout.write("\x1b[5;5H") // Move somewhere away from 1;1
+    process.stdout.write("\x1bc") // RIS — full reset
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response after RIS" }
+    return {
+      pass: pos[0] === 1 && pos[1] === 1,
+      note: pos[0] === 1 && pos[1] === 1 ? undefined : `cursor at ${pos[0]};${pos[1]}, expected 1;1`,
+    }
+  },
+}
+
+// ── Extensions probes ──
+
+const kittyKeyboard: Probe = {
+  id: "extensions.kitty-keyboard",
+  name: "Kitty keyboard protocol",
+  async run() {
+    // Query current keyboard mode flags — terminal responds with CSI ? flags u
+    const match = await query("\x1b[?u", /\x1b\[\?(\d+)u/, 1000)
+    if (!match) return { pass: false, note: "No kitty keyboard response" }
+    return { pass: true, response: `flags=${match[1]}` }
+  },
+}
+
+const sixelSupport: Probe = {
+  id: "extensions.sixel",
+  name: "Sixel graphics (DA1 bit 4)",
+  async run() {
+    const match = await query("\x1b[c", /\x1b\[\?([0-9;]+)c/, 1000)
+    if (!match) return { pass: false, note: "No DA1 response" }
+    const attrs = match[1]!.split(";")
+    const hasSixel = attrs.includes("4")
+    return {
+      pass: hasSixel,
+      note: hasSixel ? undefined : "DA1 response missing ;4 (sixel)",
+      response: match[1],
+    }
+  },
+}
+
+const osc52Clipboard: Probe = {
+  id: "extensions.osc52-clipboard",
+  name: "Clipboard query (OSC 52)",
+  async run() {
+    const match = await query("\x1b]52;c;?\x07", /\x1b\]52;([^\x07\x1b]+)[\x07\x1b]/, 1000)
+    if (!match) return { pass: false, note: "No OSC 52 response" }
+    return { pass: true, response: match[1] }
+  },
+}
+
+const osc7Cwd: Probe = {
+  id: "extensions.osc7-cwd",
+  name: "Current directory (OSC 7)",
+  async run() {
+    // OSC 7 sets the working directory — can't read it back, just verify no crash
+    process.stdout.write("\x1b]7;file:///tmp\x07")
+    const pos = await queryCursorPosition()
+    return { pass: pos !== null }
+  },
+}
+
 // ── OSC probes ──
 
 const osc10FgColor: Probe = {
@@ -187,6 +393,7 @@ export const ALL_PROBES: Probe[] = [
   // Cursor
   cursorPositionReport,
   cursorShape,
+  cursorSaveRestore,
 
   // Device
   primaryDA,
@@ -208,6 +415,24 @@ export const ALL_PROBES: Probe[] = [
   wideCharCJK,
   wideCharEmoji,
 
+  // Text behavior
+  tabStop,
+  backspace,
+
+  // Erase
+  eraseLineRight,
+  eraseScreenScrollback,
+
+  // Editing
+  insertChars,
+  deleteChars,
+
+  // Scroll region
+  scrollRegion,
+
+  // Reset
+  resetRIS,
+
   // SGR (verify sequence is parsed, not printed)
   sgrProbe("sgr.bold", "Bold (SGR 1)", "\x1b[1m"),
   sgrProbe("sgr.faint", "Faint (SGR 2)", "\x1b[2m"),
@@ -221,6 +446,12 @@ export const ALL_PROBES: Probe[] = [
   sgrProbe("sgr.inverse", "Inverse (SGR 7)", "\x1b[7m"),
   sgrProbe("sgr.strikethrough", "Strikethrough (SGR 9)", "\x1b[9m"),
   sgrProbe("sgr.overline", "Overline (SGR 53)", "\x1b[53m"),
+
+  // Extensions
+  kittyKeyboard,
+  sixelSupport,
+  osc52Clipboard,
+  osc7Cwd,
 
   // OSC
   osc10FgColor,
