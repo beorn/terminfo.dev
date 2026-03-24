@@ -214,7 +214,10 @@ function backendTooltip(name, version) {
       </td>
     </tr>
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
-      <td class="feature-name" :data-tooltip="data.featureDescriptions[f.id] || ''">{{ f.name }}</td>
+      <td class="feature-name">
+        <a v-if="f.spec" :href="f.spec" target="_blank" rel="noopener" class="feature-link">{{ f.name }}</a>
+        <span v-else>{{ f.name }}</span>
+      </td>
       <td v-for="b in sortedBackends" :key="b.name"
           :class="cellClass(getResult(b.name, f.id))"
           :data-tooltip="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
@@ -416,6 +419,16 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   text-align: left !important;
   white-space: nowrap;
   font-size: 0.95em;
+}
+
+.feature-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.feature-link:hover {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
 }
 
 .cell-yes {

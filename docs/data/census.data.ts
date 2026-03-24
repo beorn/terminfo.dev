@@ -69,18 +69,28 @@ export interface CensusData {
   meta: Record<string, BackendMeta>
   /** "backend:feature" -> { note, url? } from annotations.json */
   annotations: Record<string, { note: string; url?: string }>
-  /** feature id -> description from features.json */
-  featureDescriptions: Record<string, string>
+  /** feature id -> { name, url? } from features.json */
+  featureDescriptions: Record<string, FeatureMeta>
   generated: string
 }
 
-function loadFeatureDescriptions(): Record<string, string> {
+interface FeatureMeta {
+  name: string
+  url?: string
+}
+
+function loadFeatureDescriptions(): Record<string, FeatureMeta> {
   try {
     const path = join(__dirname, "..", "..", "features.json")
     const raw = JSON.parse(readFileSync(path, "utf-8"))
-    // Strip $comment key
     delete raw.$comment
-    return raw
+    // Normalize: strings become { name: string }, objects stay as-is
+    const result: Record<string, FeatureMeta> = {}
+    for (const [id, val] of Object.entries(raw)) {
+      if (typeof val === "string") result[id] = { name: val }
+      else result[id] = val as FeatureMeta
+    }
+    return result
   } catch {
     return {}
   }
@@ -240,11 +250,12 @@ function loadPerBackendResults(): CensusData {
         if (!featureSet.has(id)) {
           const cat = id.split(".")[0]
           const suffix = id.slice(cat.length + 1)
-          const desc = featureDescs[id]
+          const meta = featureDescs[id]
           featureSet.set(id, {
             id,
-            name: desc || suffix || id,
+            name: meta?.name || suffix || id,
             category: cat,
+            spec: meta?.url,
           })
         }
       }
