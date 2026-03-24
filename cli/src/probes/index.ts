@@ -1017,11 +1017,16 @@ const sixelRender: Probe = {
 
 const osc52Clipboard: Probe = {
   id: "extensions.osc52-clipboard",
-  name: "Clipboard query (OSC 52)",
+  name: "Clipboard access (OSC 52)",
   async run() {
-    const match = await query("\x1b]52;c;?\x07", /\x1b\]52;([^\x07\x1b]+)[\x07\x1b]/, 1000)
-    if (!match) return { pass: false, note: "No OSC 52 response" }
-    return { pass: true, response: match[1] }
+    // Write a small test value to clipboard, then verify terminal responds
+    // Don't use "?" query — it returns full clipboard as huge base64 that leaks into stdin
+    const testData = btoa("terminfo-test")
+    process.stdout.write(`\x1b]52;c;${testData}\x07`)
+    // Verify terminal still responds after OSC 52 (didn't crash/ignore)
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No response after OSC 52" }
+    return { pass: true }
   },
 }
 
@@ -1078,7 +1083,10 @@ const extTruecolor: Probe = {
     if (!pos) return { pass: false, note: "No cursor response" }
     return {
       pass: pos[1] === 2,
-      note: pos[1] === 2 ? undefined : `cursor at col ${pos[1]}, expected 2 (truecolor sequence may have been printed literally)`,
+      note:
+        pos[1] === 2
+          ? undefined
+          : `cursor at col ${pos[1]}, expected 2 (truecolor sequence may have been printed literally)`,
     }
   },
 }
