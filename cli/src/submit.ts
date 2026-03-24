@@ -1,15 +1,15 @@
 /**
  * Submit results to terminfo.dev via GitHub issue.
- *
- * Creates an issue on beorn/terminfo.dev with the JSON results
- * attached as a code block. Maintainers review and merge into
- * the results database.
  */
 
-const REPO = "beorn/terminfo.dev"
-const ISSUE_LABEL = "community-results"
+import { writeFileSync, unlinkSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { execFileSync } from "node:child_process"
 
-interface SubmitResult {
+const REPO = "beorn/terminfo.dev"
+
+interface SubmitData {
   terminal: string
   terminalVersion: string
   os: string
@@ -20,11 +20,7 @@ interface SubmitResult {
   generated: string
 }
 
-/**
- * Submit results by creating a GitHub issue.
- * Requires `gh` CLI to be installed and authenticated.
- */
-export async function submitResults(data: SubmitResult): Promise<string | null> {
+export async function submitResults(data: SubmitData): Promise<string | null> {
   const passed = Object.values(data.results).filter(Boolean).length
   const total = Object.keys(data.results).length
   const pct = Math.round((passed / total) * 100)
@@ -41,10 +37,12 @@ export async function submitResults(data: SubmitResult): Promise<string | null> 
 | Score | ${passed}/${total} (${pct}%) |
 | Generated | ${data.generated} |
 
-### Results
+### Summary
+
+${formatSummary(data)}
 
 <details>
-<summary>Full JSON (click to expand)</summary>
+<summary>Full JSON</summary>
 
 \`\`\`json
 ${JSON.stringify(data, null, 2)}
@@ -52,55 +50,48 @@ ${JSON.stringify(data, null, 2)}
 
 </details>
 
-### Summary
-
-${formatSummary(data)}
-
 ---
-*Submitted via \`npx terminfo\`*`
+*Submitted via \`npx terminfo.dev\`*`
 
-  // Try gh CLI first
-  if (await hasGhCli()) {
-    try {
-      const { execSync } = await import("node:child_process")
-      const result = execSync(
-        `gh issue create --repo ${REPO} --title ${JSON.stringify(title)} --body ${JSON.stringify(body)} --label ${ISSUE_LABEL}`,
-        { encoding: "utf-8", timeout: 30000 },
-      )
-      const url = result.trim()
-      return url
-    } catch (err) {
-      console.error(`\x1b[31mFailed to create issue via gh CLI\x1b[0m`)
-      console.error(err instanceof Error ? err.message : String(err))
-      return null
-    }
+  if (!hasGhCli()) {
+    const filename = `terminfo-${data.terminal}-${data.os}-${Date.now()}.json`
+    writeFileSync(filename, JSON.stringify(data, null, 2))
+    console.log(`\n\x1b[33mgh CLI not found. Results saved to ${filename}\x1b[0m`)
+    console.log(`To submit: https://github.com/${REPO}/issues/new`)
+    return null
   }
 
-  // Fallback: write to file and give instructions
-  const { writeFileSync } = await import("node:fs")
-  const filename = `terminfo-${data.terminal}-${data.os}-${Date.now()}.json`
-  writeFileSync(filename, JSON.stringify(data, null, 2))
-  console.log(`\n\x1b[33mgh CLI not found. Results saved to ${filename}\x1b[0m`)
-  console.log(`To submit manually:`)
-  console.log(`  1. Go to https://github.com/${REPO}/issues/new`)
-  console.log(`  2. Title: ${title}`)
-  console.log(`  3. Paste the contents of ${filename}`)
-  return null
+  // Write body to temp file to avoid shell escaping issues
+  const bodyFile = join(tmpdir(), `terminfo-submit-${Date.now()}.md`)
+  try {
+    writeFileSync(bodyFile, body)
+    const result = execFileSync("gh", [
+      "issue", "create",
+      "--repo", REPO,
+      "--title", title,
+      "--body-file", bodyFile,
+    ], { encoding: "utf-8", timeout: 30000 })
+    return result.trim()
+  } catch (err) {
+    console.error(`\x1b[31mFailed to create issue\x1b[0m`)
+    console.error(err instanceof Error ? err.message : String(err))
+    return null
+  } finally {
+    try { unlinkSync(bodyFile) } catch {}
+  }
 }
 
-async function hasGhCli(): Promise<boolean> {
+function hasGhCli(): boolean {
   try {
-    const { execSync } = await import("node:child_process")
-    execSync("gh --version", { stdio: "ignore", timeout: 5000 })
+    execFileSync("gh", ["--version"], { stdio: "ignore", timeout: 5000 })
     return true
   } catch {
     return false
   }
 }
 
-function formatSummary(data: SubmitResult): string {
+function formatSummary(data: SubmitData): string {
   const categories = new Map<string, { pass: number; fail: number; failList: string[] }>()
-
   for (const [id, pass] of Object.entries(data.results)) {
     const cat = id.split(".")[0]!
     if (!categories.has(cat)) categories.set(cat, { pass: 0, fail: 0, failList: [] })
@@ -112,14 +103,11 @@ function formatSummary(data: SubmitResult): string {
       entry.failList.push(note ? `- \`${id}\`: ${note}` : `- \`${id}\``)
     }
   }
-
   const lines: string[] = []
   for (const [cat, { pass, fail, failList }] of categories) {
-    const total = pass + fail
     const icon = fail === 0 ? "✅" : "⚠️"
-    lines.push(`${icon} **${cat}**: ${pass}/${total}`)
+    lines.push(`${icon} **${cat}**: ${pass}/${pass + fail}`)
     if (failList.length > 0) lines.push(...failList)
   }
-
   return lines.join("\n")
 }

@@ -1,18 +1,18 @@
 #!/usr/bin/env bun
 /**
- * terminfo CLI — test your terminal's feature support.
+ * terminfo.dev CLI — can your terminal do that?
  *
- * Runs probes against the real terminal you're using (not a headless library),
- * shows results, and optionally submits them to terminfo.dev.
+ * Test your terminal's feature support and contribute results to terminfo.dev.
  *
  * @example
  * ```bash
- * npx terminfo          # Run all probes
- * npx terminfo --json   # Output JSON results
- * npx terminfo --submit # Submit results to terminfo.dev
+ * npx terminfo.dev           # Show terminal info + help
+ * npx terminfo.dev probe     # Run all probes
+ * npx terminfo.dev submit    # Run probes + submit results
  * ```
  */
 
+import { Command } from "commander"
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -25,10 +25,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /** Load feature slugs from features.json for OSC 8 hyperlinks */
 function loadFeatureSlugs(): Record<string, string> {
-  // Try repo-local path first, then npm-installed path
   const candidates = [
-    join(__dirname, "..", "..", "features.json"),       // repo: cli/src/ -> features.json
-    join(__dirname, "..", "..", "..", "features.json"),  // npm: node_modules/terminfo.dev/src/ -> features.json
+    join(__dirname, "..", "..", "features.json"),
+    join(__dirname, "..", "..", "..", "features.json"),
   ]
   for (const path of candidates) {
     try {
@@ -41,42 +40,33 @@ function loadFeatureSlugs(): Record<string, string> {
       return slugs
     } catch {}
   }
-  return {} // fallback: featureSlug() will use id.replaceAll(".", "-")
+  return {}
 }
 
-interface ResultEntry {
-  terminal: string
-  terminalVersion: string
-  os: string
-  osVersion: string
-  source: "community"
-  generated: string
+/** OSC 8 hyperlink */
+function link(url: string, text: string): string {
+  return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`
+}
+
+interface ProbeResults {
+  terminal: ReturnType<typeof detectTerminal>
   results: Record<string, boolean>
   notes: Record<string, string>
   responses: Record<string, string>
+  passed: number
+  total: number
 }
 
-async function main() {
-  const args = process.argv.slice(2)
-  const jsonMode = args.includes("--json")
-  const submitMode = args.includes("--submit")
-
-  // Detect terminal
+async function runProbes(): Promise<ProbeResults> {
   const terminal = detectTerminal()
-
   const results: Record<string, boolean> = {}
   const notes: Record<string, string> = {}
   const responses: Record<string, string> = {}
   let passed = 0
-  let failed = 0
 
   await withRawMode(async () => {
-    // Enter alt screen inside raw mode so all probe output stays contained
-    process.stdout.write("\x1b[?1049h") // alt screen
-    process.stdout.write("\x1b[2J\x1b[H") // clear + home
-
+    process.stdout.write("\x1b[?1049h\x1b[2J\x1b[H")
     for (const probe of ALL_PROBES) {
-      // Clear screen before each probe to prevent leaking output
       process.stdout.write("\x1b[2J\x1b[H")
       try {
         const result = await probe.run()
@@ -84,40 +74,34 @@ async function main() {
         if (result.note) notes[probe.id] = result.note
         if (result.response) responses[probe.id] = result.response
         if (result.pass) passed++
-        else failed++
       } catch (err) {
         results[probe.id] = false
         notes[probe.id] = `error: ${err instanceof Error ? err.message : String(err)}`
-        failed++
       }
     }
-
-    // Exit alt screen while still in raw mode
     process.stdout.write("\x1b[?1049l")
   })
 
-  const total = ALL_PROBES.length
+  return { terminal, results, notes, responses, passed, total: ALL_PROBES.length }
+}
+
+function printHeader(terminal: ReturnType<typeof detectTerminal>) {
+  const siteLink = link("https://terminfo.dev", "terminfo.dev")
+  console.log(`\x1b[1m${siteLink}\x1b[0m — can your terminal do that?\n`)
+  console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m${terminal.version ? ` ${terminal.version}` : ""}`)
+  console.log(`  Platform:  ${terminal.os} ${terminal.osVersion}`)
+  console.log(`  Probes:    ${ALL_PROBES.length} features across ${new Set(ALL_PROBES.map(p => p.id.split(".")[0])).size} categories`)
+  console.log(`  Website:   ${link("https://terminfo.dev", "https://terminfo.dev")}`)
+}
+
+function printResults(data: ProbeResults) {
+  const { passed, total } = data
   const pct = Math.round((passed / total) * 100)
-
-  const entry: ResultEntry = {
-    terminal: terminal.name,
-    terminalVersion: terminal.version,
-    os: terminal.os,
-    osVersion: terminal.osVersion,
-    source: "community",
-    generated: new Date().toISOString(),
-    results,
-    notes,
-    responses,
-  }
-
-  if (jsonMode) {
-    console.log(JSON.stringify(entry, null, 2))
-    return
-  }
-
-  // Build category data for report
   const slugs = loadFeatureSlugs()
+
+  printHeader(data.terminal)
+  console.log(`  Score:     \x1b[1m${passed}/${total} (${pct}%)\x1b[0m\n`)
+
   const categories = new Map<string, Array<{ id: string; name: string; pass: boolean; note?: string }>>()
   for (const probe of ALL_PROBES) {
     const cat = probe.id.split(".")[0]!
@@ -125,38 +109,98 @@ async function main() {
     categories.get(cat)!.push({
       id: probe.id,
       name: probe.name,
-      pass: results[probe.id] ?? false,
-      note: notes[probe.id],
+      pass: data.results[probe.id] ?? false,
+      note: data.notes[probe.id],
     })
   }
 
-  // Render with silvery
-  const { renderReport } = await import("./report.tsx")
-  const output = await renderReport({
-    terminal: terminal.name,
-    terminalVersion: terminal.version,
-    os: terminal.os,
-    osVersion: terminal.osVersion,
-    probeCount: total,
-    categoryCount: new Set(ALL_PROBES.map(p => p.id.split(".")[0])).size,
-    passed,
-    total,
-    categories,
-    slugs,
-    submitMode,
-  })
-  console.log(output)
-
-  if (submitMode) {
-    console.log(`\nSubmitting results to terminfo.dev...`)
-    const url = await submitResults(entry)
-    if (url) {
-      console.log(`\x1b[32m✓ Issue created:\x1b[0m ${url}`)
+  for (const [cat, probes] of categories) {
+    const catPassed = probes.filter(p => p.pass).length
+    const color = catPassed === probes.length ? "\x1b[32m" : catPassed > 0 ? "\x1b[33m" : "\x1b[31m"
+    const catLink = link(`https://terminfo.dev/${cat}`, cat)
+    console.log(`${color}${catLink}\x1b[0m (${catPassed}/${probes.length})`)
+    for (const p of probes) {
+      const icon = p.pass ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m"
+      const note = p.note ? ` \x1b[2m— ${p.note}\x1b[0m` : ""
+      const slug = slugs[p.id] ?? p.id.replaceAll(".", "-")
+      const fCat = p.id.split(".")[0]!
+      const featureLink = link(`https://terminfo.dev/${fCat}/${slug}`, p.name)
+      console.log(`  ${icon} ${featureLink}${note}`)
     }
   }
 }
 
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
+// ── CLI ──
+
+const program = new Command()
+  .name("terminfo.dev")
+  .description("Can your terminal do that? — test terminal feature support and contribute to terminfo.dev")
+  .version("1.1.0")
+
+program
+  .command("probe")
+  .description("Run all probes against your terminal and display results")
+  .option("--json", "Output results as JSON")
+  .action(async (opts) => {
+    const data = await runProbes()
+
+    if (opts.json) {
+      console.log(JSON.stringify({
+        terminal: data.terminal.name,
+        terminalVersion: data.terminal.version,
+        os: data.terminal.os,
+        osVersion: data.terminal.osVersion,
+        source: "community",
+        generated: new Date().toISOString(),
+        results: data.results,
+        notes: data.notes,
+        responses: data.responses,
+      }, null, 2))
+      return
+    }
+
+    printResults(data)
+  })
+
+program
+  .command("submit")
+  .description("Run all probes and submit results to terminfo.dev via GitHub issue")
+  .action(async () => {
+    const data = await runProbes()
+    printResults(data)
+
+    console.log(`\nSubmitting results to terminfo.dev...`)
+    const url = await submitResults({
+      terminal: data.terminal.name,
+      terminalVersion: data.terminal.version,
+      os: data.terminal.os,
+      osVersion: data.terminal.osVersion,
+      results: data.results,
+      notes: data.notes,
+      responses: data.responses,
+      generated: new Date().toISOString(),
+    })
+    if (url) {
+      console.log(`\x1b[32m✓ Issue created:\x1b[0m ${link(url, url)}`)
+    }
+  })
+
+// Default action: show terminal info + help
+program.action(() => {
+  const terminal = detectTerminal()
+  printHeader(terminal)
+  console.log(``)
+  console.log(`\x1b[2mTest your terminal against ${ALL_PROBES.length} features from the ECMA-48,`)
+  console.log(`VT100/VT510, xterm, and Kitty specifications. Results can be`)
+  console.log(`submitted to the community database at terminfo.dev.\x1b[0m`)
+  console.log(``)
+  console.log(`Commands:`)
+  console.log(`  \x1b[1mprobe\x1b[0m    Run all probes and display results`)
+  console.log(`  \x1b[1msubmit\x1b[0m   Run probes and submit to terminfo.dev`)
+  console.log(``)
+  console.log(`Options:`)
+  console.log(`  \x1b[1m--json\x1b[0m   Output results as JSON (with probe command)`)
+  console.log(`  \x1b[1m--help\x1b[0m   Show this help`)
 })
+
+program.parse()
