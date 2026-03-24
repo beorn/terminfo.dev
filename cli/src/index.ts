@@ -173,21 +173,45 @@ program
 program
   .command("submit")
   .description("Run all probes and submit results to terminfo.dev via GitHub issue")
-  .action(async () => {
+  .option("--terminal-name <name>", "Override detected terminal name")
+  .option("--terminal-version <version>", "Override detected terminal version")
+  .action(async (opts) => {
+    // Confirm details BEFORE probes (stdin is still clean)
+    const terminal = detectTerminal()
+    const name = opts.terminalName ?? terminal.name
+    const version = opts.terminalVersion ?? terminal.version
+
+    printHeader(terminal)
+    console.log(``)
+    console.log(`  Will submit results for \x1b[1m${name}${version ? ` ${version}` : ""}\x1b[0m on ${terminal.os}`)
+    if (!version) {
+      console.log(`  \x1b[33m⚠ No version detected. Use --terminal-version to specify.\x1b[0m`)
+    }
+
+    const { createInterface } = await import("node:readline")
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    const proceed = await new Promise<string>((resolve) => {
+      rl.question(`\n  Press Enter to run probes and submit (or Ctrl+C to cancel) `, (answer) => {
+        rl.close()
+        resolve(answer)
+      })
+    })
+
+    // Now run probes (stdin goes to raw mode, no conflict)
     const data = await runProbes()
     printResults(data)
 
     console.log(`\nSubmitting results to terminfo.dev...`)
     const url = await submitResults({
-      terminal: data.terminal.name,
-      terminalVersion: data.terminal.version,
+      terminal: name,
+      terminalVersion: version,
       os: data.terminal.os,
       osVersion: data.terminal.osVersion,
       results: data.results,
       notes: data.notes,
       responses: data.responses,
       generated: new Date().toISOString(),
-      cliVersion: "1.5.0",
+      cliVersion: "1.6.0",
       probeCount: ALL_PROBES.length,
     })
     if (url) {

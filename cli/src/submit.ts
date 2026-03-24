@@ -6,7 +6,6 @@ import { writeFileSync, unlinkSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { execFileSync } from "node:child_process"
-import { createInterface } from "node:readline"
 
 const REPO = "beorn/terminfo.dev"
 
@@ -23,65 +22,28 @@ interface SubmitData {
   probeCount?: number
 }
 
-/** Drain any leftover bytes from stdin (e.g., late-arriving escape sequence responses) */
-async function drainStdin(): Promise<void> {
-  return new Promise((resolve) => {
-    if (!process.stdin.readable) { resolve(); return }
-    process.stdin.resume()
-    const timer = setTimeout(() => {
-      process.stdin.pause()
-      process.stdin.removeAllListeners("readable")
-      resolve()
-    }, 200)
-    process.stdin.on("readable", () => {
-      while (process.stdin.read() !== null) {} // discard
-    })
-    timer.unref()
-  })
-}
-
-async function prompt(question: string, defaultValue?: string): Promise<string> {
-  await drainStdin()
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  const suffix = defaultValue ? ` [${defaultValue}]` : ""
-  return new Promise((resolve) => {
-    rl.question(`${question}${suffix}: `, (answer) => {
-      rl.close()
-      resolve(answer.trim() || defaultValue || "")
-    })
-  })
-}
-
 export async function submitResults(data: SubmitData): Promise<string | null> {
-  // Confirm/fill terminal info
-  console.log(`\n\x1b[1mConfirm submission details:\x1b[0m`)
-  data.terminal = await prompt("  Terminal name", data.terminal)
-  data.terminalVersion = await prompt("  Terminal version", data.terminalVersion || undefined)
-  data.os = await prompt("  Operating system", data.os)
+  const passed = Object.values(data.results).filter(Boolean).length
+  const total = Object.keys(data.results).length
+  const pct = Math.round((passed / total) * 100)
+  const ver = data.terminalVersion ? ` ${data.terminalVersion}` : ""
+
+  console.log(`\n  Submitting: \x1b[1m${data.terminal}${ver}\x1b[0m on ${data.os} — ${pct}% (${passed}/${total})`)
 
   if (!data.terminalVersion) {
-    console.log(`\x1b[33m  ⚠ No version specified — results will be less useful\x1b[0m`)
+    console.log(`  \x1b[33m⚠ No version detected — use --terminal-version to specify\x1b[0m`)
   }
 
   // Check for duplicates
   if (hasGhCli()) {
     const existing = checkDuplicate(data.terminal, data.terminalVersion, data.os)
     if (existing) {
-      console.log(`\n\x1b[33m⚠ A submission already exists for ${data.terminal}${data.terminalVersion ? ` ${data.terminalVersion}` : ""} on ${data.os}:\x1b[0m`)
-      console.log(`  ${existing}`)
-      const proceed = await prompt("  Submit anyway? (y/N)", "N")
-      if (proceed.toLowerCase() !== "y") {
-        console.log(`Skipped.`)
-        return null
-      }
+      console.log(`  \x1b[33m⚠ Similar submission exists: ${existing}\x1b[0m`)
+      console.log(`  Submitting anyway (different probe version may have new results)`)
     }
   }
 
-  const passed = Object.values(data.results).filter(Boolean).length
-  const total = Object.keys(data.results).length
-  const pct = Math.round((passed / total) * 100)
-
-  const title = `[census] ${data.terminal}${data.terminalVersion ? ` ${data.terminalVersion}` : ""} on ${data.os} — ${pct}% (${passed}/${total})`
+  const title = `[census] ${data.terminal}${ver} on ${data.os} — ${pct}% (${passed}/${total})`
 
   const body = `## Community Census Result
 
@@ -114,8 +76,8 @@ ${JSON.stringify(data, null, 2)}
   if (!hasGhCli()) {
     const filename = `terminfo-${data.terminal}-${data.os}-${Date.now()}.json`
     writeFileSync(filename, JSON.stringify(data, null, 2))
-    console.log(`\n\x1b[33mgh CLI not found. Results saved to ${filename}\x1b[0m`)
-    console.log(`To submit: https://github.com/${REPO}/issues/new`)
+    console.log(`\n  \x1b[33mgh CLI not found. Results saved to ${filename}\x1b[0m`)
+    console.log(`  To submit: https://github.com/${REPO}/issues/new`)
     return null
   }
 
@@ -130,8 +92,8 @@ ${JSON.stringify(data, null, 2)}
     ], { encoding: "utf-8", timeout: 30000 })
     return result.trim()
   } catch (err) {
-    console.error(`\x1b[31mFailed to create issue\x1b[0m`)
-    console.error(err instanceof Error ? err.message : String(err))
+    console.error(`  \x1b[31mFailed to create issue\x1b[0m`)
+    console.error(`  ${err instanceof Error ? err.message : String(err)}`)
     return null
   } finally {
     try { unlinkSync(bodyFile) } catch {}
@@ -159,8 +121,7 @@ function checkDuplicate(terminal: string, version: string, os: string): string |
       "--json", "url,title",
       "--jq", ".[0] | .title + \" \" + .url",
     ], { encoding: "utf-8", timeout: 10000 })
-    const trimmed = result.trim()
-    return trimmed || null
+    return result.trim() || null
   } catch {
     return null
   }
