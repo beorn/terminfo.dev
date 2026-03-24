@@ -83,8 +83,11 @@ interface FeatureMeta {
 }
 
 function loadFeatureDescriptions(): Record<string, FeatureMeta> {
-  try {
-    const path = join(__dirname, "..", "..", "features.json")
+  const path = join(__dirname, "..", "..", "features.json")
+  if (!existsSync(path)) {
+    throw new Error(`features.json not found at ${path}`)
+  }
+  {
     const raw = JSON.parse(readFileSync(path, "utf-8"))
     delete raw.$comment
     // Normalize: strings become { name: string }, objects stay as-is
@@ -97,48 +100,23 @@ function loadFeatureDescriptions(): Record<string, FeatureMeta> {
       }
     }
     return result
-  } catch {
-    return {}
   }
 }
 
 function loadAnnotations(): Record<string, { note: string; url?: string }> {
-  try {
-    const annotationsPath = join(__dirname, "..", "..", "annotations.json")
-    return JSON.parse(readFileSync(annotationsPath, "utf-8"))
-  } catch {
-    return {}
+  const annotationsPath = join(__dirname, "..", "..", "annotations.json")
+  if (!existsSync(annotationsPath)) {
+    throw new Error(`annotations.json not found at ${annotationsPath}`)
   }
+  return JSON.parse(readFileSync(annotationsPath, "utf-8"))
 }
 
 function loadBackendMeta(): Record<string, BackendMeta> {
-  // Primary: backends-meta.json (always available, even in CI)
-  try {
-    const metaPath = join(__dirname, "..", "..", "backends-meta.json")
-    const raw = JSON.parse(readFileSync(metaPath, "utf-8"))
-    return raw as Record<string, BackendMeta>
-  } catch {}
-
-  // Fallback: @termless/core manifest
-  if (!manifest) return {}
-  try {
-    const m = manifest()
-    const meta: Record<string, BackendMeta> = {}
-    for (const [name, entry] of Object.entries(m.backends) as [string, any][]) {
-      meta[name] = {
-        label: entry.label,
-        description: entry.description,
-        url: entry.url,
-        upstream: entry.upstream ?? undefined,
-        type: entry.type,
-        caveat: entry.caveat,
-        slug: entry.slug,
-      }
-    }
-    return meta
-  } catch {
-    return {}
+  const metaPath = join(__dirname, "..", "..", "backends-meta.json")
+  if (!existsSync(metaPath)) {
+    throw new Error(`backends-meta.json not found at ${metaPath}. Copy from termless: python3 -c "..."`)
   }
+  return JSON.parse(readFileSync(metaPath, "utf-8")) as Record<string, BackendMeta>
 }
 
 declare const data: CensusData
@@ -234,8 +212,8 @@ function loadPerBackendResults(): CensusData {
   let files: string[]
   try {
     files = readdirSync(resultsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
-  } catch {
-    return emptyData()
+  } catch (err) {
+    throw new Error(`Failed to read census results from ${resultsDir}: ${err}`)
   }
 
   if (files.length === 0) return emptyData()
@@ -274,8 +252,8 @@ function loadPerBackendResults(): CensusData {
           })
         }
       }
-    } catch {
-      // skip malformed
+    } catch (err) {
+      throw new Error(`Failed to parse census result ${file}: ${err}`)
     }
   }
 
