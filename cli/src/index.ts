@@ -182,8 +182,8 @@ program
   .action(async (opts) => {
     // Confirm details BEFORE probes (stdin is still clean)
     const terminal = detectTerminal()
-    const name = opts.terminalName ?? terminal.name
-    const version = opts.terminalVersion ?? terminal.version
+    let name = opts.terminalName ?? terminal.name
+    let version = opts.terminalVersion ?? terminal.version
 
     printHeader(terminal)
     console.log(``)
