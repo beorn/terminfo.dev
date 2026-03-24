@@ -316,28 +316,36 @@ const kittyKeyboard: Probe = {
   },
 }
 
-const sixelSupport: Probe = {
-  id: "extensions.sixel",
-  name: "Sixel graphics",
+const sixelDA1: Probe = {
+  id: "extensions.sixel-da1",
+  name: "Sixel advertised (DA1 bit 4)",
   async run() {
-    // Check DA1 for sixel bit (;4) — some terminals advertise it
     const match = await query("\x1b[c", /\x1b\[\?([0-9;]+)c/, 1000)
-    if (match) {
-      const attrs = match[1]!.split(";")
-      if (attrs.includes("4")) return { pass: true, response: `DA1: ${match[1]}` }
+    if (!match) return { pass: false, note: "No DA1 response" }
+    const attrs = match[1]!.split(";")
+    const hasSixel = attrs.includes("4")
+    return {
+      pass: hasSixel,
+      note: hasSixel ? undefined : "DA1 response missing ;4 (sixel)",
+      response: match[1],
     }
-    // Fallback: send a minimal sixel image and check if cursor moved
-    // DCS q = sixel start, #0;2;0;0;0 = color, ! = repeat, ~ = sixel data, ST = end
+  },
+}
+
+const sixelRender: Probe = {
+  id: "extensions.sixel",
+  name: "Sixel graphics (render)",
+  async run() {
+    // Send a minimal sixel image and check if cursor moved
     process.stdout.write("\x1b[1;1H") // move to 1;1
     process.stdout.write("\x1bPq#0;2;0;0;0~-~\x1b\\") // tiny 1x2 sixel
     const pos = await queryCursorPosition()
     if (!pos) return { pass: false, note: "No cursor response after sixel" }
-    // If terminal parsed sixel, cursor may have moved down
+    // If terminal parsed sixel, cursor should have moved
     const moved = pos[0] > 1 || pos[1] > 1
     return {
       pass: moved,
-      note: moved ? undefined : "DA1 missing ;4 and sixel didn't move cursor",
-      response: match?.[1] ? `DA1: ${match[1]}` : undefined,
+      note: moved ? undefined : "Sixel image didn't move cursor",
     }
   },
 }
@@ -459,7 +467,8 @@ export const ALL_PROBES: Probe[] = [
 
   // Extensions
   kittyKeyboard,
-  sixelSupport,
+  sixelDA1,
+  sixelRender,
   osc52Clipboard,
   osc7Cwd,
 
