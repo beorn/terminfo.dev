@@ -1,8 +1,8 @@
 {
   "backend": "ghostty-native",
   "version": "1.3.1",
-  "generated": "2026-03-23T23:33:36.498Z",
-  "probeHash": "7387c13add77",
+  "generated": "2026-03-24T00:18:08.769Z",
+  "probeHash": "d7d75a332f03",
   "results": {
     "cursor.move.absolute": true,
     "cursor.move.home": true,
@@ -19,7 +19,7 @@
     "erase.screen.all": true,
     "extensions.truecolor": true,
     "extensions.kitty-keyboard": true,
-    "extensions.kitty-graphics": false,
+    "extensions.kitty-graphics": true,
     "extensions.sixel": false,
     "extensions.osc8": true,
     "extensions.reflow": true,
@@ -54,6 +54,7 @@
     "sgr.hidden": false,
     "sgr.strikethrough": true,
     "sgr.fg.256": true,
+    "sgr.bg.256": true,
     "sgr.fg.truecolor": true,
     "sgr.bg.truecolor": true,
     "sgr.reset": true,
@@ -67,7 +68,6 @@
     "text.cr": true
   },
   "notes": {
-    "extensions.kitty-graphics": "not supported",
     "extensions.sixel": "not supported",
     "extensions.osc2-title": "missing 'Test Title'",
     "sgr.blink": "not supported",

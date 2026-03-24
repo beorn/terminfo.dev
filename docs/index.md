@@ -231,15 +231,20 @@ function backendTooltip(name, version) {
 ## How This Works
 
 Data is collected by [Termless](https://termless.dev) census probes — standardized
-test sequences sent to each terminal backend. Each probe writes ANSI escape sequences
-and reads back the terminal state to verify whether the feature was correctly processed.
+test sequences sent to **headless terminal emulator libraries**, not the terminal
+applications themselves. Each probe writes ANSI escape sequences and reads back
+the terminal state via the library's API.
 
-The census covers SGR attributes, cursor movement, text handling, erase operations,
-terminal modes, scrollback behavior, and modern extensions like kitty keyboard protocol
-and OSC 8 hyperlinks.
+::: warning Headless ≠ Real Terminal
+These results test **library implementations** (e.g., `@xterm/headless`, not xterm.js
+in VS Code). Some libraries don't expose all features through their headless API —
+for example, `@xterm/headless` doesn't report cursor visibility or underline variants,
+even though the full xterm.js renderer supports them. Scores reflect **API
+completeness**, not the real terminal's capabilities.
 
-Results are fully automated and reproducible — no manual testing, no self-reported
-capabilities.
+We're working on [app-level testing](about) that probes real terminal applications
+(iTerm2, Terminal.app, Kitty, Ghostty, Warp) to capture what users actually see.
+:::
 
 </div>
 
@@ -354,11 +359,8 @@ capabilities.
   font-size: 0.9em;
 }
 
-/* Matrix table */
+/* Matrix table — page scrolls naturally, only headers stick */
 .matrix-wrapper {
-  overflow-x: auto;
-  max-height: 80vh;
-  overflow-y: auto;
   margin: 1em 0;
 }
 
@@ -381,8 +383,9 @@ capabilities.
   font-weight: 600;
   font-size: 0.9em;
   position: sticky;
-  top: 0;
+  top: var(--vp-nav-height, 64px);
   z-index: 10;
+  box-shadow: 0 1px 0 var(--vp-c-divider);
 }
 
 .feature-col {

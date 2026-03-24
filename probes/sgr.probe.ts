@@ -76,6 +76,13 @@ describeBackends("sgr", (b) => {
     expect(fg?.r).toBeGreaterThan(200)
   })
 
+  test("sgr.bg.256", () => {
+    feed(b, "\x1b[48;5;21mX")
+    const bg = b.getCell(0, 0).bg
+    expect(bg).not.toBeNull()
+    expect(bg?.b).toBeGreaterThan(100)
+  })
+
   test("sgr.fg.truecolor", () => {
     feed(b, "\x1b[38;2;255;128;0mX")
     const fg = b.getCell(0, 0).fg
