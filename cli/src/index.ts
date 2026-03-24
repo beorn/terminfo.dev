@@ -46,11 +46,6 @@ async function main() {
     console.log(`Running ${ALL_PROBES.length} probes...\n`)
   }
 
-  // Save/restore screen state
-  process.stdout.write("\x1b7") // save cursor
-  process.stdout.write("\x1b[?1049h") // alt screen
-  process.stdout.write("\x1b[2J\x1b[H") // clear + home
-
   const results: Record<string, boolean> = {}
   const notes: Record<string, string> = {}
   const responses: Record<string, string> = {}
@@ -58,7 +53,13 @@ async function main() {
   let failed = 0
 
   await withRawMode(async () => {
+    // Enter alt screen inside raw mode so all probe output stays contained
+    process.stdout.write("\x1b[?1049h") // alt screen
+    process.stdout.write("\x1b[2J\x1b[H") // clear + home
+
     for (const probe of ALL_PROBES) {
+      // Clear screen before each probe to prevent leaking output
+      process.stdout.write("\x1b[2J\x1b[H")
       try {
         const result = await probe.run()
         results[probe.id] = result.pass
@@ -72,11 +73,10 @@ async function main() {
         failed++
       }
     }
-  })
 
-  // Restore screen
-  process.stdout.write("\x1b[?1049l") // exit alt screen
-  process.stdout.write("\x1b8") // restore cursor
+    // Exit alt screen while still in raw mode
+    process.stdout.write("\x1b[?1049l")
+  })
 
   const total = ALL_PROBES.length
   const pct = Math.round((passed / total) * 100)
