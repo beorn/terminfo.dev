@@ -1,5 +1,7 @@
 ---
 outline: [2, 3]
+prev: false
+next: false
 ---
 
 <script setup>
