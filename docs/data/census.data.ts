@@ -9,25 +9,7 @@
 import { readFileSync, existsSync, readdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-// Optional — only available when running in the km monorepo workspace.
-// In CI (standalone), we fall back to reading backends.json directly.
-let manifest: (() => any) | null = null
-try {
-  manifest = (await import("@termless/core")).manifest
-} catch {
-  // Not in workspace — try reading backends.json from termless submodule
-  try {
-    const backendsJson = join(__dirname, "..", "..", "..", "termless", "backends.json")
-    if (existsSync(backendsJson)) {
-      const raw = JSON.parse(readFileSync(backendsJson, "utf-8"))
-      manifest = () => ({
-        backends: Object.fromEntries(
-          Object.entries(raw.backends).map(([k, v]: [string, any]) => [k, { ...v, version: v.upstreamVersion }]),
-        ),
-      })
-    }
-  } catch {}
-}
+import { manifest } from "@termless/core"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const resultsDir = join(__dirname, "results")
@@ -112,11 +94,20 @@ function loadAnnotations(): Record<string, { note: string; url?: string }> {
 }
 
 function loadBackendMeta(): Record<string, BackendMeta> {
-  const metaPath = join(__dirname, "..", "..", "backends-meta.json")
-  if (!existsSync(metaPath)) {
-    throw new Error(`backends-meta.json not found at ${metaPath}. Copy from termless: python3 -c "..."`)
+  const m = manifest()
+  const meta: Record<string, BackendMeta> = {}
+  for (const [name, entry] of Object.entries(m.backends)) {
+    meta[name] = {
+      label: entry.label,
+      description: entry.description,
+      url: entry.url,
+      upstream: entry.upstream ?? undefined,
+      type: entry.type,
+      caveat: entry.caveat,
+      slug: entry.slug,
+    }
   }
-  return JSON.parse(readFileSync(metaPath, "utf-8")) as Record<string, BackendMeta>
+  return meta
 }
 
 declare const data: CensusData

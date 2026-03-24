@@ -9,12 +9,18 @@ const docsDir = join(__dirname, "..")
 // --- Load data for sidebar generation ---
 
 function loadBackendMeta() {
-  // Primary: backends-meta.json (always available, even in CI)
-  try {
-    const metaPath = join(docsDir, "..", "backends-meta.json")
-    return JSON.parse(readFileSync(metaPath, "utf-8"))
-  } catch {}
-  return {}
+  // Read backends.json directly — VitePress config can't import @termless/core
+  // (it runs in Vite's ESM bundler context, not Bun)
+  const paths = [
+    join(docsDir, "..", "..", "termless", "backends.json"), // sibling submodule
+    join(docsDir, "..", "node_modules", "@termless", "core", "..", "..", "..", "backends.json"), // npm installed
+  ]
+  for (const p of paths) {
+    if (existsSync(p)) {
+      return JSON.parse(readFileSync(p, "utf-8")).backends
+    }
+  }
+  throw new Error("backends.json not found — install @termless/core or ensure termless submodule exists")
 }
 
 function terminalSlug(name: string, meta: Record<string, any>): string {
