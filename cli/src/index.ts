@@ -25,10 +25,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /** Load feature slugs from features.json for OSC 8 hyperlinks */
 function loadFeatureSlugs(): Record<string, string> {
-  const candidates = [
-    join(__dirname, "..", "..", "features.json"),
-    join(__dirname, "..", "..", "..", "features.json"),
-  ]
+  const candidates = [join(__dirname, "..", "..", "features.json"), join(__dirname, "..", "..", "..", "features.json")]
   for (const path of candidates) {
     try {
       const raw = JSON.parse(readFileSync(path, "utf-8"))
@@ -90,7 +87,9 @@ function printHeader(terminal: ReturnType<typeof detectTerminal>) {
   console.log(`\x1b[1m${siteLink}\x1b[0m — can your terminal do that?\n`)
   console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m${terminal.version ? ` ${terminal.version}` : ""}`)
   console.log(`  Platform:  ${terminal.os} ${terminal.osVersion}`)
-  console.log(`  Probes:    ${ALL_PROBES.length} features across ${new Set(ALL_PROBES.map(p => p.id.split(".")[0])).size} categories`)
+  console.log(
+    `  Probes:    ${ALL_PROBES.length} features across ${new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size} categories`,
+  )
   console.log(`  Website:   ${link("https://terminfo.dev", "https://terminfo.dev")}`)
 }
 
@@ -115,7 +114,7 @@ function printResults(data: ProbeResults) {
   }
 
   for (const [cat, probes] of categories) {
-    const catPassed = probes.filter(p => p.pass).length
+    const catPassed = probes.filter((p) => p.pass).length
     const color = catPassed === probes.length ? "\x1b[32m" : catPassed > 0 ? "\x1b[33m" : "\x1b[31m"
     const catLink = link(`https://terminfo.dev/${cat}`, cat)
     console.log(`${color}${catLink}\x1b[0m (${catPassed}/${probes.length})`)
@@ -145,21 +144,28 @@ program
     const data = await runProbes()
 
     if (opts.json) {
-      console.log(JSON.stringify({
-        terminal: data.terminal.name,
-        terminalVersion: data.terminal.version,
-        os: data.terminal.os,
-        osVersion: data.terminal.osVersion,
-        source: "community",
-        generated: new Date().toISOString(),
-        results: data.results,
-        notes: data.notes,
-        responses: data.responses,
-      }, null, 2))
+      console.log(
+        JSON.stringify(
+          {
+            terminal: data.terminal.name,
+            terminalVersion: data.terminal.version,
+            os: data.terminal.os,
+            osVersion: data.terminal.osVersion,
+            source: "community",
+            generated: new Date().toISOString(),
+            results: data.results,
+            notes: data.notes,
+            responses: data.responses,
+          },
+          null,
+          2,
+        ),
+      )
       return
     }
 
     printResults(data)
+    console.log(`\n\x1b[2mContribute these results: \x1b[0m\x1b[1mnpx terminfo.dev submit\x1b[0m`)
   })
 
 program

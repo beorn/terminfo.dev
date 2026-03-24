@@ -49,18 +49,35 @@ function Header({ terminal, terminalVersion, os, osVersion, probeCount, category
           <Text dimColor>Score</Text>
         </Box>
         <Box flexDirection="column">
-          <Text bold>{terminal}{terminalVersion ? ` ${terminalVersion}` : ""}</Text>
-          <Text>{os} {osVersion}</Text>
-          <Text>{probeCount} features, {categoryCount} categories</Text>
-          <Text bold color={pct === 100 ? "green" : pct >= 90 ? "yellow" : "red"}>{passed}/{total} ({pct}%)</Text>
+          <Text bold>
+            {terminal}
+            {terminalVersion ? ` ${terminalVersion}` : ""}
+          </Text>
+          <Text>
+            {os} {osVersion}
+          </Text>
+          <Text>
+            {probeCount} features, {categoryCount} categories
+          </Text>
+          <Text bold color={pct === 100 ? "green" : pct >= 90 ? "yellow" : "red"}>
+            {passed}/{total} ({pct}%)
+          </Text>
         </Box>
       </Box>
     </Box>
   )
 }
 
-function CategorySection({ name, probes, slugs }: { name: string; probes: ProbeResult[]; slugs: Record<string, string> }) {
-  const catPassed = probes.filter(p => p.pass).length
+function CategorySection({
+  name,
+  probes,
+  slugs,
+}: {
+  name: string
+  probes: ProbeResult[]
+  slugs: Record<string, string>
+}) {
+  const catPassed = probes.filter((p) => p.pass).length
   const allPassed = catPassed === probes.length
   const catUrl = `https://terminfo.dev/${name}`
 
@@ -69,7 +86,7 @@ function CategorySection({ name, probes, slugs }: { name: string; probes: ProbeR
       <Text color={allPassed ? "green" : catPassed > 0 ? "yellow" : "red"}>
         {osc8(catUrl, name)} ({catPassed}/{probes.length})
       </Text>
-      {probes.map(p => {
+      {probes.map((p) => {
         const slug = slugs[p.id] ?? p.id.replaceAll(".", "-")
         const url = featureUrl(p.id, slug)
         const icon = p.pass ? "✓" : "✗"
@@ -90,7 +107,7 @@ function Footer({ submitMode }: { submitMode: boolean }) {
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text dimColor>Submit: npx terminfo.dev --submit</Text>
-      <Text dimColor>JSON:   npx terminfo.dev --json</Text>
+      <Text dimColor>JSON: npx terminfo.dev --json</Text>
     </Box>
   )
 }
@@ -107,7 +124,9 @@ function Report(props: ReportProps & { slugs: Record<string, string>; submitMode
   )
 }
 
-export async function renderReport(props: ReportProps & { slugs: Record<string, string>; submitMode: boolean }): Promise<string> {
+export async function renderReport(
+  props: ReportProps & { slugs: Record<string, string>; submitMode: boolean },
+): Promise<string> {
   const width = process.stdout.columns ?? 80
   return renderString(<Report {...props} />, { width })
 }
