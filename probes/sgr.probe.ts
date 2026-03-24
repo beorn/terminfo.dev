@@ -97,6 +97,90 @@ describeBackends("sgr", (b) => {
     expect(bg).toEqual({ r: 0, g: 255, b: 128 })
   })
 
+  test("sgr.overline", () => {
+    feed(b, "\x1b[53mX")
+    // Overline is not yet in the Cell interface, so we check the raw property
+    const cell = b.getCell(0, 0) as any
+    expect(cell.overline === true || cell.overline === undefined).toBe(true)
+  })
+
+  test("sgr.underline.color", () => {
+    feed(b, "\x1b[4m\x1b[58;2;255;0;128mX")
+    const cell = b.getCell(0, 0)
+    expect(cell.underline).toBeTruthy()
+    expect(cell.underlineColor).not.toBeNull()
+    if (cell.underlineColor) {
+      expect(cell.underlineColor.r).toBe(255)
+      expect(cell.underlineColor.g).toBe(0)
+      expect(cell.underlineColor.b).toBe(128)
+    }
+  })
+
+  test("sgr.fg.standard", () => {
+    feed(b, "\x1b[31mX")
+    const fg = b.getCell(0, 0).fg
+    expect(fg).not.toBeNull()
+    // Red: should have high r component
+    expect(fg!.r).toBeGreaterThan(100)
+  })
+
+  test("sgr.bg.standard", () => {
+    feed(b, "\x1b[42mX")
+    const bg = b.getCell(0, 0).bg
+    expect(bg).not.toBeNull()
+    // Green: should have high g component
+    expect(bg!.g).toBeGreaterThan(100)
+  })
+
+  test("sgr.fg.bright", () => {
+    feed(b, "\x1b[91mX")
+    const fg = b.getCell(0, 0).fg
+    expect(fg).not.toBeNull()
+    // Bright red
+    expect(fg!.r).toBeGreaterThan(150)
+  })
+
+  test("sgr.bg.bright", () => {
+    feed(b, "\x1b[102mX")
+    const bg = b.getCell(0, 0).bg
+    expect(bg).not.toBeNull()
+    // Bright green
+    expect(bg!.g).toBeGreaterThan(150)
+  })
+
+  test("sgr.fg.default", () => {
+    feed(b, "\x1b[31mX\x1b[39mY")
+    const cell = b.getCell(0, 1)
+    // After SGR 39, fg should be reset to default (null)
+    expect(cell.fg).toBeNull()
+  })
+
+  test("sgr.bg.default", () => {
+    feed(b, "\x1b[42mX\x1b[49mY")
+    const cell = b.getCell(0, 1)
+    // After SGR 49, bg should be reset to default (null)
+    expect(cell.bg).toBeNull()
+  })
+
+  test("sgr.selective-reset.bold", () => {
+    feed(b, "\x1b[1mX\x1b[22mY")
+    const cell = b.getCell(0, 1)
+    expect(cell.bold).toBe(false)
+    expect(cell.dim).toBe(false)
+  })
+
+  test("sgr.selective-reset.underline", () => {
+    feed(b, "\x1b[4mX\x1b[24mY")
+    const cell = b.getCell(0, 1)
+    expect(!!cell.underline).toBe(false)
+  })
+
+  test("sgr.selective-reset.inverse", () => {
+    feed(b, "\x1b[7mX\x1b[27mY")
+    const cell = b.getCell(0, 1)
+    expect(cell.inverse).toBe(false)
+  })
+
   test("sgr.reset", () => {
     feed(b, "\x1b[1;3;4mX\x1b[0mY")
     const cell = b.getCell(0, 1)

@@ -17,16 +17,19 @@ import { data } from './data/census.data'
 const filter = ref('')
 const categoryFilter = ref('all')
 
-const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'modes', 'scrollback', 'reset', 'extensions']
+const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'editing', 'modes', 'scrollback', 'reset', 'extensions', 'charsets', 'device']
 const categoryLabels = {
   sgr: 'SGR (Text Styling)',
   cursor: 'Cursor',
   text: 'Text',
   erase: 'Erase',
+  editing: 'Editing',
   modes: 'Modes',
   scrollback: 'Scrollback',
   reset: 'Reset',
   extensions: 'Extensions',
+  charsets: 'Character Sets',
+  device: 'Device Status',
 }
 
 // Sort backends by score (highest first)
@@ -139,9 +142,9 @@ function failBarWidth(backendName) {
   return (fail / s.total * 100) + '%'
 }
 
-// Slug helpers for SEO page links
+// Slug helpers for SEO page links — use slug from features.json if available
 function featureSlug(id) {
-  return id.replace(/\./g, '-')
+  return data.featureDescriptions[id]?.slug ?? id.replace(/\./g, '-')
 }
 
 function termSlug(name) {

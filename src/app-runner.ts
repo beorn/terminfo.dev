@@ -123,13 +123,7 @@ function appProbeHash(): string {
 function writeWrapperScript(outputPath: string): string {
   const wrapperPath = join(TMP_DIR, "run-harness.sh")
   mkdirSync(TMP_DIR, { recursive: true })
-  writeFileSync(
-    wrapperPath,
-    [
-      "#!/bin/bash",
-      `exec bun "${HARNESS_PATH}" "${outputPath}" 2>/dev/null`,
-    ].join("\n"),
-  )
+  writeFileSync(wrapperPath, ["#!/bin/bash", `exec bun "${HARNESS_PATH}" "${outputPath}" 2>/dev/null`].join("\n"))
   execSync(`chmod +x "${wrapperPath}"`)
   return wrapperPath
 }
@@ -157,26 +151,25 @@ function launchInApp(app: AppDef, outputPath: string): void {
   switch (app.launcher) {
     case "iterm2": {
       // iTerm2 has native AppleScript support for `write text`
-      runAppleScript([
-        'tell application "iTerm"',
-        "  activate",
-        "  set newWindow to (create window with default profile)",
-        "  tell current session of newWindow",
-        `    write text "${wrapperPath}; exit"`,
-        "  end tell",
-        "end tell",
-      ].join("\n"))
+      runAppleScript(
+        [
+          'tell application "iTerm"',
+          "  activate",
+          "  set newWindow to (create window with default profile)",
+          "  tell current session of newWindow",
+          `    write text "${wrapperPath}; exit"`,
+          "  end tell",
+          "end tell",
+        ].join("\n"),
+      )
       break
     }
 
     case "terminal-app": {
       // Terminal.app has `do script`
-      runAppleScript([
-        'tell application "Terminal"',
-        "  activate",
-        `  do script "${wrapperPath}; exit"`,
-        "end tell",
-      ].join("\n"))
+      runAppleScript(
+        ['tell application "Terminal"', "  activate", `  do script "${wrapperPath}; exit"`, "end tell"].join("\n"),
+      )
       break
     }
 
@@ -186,71 +179,77 @@ function launchInApp(app: AppDef, outputPath: string): void {
         execSync(`open -na kitty --args bash "${wrapperPath}"`)
       } catch {
         // Fallback: activate and type the command
-        runAppleScript([
-          'tell application "kitty"',
-          "  activate",
-          "end tell",
-          "delay 0.5",
-          'tell application "System Events"',
-          '  tell process "kitty"',
-          '    keystroke "n" using command down',
-          "  end tell",
-          "end tell",
-          "delay 0.5",
-          'tell application "System Events"',
-          '  tell process "kitty"',
-          `    keystroke "${wrapperPath}; exit"`,
-          "    key code 36",
-          "  end tell",
-          "end tell",
-        ].join("\n"))
+        runAppleScript(
+          [
+            'tell application "kitty"',
+            "  activate",
+            "end tell",
+            "delay 0.5",
+            'tell application "System Events"',
+            '  tell process "kitty"',
+            '    keystroke "n" using command down',
+            "  end tell",
+            "end tell",
+            "delay 0.5",
+            'tell application "System Events"',
+            '  tell process "kitty"',
+            `    keystroke "${wrapperPath}; exit"`,
+            "    key code 36",
+            "  end tell",
+            "end tell",
+          ].join("\n"),
+        )
       }
       break
     }
 
     case "ghostty": {
       // Ghostty: open new window via Cmd+N, type command
-      runAppleScript([
-        'tell application "Ghostty"',
-        "  activate",
-        "end tell",
-        "delay 0.5",
-        'tell application "System Events"',
-        '  tell process "Ghostty"',
-        '    keystroke "n" using command down',
-        "  end tell",
-        "end tell",
-        "delay 0.5",
-        'tell application "System Events"',
-        '  tell process "Ghostty"',
-        `    keystroke "${wrapperPath}; exit"`,
-        "    key code 36",
-        "  end tell",
-        "end tell",
-      ].join("\n"))
+      runAppleScript(
+        [
+          'tell application "Ghostty"',
+          "  activate",
+          "end tell",
+          "delay 0.5",
+          'tell application "System Events"',
+          '  tell process "Ghostty"',
+          '    keystroke "n" using command down',
+          "  end tell",
+          "end tell",
+          "delay 0.5",
+          'tell application "System Events"',
+          '  tell process "Ghostty"',
+          `    keystroke "${wrapperPath}; exit"`,
+          "    key code 36",
+          "  end tell",
+          "end tell",
+        ].join("\n"),
+      )
       break
     }
 
     case "warp": {
       // Warp: open new window, type command
-      runAppleScript([
-        'tell application "Warp"',
-        "  activate",
-        "end tell",
-        "delay 1",
-        'tell application "System Events"',
-        '  tell process "Warp"',
-        '    keystroke "n" using command down',
-        "  end tell",
-        "end tell",
-        "delay 1",
-        'tell application "System Events"',
-        '  tell process "Warp"',
-        `    keystroke "${wrapperPath}; exit"`,
-        "    key code 36",
-        "  end tell",
-        "end tell",
-      ].join("\n"))
+      runAppleScript(
+        [
+          'tell application "Warp"',
+          "  activate",
+          "end tell",
+          "delay 1",
+          'tell application "System Events"',
+          '  tell process "Warp"',
+          '    keystroke "n" using command down',
+          "  end tell",
+          "end tell",
+          "delay 1",
+          'tell application "System Events"',
+          '  tell process "Warp"',
+          `    keystroke "${wrapperPath}; exit"`,
+          "    key code 36",
+          "  end tell",
+          "end tell",
+        ].join("\n"),
+      )
       break
     }
   }
@@ -409,9 +408,7 @@ function printAppReport(data: CensusData): void {
   const featureWidth = 30
 
   // Header
-  console.log(
-    `  ${"Feature".padEnd(featureWidth)}${data.backendNames.map((n) => n.padStart(colWidth)).join("")}`,
-  )
+  console.log(`  ${"Feature".padEnd(featureWidth)}${data.backendNames.map((n) => n.padStart(colWidth)).join("")}`)
   console.log(`  ${"-".repeat(featureWidth)}${data.backendNames.map(() => "-".repeat(colWidth)).join("")}`)
 
   // Per-category results
@@ -428,13 +425,17 @@ function printAppReport(data: CensusData): void {
   }
 
   // Per-backend totals
-  console.log(`\n  ${"TOTAL".padEnd(featureWidth)}${data.backendNames.map((name) => {
-    const features = data.results.get(name)!
-    let yes = 0
-    for (const r of features.values()) if (r) yes++
-    const pct = Math.round((yes / (features.size || 1)) * 100)
-    return `${yes}/${features.size} ${pct}%`.padStart(colWidth)
-  }).join("")}`)
+  console.log(
+    `\n  ${"TOTAL".padEnd(featureWidth)}${data.backendNames
+      .map((name) => {
+        const features = data.results.get(name)!
+        let yes = 0
+        for (const r of features.values()) if (r) yes++
+        const pct = Math.round((yes / (features.size || 1)) * 100)
+        return `${yes}/${features.size} ${pct}%`.padStart(colWidth)
+      })
+      .join("")}`,
+  )
   console.log("")
 }
 
@@ -482,10 +483,7 @@ async function main(): Promise<void> {
   if (filterArgs.length > 0) {
     const names = new Set(filterArgs.map((a) => a.toLowerCase()))
     appsToRun = APPS.filter(
-      (app) =>
-        names.has(app.backendId) ||
-        names.has(app.name.toLowerCase()) ||
-        names.has(app.launcher),
+      (app) => names.has(app.backendId) || names.has(app.name.toLowerCase()) || names.has(app.launcher),
     )
     if (appsToRun.length === 0) {
       console.error(`No matching apps. Available: ${APPS.map((a) => a.backendId).join(", ")}`)

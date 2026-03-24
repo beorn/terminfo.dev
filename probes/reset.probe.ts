@@ -16,6 +16,16 @@ describeBackends("reset", (b) => {
     expect(b.getCursor().y).toBe(0)
   })
 
+  test("reset.soft", () => {
+    // DECSTR: CSI ! p — soft terminal reset
+    // Should reset modes but not clear screen
+    feed(b, "\x1b[?1h")  // enable application cursor
+    feed(b, "Hello")
+    feed(b, "\x1b[!p")
+    // Application cursor should be reset
+    expect(b.getMode("applicationCursor")).toBe(false)
+  })
+
   test("reset.method", () => {
     feed(b, "Hello World")
     b.reset()

@@ -3,21 +3,17 @@
     "note": "Headless mode doesn't track cursor visibility",
     "url": "https://github.com/xtermjs/xterm.js/issues/4448"
   },
-  "xtermjs:sgr.underline.double": {
-    "note": "Headless mode treats all underline variants as single",
-    "url": "https://github.com/xtermjs/xterm.js/issues/1145"
+  "xtermjs:cursor.shape": {
+    "note": "Headless mode doesn't expose cursor shape (DECSCUSR)"
   },
-  "xtermjs:sgr.underline.curly": {
-    "note": "Headless mode treats all underline variants as single",
-    "url": "https://github.com/xtermjs/xterm.js/issues/1145"
+  "xtermjs:cursor.position-report": {
+    "note": "Headless mode doesn't generate DSR responses — no output stream"
   },
-  "xtermjs:sgr.underline.dotted": {
-    "note": "Headless mode treats all underline variants as single",
-    "url": "https://github.com/xtermjs/xterm.js/issues/1145"
+  "xtermjs:device.primary-da": {
+    "note": "Headless mode doesn't generate DA1 responses — no output stream"
   },
-  "xtermjs:sgr.underline.dashed": {
-    "note": "Headless mode treats all underline variants as single",
-    "url": "https://github.com/xtermjs/xterm.js/issues/1145"
+  "xtermjs:device.status-report": {
+    "note": "Headless mode doesn't generate DSR responses — no output stream"
   },
   "xtermjs:scrollback.scroll-up": {
     "note": "Headless API reads from buffer, not viewport after scroll"
@@ -51,6 +47,9 @@
   "ghostty-native:extensions.osc2-title": {
     "note": "Title not exposed via native Zig API"
   },
+  "ghostty-native:extensions.osc0-icon-title": {
+    "note": "Title not exposed via native Zig API"
+  },
   "ghostty-native:extensions.sixel": {
     "note": "Ghostty doesn't support sixel graphics"
   },
@@ -59,6 +58,21 @@
   },
   "ghostty-native:sgr.hidden": {
     "note": "Ghostty parses hidden but doesn't expose it in cell data"
+  },
+  "ghostty-native:sgr.underline.color": {
+    "note": "Underline color not exposed via native Zig API"
+  },
+  "ghostty-native:cursor.position-report": {
+    "note": "Headless mode doesn't generate DSR responses — no output stream"
+  },
+  "ghostty-native:device.primary-da": {
+    "note": "Headless mode doesn't generate DA1 responses — no output stream"
+  },
+  "ghostty-native:device.status-report": {
+    "note": "Headless mode doesn't generate DSR responses — no output stream"
+  },
+  "ghostty-native:reset.soft": {
+    "note": "DECSTR resets modes but headless probe reads stale state"
   },
 
   "alacritty:erase.screen.all": {
@@ -87,6 +101,24 @@
   "alacritty:sgr.underline.double": {
     "note": "Alacritty only supports single underline in headless mode"
   },
+  "alacritty:sgr.underline.color": {
+    "note": "Not exposed via alacritty_terminal API"
+  },
+  "alacritty:sgr.fg.standard": {
+    "note": "Backend returns palette index instead of resolved RGB"
+  },
+  "alacritty:cursor.position-report": {
+    "note": "Headless mode doesn't generate DSR responses — no output stream"
+  },
+  "alacritty:device.primary-da": {
+    "note": "Headless mode doesn't generate DA1 responses — no output stream"
+  },
+  "alacritty:device.status-report": {
+    "note": "Headless mode doesn't generate DSR responses — no output stream"
+  },
+  "alacritty:reset.soft": {
+    "note": "DECSTR resets modes but headless probe reads stale state"
+  },
 
   "kitty:extensions.semantic-prompts": {
     "note": "Not implemented in kitty"
@@ -103,6 +135,30 @@
   },
   "kitty:sgr.hidden": {
     "note": "Not exposed via Python API"
+  },
+  "kitty:sgr.underline.color": {
+    "note": "Not exposed via Python batch bridge"
+  },
+  "kitty:modes.origin": {
+    "note": "Not exposed via Python batch bridge"
+  },
+  "kitty:modes.insert-replace": {
+    "note": "Not exposed via Python batch bridge"
+  },
+  "kitty:modes.application-keypad": {
+    "note": "Not exposed via Python batch bridge"
+  },
+  "kitty:cursor.position-report": {
+    "note": "Headless mode doesn't generate DSR responses — no output stream"
+  },
+  "kitty:device.primary-da": {
+    "note": "Headless mode doesn't generate DA1 responses — no output stream"
+  },
+  "kitty:device.status-report": {
+    "note": "Headless mode doesn't generate DSR responses — no output stream"
+  },
+  "kitty:reset.soft": {
+    "note": "DECSTR resets modes but headless probe reads stale state"
   },
 
   "vt100:extensions.kitty-graphics": {
@@ -129,6 +185,33 @@
   "vt100:sgr.hidden": {
     "note": "Not implemented — pure TypeScript emulator"
   },
+  "vt100:sgr.underline.color": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:cursor.shape": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:cursor.position-report": {
+    "note": "No output stream — pure TypeScript emulator"
+  },
+  "vt100:device.primary-da": {
+    "note": "No output stream — pure TypeScript emulator"
+  },
+  "vt100:device.status-report": {
+    "note": "No output stream — pure TypeScript emulator"
+  },
+  "vt100:editing.repeat-char": {
+    "note": "REP not implemented — pure TypeScript emulator"
+  },
+  "vt100:modes.insert-replace": {
+    "note": "IRM not implemented — pure TypeScript emulator"
+  },
+  "vt100:modes.application-keypad": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:reset.soft": {
+    "note": "DECSTR not implemented — pure TypeScript emulator"
+  },
 
   "wezterm:extensions.kitty-graphics": {
     "note": "Not implemented in wezterm-term crate"
@@ -144,5 +227,35 @@
   },
   "wezterm:sgr.bg.256": {
     "note": "Backend returns palette index instead of resolved RGB"
+  },
+  "wezterm:sgr.fg.standard": {
+    "note": "Backend returns palette index instead of resolved RGB"
+  },
+  "wezterm:sgr.bg.standard": {
+    "note": "Backend returns palette index instead of resolved RGB"
+  },
+  "wezterm:sgr.fg.bright": {
+    "note": "Backend returns palette index instead of resolved RGB"
+  },
+  "wezterm:sgr.bg.bright": {
+    "note": "Backend returns palette index instead of resolved RGB"
+  },
+  "wezterm:sgr.underline.color": {
+    "note": "Not exposed via wezterm-term API"
+  },
+  "wezterm:modes.application-keypad": {
+    "note": "Not exposed via wezterm-term API"
+  },
+  "wezterm:cursor.position-report": {
+    "note": "Headless mode doesn't generate DSR responses — no output stream"
+  },
+  "wezterm:device.primary-da": {
+    "note": "Headless mode doesn't generate DA1 responses — no output stream"
+  },
+  "wezterm:device.status-report": {
+    "note": "Headless mode doesn't generate DSR responses — no output stream"
+  },
+  "wezterm:reset.soft": {
+    "note": "DECSTR resets modes but headless probe reads stale state"
   }
 }

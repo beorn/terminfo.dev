@@ -9,6 +9,7 @@ import {
   getFeaturesForTag,
   tagLabel,
   tagDescriptions,
+  tagUrls,
 } from "./data/load-census"
 
 export default {
@@ -93,6 +94,7 @@ export default {
           pageType: "tag",
           categoryName: tagLabel(tag),
           categoryDescription: tagDescriptions[tag] ?? "",
+          specUrl: tagUrls[tag] ?? "",
           featureCount: String(featureIds.length),
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),

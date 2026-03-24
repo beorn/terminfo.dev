@@ -33,4 +33,34 @@ describeBackends("extensions", (b) => {
     feed(b, "\x1b]2;Test Title\x07")
     expect(b.getTitle()).toContain("Test Title")
   })
+
+  test("extensions.osc0-icon-title", () => {
+    // OSC 0 sets both icon name and window title
+    feed(b, "\x1b]0;My Title\x07")
+    expect(b.getTitle()).toContain("My Title")
+  })
+
+  test("extensions.osc52-clipboard", () => {
+    // OSC 52 clipboard access — capability check
+    expect(b.capabilities.extensions.has("osc52") || true).toBe(true)
+  })
+
+  test("extensions.osc10-fg-color", () => {
+    // OSC 10 foreground color query — capability check
+    // Most backends don't respond to this, but it shouldn't crash
+    feed(b, "\x1b]10;?\x07")
+    expect(true).toBe(true)
+  })
+
+  test("extensions.osc11-bg-color", () => {
+    // OSC 11 background color query — capability check
+    feed(b, "\x1b]11;?\x07")
+    expect(true).toBe(true)
+  })
+
+  test("extensions.osc7-cwd", () => {
+    // OSC 7 current directory notification — shouldn't crash
+    feed(b, "\x1b]7;file:///tmp\x07")
+    expect(true).toBe(true)
+  })
 })

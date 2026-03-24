@@ -63,17 +63,29 @@ function buildSidebar() {
 
   const tagLabels: Record<string, string> = {
     "ecma-48": "ECMA-48",
-    "vt100": "VT100",
-    "vt510": "VT510",
+    vt100: "VT100",
+    vt220: "VT220",
+    vt510: "VT510",
     "dec-private-modes": "DEC Private Modes",
     "xterm-extensions": "Xterm Extensions",
     "kitty-extensions": "Kitty Extensions",
-    "osc": "OSC",
-    "sixel": "Sixel",
-    "unicode": "Unicode",
+    osc: "OSC",
+    sixel: "Sixel",
+    unicode: "Unicode",
   }
 
-  const tagOrder = ["ecma-48", "vt100", "vt510", "dec-private-modes", "xterm-extensions", "kitty-extensions", "osc", "sixel", "unicode"]
+  const tagOrder = [
+    "ecma-48",
+    "vt100",
+    "vt220",
+    "vt510",
+    "dec-private-modes",
+    "xterm-extensions",
+    "kitty-extensions",
+    "osc",
+    "sixel",
+    "unicode",
+  ]
   const sortedTags = [...tags].sort((a, b) => {
     const ai = tagOrder.indexOf(a)
     const bi = tagOrder.indexOf(b)
@@ -88,25 +100,31 @@ function buildSidebar() {
     cursor: "Cursor",
     text: "Text",
     erase: "Erase",
+    editing: "Editing",
     modes: "Modes",
     scrollback: "Scrollback",
     reset: "Reset",
     extensions: "Extensions",
+    charsets: "Character Sets",
+    device: "Device Status",
   }
 
-  const categoryOrder = ["sgr", "cursor", "text", "erase", "modes", "scrollback", "reset", "extensions"]
+  const categoryOrder = ["sgr", "cursor", "text", "erase", "editing", "modes", "scrollback", "reset", "extensions", "charsets", "device"]
 
-  // Determine categories from features.json
-  const categories = new Set<string>()
+  // Determine categories and features from features.json
+  const categories = new Map<string, Array<{ id: string; name: string; slug: string }>>()
   try {
     const raw = JSON.parse(readFileSync(featuresPath, "utf-8"))
     delete raw.$comment
-    for (const id of Object.keys(raw)) {
-      categories.add(id.split(".")[0])
+    for (const [id, entry] of Object.entries(raw) as [string, any][]) {
+      const cat = id.split(".")[0]
+      if (!categories.has(cat)) categories.set(cat, [])
+      const slug = entry.slug ?? id.replaceAll(".", "-")
+      categories.get(cat)!.push({ id, name: entry.name, slug })
     }
   } catch {}
 
-  const sortedCategories = [...categories].sort((a, b) => {
+  const sortedCategories = [...categories.keys()].sort((a, b) => {
     const ai = categoryOrder.indexOf(a)
     const bi = categoryOrder.indexOf(b)
     if (ai >= 0 && bi >= 0) return ai - bi
@@ -126,6 +144,11 @@ function buildSidebar() {
       items: sortedCategories.map((cat) => ({
         text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
         link: `/${cat}`,
+        collapsed: true,
+        items: (categories.get(cat) ?? []).map((f) => ({
+          text: f.name,
+          link: `/${cat}/${f.slug}`,
+        })),
       })),
     },
     {
@@ -141,14 +164,7 @@ function buildSidebar() {
   return { sidebar, terminals, sortedCategories, categoryLabels, sortedTags, tagLabels }
 }
 
-const {
-  sidebar,
-  terminals,
-  sortedCategories,
-  categoryLabels,
-  sortedTags,
-  tagLabels,
-} = buildSidebar()
+const { sidebar, terminals, sortedCategories, categoryLabels, sortedTags, tagLabels } = buildSidebar()
 
 export default defineConfig({
   title: "Terminfo.dev",
@@ -186,7 +202,9 @@ export default defineConfig({
       // Category + tag pages: /sgr, /ecma-48 (have categoryName param)
       const type = params.pageType === "tag" ? "Standard" : "Category"
       pageData.title = `${params.categoryName} — Terminal Feature ${type}`
-      pageData.description = params.categoryDescription || `${params.categoryName}: ${params.featureCount} terminal features compared across backends.`
+      pageData.description =
+        params.categoryDescription ||
+        `${params.categoryName}: ${params.featureCount} terminal features compared across backends.`
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],

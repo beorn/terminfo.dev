@@ -25,6 +25,25 @@ describeBackends("scrollback", (b) => {
     expect(c === "" || c === " ").toBe(true)
   })
 
+  test("scrollback.scroll-down", () => {
+    // SD: CSI Pn T — scroll down (insert blank lines at top)
+    feed(b, "LINE1\r\nLINE2\r\nLINE3")
+    feed(b, "\x1b[T")
+    // After scroll down, LINE1 should have moved down
+    const c = b.getCell(0, 0).char
+    expect(c === "" || c === " ").toBe(true)
+  })
+
+  test("scrollback.set-region", () => {
+    // DECSTBM: CSI top ; bottom r — set scrolling region
+    feed(b, "\x1b[5;10r")
+    // After setting scroll region, cursor should be at home
+    expect(b.getCursor().x).toBe(0)
+    expect(b.getCursor().y).toBe(0)
+    // Reset scroll region
+    feed(b, "\x1b[r")
+  })
+
   test("scrollback.alt-screen", () => {
     feed(b, "NORMAL")
     feed(b, "\x1b[?1049h")

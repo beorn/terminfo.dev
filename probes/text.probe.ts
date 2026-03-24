@@ -42,4 +42,24 @@ describeBackends("text", (b) => {
     expect(b.getCell(0, 0).char).toBe("C")
     expect(b.getCell(0, 1).char).toBe("B")
   })
+
+  test("text.backspace", () => {
+    feed(b, "AB\x08C")
+    // Backspace moves cursor back one column, then C overwrites B
+    expect(b.getCell(0, 0).char).toBe("A")
+    expect(b.getCell(0, 1).char).toBe("C")
+  })
+
+  test("text.index", () => {
+    // IND: ESC D — moves cursor down one line, scrolling if at bottom
+    feed(b, "A\x1bD")
+    expect(b.getCursor().y).toBe(1)
+  })
+
+  test("text.next-line", () => {
+    // NEL: ESC E — moves cursor to beginning of next line
+    feed(b, "ABC\x1bE")
+    expect(b.getCursor().y).toBe(1)
+    expect(b.getCursor().x).toBe(0)
+  })
 })

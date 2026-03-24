@@ -41,7 +41,10 @@ function tooltip(result, note) {
 
 <p v-if="p.categoryDescription" class="category-desc">{{ p.categoryDescription }}</p>
 
-<p class="category-count">{{ p.featureCount }} features in this category</p>
+<p class="category-meta">
+  {{ p.featureCount }} features in this {{ p.pageType === 'tag' ? 'standard' : 'category' }}
+  <span v-if="p.specUrl"> · <a :href="p.specUrl" target="_blank" rel="noopener">Specification ↗</a></span>
+</p>
 
 ## Support Matrix
 
@@ -63,7 +66,7 @@ function tooltip(result, note) {
       <td v-for="b in backends" :key="b.name"
           :class="cls(f.results[b.name]?.result)"
           :data-tooltip="tooltip(f.results[b.name]?.result, f.results[b.name]?.note)">
-        {{ icon(f.results[b.name]?.result) }}
+        <a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.results[b.name]?.result) }}</a>
       </td>
     </tr>
   </tbody>
@@ -87,14 +90,23 @@ function tooltip(result, note) {
   margin-top: -0.5em;
 }
 
-.category-count {
+.category-meta {
   color: var(--vp-c-text-3);
   font-size: 0.9em;
 }
 
+.category-meta a {
+  color: var(--vp-c-brand-1);
+}
+
 .matrix-wrapper {
   margin: 1em 0;
-  overflow-x: auto;
+}
+
+/* Override VitePress default table overflow-x:auto which clips tooltips */
+.matrix-wrapper table {
+  display: table;
+  overflow-x: visible;
 }
 
 .matrix {
@@ -145,6 +157,15 @@ function tooltip(result, note) {
 .feature-name a:hover {
   color: var(--vp-c-brand-1);
   text-decoration: underline;
+}
+
+/* Cell links — inherit cell color, fill the entire cell */
+.cell-link,
+.cell-link:link,
+.cell-link:visited {
+  color: inherit !important;
+  text-decoration: none !important;
+  display: block;
 }
 
 .cell-yes {

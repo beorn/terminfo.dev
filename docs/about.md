@@ -32,13 +32,42 @@ No manual testing. No self-reported capabilities. Fully reproducible.
 
 ## Feature Categories
 
-- **SGR** — Text styling: bold, italic, underline variants, colors, strikethrough
-- **Cursor** — Positioning, visibility, save/restore
-- **Text** — Basic output, wrapping, wide characters (emoji, CJK), tabs
-- **Erase** — Line and screen clearing operations
-- **Modes** — Alternate screen, bracketed paste, mouse/focus tracking, auto-wrap
-- **Scrollback** — Scroll buffer behavior, reverse index, total line tracking
-- **Reset** — SGR reset, full terminal reset (RIS), programmatic reset
-- **Extensions** — Window title, kitty keyboard/graphics, sixel, OSC 8 hyperlinks, text reflow
+- **SGR** — Text styling: bold, italic, underline variants (5 styles + color), colors (standard, bright, 256, truecolor), strikethrough, overline, selective resets
+- **Cursor** — Positioning (CUP, CHA, CNL), visibility (DECTCEM), shape (DECSCUSR), save/restore (DECSC), position report (DSR 6)
+- **Text** — Basic output, wrapping, wide characters (emoji, CJK), tabs, backspace, index (IND), next line (NEL)
+- **Erase** — Line erase (EL 0/1/2), screen erase (ED 0/1/2/3), character erase (ECH)
+- **Editing** — Insert/delete characters (ICH/DCH), insert/delete lines (IL/DL), repeat character (REP)
+- **Modes** — Alternate screen, bracketed paste, synchronized output, mouse tracking (basic/SGR/all-motion), focus tracking, origin mode, insert/replace mode, application keypad
+- **Scrollback** — Scroll buffer, scroll regions (DECSTBM), scroll up/down (SU/SD), reverse index (RI)
+- **Reset** — SGR reset, full reset (RIS), soft reset (DECSTR), programmatic reset
+- **Extensions** — Kitty keyboard/graphics, sixel, OSC 8 hyperlinks, clipboard (OSC 52), color queries (OSC 10/11), window title, current directory (OSC 7), semantic prompts, text reflow, truecolor
+- **Character Sets** — DEC Special Graphics, UTF-8 mode
+- **Device Status** — Primary device attributes (DA1), device status report (DSR)
+
+## Standards Coverage
+
+Features are tagged by their defining standard. Each standard page includes a link to the canonical specification:
+
+- [ECMA-48](/ecma-48) (ISO/IEC 6429) — the CSI grammar, SGR, cursor control, erase
+- [VT100](/vt100) — DEC's foundational terminal (1978)
+- [VT510](/vt510) — the final DEC VT terminal (1993)
+- [DEC Private Modes](/dec-private-modes) — DECSET/DECRST mode toggles
+- [Xterm Extensions](/xterm-extensions) — 256/truecolor, mouse, bracketed paste
+- [Kitty Extensions](/kitty-extensions) — keyboard protocol, graphics, underline styles
+- [OSC](/osc) — Operating System Commands (title, clipboard, prompts)
+- [Sixel](/sixel) — DEC raster graphics
+- [Unicode](/unicode) — wide character handling
+
+## Changelog
+
+### March 2026
+
+- **45+ new features** added across all categories — from 62 to 100+ features tested
+- New categories: **Editing** (ICH/DCH/IL/DL), **Character Sets** (DEC Special Graphics), **Device Status** (DA1/DSR)
+- **Descriptive URL slugs** with standard numbers (e.g., `/sgr/sgr-4-4-dotted-underline`)
+- **xterm.js underline variants** now reported accurately (reading internal extended attributes)
+- **Standard specification links** on all tag pages (ECMA-48, VT100, VT510, xterm ctlseqs, Kitty)
+- **Clickable support cells** throughout the site — every checkmark links to the feature detail page
+- Updated tag descriptions with precise technical details
 
 Powered by [Termless](https://termless.dev) — Playwright for terminals.
