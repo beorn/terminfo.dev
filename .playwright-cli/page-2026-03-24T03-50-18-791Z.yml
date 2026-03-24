@@ -1,0 +1,873 @@
+- generic [ref=e3]:
+  - link "Skip to content" [ref=e4] [cursor=pointer]:
+    - /url: "#VPContent"
+  - banner:
+    - generic:
+      - generic:
+        - generic:
+          - link "Terminfo.dev" [ref=e6] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e7]: Terminfo.dev
+          - generic [ref=e8]:
+            - navigation "Main Navigation" [ref=e9]:
+              - generic [ref=e10]: Main Navigation
+              - link "Matrix" [ref=e11] [cursor=pointer]:
+                - /url: /
+                - generic [ref=e12]: Matrix
+              - link "About" [ref=e13] [cursor=pointer]:
+                - /url: /about
+                - generic [ref=e14]: About
+              - link "Termless" [ref=e15] [cursor=pointer]:
+                - /url: https://termless.dev
+                - generic [ref=e16]: Termless
+            - switch "Switch to dark theme" [ref=e18] [cursor=pointer]
+  - generic [ref=e24]:
+    - generic [ref=e27]:
+      - heading "Terminfo.dev Can your terminal do that?" [level=1] [ref=e28]:
+        - generic [ref=e29]: Terminfo.dev
+        - generic [ref=e30]: Can your terminal do that?
+      - paragraph [ref=e31]:
+        - text: Feature support tables for terminal emulators — powered by
+        - link "Termless" [ref=e32] [cursor=pointer]:
+          - /url: "#how-this-works"
+        - text: ", Playwright for terminals"
+      - link "View Matrix" [ref=e35] [cursor=pointer]:
+        - /url: "#matrix"
+    - generic [ref=e39]:
+      - 'heading "Backend Summary Permalink to \"Backend Summary {#summary}\"" [level=2] [ref=e40]':
+        - text: Backend Summary
+        - 'link "Permalink to \"Backend Summary {#summary}\"" [ref=e41] [cursor=pointer]':
+          - /url: "#summary"
+          - text: "#"
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]: ghostty-native
+          - generic [ref=e45]: 1.3.1
+          - generic [ref=e49]: 94%
+          - generic [ref=e50]: 58 / 62
+        - generic [ref=e51]:
+          - generic [ref=e52]: wezterm
+          - generic [ref=e53]: 0.1.0-fork.5
+          - generic [ref=e57]: 92%
+          - generic [ref=e58]: 57 / 62
+        - generic [ref=e59]:
+          - generic [ref=e60]: alacritty
+          - generic [ref=e61]: 0.26.0
+          - generic [ref=e65]: 87%
+          - generic [ref=e66]: 54 / 62
+        - generic [ref=e67]:
+          - generic [ref=e68]: vt100
+          - generic [ref=e69]: 0.1.0
+          - generic [ref=e73]: 87%
+          - generic [ref=e74]: 54 / 62
+        - generic [ref=e75]:
+          - generic [ref=e76]: xtermjs
+          - generic [ref=e77]: 5.5.0
+          - generic [ref=e81]: 81%
+          - generic [ref=e82]: 50 / 62
+        - generic [ref=e83]:
+          - generic [ref=e84]: kitty
+          - generic [ref=e85]: 0.40.0
+          - generic [ref=e89]: 79%
+          - generic [ref=e90]: 49 / 62
+      - 'heading "Feature Matrix Permalink to \"Feature Matrix {#matrix}\"" [level=2] [ref=e91]':
+        - text: Feature Matrix
+        - 'link "Permalink to \"Feature Matrix {#matrix}\"" [ref=e92] [cursor=pointer]':
+          - /url: "#matrix"
+          - text: "#"
+      - generic [ref=e93]:
+        - generic [ref=e94]:
+          - text: "Category:"
+          - combobox "Category:" [ref=e95]:
+            - option "All" [selected]
+            - option "Cursor.hide"
+            - option "Cursor.move.absolute"
+            - option "Cursor.move.back"
+            - option "Cursor.move.down"
+            - option "Cursor.move.forward"
+            - option "Cursor.move.home"
+            - option "Cursor.move.up"
+            - option "Cursor.save"
+            - option "Erase.line.all"
+            - option "Erase.line.left"
+            - option "Erase.line.right"
+            - option "Erase.screen.all"
+            - option "Erase.screen.below"
+            - option "Extensions.kitty"
+            - option "Extensions.osc2"
+            - option "Extensions.osc8"
+            - option "Extensions.reflow"
+            - option "Extensions.semantic"
+            - option "Extensions.sixel"
+            - option "Extensions.truecolor"
+            - option "Modes.alt"
+            - option "Modes.application"
+            - option "Modes.auto"
+            - option "Modes.bracketed"
+            - option "Modes.focus"
+            - option "Modes.mouse"
+            - option "Modes.reverse"
+            - option "Reset.method"
+            - option "Reset.ris"
+            - option "Reset.sgr"
+            - option "Scrollback.accumulate"
+            - option "Scrollback.alt"
+            - option "Scrollback.reverse"
+            - option "Scrollback.scroll"
+            - option "Scrollback.total"
+            - option "Sgr.bg.256"
+            - option "Sgr.bg.truecolor"
+            - option "Sgr.blink"
+            - option "Sgr.bold"
+            - option "Sgr.faint"
+            - option "Sgr.fg.256"
+            - option "Sgr.fg.truecolor"
+            - option "Sgr.hidden"
+            - option "Sgr.inverse"
+            - option "Sgr.italic"
+            - option "Sgr.reset"
+            - option "Sgr.strikethrough"
+            - option "Sgr.underline.curly"
+            - option "Sgr.underline.dashed"
+            - option "Sgr.underline.dotted"
+            - option "Sgr.underline.double"
+            - option "Sgr.underline.single"
+            - option "Text.basic"
+            - option "Text.cr"
+            - option "Text.newline"
+            - option "Text.overwrite"
+            - option "Text.tab"
+            - option "Text.wide.cjk"
+            - option "Text.wide.emoji"
+            - option "Text.wrap"
+        - generic [ref=e96]:
+          - text: "Search:"
+          - textbox "Search:" [ref=e97]:
+            - /placeholder: Filter features...
+      - table [ref=e99]:
+        - rowgroup [ref=e100]:
+          - row "ghostty-native wezterm alacritty vt100 xtermjs kitty" [ref=e101]:
+            - columnheader [ref=e102]
+            - columnheader "ghostty-native" [ref=e103]
+            - columnheader "wezterm" [ref=e104]
+            - columnheader "alacritty" [ref=e105]
+            - columnheader "vt100" [ref=e106]
+            - columnheader "xtermjs" [ref=e107]
+            - columnheader "kitty" [ref=e108]
+        - rowgroup [ref=e109]:
+          - row "Cursor.hide" [ref=e110]:
+            - cell "Cursor.hide" [ref=e111]
+          - row "cursor.hide ✓ ✓ ✓ ✓ ✗ ✓" [ref=e112]:
+            - cell "cursor.hide" [ref=e113]
+            - cell "✓" [ref=e114]
+            - cell "✓" [ref=e115]
+            - cell "✓" [ref=e116]
+            - cell "✓" [ref=e117]
+            - cell "✗" [ref=e118]
+            - cell "✓" [ref=e119]
+        - rowgroup [ref=e120]:
+          - row "Cursor.move.absolute" [ref=e121]:
+            - cell "Cursor.move.absolute" [ref=e122]
+          - row "cursor.move.absolute ✓ ✓ ✓ ✓ ✓ ✗" [ref=e123]:
+            - cell "cursor.move.absolute" [ref=e124]
+            - cell "✓" [ref=e125]
+            - cell "✓" [ref=e126]
+            - cell "✓" [ref=e127]
+            - cell "✓" [ref=e128]
+            - cell "✓" [ref=e129]
+            - cell "✗" [ref=e130]
+        - rowgroup [ref=e131]:
+          - row "Cursor.move.back" [ref=e132]:
+            - cell "Cursor.move.back" [ref=e133]
+          - row "cursor.move.back ✓ ✓ ✓ ✓ ✓ ✓" [ref=e134]:
+            - cell "cursor.move.back" [ref=e135]
+            - cell "✓" [ref=e136]
+            - cell "✓" [ref=e137]
+            - cell "✓" [ref=e138]
+            - cell "✓" [ref=e139]
+            - cell "✓" [ref=e140]
+            - cell "✓" [ref=e141]
+        - rowgroup [ref=e142]:
+          - row "Cursor.move.down" [ref=e143]:
+            - cell "Cursor.move.down" [ref=e144]
+          - row "cursor.move.down ✓ ✓ ✓ ✓ ✓ ✓" [ref=e145]:
+            - cell "cursor.move.down" [ref=e146]
+            - cell "✓" [ref=e147]
+            - cell "✓" [ref=e148]
+            - cell "✓" [ref=e149]
+            - cell "✓" [ref=e150]
+            - cell "✓" [ref=e151]
+            - cell "✓" [ref=e152]
+        - rowgroup [ref=e153]:
+          - row "Cursor.move.forward" [ref=e154]:
+            - cell "Cursor.move.forward" [ref=e155]
+          - row "cursor.move.forward ✓ ✓ ✓ ✓ ✓ ✓" [ref=e156]:
+            - cell "cursor.move.forward" [ref=e157]
+            - cell "✓" [ref=e158]
+            - cell "✓" [ref=e159]
+            - cell "✓" [ref=e160]
+            - cell "✓" [ref=e161]
+            - cell "✓" [ref=e162]
+            - cell "✓" [ref=e163]
+        - rowgroup [ref=e164]:
+          - row "Cursor.move.home" [ref=e165]:
+            - cell "Cursor.move.home" [ref=e166]
+          - row "cursor.move.home ✓ ✓ ✓ ✓ ✓ ✓" [ref=e167]:
+            - cell "cursor.move.home" [ref=e168]
+            - cell "✓" [ref=e169]
+            - cell "✓" [ref=e170]
+            - cell "✓" [ref=e171]
+            - cell "✓" [ref=e172]
+            - cell "✓" [ref=e173]
+            - cell "✓" [ref=e174]
+        - rowgroup [ref=e175]:
+          - row "Cursor.move.up" [ref=e176]:
+            - cell "Cursor.move.up" [ref=e177]
+          - row "cursor.move.up ✓ ✓ ✓ ✓ ✓ ✓" [ref=e178]:
+            - cell "cursor.move.up" [ref=e179]
+            - cell "✓" [ref=e180]
+            - cell "✓" [ref=e181]
+            - cell "✓" [ref=e182]
+            - cell "✓" [ref=e183]
+            - cell "✓" [ref=e184]
+            - cell "✓" [ref=e185]
+        - rowgroup [ref=e186]:
+          - row "Cursor.save" [ref=e187]:
+            - cell "Cursor.save" [ref=e188]
+          - row "cursor.save-restore ✓ ✓ ✓ ✓ ✓ ✓" [ref=e189]:
+            - cell "cursor.save-restore" [ref=e190]
+            - cell "✓" [ref=e191]
+            - cell "✓" [ref=e192]
+            - cell "✓" [ref=e193]
+            - cell "✓" [ref=e194]
+            - cell "✓" [ref=e195]
+            - cell "✓" [ref=e196]
+        - rowgroup [ref=e197]:
+          - row "Erase.line.all" [ref=e198]:
+            - cell "Erase.line.all" [ref=e199]
+          - row "erase.line.all ✓ ✓ ✓ ✓ ✓ ✓" [ref=e200]:
+            - cell "erase.line.all" [ref=e201]
+            - cell "✓" [ref=e202]
+            - cell "✓" [ref=e203]
+            - cell "✓" [ref=e204]
+            - cell "✓" [ref=e205]
+            - cell "✓" [ref=e206]
+            - cell "✓" [ref=e207]
+        - rowgroup [ref=e208]:
+          - row "Erase.line.left" [ref=e209]:
+            - cell "Erase.line.left" [ref=e210]
+          - row "erase.line.left ✓ ✓ ✓ ✓ ✓ ✓" [ref=e211]:
+            - cell "erase.line.left" [ref=e212]
+            - cell "✓" [ref=e213]
+            - cell "✓" [ref=e214]
+            - cell "✓" [ref=e215]
+            - cell "✓" [ref=e216]
+            - cell "✓" [ref=e217]
+            - cell "✓" [ref=e218]
+        - rowgroup [ref=e219]:
+          - row "Erase.line.right" [ref=e220]:
+            - cell "Erase.line.right" [ref=e221]
+          - row "erase.line.right ✓ ✓ ✓ ✓ ✓ ✗" [ref=e222]:
+            - cell "erase.line.right" [ref=e223]
+            - cell "✓" [ref=e224]
+            - cell "✓" [ref=e225]
+            - cell "✓" [ref=e226]
+            - cell "✓" [ref=e227]
+            - cell "✓" [ref=e228]
+            - cell "✗" [ref=e229]
+        - rowgroup [ref=e230]:
+          - row "Erase.screen.all" [ref=e231]:
+            - cell "Erase.screen.all" [ref=e232]
+          - row "erase.screen.all ✓ ✓ ✗ ✓ ✓ ✓" [ref=e233]:
+            - cell "erase.screen.all" [ref=e234]
+            - cell "✓" [ref=e235]
+            - cell "✓" [ref=e236]
+            - cell "✗" [ref=e237]
+            - cell "✓" [ref=e238]
+            - cell "✓" [ref=e239]
+            - cell "✓" [ref=e240]
+        - rowgroup [ref=e241]:
+          - row "Erase.screen.below" [ref=e242]:
+            - cell "Erase.screen.below" [ref=e243]
+          - row "erase.screen.below ✓ ✓ ✓ ✓ ✓ ✓" [ref=e244]:
+            - cell "erase.screen.below" [ref=e245]
+            - cell "✓" [ref=e246]
+            - cell "✓" [ref=e247]
+            - cell "✓" [ref=e248]
+            - cell "✓" [ref=e249]
+            - cell "✓" [ref=e250]
+            - cell "✓" [ref=e251]
+        - rowgroup [ref=e252]:
+          - row "Extensions.kitty" [ref=e253]:
+            - cell "Extensions.kitty" [ref=e254]
+          - row "extensions.kitty-graphics ✓ ✗ ✗ ✗ ✗ ✓" [ref=e255]:
+            - cell "extensions.kitty-graphics" [ref=e256]
+            - cell "✓" [ref=e257]
+            - cell "✗" [ref=e258]
+            - cell "✗" [ref=e259]
+            - cell "✗" [ref=e260]
+            - cell "✗" [ref=e261]
+            - cell "✓" [ref=e262]
+          - row "extensions.kitty-keyboard ✓ ✓ ✓ ✗ ✗ ✓" [ref=e263]:
+            - cell "extensions.kitty-keyboard" [ref=e264]
+            - cell "✓" [ref=e265]
+            - cell "✓" [ref=e266]
+            - cell "✓" [ref=e267]
+            - cell "✗" [ref=e268]
+            - cell "✗" [ref=e269]
+            - cell "✓" [ref=e270]
+        - rowgroup [ref=e271]:
+          - row "Extensions.osc2" [ref=e272]:
+            - cell "Extensions.osc2" [ref=e273]
+          - row "extensions.osc2-title ✗ ✓ ✓ ✓ ✓ ✗" [ref=e274]:
+            - cell "extensions.osc2-title" [ref=e275]
+            - cell "✗" [ref=e276]
+            - cell "✓" [ref=e277]
+            - cell "✓" [ref=e278]
+            - cell "✓" [ref=e279]
+            - cell "✓" [ref=e280]
+            - cell "✗" [ref=e281]
+        - rowgroup [ref=e282]:
+          - row "Extensions.osc8" [ref=e283]:
+            - cell "Extensions.osc8" [ref=e284]
+          - row "extensions.osc8 ✓ ✓ ✓ ✗ ✓ ✓" [ref=e285]:
+            - cell "extensions.osc8" [ref=e286]
+            - cell "✓" [ref=e287]
+            - cell "✓" [ref=e288]
+            - cell "✓" [ref=e289]
+            - cell "✗" [ref=e290]
+            - cell "✓" [ref=e291]
+            - cell "✓" [ref=e292]
+        - rowgroup [ref=e293]:
+          - row "Extensions.reflow" [ref=e294]:
+            - cell "Extensions.reflow" [ref=e295]
+          - row "extensions.reflow ✓ ✓ ✓ ✗ ✓ ✓" [ref=e296]:
+            - cell "extensions.reflow" [ref=e297]
+            - cell "✓" [ref=e298]
+            - cell "✓" [ref=e299]
+            - cell "✓" [ref=e300]
+            - cell "✗" [ref=e301]
+            - cell "✓" [ref=e302]
+            - cell "✓" [ref=e303]
+        - rowgroup [ref=e304]:
+          - row "Extensions.semantic" [ref=e305]:
+            - cell "Extensions.semantic" [ref=e306]
+          - row "extensions.semantic-prompts ✓ ✓ ✗ ✗ ✗ ✗" [ref=e307]:
+            - cell "extensions.semantic-prompts" [ref=e308]
+            - cell "✓" [ref=e309]
+            - cell "✓" [ref=e310]
+            - cell "✗" [ref=e311]
+            - cell "✗" [ref=e312]
+            - cell "✗" [ref=e313]
+            - cell "✗" [ref=e314]
+        - rowgroup [ref=e315]:
+          - row "Extensions.sixel" [ref=e316]:
+            - cell "Extensions.sixel" [ref=e317]
+          - row "extensions.sixel ✗ ✓ ✗ ✗ ✗ ✗" [ref=e318]:
+            - cell "extensions.sixel" [ref=e319]
+            - cell "✗" [ref=e320]
+            - cell "✓" [ref=e321]
+            - cell "✗" [ref=e322]
+            - cell "✗" [ref=e323]
+            - cell "✗" [ref=e324]
+            - cell "✗" [ref=e325]
+        - rowgroup [ref=e326]:
+          - row "Extensions.truecolor" [ref=e327]:
+            - cell "Extensions.truecolor" [ref=e328]
+          - row "extensions.truecolor ✓ ✓ ✓ ✓ ✓ ✓" [ref=e329]:
+            - cell "extensions.truecolor" [ref=e330]
+            - cell "✓" [ref=e331]
+            - cell "✓" [ref=e332]
+            - cell "✓" [ref=e333]
+            - cell "✓" [ref=e334]
+            - cell "✓" [ref=e335]
+            - cell "✓" [ref=e336]
+        - rowgroup [ref=e337]:
+          - row "Modes.alt" [ref=e338]:
+            - cell "Modes.alt" [ref=e339]
+          - row "modes.alt-screen.enter ✓ ✓ ✓ ✓ ✓ ✗" [ref=e340]:
+            - cell "modes.alt-screen.enter" [ref=e341]
+            - cell "✓" [ref=e342]
+            - cell "✓" [ref=e343]
+            - cell "✓" [ref=e344]
+            - cell "✓" [ref=e345]
+            - cell "✓" [ref=e346]
+            - cell "✗" [ref=e347]
+          - row "modes.alt-screen.exit ✓ ✓ ✓ ✓ ✓ ✓" [ref=e348]:
+            - cell "modes.alt-screen.exit" [ref=e349]
+            - cell "✓" [ref=e350]
+            - cell "✓" [ref=e351]
+            - cell "✓" [ref=e352]
+            - cell "✓" [ref=e353]
+            - cell "✓" [ref=e354]
+            - cell "✓" [ref=e355]
+        - rowgroup [ref=e356]:
+          - row "Modes.application" [ref=e357]:
+            - cell "Modes.application" [ref=e358]
+          - row "modes.application-cursor ✓ ✓ ✓ ✓ ✓ ✓" [ref=e359]:
+            - cell "modes.application-cursor" [ref=e360]
+            - cell "✓" [ref=e361]
+            - cell "✓" [ref=e362]
+            - cell "✓" [ref=e363]
+            - cell "✓" [ref=e364]
+            - cell "✓" [ref=e365]
+            - cell "✓" [ref=e366]
+        - rowgroup [ref=e367]:
+          - row "Modes.auto" [ref=e368]:
+            - cell "Modes.auto" [ref=e369]
+          - row "modes.auto-wrap ✓ ✓ ✓ ✓ ✓ ✓" [ref=e370]:
+            - cell "modes.auto-wrap" [ref=e371]
+            - cell "✓" [ref=e372]
+            - cell "✓" [ref=e373]
+            - cell "✓" [ref=e374]
+            - cell "✓" [ref=e375]
+            - cell "✓" [ref=e376]
+            - cell "✓" [ref=e377]
+        - rowgroup [ref=e378]:
+          - row "Modes.bracketed" [ref=e379]:
+            - cell "Modes.bracketed" [ref=e380]
+          - row "modes.bracketed-paste ✓ ✓ ✓ ✓ ✓ ✓" [ref=e381]:
+            - cell "modes.bracketed-paste" [ref=e382]
+            - cell "✓" [ref=e383]
+            - cell "✓" [ref=e384]
+            - cell "✓" [ref=e385]
+            - cell "✓" [ref=e386]
+            - cell "✓" [ref=e387]
+            - cell "✓" [ref=e388]
+        - rowgroup [ref=e389]:
+          - row "Modes.focus" [ref=e390]:
+            - cell "Modes.focus" [ref=e391]
+          - row "modes.focus-tracking ✓ ✓ ✓ ✓ ✓ ✓" [ref=e392]:
+            - cell "modes.focus-tracking" [ref=e393]
+            - cell "✓" [ref=e394]
+            - cell "✓" [ref=e395]
+            - cell "✓" [ref=e396]
+            - cell "✓" [ref=e397]
+            - cell "✓" [ref=e398]
+            - cell "✓" [ref=e399]
+        - rowgroup [ref=e400]:
+          - row "Modes.mouse" [ref=e401]:
+            - cell "Modes.mouse" [ref=e402]
+          - row "modes.mouse-tracking ✓ ✓ ✓ ✓ ✓ ✗" [ref=e403]:
+            - cell "modes.mouse-tracking" [ref=e404]
+            - cell "✓" [ref=e405]
+            - cell "✓" [ref=e406]
+            - cell "✓" [ref=e407]
+            - cell "✓" [ref=e408]
+            - cell "✓" [ref=e409]
+            - cell "✗" [ref=e410]
+        - rowgroup [ref=e411]:
+          - row "Modes.reverse" [ref=e412]:
+            - cell "Modes.reverse" [ref=e413]
+          - row "modes.reverse-video ✓ ✓ ✗ ✓ ✗ ✗" [ref=e414]:
+            - cell "modes.reverse-video" [ref=e415]
+            - cell "✓" [ref=e416]
+            - cell "✓" [ref=e417]
+            - cell "✗" [ref=e418]
+            - cell "✓" [ref=e419]
+            - cell "✗" [ref=e420]
+            - cell "✗" [ref=e421]
+        - rowgroup [ref=e422]:
+          - row "Reset.method" [ref=e423]:
+            - cell "Reset.method" [ref=e424]
+          - row "reset.method ✓ ✓ ✓ ✓ ✓ ✓" [ref=e425]:
+            - cell "reset.method" [ref=e426]
+            - cell "✓" [ref=e427]
+            - cell "✓" [ref=e428]
+            - cell "✓" [ref=e429]
+            - cell "✓" [ref=e430]
+            - cell "✓" [ref=e431]
+            - cell "✓" [ref=e432]
+        - rowgroup [ref=e433]:
+          - row "Reset.ris" [ref=e434]:
+            - cell "Reset.ris" [ref=e435]
+          - row "reset.ris ✓ ✓ ✓ ✓ ✓ ✓" [ref=e436]:
+            - cell "reset.ris" [ref=e437]
+            - cell "✓" [ref=e438]
+            - cell "✓" [ref=e439]
+            - cell "✓" [ref=e440]
+            - cell "✓" [ref=e441]
+            - cell "✓" [ref=e442]
+            - cell "✓" [ref=e443]
+        - rowgroup [ref=e444]:
+          - row "Reset.sgr" [ref=e445]:
+            - cell "Reset.sgr" [ref=e446]
+          - row "reset.sgr ✓ ✓ ✓ ✓ ✓ ✗" [ref=e447]:
+            - cell "reset.sgr" [ref=e448]
+            - cell "✓" [ref=e449]
+            - cell "✓" [ref=e450]
+            - cell "✓" [ref=e451]
+            - cell "✓" [ref=e452]
+            - cell "✓" [ref=e453]
+            - cell "✗" [ref=e454]
+        - rowgroup [ref=e455]:
+          - row "Scrollback.accumulate" [ref=e456]:
+            - cell "Scrollback.accumulate" [ref=e457]
+          - row "scrollback.accumulate ✓ ✓ ✓ ✓ ✓ ✗" [ref=e458]:
+            - cell "scrollback.accumulate" [ref=e459]
+            - cell "✓" [ref=e460]
+            - cell "✓" [ref=e461]
+            - cell "✓" [ref=e462]
+            - cell "✓" [ref=e463]
+            - cell "✓" [ref=e464]
+            - cell "✗" [ref=e465]
+        - rowgroup [ref=e466]:
+          - row "Scrollback.alt" [ref=e467]:
+            - cell "Scrollback.alt" [ref=e468]
+          - row "scrollback.alt-screen ✓ ✓ ✓ ✓ ✓ ✓" [ref=e469]:
+            - cell "scrollback.alt-screen" [ref=e470]
+            - cell "✓" [ref=e471]
+            - cell "✓" [ref=e472]
+            - cell "✓" [ref=e473]
+            - cell "✓" [ref=e474]
+            - cell "✓" [ref=e475]
+            - cell "✓" [ref=e476]
+        - rowgroup [ref=e477]:
+          - row "Scrollback.reverse" [ref=e478]:
+            - cell "Scrollback.reverse" [ref=e479]
+          - row "scrollback.reverse-index ✓ ✓ ✓ ✓ ✓ ✓" [ref=e480]:
+            - cell "scrollback.reverse-index" [ref=e481]
+            - cell "✓" [ref=e482]
+            - cell "✓" [ref=e483]
+            - cell "✓" [ref=e484]
+            - cell "✓" [ref=e485]
+            - cell "✓" [ref=e486]
+            - cell "✓" [ref=e487]
+        - rowgroup [ref=e488]:
+          - row "Scrollback.scroll" [ref=e489]:
+            - cell "Scrollback.scroll" [ref=e490]
+          - row "scrollback.scroll-up ✓ ✓ ✓ ✓ ✗ ✓" [ref=e491]:
+            - cell "scrollback.scroll-up" [ref=e492]
+            - cell "✓" [ref=e493]
+            - cell "✓" [ref=e494]
+            - cell "✓" [ref=e495]
+            - cell "✓" [ref=e496]
+            - cell "✗" [ref=e497]
+            - cell "✓" [ref=e498]
+        - rowgroup [ref=e499]:
+          - row "Scrollback.total" [ref=e500]:
+            - cell "Scrollback.total" [ref=e501]
+          - row "scrollback.total-lines ✓ ✓ ✓ ✓ ✓ ✓" [ref=e502]:
+            - cell "scrollback.total-lines" [ref=e503]
+            - cell "✓" [ref=e504]
+            - cell "✓" [ref=e505]
+            - cell "✓" [ref=e506]
+            - cell "✓" [ref=e507]
+            - cell "✓" [ref=e508]
+            - cell "✓" [ref=e509]
+        - rowgroup [ref=e510]:
+          - row "Sgr.bg.256" [ref=e511]:
+            - cell "Sgr.bg.256" [ref=e512]
+          - row "sgr.bg.256 ✓ ✗ ✓ ✓ ✓ ✓" [ref=e513]:
+            - cell "sgr.bg.256" [ref=e514]
+            - cell "✓" [ref=e515]
+            - cell "✗" [ref=e516]
+            - cell "✓" [ref=e517]
+            - cell "✓" [ref=e518]
+            - cell "✓" [ref=e519]
+            - cell "✓" [ref=e520]
+        - rowgroup [ref=e521]:
+          - row "Sgr.bg.truecolor" [ref=e522]:
+            - cell "Sgr.bg.truecolor" [ref=e523]
+          - row "sgr.bg.truecolor ✓ ✓ ✓ ✓ ✓ ✓" [ref=e524]:
+            - cell "sgr.bg.truecolor" [ref=e525]
+            - cell "✓" [ref=e526]
+            - cell "✓" [ref=e527]
+            - cell "✓" [ref=e528]
+            - cell "✓" [ref=e529]
+            - cell "✓" [ref=e530]
+            - cell "✓" [ref=e531]
+        - rowgroup [ref=e532]:
+          - row "Sgr.blink" [ref=e533]:
+            - cell "Sgr.blink" [ref=e534]
+          - row "sgr.blink ✗ ✗ ✗ ✗ ✓ ✓" [ref=e535]:
+            - cell "sgr.blink" [ref=e536]
+            - cell "✗" [ref=e537]
+            - cell "✗" [ref=e538]
+            - cell "✗" [ref=e539]
+            - cell "✗" [ref=e540]
+            - cell "✓" [ref=e541]
+            - cell "✓" [ref=e542]
+        - rowgroup [ref=e543]:
+          - row "Sgr.bold" [ref=e544]:
+            - cell "Sgr.bold" [ref=e545]
+          - row "sgr.bold ✓ ✓ ✓ ✓ ✓ ✗" [ref=e546]:
+            - cell "sgr.bold" [ref=e547]
+            - cell "✓" [ref=e548]
+            - cell "✓" [ref=e549]
+            - cell "✓" [ref=e550]
+            - cell "✓" [ref=e551]
+            - cell "✓" [ref=e552]
+            - cell "✗" [ref=e553]
+        - rowgroup [ref=e554]:
+          - row "Sgr.faint" [ref=e555]:
+            - cell "Sgr.faint" [ref=e556]
+          - row "sgr.faint ✓ ✓ ✓ ✓ ✓ ✓" [ref=e557]:
+            - cell "sgr.faint" [ref=e558]
+            - cell "✓" [ref=e559]
+            - cell "✓" [ref=e560]
+            - cell "✓" [ref=e561]
+            - cell "✓" [ref=e562]
+            - cell "✓" [ref=e563]
+            - cell "✓" [ref=e564]
+        - rowgroup [ref=e565]:
+          - row "Sgr.fg.256" [ref=e566]:
+            - cell "Sgr.fg.256" [ref=e567]
+          - row "sgr.fg.256 ✓ ✗ ✓ ✓ ✓ ✓" [ref=e568]:
+            - cell "sgr.fg.256" [ref=e569]
+            - cell "✓" [ref=e570]
+            - cell "✗" [ref=e571]
+            - cell "✓" [ref=e572]
+            - cell "✓" [ref=e573]
+            - cell "✓" [ref=e574]
+            - cell "✓" [ref=e575]
+        - rowgroup [ref=e576]:
+          - row "Sgr.fg.truecolor" [ref=e577]:
+            - cell "Sgr.fg.truecolor" [ref=e578]
+          - row "sgr.fg.truecolor ✓ ✓ ✓ ✓ ✓ ✓" [ref=e579]:
+            - cell "sgr.fg.truecolor" [ref=e580]
+            - cell "✓" [ref=e581]
+            - cell "✓" [ref=e582]
+            - cell "✓" [ref=e583]
+            - cell "✓" [ref=e584]
+            - cell "✓" [ref=e585]
+            - cell "✓" [ref=e586]
+        - rowgroup [ref=e587]:
+          - row "Sgr.hidden" [ref=e588]:
+            - cell "Sgr.hidden" [ref=e589]
+          - row "sgr.hidden ✗ ✗ ✗ ✗ ✓ ✗" [ref=e590]:
+            - cell "sgr.hidden" [ref=e591]
+            - cell "✗" [ref=e592]
+            - cell "✗" [ref=e593]
+            - cell "✗" [ref=e594]
+            - cell "✗" [ref=e595]
+            - cell "✓" [ref=e596]
+            - cell "✗" [ref=e597]
+        - rowgroup [ref=e598]:
+          - row "Sgr.inverse" [ref=e599]:
+            - cell "Sgr.inverse" [ref=e600]
+          - row "sgr.inverse ✓ ✓ ✓ ✓ ✓ ✓" [ref=e601]:
+            - cell "sgr.inverse" [ref=e602]
+            - cell "✓" [ref=e603]
+            - cell "✓" [ref=e604]
+            - cell "✓" [ref=e605]
+            - cell "✓" [ref=e606]
+            - cell "✓" [ref=e607]
+            - cell "✓" [ref=e608]
+        - rowgroup [ref=e609]:
+          - row "Sgr.italic" [ref=e610]:
+            - cell "Sgr.italic" [ref=e611]
+          - row "sgr.italic ✓ ✓ ✓ ✓ ✓ ✓" [ref=e612]:
+            - cell "sgr.italic" [ref=e613]
+            - cell "✓" [ref=e614]
+            - cell "✓" [ref=e615]
+            - cell "✓" [ref=e616]
+            - cell "✓" [ref=e617]
+            - cell "✓" [ref=e618]
+            - cell "✓" [ref=e619]
+        - rowgroup [ref=e620]:
+          - row "Sgr.reset" [ref=e621]:
+            - cell "Sgr.reset" [ref=e622]
+          - row "sgr.reset ✓ ✓ ✓ ✓ ✓ ✓" [ref=e623]:
+            - cell "sgr.reset" [ref=e624]
+            - cell "✓" [ref=e625]
+            - cell "✓" [ref=e626]
+            - cell "✓" [ref=e627]
+            - cell "✓" [ref=e628]
+            - cell "✓" [ref=e629]
+            - cell "✓" [ref=e630]
+        - rowgroup [ref=e631]:
+          - row "Sgr.strikethrough" [ref=e632]:
+            - cell "Sgr.strikethrough" [ref=e633]
+          - row "sgr.strikethrough ✓ ✓ ✓ ✓ ✓ ✓" [ref=e634]:
+            - cell "sgr.strikethrough" [ref=e635]
+            - cell "✓" [ref=e636]
+            - cell "✓" [ref=e637]
+            - cell "✓" [ref=e638]
+            - cell "✓" [ref=e639]
+            - cell "✓" [ref=e640]
+            - cell "✓" [ref=e641]
+        - rowgroup [ref=e642]:
+          - row "Sgr.underline.curly" [ref=e643]:
+            - cell "Sgr.underline.curly" [ref=e644]
+          - row "sgr.underline.curly ✓ ✓ ✓ ✓ ✗ ✓" [ref=e645]:
+            - cell "sgr.underline.curly" [ref=e646]
+            - cell "✓" [ref=e647]
+            - cell "✓" [ref=e648]
+            - cell "✓" [ref=e649]
+            - cell "✓" [ref=e650]
+            - cell "✗" [ref=e651]
+            - cell "✓" [ref=e652]
+        - rowgroup [ref=e653]:
+          - row "Sgr.underline.dashed" [ref=e654]:
+            - cell "Sgr.underline.dashed" [ref=e655]
+          - row "sgr.underline.dashed ✓ ✓ ✓ ✓ ✗ ✓" [ref=e656]:
+            - cell "sgr.underline.dashed" [ref=e657]
+            - cell "✓" [ref=e658]
+            - cell "✓" [ref=e659]
+            - cell "✓" [ref=e660]
+            - cell "✓" [ref=e661]
+            - cell "✗" [ref=e662]
+            - cell "✓" [ref=e663]
+        - rowgroup [ref=e664]:
+          - row "Sgr.underline.dotted" [ref=e665]:
+            - cell "Sgr.underline.dotted" [ref=e666]
+          - row "sgr.underline.dotted ✓ ✓ ✓ ✓ ✗ ✓" [ref=e667]:
+            - cell "sgr.underline.dotted" [ref=e668]
+            - cell "✓" [ref=e669]
+            - cell "✓" [ref=e670]
+            - cell "✓" [ref=e671]
+            - cell "✓" [ref=e672]
+            - cell "✗" [ref=e673]
+            - cell "✓" [ref=e674]
+        - rowgroup [ref=e675]:
+          - row "Sgr.underline.double" [ref=e676]:
+            - cell "Sgr.underline.double" [ref=e677]
+          - row "sgr.underline.double ✓ ✓ ✗ ✓ ✗ ✓" [ref=e678]:
+            - cell "sgr.underline.double" [ref=e679]
+            - cell "✓" [ref=e680]
+            - cell "✓" [ref=e681]
+            - cell "✗" [ref=e682]
+            - cell "✓" [ref=e683]
+            - cell "✗" [ref=e684]
+            - cell "✓" [ref=e685]
+        - rowgroup [ref=e686]:
+          - row "Sgr.underline.single" [ref=e687]:
+            - cell "Sgr.underline.single" [ref=e688]
+          - row "sgr.underline.single ✓ ✓ ✓ ✓ ✓ ✓" [ref=e689]:
+            - cell "sgr.underline.single" [ref=e690]
+            - cell "✓" [ref=e691]
+            - cell "✓" [ref=e692]
+            - cell "✓" [ref=e693]
+            - cell "✓" [ref=e694]
+            - cell "✓" [ref=e695]
+            - cell "✓" [ref=e696]
+        - rowgroup [ref=e697]:
+          - row "Text.basic" [ref=e698]:
+            - cell "Text.basic" [ref=e699]
+          - row "text.basic ✓ ✓ ✓ ✓ ✓ ✗" [ref=e700]:
+            - cell "text.basic" [ref=e701]
+            - cell "✓" [ref=e702]
+            - cell "✓" [ref=e703]
+            - cell "✓" [ref=e704]
+            - cell "✓" [ref=e705]
+            - cell "✓" [ref=e706]
+            - cell "✗" [ref=e707]
+        - rowgroup [ref=e708]:
+          - row "Text.cr" [ref=e709]:
+            - cell "Text.cr" [ref=e710]
+          - row "text.cr ✓ ✓ ✓ ✓ ✓ ✓" [ref=e711]:
+            - cell "text.cr" [ref=e712]
+            - cell "✓" [ref=e713]
+            - cell "✓" [ref=e714]
+            - cell "✓" [ref=e715]
+            - cell "✓" [ref=e716]
+            - cell "✓" [ref=e717]
+            - cell "✓" [ref=e718]
+        - rowgroup [ref=e719]:
+          - row "Text.newline" [ref=e720]:
+            - cell "Text.newline" [ref=e721]
+          - row "text.newline ✓ ✓ ✓ ✓ ✓ ✓" [ref=e722]:
+            - cell "text.newline" [ref=e723]
+            - cell "✓" [ref=e724]
+            - cell "✓" [ref=e725]
+            - cell "✓" [ref=e726]
+            - cell "✓" [ref=e727]
+            - cell "✓" [ref=e728]
+            - cell "✓" [ref=e729]
+        - rowgroup [ref=e730]:
+          - row "Text.overwrite" [ref=e731]:
+            - cell "Text.overwrite" [ref=e732]
+          - row "text.overwrite ✓ ✓ ✓ ✓ ✓ ✓" [ref=e733]:
+            - cell "text.overwrite" [ref=e734]
+            - cell "✓" [ref=e735]
+            - cell "✓" [ref=e736]
+            - cell "✓" [ref=e737]
+            - cell "✓" [ref=e738]
+            - cell "✓" [ref=e739]
+            - cell "✓" [ref=e740]
+        - rowgroup [ref=e741]:
+          - row "Text.tab" [ref=e742]:
+            - cell "Text.tab" [ref=e743]
+          - row "text.tab ✓ ✓ ✓ ✓ ✓ ✓" [ref=e744]:
+            - cell "text.tab" [ref=e745]
+            - cell "✓" [ref=e746]
+            - cell "✓" [ref=e747]
+            - cell "✓" [ref=e748]
+            - cell "✓" [ref=e749]
+            - cell "✓" [ref=e750]
+            - cell "✓" [ref=e751]
+        - rowgroup [ref=e752]:
+          - row "Text.wide.cjk" [ref=e753]:
+            - cell "Text.wide.cjk" [ref=e754]
+          - row "text.wide.cjk ✓ ✓ ✓ ✓ ✓ ✓" [ref=e755]:
+            - cell "text.wide.cjk" [ref=e756]
+            - cell "✓" [ref=e757]
+            - cell "✓" [ref=e758]
+            - cell "✓" [ref=e759]
+            - cell "✓" [ref=e760]
+            - cell "✓" [ref=e761]
+            - cell "✓" [ref=e762]
+        - rowgroup [ref=e763]:
+          - row "Text.wide.emoji" [ref=e764]:
+            - cell "Text.wide.emoji" [ref=e765]
+          - row "text.wide.emoji ✓ ✓ ✓ ✓ ✗ ✓" [ref=e766]:
+            - cell "text.wide.emoji" [ref=e767]
+            - cell "✓" [ref=e768]
+            - cell "✓" [ref=e769]
+            - cell "✓" [ref=e770]
+            - cell "✓" [ref=e771]
+            - cell "✗" [ref=e772]
+            - cell "✓" [ref=e773]
+        - rowgroup [ref=e774]:
+          - row "Text.wrap" [ref=e775]:
+            - cell "Text.wrap" [ref=e776]
+          - row "text.wrap ✓ ✓ ✓ ✓ ✓ ✓" [ref=e777]:
+            - cell "text.wrap" [ref=e778]
+            - cell "✓" [ref=e779]
+            - cell "✓" [ref=e780]
+            - cell "✓" [ref=e781]
+            - cell "✓" [ref=e782]
+            - cell "✓" [ref=e783]
+            - cell "✓" [ref=e784]
+      - paragraph [ref=e785]:
+        - text: Hover over any cell for details.
+        - text: Data from
+        - link "Termless" [ref=e786] [cursor=pointer]:
+          - /url: https://termless.dev
+        - text: "census probes. Generated: 2026-03-24T03:49:30.634Z"
+      - heading "How This Works Permalink to \"How This Works\"" [level=2] [ref=e787]:
+        - text: How This Works
+        - link "Permalink to \"How This Works\"" [ref=e788] [cursor=pointer]:
+          - /url: "#how-this-works"
+          - text: "#"
+      - paragraph [ref=e789]:
+        - text: Data is collected by
+        - link "Termless" [ref=e790] [cursor=pointer]:
+          - /url: https://termless.dev
+        - text: census probes — standardized test sequences sent to
+        - strong [ref=e791]: headless terminal emulator libraries
+        - text: ", not the terminal applications themselves. Each probe writes ANSI escape sequences and reads back the terminal state via the library's API."
+      - generic [ref=e792]:
+        - paragraph [ref=e793]: Headless ≠ Real Terminal
+        - paragraph [ref=e794]:
+          - text: These results test
+          - strong [ref=e795]: library implementations
+          - text: (e.g.,
+          - code [ref=e796]: "@xterm/headless"
+          - text: ", not xterm.js in VS Code). Some libraries don't expose all features through their headless API — for example,"
+          - code [ref=e797]: "@xterm/headless"
+          - text: doesn't report cursor visibility or underline variants, even though the full xterm.js renderer supports them. Scores reflect
+          - strong [ref=e798]: API completeness
+          - text: ", not the real terminal's capabilities."
+        - paragraph [ref=e799]:
+          - text: We're working on
+          - link "app-level testing" [ref=e800] [cursor=pointer]:
+            - /url: ./about
+          - text: that probes real terminal applications (iTerm2, Terminal.app, Kitty, Ghostty, Warp) to capture what users actually see.
+  - contentinfo [ref=e801]:
+    - paragraph [ref=e803]:
+      - text: Powered by
+      - link "Termless" [ref=e804] [cursor=pointer]:
+        - /url: https://termless.dev
+      - text: — Playwright for terminals

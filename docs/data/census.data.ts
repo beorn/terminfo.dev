@@ -217,15 +217,17 @@ function loadPerBackendResults(): CensusData {
       })
       results[raw.backend] = {}
       notes[raw.backend] = {}
+      const rawNotes = raw.notes ?? {}
       for (const [id, val] of Object.entries(raw.results ?? {})) {
-        const v = val as any
-        results[raw.backend][id] = typeof v === "boolean" ? (v ? "yes" : "no") : (v.support ?? "unknown")
-        if (v.notes) notes[raw.backend][id] = v.notes
+        results[raw.backend][id] = typeof val === "boolean" ? (val ? "yes" : "no") : ((val as any).support ?? "unknown")
+        if (rawNotes[id]) notes[raw.backend][id] = rawNotes[id]
         if (!featureSet.has(id)) {
+          const cat = id.split(".")[0]
+          const suffix = id.slice(cat.length + 1)
           featureSet.set(id, {
             id,
-            name: id,
-            category: id.split("-")[0],
+            name: suffix || id,
+            category: cat,
           })
         }
       }
