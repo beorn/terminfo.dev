@@ -61,13 +61,11 @@ async function runProbes(): Promise<ProbeResults> {
   const responses: Record<string, string> = {}
   let passed = 0
 
-  await withRawMode(async () => {
-    // Use alt screen to contain all probe output
-    process.stdout.write("\x1b[?1049h")
+  // Save cursor + scroll position, run probes, restore
+  process.stdout.write("\x1b7") // save cursor (DECSC)
 
+  await withRawMode(async () => {
     for (const probe of ALL_PROBES) {
-      // Reset SGR + clear screen before each probe
-      process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
       try {
         const result = await probe.run()
         results[probe.id] = result.pass
@@ -78,25 +76,19 @@ async function runProbes(): Promise<ProbeResults> {
         results[probe.id] = false
         notes[probe.id] = `error: ${err instanceof Error ? err.message : String(err)}`
       }
-      // Reset SGR after each probe to prevent style leaking
-      process.stdout.write("\x1b[0m")
     }
-
-    // Clean up alt screen completely before switching back
-    process.stdout.write("\x1b[0m") // reset SGR
-    process.stdout.write("\x1b[?7h") // re-enable auto-wrap (DECAWM)
-    process.stdout.write("\x1b[?25h") // show cursor (DECTCEM)
-    process.stdout.write("\x1b[r") // reset scroll region (DECSTBM)
-    await drainStdin(500)
-    process.stdout.write("\x1b[?1049l") // exit alt screen
+    await drainStdin(1000)
   })
+
+  // Restore terminal state completely
+  process.stdout.write("\x1b8") // restore cursor (DECRC)
+  process.stdout.write("\x1bc") // RIS — full terminal reset
+  // RIS moves cursor to 1,1 — that's fine, we're about to print results
 
   return { terminal, results, notes, responses, passed, total: ALL_PROBES.length }
 }
 
 function printHeader(terminal: ReturnType<typeof detectTerminal>) {
-  // Reset ALL SGR on main screen — probes may have left underline/style active
-  process.stdout.write("\x1b[0m\x1b[24m\x1b[4:0m\x1b[59m\x1b[55m\x1b[29m\x1b[28m\x1b[27m\x1b[25m\x1b[23m\x1b[22m")
   const siteLink = link("https://terminfo.dev", "terminfo.dev")
   console.log(`\x1b[1m${siteLink}\x1b[0m — can your terminal do that?\n`)
   console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m${terminal.version ? ` ${terminal.version}` : ""}`)
@@ -223,7 +215,7 @@ program
       notes: data.notes,
       responses: data.responses,
       generated: new Date().toISOString(),
-      cliVersion: "1.6.0",
+      cliVersion: "1.7.0",
       probeCount: ALL_PROBES.length,
     })
     if (url) {
