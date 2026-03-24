@@ -187,17 +187,32 @@ program
 
     printHeader(terminal)
     console.log(``)
-    console.log(`  Will submit results for \x1b[1m${name}${version ? ` ${version}` : ""}\x1b[0m on ${terminal.os}`)
-    if (!version) {
-      console.log(`  \x1b[33m⚠ No version detected. Use --terminal-version to specify.\x1b[0m`)
+
+    // Let user confirm/edit terminal info before running probes
+    const { createInterface } = await import("node:readline")
+
+    async function ask(question: string, defaultValue: string): Promise<string> {
+      const rl = createInterface({ input: process.stdin, output: process.stdout })
+      return new Promise((resolve) => {
+        rl.question(`  ${question} [\x1b[1m${defaultValue}\x1b[0m]: `, (answer) => {
+          rl.close()
+          resolve(answer.trim() || defaultValue)
+        })
+      })
     }
 
-    const { createInterface } = await import("node:readline")
-    const rl = createInterface({ input: process.stdin, output: process.stdout })
-    const proceed = await new Promise<string>((resolve) => {
-      rl.question(`\n  Press Enter to run probes and submit (or Ctrl+C to cancel) `, (answer) => {
-        rl.close()
-        resolve(answer)
+    name = await ask("Terminal name", name)
+    version = await ask("Terminal version", version || "unknown")
+    if (version === "unknown") version = ""
+
+    console.log(``)
+    console.log(`  Submitting as \x1b[1m${name}${version ? ` ${version}` : ""}\x1b[0m on ${terminal.os}`)
+
+    const rl2 = createInterface({ input: process.stdin, output: process.stdout })
+    await new Promise<void>((resolve) => {
+      rl2.question(`  Press Enter to run probes (Ctrl+C to cancel) `, () => {
+        rl2.close()
+        resolve()
       })
     })
 
@@ -215,7 +230,7 @@ program
       notes: data.notes,
       responses: data.responses,
       generated: new Date().toISOString(),
-      cliVersion: "2.1.0",
+      cliVersion: "2.2.0",
       probeCount: ALL_PROBES.length,
     })
     if (url) {

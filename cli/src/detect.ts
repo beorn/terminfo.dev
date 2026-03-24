@@ -36,6 +36,7 @@ const TERM_PROGRAM_MAP: Record<string, string> = {
 
 /** Known macOS bundle IDs for version lookup */
 const BUNDLE_IDS: Record<string, string> = {
+  cmux: "com.cmuxterm.app",
   ghostty: "com.mitchellh.ghostty",
   kitty: "net.kovidgoyal.kitty",
   iterm2: "com.googlecode.iterm2",
@@ -61,9 +62,9 @@ export function detectTerminal(): TerminalInfo {
         break
       }
     }
-    // If bundle ID didn't match known terminals, use it as-is
+    // If bundle ID didn't match known terminals, show the full bundle ID
     if (name === "unknown" && bundleId) {
-      name = bundleId.split(".").pop() ?? bundleId
+      name = bundleId
     }
   }
 
@@ -90,6 +91,18 @@ export function detectTerminal(): TerminalInfo {
   if (name === "unknown") {
     const termEmu = process.env.TERMINAL_EMULATOR
     if (termEmu) name = termEmu.toLowerCase()
+  }
+
+  // Linux: check common env vars
+  if (name === "unknown") {
+    if (process.env.GNOME_TERMINAL_SCREEN) name = "gnome-terminal"
+    else if (process.env.KONSOLE_VERSION) { name = "konsole"; version = process.env.KONSOLE_VERSION }
+    else if (process.env.TILIX_ID) name = "tilix"
+  }
+
+  // Windows: check for Windows Terminal
+  if (name === "unknown" && os === "windows") {
+    if (process.env.WT_SESSION) name = "windows-terminal"
   }
 
   // Fallback: $TERM
