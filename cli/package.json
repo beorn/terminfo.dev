@@ -1,6 +1,6 @@
 {
   "name": "terminfo.dev",
-  "version": "0.7.0",
+  "version": "1.0.0",
   "description": "Test your terminal's feature support and contribute to terminfo.dev",
   "keywords": [
     "ansi",
@@ -31,6 +31,9 @@
   "type": "module",
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "silvery": "^0.4.3"
   },
   "engines": {
     "node": ">=23.6.0"
