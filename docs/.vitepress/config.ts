@@ -9,30 +9,12 @@ const docsDir = join(__dirname, "..")
 // --- Load data for sidebar generation ---
 
 function loadBackendMeta() {
+  // Primary: backends-meta.json (always available, even in CI)
   try {
-    let manifest: (() => any) | null = null
-    try {
-      // Try @termless/core in workspace
-      const m = require("@termless/core")
-      manifest = m.manifest
-    } catch {
-      // Try backends.json from sibling termless submodule
-      const backendsJson = join(docsDir, "..", "..", "termless", "backends.json")
-      if (existsSync(backendsJson)) {
-        const raw = JSON.parse(readFileSync(backendsJson, "utf-8"))
-        manifest = () => ({ backends: raw.backends })
-      }
-    }
-    if (!manifest) return {}
-    const m = manifest()
-    const meta: Record<string, any> = {}
-    for (const [name, entry] of Object.entries(m.backends) as [string, any][]) {
-      meta[name] = entry
-    }
-    return meta
-  } catch {
-    return {}
-  }
+    const metaPath = join(docsDir, "..", "backends-meta.json")
+    return JSON.parse(readFileSync(metaPath, "utf-8"))
+  } catch {}
+  return {}
 }
 
 function terminalSlug(name: string, meta: Record<string, any>): string {

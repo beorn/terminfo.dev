@@ -1,0 +1,82 @@
+{
+  "xtermjs": {
+    "label": "xterm.js",
+    "description": "The most widely used web terminal emulator. Powers VS Code's terminal.",
+    "url": "https://xtermjs.org",
+    "upstream": "npm:@xterm/headless",
+    "type": "js",
+    "caveat": "Headless mode doesn't expose cursor visibility or underline variants",
+    "slug": "xterm-js"
+  },
+  "ghostty": {
+    "label": "Ghostty (WASM)",
+    "description": "Mitchell Hashimoto's GPU-accelerated terminal via WASM.",
+    "url": "https://ghostty.org",
+    "upstream": "npm:ghostty-web",
+    "type": "wasm",
+    "slug": "ghostty-wasm"
+  },
+  "vt100": {
+    "label": "vt100",
+    "description": "Pure TypeScript VT100 emulator. Zero dependencies, fastest backend.",
+    "upstream": "npm:vt100.js",
+    "type": "js",
+    "slug": "vt100"
+  },
+  "alacritty": {
+    "label": "Alacritty",
+    "description": "Rust-based GPU-accelerated terminal. Strong reflow behavior.",
+    "url": "https://alacritty.org",
+    "upstream": "crate:alacritty_terminal",
+    "type": "native",
+    "slug": "alacritty"
+  },
+  "wezterm": {
+    "label": "WezTerm",
+    "description": "Broadest protocol support: sixel graphics, semantic prompts, Kitty keyboard.",
+    "url": "https://wezfurlong.org/wezterm",
+    "upstream": "crate:tattoy-wezterm-term",
+    "type": "native",
+    "slug": "wezterm"
+  },
+  "peekaboo": {
+    "label": "Peekaboo",
+    "description": "Tests against a real terminal app via OS accessibility APIs. macOS only.",
+    "upstream": "npm:peekaboo",
+    "type": "os",
+    "slug": "peekaboo"
+  },
+  "vt100-rust": {
+    "label": "vt100-rust",
+    "description": "Reference Rust VT100 implementation.",
+    "url": "https://crates.io/crates/vt100",
+    "upstream": "crate:vt100",
+    "type": "native",
+    "caveat": "Doesn't expose scrollback beyond screen height",
+    "slug": "vt100-rust"
+  },
+  "libvterm": {
+    "label": "libvterm",
+    "description": "Neovim's C VT parser compiled to WASM.",
+    "url": "https://github.com/neovim/libvterm",
+    "upstream": "github:neovim/libvterm",
+    "type": "wasm",
+    "slug": "libvterm"
+  },
+  "ghostty-native": {
+    "label": "Ghostty",
+    "description": "Native Ghostty via Zig N-API bindings. Full API access, no WASM overhead.",
+    "url": "https://ghostty.org",
+    "upstream": "github:ghostty-org/ghostty",
+    "type": "native",
+    "slug": "ghostty"
+  },
+  "kitty": {
+    "label": "Kitty",
+    "description": "Kitty's VT parser via Python subprocess bridge. Only backend with Kitty graphics.",
+    "url": "https://sw.kovidgoyal.net/kitty",
+    "upstream": "github:kovidgoyal/kitty",
+    "type": "native",
+    "slug": "kitty"
+  }
+}

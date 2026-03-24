@@ -112,6 +112,14 @@ function loadAnnotations(): Record<string, { note: string; url?: string }> {
 }
 
 function loadBackendMeta(): Record<string, BackendMeta> {
+  // Primary: backends-meta.json (always available, even in CI)
+  try {
+    const metaPath = join(__dirname, "..", "..", "backends-meta.json")
+    const raw = JSON.parse(readFileSync(metaPath, "utf-8"))
+    return raw as Record<string, BackendMeta>
+  } catch {}
+
+  // Fallback: @termless/core manifest
   if (!manifest) return {}
   try {
     const m = manifest()
