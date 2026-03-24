@@ -88,15 +88,6 @@
     "note": "Alacritty only supports single underline in headless mode"
   },
 
-  "kitty:cursor.move.absolute": {
-    "note": "Kitty subprocess bridge timed out — Python startup latency"
-  },
-  "kitty:erase.line.right": {
-    "note": "Kitty subprocess bridge timed out"
-  },
-  "kitty:extensions.osc2-title": {
-    "note": "Kitty subprocess bridge timed out"
-  },
   "kitty:extensions.semantic-prompts": {
     "note": "Not implemented in kitty"
   },
@@ -104,29 +95,14 @@
     "note": "Not implemented in kitty",
     "url": "https://github.com/kovidgoyal/kitty/issues/2638"
   },
-  "kitty:modes.alt-screen.enter": {
-    "note": "Kitty subprocess bridge timed out"
-  },
   "kitty:modes.mouse-tracking": {
     "note": "Not exposed via Python API"
   },
   "kitty:modes.reverse-video": {
     "note": "Not exposed via Python API"
   },
-  "kitty:reset.sgr": {
-    "note": "Kitty subprocess bridge timed out"
-  },
-  "kitty:scrollback.accumulate": {
-    "note": "Kitty subprocess bridge timed out"
-  },
-  "kitty:sgr.bold": {
-    "note": "Kitty subprocess bridge timed out"
-  },
   "kitty:sgr.hidden": {
     "note": "Not exposed via Python API"
-  },
-  "kitty:text.basic": {
-    "note": "Kitty subprocess bridge timed out"
   },
 
   "vt100:extensions.kitty-graphics": {
