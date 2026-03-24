@@ -169,10 +169,10 @@ function backendTooltip(name, version) {
   <div v-for="b in sortedBackends" :key="b.name" class="summary-row">
     <span class="summary-name" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</span>
     <span class="summary-version">{{ b.version }}</span>
-    <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barTooltip(b.name, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barTooltip(b.name, 'partial')"></div>
-      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barTooltip(b.name, 'no')"></div>
+    <div class="summary-bar" :data-tooltip="barTooltip(b.name, 'no')">
+      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }"></div>
+      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }"></div>
+      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }"></div>
     </div>
     <span class="summary-pct">{{ data.stats[b.name]?.pct }}%</span>
     <span class="summary-counts">
@@ -293,8 +293,8 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   height: 22px;
   background: var(--vp-c-bg-soft);
   border-radius: 4px;
-  overflow: hidden;
   display: flex;
+  cursor: help;
 }
 
 .bar-yes {
@@ -307,18 +307,12 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   height: 100%;
   background: #f59e0b;
   transition: width 0.3s ease;
-  cursor: help;
 }
 
 .bar-fail {
   height: 100%;
   background: transparent;
   transition: width 0.3s ease;
-  cursor: help;
-}
-
-.bar-yes {
-  cursor: help;
 }
 
 .summary-pct {
@@ -487,10 +481,13 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   display: none;
 }
 
-/* Summary bar tooltips appear below */
-.summary-bar [data-tooltip]:hover::after {
+/* Summary bar tooltip appears below the bar */
+.summary-bar[data-tooltip]:hover::after {
   bottom: auto;
   top: 100%;
   margin-top: 4px;
+  left: 0;
+  transform: none;
+  max-width: 600px;
 }
 </style>
