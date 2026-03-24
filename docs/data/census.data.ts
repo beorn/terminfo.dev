@@ -52,6 +52,7 @@ export interface BackendMeta {
   upstream?: string
   type?: string
   caveat?: string
+  slug?: string
 }
 
 export interface CensusData {
@@ -123,6 +124,7 @@ function loadBackendMeta(): Record<string, BackendMeta> {
         upstream: entry.upstream ?? undefined,
         type: entry.type,
         caveat: entry.caveat,
+        slug: entry.slug,
       }
     }
     return meta

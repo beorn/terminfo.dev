@@ -17,7 +17,7 @@ import { data } from './data/census.data'
 const filter = ref('')
 const categoryFilter = ref('all')
 
-const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'mode', 'scrollback', 'reset', 'extension']
+const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'modes', 'scrollback', 'reset', 'extensions']
 const categoryLabels = {
   sgr: 'SGR (Text Styling)',
   cursor: 'Cursor',
