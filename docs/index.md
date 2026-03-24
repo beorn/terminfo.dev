@@ -138,6 +138,17 @@ function failBarWidth(backendName) {
   return (fail / s.total * 100) + '%'
 }
 
+// Slug helpers for SEO page links
+function backendSlug(name) {
+  // Use label for URL: ghostty-native → ghostty, xtermjs → xterm-js
+  const label = (data.meta[name]?.label ?? name).toLowerCase()
+  return label.replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '')
+}
+
+function featureSlug(id) {
+  return id.replace(/\./g, '-')
+}
+
 // Backend metadata comes from @termless/core via census data loader
 function backendLabel(name) {
   return data.meta[name]?.label ?? name
@@ -167,7 +178,7 @@ function backendTooltip(name, version) {
 
 <div class="summary">
   <div v-for="b in sortedBackends" :key="b.name" class="summary-row">
-    <span class="summary-name" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</span>
+    <a class="summary-name hover-link" :href="'/terminal/' + backendSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar" :data-tooltip="barTooltip(b.name, 'no')">
       <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }"></div>
@@ -204,19 +215,20 @@ function backendTooltip(name, version) {
   <thead>
     <tr>
       <th class="feature-col"></th>
-      <th v-for="b in sortedBackends" :key="b.name" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</th>
+      <th v-for="b in sortedBackends" :key="b.name" :data-tooltip="backendTooltip(b.name, b.version)">
+        <a class="hover-link" :href="'/terminal/' + backendSlug(b.name)">{{ backendLabel(b.name) }}</a>
+      </th>
     </tr>
   </thead>
   <tbody v-for="cat in filteredCategories" :key="cat">
     <tr class="category-row">
       <td :colspan="sortedBackends.length + 1" class="category-header">
-        {{ catLabel(cat) }}
+        <a class="hover-link" :href="'/' + cat">{{ catLabel(cat) }}</a>
       </td>
     </tr>
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
       <td class="feature-name">
-        <a v-if="f.spec" :href="f.spec" target="_blank" rel="noopener" class="feature-link">{{ f.name }}</a>
-        <span v-else>{{ f.name }}</span>
+        <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in sortedBackends" :key="b.name"
           :class="cellClass(getResult(b.name, f.id))"
@@ -421,12 +433,14 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   font-size: 0.95em;
 }
 
-.feature-link {
+/* Hover-links: look like normal text, reveal as links on hover */
+.hover-link {
   color: inherit;
   text-decoration: none;
+  font-weight: inherit;
 }
 
-.feature-link:hover {
+.hover-link:hover {
   color: var(--vp-c-brand-1);
   text-decoration: underline;
 }
