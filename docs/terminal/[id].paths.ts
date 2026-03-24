@@ -60,6 +60,7 @@ export default {
           // Terminal app info (separate from backend)
           terminalName: terminal.name ?? meta.label ?? b.name,
           terminalDescription: terminal.description ?? "",
+          terminalBody: terminal.body ?? "",
           terminalUrl: terminal.url ?? meta.url ?? "",
           terminalRepo: terminal.repo ?? "",
           terminalAuthor: terminal.author ?? "",

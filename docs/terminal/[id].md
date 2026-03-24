@@ -40,6 +40,10 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
   <span v-if="p.terminalAuthor"> · by {{ p.terminalAuthor }}</span>
 </div>
 
+<div v-if="p.terminalBody" class="terminal-body">
+  <p v-for="(para, i) in p.terminalBody.split('\n\n')" :key="i">{{ para }}</p>
+</div>
+
 <div class="backend-info">
   <strong>Backend:</strong> {{ p.backendDescription }}
   <span v-if="p.backendType"> ({{ p.backendType }})</span>
@@ -111,6 +115,16 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
 
 .backend-meta code {
   font-size: 0.9em;
+}
+
+.terminal-body {
+  margin: 1.5em 0;
+  color: var(--vp-c-text-2);
+  line-height: 1.7;
+}
+
+.terminal-body p {
+  margin: 0.75em 0;
 }
 
 .backend-caveat {

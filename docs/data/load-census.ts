@@ -95,14 +95,14 @@ export function catLabel(cat: string): string {
 }
 
 export const categoryDescriptions: Record<string, string> = {
-  sgr: "Select Graphic Rendition (SGR) controls text styling: bold, italic, underline variants, colors, strikethrough, and other visual attributes.",
-  cursor: "Cursor control sequences for positioning, visibility, and save/restore operations.",
-  text: "Basic text output, wrapping, wide character handling (emoji, CJK), tabs, and line control.",
-  erase: "Line and screen clearing operations for selective content removal.",
-  modes: "Terminal modes including alternate screen, bracketed paste, mouse/focus tracking, and auto-wrap.",
-  scrollback: "Scroll buffer behavior, reverse index, total line tracking, and alternate screen interaction.",
-  reset: "Terminal reset operations: SGR attribute reset, full terminal reset (RIS), and programmatic reset.",
-  extensions: "Modern terminal extensions: kitty keyboard/graphics, sixel, OSC 8 hyperlinks, text reflow, semantic prompts.",
+  sgr: "Select Graphic Rendition (SGR) controls text styling: bold, italic, underline variants, colors, strikethrough, and other visual attributes. SGR sequences are the most commonly used escape codes — every TUI framework depends on them for rendering styled text. Support ranges from universal (bold, basic colors) to inconsistent (curly underline, hyperlinks).",
+  cursor: "Cursor control sequences for positioning, visibility, shape, and save/restore operations. Correct cursor handling is essential for TUI applications that need precise text placement. Differences in DECSC/DECRC behavior and cursor shape support are common sources of cross-terminal bugs.",
+  text: "Basic text output, wrapping, wide character handling (emoji, CJK), tabs, and line control. This category covers the fundamentals of terminal text rendering, including how terminals handle characters that occupy two columns (CJK ideographs, many emoji) and whether text reflows correctly when the terminal is resized.",
+  erase: "Line and screen clearing operations for selective content removal. Erase sequences let applications clear portions of the screen or individual lines, optionally preserving or clearing character attributes. These sequences are heavily used by full-screen TUI applications during redraws.",
+  modes: "Terminal modes control global terminal behavior: alternate screen buffer, bracketed paste, mouse tracking, focus events, and auto-wrap. Mode support varies significantly across terminals — mouse tracking modes alone have four variants (X10, normal, button, any-event), and not all terminals implement focus reporting or all bracketed paste edge cases.",
+  scrollback: "Scroll buffer behavior, reverse index, total line tracking, and alternate screen interaction. Scrollback handling is one of the least standardized areas of terminal emulation — terminals differ in buffer size limits, whether alternate screen content enters scrollback, and how reverse index interacts with scroll regions.",
+  reset: "Terminal reset operations: SGR attribute reset, full terminal reset (RIS), and programmatic reset. Reset behavior determines how reliably an application can return the terminal to a known state. Differences in what RIS resets (cursor position, modes, scroll regions, character sets) can cause subtle bugs.",
+  extensions: "Modern terminal extensions beyond the traditional VT specification: Kitty keyboard protocol, Kitty graphics protocol, sixel inline images, OSC 8 hyperlinks, text reflow on resize, and semantic prompt markers (OSC 133). These features represent the cutting edge of terminal capability and vary widely in adoption across terminals.",
 }
 
 export const tagLabels: Record<string, string> = {
@@ -118,15 +118,15 @@ export const tagLabels: Record<string, string> = {
 }
 
 export const tagDescriptions: Record<string, string> = {
-  "ecma-48": "Features defined in the ECMA-48 standard (also known as ISO/IEC 6429 and ANSI X3.64). These are the most fundamental terminal control sequences for cursor movement, text styling, and screen manipulation.",
-  "vt100": "Features from the original DEC VT100 terminal (1978) and its successors. These sequences form the foundation of modern terminal emulation.",
-  "vt510": "Features specific to the DEC VT510 terminal, extending the VT100 family with additional cursor control and display modes.",
-  "dec-private-modes": "DEC private mode sequences (DECSET/DECRST) for terminal behavior control: alternate screen, cursor keys, mouse tracking, auto-wrap, and more.",
-  "xterm-extensions": "Extensions introduced by xterm and widely adopted: 256-color and truecolor support, alternate screen buffer, mouse tracking, focus events, text reflow, and hyperlinks.",
-  "kitty-extensions": "Extensions introduced by the Kitty terminal: enhanced keyboard protocol, graphics protocol for inline images, and extended underline styles.",
-  "osc": "Operating System Command sequences for out-of-band communication: window titles, hyperlinks, semantic prompt markers.",
-  "sixel": "Sixel graphics protocol for inline raster images in the terminal, originally from DEC terminals.",
-  "unicode": "Unicode text handling: correct width calculation for CJK characters and emoji that occupy two terminal columns.",
+  "ecma-48": "Features defined in the ECMA-48 standard (also known as ISO/IEC 6429 and ANSI X3.64). These are the most fundamental terminal control sequences for cursor movement, text styling, and screen manipulation. Published in 1976 and revised through 1998, ECMA-48 defines the CSI (Control Sequence Introducer) format used by nearly all modern escape sequences.",
+  "vt100": "Features from the original DEC VT100 terminal (1978) and its successors (VT220, VT320, VT420). These sequences form the foundation of modern terminal emulation — virtually every terminal today describes itself as \"VT100-compatible.\" The VT100 established conventions for cursor addressing, scrolling regions, character sets, and the escape sequence grammar that all later standards built upon.",
+  "vt510": "Features from the DEC VT510 terminal, the last in the VT series. The VT510 extended the VT100 family with additional cursor control, display modes, and character set handling. While few terminals implement the full VT510 specification, specific features like DECSCA (select character protection attribute) and enhanced cursor save/restore appear in modern emulators.",
+  "dec-private-modes": "DEC private mode sequences use the DECSET (CSI ? Pm h) and DECRST (CSI ? Pm l) format for toggling terminal behaviors. These control critical features like alternate screen buffer, origin mode, auto-wrap, cursor visibility, and mouse tracking. The \"private\" designation (the ? prefix) distinguishes them from ECMA-48 standard modes and allows vendor-specific extensions without conflicting with the standard.",
+  "xterm-extensions": "Extensions introduced by xterm, the reference X Window System terminal emulator, and widely adopted across the ecosystem. These include 256-color and truecolor (24-bit) SGR sequences, the alternate screen buffer with saved cursor, mouse tracking modes (X10, normal, button-event, any-event), focus events, OSC 8 hyperlinks, and OSC 52 clipboard access. Most modern terminals implement xterm extensions as a de facto standard.",
+  "kitty-extensions": "Extensions introduced by the Kitty terminal emulator. The Kitty keyboard protocol provides unambiguous, modifier-aware key reporting that solves longstanding terminal input limitations (distinguishing Ctrl+I from Tab, reporting key release events). The Kitty graphics protocol enables inline image display via a chunked base64 transfer mechanism. Kitty also introduced extended underline styles (curly, dotted, dashed) with configurable colors. These protocols are adopted by Ghostty, WezTerm, foot, and other modern terminals.",
+  "osc": "Operating System Command (OSC) sequences use the ESC ] format for out-of-band communication between applications and the terminal. Common OSC sequences set the window title (OSC 0/2), manipulate the clipboard (OSC 52), define hyperlinks (OSC 8), and mark semantic prompt regions (OSC 133). The OSC namespace is open-ended, allowing terminals to define new sequences without conflicting with CSI-based control codes.",
+  "sixel": "Sixel is a bitmap graphics format originally developed by DEC for the VT240 and VT340 terminals. It encodes raster images as printable ASCII characters, where each character represents a 1x6 pixel column — hence the name \"six pixels.\" Sixel support has been revived in modern terminals (xterm, foot, WezTerm, mlterm) as a way to display inline images without requiring a proprietary protocol.",
+  "unicode": "Unicode text handling tests whether terminals correctly calculate the display width of characters that occupy two terminal columns. CJK ideographs, many emoji (especially combined sequences like family emoji), and certain symbols are \"wide\" characters that take two cells. Incorrect width calculation causes text misalignment, cursor positioning errors, and broken TUI layouts — making this one of the most impactful compatibility issues in practice.",
 }
 
 export function tagLabel(tag: string): string {
