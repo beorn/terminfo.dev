@@ -76,7 +76,8 @@ async function runProbes(): Promise<ProbeResults> {
         notes[probe.id] = `error: ${err instanceof Error ? err.message : String(err)}`
       }
     }
-    // Drain all pending responses before exiting alt screen (still in raw mode)
+    // Reset all SGR attributes + drain pending responses before exiting alt screen
+    process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
     await drainStdin(500)
     process.stdout.write("\x1b[?1049l")
   })
