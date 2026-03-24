@@ -18,7 +18,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { detectTerminal } from "./detect.ts"
 import { ALL_PROBES } from "./probes/index.ts"
-import { withRawMode } from "./tty.ts"
+import { withRawMode, drainStdin } from "./tty.ts"
 import { submitResults } from "./submit.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -76,19 +76,9 @@ async function runProbes(): Promise<ProbeResults> {
         notes[probe.id] = `error: ${err instanceof Error ? err.message : String(err)}`
       }
     }
+    // Drain all pending responses before exiting alt screen (still in raw mode)
+    await drainStdin(500)
     process.stdout.write("\x1b[?1049l")
-  })
-
-  // Drain any late-arriving escape sequence responses before output
-  await new Promise<void>((resolve) => {
-    process.stdin.resume()
-    const timer = setTimeout(() => {
-      process.stdin.pause()
-      process.stdin.removeAllListeners("readable")
-      resolve()
-    }, 100)
-    process.stdin.on("readable", () => { while (process.stdin.read() !== null) {} })
-    timer.unref()
   })
 
   return { terminal, results, notes, responses, passed, total: ALL_PROBES.length }
@@ -197,7 +187,7 @@ program
       notes: data.notes,
       responses: data.responses,
       generated: new Date().toISOString(),
-      cliVersion: "1.3.0",
+      cliVersion: "1.5.0",
       probeCount: ALL_PROBES.length,
     })
     if (url) {

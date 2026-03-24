@@ -90,6 +90,28 @@ export async function queryMode(modeNumber: number): Promise<"set" | "reset" | "
 }
 
 /**
+ * Drain all pending bytes from stdin (late-arriving escape sequence responses).
+ * Waits up to `ms` milliseconds for bytes to stop arriving.
+ */
+export async function drainStdin(ms = 300): Promise<void> {
+  return new Promise((resolve) => {
+    if (!process.stdin.readable) { resolve(); return }
+    process.stdin.resume()
+    let timer = setTimeout(done, ms)
+    function onData() {
+      while (process.stdin.read() !== null) {} // discard
+      clearTimeout(timer)
+      timer = setTimeout(done, ms) // reset timer on each new data
+    }
+    function done() {
+      process.stdin.removeListener("readable", onData)
+      resolve()
+    }
+    process.stdin.on("readable", onData)
+  })
+}
+
+/**
  * Run a function with stdin in raw mode.
  * Restores original mode on exit.
  */

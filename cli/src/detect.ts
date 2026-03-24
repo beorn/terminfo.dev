@@ -52,20 +52,34 @@ export function detectTerminal(): TerminalInfo {
   let name = "unknown"
   let version = ""
 
-  // Check specific env vars first
-  for (const { env, name: n } of ENV_DETECTORS) {
-    if (process.env[env]) {
-      name = n
-      break
+  // On macOS, __CFBundleIdentifier is the most reliable — set by the actual running app
+  const bundleId = process.env.__CFBundleIdentifier
+  if (bundleId && os === "macos") {
+    for (const [termName, bid] of Object.entries(BUNDLE_IDS)) {
+      if (bundleId === bid) { name = termName; break }
+    }
+    // If bundle ID didn't match known terminals, use it as-is
+    if (name === "unknown" && bundleId) {
+      name = bundleId.split(".").pop() ?? bundleId
     }
   }
 
-  // Check $TERM_PROGRAM
+  // Check $TERM_PROGRAM (more reliable than env var detectors for cross-app scenarios)
   if (name === "unknown") {
     const termProgram = process.env.TERM_PROGRAM
     if (termProgram) {
       name = TERM_PROGRAM_MAP[termProgram] ?? termProgram.toLowerCase()
       version = process.env.TERM_PROGRAM_VERSION ?? ""
+    }
+  }
+
+  // Check specific env vars (may be inherited from parent, so lower priority)
+  if (name === "unknown") {
+    for (const { env, name: n } of ENV_DETECTORS) {
+      if (process.env[env]) {
+        name = n
+        break
+      }
     }
   }
 

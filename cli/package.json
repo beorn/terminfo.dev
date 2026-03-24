@@ -1,6 +1,6 @@
 {
   "name": "terminfo.dev",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Test your terminal's feature support and contribute to terminfo.dev",
   "keywords": [
     "ansi",
