@@ -193,6 +193,17 @@ program
       const output = await renderReport(allData)
       console.log(output)
       printNotes(allData)
+
+      // Validate: every failure must have an annotation
+      const missing = findUnannotatedFailures(allData)
+      if (missing.length > 0) {
+        console.error(`\n✗ ${missing.length} failure(s) without annotations in annotations.json:\n`)
+        for (const m of missing) {
+          console.error(`  "${m.backend}:${m.feature}": { "note": "${m.autoNote}" }`)
+        }
+        console.error(`\nAdd these to annotations.json with human-readable explanations.\n`)
+        process.exitCode = 1
+      }
     }
   })
 
@@ -276,6 +287,32 @@ program.action(() => {
 })
 
 // ── Helpers ──
+
+function findUnannotatedFailures(data: CensusData): Array<{ backend: string; feature: string; autoNote: string }> {
+  const annotationsPath = join(ROOT, "annotations.json")
+  let annotations: Record<string, { note: string }> = {}
+  try {
+    annotations = JSON.parse(readFileSync(annotationsPath, "utf-8"))
+  } catch {}
+
+  const missing: Array<{ backend: string; feature: string; autoNote: string }> = []
+
+  for (const name of data.backendNames) {
+    const results = data.results.get(name)
+    const notes = data.notes.get(name)
+    if (!results) continue
+
+    for (const [feature, pass] of results) {
+      if (pass) continue // only check failures
+      const key = `${name}:${feature}`
+      if (annotations[key]) continue // has annotation
+      const autoNote = notes?.get(feature) ?? "not supported"
+      missing.push({ backend: name, feature, autoNote })
+    }
+  }
+
+  return missing
+}
 
 function loadSavedResults(): CensusData | null {
   if (!existsSync(RESULTS_DIR)) return null
