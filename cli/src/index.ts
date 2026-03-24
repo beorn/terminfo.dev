@@ -13,10 +13,41 @@
  * ```
  */
 
+import { readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { detectTerminal } from "./detect.ts"
 import { ALL_PROBES } from "./probes/index.ts"
 import { withRawMode } from "./tty.ts"
 import { submitResults } from "./submit.ts"
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+/** Load feature slugs from features.json for OSC 8 hyperlinks */
+function loadFeatureSlugs(): Record<string, string> {
+  // Try repo-local path first, then npm-installed path
+  const candidates = [
+    join(__dirname, "..", "..", "features.json"),       // repo: cli/src/ -> features.json
+    join(__dirname, "..", "..", "..", "features.json"),  // npm: node_modules/terminfo.dev/src/ -> features.json
+  ]
+  for (const path of candidates) {
+    try {
+      const raw = JSON.parse(readFileSync(path, "utf-8"))
+      delete raw.$comment
+      const slugs: Record<string, string> = {}
+      for (const [id, entry] of Object.entries(raw) as [string, any][]) {
+        slugs[id] = entry.slug ?? id.replaceAll(".", "-")
+      }
+      return slugs
+    } catch {}
+  }
+  return {} // fallback: featureSlug() will use id.replaceAll(".", "-")
+}
+
+/** OSC 8 hyperlink — clickable link in supporting terminals */
+function link(url: string, text: string): string {
+  return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`
+}
 
 interface ResultEntry {
   terminal: string
@@ -106,7 +137,8 @@ async function main() {
   // Display results
   console.log(`\n\x1b[1mResults: ${passed}/${total} (${pct}%)\x1b[0m\n`)
 
-  // Show categories
+  // Show categories with OSC 8 hyperlinks
+  const slugs = loadFeatureSlugs()
   const categories = new Map<string, Array<{ id: string; name: string; pass: boolean; note?: string }>>()
   for (const probe of ALL_PROBES) {
     const cat = probe.id.split(".")[0]!
@@ -122,11 +154,15 @@ async function main() {
   for (const [cat, probes] of categories) {
     const catPassed = probes.filter((p) => p.pass).length
     const color = catPassed === probes.length ? "\x1b[32m" : catPassed > 0 ? "\x1b[33m" : "\x1b[31m"
-    console.log(`${color}${cat}\x1b[0m (${catPassed}/${probes.length})`)
+    const catLink = link(`https://terminfo.dev/${cat}`, cat)
+    console.log(`${color}${catLink}\x1b[0m (${catPassed}/${probes.length})`)
     for (const p of probes) {
       const icon = p.pass ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m"
       const note = p.note ? ` \x1b[2m— ${p.note}\x1b[0m` : ""
-      console.log(`  ${icon} ${p.name}${note}`)
+      const slug = slugs[p.id] ?? p.id.replaceAll(".", "-")
+      const cat = p.id.split(".")[0]!
+      const featureLink = link(`https://terminfo.dev/${cat}/${slug}`, p.name)
+      console.log(`  ${icon} ${featureLink}${note}`)
     }
   }
 
