@@ -1,6 +1,6 @@
 {
-  "terminal": "terminal-app",
-  "terminalVersion": "2.15",
+  "terminal": "warp",
+  "terminalVersion": "0.2026.03.18.08.24.03",
   "os": "macos",
   "osVersion": "25.3.0",
   "results": {
@@ -52,7 +52,7 @@
     "modes.mouse-sgr": true,
     "modes.focus-tracking": true,
     "modes.application-cursor": true,
-    "modes.origin": false,
+    "modes.origin": true,
     "modes.reverse-video": true,
     "modes.synchronized-output": true,
     "scrollback.set-region": true,
@@ -92,9 +92,9 @@
     "sgr.selective-reset.inverse": true,
     "charsets.dec-special": true,
     "charsets.utf8": true,
-    "extensions.kitty-keyboard": false,
+    "extensions.kitty-keyboard": true,
     "extensions.sixel-da1": false,
-    "extensions.sixel": true,
+    "extensions.sixel": false,
     "extensions.osc52-clipboard": true,
     "extensions.osc7-cwd": true,
     "extensions.osc10-fg-color": true,
@@ -114,13 +114,13 @@
     "modes.mouse-sgr": "Behavioral: responsive after enable",
     "modes.focus-tracking": "Behavioral: responsive after enable",
     "modes.application-cursor": "Behavioral: responsive after enable",
-    "modes.origin": "Behavioral: cursor at row 1 (origin mapped)",
+    "modes.origin": "Behavioral: cursor at row 5 (origin mapped)",
     "modes.reverse-video": "Behavioral: responsive after enable",
-    "modes.synchronized-output": "Behavioral: responsive after enable",
-    "extensions.kitty-keyboard": "No kitty keyboard response",
-    "extensions.sixel-da1": "DA1 response missing ;4 (sixel)"
+    "modes.synchronized-output": "DECRPM: mode reset",
+    "extensions.sixel-da1": "DA1 response missing ;4 (sixel)",
+    "extensions.sixel": "Sixel image didn't move cursor"
   },
-  "generated": "2026-03-24T23:43:44.711Z",
+  "generated": "2026-03-24T23:43:04.619Z",
   "cliVersion": "2.3.0",
   "probeCount": 100
 }
