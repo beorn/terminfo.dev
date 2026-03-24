@@ -45,6 +45,8 @@ export default {
         })
       }
 
+      const terminal = (meta as any).terminal ?? {}
+
       return {
         params: {
           id: slug,
@@ -55,6 +57,12 @@ export default {
           backendUpstream: meta.upstream ?? "",
           backendType: meta.type ?? "",
           backendCaveat: meta.caveat ?? "",
+          // Terminal app info (separate from backend)
+          terminalName: terminal.name ?? meta.label ?? b.name,
+          terminalDescription: terminal.description ?? "",
+          terminalUrl: terminal.url ?? meta.url ?? "",
+          terminalRepo: terminal.repo ?? "",
+          terminalAuthor: terminal.author ?? "",
           version: b.version,
           engine: b.engine,
           generated: data.generated,

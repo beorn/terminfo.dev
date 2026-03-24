@@ -30,18 +30,23 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
 
 <div class="backend-page">
 
-# {{ p.backendName }}
+# {{ p.terminalName }}
 
-<p v-if="p.backendDescription" class="backend-desc">{{ p.backendDescription }}</p>
+<p v-if="p.terminalDescription" class="terminal-desc">{{ p.terminalDescription }}</p>
 
-<div class="backend-meta">
-  <span v-if="p.version">Version: <code>{{ p.version }}</code></span>
-  <span v-if="p.backendType"> · Type: {{ p.backendType }}</span>
-  <span v-if="p.backendUpstream"> · Upstream: {{ p.backendUpstream }}</span>
-  <span v-if="p.backendUrl"> · <a :href="p.backendUrl" target="_blank" rel="noopener">Website ↗</a></span>
+<div class="terminal-links">
+  <span v-if="p.terminalUrl"><a :href="p.terminalUrl" target="_blank" rel="noopener">{{ p.terminalUrl }}</a></span>
+  <span v-if="p.terminalRepo"> · <a :href="p.terminalRepo" target="_blank" rel="noopener">Source</a></span>
+  <span v-if="p.terminalAuthor"> · by {{ p.terminalAuthor }}</span>
 </div>
 
-<p v-if="p.backendCaveat" class="backend-caveat">{{ p.backendCaveat }}</p>
+<div class="backend-info">
+  <strong>Backend:</strong> {{ p.backendDescription }}
+  <span v-if="p.backendType"> ({{ p.backendType }})</span>
+  <span v-if="p.version"> · v{{ p.version }}</span>
+</div>
+
+<p v-if="p.backendCaveat" class="backend-caveat">⚠ {{ p.backendCaveat }}</p>
 
 <div class="score-card">
   <div class="score-number">{{ p.pct }}<span class="score-pct">%</span></div>
