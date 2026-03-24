@@ -14,8 +14,9 @@
  */
 
 import { detectTerminal } from "./detect.ts"
-import { ALL_PROBES, type ProbeResult } from "./probes/index.ts"
+import { ALL_PROBES } from "./probes/index.ts"
 import { withRawMode } from "./tty.ts"
+import { submitResults } from "./submit.ts"
 
 interface ResultEntry {
   terminal: string
@@ -124,8 +125,16 @@ async function main() {
     }
   }
 
-  console.log(`\n\x1b[2mSubmit results to terminfo.dev: npx terminfo --submit\x1b[0m`)
-  console.log(`\x1b[2mJSON output: npx terminfo --json\x1b[0m`)
+  if (submitMode) {
+    console.log(`\nSubmitting results to terminfo.dev...`)
+    const url = await submitResults(entry)
+    if (url) {
+      console.log(`\x1b[32m✓ Issue created:\x1b[0m ${url}`)
+    }
+  } else {
+    console.log(`\n\x1b[2mSubmit results to terminfo.dev: npx terminfo --submit\x1b[0m`)
+    console.log(`\x1b[2mJSON output: npx terminfo --json\x1b[0m`)
+  }
 }
 
 main().catch((err) => {
