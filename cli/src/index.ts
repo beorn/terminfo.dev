@@ -39,11 +39,16 @@ async function main() {
   const terminal = detectTerminal()
 
   if (!jsonMode) {
-    console.log(`\x1b[1mterminfo\x1b[0m — terminal feature testing for terminfo.dev\n`)
-    console.log(
-      `Detected: \x1b[1m${terminal.name}\x1b[0m${terminal.version ? ` ${terminal.version}` : ""} on ${terminal.os}${terminal.osVersion ? ` ${terminal.osVersion}` : ""}`,
-    )
-    console.log(`Running ${ALL_PROBES.length} probes...\n`)
+    console.log(`\x1b[1mterminfo.dev\x1b[0m — can your terminal do that?\n`)
+    console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m${terminal.version ? ` ${terminal.version}` : ""}`)
+    console.log(`  Platform:  ${terminal.os}${terminal.osVersion ? ` ${terminal.osVersion}` : ""}`)
+    console.log(`  Probes:    ${ALL_PROBES.length} features across ${new Set(ALL_PROBES.map(p => p.id.split(".")[0])).size} categories`)
+    console.log(`  Website:   https://terminfo.dev`)
+    console.log(``)
+    console.log(`\x1b[2mResults are compared against ${ALL_PROBES.length} terminal features from the`)
+    console.log(`ECMA-48, VT100/VT510, xterm, and Kitty specifications.`)
+    console.log(`Run with --submit to contribute your results to the database.\x1b[0m\n`)
+    console.log(`Running probes...`)
   }
 
   const results: Record<string, boolean> = {}
