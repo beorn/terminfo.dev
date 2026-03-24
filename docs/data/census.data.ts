@@ -69,7 +69,21 @@ export interface CensusData {
   meta: Record<string, BackendMeta>
   /** "backend:feature" -> { note, url? } from annotations.json */
   annotations: Record<string, { note: string; url?: string }>
+  /** feature id -> description from features.json */
+  featureDescriptions: Record<string, string>
   generated: string
+}
+
+function loadFeatureDescriptions(): Record<string, string> {
+  try {
+    const path = join(__dirname, "..", "..", "features.json")
+    const raw = JSON.parse(readFileSync(path, "utf-8"))
+    // Strip $comment key
+    delete raw.$comment
+    return raw
+  } catch {
+    return {}
+  }
 }
 
 function loadAnnotations(): Record<string, { note: string; url?: string }> {
@@ -186,6 +200,7 @@ function loadUnifiedCensus(path: string): CensusData {
     stats,
     meta: loadBackendMeta(),
     annotations,
+    featureDescriptions: loadFeatureDescriptions(),
     generated: raw.generated ?? "",
   }
 }
@@ -258,7 +273,14 @@ function loadPerBackendResults(): CensusData {
 
   const generated = new Date().toISOString()
 
-  return { backends: allBackends, features, categories, results, notes, stats, meta: loadBackendMeta(), generated }
+  const annotations = loadAnnotations()
+  for (const [key, ann] of Object.entries(annotations)) {
+    const [backend, ...fp] = key.split(":")
+    const feature = fp.join(":")
+    if (notes[backend]) notes[backend][feature] = ann.note
+  }
+
+  return { backends: allBackends, features, categories, results, notes, stats, meta: loadBackendMeta(), annotations, featureDescriptions: loadFeatureDescriptions(), generated }
 }
 
 function emptyData(): CensusData {
@@ -270,6 +292,8 @@ function emptyData(): CensusData {
     notes: {},
     stats: {},
     meta: {},
+    annotations: {},
+    featureDescriptions: loadFeatureDescriptions(),
     generated: "",
   }
 }

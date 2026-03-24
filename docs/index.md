@@ -29,72 +29,6 @@ const categoryLabels = {
   extensions: 'Extensions',
 }
 
-// Feature descriptions for hover-over
-const featureDescriptions = {
-  'sgr.bold': 'SGR 1 — bold/bright text',
-  'sgr.faint': 'SGR 2 — dim/faint text',
-  'sgr.italic': 'SGR 3 — italic text',
-  'sgr.underline.single': 'SGR 4 — single underline',
-  'sgr.underline.double': 'SGR 21 — double underline',
-  'sgr.underline.curly': 'SGR 4:3 — curly/wavy underline',
-  'sgr.underline.dotted': 'SGR 4:4 — dotted underline',
-  'sgr.underline.dashed': 'SGR 4:5 — dashed underline',
-  'sgr.blink': 'SGR 5 — blinking text',
-  'sgr.inverse': 'SGR 7 — reverse video (swap fg/bg)',
-  'sgr.hidden': 'SGR 8 — invisible text',
-  'sgr.strikethrough': 'SGR 9 — strikethrough text',
-  'sgr.fg.256': 'SGR 38;5;N — 256-color foreground',
-  'sgr.bg.256': 'SGR 48;5;N — 256-color background',
-  'sgr.fg.truecolor': 'SGR 38;2;R;G;B — 24-bit foreground',
-  'sgr.bg.truecolor': 'SGR 48;2;R;G;B — 24-bit background',
-  'sgr.reset': 'SGR 0 — reset all attributes',
-  'cursor.hide': 'DECTCEM — hide cursor (CSI ?25l)',
-  'cursor.move.absolute': 'CUP — cursor position (CSI row;col H)',
-  'cursor.move.up': 'CUU — cursor up (CSI N A)',
-  'cursor.move.down': 'CUD — cursor down (CSI N B)',
-  'cursor.move.forward': 'CUF — cursor forward (CSI N C)',
-  'cursor.move.back': 'CUB — cursor back (CSI N D)',
-  'cursor.move.home': 'Cursor to home position (CSI H)',
-  'cursor.save-restore': 'DECSC/DECRC — save and restore cursor position',
-  'extensions.kitty-keyboard': 'Kitty progressive keyboard enhancement protocol',
-  'extensions.kitty-graphics': 'Kitty graphics protocol — inline image display',
-  'extensions.sixel': 'Sixel graphics — DEC bitmap image protocol',
-  'extensions.osc8': 'OSC 8 — clickable hyperlinks in terminal',
-  'extensions.osc2-title': 'OSC 2 — set window title',
-  'extensions.reflow': 'Text reflow on terminal resize',
-  'extensions.semantic-prompts': 'OSC 133 — shell integration markers (prompt/command/output)',
-  'extensions.truecolor': '24-bit RGB color support (16M colors)',
-  'modes.alt-screen.enter': 'DECSET 1049 — enter alternate screen buffer',
-  'modes.alt-screen.exit': 'DECRST 1049 — exit alternate screen buffer',
-  'modes.bracketed-paste': 'DECSET 2004 — wrap pasted text in escape sequences',
-  'modes.mouse-tracking': 'DECSET 1000 — report mouse clicks',
-  'modes.focus-tracking': 'DECSET 1004 — report focus in/out events',
-  'modes.reverse-video': 'DECSET 5 — reverse video mode (swap all fg/bg)',
-  'modes.application-cursor': 'DECSET 1 — application cursor keys mode',
-  'modes.auto-wrap': 'DECSET 7 — auto-wrap at end of line',
-  'scrollback.accumulate': 'Lines scroll into scrollback buffer beyond screen height',
-  'scrollback.total-lines': 'Scrollback reports correct total line count',
-  'scrollback.scroll-up': 'SU (CSI S) — scroll content up',
-  'scrollback.reverse-index': 'RI (ESC M) — reverse index / scroll down',
-  'scrollback.alt-screen': 'Alternate screen has separate scrollback',
-  'erase.line.right': 'EL 0 — erase from cursor to end of line',
-  'erase.line.left': 'EL 1 — erase from start of line to cursor',
-  'erase.line.all': 'EL 2 — erase entire line',
-  'erase.screen.all': 'ED 2 — erase entire screen',
-  'erase.screen.below': 'ED 0 — erase from cursor to end of screen',
-  'reset.sgr': 'SGR 0 clears all text attributes',
-  'reset.ris': 'RIS (ESC c) — full terminal reset',
-  'reset.method': 'Backend reset() method clears state',
-  'text.basic': 'Basic ASCII text rendering',
-  'text.wrap': 'Text wraps at terminal width',
-  'text.wide.cjk': 'CJK characters occupy 2 columns',
-  'text.wide.emoji': 'Emoji characters occupy 2 columns',
-  'text.tab': 'Tab stops at 8-column intervals',
-  'text.cr': 'Carriage return moves cursor to column 0',
-  'text.newline': 'Newline moves cursor to next line',
-  'text.overwrite': 'Writing at same position overwrites previous text',
-}
-
 // Sort backends by score (highest first)
 const sortedBackends = computed(() => {
   return [...data.backends].sort((a, b) => {
@@ -163,13 +97,16 @@ function cellIcon(result) {
 }
 
 function cellTooltip(result, backend, featureId) {
-  const label = result === 'yes' ? 'Supported' : result === 'partial' ? 'Partial' : result === 'no' ? 'Not supported' : 'Unknown'
   const ann = data.annotations?.[`${backend}:${featureId}`]
   const note = ann?.note ?? data.notes[backend]?.[featureId]
-  const parts = [label]
-  if (note) parts.push(note)
-  if (ann?.url) parts.push(ann.url)
-  return parts.join('\n')
+  // If there's a specific note, show it directly (no redundant "Not supported" prefix)
+  if (note) {
+    const parts = [note]
+    if (ann?.url) parts.push(ann.url)
+    return parts.join('\n')
+  }
+  // Otherwise just show status
+  return result === 'yes' ? 'Supported' : result === 'partial' ? 'Partial support' : result === 'no' ? 'Not supported' : ''
 }
 
 function catLabel(cat) {
@@ -277,7 +214,7 @@ function backendTooltip(name, version) {
       </td>
     </tr>
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
-      <td class="feature-name" :data-tooltip="featureDescriptions[f.id] || f.spec || ''">{{ f.name }}</td>
+      <td class="feature-name" :data-tooltip="data.featureDescriptions[f.id] || ''">{{ f.name }}</td>
       <td v-for="b in sortedBackends" :key="b.name"
           :class="cellClass(getResult(b.name, f.id))"
           :data-tooltip="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
@@ -538,7 +475,7 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   font-weight: 400;
   line-height: 1.4;
   white-space: pre-line;
-  max-width: 320px;
+  max-width: 500px;
   z-index: 100;
   pointer-events: none;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
