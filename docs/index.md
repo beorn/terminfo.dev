@@ -106,7 +106,7 @@ function cellTooltip(result, backend, featureId) {
     return parts.join('\n')
   }
   // Otherwise just show status
-  return result === 'yes' ? 'Supported' : result === 'partial' ? 'Partial support' : result === 'no' ? 'Not supported' : ''
+  return result === 'yes' ? 'supported' : result === 'partial' ? 'partial support' : result === 'no' ? 'not supported' : ''
 }
 
 function catLabel(cat) {
@@ -469,7 +469,7 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   font-weight: 400;
   line-height: 1.4;
   white-space: pre-line;
-  max-width: 500px;
+  max-width: 80vw;
   z-index: 100;
   pointer-events: none;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
@@ -488,6 +488,6 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   margin-top: 4px;
   left: 0;
   transform: none;
-  max-width: 600px;
+  max-width: 80vw;
 }
 </style>

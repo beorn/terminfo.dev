@@ -220,6 +220,7 @@ function loadPerBackendResults(): CensusData {
   const results: Record<string, Record<string, string>> = {}
   const notes: Record<string, Record<string, string>> = {}
   const featureSet = new Map<string, FeatureResult>()
+  const featureDescs = loadFeatureDescriptions()
 
   for (const file of files) {
     try {
@@ -239,9 +240,10 @@ function loadPerBackendResults(): CensusData {
         if (!featureSet.has(id)) {
           const cat = id.split(".")[0]
           const suffix = id.slice(cat.length + 1)
+          const desc = featureDescs[id]
           featureSet.set(id, {
             id,
-            name: suffix || id,
+            name: desc || suffix || id,
             category: cat,
           })
         }
