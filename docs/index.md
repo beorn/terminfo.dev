@@ -364,6 +364,12 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   margin: 1em 0;
 }
 
+/* Override VitePress default table overflow-x:auto which breaks sticky */
+.matrix-wrapper table {
+  display: table;
+  overflow-x: visible;
+}
+
 .matrix {
   border-collapse: separate;
   border-spacing: 0;
