@@ -230,7 +230,7 @@ program
       notes: data.notes,
       responses: data.responses,
       generated: new Date().toISOString(),
-      cliVersion: "2.2.0",
+      cliVersion: "2.3.0",
       probeCount: ALL_PROBES.length,
     })
     if (url) {
