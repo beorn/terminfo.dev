@@ -5,7 +5,7 @@ outline: [2, 3]
 <script setup>
 import { useData } from 'vitepress'
 const { params } = useData()
-const p = params
+const p = params.value
 
 const categories = JSON.parse(p.categories)
 

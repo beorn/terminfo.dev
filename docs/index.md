@@ -113,22 +113,23 @@ function catLabel(cat) {
   return categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1)
 }
 
-function barTooltip(backendName, status) {
+function barTooltip(backendName) {
   const r = data.results[backendName] ?? {}
   const n = data.notes[backendName] ?? {}
-  const features = Object.entries(r)
-    .filter(([_, v]) => {
-      if (status === 'yes') return v === 'yes'
-      if (status === 'partial') return v === 'partial'
-      return v === 'no' || v === 'unknown'
-    })
-    .map(([id]) => {
+  const passing = []
+  const failing = []
+  for (const [id, v] of Object.entries(r)) {
+    const name = data.featureDescriptions[id]?.name ?? id
+    if (v === 'yes') passing.push(`  ✓ ${name}`)
+    else {
       const note = n[id]
-      return note ? `${id}: ${note}` : id
-    })
-  if (features.length === 0) return ''
-  const label = status === 'yes' ? 'Passing' : status === 'partial' ? 'Partial' : 'Failing'
-  return `${label} (${features.length}):\n${features.join('\n')}`
+      failing.push(note ? `  ✗ ${name}: ${note}` : `  ✗ ${name}`)
+    }
+  }
+  const parts = []
+  if (failing.length > 0) parts.push(`Not supported (${failing.length}):\n${failing.join('\n')}`)
+  if (passing.length > 0) parts.push(`Supported (${passing.length}):\n${passing.join('\n')}`)
+  return parts.join('\n\n')
 }
 
 function failBarWidth(backendName) {
@@ -144,8 +145,7 @@ function featureSlug(id) {
 }
 
 function termSlug(name) {
-  const label = (data.meta[name]?.label ?? name).toLowerCase()
-  return label.replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '')
+  return data.meta[name]?.slug ?? name
 }
 
 // Backend metadata comes from @termless/core via census data loader
@@ -179,7 +179,7 @@ function backendTooltip(name, version) {
   <div v-for="b in sortedBackends" :key="b.name" class="summary-row">
     <a class="summary-name hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
-    <div class="summary-bar" :data-tooltip="barTooltip(b.name, 'no')">
+    <div class="summary-bar" :data-tooltip="barTooltip(b.name)">
       <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }"></div>
       <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }"></div>
@@ -433,15 +433,17 @@ We're working on [app-level testing](about) that probes real terminal applicatio
 }
 
 /* Hover-links: look like normal text, reveal as links on hover */
-.hover-link {
-  color: inherit;
-  text-decoration: none;
+.hover-link,
+.hover-link:link,
+.hover-link:visited {
+  color: inherit !important;
+  text-decoration: none !important;
   font-weight: inherit;
 }
 
 .hover-link:hover {
-  color: var(--vp-c-brand-1);
-  text-decoration: underline;
+  color: var(--vp-c-brand-1) !important;
+  text-decoration: underline !important;
 }
 
 .cell-yes {
@@ -494,8 +496,8 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   font-size: 0.75em;
   font-weight: 400;
   line-height: 1.4;
-  white-space: pre-line;
-  max-width: 80vw;
+  white-space: pre;
+  width: max-content;
   z-index: 100;
   pointer-events: none;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
