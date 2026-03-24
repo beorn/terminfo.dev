@@ -106,7 +106,7 @@ function cellTooltip(result, backend, featureId) {
     return parts.join('\n')
   }
   // Otherwise just show status
-  return result === 'yes' ? 'supported' : result === 'partial' ? 'partial support' : result === 'no' ? 'not supported' : ''
+  return result === 'yes' ? 'Supported' : result === 'partial' ? 'Partial support' : result === 'no' ? 'Not supported' : ''
 }
 
 function catLabel(cat) {
