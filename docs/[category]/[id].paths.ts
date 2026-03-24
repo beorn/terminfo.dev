@@ -16,12 +16,14 @@ export default {
         version: string
         result: string
         note: string
+        url: string
       }> = []
 
       for (const b of data.backends) {
         const result = data.results[b.name]?.[f.id] ?? "unknown"
         const ann = data.annotations?.[`${b.name}:${f.id}`]
         const note = ann?.note ?? data.notes[b.name]?.[f.id] ?? ""
+        const url = ann?.url ?? ""
         backendResults.push({
           name: b.name,
           slug: terminalSlug(b.name, data.meta),
@@ -29,6 +31,7 @@ export default {
           version: b.version,
           result,
           note,
+          url,
         })
       }
 

@@ -53,7 +53,10 @@ function cls(result) {
       <td><a :href="'/terminal/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
       <td :class="cls(r.result)" class="result-cell">{{ icon(r.result) }} {{ r.result }}</td>
-      <td class="note-cell">{{ r.note }}</td>
+      <td class="note-cell">
+        {{ r.note }}
+        <a v-if="r.url" :href="r.url" target="_blank" rel="noopener" class="upstream-link"> ↗ upstream</a>
+      </td>
     </tr>
   </tbody>
 </table>

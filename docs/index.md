@@ -232,7 +232,7 @@ function backendTooltip(name, version) {
       <td v-for="b in sortedBackends" :key="b.name"
           :class="cellClass(getResult(b.name, f.id))"
           :data-tooltip="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
-        {{ cellIcon(getResult(b.name, f.id)) }}
+        <a class="cell-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ cellIcon(getResult(b.name, f.id)) }}</a>
       </td>
     </tr>
   </tbody>
@@ -291,7 +291,7 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   font-weight: 600;
   font-size: 0.9em;
   flex-shrink: 0;
-  cursor: help;
+  cursor: pointer;
 }
 
 .summary-version {
@@ -308,7 +308,7 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   background: var(--vp-c-bg-soft);
   border-radius: 4px;
   display: flex;
-  cursor: help;
+  cursor: pointer;
 }
 
 .bar-yes {
@@ -430,6 +430,15 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   text-align: left !important;
   white-space: nowrap;
   font-size: 0.95em;
+}
+
+/* Cell links — inherit cell color, fill the entire cell */
+.cell-link,
+.cell-link:link,
+.cell-link:visited {
+  color: inherit !important;
+  text-decoration: none !important;
+  display: block;
 }
 
 /* Hover-links: look like normal text, reveal as links on hover */
