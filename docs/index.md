@@ -116,23 +116,25 @@ function catLabel(cat) {
   return categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1)
 }
 
-function barTooltip(backendName) {
+function barSegmentTooltip(backendName, segment) {
   const r = data.results[backendName] ?? {}
   const n = data.notes[backendName] ?? {}
-  const passing = []
-  const failing = []
+  const items = []
   for (const [id, v] of Object.entries(r)) {
     const name = data.featureDescriptions[id]?.name ?? id
-    if (v === 'yes') passing.push(`  ✓ ${name}`)
-    else {
+    if (segment === 'yes' && v === 'yes') {
+      items.push(`  ✓ ${name}`)
+    } else if (segment === 'partial' && v === 'partial') {
       const note = n[id]
-      failing.push(note ? `  ✗ ${name}: ${note}` : `  ✗ ${name}`)
+      items.push(note ? `  ~ ${name}: ${note}` : `  ~ ${name}`)
+    } else if (segment === 'fail' && v !== 'yes' && v !== 'partial') {
+      const note = n[id]
+      items.push(note ? `  ✗ ${name}: ${note}` : `  ✗ ${name}`)
     }
   }
-  const parts = []
-  if (failing.length > 0) parts.push(`Not supported (${failing.length}):\n${failing.join('\n')}`)
-  if (passing.length > 0) parts.push(`Supported (${passing.length}):\n${passing.join('\n')}`)
-  return parts.join('\n\n')
+  if (items.length === 0) return ''
+  const label = segment === 'yes' ? 'Supported' : segment === 'partial' ? 'Partial' : 'Not supported'
+  return `${label} (${items.length}):\n${items.join('\n')}`
 }
 
 function failBarWidth(backendName) {
@@ -154,6 +156,15 @@ function termSlug(name) {
 // Backend metadata comes from @termless/core via census data loader
 function backendLabel(name) {
   return data.meta[name]?.label ?? name
+}
+
+function featureTooltip(f) {
+  const desc = data.featureDescriptions[f.id]
+  if (!desc) return f.name
+  const parts = [desc.name]
+  if (desc.tags?.length) parts.push('Tags: ' + desc.tags.join(', '))
+  if (desc.url) parts.push('Spec: ' + desc.url.replace(/^https?:\/\//, ''))
+  return parts.join('\n')
 }
 
 function backendTooltip(name, version) {
@@ -182,10 +193,10 @@ function backendTooltip(name, version) {
   <div v-for="b in sortedBackends" :key="b.name" class="summary-row">
     <a class="summary-name hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
-    <div class="summary-bar" :data-tooltip="barTooltip(b.name)">
-      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }"></div>
-      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }"></div>
-      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }"></div>
+    <div class="summary-bar">
+      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
+      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
     </div>
     <span class="summary-pct">{{ data.stats[b.name]?.pct }}%</span>
     <span class="summary-counts">
@@ -229,7 +240,7 @@ function backendTooltip(name, version) {
       </td>
     </tr>
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
-      <td class="feature-name">
+      <td class="feature-name" :data-tooltip="featureTooltip(f)">
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in sortedBackends" :key="b.name"
@@ -509,6 +520,7 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   font-weight: 400;
   line-height: 1.4;
   white-space: pre;
+  text-align: left;
   width: max-content;
   z-index: 100;
   pointer-events: none;
@@ -521,8 +533,10 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   display: none;
 }
 
-/* Summary bar tooltip appears below the bar */
-.summary-bar[data-tooltip]:hover::after {
+/* Bar segment tooltips appear below */
+.bar-yes[data-tooltip]:hover::after,
+.bar-partial[data-tooltip]:hover::after,
+.bar-fail[data-tooltip]:hover::after {
   bottom: auto;
   top: 100%;
   margin-top: 4px;

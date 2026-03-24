@@ -170,7 +170,7 @@ export default defineConfig({
   title: "Terminfo.dev",
   description: "Can your terminal do that? Feature support tables for terminal emulators.",
   cleanUrls: true,
-  head: [["link", { rel: "icon", href: "/favicon.svg" }]],
+  head: [["link", { rel: "icon", type: "image/svg+xml", href: "/logo.svg" }]],
 
   sitemap: {
     hostname: "https://terminfo.dev",
@@ -213,6 +213,7 @@ export default defineConfig({
   },
 
   themeConfig: {
+    logo: "/logo.svg",
     nav: [
       { text: "Matrix", link: "/" },
       {

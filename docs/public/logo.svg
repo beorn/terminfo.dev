@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Terminal window -->
+  <rect x="8" y="16" width="112" height="96" rx="10" fill="#1e293b"/>
+  <rect x="8" y="16" width="112" height="24" rx="10" fill="#334155"/>
+  <rect x="8" y="30" width="112" height="10" fill="#334155"/>
+  <!-- Window dots -->
+  <circle cx="24" cy="28" r="4" fill="#ef4444"/>
+  <circle cx="38" cy="28" r="4" fill="#f59e0b"/>
+  <circle cx="52" cy="28" r="4" fill="#10b981"/>
+  <!-- >% prompt -->
+  <text x="28" y="88" font-family="monospace" font-size="44" font-weight="700" fill="#94a3b8" dominant-baseline="middle">&gt;</text>
+  <text x="64" y="88" font-family="monospace" font-size="44" font-weight="700" fill="#10b981" dominant-baseline="middle">%</text>
+</svg>

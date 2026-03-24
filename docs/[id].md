@@ -33,6 +33,19 @@ function tooltip(result, note) {
   if (result === 'no') return 'not supported'
   return ''
 }
+
+function featureTooltip(f) {
+  const parts = [f.name]
+  if (f.tags?.length) parts.push('Tags: ' + f.tags.join(', '))
+  if (f.url) parts.push('Spec: ' + f.url.replace(/^https?:\/\//, ''))
+  return parts.join('\n')
+}
+
+function termTooltip(b) {
+  const parts = [b.label]
+  if (b.version) parts.push('Version: ' + b.version)
+  return parts.join('\n')
+}
 </script>
 
 <div class="category-page">
@@ -53,14 +66,14 @@ function tooltip(result, note) {
   <thead>
     <tr>
       <th class="feature-col">Feature</th>
-      <th v-for="b in backends" :key="b.name">
+      <th v-for="b in backends" :key="b.name" :data-tooltip="termTooltip(b)">
         <a :href="'/terminal/' + b.slug">{{ b.label }}</a>
       </th>
     </tr>
   </thead>
   <tbody>
     <tr v-for="f in features" :key="f.id">
-      <td class="feature-name">
+      <td class="feature-name" :data-tooltip="featureTooltip(f)">
         <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
       </td>
       <td v-for="b in backends" :key="b.name"
@@ -212,6 +225,7 @@ function tooltip(result, note) {
   font-weight: 400;
   line-height: 1.4;
   white-space: pre-line;
+  text-align: left;
   max-width: 80vw;
   z-index: 100;
   pointer-events: none;

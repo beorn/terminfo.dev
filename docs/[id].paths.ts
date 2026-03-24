@@ -47,6 +47,8 @@ export default {
           slug: featureSlug(f.id),
           category: cat,
           name: desc?.name ?? f.name,
+          url: featuresMeta[f.id]?.url ?? "",
+          tags: featuresMeta[f.id]?.tags ?? [],
           results,
         }
       })
@@ -84,6 +86,8 @@ export default {
           slug: featureSlug(fid),
           category,
           name: desc?.name ?? fid,
+          url: featuresMeta[fid]?.url ?? "",
+          tags: featuresMeta[fid]?.tags ?? [],
           results,
         }
       })
