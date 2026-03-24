@@ -1,55 +1,172 @@
 {
   "xtermjs:cursor.hide": {
-    "note": "@xterm/headless doesn't track cursor visibility (rendering concern)",
+    "note": "Headless mode doesn't track cursor visibility",
     "url": "https://github.com/xtermjs/xterm.js/issues/4448"
   },
   "xtermjs:sgr.underline.double": {
-    "note": "@xterm/headless treats all underline variants as 'single'",
+    "note": "Headless mode treats all underline variants as single",
     "url": "https://github.com/xtermjs/xterm.js/issues/1145"
   },
   "xtermjs:sgr.underline.curly": {
-    "note": "@xterm/headless treats all underline variants as 'single'",
+    "note": "Headless mode treats all underline variants as single",
     "url": "https://github.com/xtermjs/xterm.js/issues/1145"
   },
   "xtermjs:sgr.underline.dotted": {
-    "note": "@xterm/headless treats all underline variants as 'single'",
+    "note": "Headless mode treats all underline variants as single",
     "url": "https://github.com/xtermjs/xterm.js/issues/1145"
   },
   "xtermjs:sgr.underline.dashed": {
-    "note": "@xterm/headless treats all underline variants as 'single'",
+    "note": "Headless mode treats all underline variants as single",
     "url": "https://github.com/xtermjs/xterm.js/issues/1145"
   },
   "xtermjs:scrollback.scroll-up": {
-    "note": "getCell reads from buffer, not viewport after scroll"
+    "note": "Headless API reads from buffer, not viewport after scroll"
   },
   "xtermjs:sgr.blink": {
-    "note": "@xterm/headless doesn't expose blink attribute"
+    "note": "Headless mode doesn't expose blink attribute"
   },
   "xtermjs:sgr.hidden": {
-    "note": "@xterm/headless doesn't expose hidden/invisible attribute"
+    "note": "Headless mode doesn't expose hidden attribute"
   },
   "xtermjs:text.wide.emoji": {
-    "note": "@xterm/headless reports emoji as single-width, not wide",
+    "note": "Headless mode reports emoji as single-width",
     "url": "https://github.com/xtermjs/xterm.js/issues/4960"
   },
-  "vt100-rust:scrollback.accumulate": {
-    "note": "Rust vt100 crate doesn't expose scrollback beyond screen height",
-    "url": "https://github.com/doy/vt100-rust/issues/12"
+  "xtermjs:modes.reverse-video": {
+    "note": "Headless mode doesn't track reverse video mode"
   },
-  "vt100-rust:scrollback.total-lines": {
-    "note": "Rust vt100 crate doesn't expose scrollback beyond screen height",
-    "url": "https://github.com/doy/vt100-rust/issues/12"
+  "xtermjs:extensions.kitty-keyboard": {
+    "note": "Not implemented in xterm.js"
   },
-  "vt100-rust:sgr.faint": {
-    "note": "Rust vt100 crate doesn't expose faint/dim attribute"
+  "xtermjs:extensions.kitty-graphics": {
+    "note": "Not implemented in xterm.js"
   },
-  "vt100-rust:sgr.blink": {
-    "note": "Rust vt100 crate doesn't expose blink attribute"
+  "xtermjs:extensions.sixel": {
+    "note": "Not implemented in xterm.js"
   },
-  "vt100-rust:sgr.hidden": {
-    "note": "Rust vt100 crate doesn't expose hidden attribute"
+  "xtermjs:extensions.semantic-prompts": {
+    "note": "Not implemented in xterm.js"
   },
-  "vt100-rust:sgr.strikethrough": {
-    "note": "Rust vt100 crate doesn't expose strikethrough"
+
+  "ghostty-native:extensions.osc2-title": {
+    "note": "Title not exposed via native Zig API"
+  },
+  "ghostty-native:extensions.sixel": {
+    "note": "Ghostty doesn't support sixel graphics"
+  },
+  "ghostty-native:sgr.blink": {
+    "note": "Ghostty parses blink but doesn't expose it in cell data"
+  },
+  "ghostty-native:sgr.hidden": {
+    "note": "Ghostty parses hidden but doesn't expose it in cell data"
+  },
+
+  "alacritty:erase.screen.all": {
+    "note": "Alacritty's ED 2 doesn't clear scrollback content from buffer"
+  },
+  "alacritty:extensions.kitty-graphics": {
+    "note": "Not implemented in alacritty",
+    "url": "https://github.com/alacritty/alacritty/issues/910"
+  },
+  "alacritty:extensions.semantic-prompts": {
+    "note": "Not implemented in alacritty"
+  },
+  "alacritty:extensions.sixel": {
+    "note": "Not implemented in alacritty",
+    "url": "https://github.com/alacritty/alacritty/issues/910"
+  },
+  "alacritty:modes.reverse-video": {
+    "note": "Not exposed via alacritty_terminal API"
+  },
+  "alacritty:sgr.blink": {
+    "note": "Not exposed via alacritty_terminal API"
+  },
+  "alacritty:sgr.hidden": {
+    "note": "Not exposed via alacritty_terminal API"
+  },
+  "alacritty:sgr.underline.double": {
+    "note": "Alacritty only supports single underline in headless mode"
+  },
+
+  "kitty:cursor.move.absolute": {
+    "note": "Kitty subprocess bridge timed out — Python startup latency"
+  },
+  "kitty:erase.line.right": {
+    "note": "Kitty subprocess bridge timed out"
+  },
+  "kitty:extensions.osc2-title": {
+    "note": "Kitty subprocess bridge timed out"
+  },
+  "kitty:extensions.semantic-prompts": {
+    "note": "Not implemented in kitty"
+  },
+  "kitty:extensions.sixel": {
+    "note": "Not implemented in kitty",
+    "url": "https://github.com/kovidgoyal/kitty/issues/2638"
+  },
+  "kitty:modes.alt-screen.enter": {
+    "note": "Kitty subprocess bridge timed out"
+  },
+  "kitty:modes.mouse-tracking": {
+    "note": "Not exposed via Python API"
+  },
+  "kitty:modes.reverse-video": {
+    "note": "Not exposed via Python API"
+  },
+  "kitty:reset.sgr": {
+    "note": "Kitty subprocess bridge timed out"
+  },
+  "kitty:scrollback.accumulate": {
+    "note": "Kitty subprocess bridge timed out"
+  },
+  "kitty:sgr.bold": {
+    "note": "Kitty subprocess bridge timed out"
+  },
+  "kitty:sgr.hidden": {
+    "note": "Not exposed via Python API"
+  },
+  "kitty:text.basic": {
+    "note": "Kitty subprocess bridge timed out"
+  },
+
+  "vt100:extensions.kitty-graphics": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.kitty-keyboard": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc8": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.reflow": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.semantic-prompts": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.sixel": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:sgr.blink": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:sgr.hidden": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+
+  "wezterm:extensions.kitty-graphics": {
+    "note": "Not implemented in wezterm-term crate"
+  },
+  "wezterm:sgr.blink": {
+    "note": "Not exposed via wezterm-term API"
+  },
+  "wezterm:sgr.hidden": {
+    "note": "Not exposed via wezterm-term API"
+  },
+  "wezterm:sgr.fg.256": {
+    "note": "Backend returns palette index instead of resolved RGB"
+  },
+  "wezterm:sgr.bg.256": {
+    "note": "Backend returns palette index instead of resolved RGB"
   }
 }
