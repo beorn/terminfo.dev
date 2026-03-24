@@ -10,6 +10,7 @@ const { params } = useData()
 const p = params.value
 
 const backendResults = JSON.parse(p.backendResults)
+const featureTags = JSON.parse(p.featureTags || '[]')
 
 function icon(result) {
   if (result === 'yes') return '✓'
@@ -32,8 +33,11 @@ function cls(result) {
 
 <p class="feature-meta">
   Category: <a :href="'/' + p.featureCategory">{{ p.featureCategory }}</a>
+  <span v-if="featureTags.length"> · Tags: <template v-for="(tag, i) in featureTags" :key="tag.id"><a :href="'/' + tag.id">{{ tag.label }}</a><template v-if="i < featureTags.length - 1">, </template></template></span>
   <span v-if="p.specUrl"> · <a :href="p.specUrl" target="_blank" rel="noopener">Specification ↗</a></span>
 </p>
+
+<div v-if="p.featureBody" class="feature-body" v-html="p.featureBody"></div>
 
 <p class="feature-score">
   Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> backends ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
@@ -71,7 +75,7 @@ function cls(result) {
 
 <style>
 .feature-page {
-  max-width: 800px;
+  max-width: 100%;
 }
 
 .feature-meta {
@@ -84,6 +88,22 @@ function cls(result) {
   color: var(--vp-c-brand-1);
 }
 
+.feature-body {
+  color: var(--vp-c-text-2);
+  font-size: 0.95em;
+  line-height: 1.7;
+  margin: 1em 0 1.5em;
+}
+
+.feature-body code {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.9em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-1);
+}
+
 .feature-score {
   font-size: 1.1em;
   margin: 1em 0;
@@ -91,10 +111,21 @@ function cls(result) {
 
 .support-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.9em;
   margin: 1em 0;
 }
+
+/* Column proportions: Backend 20%, Version 10%, Support 10%, Notes 60% */
+.support-table th:nth-child(1),
+.support-table td:nth-child(1) { width: 20%; }
+.support-table th:nth-child(2),
+.support-table td:nth-child(2) { width: 10%; }
+.support-table th:nth-child(3),
+.support-table td:nth-child(3) { width: 10%; }
+.support-table th:nth-child(4),
+.support-table td:nth-child(4) { width: 60%; }
 
 .support-table th,
 .support-table td {
@@ -131,6 +162,8 @@ function cls(result) {
 .note-cell {
   color: var(--vp-c-text-2);
   font-size: 0.95em;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .cell-yes { color: #10b981; }

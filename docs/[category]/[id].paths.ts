@@ -1,12 +1,14 @@
-import { loadCensus, featureSlug, terminalSlug } from "../data/load-census"
+import { loadCensus, featureSlug, terminalSlug, loadFeaturesMeta, tagLabel as getTagLabel } from "../data/load-census"
 
 export default {
   paths() {
     const data = loadCensus()
+    const featuresMeta = loadFeaturesMeta()
 
     return data.features.map((f) => {
       const slug = featureSlug(f.id)
       const desc = data.featureDescriptions[f.id]
+      const meta = featuresMeta[f.id]
 
       // Build per-backend results for this feature
       const backendResults: Array<{
@@ -44,6 +46,12 @@ export default {
       const yesCount = backendResults.filter((r) => r.result === "yes").length
       const totalCount = backendResults.length
 
+      // Build tags with labels for display
+      const tags = (meta?.tags ?? []).map((t: string) => ({
+        id: t,
+        label: getTagLabel(t),
+      }))
+
       return {
         params: {
           category: f.category,
@@ -52,6 +60,8 @@ export default {
           featureName: desc?.name ?? f.name,
           featureCategory: f.category,
           specUrl: desc?.url ?? f.spec ?? "",
+          featureBody: meta?.body ?? "",
+          featureTags: JSON.stringify(tags),
           backendResults: JSON.stringify(backendResults),
           yesCount: String(yesCount),
           totalCount: String(totalCount),

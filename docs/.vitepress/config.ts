@@ -109,7 +109,19 @@ function buildSidebar() {
     device: "Device Status",
   }
 
-  const categoryOrder = ["sgr", "cursor", "text", "erase", "editing", "modes", "scrollback", "reset", "extensions", "charsets", "device"]
+  const categoryOrder = [
+    "sgr",
+    "cursor",
+    "text",
+    "erase",
+    "editing",
+    "modes",
+    "scrollback",
+    "reset",
+    "extensions",
+    "charsets",
+    "device",
+  ]
 
   // Determine categories and features from features.json
   const categories = new Map<string, Array<{ id: string; name: string; slug: string }>>()

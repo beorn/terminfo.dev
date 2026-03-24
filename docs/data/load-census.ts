@@ -27,6 +27,7 @@ export interface FeatureMeta {
   url?: string
   tags?: string[]
   group?: string
+  body?: string
 }
 
 let _featuresMeta: Record<string, FeatureMeta> | null = null
