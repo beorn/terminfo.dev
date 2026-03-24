@@ -1,0 +1,37 @@
+{
+  "name": "terminfo",
+  "version": "0.1.0",
+  "description": "Test your terminal's feature support and contribute to terminfo.dev",
+  "keywords": [
+    "ansi",
+    "conformance",
+    "escape-sequences",
+    "terminal",
+    "terminal-emulator",
+    "testing"
+  ],
+  "homepage": "https://terminfo.dev/",
+  "bugs": {
+    "url": "https://github.com/beorn/terminfo.dev/issues"
+  },
+  "license": "MIT",
+  "author": "Beorn",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beorn/terminfo.dev.git",
+    "directory": "cli"
+  },
+  "bin": {
+    "terminfo": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=23.6.0"
+  }
+}

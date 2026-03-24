@@ -1,0 +1,110 @@
+/**
+ * TTY utilities — raw mode, response reading, escape sequence I/O.
+ *
+ * The core primitive: write an escape sequence to stdout, read a response
+ * from stdin within a timeout.
+ */
+
+/**
+ * Read a response matching a pattern from stdin within a timeout.
+ * Must be called while stdin is in raw mode.
+ */
+export function readResponse(pattern: RegExp, timeoutMs: number): Promise<string[] | null> {
+  return new Promise((resolve) => {
+    let buf = ""
+    let timer: ReturnType<typeof setTimeout>
+
+    const onData = (chunk: Buffer) => {
+      buf += chunk.toString()
+      const match = buf.match(pattern)
+      if (match) {
+        cleanup()
+        resolve([...match])
+      }
+    }
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      process.stdin.off("data", onData)
+    }
+
+    timer = setTimeout(() => {
+      cleanup()
+      resolve(null)
+    }, timeoutMs)
+
+    process.stdin.on("data", onData)
+  })
+}
+
+/**
+ * Send an escape sequence and read the response.
+ * Handles raw mode setup/teardown.
+ */
+export async function query(sequence: string, responsePattern: RegExp, timeoutMs = 1000): Promise<string[] | null> {
+  process.stdout.write(sequence)
+  return readResponse(responsePattern, timeoutMs)
+}
+
+/**
+ * Query cursor position via DSR 6 (Device Status Report).
+ * Returns [row, col] (1-based) or null if no response.
+ */
+export async function queryCursorPosition(): Promise<[number, number] | null> {
+  const match = await query("\x1b[6n", /\x1b\[(\d+);(\d+)R/)
+  if (!match) return null
+  return [parseInt(match[1]!, 10), parseInt(match[2]!, 10)]
+}
+
+/**
+ * Write text, then query cursor position to determine rendered width.
+ */
+export async function measureRenderedWidth(text: string): Promise<number | null> {
+  // Save cursor, move to col 1, write text, query position
+  process.stdout.write("\x1b7\x1b[1G" + text)
+  const pos = await queryCursorPosition()
+  // Restore cursor
+  process.stdout.write("\x1b8")
+  if (!pos) return null
+  return pos[1] - 1 // col is 1-based, width is 0-based
+}
+
+/**
+ * Query whether a DEC private mode is recognized via DECRPM.
+ * Returns "set", "reset", "unknown", or null (no response).
+ */
+export async function queryMode(modeNumber: number): Promise<"set" | "reset" | "unknown" | null> {
+  const match = await query(`\x1b[?${modeNumber}$p`, /\x1b\[\?(\d+);(\d+)\$y/)
+  if (!match) return null
+  const status = parseInt(match[2]!, 10)
+  switch (status) {
+    case 1:
+      return "set"
+    case 2:
+      return "reset"
+    case 0:
+      return "unknown"
+    default:
+      return null
+  }
+}
+
+/**
+ * Run a function with stdin in raw mode.
+ * Restores original mode on exit.
+ */
+export async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
+  const wasRaw = process.stdin.isRaw
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true)
+    process.stdin.resume()
+  }
+  try {
+    return await fn()
+  } finally {
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(wasRaw ?? false)
+      process.stdin.pause()
+    }
+  }
+}
