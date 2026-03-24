@@ -84,19 +84,19 @@ ${JSON.stringify(data, null, 2)}
   const bodyFile = join(tmpdir(), `terminfo-submit-${Date.now()}.md`)
   try {
     writeFileSync(bodyFile, body)
-    const result = execFileSync("gh", [
-      "issue", "create",
-      "--repo", REPO,
-      "--title", title,
-      "--body-file", bodyFile,
-    ], { encoding: "utf-8", timeout: 30000 })
+    const result = execFileSync("gh", ["issue", "create", "--repo", REPO, "--title", title, "--body-file", bodyFile], {
+      encoding: "utf-8",
+      timeout: 30000,
+    })
     return result.trim()
   } catch (err) {
     console.error(`  \x1b[31mFailed to create issue\x1b[0m`)
     console.error(`  ${err instanceof Error ? err.message : String(err)}`)
     return null
   } finally {
-    try { unlinkSync(bodyFile) } catch {}
+    try {
+      unlinkSync(bodyFile)
+    } catch {}
   }
 }
 
@@ -112,15 +112,26 @@ function hasGhCli(): boolean {
 function checkDuplicate(terminal: string, version: string, os: string): string | null {
   try {
     const search = `[census] ${terminal}${version ? ` ${version}` : ""} on ${os}`
-    const result = execFileSync("gh", [
-      "issue", "list",
-      "--repo", REPO,
-      "--search", search,
-      "--state", "all",
-      "--limit", "1",
-      "--json", "url,title",
-      "--jq", ".[0] | .title + \" \" + .url",
-    ], { encoding: "utf-8", timeout: 10000 })
+    const result = execFileSync(
+      "gh",
+      [
+        "issue",
+        "list",
+        "--repo",
+        REPO,
+        "--search",
+        search,
+        "--state",
+        "all",
+        "--limit",
+        "1",
+        "--json",
+        "url,title",
+        "--jq",
+        '.[0] | .title + " " + .url',
+      ],
+      { encoding: "utf-8", timeout: 10000 },
+    )
     return result.trim() || null
   } catch {
     return null

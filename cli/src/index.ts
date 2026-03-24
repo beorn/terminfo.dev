@@ -215,7 +215,7 @@ program
       notes: data.notes,
       responses: data.responses,
       generated: new Date().toISOString(),
-      cliVersion: "1.7.0",
+      cliVersion: "2.0.0",
       probeCount: ALL_PROBES.length,
     })
     if (url) {

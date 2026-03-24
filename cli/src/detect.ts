@@ -56,7 +56,10 @@ export function detectTerminal(): TerminalInfo {
   const bundleId = process.env.__CFBundleIdentifier
   if (bundleId && os === "macos") {
     for (const [termName, bid] of Object.entries(BUNDLE_IDS)) {
-      if (bundleId === bid) { name = termName; break }
+      if (bundleId === bid) {
+        name = termName
+        break
+      }
     }
     // If bundle ID didn't match known terminals, use it as-is
     if (name === "unknown" && bundleId) {
@@ -117,15 +120,18 @@ function getMacOSAppVersion(terminalName: string): string {
     const appPath = execFileSync("mdfind", [`kMDItemCFBundleIdentifier == '${bundleId}'`], {
       encoding: "utf-8",
       timeout: 3000,
-    }).trim().split("\n")[0]
+    })
+      .trim()
+      .split("\n")[0]
 
     if (!appPath) return ""
 
     // Read version from Info.plist
-    const version = execFileSync("/usr/libexec/PlistBuddy", [
-      "-c", "Print :CFBundleShortVersionString",
-      `${appPath}/Contents/Info.plist`,
-    ], { encoding: "utf-8", timeout: 2000 }).trim()
+    const version = execFileSync(
+      "/usr/libexec/PlistBuddy",
+      ["-c", "Print :CFBundleShortVersionString", `${appPath}/Contents/Info.plist`],
+      { encoding: "utf-8", timeout: 2000 },
+    ).trim()
 
     return version
   } catch {
@@ -135,10 +141,14 @@ function getMacOSAppVersion(terminalName: string): string {
 
 function detectOS(): string {
   switch (process.platform) {
-    case "darwin": return "macos"
-    case "linux": return "linux"
-    case "win32": return "windows"
-    default: return process.platform
+    case "darwin":
+      return "macos"
+    case "linux":
+      return "linux"
+    case "win32":
+      return "windows"
+    default:
+      return process.platform
   }
 }
 

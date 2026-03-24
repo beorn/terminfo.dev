@@ -95,7 +95,10 @@ export async function queryMode(modeNumber: number): Promise<"set" | "reset" | "
  */
 export async function drainStdin(ms = 300): Promise<void> {
   return new Promise((resolve) => {
-    if (!process.stdin.readable) { resolve(); return }
+    if (!process.stdin.readable) {
+      resolve()
+      return
+    }
     process.stdin.resume()
     let timer = setTimeout(done, ms)
     function onData() {
