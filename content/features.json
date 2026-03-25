@@ -403,6 +403,42 @@
     "body": "Reverse wrap mode (mode 45) allows backspace at column 0 to wrap to the end of the previous line. Without this mode, backspace at column 0 is a no-op. Useful for command-line editing across wrapped lines.",
     "probe": "Enable mode 45, position at column 0 row 1, send BS, verify cursor wraps to end of row 0."
   },
+  "cursor.cup-boundaries": {
+    "name": "CUP at screen boundaries",
+    "slug": "cup-screen-boundaries",
+    "url": "https://vt100.net/docs/vt510-rm/CUP.html",
+    "tags": ["ecma-48", "vt100"],
+    "baseline": "core",
+    "body": "CUP (Cursor Position, CSI row ; col H) with out-of-bounds parameters should clamp the cursor to the screen edges rather than wrapping or producing undefined behavior. Sending <code>CSI 999 ; 999 H</code> should place the cursor at the last row and last column of the visible screen. This is important for applications that use CUP with large values as a shorthand for \"move to bottom-right corner\" without querying screen dimensions first.",
+    "probe": "Send <code>\\x1b[999;999H</code>, verify cursor is at (rows-1, cols-1) — not beyond the screen boundaries."
+  },
+  "cursor.cuu-past-top": {
+    "name": "CUU stops at top",
+    "slug": "cuu-past-top",
+    "url": "https://vt100.net/docs/vt510-rm/CUU.html",
+    "tags": ["ecma-48", "vt100"],
+    "baseline": "core",
+    "body": "CUU (Cursor Up, CSI Pn A) should stop at the top margin of the scroll region, or row 1 if no scroll region is set. Moving up with a count exceeding the current row should clamp to row 0 rather than wrapping to the bottom. This prevents cursor escape from the visible area and is relied upon by screen-clearing routines that use large CUU counts.",
+    "probe": "Position at row 3, send <code>\\x1b[999A</code> (CUU with count 999), verify cursor stopped at row 0."
+  },
+  "cursor.cud-past-bottom": {
+    "name": "CUD stops at bottom",
+    "slug": "cud-past-bottom",
+    "url": "https://vt100.net/docs/vt510-rm/CUD.html",
+    "tags": ["ecma-48", "vt100"],
+    "baseline": "core",
+    "body": "CUD (Cursor Down, CSI Pn B) should stop at the bottom margin of the scroll region, or the last row if no scroll region is set. Moving down with a count exceeding the remaining rows should clamp to the last row rather than scrolling or wrapping. Unlike a linefeed at the bottom margin, CUD never triggers scrolling — it simply stops.",
+    "probe": "Position at row 0, send <code>\\x1b[999B</code> (CUD with count 999), verify cursor stopped at the last row."
+  },
+  "cursor.cup-scroll-region": {
+    "name": "CUP with DECOM",
+    "slug": "cup-decom-scroll-region",
+    "url": "https://vt100.net/docs/vt510-rm/DECOM.html",
+    "tags": ["dec-private-modes", "vt100"],
+    "baseline": "core",
+    "body": "When DECOM (Origin Mode, CSI ? 6 h) is set, CUP coordinates become relative to the current scroll region set by DECSTBM. With a scroll region of rows 5-15 and DECOM enabled, <code>CSI 1 ; 1 H</code> moves the cursor to row 5 (the top of the scroll region) rather than the absolute top of the screen. This interaction between DECSTBM and DECOM is fundamental to how full-screen applications partition the terminal into independently scrolling regions.",
+    "probe": "Set DECSTBM 5;15, enable DECOM, send <code>\\x1b[1;1H</code>, verify cursor is at row 4 (0-based scroll region top). Disable DECOM and reset scroll region."
+  },
   "erase.line.right": {
     "name": "Erase to EOL (EL 0)",
     "slug": "el-0-erase-to-eol",
@@ -489,6 +525,24 @@
     "baseline": "rich",
     "body": "DECSED (CSI ? Ps J) erases only unprotected characters, leaving characters with the protected attribute (DECSCA, SGR 1 m) intact. Used for form-based applications where static labels should survive screen clears.",
     "probe": "Set protected attribute, write text, run DECSED, verify protected text remains."
+  },
+  "erase.el-with-attrs": {
+    "name": "EL erases with bg color",
+    "slug": "el-erase-with-bg-color",
+    "url": "https://vt100.net/docs/vt510-rm/EL.html",
+    "tags": ["ecma-48", "vt100"],
+    "baseline": "core",
+    "body": "EL (Erase in Line) should fill erased cells with the current background color, not the default background. When a background color is set via SGR (e.g., SGR 42 for green) before issuing EL, the erased area should be painted with that background color. This is how TUI applications create colored status bars, highlighted regions, and filled backgrounds — they set a background color and erase the line to paint the entire line with that color.",
+    "probe": "Set green background with <code>\\x1b[42m</code>, write text, move to start of line, send <code>\\x1b[K</code> (EL 0), verify erased cells have the green background color."
+  },
+  "erase.ed-scroll-region": {
+    "name": "ED at scroll region boundary",
+    "slug": "ed-scroll-region-boundary",
+    "url": "https://vt100.net/docs/vt510-rm/ED.html",
+    "tags": ["ecma-48", "vt100"],
+    "baseline": "core",
+    "body": "ED (Erase in Display) behavior when a scroll region (DECSTBM) is active varies by terminal. Some terminals erase only within the scroll region, while others erase the full screen regardless. The key edge case is that content outside the scroll region should generally be preserved by ED operations performed inside the region. This matters for applications that use scroll regions with fixed header/footer areas.",
+    "probe": "Write \"KEEP_THIS\" on row 0, set scroll region 3;10, move cursor inside region, send <code>\\x1b[J</code> (ED 0), verify row 0 still contains \"KEEP_THIS\"."
   },
   "editing.insert-chars": {
     "name": "Insert characters (ICH)",
@@ -781,6 +835,24 @@
     "body": "Tests whether the alternate screen buffer maintains its own separate scrollback, independent from the main screen's scrollback. Most terminals do not provide scrollback in the alternate screen — full-screen applications are expected to manage their own scrolling. Some terminals (like Kitty) offer configurable behavior for alternate screen scrollback.",
     "probe": "Write \"NORMAL\", enter alt screen with <code>\\x1b[?1049h</code>, verify <code>altScreen</code> mode is active.",
     "baseline": "core"
+  },
+  "scrollback.decstbm": {
+    "name": "DECSTBM constrains scrolling",
+    "slug": "decstbm-constrained-scrolling",
+    "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
+    "tags": ["dec-private-modes", "vt100"],
+    "baseline": "core",
+    "body": "When a scroll region is set via DECSTBM, scrolling (line feeds, index, SU/SD) should be constrained to the defined region. Lines outside the scroll region must remain fixed. This is the fundamental mechanism that enables fixed headers, footers, and split-screen layouts in TUI applications. Without proper scroll region isolation, tmux panes, vim status bars, and editor chrome would be disrupted by scrolling content.",
+    "probe": "Write \"FIXED_TOP\" on row 0, set DECSTBM 3;10, move inside region, write enough lines to trigger scrolling, verify row 0 still contains \"FIXED_TOP\"."
+  },
+  "scrollback.decstbm-reset": {
+    "name": "DECSTBM reset to full screen",
+    "slug": "decstbm-reset-full-screen",
+    "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
+    "tags": ["dec-private-modes", "vt100"],
+    "baseline": "core",
+    "body": "DECSTBM with no parameters (<code>ESC [ r</code>) resets the scroll region to the full screen. After reset, scrolling operations should affect all rows. Applications use this to restore normal scrolling behavior after using scroll regions. Failing to properly reset can leave the terminal in a state where only part of the screen scrolls, causing rendering corruption for subsequent applications.",
+    "probe": "Set DECSTBM 5;10, then send <code>\\x1b[r</code> (no params), write 30 lines, verify full-screen scrolling works (total lines > screen height)."
   },
   "extensions.kitty-keyboard": {
     "name": "Kitty keyboard protocol",
@@ -1142,6 +1214,24 @@
     "body": "Tests whether the terminal correctly handles UTF-8 encoded text. Virtually all modern terminals default to UTF-8 mode. UTF-8 encodes Unicode code points as 1-4 byte sequences, allowing the full range of Unicode characters (emoji, CJK, mathematical symbols, etc.) to be displayed in the terminal.",
     "probe": "Write é (e-acute, 2-byte UTF-8) and 世 (CJK, 3-byte UTF-8), verify each renders as the correct Unicode character.",
     "baseline": "core"
+  },
+  "charsets.g0-g1-switching": {
+    "name": "G0/G1 character set switching",
+    "slug": "g0-g1-charset-switching",
+    "url": "https://vt100.net/docs/vt510-rm/SCS.html",
+    "tags": ["vt100"],
+    "baseline": "core",
+    "body": "SI (Shift In, 0x0F) and SO (Shift Out, 0x0E) switch between G0 and G1 character sets. The G0 and G1 sets can be independently designated using <code>ESC ( X</code> (G0) and <code>ESC ) X</code> (G1), where X selects the character set (B=ASCII, 0=DEC Special Graphics). This mechanism allows applications to quickly toggle between text and line-drawing characters without re-designating the character set each time.",
+    "probe": "Send <code>\\x1b(0</code> to designate G0 as DEC Special Graphics, write 'l', verify the cell renders as a box-drawing character (not literal 'l'). Restore with <code>\\x1b(B</code>."
+  },
+  "charsets.dec-line-drawing": {
+    "name": "DEC line drawing character set",
+    "slug": "dec-line-drawing-chars",
+    "url": "https://vt100.net/docs/vt510-rm/SCS.html",
+    "tags": ["vt100"],
+    "baseline": "core",
+    "body": "The DEC Special Graphics character set (activated via <code>ESC ( 0</code>) maps ASCII characters to box-drawing glyphs. Key mappings: j=\\u2518 (bottom-right corner), k=\\u2510 (top-right corner), l=\\u250C (top-left corner), m=\\u2514 (bottom-left corner), q=\\u2500 (horizontal line), x=\\u2502 (vertical line). These six characters form the basis for drawing boxes and borders in non-Unicode environments. Legacy applications like dialog, mc, and ncurses-based programs rely on this mapping.",
+    "probe": "Send <code>\\x1b(0jklmqx\\x1b(B</code>, verify all six characters rendered as box-drawing glyphs (none are the literal ASCII characters j, k, l, m, q, x)."
   },
   "device.primary-da": {
     "name": "Primary device attributes (DA1)",

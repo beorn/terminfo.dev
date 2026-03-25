@@ -147,4 +147,75 @@ export const scrollbackProbes: ProbeDefinition[] = [
       }
     },
   ),
+
+  // DECSTBM constrains scrolling — text above the region should not scroll
+  probe(
+    "scrollback.decstbm",
+    (ctx) => {
+      // Write marker on row 0
+      ctx.feed("FIXED_TOP\r\n")
+      // Set scroll region to rows 3-10 (1-based)
+      ctx.feed("\x1b[3;10r")
+      // Move inside scroll region and write enough to scroll
+      ctx.feed("\x1b[3;1H")
+      for (let i = 0; i < 20; i++) ctx.feed(`scroll-${i}\r\n`)
+      // Row 0 should still have FIXED_TOP (not scrolled away)
+      const cell = ctx.getCell(0, 0)
+      const pass = cell.char === "F"
+      ctx.feed("\x1b[r") // reset
+      return {
+        pass,
+        note: pass ? undefined : `row 0 char='${cell.char}', expected 'F'`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[2J\x1b[H") // clear
+      ctx.write("FIXED_TOP\r\n")
+      ctx.write("\x1b[3;10r") // scroll region rows 3-10
+      ctx.write("\x1b[3;1H") // move into region
+      for (let i = 0; i < 20; i++) ctx.write(`scroll-${i}\r\n`)
+      ctx.write("\x1b[r") // reset
+      // Verify terminal is still responsive
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return { pass: true }
+    },
+  ),
+
+  // DECSTBM reset — ESC [ r with no params resets to full screen
+  probe(
+    "scrollback.decstbm-reset",
+    (ctx) => {
+      // Set a scroll region
+      ctx.feed("\x1b[5;10r")
+      // Reset it
+      ctx.feed("\x1b[r")
+      // Write enough lines to fill the screen + overflow
+      ctx.feed("\x1b[H")
+      for (let i = 0; i < 30; i++) ctx.feed(`line-${i}\r\n`)
+      // If region was properly reset, scrollback should accumulate
+      const scroll = ctx.getScrollback()
+      return {
+        pass: scroll.totalLines > 24,
+        note:
+          scroll.totalLines > 24
+            ? undefined
+            : `totalLines=${scroll.totalLines}, expected >24 (full-screen scrolling)`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[5;10r") // set region
+      ctx.write("\x1b[r") // reset to full screen
+      ctx.write("\x1b[H")
+      // Verify cursor can reach the bottom of the screen
+      ctx.write("\x1b[999B") // CUD past bottom
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.row >= 20, // should be near bottom of full screen
+        note: `cursor at row ${pos.row} (expected near bottom after DECSTBM reset)`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
 ]

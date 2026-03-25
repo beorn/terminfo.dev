@@ -61,4 +61,29 @@ describeBackends("erase", (b) => {
     // DECSED: CSI ? 2 J — selective erase entire screen
     feed(b, "ABCDE\x1b[?2J")
   })
+
+  test("erase.el-with-attrs", () => {
+    // EL should erase with current background color
+    feed(b, "\x1b[42m") // green background
+    feed(b, "XXXXX")
+    feed(b, "\x1b[1G") // back to col 0
+    feed(b, "\x1b[K") // EL 0 — erase to right
+    const cell = b.getCell(0, 0)
+    // Erased cells should have the green background
+    expect(cell.bg).not.toBeNull()
+    expect(cell.bg!.g).toBeGreaterThan(100)
+    feed(b, "\x1b[0m")
+  })
+
+  test("erase.ed-scroll-region", () => {
+    // ED inside scroll region should not affect lines outside
+    feed(b, "KEEP_THIS\r\n")
+    for (let i = 1; i <= 5; i++) feed(b, `row${i}\r\n`)
+    feed(b, "\x1b[3;10r") // scroll region rows 3-10
+    feed(b, "\x1b[3;1H") // inside region
+    feed(b, "\x1b[J") // ED 0 — erase below
+    // Row 0 should still have "KEEP_THIS"
+    expect(b.getCell(0, 0).char).toBe("K")
+    feed(b, "\x1b[r") // reset scroll region
+  })
 })

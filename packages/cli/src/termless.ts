@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url"
 import { parseVitestJson, fromPerBackendFiles, type CensusData } from "../parse.ts"
 import { manifest, backends as allBackendNames, isReady, entry } from "@termless/core"
 import { renderReport } from "../report.tsx"
-import { runVersionedCensus, probeHash, loadVersionsCatalog } from "../versions.ts"
+import { runVersionedProbes, probeHash, loadVersionsCatalog } from "../versions.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -293,7 +293,7 @@ export async function runTermlessProbes(selectors: string[], opts: { force?: boo
       `\nRunning versioned probes: ${versionedSelectors.map((s) => `${s.backend}/${s.version}`).join(", ")}\n`,
     )
 
-    const results = await runVersionedCensus({
+    const results = await runVersionedProbes({
       force: opts.force,
       backends: [...new Set(versionedSelectors.map((s) => s.backend))],
       resultsDir,

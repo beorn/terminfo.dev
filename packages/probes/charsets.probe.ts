@@ -20,4 +20,27 @@ describeBackends("charsets", (b) => {
     feed(b, "\x1b[1G\u4e16")
     expect(b.getCell(0, 0).char).toBe("\u4e16")
   })
+
+  test("charsets.g0-g1-switching", () => {
+    // ESC(0 designates G0 as DEC Special Graphics
+    // 'l' in DEC Special should render as ┌ (top-left corner), not literal 'l'
+    feed(b, "\x1b(0") // switch to DEC Special
+    feed(b, "l") // should be ┌
+    feed(b, "\x1b(B") // back to ASCII
+    expect(b.getCell(0, 0).char).not.toBe("l")
+  })
+
+  test("charsets.dec-line-drawing", () => {
+    // Full DEC Special Graphics box-drawing character set
+    feed(b, "\x1b(0") // DEC Special Graphics
+    feed(b, "jklmqx") // ┘┐┌└─│
+    feed(b, "\x1b(B") // back to ASCII
+    // None should be the literal ASCII character
+    expect(b.getCell(0, 0).char).not.toBe("j") // ┘
+    expect(b.getCell(0, 1).char).not.toBe("k") // ┐
+    expect(b.getCell(0, 2).char).not.toBe("l") // ┌
+    expect(b.getCell(0, 3).char).not.toBe("m") // └
+    expect(b.getCell(0, 4).char).not.toBe("q") // ─
+    expect(b.getCell(0, 5).char).not.toBe("x") // │
+  })
 })

@@ -43,4 +43,67 @@ export const charsetsProbes: ProbeDefinition[] = [
       }
     },
   ),
+
+  // G0/G1 switching via SI/SO — ESC(0 designates G0 as DEC Special, then test switching
+  probe(
+    "charsets.g0-g1-switching",
+    (ctx) => {
+      ctx.feed("\x1b(0") // designate G0 = DEC Special Graphics
+      ctx.feed("l") // should render as ┌ (top-left corner)
+      ctx.feed("\x1b(B") // restore G0 = ASCII
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char !== "l",
+        note: cell.char !== "l" ? `rendered as '${cell.char}'` : "rendered as literal 'l', expected box-drawing",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b(0") // DEC Special Graphics
+      ctx.write("l") // ┌
+      ctx.write("\x1b(B") // back to ASCII
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
+      }
+    },
+  ),
+
+  // DEC line drawing — full set of box-drawing chars
+  probe(
+    "charsets.dec-line-drawing",
+    (ctx) => {
+      ctx.feed("\x1b(0") // DEC Special Graphics
+      ctx.feed("jklmqx") // ┘┐┌└─│
+      ctx.feed("\x1b(B") // restore ASCII
+      // Verify none of the cells contain the literal ASCII chars
+      const chars = [
+        ctx.getCell(0, 0).char, // j → ┘
+        ctx.getCell(0, 1).char, // k → ┐
+        ctx.getCell(0, 2).char, // l → ┌
+        ctx.getCell(0, 3).char, // m → └
+        ctx.getCell(0, 4).char, // q → ─
+        ctx.getCell(0, 5).char, // x → │
+      ]
+      const allMapped = chars.every((c, i) => c !== "jklmqx"[i])
+      return {
+        pass: allMapped,
+        note: allMapped ? `rendered: ${chars.join("")}` : `some chars not mapped: ${chars.join("")}`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b(0") // DEC Special Graphics
+      ctx.write("jklmqx") // box-drawing chars
+      ctx.write("\x1b(B") // back to ASCII
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.col === 7,
+        note: pos.col === 7 ? undefined : `cursor at col ${pos.col}, expected 7`,
+      }
+    },
+  ),
 ]

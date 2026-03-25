@@ -21,7 +21,7 @@ import { createLogger } from "loggily"
 import { parseVitestJson, fromPerBackendFiles, type CensusData } from "./parse.ts"
 import { manifest, backends as allBackendNames, isReady, entry } from "@termless/core"
 import { renderReport } from "./report.tsx"
-import { runVersionedCensus, probeHash, loadVersionsCatalog } from "./versions.ts"
+import { runVersionedProbes, probeHash, loadVersionsCatalog } from "./versions.ts"
 
 const log = createLogger("probes")
 
@@ -177,7 +177,7 @@ program
         `\nRunning versioned probes: ${versionedSelectors.map((s) => `${s.backend}/${s.version}`).join(", ")}\n`,
       )
 
-      const results = await runVersionedCensus({
+      const results = await runVersionedProbes({
         force: opts.force,
         backends: [...new Set(versionedSelectors.map((s) => s.backend))],
         resultsDir: RESULTS_DIR,

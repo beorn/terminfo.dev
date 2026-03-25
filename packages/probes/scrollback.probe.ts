@@ -49,4 +49,25 @@ describeBackends("scrollback", (b) => {
     feed(b, "\x1b[?1049h")
     expect(b.getMode("altScreen")).toBe(true)
   })
+
+  test("scrollback.decstbm", () => {
+    // DECSTBM constrains scrolling — text above scroll region should not move
+    feed(b, "FIXED_TOP\r\n")
+    feed(b, "\x1b[3;10r") // scroll region rows 3-10
+    feed(b, "\x1b[3;1H") // move inside region
+    for (let i = 0; i < 20; i++) feed(b, `scroll-${i}\r\n`)
+    // Row 0 should still have FIXED_TOP
+    expect(b.getCell(0, 0).char).toBe("F")
+    feed(b, "\x1b[r") // reset
+  })
+
+  test("scrollback.decstbm-reset", () => {
+    // DECSTBM with no params resets to full screen scrolling
+    feed(b, "\x1b[5;10r") // set scroll region
+    feed(b, "\x1b[r") // reset to full screen
+    feed(b, "\x1b[H") // home
+    for (let i = 0; i < 30; i++) feed(b, `line-${i}\r\n`)
+    // Full-screen scrolling should work — totalLines > screen
+    expect(b.getScrollback().totalLines).toBeGreaterThan(24)
+  })
 })

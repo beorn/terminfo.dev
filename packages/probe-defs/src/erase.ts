@@ -181,4 +181,73 @@ export const eraseProbes: ProbeDefinition[] = [
       return { pass: true }
     },
   ),
+
+  // EL with background color — erased cells should inherit current bg
+  probe(
+    "erase.el-with-attrs",
+    (ctx) => {
+      ctx.feed("\x1b[42m") // set green background
+      ctx.feed("XXXXX")
+      ctx.feed("\x1b[1G") // move to col 0
+      ctx.feed("\x1b[K") // EL 0 — erase to right
+      const cell = ctx.getCell(0, 0)
+      // Erased cells should have the green background color
+      const hasBg = cell.bg !== null && cell.bg.g > 100
+      ctx.feed("\x1b[0m") // reset
+      return {
+        pass: hasBg,
+        note: hasBg ? undefined : `bg=${JSON.stringify(cell.bg)}, expected green`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b[42m") // green bg
+      ctx.write("XXXXX")
+      ctx.write("\x1b[1;1H")
+      ctx.write("\x1b[K") // EL 0
+      ctx.write("\x1b[0m")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+      }
+    },
+  ),
+
+  // ED inside scroll region should not affect lines outside the region
+  probe(
+    "erase.ed-scroll-region",
+    (ctx) => {
+      // Write text on row 0 (outside future scroll region)
+      ctx.feed("KEEP_THIS\r\n")
+      // Write text on rows 1-5
+      for (let i = 1; i <= 5; i++) ctx.feed(`row${i}\r\n`)
+      // Set scroll region to rows 3-10 (1-based)
+      ctx.feed("\x1b[3;10r")
+      // Move cursor inside scroll region and erase below
+      ctx.feed("\x1b[3;1H")
+      ctx.feed("\x1b[J") // ED 0 — erase below
+      // Row 0 should still have "KEEP_THIS"
+      const cell = ctx.getCell(0, 0)
+      const pass = cell.char === "K"
+      ctx.feed("\x1b[r") // reset scroll region
+      return {
+        pass,
+        note: pass ? undefined : `row 0 char='${cell.char}', expected 'K'`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[2J\x1b[H") // clear
+      ctx.write("KEEP_THIS\r\n")
+      for (let i = 1; i <= 5; i++) ctx.write(`row${i}\r\n`)
+      ctx.write("\x1b[3;10r") // scroll region rows 3-10
+      ctx.write("\x1b[3;1H") // inside region
+      ctx.write("\x1b[J") // ED 0
+      ctx.write("\x1b[r") // reset
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return { pass: true }
+    },
+  ),
 ]

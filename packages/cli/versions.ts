@@ -240,7 +240,7 @@ export interface VersionsRunOptions {
 /**
  * Run versioned probes — probes against older versions of backends.
  */
-export async function runVersionedprobes(opts?: VersionsRunOptions): Promise<VersionRunResult[]> {
+export async function runVersionedProbes(opts?: VersionsRunOptions): Promise<VersionRunResult[]> {
   const catalog = loadVersionsCatalog()
   const hash = probeHash()
   const results: VersionRunResult[] = []

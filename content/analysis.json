@@ -1,5 +1,5 @@
 {
-  "$generated": "2026-03-25T23:10:03.196Z",
+  "$generated": "2026-03-25T23:10:56.729Z",
   "terminal/ghostty": {
     "analysis": "<p>Ghostty scores <strong>97%</strong> (130/134) on the terminfo.dev feature matrix, with gaps in the Rich Terminal baseline. Ranks <strong>#2</strong> of 8 tested terminals. Missing: Tertiary Device Attributes (DA3), Sixel graphics, Kitty graphics protocol.</p>",
     "date": "2026-03-25",
@@ -53,7 +53,7 @@
     "changes": null
   },
   "baseline/rich": {
-    "analysis": "<p><strong>0</strong> of 8 tested terminals achieve 100% Rich Terminal compliance. Lagging: Cursor (65%), Kitty (71%), Terminal.app (71%). Most commonly missing: Kitty graphics protocol, Tertiary Device Attributes (DA3), Sixel graphics.</p>",
+    "analysis": "<p><strong>0</strong> of 8 tested terminals achieve 100% Rich Terminal compliance. Lagging: Cursor (61%), Kitty (71%), Terminal.app (71%). Most commonly missing: Tertiary Device Attributes (DA3), Kitty graphics protocol, XTGETTCAP (Query Terminfo).</p>",
     "date": "2026-03-25",
     "changes": null
   },
@@ -178,12 +178,12 @@
     "changes": null
   },
   "ecma-48": {
-    "analysis": "<p><strong>ECMA-48 Standard</strong> defines 60 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Ghostty, Kitty, iTerm2, Terminal.app, Warp and 3 more.</p>",
+    "analysis": "<p><strong>ECMA-48 Standard</strong> defines 60 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Cursor, Ghostty, Kitty, iTerm2, Terminal.app and 3 more.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "vt100": {
-    "analysis": "<p><strong>VT100</strong> defines 50 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Ghostty, iTerm2, Warp, Cursor, VS Code and 1 more. Lowest: Terminal.app at 98% (39/40).</p>",
+    "analysis": "<p><strong>VT100</strong> defines 50 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Cursor, Ghostty, iTerm2, Warp, Cursor and 1 more. Lowest: Terminal.app at 98% (39/40).</p>",
     "date": "2026-03-25",
     "changes": null
   },
@@ -198,12 +198,12 @@
     "changes": null
   },
   "dec-private-modes": {
-    "analysis": "<p><strong>DEC Private Modes</strong> defines 22 features in the terminfo.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): Ghostty, iTerm2, Warp, Cursor, VS Code and 1 more. Lowest: Terminal.app at 95% (18/19).</p>",
+    "analysis": "<p><strong>DEC Private Modes</strong> defines 22 features in the terminfo.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): Cursor, Ghostty, iTerm2, Warp, Cursor and 1 more. Lowest: Terminal.app at 95% (18/19).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "xterm-extensions": {
-    "analysis": "<p><strong>Xterm Extensions</strong> defines 33 features in the terminfo.dev matrix. Average adoption across terminals: <strong>98%</strong>. Full compliance (100%): Ghostty, iTerm2. Lowest: Cursor at 97% (31/32).</p>",
+    "analysis": "<p><strong>Xterm Extensions</strong> defines 33 features in the terminfo.dev matrix. Average adoption across terminals: <strong>97%</strong>. Full compliance (100%): Ghostty, iTerm2. Lowest: Cursor at 94% (31/33).</p>",
     "date": "2026-03-25",
     "changes": null
   },

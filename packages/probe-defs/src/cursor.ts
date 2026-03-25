@@ -158,4 +158,113 @@ export const cursorProbes: ProbeDefinition[] = [
       }
     },
   ),
+
+  // CUP at screen boundaries — cursor should clamp to valid range
+  probe(
+    "cursor.cup-boundaries",
+    (ctx) => {
+      ctx.feed("\x1b[999;999H")
+      const cursor = ctx.getCursor()
+      // Should clamp to last row (23) and last col (79) for 80x24 terminal
+      return {
+        pass: cursor.y === 23 && cursor.x === 79,
+        note: cursor.y === 23 && cursor.x === 79 ? undefined : `got ${cursor.y};${cursor.x}, expected 23;79`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[999;999H")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      // Should clamp to screen dimensions (1-based: rows;cols)
+      return {
+        pass: pos.row <= 24 && pos.col <= 80 && pos.row > 0 && pos.col > 0,
+        note:
+          pos.row <= 24 && pos.col <= 80 && pos.row > 0 && pos.col > 0
+            ? undefined
+            : `got ${pos.row};${pos.col}, expected within screen bounds`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
+
+  // CUU past top of screen — cursor should stop at row 0
+  probe(
+    "cursor.cuu-past-top",
+    (ctx) => {
+      ctx.feed("\x1b[4;1H") // position at row 3 (1-based row 4)
+      ctx.feed("\x1b[999A") // CUU with huge count
+      return {
+        pass: ctx.getCursor().y === 0,
+        note: ctx.getCursor().y === 0 ? undefined : `got row ${ctx.getCursor().y}, expected 0`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[4;1H") // position at row 4
+      ctx.write("\x1b[999A") // CUU past top
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.row === 1,
+        note: pos.row === 1 ? undefined : `got row ${pos.row}, expected 1`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
+
+  // CUD past bottom of screen — cursor should stop at last row
+  probe(
+    "cursor.cud-past-bottom",
+    (ctx) => {
+      ctx.feed("\x1b[1;1H") // position at row 0
+      ctx.feed("\x1b[999B") // CUD with huge count
+      return {
+        pass: ctx.getCursor().y === 23, // last row of 24-row terminal
+        note: ctx.getCursor().y === 23 ? undefined : `got row ${ctx.getCursor().y}, expected 23`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H") // position at row 1
+      ctx.write("\x1b[999B") // CUD past bottom
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      // Should stop at last row (1-based)
+      return {
+        pass: pos.row >= 20, // at least near the bottom
+        note: `cursor at row ${pos.row}`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
+
+  // CUP with DECSTBM + DECOM — cursor should be relative to scroll region
+  probe(
+    "cursor.cup-scroll-region",
+    (ctx) => {
+      ctx.feed("\x1b[5;15r") // set scroll region rows 5-15
+      ctx.feed("\x1b[?6h") // enable DECOM (origin mode)
+      ctx.feed("\x1b[1;1H") // CUP 1;1 — should go to scroll region top (row 4, 0-based)
+      const cursor = ctx.getCursor()
+      const pass = cursor.y === 4 && cursor.x === 0
+      ctx.feed("\x1b[?6l") // disable DECOM
+      ctx.feed("\x1b[r") // reset scroll region
+      return {
+        pass,
+        note: pass ? undefined : `got ${cursor.y};${cursor.x}, expected 4;0`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[5;15r") // set scroll region rows 5-15
+      ctx.write("\x1b[?6h") // enable DECOM
+      ctx.write("\x1b[1;1H") // CUP 1;1 — relative to scroll region
+      const pos = await ctx.queryCursorPosition()
+      ctx.write("\x1b[?6l") // disable DECOM
+      ctx.write("\x1b[r") // reset scroll region
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.row === 5 && pos.col === 1,
+        note: pos.row === 5 && pos.col === 1 ? undefined : `got ${pos.row};${pos.col}, expected 5;1`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
 ]

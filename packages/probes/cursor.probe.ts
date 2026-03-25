@@ -76,4 +76,36 @@ describeBackends("cursor", (b) => {
     // Reverse wrap mode: CSI ? 45 h
     feed(b, "\x1b[?45h")
   })
+
+  test("cursor.cup-boundaries", () => {
+    // CUP with huge row/col — should clamp to screen edges
+    feed(b, "\x1b[999;999H")
+    expect(b.getCursor().y).toBe(23) // last row (0-based, 24-row terminal)
+    expect(b.getCursor().x).toBe(79) // last col (0-based, 80-col terminal)
+  })
+
+  test("cursor.cuu-past-top", () => {
+    // CUU with huge count from row 3 — should stop at row 0
+    feed(b, "\x1b[4;1H") // position at row 3 (1-based row 4)
+    feed(b, "\x1b[999A") // CUU past top
+    expect(b.getCursor().y).toBe(0)
+  })
+
+  test("cursor.cud-past-bottom", () => {
+    // CUD with huge count from row 0 — should stop at last row
+    feed(b, "\x1b[1;1H") // position at row 0
+    feed(b, "\x1b[999B") // CUD past bottom
+    expect(b.getCursor().y).toBe(23)
+  })
+
+  test("cursor.cup-scroll-region", () => {
+    // CUP with DECSTBM + DECOM — cursor relative to scroll region
+    feed(b, "\x1b[5;15r") // scroll region rows 5-15
+    feed(b, "\x1b[?6h") // enable DECOM (origin mode)
+    feed(b, "\x1b[1;1H") // CUP 1;1 — should map to scroll region top
+    expect(b.getCursor().y).toBe(4) // row 4 (0-based) = scroll region top
+    expect(b.getCursor().x).toBe(0)
+    feed(b, "\x1b[?6l") // disable DECOM
+    feed(b, "\x1b[r") // reset scroll region
+  })
 })
