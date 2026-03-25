@@ -112,14 +112,18 @@ function launchWithServe(app: AppDef): ChildProcess | null {
     })
     child.unref()
 
-    // Hide the terminal window so it doesn't steal focus
-    setTimeout(() => {
+    // Hide the terminal window immediately and repeatedly until it sticks
+    const hideApp = () => {
       try {
         execSync(`osascript -e 'tell application "System Events" to set visible of process "${app.name}" to false'`, {
-          timeout: 3000,
+          timeout: 2000,
         })
       } catch {}
-    }, 1500)
+    }
+    // Hide as fast as possible, then again after a delay to catch late windows
+    setTimeout(hideApp, 300)
+    setTimeout(hideApp, 800)
+    setTimeout(hideApp, 1500)
 
     return child
   }
@@ -135,17 +139,18 @@ function launchWithServe(app: AppDef): ChildProcess | null {
       execSync(
         `osascript -e 'tell application "iTerm"
   create window with default profile command "/tmp/terminfo-serve.sh"
-end tell'`,
+end tell
+tell application "System Events" to set visible of process "iTerm2" to false'`,
         { timeout: 15000 },
       )
-      // Hide iTerm so it doesn't steal focus
+      // Hide again after delay in case window appears late
       setTimeout(() => {
         try {
           execSync(`osascript -e 'tell application "System Events" to set visible of process "iTerm2" to false'`, {
-            timeout: 3000,
+            timeout: 2000,
           })
         } catch {}
-      }, 1000)
+      }, 500)
       return null
     } catch {
       return null
@@ -157,17 +162,17 @@ end tell'`,
       execSync(
         `osascript -e 'tell application "Terminal"
   do script "/tmp/terminfo-serve.sh"
-end tell'`,
+end tell
+tell application "System Events" to set visible of process "Terminal" to false'`,
         { timeout: 15000 },
       )
-      // Hide Terminal so it doesn't steal focus
       setTimeout(() => {
         try {
           execSync(`osascript -e 'tell application "System Events" to set visible of process "Terminal" to false'`, {
-            timeout: 3000,
+            timeout: 2000,
           })
         } catch {}
-      }, 1000)
+      }, 500)
       return null
     } catch {
       return null
