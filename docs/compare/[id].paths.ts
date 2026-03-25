@@ -57,6 +57,10 @@ export default {
           features: cat.features.map((f) => {
             const resultA = data.results[a.name]?.[f.id] ?? "unknown"
             const resultB = data.results[b.name]?.[f.id] ?? "unknown"
+            const annA = data.annotations?.[`${a.name}:${f.id}`]
+            const annB = data.annotations?.[`${b.name}:${f.id}`]
+            const noteA = annA?.note ?? data.notes[a.name]?.[f.id] ?? ""
+            const noteB = annB?.note ?? data.notes[b.name]?.[f.id] ?? ""
             return {
               id: f.id,
               slug: f.slug,
@@ -64,6 +68,8 @@ export default {
               name: f.name,
               resultA,
               resultB,
+              noteA,
+              noteB,
             }
           }),
         }))

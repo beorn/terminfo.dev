@@ -40,9 +40,7 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
   <span v-if="p.terminalAuthor"> · by {{ p.terminalAuthor }}</span>
 </div>
 
-<div v-if="p.terminalBody" class="terminal-body">
-  <p v-for="(para, i) in p.terminalBody.split('\n\n')" :key="i">{{ para }}</p>
-</div>
+<div v-if="p.terminalBody" class="terminal-body" v-html="p.terminalBody"></div>
 
 <div class="backend-info">
   <strong>Backend:</strong> {{ p.backendDescription }}
@@ -97,6 +95,28 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
   max-width: 800px;
 }
 
+.terminal-desc {
+  font-size: 1.1em;
+  color: var(--vp-c-text-2);
+  margin-top: -0.5em;
+  line-height: 1.6;
+}
+
+.terminal-links {
+  color: var(--vp-c-text-3);
+  font-size: 0.9em;
+  margin: 0.5em 0 1em;
+}
+
+.terminal-links a {
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.terminal-links a:hover {
+  text-decoration: underline;
+}
+
 .backend-desc {
   font-size: 1.1em;
   color: var(--vp-c-text-2);
@@ -125,6 +145,12 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
 
 .terminal-body p {
   margin: 0.75em 0;
+}
+
+.backend-info {
+  color: var(--vp-c-text-3);
+  font-size: 0.9em;
+  margin: 1em 0;
 }
 
 .backend-caveat {

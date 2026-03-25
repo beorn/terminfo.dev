@@ -480,6 +480,192 @@ async function runProbes(): Promise<void> {
     if (!pos) return "no DSR response"
     return pos.row === 1 && pos.col === 1
   })
+
+  // ── Device queries ──
+
+  await probe("device.secondary-da", async () => {
+    clear()
+    await drainStdin()
+    stdout.write("\x1b[>c")
+    const resp = await readResponse(500)
+    return resp.length > 0 && resp.includes(">")
+  })
+
+  await probe("device.tertiary-da", async () => {
+    clear()
+    await drainStdin()
+    stdout.write("\x1b[=c")
+    const resp = await readResponse(500)
+    // Some terminals don't respond to DA3
+    return resp.length > 0
+  })
+
+  await probe("device.decrpm", async () => {
+    clear()
+    await drainStdin()
+    // DECRPM: query mode 1 (DECCKM)
+    stdout.write("\x1b[?1$p")
+    const resp = await readResponse(500)
+    return resp.length > 0 && resp.includes("$y")
+  })
+
+  // ── Input protocols ──
+
+  await probe("input.modify-other-keys", async () => {
+    clear()
+    // modifyOtherKeys mode 2
+    stdout.write("\x1b[>4;2m")
+    stdout.write("OK")
+    stdout.write("\x1b[>4;0m") // disable
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  await probe("input.pixel-mouse", async () => {
+    clear()
+    stdout.write("\x1b[?1016h")
+    stdout.write("OK")
+    stdout.write("\x1b[?1016l")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  await probe("input.urxvt-mouse", async () => {
+    clear()
+    stdout.write("\x1b[?1015h")
+    stdout.write("OK")
+    stdout.write("\x1b[?1015l")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  await probe("input.x10-mouse", async () => {
+    clear()
+    stdout.write("\x1b[?9h")
+    stdout.write("OK")
+    stdout.write("\x1b[?9l")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  await probe("input.button-event-mouse", async () => {
+    clear()
+    stdout.write("\x1b[?1002h")
+    stdout.write("OK")
+    stdout.write("\x1b[?1002l")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  // ── Extensions (new) ──
+
+  await probe("extensions.osc-633-vscode", async () => {
+    clear()
+    // VS Code shell integration markers
+    stdout.write("\x1b]633;A\x07")
+    stdout.write("OK")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  await probe("extensions.notifications", async () => {
+    clear()
+    stdout.write("\x1b]9;Test\x07")
+    stdout.write("OK")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  await probe("extensions.iterm2-images", async () => {
+    clear()
+    // iTerm2 inline image — just check it doesn't break the terminal
+    stdout.write("\x1b]1337;File=inline=1:AAAA\x07")
+    stdout.write("OK")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  // ── Modes (new) ──
+
+  await probe("modes.left-right-margin", async () => {
+    clear()
+    stdout.write("\x1b[?69h")
+    stdout.write("OK")
+    stdout.write("\x1b[?69l")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  await probe("cursor.reverse-wrap", async () => {
+    clear()
+    stdout.write("\x1b[?45h")
+    stdout.write("OK")
+    stdout.write("\x1b[?45l")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  await probe("erase.selective", async () => {
+    clear()
+    stdout.write("ABCDE")
+    stdout.write("\x1b[?2J")
+    stdout.write("OK")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  await probe("text.reverse-index-scroll", async () => {
+    clear()
+    stdout.write("\x1b[1;5r") // scroll region
+    stdout.write("\x1b[H") // home
+    stdout.write("\x1bM") // reverse index
+    stdout.write("OK")
+    stdout.write("\x1b[r") // reset scroll region
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    return pos.col === 3
+  })
+
+  // ── Unicode ──
+
+  await probe("unicode.east-asian-ambiguous", async () => {
+    clear()
+    stdout.write("●X")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    // ● may be 1 or 2 wide — either way X should be visible
+    return pos.col >= 3
+  })
+
+  await probe("unicode.wrap-boundary", async () => {
+    clear()
+    const cols = stdout.columns || 80
+    stdout.write("A".repeat(cols - 1) + "中")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    // Wide char should have wrapped to next line
+    return pos.row === 2
+  })
+
+  await probe("unicode.tab-stops", async () => {
+    clear()
+    stdout.write("A\tB")
+    const pos = await queryCursorPosition()
+    if (!pos) return "no DSR response"
+    // Tab stop at 9, B at 10
+    return pos.col === 10
+  })
 }
 
 // ── Main ──

@@ -29,14 +29,25 @@ export interface FeatureResult {
   spec?: string
 }
 
+export interface TerminalMeta {
+  name?: string
+  description?: string
+  body?: string
+  url?: string
+  repo?: string
+  author?: string
+}
+
 export interface BackendMeta {
   label?: string
   description?: string
+  body?: string
   url?: string
   upstream?: string
   type?: string
   caveat?: string
   slug?: string
+  terminal?: TerminalMeta
 }
 
 export interface CensusData {
@@ -127,6 +138,7 @@ function loadBackendMeta(): Record<string, BackendMeta> {
       type: entry.type,
       caveat: entry.caveat,
       slug: entry.slug,
+      terminal: entry.terminal,
     }
   }
   return meta
@@ -319,7 +331,7 @@ function loadAppResults(): CensusData {
   }
 }
 
-function buildAppMeta(terminal: string): BackendMeta {
+function buildAppMeta(terminalName: string): BackendMeta {
   const labels: Record<string, string> = {
     ghostty: "Ghostty",
     kitty: "Kitty",
@@ -355,10 +367,83 @@ function buildAppMeta(terminal: string): BackendMeta {
     "com.microsoft.VSCode": "Microsoft's code editor with integrated terminal. Uses xterm.js for terminal emulation.",
     "com.todesktop.230313mzl4w4u92": "AI code editor with integrated terminal. Based on VS Code, uses xterm.js.",
   }
+
+  const bodies: Record<string, string> = {
+    ghostty: `<p>Ghostty is a terminal emulator created by <strong>Mitchell Hashimoto</strong>, founder of HashiCorp (Terraform, Vagrant, Vault). Written in <strong>Zig</strong> with GPU-accelerated rendering via Metal (macOS), OpenGL, and Vulkan. First released in late 2024 after years of development, Ghostty quickly gained attention for its focus on correctness and performance.</p>
+<p>Ghostty's architecture separates the terminal emulation core into <strong>libghostty</strong>, a reusable library that other projects can embed. This is how <strong>cmux</strong> (the Ghostty multiplexer) gets its terminal emulation — it links against libghostty directly. The library handles VT parsing, grid management, and rendering, while the app adds window management and platform integration.</p>
+<p>Among modern terminals, Ghostty has some of the best standards compliance, supporting kitty keyboard protocol, kitty graphics, sixel, OSC 8 hyperlinks, semantic prompts, and full Unicode including grapheme clustering. It scores consistently near the top of terminfo.dev's feature matrix.</p>`,
+
+    kitty: `<p><strong>Kitty</strong> was created by <strong>Kovid Goyal</strong> and first released in 2017. Written in C and Python with <strong>OpenGL GPU rendering</strong>, it was one of the first terminals to use the GPU for text rendering, achieving smooth scrolling and low latency that traditional CPU-rendered terminals couldn't match.</p>
+<p>Kitty's most lasting contribution to the terminal ecosystem is the <strong>Kitty keyboard protocol</strong> (CSI u), which solves decades-old ambiguity in how terminals encode keypresses. The protocol has since been adopted by Ghostty, WezTerm, foot, and others. Kitty also pioneered the <strong>Kitty graphics protocol</strong> for inline image display and introduced extended underline styles (curly, dotted, dashed) with independent underline colors — features now standard in modern terminals.</p>
+<p>Kitty supports a rich extension ecosystem through "kittens" — small Python programs that run inside the terminal. Notable kittens include an image viewer, SSH integration, and a diff viewer. The terminal also features native tab and window management, remote control via IPC, and extensive Unicode support.</p>`,
+
+    iterm2: `<p><strong>iTerm2</strong> is the most popular third-party terminal for macOS, created by <strong>George Nachman</strong>. It's a successor to the original iTerm project, first released in 2010 as a native Cocoa application. iTerm2 has been the de facto "power user" terminal on macOS for over a decade.</p>
+<p>iTerm2 pioneered several features that became ecosystem standards: <strong>shell integration</strong> via OSC 133 semantic prompts (marking prompt, command, and output boundaries), the <strong>iTerm2 image protocol</strong> (OSC 1337) for inline image display, and sophisticated profile management. Its split pane system, tmux integration, and Instant Replay (scrubbing through terminal history) remain unmatched in many competitors.</p>
+<p>While iTerm2 supports truecolor and most modern escape sequences, it has been slower to adopt some newer protocols like the kitty keyboard protocol. It remains the most feature-complete terminal on macOS for users who don't need GPU acceleration, with features like triggers (automated actions on pattern matches), password manager integration, and extensive mouse reporting.</p>`,
+
+    "terminal-app": `<p><strong>Terminal.app</strong> is Apple's built-in terminal emulator, shipping with every Mac since <strong>Mac OS X 10.0</strong> (2001). It's the terminal most macOS users encounter first, and for many developers it's all they ever need.</p>
+<p>Terminal.app is deliberately conservative in its feature set. It was slow to adopt truecolor support and still lacks modern protocols like the kitty keyboard protocol. However, it provides solid basics: UTF-8 support, 256-color mode, mouse tracking, and integration with macOS services like Profiles and the Touch Bar. Its shell integration supports marks and bookmarks for navigating command output.</p>
+<p>Despite its limitations, Terminal.app is notable for its reliability and zero-setup experience. It's the baseline that macOS developers test against, and its VT100/VT220 compliance covers the vast majority of real-world terminal usage.</p>`,
+
+    warp: `<p><strong>Warp</strong> is a modern terminal built in <strong>Rust</strong> with GPU acceleration, backed by venture capital funding. It breaks from the traditional terminal paradigm with a <strong>blocks-based UI</strong> where each command and its output form a distinct visual block that can be selected, copied, and shared independently.</p>
+<p>Warp's most distinctive feature is its AI integration — it offers command suggestions, natural language to shell translation, and inline documentation. The terminal also features a modern text editor for command input (with selection, multi-cursor, and syntax highlighting) rather than the traditional readline-style input.</p>
+<p>Under the hood, Warp uses its own GPU-rendered terminal emulator with good standards compliance. It supports truecolor, mouse tracking, bracketed paste, and most modern escape sequences. The Rust codebase provides native performance while the GPU renderer handles smooth scrolling and high-DPI displays. Available on macOS and Linux.</p>`,
+
+    cmux: `<p><strong>cmux</strong> is a terminal multiplexer built by the <strong>Ghostty project</strong>, serving as a modern alternative to tmux and screen. Unlike traditional multiplexers that implement their own VT parser, cmux is built on <strong>libghostty</strong> — the same terminal emulation library that powers the Ghostty terminal.</p>
+<p>This architectural choice means cmux inherits Ghostty's complete VT parser and renderer, including support for the kitty keyboard protocol, graphics protocols, semantic prompts, and full Unicode with grapheme clustering. Where tmux has historically been a compatibility bottleneck (stripping or mishandling modern escape sequences), cmux passes them through with full fidelity.</p>
+<p>cmux aims to provide the session persistence and window management of tmux with the standards compliance of a modern terminal emulator. It scores identically to Ghostty on terminfo.dev because it uses the same underlying emulation library.</p>`,
+
+    cursor: `<p><strong>Cursor</strong> is an AI-focused code editor built on top of <strong>VS Code</strong>, with an integrated terminal powered by <strong>xterm.js</strong>. It adds AI pair programming features including chat, command generation, and code completion powered by large language models.</p>
+<p>Since Cursor's terminal is xterm.js (the same engine as VS Code), its terminal capabilities are identical — good basic support with truecolor, mouse tracking, and Unicode, but lacking some modern protocols like kitty keyboard and graphics protocols. The terminal is primarily a secondary interface; Cursor's focus is on the editor experience.</p>`,
+
+    "com.microsoft.VSCode": `<p><strong>Visual Studio Code</strong> is Microsoft's open-source code editor, the most widely used IDE in the world. Its integrated terminal is powered by <strong>xterm.js</strong>, the most widely deployed terminal emulator — used not just in VS Code but in countless web-based terminals, cloud IDEs, and development tools.</p>
+<p>VS Code pioneered <strong>shell integration</strong> via the OSC 633 protocol, which enables features like command decoration (success/failure markers), command navigation, and sticky scroll for terminal output. This protocol is now being adopted by other terminals.</p>
+<p>The xterm.js terminal provides solid basics — truecolor, Unicode, mouse tracking, bracketed paste, and link detection. It lacks some advanced features like kitty keyboard protocol and graphics protocols, but its ubiquity means it's the baseline that most CLI tools target for compatibility.</p>`,
+
+    "com.todesktop.230313mzl4w4u92": `<p><strong>Cursor</strong> is an AI-focused code editor built on <strong>VS Code</strong> with an <strong>xterm.js</strong> terminal. Terminal capabilities match VS Code — good basics, no advanced protocols.</p>`,
+  }
+
+  const urls: Record<string, string> = {
+    ghostty: "https://ghostty.org",
+    kitty: "https://sw.kovidgoyal.net/kitty",
+    iterm2: "https://iterm2.com",
+    "terminal-app": "https://support.apple.com/guide/terminal/welcome/mac",
+    warp: "https://www.warp.dev",
+    cmux: "https://github.com/ghostty-org/ghostty",
+    cursor: "https://cursor.com",
+    "com.microsoft.VSCode": "https://code.visualstudio.com",
+    "com.todesktop.230313mzl4w4u92": "https://cursor.com",
+  }
+
+  // Look up terminal metadata from the @termless/core manifest
+  // Map app terminal names to manifest backend names
+  const appToManifest: Record<string, string> = {
+    ghostty: "ghostty",
+    kitty: "kitty",
+    cmux: "ghostty", // cmux uses libghostty
+    "com.microsoft.VSCode": "xtermjs",
+    "com.todesktop.230313mzl4w4u92": "xtermjs",
+    cursor: "xtermjs",
+  }
+  const manifestName = appToManifest[terminalName]
+  let terminalMeta: TerminalMeta | undefined
+  if (manifestName) {
+    try {
+      const m = manifest()
+      const entry = m.backends[manifestName]
+      if (entry?.terminal) {
+        terminalMeta = entry.terminal
+      }
+    } catch {}
+  }
+
   return {
-    label: labels[terminal] ?? terminal,
-    slug: slugs[terminal] ?? terminal.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-    description: descriptions[terminal] ?? `${labels[terminal] ?? terminal} terminal emulator`,
+    label: labels[terminalName] ?? terminalName,
+    slug: slugs[terminalName] ?? terminalName.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    description: descriptions[terminalName] ?? `${labels[terminalName] ?? terminalName} terminal emulator`,
+    body: bodies[terminalName],
+    url: urls[terminalName],
+    terminal: terminalMeta,
   }
 }
 

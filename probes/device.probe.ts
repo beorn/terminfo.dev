@@ -42,7 +42,7 @@ describeBackends("device", (b) => {
 
   test("device.decrqss", () => {
     // DECRQSS: DCS $ q Pt ST
-    feed(b, "\x1bP$q\"p\x1b\\")
+    feed(b, '\x1bP$q"p\x1b\\')
   })
 
   test("device.xtgettcap", () => {

@@ -1,0 +1,45 @@
+/* Shared CSS tooltips via data-tooltip attribute.
+   Used by: index.md (matrix), compare/[id].md, [category]/[id].md, terminal/[id].md, [id].md */
+
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]:hover {
+  z-index: 50;
+}
+
+[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: pre-line;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-1);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.82em;
+  line-height: 1.4;
+  pointer-events: none;
+  z-index: 100;
+  max-width: 340px;
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Don't show empty tooltips */
+[data-tooltip=""]:hover::after,
+[data-tooltip]:not([data-tooltip]):hover::after {
+  display: none;
+}
+
+/* Bar segment tooltips appear below */
+.bar-yes[data-tooltip]:hover::after,
+.bar-partial[data-tooltip]:hover::after,
+.bar-fail[data-tooltip]:hover::after {
+  bottom: auto;
+  top: 100%;
+  margin-top: 4px;
+}

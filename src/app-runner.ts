@@ -27,7 +27,7 @@ import { fromPerBackendFiles, type CensusData } from "./parse.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..")
-const RESULTS_DIR = join(ROOT, "docs", "data", "results")
+const RESULTS_DIR = join(ROOT, "docs", "data", "results", "app")
 const HARNESS_PATH = join(__dirname, "app-harness.ts")
 const TMP_DIR = "/tmp/terminfo-census"
 
@@ -296,7 +296,7 @@ async function runApp(
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   const version = getAppVersion(app)
   const hash = appProbeHash()
-  const resultFilename = `${app.backendId}-${version}.json`
+  const resultFilename = `${app.backendId}-${version}-macos.json`
   const resultPath = join(RESULTS_DIR, resultFilename)
 
   // Check cache
@@ -345,13 +345,25 @@ async function runApp(
   try {
     const rawData = JSON.parse(readFileSync(outputPath, "utf-8")) as any
 
-    // Fill in backend name and version (harness uses placeholders)
-    rawData.backend = app.backendId
-    rawData.version = version
+    // Convert to app result format (terminal/terminalVersion/os)
+    const appResult: Record<string, any> = {
+      terminal: app.backendId,
+      terminalVersion: version,
+      os: "macos",
+      source: "app-runner",
+      generated: rawData.generated ?? new Date().toISOString(),
+      probeHash: rawData.probeHash,
+      results: rawData.results,
+    }
+    if (rawData.notes && Object.keys(rawData.notes).length > 0) {
+      appResult.notes = rawData.notes
+    }
 
-    // Save to results directory
+    // Save to results/app/ directory
+    const resultFilenameWithOs = `${app.backendId}-${version}-macos.json`
+    const appResultPath = join(RESULTS_DIR, resultFilenameWithOs)
     mkdirSync(RESULTS_DIR, { recursive: true })
-    writeFileSync(resultPath, JSON.stringify(rawData, null, 2))
+    writeFileSync(appResultPath, JSON.stringify(appResult, null, 2))
 
     // Count results
     const total = Object.keys(rawData.results).length

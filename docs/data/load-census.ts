@@ -95,6 +95,8 @@ export const categoryLabels: Record<string, string> = {
   extensions: "Extensions",
   charsets: "Character Sets",
   device: "Device Status",
+  input: "Input Protocols",
+  unicode: "Unicode",
 }
 
 export function catLabel(cat: string): string {
@@ -122,6 +124,10 @@ export const categoryDescriptions: Record<string, string> = {
     "Character set designation and invocation sequences from the VT100. The DEC Special Graphics set (activated with ESC ( 0) provides box-drawing characters used by legacy TUI applications for borders and frames. Modern terminals typically default to UTF-8, making explicit character set switching less common — but the DEC Special Graphics set remains widely used.",
   device:
     "Device attributes and status reporting sequences. Applications use DA1 (Device Attributes) to identify terminal type and capabilities, and DSR (Device Status Report) to query cursor position and terminal health. These query-response sequences are essential for terminal capability detection and are used by shell integration, TUI frameworks, and terminal multiplexers.",
+  input:
+    "Input protocols for enhanced keyboard and mouse reporting. Modern terminals support multiple mouse tracking modes (X10, normal, button-event, urxvt, SGR, pixel) and keyboard enhancement protocols (modifyOtherKeys, Kitty keyboard) that provide richer input than traditional VT100 key sequences. These protocols enable TUI applications to handle modifier keys, mouse position, and key release events accurately.",
+  unicode:
+    "Unicode text handling: East Asian ambiguous character width, wide character wrapping at line boundaries, and tab stop behavior with mixed-width text. Correct Unicode handling is essential for TUI applications to maintain proper cursor alignment and text layout across different scripts and character sets.",
 }
 
 export const tagLabels: Record<string, string> = {

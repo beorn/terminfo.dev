@@ -195,27 +195,18 @@ function buildSidebar() {
     const slugA = appTerminalSlugs.get(a)
     const slugB = appTerminalSlugs.get(b)
     if (slugA && slugB) {
+      // Sort slugs alphabetically to match paths.ts URL generation
+      const [sortedSlugA, sortedSlugB, labelA, labelB] =
+        slugA.localeCompare(slugB) <= 0 ? [slugA, slugB, a, b] : [slugB, slugA, b, a]
       compareItems.push({
-        text: `${a} vs ${b}`,
-        link: `/compare/${slugA}-vs-${slugB}`,
+        text: `${labelA} vs ${labelB}`,
+        link: `/compare/${sortedSlugA}-vs-${sortedSlugB}`,
       })
     }
   }
 
   const sidebar = [
     { text: "Matrix", link: "/" },
-    {
-      text: "Terminals",
-      items: appTerminals,
-    },
-    {
-      text: "Compare",
-      items: compareItems,
-    },
-    {
-      text: "Backends",
-      items: terminals,
-    },
     {
       text: "Categories",
       items: sortedCategories.map((cat) => ({
@@ -234,6 +225,18 @@ function buildSidebar() {
         text: tagLabels[tag] ?? tag,
         link: `/${tag}`,
       })),
+    },
+    {
+      text: "Terminals",
+      items: appTerminals,
+    },
+    {
+      text: "Compare",
+      items: compareItems,
+    },
+    {
+      text: "Backends",
+      items: terminals,
     },
     { text: "API", link: "/api" },
     { text: "About", link: "/about" },

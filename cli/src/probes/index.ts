@@ -1188,6 +1188,283 @@ const extSemanticPrompts: Probe = {
   },
 }
 
+const extOsc633Vscode: Probe = {
+  id: "extensions.osc-633-vscode",
+  name: "VS Code shell integration (OSC 633)",
+  async run() {
+    // OSC 633 is VS Code's shell integration markers (prompt, command, output)
+    process.stdout.write("\x1b]633;A\x07") // prompt start
+    process.stdout.write("\x1b]633;B\x07") // prompt end
+    process.stdout.write("\x1b]633;C\x07") // pre-execution
+    process.stdout.write("\x1b]633;D;0\x07") // execution finished (exit code 0)
+    const pos = await queryCursorPosition()
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after OSC 633",
+    }
+  },
+}
+
+const extNotifications: Probe = {
+  id: "extensions.notifications",
+  name: "Desktop notifications (OSC 9)",
+  async run() {
+    // OSC 9 sends a desktop notification (used by ConEmu, iTerm2, etc.)
+    process.stdout.write("\x1b]9;Test\x07")
+    const pos = await queryCursorPosition()
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after OSC 9",
+    }
+  },
+}
+
+const extIterm2Images: Probe = {
+  id: "extensions.iterm2-images",
+  name: "iTerm2 inline images (OSC 1337)",
+  async run() {
+    // Send a minimal iTerm2 inline image sequence
+    process.stdout.write("\x1b]1337;File=inline=1:AAAA\x07")
+    const pos = await queryCursorPosition()
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after OSC 1337",
+    }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Device probes (additional) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const secondaryDA: Probe = {
+  id: "device.secondary-da",
+  name: "Secondary device attributes (DA2)",
+  async run() {
+    const match = await query("\x1b[>c", /\x1b\[>([0-9;]+)c/, 1000)
+    if (!match) return { pass: false, note: "No DA2 response" }
+    return { pass: true, response: match[0] }
+  },
+}
+
+const tertiaryDA: Probe = {
+  id: "device.tertiary-da",
+  name: "Tertiary device attributes (DA3)",
+  async run() {
+    // DA3 responds with DCS ! | <unit-id> ST
+    const match = await queryWithSentinel("\x1b[=c", /\x1bP!?\|([^\x1b]*)\x1b\\/)
+    if (match) return { pass: true, response: match[1] }
+    return { pass: false, note: "No DA3 response" }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Input protocol probes ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const inputModifyOtherKeys: Probe = {
+  id: "input.modify-other-keys",
+  name: "Modify other keys (mode 2)",
+  async run() {
+    // Enable modifyOtherKeys mode 2 (xterm CSI u-style reporting)
+    process.stdout.write("\x1b[>4;2m")
+    const pos = await queryCursorPosition()
+    // Disable modifyOtherKeys
+    process.stdout.write("\x1b[>4;0m")
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after enabling modifyOtherKeys",
+    }
+  },
+}
+
+const inputPixelMouse: Probe = {
+  id: "input.pixel-mouse",
+  name: "Pixel mouse mode (1016)",
+  async run() {
+    process.stdout.write("\x1b[?1016h") // enable pixel mouse
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[?1016l") // disable
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after enabling pixel mouse",
+    }
+  },
+}
+
+const inputUrxvtMouse: Probe = {
+  id: "input.urxvt-mouse",
+  name: "urxvt mouse mode (1015)",
+  async run() {
+    process.stdout.write("\x1b[?1015h") // enable urxvt mouse
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[?1015l") // disable
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after enabling urxvt mouse",
+    }
+  },
+}
+
+const inputX10Mouse: Probe = {
+  id: "input.x10-mouse",
+  name: "X10 mouse mode (9)",
+  async run() {
+    process.stdout.write("\x1b[?9h") // enable X10 mouse
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[?9l") // disable
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after enabling X10 mouse",
+    }
+  },
+}
+
+const inputButtonEventMouse: Probe = {
+  id: "input.button-event-mouse",
+  name: "Button-event mouse mode (1002)",
+  async run() {
+    process.stdout.write("\x1b[?1002h") // enable button-event mouse
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[?1002l") // disable
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after enabling button-event mouse",
+    }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Mode probes (additional) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const modesLeftRightMargin: Probe = {
+  id: "modes.left-right-margin",
+  name: "Left/right margin mode (DECLRMM)",
+  async run() {
+    process.stdout.write("\x1b[?69h") // enable DECLRMM
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[?69l") // disable
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after DECLRMM",
+    }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Cursor probes (additional) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const cursorReverseWrap: Probe = {
+  id: "cursor.reverse-wrap",
+  name: "Reverse wrap mode (DECSET 45)",
+  async run() {
+    process.stdout.write("\x1b[?45h") // enable reverse wrap
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[?45l") // disable
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after enabling reverse wrap",
+    }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Erase probes (additional) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const eraseSelective: Probe = {
+  id: "erase.selective",
+  name: "Selective erase (DECSED)",
+  async run() {
+    process.stdout.write("\x1b[1;1H\x1b[2K")
+    process.stdout.write("ABCDE")
+    process.stdout.write("\x1b[?2J") // DECSED — selective erase entire screen
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response after DECSED" }
+    return { pass: true }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Text probes (additional) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const textReverseIndexScroll: Probe = {
+  id: "text.reverse-index-scroll",
+  name: "Reverse index scrolls at top of region",
+  async run() {
+    // Set scroll region, move to top of region, RI should scroll content down
+    process.stdout.write("\x1b[3;10r") // scroll region rows 3-10
+    process.stdout.write("\x1b[3;1H") // move to row 3 (top of region)
+    process.stdout.write("\x1bM") // RI — reverse index at top of region
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[r") // reset scroll region
+    if (!pos) return { pass: false, note: "No cursor response after RI in region" }
+    // Cursor should stay at row 3 (content scrolled down within region)
+    return {
+      pass: pos[0] === 3,
+      note: pos[0] === 3 ? undefined : `cursor at row ${pos[0]}, expected 3`,
+    }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Unicode probes ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const unicodeEastAsianAmbiguous: Probe = {
+  id: "unicode.east-asian-ambiguous",
+  name: "East Asian ambiguous width",
+  async run() {
+    // ● (U+25CF BLACK CIRCLE) is East Asian Ambiguous — most terminals render as 1 col
+    // Write ●X and check cursor position
+    const width = await measureRenderedWidth("●")
+    if (width === null) return { pass: false, note: "Cannot measure width" }
+    return {
+      pass: width === 1 || width === 2,
+      note: `width=${width} (ambiguous chars vary by terminal/locale)`,
+      response: String(width),
+    }
+  },
+}
+
+const unicodeWrapBoundary: Probe = {
+  id: "unicode.wrap-boundary",
+  name: "Wide char wrap at line boundary",
+  async run() {
+    const cols = process.stdout.columns || 80
+    // Write (cols-1) narrow chars, then a wide char — should wrap to next line
+    process.stdout.write("\x1b[1;1H\x1b[2J")
+    process.stdout.write("A".repeat(cols - 1))
+    process.stdout.write("\u4e2d") // CJK char (2 cols wide)
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    // Wide char should wrap: cursor at row 2, col 3 (wide char on col 1-2 of row 2)
+    return {
+      pass: pos[0] === 2,
+      note: pos[0] === 2 ? undefined : `cursor at row ${pos[0]}, expected 2 (wide char should wrap)`,
+    }
+  },
+}
+
+const unicodeTabStops: Probe = {
+  id: "unicode.tab-stops",
+  name: "Tab stops with text",
+  async run() {
+    process.stdout.write("\x1b[1;1H\x1b[2K")
+    process.stdout.write("A\tB")
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    // A at col 1, tab to col 9, B at col 9 → cursor at col 10
+    return {
+      pass: pos[1] === 10,
+      note: pos[1] === 10 ? undefined : `cursor at col ${pos[1]}, expected 10 (A + tab to 9 + B)`,
+    }
+  },
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ── All probes ──
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1206,9 +1483,12 @@ export const ALL_PROBES: Probe[] = [
   cursorMoveHome,
   cursorHorizontalAbsolute,
   cursorNextLine,
+  cursorReverseWrap,
 
   // ── Device ──
   primaryDA,
+  secondaryDA,
+  tertiaryDA,
   deviceStatusReport,
   deviceDecrpm,
 
@@ -1228,6 +1508,7 @@ export const ALL_PROBES: Probe[] = [
   combiningChars,
   tabStop,
   backspace,
+  textReverseIndexScroll,
 
   // ── Erase ──
   eraseLineRight,
@@ -1238,6 +1519,7 @@ export const ALL_PROBES: Probe[] = [
   eraseScreenAbove,
   eraseScreenScrollback,
   eraseCharacter,
+  eraseSelective,
 
   // ── Editing ──
   insertChars,
@@ -1252,6 +1534,7 @@ export const ALL_PROBES: Probe[] = [
   modesBracketedPaste,
   modesInsertReplace,
   modesApplicationKeypad,
+  modesLeftRightMargin,
 
   // ── Modes (DECRPM with behavioral fallback) ──
   behavioralModeProbe(
@@ -1378,6 +1661,21 @@ export const ALL_PROBES: Probe[] = [
   extOsc8Hyperlink,
   extOsc0IconTitle,
   extSemanticPrompts,
+  extOsc633Vscode,
+  extNotifications,
+  extIterm2Images,
+
+  // ── Input protocols ──
+  inputModifyOtherKeys,
+  inputPixelMouse,
+  inputUrxvtMouse,
+  inputX10Mouse,
+  inputButtonEventMouse,
+
+  // ── Unicode ──
+  unicodeEastAsianAmbiguous,
+  unicodeWrapBoundary,
+  unicodeTabStops,
 
   // ── Previously "untestable" features ──
 

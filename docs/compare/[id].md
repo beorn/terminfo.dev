@@ -29,6 +29,18 @@ function diffClass(f) {
   return f.resultA !== f.resultB ? 'diff-row' : ''
 }
 
+function resultLabel(result) {
+  if (result === 'yes') return 'Supported'
+  if (result === 'partial') return 'Partial support'
+  if (result === 'no') return 'Not supported'
+  return 'Not tested'
+}
+
+function cellTooltip(result, note) {
+  if (note) return note
+  return resultLabel(result)
+}
+
 // Features only terminal A supports (yes/partial) that B doesn't
 const onlyAFeatures = []
 const onlyBFeatures = []
@@ -89,8 +101,8 @@ for (const cat of categories) {
   <tbody>
     <tr v-for="f in cat.features" :key="f.id" :class="diffClass(f)">
       <td class="feature-name"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
-      <td :class="cellClass(f.resultA)"><a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.resultA) }}</a></td>
-      <td :class="cellClass(f.resultB)"><a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.resultB) }}</a></td>
+      <td :class="cellClass(f.resultA)" :data-tooltip="cellTooltip(f.resultA, f.noteA)"><a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.resultA) }}</a></td>
+      <td :class="cellClass(f.resultB)" :data-tooltip="cellTooltip(f.resultB, f.noteB)"><a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.resultB) }}</a></td>
     </tr>
   </tbody>
 </table>
@@ -256,41 +268,8 @@ for (const cat of categories) {
   text-align: center;
 }
 
-.cell-link,
-.cell-link:link,
-.cell-link:visited {
-  color: inherit !important;
-  text-decoration: none !important;
-  display: block;
-}
-
-.cell-yes {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  font-weight: 700;
-}
-
-.cell-partial {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-  font-weight: 700;
-}
-
-.cell-no {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  font-weight: 700;
-}
-
-.cell-unknown {
-  background: rgba(139, 92, 246, 0.1);
-  color: #8b5cf6;
-  font-weight: 700;
-}
-
-.diff-row {
-  background: rgba(245, 158, 11, 0.04);
-}
+/* cell-yes, cell-no, cell-partial, cell-unknown, cell-link, diff-row
+   are in shared theme/result-cells.css */
 
 .only-in-desc {
   color: var(--vp-c-text-2);

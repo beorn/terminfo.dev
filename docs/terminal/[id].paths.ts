@@ -58,9 +58,9 @@ export default {
           backendType: meta.type ?? "",
           backendCaveat: meta.caveat ?? "",
           // Terminal app info (separate from backend)
-          terminalName: terminal.name ?? meta.label ?? b.name,
-          terminalDescription: terminal.description ?? "",
-          terminalBody: terminal.body ?? "",
+          terminalName: terminal.name ?? (meta as any).label ?? b.name,
+          terminalDescription: terminal.description ?? (meta as any).description ?? "",
+          terminalBody: terminal.body ?? (meta as any).body ?? "",
           terminalUrl: terminal.url ?? meta.url ?? "",
           terminalRepo: terminal.repo ?? "",
           terminalAuthor: terminal.author ?? "",
