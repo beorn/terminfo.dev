@@ -21,7 +21,7 @@ const filter = ref('')
 const categoryFilter = ref('all')
 const platformFilter = ref('all')
 
-const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'editing', 'modes', 'scrollback', 'reset', 'extensions', 'charsets', 'device']
+const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'editing', 'modes', 'scrollback', 'reset', 'extensions', 'charsets', 'device', 'input', 'graphics', 'unicode']
 const categoryLabels = {
   sgr: 'SGR (Text Styling)',
   cursor: 'Cursor',
@@ -34,6 +34,9 @@ const categoryLabels = {
   extensions: 'Extensions',
   charsets: 'Character Sets',
   device: 'Device Status',
+  input: 'Input',
+  graphics: 'Graphics',
+  unicode: 'Unicode',
 }
 
 // Sort backends by score (highest first)
@@ -245,6 +248,30 @@ function backendTooltip(name, version) {
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet. Run <code>npx terminfo.dev submit</code> to contribute.</p>
+
+## Terminal Baseline 2026 {#baselines}
+
+<p class="section-subtitle">Inspired by <a href="https://web.dev/baseline">Web Baseline</a> — minimum feature sets that terminals should support</p>
+
+<div class="baseline-grid">
+  <div v-for="bl in ['core', 'modern', 'rich', 'unicode']" :key="bl" class="baseline-card">
+    <div class="baseline-header">
+      <span class="baseline-icon">{{ bl === 'core' ? '🟢' : bl === 'modern' ? '🔵' : bl === 'rich' ? '🟣' : '🌐' }}</span>
+      <span class="baseline-name">{{ bl.charAt(0).toUpperCase() + bl.slice(1) }}</span>
+      <span class="baseline-count">{{ data.baselines[bl]?.length ?? 0 }} features</span>
+    </div>
+    <div class="baseline-desc">{{ bl === 'core' ? 'Every terminal should support these — SGR basics, cursor, erase, alt screen' : bl === 'modern' ? 'Expected by modern TUIs — truecolor, bracketed paste, focus events, mouse' : bl === 'rich' ? 'Advanced features — kitty keyboard, graphics, hyperlinks, semantic prompts' : 'Unicode correctness — wide chars, combining, emoji, grapheme clusters' }}</div>
+    <div class="baseline-backends">
+      <div v-for="b in appBackends" :key="b.name" class="baseline-backend">
+        <span class="baseline-backend-name">{{ backendLabel(b.name) }}</span>
+        <span class="baseline-backend-bar">
+          <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
+        </span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct ?? 0 }}%</span>
+      </div>
+    </div>
+  </div>
+</div>
 
 ## Feature Matrix {#matrix}
 
@@ -546,6 +573,93 @@ through the library's API.
   background: var(--vp-c-bg);
   color: var(--vp-c-text-1);
   font-size: 0.9em;
+}
+
+/* Baseline 2026 cards */
+.baseline-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 1em 0 2em;
+}
+
+.baseline-card {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--vp-c-bg-soft);
+}
+
+.baseline-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.baseline-icon {
+  font-size: 1.1em;
+}
+
+.baseline-name {
+  font-weight: 700;
+  font-size: 1em;
+}
+
+.baseline-count {
+  margin-left: auto;
+  font-size: 0.8em;
+  color: var(--vp-c-text-3);
+}
+
+.baseline-desc {
+  font-size: 0.8em;
+  color: var(--vp-c-text-2);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.baseline-backends {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.baseline-backend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8em;
+}
+
+.baseline-backend-name {
+  width: 90px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.baseline-backend-bar {
+  flex: 1;
+  height: 10px;
+  background: var(--vp-c-bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.baseline-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.baseline-backend-pct {
+  width: 32px;
+  text-align: right;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 /* Matrix table — page scrolls naturally, only headers stick */

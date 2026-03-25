@@ -56,6 +56,10 @@ export interface CensusData {
   annotations: Record<string, { note: string; url?: string; result?: string }>
   /** feature id -> { name, url? } from features.json */
   featureDescriptions: Record<string, FeatureMeta>
+  /** baseline -> feature ids */
+  baselines: Record<string, string[]>
+  /** backend name -> baseline -> { total, yes, pct } */
+  baselineStats: Record<string, Record<string, { total: number; yes: number; pct: number }>>
   generated: string
 }
 
@@ -67,6 +71,7 @@ interface FeatureMeta {
   group?: string
   body?: string
   probe?: string
+  baseline?: string
 }
 
 function loadFeatureDescriptions(): Record<string, FeatureMeta> {
@@ -91,6 +96,7 @@ function loadFeatureDescriptions(): Record<string, FeatureMeta> {
           group: v.group,
           body: v.body,
           probe: v.probe,
+          baseline: v.baseline,
         }
       }
     }
@@ -143,13 +149,18 @@ export default {
       headlessData = loadPerBackendResults()
     }
 
+    let result: CensusData
     // If we have app results, merge them as primary
     if (appData.backends.length > 0) {
-      return mergeResults(appData, headlessData)
+      result = mergeResults(appData, headlessData)
+    } else {
+      // Fallback to headless only
+      result = headlessData
     }
 
-    // Fallback to headless only
-    return headlessData
+    // Compute baseline stats
+    computeBaselines(result)
+    return result
   },
 }
 
@@ -302,6 +313,8 @@ function loadAppResults(): CensusData {
     meta,
     annotations: loadAnnotations(),
     featureDescriptions: featureDescs,
+    baselines: {},
+    baselineStats: {},
     generated: new Date().toISOString(),
   }
 }
@@ -339,8 +352,7 @@ function buildAppMeta(terminal: string): BackendMeta {
     warp: "AI-powered terminal with blocks-based UI. Rust-based, GPU-accelerated.",
     cmux: "Terminal multiplexer built on libghostty (Ghostty's terminal emulation library). Inherits Ghostty's VT parser.",
     cursor: "AI code editor with integrated terminal. Based on VS Code, uses xterm.js for terminal emulation.",
-    "com.microsoft.VSCode":
-      "Microsoft's code editor with integrated terminal. Uses xterm.js for terminal emulation.",
+    "com.microsoft.VSCode": "Microsoft's code editor with integrated terminal. Uses xterm.js for terminal emulation.",
     "com.todesktop.230313mzl4w4u92": "AI code editor with integrated terminal. Based on VS Code, uses xterm.js.",
   }
   return {
@@ -427,6 +439,8 @@ function loadUnifiedCensus(path: string): CensusData {
     meta: loadBackendMeta(),
     annotations,
     featureDescriptions: loadFeatureDescriptions(),
+    baselines: {},
+    baselineStats: {},
     generated: raw.generated ?? "",
   }
 }
@@ -534,6 +548,8 @@ function loadPerBackendResults(): CensusData {
     meta: loadBackendMeta(),
     annotations,
     featureDescriptions: loadFeatureDescriptions(),
+    baselines: {},
+    baselineStats: {},
     generated,
   }
 }
@@ -549,6 +565,37 @@ function emptyData(): CensusData {
     meta: {},
     annotations: {},
     featureDescriptions: loadFeatureDescriptions(),
+    baselines: {},
+    baselineStats: {},
     generated: "",
   }
+}
+
+function computeBaselines(data: CensusData): void {
+  const baselineOrder = ["core", "modern", "rich", "unicode"]
+  const baselines: Record<string, string[]> = {}
+  for (const bl of baselineOrder) baselines[bl] = []
+
+  // Group features by baseline
+  for (const [id, meta] of Object.entries(data.featureDescriptions)) {
+    if (meta.baseline && baselines[meta.baseline]) {
+      baselines[meta.baseline]!.push(id)
+    }
+  }
+
+  // Compute per-backend baseline stats
+  const baselineStats: Record<string, Record<string, { total: number; yes: number; pct: number }>> = {}
+  for (const backend of data.backends) {
+    baselineStats[backend.name] = {}
+    const br = data.results[backend.name] ?? {}
+    for (const bl of baselineOrder) {
+      const ids = baselines[bl] ?? []
+      const total = ids.length
+      const yes = ids.filter((id) => br[id] === "yes" || br[id] === "partial").length
+      baselineStats[backend.name]![bl] = { total, yes, pct: total > 0 ? Math.round((yes / total) * 100) : 0 }
+    }
+  }
+
+  data.baselines = baselines
+  data.baselineStats = baselineStats
 }

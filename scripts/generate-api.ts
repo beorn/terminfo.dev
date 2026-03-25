@@ -31,6 +31,7 @@ interface FeatureMeta {
   group?: string
   body?: string
   probe?: string
+  baseline?: string
 }
 
 interface ApiData {
@@ -44,6 +45,7 @@ interface ApiData {
       slug: string
       url?: string
       tags?: string[]
+      baseline?: string
     }
   >
   terminals: Record<
@@ -107,10 +109,16 @@ interface AppResult {
 }
 
 function loadAppResults(): {
-  terminals: Map<string, { version: string; platforms: Set<string>; results: Record<string, string>; notes: Record<string, string> }>
+  terminals: Map<
+    string,
+    { version: string; platforms: Set<string>; results: Record<string, string>; notes: Record<string, string> }
+  >
   featureIds: Set<string>
 } {
-  const terminals = new Map<string, { version: string; platforms: Set<string>; results: Record<string, string>; notes: Record<string, string> }>()
+  const terminals = new Map<
+    string,
+    { version: string; platforms: Set<string>; results: Record<string, string>; notes: Record<string, string> }
+  >()
   const featureIds = new Set<string>()
 
   if (!existsSync(appDir)) return { terminals, featureIds }
@@ -160,7 +168,10 @@ function loadHeadlessResults(): {
   terminals: Map<string, { version: string; results: Record<string, string>; notes: Record<string, string> }>
   featureIds: Set<string>
 } {
-  const terminals = new Map<string, { version: string; results: Record<string, string>; notes: Record<string, string> }>()
+  const terminals = new Map<
+    string,
+    { version: string; results: Record<string, string>; notes: Record<string, string> }
+  >()
   const featureIds = new Set<string>()
 
   const files = readdirSync(resultsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
@@ -206,7 +217,10 @@ const appUrls: Record<string, string> = {
 }
 
 function slugify(name: string, label: string): string {
-  return label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+$/, "")
 }
 
 // --- Badge SVG ---
@@ -285,6 +299,7 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
       slug: meta?.slug ?? id.replaceAll(".", "-"),
       ...(meta?.url && { url: meta.url }),
       ...(meta?.tags?.length && { tags: meta.tags }),
+      ...(meta?.baseline && { baseline: meta.baseline }),
     }
   }
 
