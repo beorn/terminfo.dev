@@ -84,4 +84,17 @@ Features are tagged by their defining standard. Each standard page includes a li
 - **Clickable support cells** throughout the site — every checkmark links to the feature detail page
 - Updated tag descriptions with precise technical details
 
+## Acknowledgments
+
+Terminfo.dev builds on ideas and approaches from these projects:
+
+- **[esctest2](https://github.com/ThomasDickey/esctest2)** (Thomas Dickey, George Nachman) — VT conformance test suite. Our edge-case probes are inspired by their comprehensive test cases.
+- **[ucs-detect](https://github.com/jquast/ucs-detect)** (Jeff Quast) — Unicode terminal width testing. Our emoji ZWJ, regional indicator, and variation selector probes follow their cursor-position-based width measurement approach.
+- **[terminal-colorsaurus](https://github.com/bash/terminal-colorsaurus)** — Terminal color detection. Our DA1 sentinel pattern (query + DA1 fallback for faster response detection) is adapted from their approach.
+- **[notcurses](https://github.com/dankamongmen/notcurses)** (Nick Black) — TUI library with terminal capability detection. Their XTGETTCAP and graphics detection approaches inform our probe design.
+- **[vttest](https://invisible-island.net/vttest/)** (Per Lindberg, Thomas Dickey) — The original VT100/VT220 terminal test utility, maintained since 1986.
+- **[termstandard/colors](https://github.com/termstandard/colors)** — Community-maintained TrueColor terminal support list.
+
+All probe code is original. No code was copied from these projects.
+
 Powered by [Termless](https://termless.dev) — Playwright for terminals.
