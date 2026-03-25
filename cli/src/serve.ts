@@ -1,11 +1,14 @@
 /**
- * Daemon mode — run inside a terminal, accept remote probe commands.
+ * Thin probe server — TTY I/O only, no bundled probe logic.
  *
  * Usage: npx terminfo.dev serve
  *
  * Starts an HTTP server that accepts probe requests. Run this in each
  * terminal you want to test, then use `terminfo.dev test-all` or
  * curl to run probes remotely.
+ *
+ * Probes are loaded dynamically on each request — the server never needs
+ * restarting when probe definitions change on disk.
  *
  * Discovery: writes terminal info + port to ~/.terminfo-dev/daemons/
  * so clients can find all running daemons automatically.
@@ -16,10 +19,22 @@ import { mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from 
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { detectTerminal } from "./detect.ts"
-import { ALL_PROBES } from "./probes/index.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
 
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
+
+/** Resolve the absolute path to the probes module (once, at startup). */
+const PROBES_PATH = require.resolve("./probes/index.ts")
+
+/**
+ * Dynamically load probes, busting the module cache so that changes
+ * on disk are picked up without restarting the server.
+ */
+async function loadProbes() {
+  delete require.cache[PROBES_PATH]
+  const mod = await import("./probes/index.ts")
+  return mod.ALL_PROBES as import("./probes/index.ts").Probe[]
+}
 
 interface DaemonInfo {
   pid: number
@@ -64,8 +79,6 @@ export function listDaemons(): DaemonInfo[] {
 export async function startDaemon(port = 0): Promise<void> {
   const terminal = detectTerminal()
 
-  // Run all probes once synchronously, then serve results
-  // For live probing, we need the server to run probes on-demand in the terminal context
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     res.setHeader("Content-Type", "application/json")
     res.setHeader("Access-Control-Allow-Origin", "*")
@@ -79,22 +92,22 @@ export async function startDaemon(port = 0): Promise<void> {
           terminalVersion: terminal.version,
           os: terminal.os,
           osVersion: terminal.osVersion,
-          probeCount: ALL_PROBES.length,
+          probes: "dynamic",
         }),
       )
       return
     }
 
     if (url.pathname === "/probe") {
-      // Run all probes in this terminal
-      console.log(`\x1b[2m[${new Date().toISOString()}] Running ${ALL_PROBES.length} probes...\x1b[0m`)
+      const probes = await loadProbes()
+      console.log(`\x1b[2m[${new Date().toISOString()}] Running ${probes.length} probes...\x1b[0m`)
 
       const results: Record<string, boolean> = {}
       const notes: Record<string, string> = {}
       const responses: Record<string, string> = {}
 
       await withRawMode(async () => {
-        for (const probe of ALL_PROBES) {
+        for (const probe of probes) {
           process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
           try {
             const result = await probe.run()
@@ -115,7 +128,7 @@ export async function startDaemon(port = 0): Promise<void> {
 
       const passed = Object.values(results).filter((v) => v).length
       const total = Object.keys(results).length
-      console.log(`\x1b[32m✓\x1b[0m ${passed}/${total} (${Math.round((passed / total) * 100)}%)`)
+      console.log(`\x1b[32m+\x1b[0m ${passed}/${total} (${Math.round((passed / total) * 100)}%)`)
 
       res.end(
         JSON.stringify({
@@ -140,7 +153,8 @@ export async function startDaemon(port = 0): Promise<void> {
         res.end(JSON.stringify({ error: "Missing ?id= parameter" }))
         return
       }
-      const probe = ALL_PROBES.find((p) => p.id === probeId)
+      const probes = await loadProbes()
+      const probe = probes.find((p) => p.id === probeId)
       if (!probe) {
         res.statusCode = 404
         res.end(JSON.stringify({ error: `Unknown probe: ${probeId}` }))
@@ -224,7 +238,7 @@ export async function startDaemon(port = 0): Promise<void> {
       JSON.stringify({
         endpoints: {
           "/info": "Terminal info",
-          "/probe": "Run all probes",
+          "/probe": "Run all probes (dynamically loaded)",
           "/probe/single?id=sgr.bold": "Run single probe",
           "/query": "POST — execute raw escape sequence commands",
         },
@@ -251,13 +265,13 @@ export async function startDaemon(port = 0): Promise<void> {
 
     const filepath = register(info)
 
-    console.log(`\x1b[33m⚠ Security warning: this opens an HTTP server on localhost:${actualPort}`)
+    console.log(`\x1b[33m! Security warning: this opens an HTTP server on localhost:${actualPort}`)
     console.log(`  Any local process can trigger terminal escape sequences via this server.`)
     console.log(`  Only run this on trusted machines. Stop with Ctrl+C when done.\x1b[0m\n`)
     console.log(`\x1b[1mterminfo.dev\x1b[0m daemon running\n`)
     console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m ${terminal.version}`)
     console.log(`  Port:      \x1b[1m${actualPort}\x1b[0m`)
-    console.log(`  Probes:    ${ALL_PROBES.length}`)
+    console.log(`  Probes:    dynamic (loaded on each request)`)
     console.log(``)
     console.log(`  Test:   curl http://localhost:${actualPort}/probe`)
     console.log(`  Info:   curl http://localhost:${actualPort}/info`)
