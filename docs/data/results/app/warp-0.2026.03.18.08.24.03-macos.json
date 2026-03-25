@@ -3,6 +3,8 @@
   "terminalVersion": "0.2026.03.18.08.24.03",
   "os": "macos",
   "osVersion": "25.3.0",
+  "source": "daemon",
+  "generated": "2026-03-25T03:17:41.907Z",
   "results": {
     "cursor.position-report": true,
     "cursor.shape": true,
@@ -43,7 +45,7 @@
     "editing.insert-lines": true,
     "editing.delete-lines": true,
     "editing.repeat-char": true,
-    "modes.alt-screen": true,
+    "modes.alt-screen.enter": true,
     "modes.auto-wrap": true,
     "modes.bracketed-paste": true,
     "modes.insert-replace": true,
@@ -103,11 +105,18 @@
     "extensions.truecolor": true,
     "extensions.osc8": true,
     "extensions.osc0-icon-title": true,
-    "extensions.semantic-prompts": true
+    "extensions.semantic-prompts": true,
+    "extensions.kitty-graphics": false,
+    "extensions.reflow": true,
+    "scrollback.accumulate": true,
+    "scrollback.total-lines": true,
+    "scrollback.alt-screen": true,
+    "modes.alt-screen.exit": true,
+    "modes.mouse-all": true
   },
   "notes": {
     "device.decrpm": "No DECRPM response",
-    "modes.alt-screen": "Behavioral: entered and responded",
+    "modes.alt-screen.enter": "Behavioral: entered and responded",
     "modes.auto-wrap": "Behavioral: wrap confirmed",
     "modes.bracketed-paste": "Behavioral: terminal responsive after enable",
     "modes.mouse-tracking": "Behavioral: responsive after enable",
@@ -118,9 +127,28 @@
     "modes.reverse-video": "Behavioral: responsive after enable",
     "modes.synchronized-output": "DECRPM: mode reset",
     "extensions.sixel-da1": "DA1 response missing ;4 (sixel)",
-    "extensions.sixel": "Sixel image didn't move cursor"
+    "extensions.sixel": "Sixel image didn't move cursor",
+    "extensions.kitty-graphics": "Terminal responsive but no kitty graphics acknowledgment",
+    "scrollback.total-lines": "Content written to scrollback",
+    "modes.mouse-all": "Behavioral: responsive after enable"
   },
-  "generated": "2026-03-24T23:43:04.619Z",
-  "cliVersion": "2.3.0",
-  "probeCount": 100
+  "responses": {
+    "cursor.position-report": "3;5",
+    "cursor.save-restore": "3;5",
+    "cursor.move.absolute": "5;10",
+    "cursor.move.up": "3;5",
+    "cursor.move.down": "7;5",
+    "cursor.move.forward": "5;8",
+    "cursor.move.back": "5;2",
+    "cursor.move.home": "1;1",
+    "cursor.horizontal-absolute": "3;15",
+    "cursor.next-line": "4;1",
+    "device.primary-da": "\u001b[?62c",
+    "device.status-report": "\u001b[0n",
+    "modes.synchronized-output": "reset",
+    "extensions.kitty-keyboard": "flags=0",
+    "extensions.sixel-da1": "62",
+    "extensions.osc10-fg-color": "rgb:f8f8/f8f8/f2f2",
+    "extensions.osc11-bg-color": "rgb:2828/2a2a/3636"
+  }
 }
