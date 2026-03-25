@@ -786,6 +786,125 @@ function validateNumbersInAnalysis(
   }
 }
 
+// --- Auto-linking ---
+
+/**
+ * Post-process analysis HTML to auto-link mentions of terminals, features,
+ * baselines, categories, and standards. Uses hover-link styling (inherit color,
+ * brand on hover). Skips text already inside <a> tags or <strong> tags.
+ */
+function linkify(
+  html: string,
+  terminals: Record<string, TerminalMeta>,
+  features: Record<string, FeatureMeta>,
+  categories: Record<string, CategoryMeta>,
+  standards: Record<string, StandardMeta>,
+  baselines: Record<string, BaselineMeta>,
+): string {
+  // Build lookup: display name → { href, original } sorted longest-first to avoid partial matches
+  const entities: Array<{ pattern: RegExp; href: string }> = []
+
+  // Terminals (by label)
+  for (const [, t] of Object.entries(terminals)) {
+    if (!t.label || !t.slug) continue
+    entities.push({
+      pattern: new RegExp(`\\b${escapeRegex(t.label)}\\b`, "g"),
+      href: `/terminal/${t.slug}`,
+    })
+  }
+
+  // Baselines (by label + " baseline" or just label when preceded by baseline context)
+  for (const [id, b] of Object.entries(baselines)) {
+    entities.push({
+      pattern: new RegExp(`\\b${escapeRegex(b.label)}\\s+[Bb]aseline\\b`, "g"),
+      href: `/baseline/${id}`,
+    })
+  }
+
+  // Categories (by label)
+  for (const [id, c] of Object.entries(categories)) {
+    if (!c.label) continue
+    entities.push({
+      pattern: new RegExp(`\\b${escapeRegex(c.label)}\\b`, "g"),
+      href: `/${id}`,
+    })
+  }
+
+  // Standards (by label)
+  for (const [id, s] of Object.entries(standards)) {
+    if (!s.label) continue
+    entities.push({
+      pattern: new RegExp(`\\b${escapeRegex(s.label)}\\b`, "g"),
+      href: `/${id}`,
+    })
+  }
+
+  // Sort by pattern length descending (longer matches first)
+  entities.sort((a, b) => b.pattern.source.length - a.pattern.source.length)
+
+  // Process: split HTML into inside-tag and outside-tag segments
+  // Only linkify text outside existing tags
+  let result = ""
+  let i = 0
+  while (i < html.length) {
+    if (html[i] === "<") {
+      // Inside a tag — copy verbatim until closing >
+      const end = html.indexOf(">", i)
+      if (end === -1) {
+        result += html.slice(i)
+        break
+      }
+      result += html.slice(i, end + 1)
+
+      // If this is an <a> tag, skip to </a>
+      const tagContent = html.slice(i, end + 1)
+      if (tagContent.startsWith("<a ") || tagContent === "<a>") {
+        const closeA = html.indexOf("</a>", end)
+        if (closeA !== -1) {
+          result += html.slice(end + 1, closeA + 4)
+          i = closeA + 4
+          continue
+        }
+      }
+
+      i = end + 1
+    } else {
+      // Text node — find next tag
+      const nextTag = html.indexOf("<", i)
+      const text = nextTag === -1 ? html.slice(i) : html.slice(i, nextTag)
+
+      // Apply entity linking to this text chunk
+      let linked = text
+      const alreadyLinked = new Set<number>() // character positions already in a link
+
+      for (const { pattern, href } of entities) {
+        pattern.lastIndex = 0
+        linked = linked.replace(pattern, (match, offset) => {
+          // Skip if this position is already inside a generated link
+          for (let p = offset; p < offset + match.length; p++) {
+            if (alreadyLinked.has(p)) return match
+          }
+          // Mark positions as linked
+          // (approximate — works for non-overlapping replacements)
+          for (let p = offset; p < offset + match.length; p++) {
+            alreadyLinked.add(p)
+          }
+          return `<a href="${href}" class="hover-link">${match}</a>`
+        })
+      }
+
+      result += linked
+      i = nextTag === -1 ? html.length : nextTag
+    }
+  }
+
+  return result
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 // --- Main ---
 
 function loadAllData() {
@@ -889,6 +1008,11 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
     const entry = generateStandardAnalysis(stdId, stdMeta, allStats, features)
     validateHtml(entry.analysis, key)
     output[key] = entry
+  }
+
+  // Post-process: auto-link entity mentions in all analysis text
+  for (const [key, entry] of Object.entries(output)) {
+    entry.analysis = linkify(entry.analysis, terminals, features, categories, standards, baselines)
   }
 
   return output

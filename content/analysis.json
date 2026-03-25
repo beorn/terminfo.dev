@@ -1,43 +1,43 @@
 {
-  "$generated": "2026-03-25T23:10:56.729Z",
+  "$generated": "2026-03-25T23:18:08.368Z",
   "terminal/ghostty": {
-    "analysis": "<p>Ghostty scores <strong>97%</strong> (130/134) on the terminfo.dev feature matrix, with gaps in the Rich Terminal baseline. Ranks <strong>#2</strong> of 8 tested terminals. Missing: Tertiary Device Attributes (DA3), Sixel graphics, Kitty graphics protocol.</p>",
+    "analysis": "<p><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> scores <strong>97%</strong> (130/134) on the terminfo.dev feature matrix, with gaps in the <a href=\"/baseline/rich\" class=\"hover-link\">Rich Terminal baseline</a>. Ranks <strong>#2</strong> of 8 tested terminals. Missing: Tertiary Device Attributes (DA3), Sixel graphics, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> graphics protocol.</p>",
     "date": "2026-03-25",
     "probeCount": 134,
     "changes": null
   },
   "terminal/kitty": {
-    "analysis": "<p>Kitty scores <strong>92%</strong> (123/134) on the terminfo.dev feature matrix, with gaps in the Modern TUI, Rich Terminal, Unicode Text baselines. Ranks <strong>#7</strong> of 8 tested terminals. Missing <strong>10</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> scores <strong>92%</strong> (123/134) on the terminfo.dev feature matrix, with gaps in the Modern TUI, Rich Terminal, <a href=\"/unicode\" class=\"hover-link\"><a href=\"/unicode\" class=\"hover-link\">Unicode</a></a> <a href=\"/text\" class=\"hover-link\">Text</a> baselines. Ranks <strong>#7</strong> of 8 tested terminals. Missing <strong>10</strong> features.</p>",
     "date": "2026-03-25",
     "probeCount": 134,
     "changes": null
   },
   "terminal/iterm2": {
-    "analysis": "<p>iTerm2 scores <strong>99%</strong> (133/134) on the terminfo.dev feature matrix, with gaps in the Rich Terminal baseline. Ranks <strong>#1</strong> of 8 tested terminals. Uniquely supports: Tertiary Device Attributes (DA3), Kitty graphics protocol. Missing: Sixel graphics.</p>",
+    "analysis": "<p><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> scores <strong>99%</strong> (133/134) on the terminfo.dev feature matrix, with gaps in the <a href=\"/baseline/rich\" class=\"hover-link\">Rich Terminal baseline</a>. Ranks <strong>#1</strong> of 8 tested terminals. Uniquely supports: Tertiary Device Attributes (DA3), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> graphics protocol. Missing: Sixel graphics.</p>",
     "date": "2026-03-25",
     "probeCount": 134,
     "changes": null
   },
   "terminal/terminal-app": {
-    "analysis": "<p>Terminal.app scores <strong>92%</strong> (123/134) on the terminfo.dev feature matrix, with gaps in the Modern TUI, Rich Terminal, Unicode Text baselines. Ranks <strong>#8</strong> of 8 tested terminals. Missing <strong>10</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> scores <strong>92%</strong> (123/134) on the terminfo.dev feature matrix, with gaps in the Modern TUI, Rich Terminal, <a href=\"/unicode\" class=\"hover-link\"><a href=\"/unicode\" class=\"hover-link\">Unicode</a></a> <a href=\"/text\" class=\"hover-link\">Text</a> baselines. Ranks <strong>#8</strong> of 8 tested terminals. Missing <strong>10</strong> features.</p>",
     "date": "2026-03-25",
     "probeCount": 134,
     "changes": null
   },
   "terminal/warp": {
-    "analysis": "<p>Warp scores <strong>93%</strong> (124/134) on the terminfo.dev feature matrix, with gaps in the Modern TUI, Rich Terminal, Unicode Text baselines. Ranks <strong>#5</strong> of 8 tested terminals. Missing <strong>9</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> scores <strong>93%</strong> (124/134) on the terminfo.dev feature matrix, with gaps in the Modern TUI, Rich Terminal, <a href=\"/unicode\" class=\"hover-link\"><a href=\"/unicode\" class=\"hover-link\">Unicode</a></a> <a href=\"/text\" class=\"hover-link\">Text</a> baselines. Ranks <strong>#6</strong> of 8 tested terminals. Missing <strong>9</strong> features.</p>",
     "date": "2026-03-25",
     "probeCount": 134,
     "changes": null
   },
   "terminal/cursor": {
-    "analysis": "<p>Cursor scores <strong>93%</strong> (125/134) on the terminfo.dev feature matrix, with gaps in the Rich Terminal, Unicode Text baselines. Ranks <strong>#4</strong> of 8 tested terminals. Missing: Tertiary Device Attributes (DA3), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols), Variation selector 16 (emoji presentation), Kitty keyboard protocol, Sixel graphics, Grapheme Cluster Cursor Movement, Kitty graphics protocol.</p>",
+    "analysis": "<p><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> scores <strong>93%</strong> (125/134) on the terminfo.dev feature matrix, with gaps in the Rich Terminal, <a href=\"/unicode\" class=\"hover-link\"><a href=\"/unicode\" class=\"hover-link\">Unicode</a></a> <a href=\"/text\" class=\"hover-link\">Text</a> baselines. Ranks <strong>#5</strong> of 8 tested terminals. Missing: Tertiary Device Attributes (DA3), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols), Variation selector 16 (emoji presentation), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> keyboard protocol, Sixel graphics, Grapheme Cluster <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> Movement, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> graphics protocol.</p>",
     "date": "2026-03-25",
     "probeCount": 134,
     "changes": null
   },
   "terminal/vs-code": {
-    "analysis": "<p>VS Code scores <strong>94%</strong> (126/134) on the terminfo.dev feature matrix, with gaps in the Rich Terminal, Unicode Text baselines. Ranks <strong>#3</strong> of 8 tested terminals. Missing: Tertiary Device Attributes (DA3), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols), Variation selector 16 (emoji presentation), Sixel graphics, Grapheme Cluster Cursor Movement, Kitty graphics protocol.</p>",
+    "analysis": "<p><a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> scores <strong>94%</strong> (126/134) on the terminfo.dev feature matrix, with gaps in the Rich Terminal, <a href=\"/unicode\" class=\"hover-link\"><a href=\"/unicode\" class=\"hover-link\">Unicode</a></a> <a href=\"/text\" class=\"hover-link\">Text</a> baselines. Ranks <strong>#3</strong> of 8 tested terminals. Missing: Tertiary Device Attributes (DA3), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols), Variation selector 16 (emoji presentation), Sixel graphics, Grapheme Cluster <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> Movement, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> graphics protocol.</p>",
     "date": "2026-03-25",
     "probeCount": 134,
     "changes": null
@@ -48,177 +48,177 @@
     "changes": null
   },
   "baseline/modern": {
-    "analysis": "<p><strong>5</strong> of 8 tested terminals achieve 100% Modern TUI compliance. Lagging: Kitty (96%), Terminal.app (96%), Warp (98%). Most commonly missing: Mode Reporting (DECRPM), Origin mode (DECOM).</p>",
+    "analysis": "<p><strong>5</strong> of 8 tested terminals achieve 100% Modern TUI compliance. Lagging: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (96%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (96%), <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> (98%). Most commonly missing: Mode Reporting (DECRPM), Origin mode (DECOM).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "baseline/rich": {
-    "analysis": "<p><strong>0</strong> of 8 tested terminals achieve 100% Rich Terminal compliance. Lagging: Cursor (61%), Kitty (71%), Terminal.app (71%). Most commonly missing: Tertiary Device Attributes (DA3), Kitty graphics protocol, XTGETTCAP (Query Terminfo).</p>",
+    "analysis": "<p><strong>0</strong> of 8 tested terminals achieve 100% Rich Terminal compliance. Lagging: <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> (67%), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (71%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (71%). Most commonly missing: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> graphics protocol, Tertiary Device Attributes (DA3), Sixel graphics.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "baseline/unicode": {
-    "analysis": "<p><strong>2</strong> of 8 tested terminals achieve 100% Unicode Text compliance. Lagging: Kitty (63%), Terminal.app (63%), Warp (63%). Most commonly missing: Variation selector 16 (emoji presentation), Emoji ZWJ sequences (2 cols), Grapheme Cluster Cursor Movement.</p>",
+    "analysis": "<p><strong>2</strong> of 8 tested terminals achieve 100% <a href=\"/unicode\" class=\"hover-link\"><a href=\"/unicode\" class=\"hover-link\">Unicode</a></a> <a href=\"/text\" class=\"hover-link\">Text</a> compliance. Lagging: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (63%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (63%), <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> (63%). Most commonly missing: Variation selector 16 (emoji presentation), Emoji ZWJ sequences (2 cols), Grapheme Cluster <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> Movement.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "compare/ghostty-vs-kitty": {
-    "analysis": "<p><strong>Ghostty</strong> scores 97% (130/134) vs <strong>Kitty</strong> at 92% (123/134). Ghostty leads by 5 percentage points. Only in Ghostty: Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols), Variation selector 16 (emoji presentation) and 3 more. Only in Kitty: Sixel graphics.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 97% (130/134) vs <strong><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a></strong> at 92% (123/134). <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> leads by 5 percentage points. Only in <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols), Variation selector 16 (emoji presentation) and 3 more. Only in <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Sixel graphics.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "compare/ghostty-vs-iterm2": {
-    "analysis": "<p><strong>Ghostty</strong> scores 97% (130/134) vs <strong>iTerm2</strong> at 99% (133/134). iTerm2 leads by 2 percentage points. Only in iTerm2: Tertiary Device Attributes (DA3), Kitty graphics protocol.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 97% (130/134) vs <strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> at 99% (133/134). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 2 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: Tertiary Device Attributes (DA3), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> graphics protocol.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "compare/ghostty-vs-warp": {
-    "analysis": "<p><strong>Ghostty</strong> scores 97% (130/134) vs <strong>Warp</strong> at 93% (124/134). Ghostty leads by 4 percentage points. Only in Ghostty: Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols), Variation selector 16 (emoji presentation) and 1 more.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 97% (130/134) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 93% (124/134). <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> leads by 4 percentage points. Only in <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols), Variation selector 16 (emoji presentation) and 1 more.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "compare/ghostty-vs-terminal-app": {
-    "analysis": "<p><strong>Ghostty</strong> scores 97% (130/134) vs <strong>Terminal.app</strong> at 92% (123/134). Ghostty leads by 5 percentage points. Only in Ghostty: Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols), Variation selector 16 (emoji presentation) and 3 more. Only in Terminal.app: Sixel graphics.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 97% (130/134) vs <strong><a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> at 92% (123/134). <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> leads by 5 percentage points. Only in <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols), Variation selector 16 (emoji presentation) and 3 more. Only in <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>: Sixel graphics.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "compare/iterm2-vs-kitty": {
-    "analysis": "<p><strong>iTerm2</strong> scores 99% (133/134) vs <strong>Kitty</strong> at 92% (123/134). iTerm2 leads by 7 percentage points. Only in iTerm2: Tertiary Device Attributes (DA3), Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols) and 5 more. Only in Kitty: Sixel graphics.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 99% (133/134) vs <strong><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a></strong> at 92% (123/134). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 7 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: Tertiary Device Attributes (DA3), Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols) and 5 more. Only in <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Sixel graphics.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "compare/kitty-vs-warp": {
-    "analysis": "<p><strong>Kitty</strong> scores 92% (123/134) vs <strong>Warp</strong> at 93% (124/134). Warp leads by 1 percentage point. Only in Kitty: Sixel graphics. Only in Warp: Origin mode (DECOM), Kitty keyboard protocol.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a></strong> scores 92% (123/134) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 93% (124/134). <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> leads by 1 percentage point. Only in <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Sixel graphics. Only in <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>: Origin mode (DECOM), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> keyboard protocol.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "compare/iterm2-vs-terminal-app": {
-    "analysis": "<p><strong>iTerm2</strong> scores 99% (133/134) vs <strong>Terminal.app</strong> at 92% (123/134). iTerm2 leads by 7 percentage points. Only in iTerm2: Tertiary Device Attributes (DA3), Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols) and 5 more. Only in Terminal.app: Sixel graphics.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 99% (133/134) vs <strong><a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> at 92% (123/134). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 7 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: Tertiary Device Attributes (DA3), Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols) and 5 more. Only in <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>: Sixel graphics.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "compare/iterm2-vs-warp": {
-    "analysis": "<p><strong>iTerm2</strong> scores 99% (133/134) vs <strong>Warp</strong> at 93% (124/134). iTerm2 leads by 6 percentage points. Only in iTerm2: Tertiary Device Attributes (DA3), Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols) and 3 more.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 99% (133/134) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 93% (124/134). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 6 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: Tertiary Device Attributes (DA3), Mode Reporting (DECRPM), DECRQSS (Request Setting), XTGETTCAP (Query Terminfo), Emoji ZWJ sequences (2 cols) and 3 more.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "compare/cursor-vs-vs-code": {
-    "analysis": "<p><strong>Cursor</strong> scores 93% (125/134) vs <strong>VS Code</strong> at 94% (126/134). VS Code leads by 1 percentage point. Only in VS Code: Kitty keyboard protocol.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a></strong> scores 93% (125/134) vs <strong><a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a></strong> at 94% (126/134). <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> leads by 1 percentage point. Only in <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a>: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> keyboard protocol.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "compare/terminal-app-vs-warp": {
-    "analysis": "<p><strong>Terminal.app</strong> scores 92% (123/134) vs <strong>Warp</strong> at 93% (124/134). Warp leads by 1 percentage point. Only in Terminal.app: Sixel graphics. Only in Warp: Origin mode (DECOM), Kitty keyboard protocol.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> scores 92% (123/134) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 93% (124/134). <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> leads by 1 percentage point. Only in <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>: Sixel graphics. Only in <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>: Origin mode (DECOM), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> keyboard protocol.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "sgr": {
-    "analysis": "<p>The <strong>SGR (Text Styling)</strong> category covers 29 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong>SGR (<a href=\"/text\" class=\"hover-link\">Text</a> Styling)</strong> category covers 29 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "cursor": {
-    "analysis": "<p>The <strong>Cursor</strong> category covers 17 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a></strong> category covers 17 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "text": {
-    "analysis": "<p>The <strong>Text</strong> category covers 16 features. Top performers (100%): Ghostty, iTerm2. Common gaps: Variation selector 16 (emoji presentation) (6 terminals fail), Emoji ZWJ sequences (2 cols) (5 terminals fail), Emoji wide chars (2 cols) (1 terminal fails).</p>",
+    "analysis": "<p>The <strong><a href=\"/text\" class=\"hover-link\">Text</a></strong> category covers 16 features. Top performers (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>. Common gaps: Variation selector 16 (emoji presentation) (6 terminals fail), Emoji ZWJ sequences (2 cols) (5 terminals fail), Emoji wide chars (2 cols) (1 terminal fails).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "erase": {
-    "analysis": "<p>The <strong>Erase</strong> category covers 11 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong><a href=\"/erase\" class=\"hover-link\">Erase</a></strong> category covers 11 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "editing": {
-    "analysis": "<p>The <strong>Editing</strong> category covers 5 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong><a href=\"/editing\" class=\"hover-link\">Editing</a></strong> category covers 5 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "modes": {
-    "analysis": "<p>The <strong>Modes</strong> category covers 15 features. Top performers (100%): Ghostty, iTerm2, Warp, Cursor, VS Code and 1 more. Common gaps: Origin mode (DECOM) (2 terminals fail).</p>",
+    "analysis": "<p>The <strong><a href=\"/modes\" class=\"hover-link\">Modes</a></strong> category covers 15 features. Top performers (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a>, <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> and 1 more. Common gaps: Origin mode (DECOM) (2 terminals fail).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "scrollback": {
-    "analysis": "<p>The <strong>Scrollback</strong> category covers 9 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong><a href=\"/scrollback\" class=\"hover-link\">Scrollback</a></strong> category covers 9 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "reset": {
-    "analysis": "<p>The <strong>Reset</strong> category covers 4 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong><a href=\"/reset\" class=\"hover-link\">Reset</a></strong> category covers 4 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "extensions": {
-    "analysis": "<p>The <strong>Extensions</strong> category covers 18 features. Common gaps: Kitty graphics protocol (7 terminals fail), Sixel graphics (6 terminals fail), Kitty keyboard protocol (4 terminals fail).</p>",
+    "analysis": "<p>The <strong><a href=\"/extensions\" class=\"hover-link\">Extensions</a></strong> category covers 18 features. Common gaps: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> graphics protocol (7 terminals fail), Sixel graphics (6 terminals fail), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> keyboard protocol (4 terminals fail).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "charsets": {
-    "analysis": "<p>The <strong>Character Sets</strong> category covers 4 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong><a href=\"/charsets\" class=\"hover-link\">Character Sets</a></strong> category covers 4 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "device": {
-    "analysis": "<p>The <strong>Device Status</strong> category covers 9 features. Top performers (100%): iTerm2. Common gaps: Tertiary Device Attributes (DA3) (7 terminals fail), XTGETTCAP (Query Terminfo) (6 terminals fail), DECRQSS (Request Setting) (3 terminals fail).</p>",
+    "analysis": "<p>The <strong><a href=\"/device\" class=\"hover-link\">Device Status</a></strong> category covers 9 features. Top performers (100%): <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>. Common gaps: Tertiary Device Attributes (DA3) (7 terminals fail), XTGETTCAP (Query Terminfo) (6 terminals fail), DECRQSS (Request Setting) (3 terminals fail).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "input": {
-    "analysis": "<p>The <strong>Input Protocols</strong> category covers 6 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong><a href=\"/input\" class=\"hover-link\">Input Protocols</a></strong> category covers 6 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "unicode": {
-    "analysis": "<p><strong>Unicode</strong> defines 10 features in the terminfo.dev matrix. Average adoption across terminals: <strong>78%</strong>. Full compliance (100%): Ghostty, iTerm2. Lowest: Cursor at 70% (7/10).</p>",
+    "analysis": "<p><strong><a href=\"/unicode\" class=\"hover-link\"><a href=\"/unicode\" class=\"hover-link\">Unicode</a></a></strong> defines 10 features in the terminfo.dev matrix. Average adoption across terminals: <strong>78%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>. Lowest: <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> at 70% (7/10).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "ecma-48": {
-    "analysis": "<p><strong>ECMA-48 Standard</strong> defines 60 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Cursor, Ghostty, Kitty, iTerm2, Terminal.app and 3 more.</p>",
+    "analysis": "<p><strong><a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a></strong> defines 60 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a>, <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> and 3 more.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "vt100": {
-    "analysis": "<p><strong>VT100</strong> defines 50 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Cursor, Ghostty, iTerm2, Warp, Cursor and 1 more. Lowest: Terminal.app at 98% (39/40).</p>",
+    "analysis": "<p><strong><a href=\"/vt100\" class=\"hover-link\">VT100</a></strong> defines 50 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a>, <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, iTerm2, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> and 1 more. Lowest: <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> at 98% (39/40).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "vt220": {
-    "analysis": "<p><strong>VT220</strong> defines 4 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Ghostty, Kitty, iTerm2, Terminal.app, Warp and 3 more.</p>",
+    "analysis": "<p><strong><a href=\"/vt220\" class=\"hover-link\">VT220</a></strong> defines 4 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> and 3 more.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "vt510": {
-    "analysis": "<p><strong>VT510</strong> defines 10 features in the terminfo.dev matrix. Average adoption across terminals: <strong>84%</strong>. Full compliance (100%): iTerm2. Lowest: Warp at 70% (7/10).</p>",
+    "analysis": "<p><strong><a href=\"/vt510\" class=\"hover-link\">VT510</a></strong> defines 10 features in the terminfo.dev matrix. Average adoption across terminals: <strong>84%</strong>. Full compliance (100%): <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>. Lowest: <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> at 70% (7/10).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "dec-private-modes": {
-    "analysis": "<p><strong>DEC Private Modes</strong> defines 22 features in the terminfo.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): Cursor, Ghostty, iTerm2, Warp, Cursor and 1 more. Lowest: Terminal.app at 95% (18/19).</p>",
+    "analysis": "<p><strong><a href=\"/dec-private-modes\" class=\"hover-link\">DEC Private <a href=\"/modes\" class=\"hover-link\">Modes</a></a></strong> defines 22 features in the terminfo.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a>, <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, iTerm2, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> and 1 more. Lowest: <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> at 95% (18/19).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "xterm-extensions": {
-    "analysis": "<p><strong>Xterm Extensions</strong> defines 33 features in the terminfo.dev matrix. Average adoption across terminals: <strong>97%</strong>. Full compliance (100%): Ghostty, iTerm2. Lowest: Cursor at 94% (31/33).</p>",
+    "analysis": "<p><strong><a href=\"/xterm-extensions\" class=\"hover-link\">Xterm <a href=\"/extensions\" class=\"hover-link\">Extensions</a></a></strong> defines 33 features in the terminfo.dev matrix. Average adoption across terminals: <strong>98%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>. Lowest: <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> at 97% (31/32).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "kitty-extensions": {
-    "analysis": "<p><strong>Kitty Extensions</strong> defines 6 features in the terminfo.dev matrix. Average adoption across terminals: <strong>77%</strong>. Full compliance (100%): iTerm2. Lowest: Cursor at 67% (4/6).</p>",
+    "analysis": "<p><strong><a href=\"/kitty-extensions\" class=\"hover-link\"><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> <a href=\"/extensions\" class=\"hover-link\">Extensions</a></a></strong> defines 6 features in the terminfo.dev matrix. Average adoption across terminals: <strong>77%</strong>. Full compliance (100%): <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>. Lowest: <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> at 67% (4/6).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "osc": {
-    "analysis": "<p><strong>Operating System Commands (OSC)</strong> defines 13 features in the terminfo.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): Ghostty, Kitty, iTerm2, Terminal.app, Warp and 2 more. Lowest: Cursor at 91% (10/11).</p>",
+    "analysis": "<p><strong>Operating System Commands (OSC)</strong> defines 13 features in the terminfo.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> and 2 more. Lowest: <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> at 91% (10/11).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "sixel": {
-    "analysis": "<p><strong>Sixel Graphics</strong> defines 1 feature in the terminfo.dev matrix. Average adoption across terminals: <strong>25%</strong>. Full compliance (100%): Kitty, Terminal.app. Lowest: Cursor at 0% (0/1).</p>",
+    "analysis": "<p><strong><a href=\"/sixel\" class=\"hover-link\">Sixel Graphics</a></strong> defines 1 feature in the terminfo.dev matrix. Average adoption across terminals: <strong>25%</strong>. Full compliance (100%): <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>. Lowest: <a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/terminal/cursor\" class=\"hover-link\"><a href=\"/cursor\" class=\"hover-link\">Cursor</a></a></a> at 0% (0/1).</p>",
     "date": "2026-03-25",
     "changes": null
   }
