@@ -145,10 +145,38 @@ function buildSidebar() {
     return a.localeCompare(b)
   })
 
+  // Load app terminals from results/app/ directory
+  const appTerminals: Array<{ text: string; link: string }> = []
+  try {
+    const appDir = join(docsDir, "data", "results", "app")
+    const appFiles = readdirSync(appDir).filter((f: string) => f.endsWith(".json"))
+    const seen = new Set<string>()
+    for (const file of appFiles) {
+      try {
+        const raw = JSON.parse(readFileSync(join(appDir, file), "utf-8"))
+        if (!raw.terminal || seen.has(raw.terminal)) continue
+        seen.add(raw.terminal)
+        const labels: Record<string, string> = {
+          ghostty: "Ghostty", kitty: "Kitty", iterm2: "iTerm2",
+          "terminal-app": "Terminal.app", warp: "Warp", cmux: "cmux",
+          cursor: "Cursor", "com.microsoft.VSCode": "VS Code",
+        }
+        const label = labels[raw.terminal] ?? raw.terminal
+        const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
+        appTerminals.push({ text: label, link: `/terminal/${slug}` })
+      } catch {}
+    }
+    appTerminals.sort((a, b) => a.text.localeCompare(b.text))
+  } catch {}
+
   const sidebar = [
     { text: "Matrix", link: "/" },
     {
       text: "Terminals",
+      items: appTerminals,
+    },
+    {
+      text: "Backends",
       items: terminals,
     },
     {
