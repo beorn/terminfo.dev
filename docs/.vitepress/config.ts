@@ -2,6 +2,7 @@ import { defineConfig } from "vitepress"
 import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { generateApi } from "../../scripts/generate-api"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const docsDir = join(__dirname, "..")
@@ -177,11 +178,39 @@ function buildSidebar() {
     appTerminals.sort((a, b) => a.text.localeCompare(b.text))
   } catch {}
 
+  // Build popular comparisons from available app terminals
+  const compareItems: Array<{ text: string; link: string }> = []
+  const popularPairs = [
+    ["Ghostty", "Kitty"],
+    ["Ghostty", "iTerm2"],
+    ["Kitty", "WezTerm"],
+    ["VS Code", "Terminal.app"],
+    ["Ghostty", "WezTerm"],
+    ["iTerm2", "Kitty"],
+    ["Ghostty", "Terminal.app"],
+    ["Kitty", "Terminal.app"],
+  ]
+  const appTerminalSlugs = new Map(appTerminals.map((t) => [t.text, t.link.replace("/terminal/", "")]))
+  for (const [a, b] of popularPairs) {
+    const slugA = appTerminalSlugs.get(a)
+    const slugB = appTerminalSlugs.get(b)
+    if (slugA && slugB) {
+      compareItems.push({
+        text: `${a} vs ${b}`,
+        link: `/compare/${slugA}-vs-${slugB}`,
+      })
+    }
+  }
+
   const sidebar = [
     { text: "Matrix", link: "/" },
     {
       text: "Terminals",
       items: appTerminals,
+    },
+    {
+      text: "Compare",
+      items: compareItems,
     },
     {
       text: "Backends",
@@ -206,6 +235,7 @@ function buildSidebar() {
         link: `/${tag}`,
       })),
     },
+    { text: "API", link: "/api" },
     { text: "About", link: "/about" },
   ]
 
@@ -231,7 +261,14 @@ export default defineConfig({
 
     const rel = pageData.relativePath
 
-    if (rel.startsWith("terminal/")) {
+    if (rel.startsWith("compare/")) {
+      pageData.title = `${params.termALabel} vs ${params.termBLabel} — Terminal Feature Comparison`
+      pageData.description = `Compare ${params.termALabel} (${params.termAPct}%) vs ${params.termBLabel} (${params.termBPct}%) terminal feature support. ${params.differ} features differ.`
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+    } else if (rel.startsWith("terminal/")) {
       pageData.title = `${params.backendName} — Terminal Feature Support`
       pageData.description = `${params.backendName} terminal emulator feature support: ${params.pct}% (${params.yes}/${params.total} features). ${params.backendDescription}`
       pageData.frontmatter.head = [
@@ -283,6 +320,7 @@ export default defineConfig({
         items: terminals,
       },
       { text: "About", link: "/about" },
+      { text: "API", link: "/api" },
     ],
 
     // Sidebar on all pages except home (home uses layout: home, which hides sidebar)
@@ -291,5 +329,10 @@ export default defineConfig({
     footer: {
       message: 'Powered by <a href="https://termless.dev">Termless</a><br>Playwright for Terminals',
     },
+  },
+
+  async buildEnd() {
+    const { dataPath, badgeCount } = generateApi()
+    console.log(`[API] Generated ${dataPath} + ${badgeCount} badges`)
   },
 })

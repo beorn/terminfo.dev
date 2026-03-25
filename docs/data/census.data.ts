@@ -103,7 +103,10 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
   if (!existsSync(annotationsPath)) {
     throw new Error(`annotations.json not found at ${annotationsPath}`)
   }
-  return JSON.parse(readFileSync(annotationsPath, "utf-8")) as Record<string, { note: string; url?: string; result?: string }>
+  return JSON.parse(readFileSync(annotationsPath, "utf-8")) as Record<
+    string,
+    { note: string; url?: string; result?: string }
+  >
 }
 
 function loadBackendMeta(): Record<string, BackendMeta> {
@@ -446,7 +449,8 @@ function loadPerBackendResults(): CensusData {
       notes[raw.backend] = {}
       const rawNotes = raw.notes ?? {}
       for (const [id, val] of Object.entries(raw.results ?? {})) {
-        results[raw.backend]![id] = typeof val === "boolean" ? (val ? "yes" : "no") : ((val as any).support ?? "unknown")
+        results[raw.backend]![id] =
+          typeof val === "boolean" ? (val ? "yes" : "no") : ((val as any).support ?? "unknown")
         if (rawNotes[id]) notes[raw.backend]![id] = rawNotes[id]
         if (!featureSet.has(id)) {
           const cat = id.split(".")[0]!
