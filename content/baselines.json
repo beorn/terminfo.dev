@@ -1,6 +1,6 @@
 {
   "core": {
-    "label": "Core Terminal",
+    "label": "Core TUI",
     "emoji": "🟢",
     "color": "#10b981",
     "order": 0,
@@ -15,12 +15,12 @@
     "color": "#3b82f6",
     "order": 1,
     "tagline": "Expected by modern TUI frameworks",
-    "description": "Features that modern TUI frameworks (<a href=\"https://silvery.dev\">Silvery</a>, Ink, Textual, Bubbletea) depend on for a good user experience. Includes truecolor (24-bit RGB), bracketed paste mode, focus reporting, mouse tracking (SGR mode), synchronized output to prevent flicker, application cursor keys, and origin mode. Most terminals released after 2018 support all Modern features.",
+    "description": "Features that modern TUI frameworks (<a href=\"https://silvery.dev\" class=\"hover-link\">Silvery</a>, <a href=\"https://github.com/vadimdemedes/ink\" class=\"hover-link\">Ink</a>, <a href=\"https://textual.textualize.io\" class=\"hover-link\">Textual</a>, <a href=\"https://github.com/charmbracelet/bubbletea\" class=\"hover-link\">Bubbletea</a>) depend on for a good user experience. Includes truecolor (24-bit RGB), bracketed paste mode, focus reporting, mouse tracking (SGR mode), synchronized output to prevent flicker, application cursor keys, and origin mode. Most terminals released after 2018 support all Modern features.",
     "forDevelopers": "If you're building with a modern TUI framework, target Modern baseline. Users with non-compliant terminals will see degraded UX (no mouse, no paste protection, possible flicker) but the app will still function.",
     "forTerminalAuthors": "Modern compliance is expected by the TUI ecosystem. Missing features here will generate bug reports from users of popular terminal applications."
   },
   "rich": {
-    "label": "Rich Terminal",
+    "label": "Rich TUI",
     "emoji": "🟣",
     "color": "#8b5cf6",
     "order": 2,
@@ -30,7 +30,7 @@
     "forTerminalAuthors": "Rich compliance differentiates your terminal. The Kitty keyboard protocol is the most impactful single feature — it solves decades of terminal input ambiguity. Ghostty, Kitty, WezTerm, and foot lead here."
   },
   "unicode": {
-    "label": "Unicode Text",
+    "label": "Unicode",
     "emoji": "🌐",
     "color": "#f59e0b",
     "order": 3,

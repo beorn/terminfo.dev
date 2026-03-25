@@ -56,9 +56,19 @@ function termTooltip(b) {
 }
 
 function barTooltip(s, segment) {
-  if (segment === 'yes') return s.yes + ' passed'
-  if (segment === 'partial') return s.partial + ' partial'
-  return ''
+  const items = []
+  for (const f of features) {
+    const result = f.results[s.name]?.result
+    if (segment === 'yes' && result === 'yes') {
+      items.push('  ✓ ' + f.name)
+    } else if (segment === 'partial' && result === 'partial') {
+      const note = f.results[s.name]?.note
+      items.push(note ? '  ~ ' + f.name + ': ' + note : '  ~ ' + f.name)
+    }
+  }
+  if (items.length === 0) return ''
+  const label = segment === 'yes' ? 'Supported' : 'Partial'
+  return label + ' (' + items.length + '):\n' + items.join('\n')
 }
 
 function platformIcon(os) {
@@ -104,7 +114,7 @@ function platformIcons(b) {
 
 <div v-if="appScores.length > 0" class="summary">
   <div v-for="s in appScores" :key="s.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminal/' + s.slug">{{ s.label }}</a>
+    <a class="summary-name hover-link" :href="'/terminal/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
     <span class="summary-platforms" v-html="platformIcons(s)"></span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
@@ -122,7 +132,7 @@ function platformIcons(b) {
 
 <div class="summary summary-muted">
   <div v-for="s in headlessScores" :key="s.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminal/' + s.slug">{{ s.label }}</a>
+    <a class="summary-name hover-link" :href="'/terminal/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
       <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'partial')"></div>

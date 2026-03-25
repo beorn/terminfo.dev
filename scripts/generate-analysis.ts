@@ -791,6 +791,33 @@ function linkify(
     })
   }
 
+  // Features (by name — only features with unique enough names)
+  for (const [id, f] of Object.entries(features)) {
+    if (!f.name || !f.slug) continue
+    const category = id.split(".")[0]
+    // Skip very short/generic names that would cause false positives
+    if (f.name.length < 8) continue
+    // Use (?!\w) instead of \b at end — feature names like "Mode Reporting (DECRPM)"
+    // end with ) which is non-word, so \b wouldn't match after it
+    entities.push({
+      pattern: new RegExp(`\\b${escapeRegex(f.name)}(?!\\w)`, "g"),
+      href: `/${category}/${f.slug}`,
+    })
+  }
+
+  // External TUI frameworks mentioned in analysis
+  const externalLinks = [
+    { name: "Ink", href: "https://github.com/vadimdemedes/ink" },
+    { name: "Textual", href: "https://textual.textualize.io" },
+    { name: "Bubbletea", href: "https://github.com/charmbracelet/bubbletea" },
+  ]
+  for (const { name, href } of externalLinks) {
+    entities.push({
+      pattern: new RegExp(`\\b${escapeRegex(name)}\\b`, "g"),
+      href,
+    })
+  }
+
   // Sort by pattern length descending (longer matches first)
   entities.sort((a, b) => b.pattern.source.length - a.pattern.source.length)
 
