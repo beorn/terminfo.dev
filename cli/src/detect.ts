@@ -37,6 +37,7 @@ const TERM_PROGRAM_MAP: Record<string, string> = {
 /** Known macOS bundle IDs for version lookup */
 const BUNDLE_IDS: Record<string, string> = {
   cmux: "com.cmuxterm.app",
+  cursor: "com.todesktop.230313mzl4w4u92",
   ghostty: "com.mitchellh.ghostty",
   kitty: "net.kovidgoyal.kitty",
   iterm2: "com.googlecode.iterm2",
