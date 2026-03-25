@@ -1549,6 +1549,260 @@ const unicodeTabStops: Probe = {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ── Cursor probes (boundary/clamping) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const cursorCupBoundaries: Probe = {
+  id: "cursor.cup-boundaries",
+  name: "CUP at large coords clamped to screen edges",
+  async run() {
+    process.stdout.write("\x1b[999;999H") // CUP far beyond screen
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    const rows = process.stdout.rows || 24
+    const cols = process.stdout.columns || 80
+    return {
+      pass: pos[0] === rows && pos[1] === cols,
+      note:
+        pos[0] === rows && pos[1] === cols
+          ? undefined
+          : `got ${pos[0]};${pos[1]}, expected ${rows};${cols}`,
+      response: `${pos[0]};${pos[1]}`,
+    }
+  },
+}
+
+const cursorCuuPastTop: Probe = {
+  id: "cursor.cuu-past-top",
+  name: "CUU past top clamps to row 1",
+  async run() {
+    process.stdout.write("\x1b[4;1H") // move to row 4
+    process.stdout.write("\x1b[999A") // CUU 999 — way past top
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    return {
+      pass: pos[0] === 1,
+      note: pos[0] === 1 ? undefined : `got row ${pos[0]}, expected 1`,
+      response: `${pos[0]};${pos[1]}`,
+    }
+  },
+}
+
+const cursorCudPastBottom: Probe = {
+  id: "cursor.cud-past-bottom",
+  name: "CUD past bottom clamps to last row",
+  async run() {
+    process.stdout.write("\x1b[1;1H") // move to row 1
+    process.stdout.write("\x1b[999B") // CUD 999 — way past bottom
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    const rows = process.stdout.rows || 24
+    return {
+      pass: pos[0] === rows,
+      note: pos[0] === rows ? undefined : `got row ${pos[0]}, expected ${rows}`,
+      response: `${pos[0]};${pos[1]}`,
+    }
+  },
+}
+
+const cursorCupScrollRegion: Probe = {
+  id: "cursor.cup-scroll-region",
+  name: "CUP with DECSTBM + DECOM (origin mode)",
+  async run() {
+    process.stdout.write("\x1b[5;15r") // scroll region rows 5-15
+    process.stdout.write("\x1b[?6h") // enable DECOM (origin mode)
+    process.stdout.write("\x1b[1;1H") // CUP 1;1 — should map to scroll region top
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[?6l") // disable DECOM
+    process.stdout.write("\x1b[r") // reset scroll region
+    if (!pos) return { pass: false, note: "No cursor response" }
+    // In origin mode, CUP 1;1 maps to row 5 (1-based, the scroll region top)
+    return {
+      pass: pos[0] === 5 && pos[1] === 1,
+      note: pos[0] === 5 && pos[1] === 1 ? undefined : `got ${pos[0]};${pos[1]}, expected 5;1`,
+      response: `${pos[0]};${pos[1]}`,
+    }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Erase probes (attrs/scroll region) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const eraseElWithAttrs: Probe = {
+  id: "erase.el-with-attrs",
+  name: "EL fills erased cells with current bg",
+  async run() {
+    process.stdout.write("\x1b[1;1H\x1b[2K") // clear line
+    process.stdout.write("\x1b[42m") // green background
+    process.stdout.write("XXXXX")
+    process.stdout.write("\x1b[1;1H") // back to col 1
+    process.stdout.write("\x1b[K") // EL 0 — erase to right
+    // Cursor should still be at 1;1
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[0m") // reset SGR
+    if (!pos) return { pass: false, note: "No cursor response" }
+    return {
+      pass: pos[0] === 1 && pos[1] === 1,
+      note: pos[0] === 1 && pos[1] === 1 ? undefined : `cursor at ${pos[0]};${pos[1]}, expected 1;1`,
+    }
+  },
+}
+
+const eraseEdScrollRegion: Probe = {
+  id: "erase.ed-scroll-region",
+  name: "ED inside scroll region (DECSTBM + ED)",
+  async run() {
+    process.stdout.write("\x1b[2J\x1b[H") // clear + home
+    process.stdout.write("KEEP_THIS\r\n") // row 1
+    for (let i = 0; i < 5; i++) process.stdout.write(`row${i}\r\n`)
+    process.stdout.write("\x1b[3;10r") // scroll region rows 3-10
+    process.stdout.write("\x1b[3;1H") // inside region
+    process.stdout.write("\x1b[J") // ED 0 — erase below
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[r") // reset scroll region
+    if (!pos) return { pass: false, note: "No cursor response after ED in region" }
+    return {
+      pass: pos[0] === 3,
+      note: pos[0] === 3 ? undefined : `cursor at row ${pos[0]}, expected 3`,
+    }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Scrollback probes (scroll region behavior) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const scrollbackDecstbm: Probe = {
+  id: "scrollback.decstbm",
+  name: "Scroll constrained by DECSTBM region",
+  async run() {
+    const rows = process.stdout.rows || 24
+    process.stdout.write("\x1b[2J\x1b[H") // clear + home
+    process.stdout.write("\x1b[5;10r") // scroll region rows 5-10
+    process.stdout.write("\x1b[5;1H") // move to top of region
+    // Write enough lines to scroll within region
+    for (let i = 0; i < 8; i++) process.stdout.write(`line${i}\n`)
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[r") // reset scroll region
+    if (!pos) return { pass: false, note: "No cursor response" }
+    // Cursor should be clamped to scroll region bottom (row 10)
+    return {
+      pass: pos[0] <= 10,
+      note: pos[0] <= 10 ? undefined : `cursor at row ${pos[0]}, expected <= 10 (within scroll region)`,
+    }
+  },
+}
+
+const scrollbackDecstbmReset: Probe = {
+  id: "scrollback.decstbm-reset",
+  name: "Reset scroll region (CSI r)",
+  async run() {
+    process.stdout.write("\x1b[5;10r") // set scroll region
+    process.stdout.write("\x1b[r") // reset scroll region (full screen)
+    // After reset, cursor should be at 1;1
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response after DECSTBM reset" }
+    return {
+      pass: pos[0] === 1 && pos[1] === 1,
+      note: pos[0] === 1 && pos[1] === 1 ? undefined : `cursor at ${pos[0]};${pos[1]}, expected 1;1`,
+    }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Charset probes (additional) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const charsetG0G1Switching: Probe = {
+  id: "charsets.g0-g1-switching",
+  name: "G0/G1 charset switching (ESC ( 0 / ESC ( B)",
+  async run() {
+    process.stdout.write("\x1b[1;1H\x1b[2K")
+    process.stdout.write("\x1b(0") // switch G0 to DEC Special Graphics
+    process.stdout.write("q") // should render as horizontal line
+    process.stdout.write("\x1b(B") // switch G0 back to ASCII
+    process.stdout.write("X") // normal ASCII X
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    // Both characters should advance cursor by 1 each → col 3
+    return {
+      pass: pos[1] === 3,
+      note: pos[1] === 3 ? undefined : `cursor at col ${pos[1]}, expected 3`,
+    }
+  },
+}
+
+const charsetDecLineDrawing: Probe = {
+  id: "charsets.dec-line-drawing",
+  name: "DEC line drawing characters render",
+  async run() {
+    process.stdout.write("\x1b[1;1H\x1b[2K")
+    // Switch to DEC Special Graphics and write several line-drawing chars
+    process.stdout.write("\x1b(0") // G0 → DEC Special
+    process.stdout.write("lqk") // ┌─┐ (upper-left, horizontal, upper-right)
+    process.stdout.write("\x1b(B") // G0 → ASCII
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response" }
+    // 3 characters drawn → cursor at col 4
+    return {
+      pass: pos[1] === 4,
+      note: pos[1] === 4 ? undefined : `cursor at col ${pos[1]}, expected 4`,
+    }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Device probes (XTVERSION) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const deviceXtversion: Probe = {
+  id: "device.xtversion",
+  name: "XTVERSION (terminal version query)",
+  async run() {
+    // CSI > 0 q — XTVERSION query
+    // Response: DCS > | version-string ST
+    const match = await queryWithSentinel("\x1b[>0q", /\x1bP>\|([^\x1b]*)\x1b\\/)
+    if (match) return { pass: true, response: match[1] }
+    return { pass: false, note: "No XTVERSION response" }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Extensions probes (OSC 1337) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const extOsc1337CellSize: Probe = {
+  id: "extensions.osc1337-cellsize",
+  name: "Cell size report (OSC 1337 ReportCellSize)",
+  async run() {
+    // OSC 1337 ; ReportCellSize ST
+    // Response: OSC 1337 ; ReportCellSize=height;width ST (or similar)
+    const match = await queryWithSentinel(
+      "\x1b]1337;ReportCellSize\x07",
+      /\x1b\]1337;ReportCellSize=([^\x07\x1b]+)[\x07\x1b]/,
+    )
+    if (match) return { pass: true, response: match[1] }
+    return { pass: false, note: "No OSC 1337 ReportCellSize response" }
+  },
+}
+
+const extOsc1337Capabilities: Probe = {
+  id: "extensions.osc1337-capabilities",
+  name: "Request capabilities (OSC 1337)",
+  async run() {
+    // OSC 1337 ; RequestCapabilities ST
+    // Response: OSC 1337 ; ReportCapabilities=... ST (iTerm2)
+    const match = await queryWithSentinel(
+      "\x1b]1337;RequestCapabilities\x07",
+      /\x1b\]1337;ReportCapabilities=([^\x07\x1b]+)[\x07\x1b]/,
+    )
+    if (match) return { pass: true, response: match[1] }
+    return { pass: false, note: "No OSC 1337 capabilities response" }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // ── All probes ──
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1567,6 +1821,10 @@ export const ALL_PROBES: Probe[] = [
   cursorHorizontalAbsolute,
   cursorNextLine,
   cursorReverseWrap,
+  cursorCupBoundaries,
+  cursorCuuPastTop,
+  cursorCudPastBottom,
+  cursorCupScrollRegion,
 
   // ── Device ──
   primaryDA,
@@ -1576,6 +1834,7 @@ export const ALL_PROBES: Probe[] = [
   deviceDecrpm,
   deviceDecrqss,
   deviceXtgettcap,
+  deviceXtversion,
 
   // ── Text ──
   textBasic,
@@ -1605,6 +1864,8 @@ export const ALL_PROBES: Probe[] = [
   eraseScreenScrollback,
   eraseCharacter,
   eraseSelective,
+  eraseElWithAttrs,
+  eraseEdScrollRegion,
 
   // ── Editing ──
   insertChars,
@@ -1689,6 +1950,8 @@ export const ALL_PROBES: Probe[] = [
   scrollUp,
   scrollDown,
   reverseIndex,
+  scrollbackDecstbm,
+  scrollbackDecstbmReset,
 
   // ── Reset ──
   resetRIS,
@@ -1734,6 +1997,8 @@ export const ALL_PROBES: Probe[] = [
   // ── Charsets ──
   charsetDecSpecial,
   charsetUtf8,
+  charsetG0G1Switching,
+  charsetDecLineDrawing,
 
   // ── Extensions ──
   kittyKeyboard,
@@ -1751,6 +2016,8 @@ export const ALL_PROBES: Probe[] = [
   extOsc633Vscode,
   extNotifications,
   extIterm2Images,
+  extOsc1337CellSize,
+  extOsc1337Capabilities,
 
   // ── Input protocols ──
   inputModifyOtherKeys,
