@@ -358,6 +358,9 @@ async function runApp(
     if (rawData.notes && Object.keys(rawData.notes).length > 0) {
       appResult.notes = rawData.notes
     }
+    if (rawData.responses && Object.keys(rawData.responses).length > 0) {
+      appResult.responses = rawData.responses
+    }
 
     // Save to results/app/ directory
     const resultFilenameWithOs = `${app.backendId}-${version}-macos.json`

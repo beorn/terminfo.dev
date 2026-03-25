@@ -91,7 +91,7 @@ export async function handleServer(
       // Save results
       const dir = join(ROOT, "content", "probes-apps")
       mkdirSync(dir, { recursive: true })
-      const name = data.terminal.replace(/[^a-z0-9-]/g, "-")
+      const name = data.terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
       const ver = (data.terminalVersion || "unknown").replace(/[^a-z0-9.-]/g, "-")
       writeFileSync(`${dir}/${name}-${ver}-${data.os}.json`, JSON.stringify(data, null, 2))
     } catch (err) {
