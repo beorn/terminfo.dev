@@ -317,8 +317,8 @@ function backendTooltip(name, version) {
   <thead>
     <tr>
       <th class="feature-col"></th>
-      <th v-for="b in appBackends" :key="b.name" :data-tooltip="backendTooltip(b.name, b.version)">
-        <a class="hover-link" :href="'/terminal/' + termSlug(b.name)">{{ backendLabel(b.name) }}</a>
+      <th v-for="b in appBackends" :key="b.name">
+        <a class="hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
         <span class="th-platforms" v-html="platformIcons(b.name)"></span>
       </th>
     </tr>
@@ -394,8 +394,8 @@ function backendTooltip(name, version) {
   <thead>
     <tr>
       <th class="feature-col"></th>
-      <th v-for="b in headlessBackends" :key="b.name" :data-tooltip="backendTooltip(b.name, b.version)">
-        <a class="hover-link" :href="'/terminal/' + termSlug(b.name)">{{ backendLabel(b.name) }}</a>
+      <th v-for="b in headlessBackends" :key="b.name">
+        <a class="hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
       </th>
     </tr>
   </thead>
