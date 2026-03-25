@@ -311,5 +311,25 @@
   "wezterm:reset.soft": {
     "note": "DECSTR resets modes but headless probe reads stale state",
     "result": "partial"
+  },
+  "vterm:cursor.position-report": {
+    "note": "onResponse callback not wired through census probe harness",
+    "result": "partial"
+  },
+  "vterm:device.primary-da": {
+    "note": "onResponse callback not wired through census probe harness",
+    "result": "partial"
+  },
+  "vterm:device.status-report": {
+    "note": "onResponse callback not wired through census probe harness",
+    "result": "partial"
+  },
+  "vterm:modes.application-keypad": {
+    "note": "Application keypad mode parsed but not exposed via getMode()",
+    "result": "partial"
+  },
+  "wezterm:unicode.wrap-boundary": {
+    "note": "Wide char at end of line not handled correctly in headless mode",
+    "result": "no"
   }
 }

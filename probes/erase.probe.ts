@@ -56,4 +56,9 @@ describeBackends("erase", (b) => {
     expect(c2 === "" || c2 === " ").toBe(true)
     expect(c3).toBe("D")
   })
+
+  test("erase.selective", () => {
+    // DECSED: CSI ? 2 J — selective erase entire screen
+    feed(b, "ABCDE\x1b[?2J")
+  })
 })

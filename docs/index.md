@@ -348,6 +348,26 @@ function backendTooltip(name, version) {
   </div>
 </div>
 
+### Headless Baseline Coverage
+
+<div class="baseline-grid">
+  <div v-for="bl in ['core', 'modern', 'rich', 'unicode']" :key="bl" class="baseline-card">
+    <div class="baseline-header">
+      <span class="baseline-icon">{{ bl === 'core' ? '🟢' : bl === 'modern' ? '🔵' : bl === 'rich' ? '🟣' : '🌐' }}</span>
+      <span class="baseline-name">{{ bl.charAt(0).toUpperCase() + bl.slice(1) }}</span>
+    </div>
+    <div class="baseline-backends">
+      <div v-for="b in headlessBackends" :key="b.name" class="baseline-backend">
+        <span class="baseline-backend-name">{{ backendLabel(b.name) }}</span>
+        <span class="baseline-backend-bar">
+          <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
+        </span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct ?? 0 }}%</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="matrix-wrapper">
 <table class="matrix matrix-muted">
   <thead>
@@ -578,15 +598,27 @@ through the library's API.
 /* Baseline 2026 cards */
 .baseline-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
   margin: 1em 0 2em;
+}
+
+@media (max-width: 900px) {
+  .baseline-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .baseline-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .baseline-card {
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
-  padding: 16px;
+  padding: 12px;
   background: var(--vp-c-bg-soft);
 }
 
@@ -633,11 +665,12 @@ through the library's API.
 }
 
 .baseline-backend-name {
-  width: 90px;
+  width: 80px;
   flex-shrink: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 0.95em;
 }
 
 .baseline-backend-bar {

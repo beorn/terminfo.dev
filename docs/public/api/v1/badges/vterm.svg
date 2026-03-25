@@ -1,18 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="152" height="20">
+<svg xmlns="http://www.w3.org/2000/svg" width="146" height="20">
   <linearGradient id="s" x2="0" y2="100%">
     <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
     <stop offset="1" stop-opacity=".1"/>
   </linearGradient>
-  <clipPath id="r"><rect width="152" height="20" rx="3" fill="#fff"/></clipPath>
+  <clipPath id="r"><rect width="146" height="20" rx="3" fill="#fff"/></clipPath>
   <g clip-path="url(#r)">
     <rect width="50" height="20" fill="#555"/>
-    <rect x="50" width="102" height="20" fill="#4c1"/>
-    <rect width="152" height="20" fill="url(#s)"/>
+    <rect x="50" width="96" height="20" fill="#4c1"/>
+    <rect width="146" height="20" fill="url(#s)"/>
   </g>
   <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
     <text x="25" y="15" fill="#010101" fill-opacity=".3">vterm</text>
     <text x="25" y="14">vterm</text>
-    <text x="101" y="15" fill="#010101" fill-opacity=".3">100% (110/110)</text>
-    <text x="101" y="14">100% (110/110)</text>
+    <text x="98" y="15" fill="#010101" fill-opacity=".3">97% (124/128)</text>
+    <text x="98" y="14">97% (124/128)</text>
   </g>
 </svg>

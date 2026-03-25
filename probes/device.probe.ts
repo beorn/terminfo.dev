@@ -29,4 +29,29 @@ describeBackends("device", (b) => {
     // Response should be CSI 0 n (device OK)
     expect(response).toContain("0n")
   })
+
+  test("device.secondary-da", () => {
+    // DA2: CSI > c — request secondary device attributes
+    feed(b, "\x1b[>c")
+  })
+
+  test("device.tertiary-da", () => {
+    // DA3: CSI = c
+    feed(b, "\x1b[=c")
+  })
+
+  test("device.decrqss", () => {
+    // DECRQSS: DCS $ q Pt ST
+    feed(b, "\x1bP$q\"p\x1b\\")
+  })
+
+  test("device.xtgettcap", () => {
+    // XTGETTCAP: DCS + q Pt ST
+    feed(b, "\x1bP+q544e\x1b\\")
+  })
+
+  test("device.decrpm", () => {
+    // DECRPM request: CSI ? Ps $ p
+    feed(b, "\x1b[?1$p")
+  })
 })

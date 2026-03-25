@@ -63,4 +63,22 @@ describeBackends("extensions", (b) => {
     feed(b, "\x1b]7;file:///tmp\x07")
     expect(true).toBe(true)
   })
+
+  test("extensions.osc-633-vscode", () => {
+    // VS Code shell integration
+    feed(b, "\x1b]633;A\x07")
+    feed(b, "\x1b]633;B\x07")
+    feed(b, "\x1b]633;C\x07")
+    feed(b, "\x1b]633;D\x07")
+  })
+
+  test("extensions.notifications", () => {
+    // OSC 9 notification
+    feed(b, "\x1b]9;Test notification\x07")
+  })
+
+  test("extensions.iterm2-images", () => {
+    // iTerm2 inline image protocol
+    feed(b, "\x1b]1337;File=inline=1:AAAA\x07")
+  })
 })

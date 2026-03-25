@@ -78,4 +78,9 @@ describeBackends("cursor", (b) => {
     expect(b.getCursor().x).toBe(2)
     expect(b.getCursor().y).toBe(0)
   })
+
+  test("cursor.reverse-wrap", () => {
+    // Reverse wrap mode: CSI ? 45 h
+    feed(b, "\x1b[?45h")
+  })
 })

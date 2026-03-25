@@ -91,4 +91,9 @@ describeBackends("modes", (b) => {
     feed(b, "\x1b>")
     expect(b.getMode("applicationKeypad")).toBe(false)
   })
+
+  test("modes.left-right-margin", () => {
+    // DECLRMM: CSI ? 69 h
+    feed(b, "\x1b[?69h")
+  })
 })

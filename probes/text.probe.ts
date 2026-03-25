@@ -62,4 +62,11 @@ describeBackends("text", (b) => {
     expect(b.getCursor().y).toBe(1)
     expect(b.getCursor().x).toBe(0)
   })
+
+  test("text.reverse-index-scroll", () => {
+    // RI at top of scroll region should scroll down
+    feed(b, "\x1b[1;5r") // Set scroll region to lines 1-5
+    feed(b, "\x1b[H") // Move to top
+    feed(b, "\x1bM") // Reverse index
+  })
 })
