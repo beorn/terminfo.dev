@@ -329,10 +329,24 @@ function buildAppMeta(terminal: string): BackendMeta {
     "com.microsoft.VSCode": "vscode",
     "com.todesktop.230313mzl4w4u92": "cursor",
   }
+  const descriptions: Record<string, string> = {
+    ghostty:
+      "GPU-accelerated terminal by Mitchell Hashimoto. Written in Zig, Metal/OpenGL/Vulkan. Excellent standards compliance.",
+    kitty:
+      "GPU-accelerated terminal by Kovid Goyal. Pioneer of the Kitty keyboard and graphics protocols. Written in C/Python.",
+    iterm2: "Feature-rich macOS terminal with split panes, profiles, and extensive customization. Native Cocoa app.",
+    "terminal-app": "Apple's built-in macOS terminal. Ships with every Mac.",
+    warp: "AI-powered terminal with blocks-based UI. Rust-based, GPU-accelerated.",
+    cmux: "Terminal multiplexer built on libghostty (Ghostty's terminal emulation library). Inherits Ghostty's VT parser.",
+    cursor: "AI code editor with integrated terminal. Based on VS Code, uses xterm.js for terminal emulation.",
+    "com.microsoft.VSCode":
+      "Microsoft's code editor with integrated terminal. Uses xterm.js for terminal emulation.",
+    "com.todesktop.230313mzl4w4u92": "AI code editor with integrated terminal. Based on VS Code, uses xterm.js.",
+  }
   return {
     label: labels[terminal] ?? terminal,
     slug: slugs[terminal] ?? terminal.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-    description: `${labels[terminal] ?? terminal} terminal emulator`,
+    description: descriptions[terminal] ?? `${labels[terminal] ?? terminal} terminal emulator`,
   }
 }
 
