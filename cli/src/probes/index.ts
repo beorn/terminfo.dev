@@ -12,7 +12,7 @@
  * 4. Query/response — send query sequence, match response pattern
  */
 
-import { query, queryCursorPosition, measureRenderedWidth, queryMode } from "../tty.ts"
+import { query, queryWithSentinel, queryCursorPosition, measureRenderedWidth, queryMode } from "../tty.ts"
 
 export interface ProbeResult {
   pass: boolean
@@ -375,6 +375,58 @@ const wideCharEmoji: Probe = {
     return {
       pass: width === 2,
       note: width === 2 ? undefined : `width=${width}, expected 2`,
+    }
+  },
+}
+
+const wideCharEmojiZwj: Probe = {
+  id: "text.wide.emoji-zwj",
+  name: "Emoji ZWJ sequence width",
+  async run() {
+    const width = await measureRenderedWidth("👨‍👩‍👧‍👦")
+    if (width === null) return { pass: false, note: "Cannot measure width" }
+    return {
+      pass: width === 2,
+      note: width === 2 ? undefined : `width=${width}, expected 2`,
+    }
+  },
+}
+
+const wideCharEmojiFlags: Probe = {
+  id: "text.wide.emoji-flags",
+  name: "Regional indicator flag width",
+  async run() {
+    const width = await measureRenderedWidth("🇺🇸")
+    if (width === null) return { pass: false, note: "Cannot measure width" }
+    return {
+      pass: width === 2,
+      note: width === 2 ? undefined : `width=${width}, expected 2`,
+    }
+  },
+}
+
+const wideCharEmojiVs16: Probe = {
+  id: "text.wide.emoji-vs16",
+  name: "Variation selector 16 width",
+  async run() {
+    const width = await measureRenderedWidth("☺\uFE0F")
+    if (width === null) return { pass: false, note: "Cannot measure width" }
+    return {
+      pass: width === 2,
+      note: width === 2 ? undefined : `width=${width}, expected 2`,
+    }
+  },
+}
+
+const combiningChars: Probe = {
+  id: "text.combining",
+  name: "Combining character width",
+  async run() {
+    const width = await measureRenderedWidth("e\u0301")
+    if (width === null) return { pass: false, note: "Cannot measure width" }
+    return {
+      pass: width === 1,
+      note: width === 1 ? undefined : `width=${width}, expected 1`,
     }
   },
 }
@@ -975,7 +1027,7 @@ const kittyKeyboard: Probe = {
   name: "Kitty keyboard protocol",
   async run() {
     // Query current keyboard mode flags — terminal responds with CSI ? flags u
-    const match = await query("\x1b[?u", /\x1b\[\?(\d+)u/, 1000)
+    const match = await queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
     if (!match) return { pass: false, note: "No kitty keyboard response" }
     return { pass: true, response: `flags=${match[1]}` }
   },
@@ -1045,7 +1097,7 @@ const osc10FgColor: Probe = {
   id: "extensions.osc10-fg-color",
   name: "Foreground color query (OSC 10)",
   async run() {
-    const match = await query("\x1b]10;?\x07", /\x1b\]10;([^\x07\x1b]+)[\x07\x1b]/, 1000)
+    const match = await queryWithSentinel("\x1b]10;?\x07", /\x1b\]10;([^\x07\x1b]+)[\x07\x1b]/)
     if (!match) return { pass: false, note: "No OSC 10 response" }
     return { pass: true, response: match[1] }
   },
@@ -1055,7 +1107,7 @@ const osc11BgColor: Probe = {
   id: "extensions.osc11-bg-color",
   name: "Background color query (OSC 11)",
   async run() {
-    const match = await query("\x1b]11;?\x07", /\x1b\]11;([^\x07\x1b]+)[\x07\x1b]/, 1000)
+    const match = await queryWithSentinel("\x1b]11;?\x07", /\x1b\]11;([^\x07\x1b]+)[\x07\x1b]/)
     if (!match) return { pass: false, note: "No OSC 11 response" }
     return { pass: true, response: match[1] }
   },
@@ -1170,6 +1222,10 @@ export const ALL_PROBES: Probe[] = [
   textNextLine,
   wideCharCJK,
   wideCharEmoji,
+  wideCharEmojiZwj,
+  wideCharEmojiFlags,
+  wideCharEmojiVs16,
+  combiningChars,
   tabStop,
   backspace,
 
@@ -1199,67 +1255,60 @@ export const ALL_PROBES: Probe[] = [
 
   // ── Modes (DECRPM with behavioral fallback) ──
   behavioralModeProbe(
-    "modes.mouse-tracking", "Mouse tracking (DECSET 1000)", 1000,
-    "\x1b[?1000h", "\x1b[?1000l",
+    "modes.mouse-tracking",
+    "Mouse tracking (DECSET 1000)",
+    1000,
+    "\x1b[?1000h",
+    "\x1b[?1000l",
     async () => {
       // Enable mouse tracking, verify terminal still responds
       const pos = await queryCursorPosition()
       return { pass: pos !== null, note: pos ? "Behavioral: responsive after enable" : "No response" }
     },
   ),
+  behavioralModeProbe("modes.mouse-sgr", "SGR mouse (DECSET 1006)", 1006, "\x1b[?1006h", "\x1b[?1006l", async () => {
+    const pos = await queryCursorPosition()
+    return { pass: pos !== null, note: pos ? "Behavioral: responsive after enable" : "No response" }
+  }),
   behavioralModeProbe(
-    "modes.mouse-sgr", "SGR mouse (DECSET 1006)", 1006,
-    "\x1b[?1006h", "\x1b[?1006l",
+    "modes.focus-tracking",
+    "Focus tracking (DECSET 1004)",
+    1004,
+    "\x1b[?1004h",
+    "\x1b[?1004l",
     async () => {
       const pos = await queryCursorPosition()
       return { pass: pos !== null, note: pos ? "Behavioral: responsive after enable" : "No response" }
     },
   ),
+  behavioralModeProbe("modes.application-cursor", "App cursor keys (DECCKM)", 1, "\x1b[?1h", "\x1b[?1l", async () => {
+    // In DECCKM mode, arrow keys send ESC O A instead of ESC [ A
+    // Can't test without pressing keys — just verify responsive
+    const pos = await queryCursorPosition()
+    return { pass: pos !== null, note: pos ? "Behavioral: responsive after enable" : "No response" }
+  }),
+  behavioralModeProbe("modes.origin", "Origin mode (DECOM)", 6, "\x1b[?6h", "\x1b[?6l", async () => {
+    // In origin mode, cursor is relative to scroll region
+    // Set scroll region, enable origin, move to 1;1, check actual position
+    process.stdout.write("\x1b[5;10r") // scroll region rows 5-10
+    const pos = await queryCursorPosition()
+    process.stdout.write("\x1b[r") // reset scroll region
+    if (!pos) return { pass: false, note: "No response" }
+    // In origin mode, cursor 1;1 maps to row 5 (top of region)
+    return { pass: pos[0] >= 5, note: `Behavioral: cursor at row ${pos[0]} (origin mapped)` }
+  }),
+  behavioralModeProbe("modes.reverse-video", "Reverse video (DECSCNM)", 5, "\x1b[?5h", "\x1b[?5l", async () => {
+    // Reverse video swaps fg/bg — can't verify visually via PTY
+    // Just verify terminal is responsive after toggling
+    const pos = await queryCursorPosition()
+    return { pass: pos !== null, note: pos ? "Behavioral: responsive after enable" : "No response" }
+  }),
   behavioralModeProbe(
-    "modes.focus-tracking", "Focus tracking (DECSET 1004)", 1004,
-    "\x1b[?1004h", "\x1b[?1004l",
-    async () => {
-      const pos = await queryCursorPosition()
-      return { pass: pos !== null, note: pos ? "Behavioral: responsive after enable" : "No response" }
-    },
-  ),
-  behavioralModeProbe(
-    "modes.application-cursor", "App cursor keys (DECCKM)", 1,
-    "\x1b[?1h", "\x1b[?1l",
-    async () => {
-      // In DECCKM mode, arrow keys send ESC O A instead of ESC [ A
-      // Can't test without pressing keys — just verify responsive
-      const pos = await queryCursorPosition()
-      return { pass: pos !== null, note: pos ? "Behavioral: responsive after enable" : "No response" }
-    },
-  ),
-  behavioralModeProbe(
-    "modes.origin", "Origin mode (DECOM)", 6,
-    "\x1b[?6h", "\x1b[?6l",
-    async () => {
-      // In origin mode, cursor is relative to scroll region
-      // Set scroll region, enable origin, move to 1;1, check actual position
-      process.stdout.write("\x1b[5;10r") // scroll region rows 5-10
-      const pos = await queryCursorPosition()
-      process.stdout.write("\x1b[r") // reset scroll region
-      if (!pos) return { pass: false, note: "No response" }
-      // In origin mode, cursor 1;1 maps to row 5 (top of region)
-      return { pass: pos[0] >= 5, note: `Behavioral: cursor at row ${pos[0]} (origin mapped)` }
-    },
-  ),
-  behavioralModeProbe(
-    "modes.reverse-video", "Reverse video (DECSCNM)", 5,
-    "\x1b[?5h", "\x1b[?5l",
-    async () => {
-      // Reverse video swaps fg/bg — can't verify visually via PTY
-      // Just verify terminal is responsive after toggling
-      const pos = await queryCursorPosition()
-      return { pass: pos !== null, note: pos ? "Behavioral: responsive after enable" : "No response" }
-    },
-  ),
-  behavioralModeProbe(
-    "modes.synchronized-output", "Synchronized output (DECSET 2026)", 2026,
-    "\x1b[?2026h", "\x1b[?2026l",
+    "modes.synchronized-output",
+    "Synchronized output (DECSET 2026)",
+    2026,
+    "\x1b[?2026h",
+    "\x1b[?2026l",
     async () => {
       // Synchronized output batches rendering — just verify responsive
       const pos = await queryCursorPosition()
@@ -1361,7 +1410,7 @@ export const ALL_PROBES: Probe[] = [
     name: "Text reflow on resize",
     async run() {
       // Check if terminal reports its size (needed for reflow to work)
-      const sizeMatch = await query("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/, 1000)
+      const sizeMatch = await queryWithSentinel("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/)
       if (!sizeMatch) return { pass: false, note: "No XTWINOPS 18 response (can't report size)" }
       const cols = parseInt(sizeMatch[2]!, 10)
       // Write a line longer than terminal width — verify it wraps correctly
@@ -1384,7 +1433,7 @@ export const ALL_PROBES: Probe[] = [
     name: "Scrollback accumulates",
     async run() {
       // Get terminal height first
-      const sizeMatch = await query("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/, 1000)
+      const sizeMatch = await queryWithSentinel("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/)
       const rows = sizeMatch ? parseInt(sizeMatch[1]!, 10) : 24
       process.stdout.write("\x1b[2J\x1b[H") // clear + home
       // Write more lines than the screen can hold
@@ -1444,7 +1493,10 @@ export const ALL_PROBES: Probe[] = [
       if (!pos2) return { pass: false, note: "No cursor response after alt screen exit" }
       return {
         pass: pos2[0] === pos1[0] && pos2[1] === pos1[1],
-        note: pos2[0] === pos1[0] && pos2[1] === pos1[1] ? undefined : `cursor at ${pos2[0]};${pos2[1]}, expected ${pos1[0]};${pos1[1]}`,
+        note:
+          pos2[0] === pos1[0] && pos2[1] === pos1[1]
+            ? undefined
+            : `cursor at ${pos2[0]};${pos2[1]}, expected ${pos1[0]};${pos1[1]}`,
       }
     },
   } satisfies Probe,
@@ -1465,8 +1517,11 @@ export const ALL_PROBES: Probe[] = [
 
   // Mouse all-motion (DECSET 1003)
   behavioralModeProbe(
-    "modes.mouse-all", "All-motion mouse tracking (DECSET 1003)", 1003,
-    "\x1b[?1003h", "\x1b[?1003l",
+    "modes.mouse-all",
+    "All-motion mouse tracking (DECSET 1003)",
+    1003,
+    "\x1b[?1003h",
+    "\x1b[?1003l",
     async () => {
       const pos = await queryCursorPosition()
       return { pass: pos !== null, note: pos ? "Behavioral: responsive after enable" : "No response" }

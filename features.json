@@ -672,6 +672,33 @@
     "group": "wide",
     "body": "Tests whether emoji characters correctly occupy two terminal columns. Emoji width handling is more complex than CJK — it involves variation selectors (VS15 for text, VS16 for emoji presentation), zero-width joiners (ZWJ sequences like family emoji), and skin tone modifiers. Terminals frequently disagree on emoji widths, especially for newer Unicode additions."
   },
+  "text.wide.emoji-zwj": {
+    "name": "Emoji ZWJ sequences (2 cols)",
+    "slug": "emoji-zwj-sequences",
+    "tags": ["unicode"],
+    "group": "wide",
+    "body": "Zero Width Joiner (ZWJ) sequences combine multiple emoji into a single glyph. For example, 👨‍👩‍👧‍👦 (family) is four person emoji joined with ZWJ characters. A terminal that handles ZWJ correctly renders this as a single 2-column wide glyph, not as four separate emoji."
+  },
+  "text.wide.emoji-flags": {
+    "name": "Regional indicator flags (2 cols)",
+    "slug": "emoji-regional-indicator-flags",
+    "tags": ["unicode"],
+    "group": "wide",
+    "body": "Regional Indicator symbols are paired to form flag emoji. For example, 🇺🇸 (US flag) is the sequence U+1F1FA U+1F1F8. A terminal that handles these correctly renders the pair as a single 2-column wide flag glyph."
+  },
+  "text.wide.emoji-vs16": {
+    "name": "Variation selector 16 (emoji presentation)",
+    "slug": "variation-selector-16-emoji",
+    "tags": ["unicode"],
+    "group": "wide",
+    "body": "Variation Selector 16 (VS-16, U+FE0F) forces emoji presentation for characters that have both text and emoji forms. For example, ☺ (U+263A) is 1 column in text presentation, but ☺️ (U+263A + VS-16) should be 2 columns in emoji presentation."
+  },
+  "text.combining": {
+    "name": "Combining characters (0 cols)",
+    "slug": "combining-characters",
+    "tags": ["unicode"],
+    "body": "Combining characters (like accents, diacritical marks) attach to the preceding base character and should occupy zero additional columns. For example, é can be written as e + U+0301 (combining acute accent) — the cursor should advance by 1 column, not 2."
+  },
   "text.tab": {
     "name": "Tab stops",
     "slug": "ht-tab-stops",
