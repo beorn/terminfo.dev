@@ -643,16 +643,32 @@ through the library's API.
   background: var(--vp-c-bg-soft);
 }
 
-.baseline-card-link {
+.baseline-card-link,
+.baseline-card-link:link,
+.baseline-card-link:visited {
   color: inherit;
-  text-decoration: none;
+  text-decoration: none !important;
   display: block;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
 }
 
 .baseline-card-link:hover {
   border-color: var(--vp-c-brand-1);
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* Prevent VitePress link styling inside baseline cards */
+.baseline-card-link * {
+  text-decoration: none !important;
+}
+
+.baseline-card-link .baseline-name {
+  transition: color 0.15s ease;
+}
+
+.baseline-card-link:hover .baseline-name {
+  color: var(--vp-c-brand-1);
 }
 
 .baseline-header {
@@ -678,10 +694,10 @@ through the library's API.
 }
 
 .baseline-desc {
-  font-size: 0.8em;
-  color: var(--vp-c-text-2);
-  margin-bottom: 12px;
-  line-height: 1.4;
+  font-size: 0.75em;
+  color: var(--vp-c-text-3);
+  margin-bottom: 8px;
+  line-height: 1.3;
 }
 
 .baseline-backends {
