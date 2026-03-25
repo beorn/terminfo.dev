@@ -1563,10 +1563,7 @@ const cursorCupBoundaries: Probe = {
     const cols = process.stdout.columns || 80
     return {
       pass: pos[0] === rows && pos[1] === cols,
-      note:
-        pos[0] === rows && pos[1] === cols
-          ? undefined
-          : `got ${pos[0]};${pos[1]}, expected ${rows};${cols}`,
+      note: pos[0] === rows && pos[1] === cols ? undefined : `got ${pos[0]};${pos[1]}, expected ${rows};${cols}`,
       response: `${pos[0]};${pos[1]}`,
     }
   },
