@@ -23,12 +23,30 @@ content/                        ← ALL input data
 
 packages/                       ← source code (internal tools)
   probes/                         probe test files (*.probe.ts, setup.ts, vitest.config.ts)
-  cli/                            census CLI — headless + app probes (run, apps, report, status)
+  cli/
+    src/                          unified CLI (bun terminfo) — all 4 probe mechanisms
+      index.ts                    entry point: probe {termless,server,app,here}, report, status, submit, detect
+      termless.ts                 headless library probes (Vitest + Termless)
+      server.ts                   daemon probe mechanism (start/list/probe daemons)
+      app.ts                      macOS app probes (AppleScript)
+      here.ts                     inline TTY probes
+      detect.ts                   terminal detection
+      submit.ts                   result submission
+      report.ts                   report rendering
+      status.ts                   config/cache status
+    app-harness.ts                runs INSIDE launched terminals (not from CLI)
+    app-runner.ts                 legacy app runner (superceded by src/app.ts)
+    index.ts                      legacy census CLI (superceded by src/index.ts)
+    parse.ts                      Vitest JSON result parsing
+    versions.ts                   versioned backend probing
+    report.tsx                    silvery-based report rendering
+    reporter.ts                   custom Vitest reporter
+    types.ts                      shared types
   api/                            API + badge generation (future)
 
 cli/                            ← npm-publishable CLI (npx terminfo.dev)
   src/
-    index.ts                      entry point: serve, test-all, detect, submit
+    index.ts                      entry point: probe {here,server}, submit, detect
     serve.ts                      daemon: HTTP server for in-terminal probing
     probes/                       probe implementations (run in real terminal context)
     detect.ts                     terminal detection (TERM, DA1, etc.)
@@ -103,68 +121,106 @@ bun run build               # Build static site (250+ pages)
 bun run preview             # Preview built site
 ```
 
-### Probe Methods (4 ways to gather terminal data)
+### Unified CLI (`bun terminfo`)
+
+Pattern: bare = list/help, `--all` = run all, `<name>` = run specific.
+
+```bash
+bun terminfo                              # Show help
+bun terminfo probe                        # List 4 probe mechanisms
+```
+
+#### Probe Methods (4 mechanisms)
 
 ```bash
 # 1. Headless library probes (Vitest + Termless backends, in-process)
-bun census:run              # Run all, cached
-bun census:run --force      # Re-run all
-bun census:run xtermjs/*    # Specific backend, all versions
+bun terminfo probe termless               # List available backends
+bun terminfo probe termless --all         # Probe all backends
+bun terminfo probe termless --force       # Re-run cached
+bun terminfo probe termless xtermjs       # Probe specific backend
+bun terminfo probe termless xtermjs/*     # All versions of a backend
 
-# 2. App launch probes (AppleScript opens macOS terminal apps)
-bun census:apps             # Test all installed terminals
-bun census:apps ghostty     # Specific terminal
-bun census:apps --list      # Show available
+# 2. Daemon probes (run inside ANY terminal — most flexible)
+bun terminfo probe server                 # List running daemons
+bun terminfo probe server --start         # Start daemon in this terminal
+bun terminfo probe server --start -p 3456 # Specific port
+bun terminfo probe server --all           # Probe all running daemons
+bun terminfo probe server ghostty         # Probe specific daemon
 
-# 3. Serve daemon (run inside ANY terminal — most flexible)
-npx terminfo.dev serve      # Start daemon in current terminal
-npx terminfo.dev serve -p 3456  # Specific port
+# 3. App launch probes (AppleScript opens macOS terminal apps)
+bun terminfo probe app                    # List installed terminals
+bun terminfo probe app --all              # Probe all installed terminals
+bun terminfo probe app ghostty            # Probe specific terminal
 
-# 4. Test all running daemons (probes every terminal running 'serve')
-npx terminfo.dev test-all   # Discover + probe all daemons
+# 4. Inline probes (probe this terminal directly)
+bun terminfo probe here                   # Probe this terminal
+bun terminfo probe here --json            # Machine-readable output
 ```
 
-### Reporting & Utilities
+#### Reporting & Utilities
 
 ```bash
-bun census:report           # Show saved results
-bun census:status           # Config, backends, cache info
-npx terminfo.dev detect     # Detect current terminal capabilities
-npx terminfo.dev submit     # Submit results to terminfo.dev
+bun terminfo report                       # Show saved results
+bun terminfo status                       # Config, cache, backends
+bun terminfo detect                       # Detect current terminal
+bun terminfo detect --json                # Machine output
+bun terminfo submit                       # Probe + submit to terminfo.dev
+```
+
+#### npm CLI (`npx terminfo.dev`)
+
+Same command tree but limited to inline/daemon probes:
+
+```bash
+npx terminfo.dev                          # Show help
+npx terminfo.dev probe here               # Probe this terminal
+npx terminfo.dev probe server --start     # Start daemon
+npx terminfo.dev probe server --all       # Probe all daemons
+npx terminfo.dev submit                   # Probe + submit
+npx terminfo.dev detect                   # Detect terminal
+```
+
+#### Convenience scripts
+
+```bash
+bun probe:termless            # = bun terminfo probe termless --all
+bun probe:apps                # = bun terminfo probe app --all
+bun probe:server              # = bun terminfo probe server --all
 ```
 
 ### When to use which probe method
 
-- **Headless** (`census:run`): Testing library parsers. Fast, automated, CI-friendly.
-- **App launch** (`census:apps`): Testing real macOS terminals. Requires Accessibility permission for AppleScript. Doesn't work for all terminals (Warp, some Electron apps).
-- **Serve** (`serve` + `test-all`): Testing ANY terminal. User runs `serve` in the target terminal, then `test-all` from another session probes it. Works for Warp, SSH sessions, Linux, anything with a TTY. **Most flexible method.**
-- **Manual**: For terminals where none of the above work, run `npx terminfo.dev detect` and submit results.
+- **Headless** (`probe termless`): Testing library parsers. Fast, automated, CI-friendly.
+- **App launch** (`probe app`): Testing real macOS terminals. Requires Accessibility permission for AppleScript. Doesn't work for all terminals (Warp, some Electron apps).
+- **Daemon** (`probe server`): Testing ANY terminal. Run `--start` in the target terminal, then `--all` from another session. Works for Warp, SSH sessions, Linux, anything with a TTY. **Most flexible method.**
+- **Inline** (`probe here`): Quick test of the current terminal. Good for one-off checks.
+- **Manual**: For terminals where none of the above work, run `terminfo detect` and submit results.
 
 ## Data Flow
 
 ```
 4 probe methods:
-  packages/probes/*.probe.ts    ← headless: bun census:run (Vitest + Termless)
-  packages/cli/app-runner.ts    ← app launch: bun census:apps (AppleScript)
-  cli/src/serve.ts              ← daemon: npx terminfo.dev serve (HTTP in terminal)
-  cli/src/detect.ts             ← manual: npx terminfo.dev detect (standalone)
+  packages/probes/*.probe.ts       ← termless: bun terminfo probe termless (Vitest + Termless)
+  packages/cli/app-runner.ts       ← app:      bun terminfo probe app (AppleScript)
+  cli/src/serve.ts                 ← server:   bun terminfo probe server (HTTP daemon)
+  cli/src/probes/                  ← here:     bun terminfo probe here (inline TTY)
 
   ↓ results saved to
 
-content/probes-apps/*.json      ← real terminal results
-content/probes-libs/*.json      ← headless backend results
+content/probes-apps/*.json         ← real terminal results (app + server + here)
+content/probes-libs/*.json         ← headless backend results (termless)
   +
-content/*.json                  ← editorial metadata (features, terminals, standards...)
+content/*.json                     ← editorial metadata (features, terminals, standards...)
 
   ↓ VitePress build
 
-docs/data/probes.data.ts        ← merges all data into CensusData
+docs/data/probes.data.ts           ← merges all data into CensusData
   ↓
-[id].paths.ts                   ← route generators (feature, terminal, compare...)
+[id].paths.ts                      ← route generators (feature, terminal, compare...)
   ↓
-[id].md                         ← Vue templates
+[id].md                            ← Vue templates
   ↓
-docs/.vitepress/dist/           ← 250+ static HTML pages + sitemap.xml
+docs/.vitepress/dist/              ← 250+ static HTML pages + sitemap.xml
 ```
 
 ## Page Types (all generated at build time)

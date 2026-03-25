@@ -63,9 +63,10 @@ function buildSidebar() {
   } catch {}
 
   // Load tag labels from content/standards.json
-  const standardsData = JSON.parse(
-    readFileSync(join(docsDir, "..", "content", "standards.json"), "utf-8"),
-  ) as Record<string, { label: string }>
+  const standardsData = JSON.parse(readFileSync(join(docsDir, "..", "content", "standards.json"), "utf-8")) as Record<
+    string,
+    { label: string }
+  >
   const tagLabels: Record<string, string> = Object.fromEntries(
     Object.entries(standardsData).map(([k, v]) => [k, v.label]),
   )
@@ -92,9 +93,10 @@ function buildSidebar() {
   })
 
   // Load category labels from content/categories.json
-  const categoriesData = JSON.parse(
-    readFileSync(join(docsDir, "..", "content", "categories.json"), "utf-8"),
-  ) as Record<string, { label: string; order: number }>
+  const categoriesData = JSON.parse(readFileSync(join(docsDir, "..", "content", "categories.json"), "utf-8")) as Record<
+    string,
+    { label: string; order: number }
+  >
   const categoryLabels: Record<string, string> = Object.fromEntries(
     Object.entries(categoriesData).map(([k, v]) => [k, v.label]),
   )

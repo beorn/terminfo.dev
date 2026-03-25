@@ -3,6 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "terminfo": "bun packages/cli/src/index.ts",
+    "probe": "bun packages/cli/src/index.ts probe",
+    "probe:termless": "bun packages/cli/src/index.ts probe termless --all",
+    "probe:apps": "bun packages/cli/src/index.ts probe app --all",
+    "probe:server": "bun packages/cli/src/index.ts probe server --all",
     "dev": "vitepress dev docs",
     "build": "vitepress build docs",
     "preview": "vitepress preview docs",

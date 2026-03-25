@@ -138,11 +138,14 @@ program
       if (!latestData) {
         console.log(`\nRunning census probes (hash: ${hash})...\n`)
 
-        const proc = Bun.spawn(["bun", "vitest", "run", "--config", "packages/probes/vitest.config.ts", "--reporter", "json"], {
-          cwd: ROOT,
-          stdout: "pipe",
-          stderr: "pipe",
-        })
+        const proc = Bun.spawn(
+          ["bun", "vitest", "run", "--config", "packages/probes/vitest.config.ts", "--reporter", "json"],
+          {
+            cwd: ROOT,
+            stdout: "pipe",
+            stderr: "pipe",
+          },
+        )
 
         const stdout = await new Response(proc.stdout).text()
         await proc.exited

@@ -88,7 +88,10 @@ export function terminalSlug(name: string, meta: CensusData["meta"]): string {
 
 function loadCategories(): Record<string, { label: string; order: number; description: string }> {
   const path = join(__dirname, "..", "..", "content", "categories.json")
-  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, { label: string; order: number; description: string }>
+  return JSON.parse(readFileSync(path, "utf-8")) as Record<
+    string,
+    { label: string; order: number; description: string }
+  >
 }
 
 export const categoryLabels: Record<string, string> = Object.fromEntries(
