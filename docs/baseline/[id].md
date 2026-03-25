@@ -64,12 +64,6 @@ function platformIcons(b) {
   return b.platforms.map(p => platformIcon(p)).filter(Boolean).join(' ')
 }
 
-function pctColor(pct) {
-  if (pct >= 95) return '#10b981'
-  if (pct >= 80) return '#3b82f6'
-  if (pct >= 60) return '#f59e0b'
-  return '#ef4444'
-}
 </script>
 
 <div class="baseline-page">
@@ -90,13 +84,16 @@ function pctColor(pct) {
 
 ### Terminal Applications
 
-<div v-if="appScores.length > 0" class="scorecard">
-  <div v-for="s in appScores" :key="s.name" class="score-row">
-    <a class="score-name hover-link" :href="'/terminal/' + s.slug">{{ s.label }}</a>
-    <div class="score-bar-wrap">
-      <div class="score-bar" :style="{ width: s.pct + '%', background: p.color }"></div>
+<div v-if="appScores.length > 0" class="summary">
+  <div v-for="s in appScores" :key="s.name" class="summary-row">
+    <a class="summary-name hover-link" :href="'/terminal/' + s.slug">{{ s.label }}</a>
+    <span class="summary-platforms" v-html="platformIcons(s)"></span>
+    <div class="summary-bar">
+      <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }"></div>
+      <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }"></div>
     </div>
-    <span class="score-value" :style="{ color: pctColor(s.pct) }">{{ s.yes }}/{{ s.total }} ({{ s.pct }}%)</span>
+    <span class="summary-pct">{{ s.pct }}%</span>
+    <span class="summary-counts">{{ s.yes }} / {{ s.total }}</span>
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet.</p>
@@ -105,13 +102,15 @@ function pctColor(pct) {
 
 ### Headless Backends
 
-<div class="scorecard scorecard-muted">
-  <div v-for="s in headlessScores" :key="s.name" class="score-row">
-    <a class="score-name hover-link" :href="'/terminal/' + s.slug">{{ s.label }}</a>
-    <div class="score-bar-wrap">
-      <div class="score-bar" :style="{ width: s.pct + '%', background: p.color }"></div>
+<div class="summary summary-muted">
+  <div v-for="s in headlessScores" :key="s.name" class="summary-row">
+    <a class="summary-name hover-link" :href="'/terminal/' + s.slug">{{ s.label }}</a>
+    <div class="summary-bar">
+      <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }"></div>
+      <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }"></div>
     </div>
-    <span class="score-value" :style="{ color: pctColor(s.pct) }">{{ s.yes }}/{{ s.total }} ({{ s.pct }}%)</span>
+    <span class="summary-pct">{{ s.pct }}%</span>
+    <span class="summary-counts">{{ s.yes }} / {{ s.total }}</span>
   </div>
 </div>
 
@@ -241,47 +240,68 @@ function pctColor(pct) {
   font-size: 0.9em;
 }
 
-/* Scorecard */
-.scorecard {
+/* Scorecard — reuses .summary-* classes from index.md */
+.summary {
   margin: 1em 0 2em;
 }
 
-.scorecard-muted {
+.summary-muted {
   opacity: 0.85;
 }
 
-.score-row {
+.summary-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 0;
+  padding: 8px 0;
 }
 
-.score-name {
+.summary-name {
   width: 120px;
   font-weight: 600;
   font-size: 0.9em;
   flex-shrink: 0;
 }
 
-.score-bar-wrap {
-  flex: 1;
-  height: 18px;
-  background: var(--vp-c-bg-soft);
-  border-radius: 4px;
-  overflow: hidden;
+.summary-platforms {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+  align-items: center;
 }
 
-.score-bar {
-  height: 100%;
+.summary-bar {
+  flex: 1;
+  height: 22px;
+  background: var(--vp-c-bg-soft);
   border-radius: 4px;
+  display: flex;
+}
+
+.bar-yes {
+  height: 100%;
+  background: #10b981;
   transition: width 0.3s ease;
 }
 
-.score-value {
-  width: 100px;
+.bar-partial {
+  height: 100%;
+  background: #f59e0b;
+  transition: width 0.3s ease;
+}
+
+.summary-pct {
+  width: 40px;
   font-weight: 600;
-  font-size: 0.85em;
+  font-size: 0.9em;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.summary-counts {
+  width: 70px;
+  font-size: 0.8em;
+  color: var(--vp-c-text-3);
   text-align: right;
   flex-shrink: 0;
 }

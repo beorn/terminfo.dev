@@ -67,22 +67,21 @@ export default {
       })
 
       // Compute per-backend scores for this baseline
-      const scores: Array<{
-        name: string
-        slug: string
-        label: string
-        type: string
-        yes: number
-        total: number
-        pct: number
-      }> = sortedBackends.map((b) => {
+      const scores = sortedBackends.map((b) => {
         const bs = data.baselineStats[b.name]?.[id]
+        // Count partial results for this baseline's features
+        let partial = 0
+        for (const fid of featureIds) {
+          if (data.results[b.name]?.[fid] === "partial") partial++
+        }
         return {
           name: b.name,
           slug: terminalSlug(b.name, data.meta),
           label: data.meta[b.name]?.label ?? b.name,
           type: b.type ?? "headless",
+          platforms: b.platforms ?? [],
           yes: bs?.yes ?? 0,
+          partial,
           total: bs?.total ?? 0,
           pct: bs?.pct ?? 0,
         }
