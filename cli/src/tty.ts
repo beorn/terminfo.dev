@@ -39,11 +39,73 @@ export function readResponse(pattern: RegExp, timeoutMs: number): Promise<string
 
 /**
  * Send an escape sequence and read the response.
- * Handles raw mode setup/teardown.
  */
 export async function query(sequence: string, responsePattern: RegExp, timeoutMs = 1000): Promise<string[] | null> {
   process.stdout.write(sequence)
   return readResponse(responsePattern, timeoutMs)
+}
+
+/**
+ * DA1 response pattern — universally supported by all modern terminals.
+ * Used as a sentinel: if DA1 arrives without the expected response, the
+ * terminal doesn't support the queried feature.
+ */
+const DA1_PATTERN = /\x1b\[\?[0-9;]+c/
+
+/**
+ * Query with DA1 sentinel — faster than timeout-based detection.
+ *
+ * Sends the query sequence followed by DA1 (ESC [ c). Reads responses
+ * looking for either the expected response OR the DA1 sentinel:
+ * - If the query response arrives first → feature is supported, return match
+ * - If DA1 arrives first (without query response) → not supported, return null
+ * - If timeout expires → return null (fallback safety net)
+ *
+ * Inspired by terminal-colorsaurus. Turns 1000ms timeouts into near-instant
+ * negative detection for unsupported features.
+ */
+export async function queryWithSentinel(
+  sequence: string,
+  responsePattern: RegExp,
+  timeoutMs = 2000,
+): Promise<string[] | null> {
+  // Send query + DA1 sentinel back-to-back
+  process.stdout.write(sequence + "\x1b[c")
+
+  let buf = ""
+  let queryMatch: string[] | null = null
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      cleanup()
+      resolve(queryMatch)
+    }, timeoutMs)
+
+    function onData(chunk: Buffer) {
+      buf += chunk.toString()
+
+      // Always check for the query response (accumulates across chunks)
+      if (!queryMatch) {
+        const match = buf.match(responsePattern)
+        if (match) queryMatch = [...match]
+      }
+
+      // DA1 is the termination signal in all cases.
+      // - If query matched: DA1 confirms we've consumed the sentinel, safe to return
+      // - If query didn't match: DA1 means the terminal doesn't support the feature
+      if (DA1_PATTERN.test(buf)) {
+        cleanup()
+        resolve(queryMatch)
+      }
+    }
+
+    function cleanup() {
+      clearTimeout(timer)
+      process.stdin.off("data", onData)
+    }
+
+    process.stdin.on("data", onData)
+  })
 }
 
 /**
@@ -71,10 +133,11 @@ export async function measureRenderedWidth(text: string): Promise<number | null>
 
 /**
  * Query whether a DEC private mode is recognized via DECRPM.
+ * Uses DA1 sentinel for fast negative detection.
  * Returns "set", "reset", "unknown", or null (no response).
  */
 export async function queryMode(modeNumber: number): Promise<"set" | "reset" | "unknown" | null> {
-  const match = await query(`\x1b[?${modeNumber}$p`, /\x1b\[\?(\d+);(\d+)\$y/)
+  const match = await queryWithSentinel(`\x1b[?${modeNumber}$p`, /\x1b\[\?(\d+);(\d+)\$y/)
   if (!match) return null
   const status = parseInt(match[2]!, 10)
   switch (status) {

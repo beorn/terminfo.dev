@@ -1390,14 +1390,13 @@ export const ALL_PROBES: Probe[] = [
       // APC G with a=T (transmit), f=100 (PNG), s=1, v=1, payload=minimal
       // The terminal responds with APC G if it supports the protocol
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" // 1x1 red PNG
-      process.stdout.write(`\x1b_Ga=T,f=100,s=1,v=1,t=d;${payload}\x1b\\`)
-      // Check for kitty graphics response: ESC _ G ... ESC backslash
-      const match = await query("", /\x1b_G([^\x1b]*)\x1b\\/, 1000)
+      // Send payload, then use DA1 sentinel to detect support quickly
+      const match = await queryWithSentinel(
+        `\x1b_Ga=T,f=100,s=1,v=1,t=d;${payload}\x1b\\`,
+        /\x1b_G([^\x1b]*)\x1b\\/,
+      )
       if (match) return { pass: true, response: match[1] }
-      // Fallback: check if cursor still responds (terminal didn't crash)
-      const pos = await queryCursorPosition()
-      if (!pos) return { pass: false, note: "No response after kitty graphics payload" }
-      return { pass: false, note: "Terminal responsive but no kitty graphics acknowledgment" }
+      return { pass: false, note: "No kitty graphics acknowledgment" }
     },
   } satisfies Probe,
 
