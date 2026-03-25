@@ -11,7 +11,7 @@
     "analysis": "bun scripts/generate-analysis.ts",
     "analysis:validate": "bun scripts/generate-analysis.ts --validate",
     "dev": "vitepress dev docs",
-    "build": "vitepress build docs",
+    "build": "bun scripts/generate-analysis.ts && vitepress build docs",
     "preview": "vitepress preview docs"
   },
   "dependencies": {
