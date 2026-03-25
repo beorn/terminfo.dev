@@ -17,7 +17,7 @@
  * each version from source (deferred).
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -102,7 +102,7 @@ function isCacheValid(resultPath: string, currentHash: string): boolean {
   if (!existsSync(resultPath)) return false
 
   try {
-    const data = JSON.parse(readFileSync(resultPath, "utf-8"))
+    const data = JSON.parse(readFileSync(resultPath, "utf-8")) as any
     return data.probeHash === currentHash
   } catch {
     return false
@@ -122,8 +122,8 @@ function resolveUpstreamPath(cacheDir: string, upstream: string): string {
   }
 
   // Read package.json to find the entry point
-  const pkgJson = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8"))
-  const entry = pkgJson.module ?? pkgJson.main ?? "index.js"
+  const pkgJson = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8")) as any
+  const entry = (pkgJson.module ?? pkgJson.main ?? "index.js") as string
   const entryPath = join(pkgDir, entry)
 
   if (existsSync(entryPath)) return entryPath

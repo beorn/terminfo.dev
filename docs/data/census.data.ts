@@ -74,7 +74,7 @@ function loadFeatureDescriptions(): Record<string, FeatureMeta> {
     throw new Error(`features.json not found at ${path}`)
   }
   {
-    const raw = JSON.parse(readFileSync(path, "utf-8"))
+    const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, any>
     delete raw.$comment
     // Normalize: strings become { name: string }, objects stay as-is
     const result: Record<string, FeatureMeta> = {}
@@ -102,7 +102,7 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
   if (!existsSync(annotationsPath)) {
     throw new Error(`annotations.json not found at ${annotationsPath}`)
   }
-  return JSON.parse(readFileSync(annotationsPath, "utf-8"))
+  return JSON.parse(readFileSync(annotationsPath, "utf-8")) as Record<string, { note: string; url?: string; result?: string }>
 }
 
 function loadBackendMeta(): Record<string, BackendMeta> {
@@ -163,7 +163,7 @@ function mergeResults(app: CensusData, headless: CensusData): CensusData {
       merged.results[hb.name] = headless.results[hb.name] ?? {}
       merged.notes[hb.name] = headless.notes[hb.name] ?? {}
       merged.stats[hb.name] = headless.stats[hb.name] ?? { total: 0, yes: 0, no: 0, partial: 0, pct: 0 }
-      if (headless.meta[hb.name]) merged.meta[hb.name] = headless.meta[hb.name]
+      if (headless.meta[hb.name]) merged.meta[hb.name] = headless.meta[hb.name]!
     }
   }
 
@@ -194,7 +194,7 @@ function loadAppResults(): CensusData {
   const latest = new Map<string, any>()
   for (const file of files) {
     try {
-      const raw = JSON.parse(readFileSync(join(appDir, file), "utf-8"))
+      const raw = JSON.parse(readFileSync(join(appDir, file), "utf-8")) as any
       if (!raw.terminal || !raw.results) continue
       const key = raw.terminal
       if (!latest.has(key) || (raw.generated ?? "") > (latest.get(key).generated ?? "")) {
@@ -222,7 +222,7 @@ function loadAppResults(): CensusData {
       results[name][id] = val ? "yes" : "no"
       if (raw.notes?.[id]) notes[name][id] = raw.notes[id]
       if (!featureSet.has(id)) {
-        const cat = id.split(".")[0]
+        const cat = id.split(".")[0]!
         const meta = featureDescs[id]
         featureSet.set(id, {
           id,
@@ -245,12 +245,12 @@ function loadAppResults(): CensusData {
   const categories: Record<string, FeatureResult[]> = {}
   for (const f of features) {
     if (!categories[f.category]) categories[f.category] = []
-    categories[f.category].push(f)
+    categories[f.category]!.push(f)
   }
 
   const stats: CensusData["stats"] = {}
   for (const b of allBackends) {
-    const entries = Object.values(results[b.name])
+    const entries = Object.values(results[b.name]!)
     const total = entries.length
     const yes = entries.filter((v) => v === "yes").length
     const no = entries.filter((v) => v === "no").length
@@ -310,7 +310,7 @@ function buildAppMeta(terminal: string): BackendMeta {
 }
 
 function loadUnifiedCensus(path: string): CensusData {
-  const raw = JSON.parse(readFileSync(path, "utf-8"))
+  const raw = JSON.parse(readFileSync(path, "utf-8")) as any
 
   const backends: BackendInfo[] = (Object.values(raw.backends ?? {}) as BackendInfo[]).map((b) => ({
     ...b,
@@ -329,7 +329,7 @@ function loadUnifiedCensus(path: string): CensusData {
   const categories: Record<string, FeatureResult[]> = {}
   for (const f of features) {
     if (!categories[f.category]) categories[f.category] = []
-    categories[f.category].push(f)
+    categories[f.category]!.push(f)
   }
 
   // Build results and notes maps
@@ -344,8 +344,8 @@ function loadUnifiedCensus(path: string): CensusData {
       const r = result as any
       results[backendName] ??= {}
       notes[backendName] ??= {}
-      results[backendName][f.id] = r.support ?? "unknown"
-      if (r.notes) notes[backendName][f.id] = r.notes
+      results[backendName]![f.id] = r.support ?? "unknown"
+      if (r.notes) notes[backendName]![f.id] = r.notes
     }
   }
 
@@ -354,19 +354,19 @@ function loadUnifiedCensus(path: string): CensusData {
   for (const [key, ann] of Object.entries(annotations)) {
     const [backend, ...featureParts] = key.split(":")
     const feature = featureParts.join(":")
-    if (!notes[backend]) notes[backend] = {}
+    if (!notes[backend!]) notes[backend!] = {}
     // Annotation note replaces the auto-generated note
-    notes[backend][feature] = ann.note
+    notes[backend!]![feature] = ann.note
     // Annotation can override the probe result (e.g., "partial" for headless API gaps)
-    if (ann.result && results[backend]) {
-      results[backend][feature] = ann.result
+    if (ann.result && results[backend!]) {
+      results[backend!]![feature] = ann.result
     }
   }
 
   // Compute per-backend stats
   const stats: CensusData["stats"] = {}
   for (const name of backendNames) {
-    const entries = Object.values(results[name])
+    const entries = Object.values(results[name]!)
     const total = entries.length
     const yes = entries.filter((v) => v === "yes").length
     const no = entries.filter((v) => v === "no").length
@@ -408,7 +408,7 @@ function loadPerBackendResults(): CensusData {
 
   for (const file of files) {
     try {
-      const raw = JSON.parse(readFileSync(join(resultsDir, file), "utf-8"))
+      const raw = JSON.parse(readFileSync(join(resultsDir, file), "utf-8")) as any
       if (!raw.backend) continue
       allBackends.push({
         name: raw.backend,
@@ -420,10 +420,10 @@ function loadPerBackendResults(): CensusData {
       notes[raw.backend] = {}
       const rawNotes = raw.notes ?? {}
       for (const [id, val] of Object.entries(raw.results ?? {})) {
-        results[raw.backend][id] = typeof val === "boolean" ? (val ? "yes" : "no") : ((val as any).support ?? "unknown")
-        if (rawNotes[id]) notes[raw.backend][id] = rawNotes[id]
+        results[raw.backend]![id] = typeof val === "boolean" ? (val ? "yes" : "no") : ((val as any).support ?? "unknown")
+        if (rawNotes[id]) notes[raw.backend]![id] = rawNotes[id]
         if (!featureSet.has(id)) {
-          const cat = id.split(".")[0]
+          const cat = id.split(".")[0]!
           const suffix = id.slice(cat.length + 1)
           const meta = featureDescs[id]
           featureSet.set(id, {
@@ -445,12 +445,12 @@ function loadPerBackendResults(): CensusData {
   const categories: Record<string, FeatureResult[]> = {}
   for (const f of features) {
     if (!categories[f.category]) categories[f.category] = []
-    categories[f.category].push(f)
+    categories[f.category]!.push(f)
   }
 
   const stats: CensusData["stats"] = {}
   for (const b of allBackends) {
-    const entries = Object.values(results[b.name])
+    const entries = Object.values(results[b.name]!)
     const total = entries.length
     const yes = entries.filter((v) => v === "yes").length
     const no = entries.filter((v) => v === "no").length
@@ -465,14 +465,13 @@ function loadPerBackendResults(): CensusData {
   for (const [key, ann] of Object.entries(annotations)) {
     const [backend, ...fp] = key.split(":")
     const feature = fp.join(":")
-    if (notes[backend]) notes[backend][feature] = ann.note
-    // Apply result overrides from annotations
-    if (ann.result && results[backend]) results[backend][feature] = ann.result
+    if (notes[backend!]) notes[backend!]![feature] = ann.note
+    if (ann.result && results[backend!]) results[backend!]![feature] = ann.result
   }
 
   // Recompute stats after overrides
   for (const b of allBackends) {
-    const entries = Object.values(results[b.name])
+    const entries = Object.values(results[b.name]!)
     const total = entries.length
     const yes = entries.filter((v) => v === "yes").length
     const no = entries.filter((v) => v === "no").length

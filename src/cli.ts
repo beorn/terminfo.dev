@@ -292,7 +292,7 @@ function findUnannotatedFailures(data: CensusData): Array<{ backend: string; fea
   const annotationsPath = join(ROOT, "annotations.json")
   let annotations: Record<string, { note: string }> = {}
   try {
-    annotations = JSON.parse(readFileSync(annotationsPath, "utf-8"))
+    annotations = JSON.parse(readFileSync(annotationsPath, "utf-8")) as Record<string, { note: string }>
   } catch {}
 
   const missing: Array<{ backend: string; feature: string; autoNote: string }> = []
@@ -330,8 +330,8 @@ function loadSavedResults(): CensusData | null {
 
   for (const file of files) {
     try {
-      const data = JSON.parse(readFileSync(join(RESULTS_DIR, file), "utf-8"))
-      if (data.backend && data.results) perBackend.push(data)
+      const data = JSON.parse(readFileSync(join(RESULTS_DIR, file), "utf-8")) as any
+      if (data.backend && data.results) perBackend.push(data as (typeof perBackend)[0])
     } catch {
       log.debug?.(`Failed to parse ${file}`)
     }
@@ -382,7 +382,7 @@ function isCacheValid(currentHash: string): boolean {
   if (files.length === 0) return false
   for (const file of files) {
     try {
-      const data = JSON.parse(readFileSync(join(RESULTS_DIR, file), "utf-8"))
+      const data = JSON.parse(readFileSync(join(RESULTS_DIR, file), "utf-8")) as any
       if (data.probeHash !== currentHash) return false
     } catch {
       return false

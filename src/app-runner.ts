@@ -281,7 +281,7 @@ async function waitForCompletion(outputPath: string, timeoutMs: number = 30_000)
 function isCacheValid(resultPath: string, hash: string): boolean {
   if (!existsSync(resultPath)) return false
   try {
-    const data = JSON.parse(readFileSync(resultPath, "utf-8"))
+    const data = JSON.parse(readFileSync(resultPath, "utf-8")) as any
     return data.probeHash === hash
   } catch {
     return false
@@ -343,7 +343,7 @@ async function runApp(
   }
 
   try {
-    const rawData = JSON.parse(readFileSync(outputPath, "utf-8"))
+    const rawData = JSON.parse(readFileSync(outputPath, "utf-8")) as any
 
     // Fill in backend name and version (harness uses placeholders)
     rawData.backend = app.backendId
@@ -383,9 +383,9 @@ function loadAppResults(): CensusData | null {
   // Load all app backend results (backendId contains "-app")
   for (const file of allJsonFiles) {
     try {
-      const data = JSON.parse(readFileSync(join(RESULTS_DIR, file), "utf-8"))
+      const data = JSON.parse(readFileSync(join(RESULTS_DIR, file), "utf-8")) as any
       if (data.backend?.endsWith("-app") && data.results) {
-        perBackend.push(data)
+        perBackend.push(data as (typeof perBackend)[0])
       }
     } catch {}
   }

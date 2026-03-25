@@ -51,7 +51,7 @@ export function listDaemons(): DaemonInfo[] {
     const daemons: DaemonInfo[] = []
     for (const f of files) {
       try {
-        const data = JSON.parse(readFileSync(join(DAEMON_DIR, f), "utf-8"))
+        const data = JSON.parse(readFileSync(join(DAEMON_DIR, f), "utf-8")) as DaemonInfo
         daemons.push(data)
       } catch {}
     }

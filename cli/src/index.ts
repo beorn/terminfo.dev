@@ -28,10 +28,10 @@ function loadFeatureSlugs(): Record<string, string> {
   const candidates = [join(__dirname, "..", "..", "features.json"), join(__dirname, "..", "..", "..", "features.json")]
   for (const path of candidates) {
     try {
-      const raw = JSON.parse(readFileSync(path, "utf-8"))
+      const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, any>
       delete raw.$comment
       const slugs: Record<string, string> = {}
-      for (const [id, entry] of Object.entries(raw) as [string, any][]) {
+      for (const [id, entry] of Object.entries(raw)) {
         slugs[id] = entry.slug ?? id.replaceAll(".", "-")
       }
       return slugs

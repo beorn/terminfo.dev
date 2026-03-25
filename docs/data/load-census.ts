@@ -38,7 +38,7 @@ export function loadFeaturesMeta(): Record<string, FeatureMeta> {
   if (!_featuresMeta) {
     try {
       const path = join(__dirname, "..", "..", "features.json")
-      const raw = JSON.parse(readFileSync(path, "utf-8"))
+      const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, FeatureMeta>
       delete raw.$comment
       _featuresMeta = raw
     } catch {
