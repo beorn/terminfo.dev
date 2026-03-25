@@ -201,11 +201,12 @@ function cls(result) {
 }
 
 .support-table a {
-  color: var(--vp-c-brand-1);
+  color: inherit;
   text-decoration: none;
 }
 
 .support-table a:hover {
+  color: var(--vp-c-brand-1);
   text-decoration: underline;
 }
 

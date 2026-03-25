@@ -220,11 +220,12 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
 }
 
 .feature-table a {
-  color: var(--vp-c-brand-1);
+  color: inherit;
   text-decoration: none;
 }
 
 .feature-table a:hover {
+  color: var(--vp-c-brand-1);
   text-decoration: underline;
 }
 
