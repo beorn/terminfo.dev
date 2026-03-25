@@ -272,10 +272,10 @@ program
           console.log(`\x1b[31m✗ HTTP ${res.status}\x1b[0m`)
           continue
         }
-        const data = await res.json() as any
+        const data = (await res.json()) as any
         const passed = Object.values(data.results).filter((v: any) => v).length
         const total = Object.keys(data.results).length
-        const pct = Math.round(passed / total * 100)
+        const pct = Math.round((passed / total) * 100)
         const color = pct >= 98 ? "\x1b[32m" : pct >= 90 ? "\x1b[33m" : "\x1b[31m"
         console.log(`${color}${passed}/${total} (${pct}%)\x1b[0m`)
 

@@ -40,12 +40,14 @@ function register(info: DaemonInfo): string {
 }
 
 function unregister(filepath: string) {
-  try { unlinkSync(filepath) } catch {}
+  try {
+    unlinkSync(filepath)
+  } catch {}
 }
 
 export function listDaemons(): DaemonInfo[] {
   try {
-    const files = readdirSync(DAEMON_DIR).filter(f => f.endsWith(".json"))
+    const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
     const daemons: DaemonInfo[] = []
     for (const f of files) {
       try {
@@ -71,13 +73,15 @@ export async function startDaemon(port = 0): Promise<void> {
     const url = new URL(req.url ?? "/", `http://localhost`)
 
     if (url.pathname === "/info") {
-      res.end(JSON.stringify({
-        terminal: terminal.name,
-        terminalVersion: terminal.version,
-        os: terminal.os,
-        osVersion: terminal.osVersion,
-        probeCount: ALL_PROBES.length,
-      }))
+      res.end(
+        JSON.stringify({
+          terminal: terminal.name,
+          terminalVersion: terminal.version,
+          os: terminal.os,
+          osVersion: terminal.osVersion,
+          probeCount: ALL_PROBES.length,
+        }),
+      )
       return
     }
 
@@ -109,21 +113,23 @@ export async function startDaemon(port = 0): Promise<void> {
       // Reset terminal after probes
       process.stdout.write("\x1bc")
 
-      const passed = Object.values(results).filter(v => v).length
+      const passed = Object.values(results).filter((v) => v).length
       const total = Object.keys(results).length
-      console.log(`\x1b[32m✓\x1b[0m ${passed}/${total} (${Math.round(passed / total * 100)}%)`)
+      console.log(`\x1b[32m✓\x1b[0m ${passed}/${total} (${Math.round((passed / total) * 100)}%)`)
 
-      res.end(JSON.stringify({
-        terminal: terminal.name,
-        terminalVersion: terminal.version,
-        os: terminal.os,
-        osVersion: terminal.osVersion,
-        source: "daemon",
-        generated: new Date().toISOString(),
-        results,
-        notes,
-        responses,
-      }))
+      res.end(
+        JSON.stringify({
+          terminal: terminal.name,
+          terminalVersion: terminal.version,
+          os: terminal.os,
+          osVersion: terminal.osVersion,
+          source: "daemon",
+          generated: new Date().toISOString(),
+          results,
+          notes,
+          responses,
+        }),
+      )
       return
     }
 
@@ -134,7 +140,7 @@ export async function startDaemon(port = 0): Promise<void> {
         res.end(JSON.stringify({ error: "Missing ?id= parameter" }))
         return
       }
-      const probe = ALL_PROBES.find(p => p.id === probeId)
+      const probe = ALL_PROBES.find((p) => p.id === probeId)
       if (!probe) {
         res.statusCode = 404
         res.end(JSON.stringify({ error: `Unknown probe: ${probeId}` }))
@@ -159,15 +165,17 @@ export async function startDaemon(port = 0): Promise<void> {
     }
 
     // Default: show help
-    res.end(JSON.stringify({
-      endpoints: {
-        "/info": "Terminal info",
-        "/probe": "Run all probes",
-        "/probe/single?id=sgr.bold": "Run single probe",
-      },
-      terminal: terminal.name,
-      version: terminal.version,
-    }))
+    res.end(
+      JSON.stringify({
+        endpoints: {
+          "/info": "Terminal info",
+          "/probe": "Run all probes",
+          "/probe/single?id=sgr.bold": "Run single probe",
+        },
+        terminal: terminal.name,
+        version: terminal.version,
+      }),
+    )
   })
 
   server.listen(port, "127.0.0.1", () => {

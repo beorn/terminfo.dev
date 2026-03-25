@@ -39,6 +39,10 @@ function cls(result) {
 
 <div v-if="p.featureBody" class="feature-body" v-html="p.featureBody"></div>
 
+<div v-if="p.probeMethod" class="probe-method">
+  <strong>How this is tested:</strong> <span v-html="p.probeMethod"></span>
+</div>
+
 <p class="feature-score">
   Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> backends ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
 </p>
@@ -101,6 +105,30 @@ function cls(result) {
   padding: 2px 6px;
   border-radius: 4px;
   background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-1);
+}
+
+.probe-method {
+  font-size: 0.88em;
+  color: var(--vp-c-text-3);
+  line-height: 1.6;
+  margin: 0.75em 0 1.5em;
+  padding: 0.6em 0.8em;
+  border-left: 3px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-soft);
+  border-radius: 0 4px 4px 0;
+}
+
+.probe-method strong {
+  color: var(--vp-c-text-2);
+}
+
+.probe-method code {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.9em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--vp-c-bg-alt);
   color: var(--vp-c-text-1);
 }
 

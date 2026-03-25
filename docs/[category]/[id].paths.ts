@@ -61,6 +61,7 @@ export default {
           featureCategory: f.category,
           specUrl: desc?.url ?? f.spec ?? "",
           featureBody: meta?.body ?? "",
+          probeMethod: meta?.probe ?? "",
           featureTags: JSON.stringify(tags),
           backendResults: JSON.stringify(backendResults),
           yesCount: String(yesCount),

@@ -28,6 +28,7 @@ export interface FeatureMeta {
   tags?: string[]
   group?: string
   body?: string
+  probe?: string
 }
 
 let _featuresMeta: Record<string, FeatureMeta> | null = null

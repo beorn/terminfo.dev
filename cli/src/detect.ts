@@ -97,8 +97,10 @@ export function detectTerminal(): TerminalInfo {
   // Linux: check common env vars
   if (name === "unknown") {
     if (process.env.GNOME_TERMINAL_SCREEN) name = "gnome-terminal"
-    else if (process.env.KONSOLE_VERSION) { name = "konsole"; version = process.env.KONSOLE_VERSION }
-    else if (process.env.TILIX_ID) name = "tilix"
+    else if (process.env.KONSOLE_VERSION) {
+      name = "konsole"
+      version = process.env.KONSOLE_VERSION
+    } else if (process.env.TILIX_ID) name = "tilix"
   }
 
   // Windows: check for Windows Terminal

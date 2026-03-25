@@ -64,6 +64,7 @@ interface FeatureMeta {
   tags?: string[]
   group?: string
   body?: string
+  probe?: string
 }
 
 function loadFeatureDescriptions(): Record<string, FeatureMeta> {
@@ -80,7 +81,7 @@ function loadFeatureDescriptions(): Record<string, FeatureMeta> {
       if (typeof val === "string") result[id] = { name: val }
       else {
         const v = val as any
-        result[id] = { name: v.name, slug: v.slug, url: v.url, tags: v.tags, group: v.group, body: v.body }
+        result[id] = { name: v.name, slug: v.slug, url: v.url, tags: v.tags, group: v.group, body: v.body, probe: v.probe }
       }
     }
     return result
