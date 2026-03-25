@@ -1391,10 +1391,7 @@ export const ALL_PROBES: Probe[] = [
       // The terminal responds with APC G if it supports the protocol
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" // 1x1 red PNG
       // Send payload, then use DA1 sentinel to detect support quickly
-      const match = await queryWithSentinel(
-        `\x1b_Ga=T,f=100,s=1,v=1,t=d;${payload}\x1b\\`,
-        /\x1b_G([^\x1b]*)\x1b\\/,
-      )
+      const match = await queryWithSentinel(`\x1b_Ga=T,f=100,s=1,v=1,t=d;${payload}\x1b\\`, /\x1b_G([^\x1b]*)\x1b\\/)
       if (match) return { pass: true, response: match[1] }
       return { pass: false, note: "No kitty graphics acknowledgment" }
     },

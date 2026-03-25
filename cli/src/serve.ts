@@ -164,6 +164,65 @@ export async function startDaemon(port = 0): Promise<void> {
       return
     }
 
+    if (url.pathname === "/exec" && req.method === "POST") {
+      // Execute raw escape sequence commands in this terminal
+      // POST body: { commands: [{ write: "\\x1b[6n", read: "\\x1b\\[(\\d+);(\\d+)R", timeout?: 1000 }, ...] }
+      const body = await readBody(req)
+      try {
+        const { commands } = JSON.parse(body) as {
+          commands: Array<{ write?: string; read?: string; timeout?: number; measure?: string }>
+        }
+        if (!Array.isArray(commands)) {
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: "commands must be an array" }))
+          return
+        }
+
+        const results: Array<{ response?: string | null; width?: number | null; error?: string }> = []
+
+        await withRawMode(async () => {
+          process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
+          for (const cmd of commands) {
+            try {
+              if (cmd.measure) {
+                // Measure rendered width of a string
+                const { measureRenderedWidth } = await import("./tty.ts")
+                const width = await measureRenderedWidth(cmd.measure)
+                results.push({ width })
+              } else if (cmd.write && cmd.read) {
+                // Write sequence, read response
+                const { query } = await import("./tty.ts")
+                const match = await query(
+                  unescapeSequence(cmd.write),
+                  new RegExp(cmd.read),
+                  cmd.timeout ?? 1000,
+                )
+                results.push({ response: match ? match[0] : null })
+              } else if (cmd.write) {
+                // Just write, no response expected
+                process.stdout.write(unescapeSequence(cmd.write))
+                results.push({ response: "ok" })
+              } else {
+                results.push({ error: "command needs write, read, or measure" })
+              }
+            } catch (err) {
+              results.push({ error: err instanceof Error ? err.message : String(err) })
+            }
+          }
+          process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
+          await drainStdin(500)
+        })
+        process.stdout.write("\x1bc")
+
+        console.log(`\x1b[2m[${new Date().toISOString()}] Executed ${commands.length} commands\x1b[0m`)
+        res.end(JSON.stringify({ terminal: terminal.name, results }))
+      } catch (err) {
+        res.statusCode = 400
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }))
+      }
+      return
+    }
+
     // Default: show help
     res.end(
       JSON.stringify({
@@ -171,6 +230,7 @@ export async function startDaemon(port = 0): Promise<void> {
           "/info": "Terminal info",
           "/probe": "Run all probes",
           "/probe/single?id=sgr.bold": "Run single probe",
+          "/exec": "POST — execute raw escape sequence commands",
         },
         terminal: terminal.name,
         version: terminal.version,
@@ -216,4 +276,23 @@ export async function startDaemon(port = 0): Promise<void> {
     process.on("SIGINT", cleanup)
     process.on("SIGTERM", cleanup)
   })
+}
+
+/** Read full request body */
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on("data", (chunk: Buffer) => chunks.push(chunk))
+    req.on("end", () => resolve(Buffer.concat(chunks).toString()))
+    req.on("error", reject)
+  })
+}
+
+/** Convert \\x1b notation to actual escape characters */
+function unescapeSequence(s: string): string {
+  return s.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\e/g, "\x1b")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
 }
