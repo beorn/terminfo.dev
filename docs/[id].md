@@ -73,6 +73,15 @@ function platformIcons(b) {
   <span v-if="p.specUrl"> · <a :href="p.specUrl" target="_blank" rel="noopener">Specification ↗</a></span>
 </p>
 
+<div v-if="p.analysis" class="analysis">
+  <div class="analysis-header">
+    <span class="analysis-label">Analysis</span>
+    <span class="analysis-date">{{ p.analysisDate }}</span>
+  </div>
+  <div class="analysis-body" v-html="p.analysis"></div>
+  <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
+</div>
+
 ## Terminal Applications
 
 <div v-if="appBackends.length > 0" class="matrix-wrapper">

@@ -13,7 +13,10 @@ export const extensionsProbes: ProbeDefinition[] = [
       if (!pos) return { pass: false, note: "No cursor response" }
       return {
         pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (truecolor sequence may have been printed literally)`,
+        note:
+          pos.col === 2
+            ? undefined
+            : `cursor at col ${pos.col}, expected 2 (truecolor sequence may have been printed literally)`,
       }
     },
   ),
@@ -35,7 +38,10 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
     async (ctx) => {
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      const match = await ctx.queryWithSentinel(`\x1b_Ga=T,f=100,s=1,v=1,t=d;${payload}\x1b\\`, /\x1b_G([^\x1b]*)\x1b\\/)
+      const match = await ctx.queryWithSentinel(
+        `\x1b_Ga=T,f=100,s=1,v=1,t=d;${payload}\x1b\\`,
+        /\x1b_G([^\x1b]*)\x1b\\/,
+      )
       if (match) return { pass: true, response: match[1] }
       return { pass: false, note: "No kitty graphics acknowledgment" }
     },

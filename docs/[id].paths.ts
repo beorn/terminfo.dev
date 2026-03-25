@@ -10,6 +10,7 @@ import {
   tagLabel,
   tagDescriptions,
   tagUrls,
+  loadAnalysis,
 } from "./data/load-probes"
 
 export default {
@@ -33,6 +34,8 @@ export default {
       platforms: b.platforms ?? [],
     }))
 
+    const allAnalysis = loadAnalysis()
+
     // --- Category pages ---
     const categoryPages = Object.entries(data.categories).map(([cat, features]) => {
       const featureRows = features.map((f) => {
@@ -55,6 +58,8 @@ export default {
         }
       })
 
+      const a = allAnalysis[cat]
+
       return {
         params: {
           id: cat,
@@ -64,6 +69,9 @@ export default {
           featureCount: String(features.length),
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),
+          analysis: a?.analysis ?? "",
+          analysisDate: a?.date ?? "",
+          analysisChanges: a?.changes ?? "",
         },
       }
     })
@@ -94,6 +102,8 @@ export default {
         }
       })
 
+      const a = allAnalysis[tag]
+
       return {
         params: {
           id: tag,
@@ -104,6 +114,9 @@ export default {
           featureCount: String(featureIds.length),
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),
+          analysis: a?.analysis ?? "",
+          analysisDate: a?.date ?? "",
+          analysisChanges: a?.changes ?? "",
         },
       }
     })

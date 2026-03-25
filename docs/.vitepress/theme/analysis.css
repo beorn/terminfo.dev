@@ -1,0 +1,50 @@
+.analysis {
+  margin: 1.5em 0;
+  padding: 1em 1.25em;
+  border-left: 3px solid var(--vp-c-brand-1);
+  background: var(--vp-c-bg-soft);
+  border-radius: 0 6px 6px 0;
+}
+
+.analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5em;
+}
+
+.analysis-label {
+  font-weight: 700;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vp-c-brand-1);
+}
+
+.analysis-date {
+  font-size: 0.8em;
+  color: var(--vp-c-text-3);
+}
+
+.analysis-body {
+  font-size: 0.95em;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+}
+
+.analysis-body p {
+  margin: 0.5em 0;
+}
+
+.analysis-body strong {
+  color: var(--vp-c-text-1);
+}
+
+.analysis-changes {
+  margin-top: 0.75em;
+  padding-top: 0.75em;
+  border-top: 1px solid var(--vp-c-divider);
+  font-size: 0.85em;
+  color: var(--vp-c-text-3);
+  font-style: italic;
+}

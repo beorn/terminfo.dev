@@ -1,4 +1,4 @@
-import { loadProbes, featureSlug, terminalSlug, loadFeaturesMeta } from "../data/load-probes"
+import { loadProbes, featureSlug, terminalSlug, loadFeaturesMeta, loadAnalysis } from "../data/load-probes"
 import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -40,6 +40,8 @@ export default {
       type: b.type ?? "headless",
       platforms: b.platforms ?? [],
     }))
+
+    const allAnalysis = loadAnalysis()
 
     return Object.entries(baselines).map(([id, bl]) => {
       // Get feature IDs in this baseline
@@ -87,6 +89,8 @@ export default {
         }
       })
 
+      const a = allAnalysis["baseline/" + id]
+
       return {
         params: {
           id,
@@ -101,6 +105,9 @@ export default {
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),
           scores: JSON.stringify(scores),
+          analysis: a?.analysis ?? "",
+          analysisDate: a?.date ?? "",
+          analysisChanges: a?.changes ?? "",
         },
       }
     })

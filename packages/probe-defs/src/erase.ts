@@ -145,7 +145,11 @@ export const eraseProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("ABCDE\x1b[1G\x1b[3X")
       return {
-        pass: isBlank(ctx.getCell(0, 0).char) && isBlank(ctx.getCell(0, 1).char) && isBlank(ctx.getCell(0, 2).char) && ctx.getCell(0, 3).char === "D",
+        pass:
+          isBlank(ctx.getCell(0, 0).char) &&
+          isBlank(ctx.getCell(0, 1).char) &&
+          isBlank(ctx.getCell(0, 2).char) &&
+          ctx.getCell(0, 3).char === "D",
       }
     },
     async (ctx) => {

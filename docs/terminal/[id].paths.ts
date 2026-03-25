@@ -1,8 +1,9 @@
-import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
+import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
 
 export default {
   paths() {
     const data = loadProbes()
+    const allAnalysis = loadAnalysis()
 
     return data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
@@ -47,6 +48,8 @@ export default {
 
       const terminal = (meta as any).terminal ?? {}
 
+      const a = allAnalysis["terminal/" + slug]
+
       return {
         params: {
           id: slug,
@@ -73,6 +76,9 @@ export default {
           partial: String(stats.partial),
           pct: String(stats.pct),
           categories: JSON.stringify(categories),
+          analysis: a?.analysis ?? "",
+          analysisDate: a?.date ?? "",
+          analysisChanges: a?.changes ?? "",
         },
       }
     })

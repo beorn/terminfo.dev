@@ -84,6 +84,15 @@ for (const cat of categories) {
 
 <p class="compare-diff-summary">{{ p.differ }} features differ between these terminals</p>
 
+<div v-if="p.analysis" class="analysis">
+  <div class="analysis-header">
+    <span class="analysis-label">Analysis</span>
+    <span class="analysis-date">{{ p.analysisDate }}</span>
+  </div>
+  <div class="analysis-body" v-html="p.analysis"></div>
+  <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
+</div>
+
 ## Feature Comparison
 
 <div v-for="cat in categories" :key="cat.name" class="compare-category">

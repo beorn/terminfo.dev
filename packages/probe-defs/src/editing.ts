@@ -11,7 +11,11 @@ export const editingProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("ABCDE\x1b[1G\x1b[2@")
       return {
-        pass: isBlank(ctx.getCell(0, 0).char) && isBlank(ctx.getCell(0, 1).char) && ctx.getCell(0, 2).char === "A" && ctx.getCell(0, 3).char === "B",
+        pass:
+          isBlank(ctx.getCell(0, 0).char) &&
+          isBlank(ctx.getCell(0, 1).char) &&
+          ctx.getCell(0, 2).char === "A" &&
+          ctx.getCell(0, 3).char === "B",
       }
     },
     async (ctx) => {

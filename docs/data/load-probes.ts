@@ -4,7 +4,7 @@
  * Loads data from probes.data.ts at build time and provides
  * helper functions for slug generation and category labels.
  */
-import { readFileSync } from "node:fs"
+import { readFileSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import probesLoader from "./probes.data"
@@ -125,4 +125,31 @@ export const tagDescriptions: Record<string, string> = Object.fromEntries(
 
 export function tagLabel(tag: string): string {
   return tagLabels[tag] ?? tag.charAt(0).toUpperCase() + tag.slice(1).replace(/-/g, " ")
+}
+
+export interface AnalysisEntry {
+  analysis: string
+  date: string
+  changes?: string
+}
+
+let _analysisCached: Record<string, AnalysisEntry> | null = null
+
+/** Load content/analysis.json — gracefully returns {} if file is missing */
+export function loadAnalysis(): Record<string, AnalysisEntry> {
+  if (!_analysisCached) {
+    const path = join(__dirname, "..", "..", "content", "analysis.json")
+    if (!existsSync(path)) {
+      _analysisCached = {}
+    } else {
+      try {
+        const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, AnalysisEntry>
+        delete (raw as any).$generated
+        _analysisCached = raw
+      } catch {
+        _analysisCached = {}
+      }
+    }
+  }
+  return _analysisCached!
 }

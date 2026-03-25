@@ -131,9 +131,7 @@ export function behavioralModeProbe(
       }
       // Fall back to behavioral test
       ctx.write(enableSeq)
-      const result = termBehaviorFn
-        ? await termBehaviorFn(ctx)
-        : await defaultBehaviorTest(ctx)
+      const result = termBehaviorFn ? await termBehaviorFn(ctx) : await defaultBehaviorTest(ctx)
       ctx.write(disableSeq)
       return result
     },
@@ -176,10 +174,7 @@ export function responseProbe(
 /**
  * Capability probe — check capabilities flag (termless only, term=null).
  */
-export function capabilityProbe(
-  id: string,
-  capName: keyof TermlessContext["capabilities"],
-): ProbeDefinition {
+export function capabilityProbe(id: string, capName: keyof TermlessContext["capabilities"]): ProbeDefinition {
   return {
     id,
     termless(ctx) {

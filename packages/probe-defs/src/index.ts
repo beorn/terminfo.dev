@@ -1,5 +1,14 @@
 export type { ProbeDefinition, ProbeResult, TermlessContext, TermContext } from "./types.ts"
-export { sgrProbe, cursorProbe, modeProbe, behavioralModeProbe, responseProbe, capabilityProbe, widthProbe, probe } from "./helpers.ts"
+export {
+  sgrProbe,
+  cursorProbe,
+  modeProbe,
+  behavioralModeProbe,
+  responseProbe,
+  capabilityProbe,
+  widthProbe,
+  probe,
+} from "./helpers.ts"
 
 import { sgrProbes } from "./sgr.ts"
 import { cursorProbes } from "./cursor.ts"

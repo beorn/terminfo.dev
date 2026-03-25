@@ -80,6 +80,15 @@ function platformIcons(b) {
 
 <p class="baseline-meta">{{ p.featureCount }} features in this baseline</p>
 
+<div v-if="p.analysis" class="analysis">
+  <div class="analysis-header">
+    <span class="analysis-label">Analysis</span>
+    <span class="analysis-date">{{ p.analysisDate }}</span>
+  </div>
+  <div class="analysis-body" v-html="p.analysis"></div>
+  <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
+</div>
+
 ## Compliance Scorecard
 
 ### Terminal Applications

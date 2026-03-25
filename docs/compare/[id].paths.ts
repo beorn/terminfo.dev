@@ -1,4 +1,4 @@
-import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
+import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
 
 export default {
   paths() {
@@ -39,6 +39,8 @@ export default {
         }),
       })
     }
+
+    const allAnalysis = loadAnalysis()
 
     // Generate all unique pairs (alphabetical slug order for deterministic URLs)
     const pairs = []
@@ -88,9 +90,12 @@ export default {
           }
         }
 
+        const compareId = `${a.slug}-vs-${b.slug}`
+        const an = allAnalysis["compare/" + compareId]
+
         pairs.push({
           params: {
-            id: `${a.slug}-vs-${b.slug}`,
+            id: compareId,
             termASlug: a.slug,
             termBSlug: b.slug,
             termALabel: a.label,
@@ -107,6 +112,9 @@ export default {
             onlyB: String(onlyB),
             differ: String(differ),
             categories: JSON.stringify(catResults),
+            analysis: an?.analysis ?? "",
+            analysisDate: an?.date ?? "",
+            analysisChanges: an?.changes ?? "",
           },
         })
       }

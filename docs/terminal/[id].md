@@ -61,6 +61,15 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
   <div v-if="testDate" class="score-date">Tested: {{ testDate }}</div>
 </div>
 
+<div v-if="p.analysis" class="analysis">
+  <div class="analysis-header">
+    <span class="analysis-label">Analysis</span>
+    <span class="analysis-date">{{ p.analysisDate }}</span>
+  </div>
+  <div class="analysis-body" v-html="p.analysis"></div>
+  <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
+</div>
+
 <div v-for="cat in categories" :key="cat.name" class="category-section">
 
 <h2 :id="cat.name">{{ cat.label }}</h2>

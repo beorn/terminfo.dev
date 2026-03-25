@@ -205,9 +205,10 @@ function buildSidebar() {
   }
 
   // Load baselines for sidebar
-  const baselinesData = JSON.parse(
-    readFileSync(join(docsDir, "..", "content", "baselines.json"), "utf-8"),
-  ) as Record<string, { label: string; emoji: string; order: number }>
+  const baselinesData = JSON.parse(readFileSync(join(docsDir, "..", "content", "baselines.json"), "utf-8")) as Record<
+    string,
+    { label: string; emoji: string; order: number }
+  >
   const baselineItems = Object.entries(baselinesData)
     .sort(([, a], [, b]) => a.order - b.order)
     .map(([id, bl]) => ({
