@@ -80,7 +80,7 @@ function loadFeaturesJson(): Record<string, FeatureMeta> {
 function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
   const path = join(root, "annotations.json")
   if (!existsSync(path)) return {}
-  return JSON.parse(readFileSync(path, "utf-8"))
+  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, { note: string; url?: string; result?: string }>
 }
 
 function loadBackendMeta(): Record<string, any> {
@@ -91,7 +91,7 @@ function loadBackendMeta(): Record<string, any> {
   ]
   for (const p of candidates) {
     if (existsSync(p)) {
-      return JSON.parse(readFileSync(p, "utf-8")).backends ?? {}
+      return (JSON.parse(readFileSync(p, "utf-8")) as any).backends ?? {}
     }
   }
   return {}
@@ -391,7 +391,10 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
 // Allow standalone execution
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { dataPath, badgeCount } = generateApi()
-  const data = JSON.parse(readFileSync(dataPath, "utf-8"))
+  const data = JSON.parse(readFileSync(dataPath, "utf-8")) as {
+    terminals: Record<string, unknown>
+    features: Record<string, unknown>
+  }
   const terminalCount = Object.keys(data.terminals).length
   const featureCount = Object.keys(data.features).length
   console.log(`Generated ${dataPath}`)
