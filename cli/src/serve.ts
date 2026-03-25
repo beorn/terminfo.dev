@@ -164,7 +164,7 @@ export async function startDaemon(port = 0): Promise<void> {
       return
     }
 
-    if (url.pathname === "/exec" && req.method === "POST") {
+    if (url.pathname === "/query" && req.method === "POST") {
       // Execute raw escape sequence commands in this terminal
       // POST body: { commands: [{ write: "\\x1b[6n", read: "\\x1b\\[(\\d+);(\\d+)R", timeout?: 1000 }, ...] }
       const body = await readBody(req)
@@ -192,11 +192,7 @@ export async function startDaemon(port = 0): Promise<void> {
               } else if (cmd.write && cmd.read) {
                 // Write sequence, read response
                 const { query } = await import("./tty.ts")
-                const match = await query(
-                  unescapeSequence(cmd.write),
-                  new RegExp(cmd.read),
-                  cmd.timeout ?? 1000,
-                )
+                const match = await query(unescapeSequence(cmd.write), new RegExp(cmd.read), cmd.timeout ?? 1000)
                 results.push({ response: match ? match[0] : null })
               } else if (cmd.write) {
                 // Just write, no response expected
@@ -230,7 +226,7 @@ export async function startDaemon(port = 0): Promise<void> {
           "/info": "Terminal info",
           "/probe": "Run all probes",
           "/probe/single?id=sgr.bold": "Run single probe",
-          "/exec": "POST — execute raw escape sequence commands",
+          "/query": "POST — execute raw escape sequence commands",
         },
         terminal: terminal.name,
         version: terminal.version,
@@ -290,7 +286,8 @@ function readBody(req: IncomingMessage): Promise<string> {
 
 /** Convert \\x1b notation to actual escape characters */
 function unescapeSequence(s: string): string {
-  return s.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+  return s
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/\\e/g, "\x1b")
     .replace(/\\n/g, "\n")
     .replace(/\\r/g, "\r")
