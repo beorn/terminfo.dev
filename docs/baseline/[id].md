@@ -76,7 +76,7 @@ function platformIcons(b) {
   </div>
 </div>
 
-<p class="baseline-description">{{ p.description }}</p>
+<p class="baseline-description" v-html="p.description"></p>
 
 <p class="baseline-meta">{{ p.featureCount }} features in this baseline</p>
 
@@ -233,6 +233,17 @@ function platformIcons(b) {
   color: var(--vp-c-text-2);
   line-height: 1.6;
   margin-bottom: 0.5em;
+}
+
+.baseline-description a {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.baseline-description a:hover {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
 }
 
 .baseline-meta {

@@ -70,4 +70,4 @@ Built with [VitePress](https://vitepress.dev), deployed via [Cloudflare Pages](h
 ## Related
 
 - **[termless](https://termless.dev)** — headless terminal testing library (powers the probes)
-- **[silvery](https://silvery.dev)** — React TUI framework
+- **[Silvery](https://silvery.dev)** — React TUI framework
