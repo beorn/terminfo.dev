@@ -1,5 +1,5 @@
 {
-  "$generated": "2026-03-25T22:59:30.198Z",
+  "$generated": "2026-03-25T23:10:03.196Z",
   "terminal/ghostty": {
     "analysis": "<p>Ghostty scores <strong>97%</strong> (130/134) on the terminfo.dev feature matrix, with gaps in the Rich Terminal baseline. Ranks <strong>#2</strong> of 8 tested terminals. Missing: Tertiary Device Attributes (DA3), Sixel graphics, Kitty graphics protocol.</p>",
     "date": "2026-03-25",
@@ -118,7 +118,7 @@
     "changes": null
   },
   "cursor": {
-    "analysis": "<p>The <strong>Cursor</strong> category covers 13 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong>Cursor</strong> category covers 17 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
@@ -128,7 +128,7 @@
     "changes": null
   },
   "erase": {
-    "analysis": "<p>The <strong>Erase</strong> category covers 9 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong>Erase</strong> category covers 11 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
@@ -143,7 +143,7 @@
     "changes": null
   },
   "scrollback": {
-    "analysis": "<p>The <strong>Scrollback</strong> category covers 7 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong>Scrollback</strong> category covers 9 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
@@ -153,17 +153,17 @@
     "changes": null
   },
   "extensions": {
-    "analysis": "<p>The <strong>Extensions</strong> category covers 16 features. Common gaps: Kitty graphics protocol (7 terminals fail), Sixel graphics (6 terminals fail), Kitty keyboard protocol (4 terminals fail).</p>",
+    "analysis": "<p>The <strong>Extensions</strong> category covers 18 features. Common gaps: Kitty graphics protocol (7 terminals fail), Sixel graphics (6 terminals fail), Kitty keyboard protocol (4 terminals fail).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "charsets": {
-    "analysis": "<p>The <strong>Character Sets</strong> category covers 2 features. All 8 tested terminals achieve 100%.</p>",
+    "analysis": "<p>The <strong>Character Sets</strong> category covers 4 features. All 8 tested terminals achieve 100%.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "device": {
-    "analysis": "<p>The <strong>Device Status</strong> category covers 7 features. Top performers (100%): iTerm2. Common gaps: Tertiary Device Attributes (DA3) (7 terminals fail), XTGETTCAP (Query Terminfo) (6 terminals fail), DECRQSS (Request Setting) (3 terminals fail).</p>",
+    "analysis": "<p>The <strong>Device Status</strong> category covers 9 features. Top performers (100%): iTerm2. Common gaps: Tertiary Device Attributes (DA3) (7 terminals fail), XTGETTCAP (Query Terminfo) (6 terminals fail), DECRQSS (Request Setting) (3 terminals fail).</p>",
     "date": "2026-03-25",
     "changes": null
   },
@@ -178,12 +178,12 @@
     "changes": null
   },
   "ecma-48": {
-    "analysis": "<p><strong>ECMA-48 Standard</strong> defines 55 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Ghostty, Kitty, iTerm2, Terminal.app, Warp and 3 more.</p>",
+    "analysis": "<p><strong>ECMA-48 Standard</strong> defines 60 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Ghostty, Kitty, iTerm2, Terminal.app, Warp and 3 more.</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "vt100": {
-    "analysis": "<p><strong>VT100</strong> defines 40 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Ghostty, iTerm2, Warp, Cursor, VS Code and 1 more. Lowest: Terminal.app at 98% (39/40).</p>",
+    "analysis": "<p><strong>VT100</strong> defines 50 features in the terminfo.dev matrix. Average adoption across terminals: <strong>100%</strong>. Full compliance (100%): Ghostty, iTerm2, Warp, Cursor, VS Code and 1 more. Lowest: Terminal.app at 98% (39/40).</p>",
     "date": "2026-03-25",
     "changes": null
   },
@@ -198,12 +198,12 @@
     "changes": null
   },
   "dec-private-modes": {
-    "analysis": "<p><strong>DEC Private Modes</strong> defines 19 features in the terminfo.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): Ghostty, iTerm2, Warp, Cursor, VS Code and 1 more. Lowest: Terminal.app at 95% (18/19).</p>",
+    "analysis": "<p><strong>DEC Private Modes</strong> defines 22 features in the terminfo.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): Ghostty, iTerm2, Warp, Cursor, VS Code and 1 more. Lowest: Terminal.app at 95% (18/19).</p>",
     "date": "2026-03-25",
     "changes": null
   },
   "xterm-extensions": {
-    "analysis": "<p><strong>Xterm Extensions</strong> defines 32 features in the terminfo.dev matrix. Average adoption across terminals: <strong>98%</strong>. Full compliance (100%): Ghostty, iTerm2. Lowest: Cursor at 97% (31/32).</p>",
+    "analysis": "<p><strong>Xterm Extensions</strong> defines 33 features in the terminfo.dev matrix. Average adoption across terminals: <strong>98%</strong>. Full compliance (100%): Ghostty, iTerm2. Lowest: Cursor at 97% (31/32).</p>",
     "date": "2026-03-25",
     "changes": null
   },
@@ -213,7 +213,7 @@
     "changes": null
   },
   "osc": {
-    "analysis": "<p><strong>Operating System Commands (OSC)</strong> defines 11 features in the terminfo.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): Ghostty, Kitty, iTerm2, Terminal.app, Warp and 2 more. Lowest: Cursor at 91% (10/11).</p>",
+    "analysis": "<p><strong>Operating System Commands (OSC)</strong> defines 13 features in the terminfo.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): Ghostty, Kitty, iTerm2, Terminal.app, Warp and 2 more. Lowest: Cursor at 91% (10/11).</p>",
     "date": "2026-03-25",
     "changes": null
   },
