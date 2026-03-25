@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-25T20:14:17.509Z",
+  "generated": "2026-03-25T20:18:14.927Z",
   "features": {
     "charsets.dec-special": {
       "name": "DEC Special Graphics",
@@ -1078,6 +1078,16 @@
       ],
       "baseline": "core"
     },
+    "sgr.selective-reset.italic": {
+      "name": "Reset italic (SGR 23)",
+      "category": "sgr",
+      "slug": "sgr-23-reset-italic",
+      "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
+      "tags": [
+        "ecma-48"
+      ],
+      "baseline": "core"
+    },
     "sgr.selective-reset.underline": {
       "name": "Reset underline (SGR 24)",
       "category": "sgr",
@@ -1356,8 +1366,8 @@
       ],
       "url": "https://code.visualstudio.com",
       "score": {
-        "total": 128,
-        "pass": 122,
+        "total": 129,
+        "pass": 123,
         "pct": 95
       }
     },
@@ -1369,8 +1379,8 @@
         "macos"
       ],
       "score": {
-        "total": 128,
-        "pass": 121,
+        "total": 129,
+        "pass": 122,
         "pct": 95
       }
     },
@@ -1383,8 +1393,8 @@
       ],
       "url": "https://ghostty.org",
       "score": {
-        "total": 128,
-        "pass": 124,
+        "total": 129,
+        "pass": 125,
         "pct": 97
       }
     },
@@ -1397,8 +1407,8 @@
       ],
       "url": "https://iterm2.com",
       "score": {
-        "total": 128,
-        "pass": 127,
+        "total": 129,
+        "pass": 128,
         "pct": 99
       }
     },
@@ -1411,8 +1421,8 @@
       ],
       "url": "https://sw.kovidgoyal.net/kitty/",
       "score": {
-        "total": 128,
-        "pass": 120,
+        "total": 129,
+        "pass": 121,
         "pct": 94
       }
     },
@@ -1425,8 +1435,8 @@
       ],
       "url": "https://support.apple.com/guide/terminal",
       "score": {
-        "total": 128,
-        "pass": 120,
+        "total": 129,
+        "pass": 121,
         "pct": 94
       }
     },
@@ -1439,8 +1449,8 @@
       ],
       "url": "https://www.warp.dev",
       "score": {
-        "total": 111,
-        "pass": 105,
+        "total": 112,
+        "pass": 106,
         "pct": 95
       }
     },
@@ -1450,8 +1460,8 @@
       "type": "headless",
       "url": "https://alacritty.org",
       "score": {
-        "total": 128,
-        "pass": 114,
+        "total": 129,
+        "pass": 115,
         "pct": 89
       }
     },
@@ -1460,8 +1470,8 @@
       "version": "0.2.1",
       "type": "headless",
       "score": {
-        "total": 128,
-        "pass": 111,
+        "total": 129,
+        "pass": 112,
         "pct": 87
       }
     },
@@ -1470,8 +1480,8 @@
       "version": "0.2.0",
       "type": "headless",
       "score": {
-        "total": 128,
-        "pass": 124,
+        "total": 129,
+        "pass": 125,
         "pct": 97
       }
     },
@@ -1481,8 +1491,8 @@
       "type": "headless",
       "url": "https://wezfurlong.org/wezterm",
       "score": {
-        "total": 128,
-        "pass": 112,
+        "total": 129,
+        "pass": 113,
         "pct": 88
       }
     }
@@ -1584,6 +1594,7 @@
       "sgr.reset": "yes",
       "sgr.selective-reset.bold": "yes",
       "sgr.selective-reset.underline": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.inverse": "yes",
       "charsets.dec-special": "yes",
       "charsets.utf8": "yes",
@@ -1714,6 +1725,7 @@
       "sgr.reset": "yes",
       "sgr.selective-reset.bold": "yes",
       "sgr.selective-reset.underline": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.inverse": "yes",
       "charsets.dec-special": "yes",
       "charsets.utf8": "yes",
@@ -1843,6 +1855,7 @@
       "sgr.underline.color": "yes",
       "sgr.reset": "yes",
       "sgr.selective-reset.bold": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.underline": "yes",
       "sgr.selective-reset.inverse": "yes",
       "charsets.dec-special": "yes",
@@ -1973,6 +1986,7 @@
       "sgr.underline.color": "yes",
       "sgr.reset": "yes",
       "sgr.selective-reset.bold": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.underline": "yes",
       "sgr.selective-reset.inverse": "yes",
       "charsets.dec-special": "yes",
@@ -2103,6 +2117,7 @@
       "sgr.underline.color": "yes",
       "sgr.reset": "yes",
       "sgr.selective-reset.bold": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.underline": "yes",
       "sgr.selective-reset.inverse": "yes",
       "charsets.dec-special": "yes",
@@ -2234,6 +2249,7 @@
       "sgr.reset": "yes",
       "sgr.selective-reset.bold": "yes",
       "sgr.selective-reset.underline": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.inverse": "yes",
       "charsets.dec-special": "yes",
       "charsets.utf8": "yes",
@@ -2357,6 +2373,7 @@
       "sgr.underline.color": "yes",
       "sgr.reset": "yes",
       "sgr.selective-reset.bold": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.underline": "yes",
       "sgr.selective-reset.inverse": "yes",
       "charsets.dec-special": "yes",
@@ -2491,6 +2508,7 @@
       "sgr.fg.default": "yes",
       "sgr.bg.default": "yes",
       "sgr.selective-reset.bold": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.underline": "yes",
       "sgr.selective-reset.inverse": "yes",
       "sgr.reset": "yes",
@@ -2621,6 +2639,7 @@
       "sgr.fg.default": "yes",
       "sgr.bg.default": "yes",
       "sgr.selective-reset.bold": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.underline": "yes",
       "sgr.selective-reset.inverse": "yes",
       "sgr.reset": "yes",
@@ -2751,6 +2770,7 @@
       "sgr.fg.default": "yes",
       "sgr.bg.default": "yes",
       "sgr.selective-reset.bold": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.underline": "yes",
       "sgr.selective-reset.inverse": "yes",
       "sgr.reset": "yes",
@@ -2881,6 +2901,7 @@
       "sgr.fg.default": "yes",
       "sgr.bg.default": "yes",
       "sgr.selective-reset.bold": "yes",
+      "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.underline": "yes",
       "sgr.selective-reset.inverse": "yes",
       "sgr.reset": "yes",
