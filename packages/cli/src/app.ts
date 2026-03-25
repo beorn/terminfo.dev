@@ -110,6 +110,14 @@ function launchWithServe(app: AppDef): ChildProcess | null {
       env: { ...process.env },
     })
     child.unref()
+
+    // Hide the terminal window so it doesn't steal focus
+    setTimeout(() => {
+      try {
+        execSync(`osascript -e 'tell application "System Events" to set visible of process "${app.name}" to false'`, { timeout: 3000 })
+      } catch {}
+    }, 1500)
+
     return child
   }
 
@@ -122,10 +130,13 @@ function launchWithServe(app: AppDef): ChildProcess | null {
   if (app.id === "iterm2") {
     try {
       execSync(`osascript -e 'tell application "iTerm"
-  activate
   create window with default profile command "/tmp/terminfo-serve.sh"
 end tell'`, { timeout: 15000 })
-      return null // process managed by iTerm2
+      // Hide iTerm so it doesn't steal focus
+      setTimeout(() => {
+        try { execSync(`osascript -e 'tell application "System Events" to set visible of process "iTerm2" to false'`, { timeout: 3000 }) } catch {}
+      }, 1000)
+      return null
     } catch {
       return null
     }
@@ -134,10 +145,13 @@ end tell'`, { timeout: 15000 })
   if (app.id === "terminal-app") {
     try {
       execSync(`osascript -e 'tell application "Terminal"
-  activate
   do script "/tmp/terminfo-serve.sh"
 end tell'`, { timeout: 15000 })
-      return null // process managed by Terminal.app
+      // Hide Terminal so it doesn't steal focus
+      setTimeout(() => {
+        try { execSync(`osascript -e 'tell application "System Events" to set visible of process "Terminal" to false'`, { timeout: 3000 }) } catch {}
+      }, 1000)
+      return null
     } catch {
       return null
     }
