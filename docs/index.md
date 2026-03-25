@@ -7,10 +7,10 @@ hero:
   actions:
     - theme: brand
       text: Terminal Applications
-      link: "#summary"
+      link: "#terminal-applications"
     - theme: alt
       text: Headless Backends
-      link: "#headless"
+      link: "#headless-backends"
 ---
 
 <script setup>
@@ -19,6 +19,7 @@ import { data } from './data/census.data'
 
 const filter = ref('')
 const categoryFilter = ref('all')
+const platformFilter = ref('all')
 
 const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'editing', 'modes', 'scrollback', 'reset', 'extensions', 'charsets', 'device']
 const categoryLabels = {
@@ -45,8 +46,28 @@ const sortedBackends = computed(() => {
 })
 
 // Split into app (real terminals) and headless backends
-const appBackends = computed(() => sortedBackends.value.filter(b => b.type === 'app'))
+const allAppBackends = computed(() => sortedBackends.value.filter(b => b.type === 'app'))
 const headlessBackends = computed(() => sortedBackends.value.filter(b => b.type === 'headless'))
+
+// Filter app backends by platform
+const appBackends = computed(() => {
+  if (platformFilter.value === 'all') return allAppBackends.value
+  return allAppBackends.value.filter(b => b.platforms?.includes(platformFilter.value))
+})
+
+// Platform SVG icons (greyscale, 14x14)
+function platformIcon(os) {
+  if (os === 'macos') return '<svg viewBox="0 0 16 16" width="14" height="14" style="vertical-align:-2px"><path d="M12.2 5.5c-.1 0-1.6.9-1.6 2.8 0 2.2 1.9 3 2 3-.1.1-.3 1.1-1 2.2-.6 1-1.3 1.9-2.3 1.9s-1.3-.6-2.4-.6c-1.2 0-1.6.6-2.5.6-.9 0-1.6-.9-2.3-2C1.3 12 .8 10.2.8 8.6c0-2.6 1.7-4 3.3-4 .9 0 1.6.6 2.2.6.5 0 1.4-.6 2.4-.6.4 0 1.8.1 2.6 1.3-.1 0-1.5.9-1.5 2.6h.4z" fill="#888"/><path d="M10 1c.5.6.9 1.5.8 2.4-.8.1-1.7-.4-2.2-1.1-.5-.6-.9-1.5-.8-2.3.9 0 1.7.4 2.2 1z" fill="#888"/></svg>'
+  if (os === 'linux') return '<svg viewBox="0 0 16 16" width="14" height="14" style="vertical-align:-2px"><path d="M8 1C5.8 1 4 3.4 4 6.4c0 1.5.4 2.8 1.1 3.8-.5.3-1.5 1-1.5 2.1 0 .4.1.8.4 1.1.5.5 1.4.6 2.2.6h3.6c.8 0 1.7-.1 2.2-.6.3-.3.4-.7.4-1.1 0-1.1-1-1.8-1.5-2.1.7-1 1.1-2.3 1.1-3.8C12 3.4 10.2 1 8 1zm-1.5 5c-.4 0-.8-.4-.8-.8s.4-.8.8-.8.8.4.8.8-.4.8-.8.8zm3 0c-.4 0-.8-.4-.8-.8s.4-.8.8-.8.8.4.8.8-.4.8-.8.8z" fill="#888"/></svg>'
+  if (os === 'windows') return '<svg viewBox="0 0 16 16" width="14" height="14" style="vertical-align:-2px"><path d="M1 3.5l5.5-.8v5.3H1V3.5zm6.3-.9L15 1.5v6.5H7.3V2.6zM15 8.5v6.3l-7.7-1.1V8.5H15zM6.5 13.5L1 12.8V8.5h5.5v5z" fill="#888"/></svg>'
+  return ''
+}
+
+function platformIcons(backendName) {
+  const info = data.backends.find(b => b.name === backendName)
+  if (!info?.platforms?.length) return ''
+  return info.platforms.map(p => platformIcon(p)).filter(Boolean).join(' ')
+}
 
 const sortedCategories = computed(() => {
   const keys = Object.keys(data.categories)
@@ -194,13 +215,23 @@ function backendTooltip(name, version) {
 
 <div v-else>
 
-## Terminal Applications {#summary}
+## Terminal Applications {#terminal-applications}
 
 <p class="section-subtitle">Tested on real terminal applications via the <a href="https://www.npmjs.com/package/terminfo.dev">community CLI</a></p>
+
+<div class="platform-filter">
+  <select v-model="platformFilter">
+    <option value="all">All Platforms</option>
+    <option value="macos">macOS</option>
+    <option value="linux">Linux</option>
+    <option value="windows">Windows</option>
+  </select>
+</div>
 
 <div v-if="appBackends.length > 0" class="summary">
   <div v-for="b in appBackends" :key="b.name" class="summary-row">
     <a class="summary-name hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <span class="summary-platforms" v-html="platformIcons(b.name)"></span>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
@@ -265,7 +296,7 @@ function backendTooltip(name, version) {
 
 <div v-if="headlessBackends.length > 0">
 
-## Headless Backends {#headless}
+## Headless Backends {#headless-backends}
 
 <p class="section-subtitle">Parser correctness tested via <a href="https://termless.dev">Termless</a> — headless libraries may not expose all features through their API</p>
 

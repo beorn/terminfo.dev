@@ -30,6 +30,7 @@ export default {
       label: data.meta[b.name]?.label ?? b.name,
       version: b.version,
       type: b.type ?? "headless",
+      platforms: b.platforms ?? [],
     }))
 
     // --- Category pages ---

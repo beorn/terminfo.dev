@@ -19,6 +19,7 @@ export interface BackendInfo {
   version: string
   engine: string
   type?: "app" | "headless"
+  platforms?: string[]
 }
 
 export interface FeatureResult {
@@ -167,6 +168,22 @@ function mergeResults(app: CensusData, headless: CensusData): CensusData {
     }
   }
 
+  // Merge headless-only features into the feature list
+  const existingIds = new Set(merged.features.map((f) => f.id))
+  for (const hf of headless.features) {
+    if (!existingIds.has(hf.id)) {
+      merged.features.push(hf)
+      existingIds.add(hf.id)
+    }
+  }
+  // Re-sort features and rebuild categories
+  merged.features.sort((a, b) => a.id.localeCompare(b.id))
+  merged.categories = {}
+  for (const f of merged.features) {
+    if (!merged.categories[f.category]) merged.categories[f.category] = []
+    merged.categories[f.category]!.push(f)
+  }
+
   return merged
 }
 
@@ -190,8 +207,9 @@ function loadAppResults(): CensusData {
   }
   if (files.length === 0) return emptyData()
 
-  // Keep only latest result per terminal
+  // Keep only latest result per terminal, and collect all platforms per terminal
   const latest = new Map<string, any>()
+  const platformMap = new Map<string, Set<string>>()
   for (const file of files) {
     try {
       const raw = JSON.parse(readFileSync(join(appDir, file), "utf-8")) as any
@@ -199,6 +217,11 @@ function loadAppResults(): CensusData {
       const key = raw.terminal
       if (!latest.has(key) || (raw.generated ?? "") > (latest.get(key).generated ?? "")) {
         latest.set(key, raw)
+      }
+      // Track all OS values seen for this terminal across all result files
+      if (raw.os) {
+        if (!platformMap.has(key)) platformMap.set(key, new Set())
+        platformMap.get(key)!.add(raw.os)
       }
     } catch {}
   }
@@ -215,6 +238,7 @@ function loadAppResults(): CensusData {
       version: raw.terminalVersion ?? "",
       engine: "",
       type: "app",
+      platforms: [...(platformMap.get(name) ?? [])],
     })
     results[name] = {}
     notes[name] = {}
@@ -315,6 +339,7 @@ function loadUnifiedCensus(path: string): CensusData {
   const backends: BackendInfo[] = (Object.values(raw.backends ?? {}) as BackendInfo[]).map((b) => ({
     ...b,
     type: "headless" as const,
+    platforms: ["macos", "linux", "windows"],
   }))
   const backendNames = backends.map((b) => b.name)
 
@@ -415,6 +440,7 @@ function loadPerBackendResults(): CensusData {
         version: raw.version ?? "",
         engine: raw.engine ?? "",
         type: "headless",
+        platforms: ["macos", "linux", "windows"],
       })
       results[raw.backend] = {}
       notes[raw.backend] = {}
