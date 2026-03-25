@@ -15,6 +15,7 @@ export default {
         name: string
         slug: string
         label: string
+        description: string
         version: string
         type: string
         result: string
@@ -27,10 +28,12 @@ export default {
         const ann = data.annotations?.[`${b.name}:${f.id}`]
         const note = ann?.note ?? data.notes[b.name]?.[f.id] ?? ""
         const url = ann?.url ?? ""
+        const bmeta = data.meta[b.name]
         backendResults.push({
           name: b.name,
           slug: terminalSlug(b.name, data.meta),
-          label: data.meta[b.name]?.label ?? b.name,
+          label: bmeta?.label ?? b.name,
+          description: bmeta?.description ?? "",
           version: b.version,
           type: b.type ?? "headless",
           result,

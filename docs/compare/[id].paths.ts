@@ -1,15 +1,24 @@
-import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
+import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis, loadFeaturesMeta } from "../data/load-probes"
 
 export default {
   paths() {
     const data = loadProbes()
+    const featuresMeta = loadFeaturesMeta()
 
     // Build terminal info list with stats
     const terminals = data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
       const stats = data.stats[b.name] ?? { total: 0, yes: 0, no: 0, partial: 0, pct: 0 }
       const slug = terminalSlug(b.name, data.meta)
-      return { name: b.name, slug, label: meta.label ?? b.name, stats }
+      return {
+        name: b.name,
+        slug,
+        label: meta.label ?? b.name,
+        description: meta.description ?? "",
+        url: meta.url ?? "",
+        type: meta.type ?? "",
+        stats,
+      }
     })
 
     // Build categories with features for comparison
@@ -35,6 +44,8 @@ export default {
             slug: featureSlug(f.id),
             category: f.category,
             name: desc?.name ?? f.name,
+            tags: featuresMeta[f.id]?.tags ?? [],
+            url: featuresMeta[f.id]?.url ?? "",
           }
         }),
       })
@@ -68,6 +79,8 @@ export default {
               slug: f.slug,
               category: f.category,
               name: f.name,
+              tags: f.tags,
+              url: f.url,
               resultA,
               resultB,
               noteA,
@@ -100,6 +113,12 @@ export default {
             termBSlug: b.slug,
             termALabel: a.label,
             termBLabel: b.label,
+            termADescription: a.description,
+            termBDescription: b.description,
+            termAUrl: a.url,
+            termBUrl: b.url,
+            termAType: a.type,
+            termBType: b.type,
             termAPct: String(a.stats.pct),
             termBPct: String(b.stats.pct),
             termAPass: String(a.stats.yes),

@@ -41,6 +41,21 @@ function cellTooltip(result, note) {
   return resultLabel(result)
 }
 
+function featureTooltip(f) {
+  const parts = [f.name]
+  if (f.tags?.length) parts.push('Tags: ' + f.tags.join(', '))
+  if (f.url) parts.push('Spec: ' + f.url.replace(/^https?:\/\//, ''))
+  return parts.join('\n')
+}
+
+function termTooltip(label, description, type, url) {
+  const parts = []
+  if (description) parts.push(description)
+  if (type) parts.push('Type: ' + type)
+  if (url) parts.push(url)
+  return parts.join('\n') || label
+}
+
 // Features only terminal A supports (yes/partial) that B doesn't
 const onlyAFeatures = []
 const onlyBFeatures = []
@@ -103,13 +118,17 @@ for (const cat of categories) {
   <thead>
     <tr>
       <th class="feature-col">Feature</th>
-      <th>{{ p.termALabel }}</th>
-      <th>{{ p.termBLabel }}</th>
+      <th :data-tooltip="termTooltip(p.termALabel, p.termADescription, p.termAType, p.termAUrl)">
+        <a :href="'/terminal/' + p.termASlug">{{ p.termALabel }}</a>
+      </th>
+      <th :data-tooltip="termTooltip(p.termBLabel, p.termBDescription, p.termBType, p.termBUrl)">
+        <a :href="'/terminal/' + p.termBSlug">{{ p.termBLabel }}</a>
+      </th>
     </tr>
   </thead>
   <tbody>
     <tr v-for="f in cat.features" :key="f.id" :class="diffClass(f)">
-      <td class="feature-name"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
+      <td class="feature-name" :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
       <td :class="cellClass(f.resultA)" :data-tooltip="cellTooltip(f.resultA, f.noteA)"><a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.resultA) }}</a></td>
       <td :class="cellClass(f.resultB)" :data-tooltip="cellTooltip(f.resultB, f.noteB)"><a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.resultB) }}</a></td>
     </tr>
@@ -252,6 +271,16 @@ for (const cat of categories) {
   font-weight: 600;
   text-align: center;
   font-size: 0.95em;
+}
+
+.compare-table th a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.compare-table th a:hover {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
 }
 
 .feature-col {

@@ -21,6 +21,8 @@ export default {
           name: string
           result: string
           note: string
+          tags: string[]
+          specUrl: string
         }>
       }> = []
 
@@ -37,6 +39,8 @@ export default {
             name: desc?.name ?? f.name,
             result,
             note,
+            tags: desc?.tags ?? [],
+            specUrl: desc?.url ?? "",
           }
         })
         categories.push({

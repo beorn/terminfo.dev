@@ -198,9 +198,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
       return {
         pass: scroll.totalLines > 24,
         note:
-          scroll.totalLines > 24
-            ? undefined
-            : `totalLines=${scroll.totalLines}, expected >24 (full-screen scrolling)`,
+          scroll.totalLines > 24 ? undefined : `totalLines=${scroll.totalLines}, expected >24 (full-screen scrolling)`,
       }
     },
     async (ctx) => {

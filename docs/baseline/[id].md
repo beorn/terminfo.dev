@@ -47,9 +47,18 @@ function featureTooltip(f) {
 }
 
 function termTooltip(b) {
-  const parts = [b.label]
+  const parts = []
+  if (b.description) parts.push(b.description)
+  if (b.type) parts.push('Type: ' + b.type)
   if (b.version) parts.push('Version: ' + b.version)
-  return parts.join('\n')
+  if (b.url) parts.push(b.url)
+  return parts.join('\n') || b.label
+}
+
+function barTooltip(s, segment) {
+  if (segment === 'yes') return s.yes + ' passed'
+  if (segment === 'partial') return s.partial + ' partial'
+  return ''
 }
 
 function platformIcon(os) {
@@ -98,8 +107,8 @@ function platformIcons(b) {
     <a class="summary-name hover-link" :href="'/terminal/' + s.slug">{{ s.label }}</a>
     <span class="summary-platforms" v-html="platformIcons(s)"></span>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }"></div>
-      <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }"></div>
+      <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
     </div>
     <span class="summary-pct">{{ s.pct }}%</span>
     <span class="summary-counts">{{ s.yes }} / {{ s.total }}</span>
@@ -115,8 +124,8 @@ function platformIcons(b) {
   <div v-for="s in headlessScores" :key="s.name" class="summary-row">
     <a class="summary-name hover-link" :href="'/terminal/' + s.slug">{{ s.label }}</a>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }"></div>
-      <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }"></div>
+      <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
     </div>
     <span class="summary-pct">{{ s.pct }}%</span>
     <span class="summary-counts">{{ s.yes }} / {{ s.total }}</span>

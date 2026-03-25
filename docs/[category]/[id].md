@@ -27,6 +27,13 @@ function cls(result) {
   if (result === 'no') return 'cell-no'
   return 'cell-unknown'
 }
+
+function termTooltip(r) {
+  const parts = [r.label]
+  if (r.description) parts.push(r.description)
+  if (r.version) parts.push('Version: ' + r.version)
+  return parts.join('\n')
+}
 </script>
 
 <div class="feature-page">
@@ -62,7 +69,7 @@ function cls(result) {
   </thead>
   <tbody>
     <tr v-for="r in appResults" :key="r.name">
-      <td><a :href="'/terminal/' + r.slug">{{ r.label }}</a></td>
+      <td :data-tooltip="termTooltip(r)"><a :href="'/terminal/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
       <td :class="cls(r.result)" class="result-cell">{{ icon(r.result) }} {{ r.result }}</td>
       <td class="note-cell">
@@ -91,7 +98,7 @@ function cls(result) {
   </thead>
   <tbody>
     <tr v-for="r in headlessResults" :key="r.name">
-      <td><a :href="'/terminal/' + r.slug">{{ r.label }}</a></td>
+      <td :data-tooltip="termTooltip(r)"><a :href="'/terminal/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
       <td :class="cls(r.result)" class="result-cell">{{ icon(r.result) }} {{ r.result }}</td>
       <td class="note-cell">
@@ -228,10 +235,7 @@ function cls(result) {
   overflow-wrap: break-word;
 }
 
-.cell-yes { color: #10b981; }
-.cell-partial { color: #f59e0b; }
-.cell-no { color: #ef4444; }
-.cell-unknown { color: #8b5cf6; }
+/* cell-yes, cell-partial, cell-no, cell-unknown: use shared result-cells.css */
 
 .cell-yes-inline {
   color: #10b981;

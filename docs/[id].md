@@ -44,9 +44,12 @@ function featureTooltip(f) {
 }
 
 function termTooltip(b) {
-  const parts = [b.label]
+  const parts = []
+  if (b.description) parts.push(b.description)
+  if (b.type) parts.push('Type: ' + b.type)
   if (b.version) parts.push('Version: ' + b.version)
-  return parts.join('\n')
+  if (b.url) parts.push(b.url)
+  return parts.join('\n') || b.label
 }
 
 function platformIcon(os) {

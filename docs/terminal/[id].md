@@ -25,6 +25,13 @@ function cls(result) {
   return 'cell-unknown'
 }
 
+function featureTooltip(f) {
+  const parts = [f.name]
+  if (f.tags?.length) parts.push('Tags: ' + f.tags.join(', '))
+  if (f.specUrl) parts.push('Spec: ' + f.specUrl.replace(/^https?:\/\//, ''))
+  return parts.join('\n')
+}
+
 const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
 </script>
 
@@ -84,7 +91,7 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
   </thead>
   <tbody>
     <tr v-for="f in cat.features" :key="f.id">
-      <td><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
+      <td :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
       <td :class="cls(f.result)" class="result-cell">{{ icon(f.result) }} {{ f.result }}</td>
       <td class="note-cell">{{ f.note }}</td>
     </tr>
@@ -248,10 +255,7 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
   font-size: 0.95em;
 }
 
-.cell-yes { color: #10b981; }
-.cell-partial { color: #f59e0b; }
-.cell-no { color: #ef4444; }
-.cell-unknown { color: #8b5cf6; }
+/* cell-yes, cell-partial, cell-no, cell-unknown: use shared result-cells.css */
 
 .back-link {
   margin-top: 2em;

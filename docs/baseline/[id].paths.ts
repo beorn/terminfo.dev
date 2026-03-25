@@ -36,6 +36,8 @@ export default {
       name: b.name,
       slug: terminalSlug(b.name, data.meta),
       label: data.meta[b.name]?.label ?? b.name,
+      description: data.meta[b.name]?.description ?? "",
+      url: data.meta[b.name]?.url ?? "",
       version: b.version,
       type: b.type ?? "headless",
       platforms: b.platforms ?? [],

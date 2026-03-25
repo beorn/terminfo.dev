@@ -121,10 +121,7 @@ function loadJson<T>(path: string, description: string): T {
 }
 
 function loadFeatures(): Record<string, FeatureMeta> {
-  const raw = loadJson<Record<string, FeatureMeta>>(
-    join(contentDir, "features.json"),
-    "feature metadata",
-  )
+  const raw = loadJson<Record<string, FeatureMeta>>(join(contentDir, "features.json"), "feature metadata")
   delete (raw as Record<string, unknown>).$comment
   for (const [id, feat] of Object.entries(raw)) {
     assert(typeof feat.name === "string" && feat.name.length > 0, `Feature '${id}' missing name`)
@@ -133,10 +130,7 @@ function loadFeatures(): Record<string, FeatureMeta> {
 }
 
 function loadTerminals(): Record<string, TerminalMeta> {
-  const raw = loadJson<Record<string, TerminalMeta>>(
-    join(contentDir, "terminals.json"),
-    "terminal metadata",
-  )
+  const raw = loadJson<Record<string, TerminalMeta>>(join(contentDir, "terminals.json"), "terminal metadata")
   for (const [id, term] of Object.entries(raw)) {
     assert(typeof term.label === "string", `Terminal '${id}' missing label`)
     assert(typeof term.slug === "string", `Terminal '${id}' missing slug`)
@@ -145,33 +139,21 @@ function loadTerminals(): Record<string, TerminalMeta> {
 }
 
 function loadCategories(): Record<string, CategoryMeta> {
-  return loadJson<Record<string, CategoryMeta>>(
-    join(contentDir, "categories.json"),
-    "category metadata",
-  )
+  return loadJson<Record<string, CategoryMeta>>(join(contentDir, "categories.json"), "category metadata")
 }
 
 function loadStandards(): Record<string, StandardMeta> {
-  return loadJson<Record<string, StandardMeta>>(
-    join(contentDir, "standards.json"),
-    "standard metadata",
-  )
+  return loadJson<Record<string, StandardMeta>>(join(contentDir, "standards.json"), "standard metadata")
 }
 
 function loadBaselines(): Record<string, BaselineMeta> {
-  return loadJson<Record<string, BaselineMeta>>(
-    join(contentDir, "baselines.json"),
-    "baseline metadata",
-  )
+  return loadJson<Record<string, BaselineMeta>>(join(contentDir, "baselines.json"), "baseline metadata")
 }
 
 function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
   const path = join(contentDir, "annotations.json")
   if (!existsSync(path)) return {}
-  return loadJson<Record<string, { note: string; url?: string; result?: string }>>(
-    path,
-    "annotations",
-  )
+  return loadJson<Record<string, { note: string; url?: string; result?: string }>>(path, "annotations")
 }
 
 /** Load probe results from a directory, keyed by terminal/backend name. */
@@ -186,17 +168,11 @@ function loadProbeDir(dir: string): Map<string, AppResult> {
     const key = raw.terminal ?? raw.backend
     assert(key, `Missing terminal/backend in ${file}`)
     assert(raw.results && typeof raw.results === "object", `Missing results in ${file}`)
-    assert(
-      typeof raw.generated === "string",
-      `Missing generated timestamp in ${file}`,
-    )
+    assert(typeof raw.generated === "string", `Missing generated timestamp in ${file}`)
 
     // Validate all result values
     for (const [feature, result] of Object.entries(raw.results)) {
-      assert(
-        typeof result === "boolean",
-        `Invalid result '${result}' for ${feature} in ${file} — expected boolean`,
-      )
+      assert(typeof result === "boolean", `Invalid result '${result}' for ${feature} in ${file} — expected boolean`)
     }
 
     // Keep latest per terminal/backend
@@ -216,10 +192,7 @@ function buildTerminalResultMap(
   libResults: Map<string, AppResult>,
   annotations: Record<string, { note: string; url?: string; result?: string }>,
 ): Map<string, { results: Record<string, boolean>; version: string; type: "app" | "headless" }> {
-  const resultMap = new Map<
-    string,
-    { results: Record<string, boolean>; version: string; type: "app" | "headless" }
-  >()
+  const resultMap = new Map<string, { results: Record<string, boolean>; version: string; type: "app" | "headless" }>()
 
   for (const [termId, meta] of Object.entries(terminals)) {
     // Try app results first (direct match by terminal ID)
@@ -243,7 +216,8 @@ function buildTerminalResultMap(
         const [backend, ...fp] = key.split(":")
         if (backend !== backendName) continue
         const feature = fp.join(":")
-        if (ann.result === "partial") results[feature] = true // partial counts as supported
+        if (ann.result === "partial")
+          results[feature] = true // partial counts as supported
         else if (ann.result === "yes") results[feature] = true
         else if (ann.result === "no") results[feature] = false
       }
@@ -361,9 +335,7 @@ function computeTerminalStats(
       }
     } else {
       // Check if no other terminal supports this
-      const noOtherSupports = otherTerminals.every(
-        ([, other]) => other.results[featureId] !== true,
-      )
+      const noOtherSupports = otherTerminals.every(([, other]) => other.results[featureId] !== true)
       if (noOtherSupports && otherTerminals.length > 0) {
         uniquelySupported.push(featureId)
       }
@@ -494,11 +466,11 @@ function generateBaselineAnalysis(
   const parts: string[] = []
   const terminals = [...allStats.values()]
 
-  const perfect = terminals.filter(
-    (s) => s.baselineCompliance[baselineName]?.pct === 100,
-  )
+  const perfect = terminals.filter((s) => s.baselineCompliance[baselineName]?.pct === 100)
   const imperfect = terminals
-    .filter((s) => s.baselineCompliance[baselineName]?.pct !== undefined && s.baselineCompliance[baselineName].pct < 100)
+    .filter(
+      (s) => s.baselineCompliance[baselineName]?.pct !== undefined && s.baselineCompliance[baselineName].pct < 100,
+    )
     .sort((a, b) => (a.baselineCompliance[baselineName]?.pct ?? 0) - (b.baselineCompliance[baselineName]?.pct ?? 0))
 
   if (perfect.length === terminals.length) {
@@ -512,10 +484,7 @@ function generateBaselineAnalysis(
   }
 
   if (imperfect.length > 0) {
-    const laggards = imperfect.slice(0, 3).map(
-      (s) =>
-        `${s.name} (${s.baselineCompliance[baselineName]?.pct ?? 0}%)`,
-    )
+    const laggards = imperfect.slice(0, 3).map((s) => `${s.name} (${s.baselineCompliance[baselineName]?.pct ?? 0}%)`)
     parts.push(`Lagging: ${laggards.join(", ")}`)
 
     // Find what features the laggards are missing
@@ -613,9 +582,7 @@ function generateCategoryAnalysis(
     .filter(([id]) => id.startsWith(catId + "."))
     .map(([id]) => id)
 
-  parts.push(
-    `The <strong>${catMeta.label}</strong> category covers ${categoryFeatures.length} features`,
-  )
+  parts.push(`The <strong>${catMeta.label}</strong> category covers ${categoryFeatures.length} features`)
 
   // Find best and worst terminals for this category
   const catScores: { name: string; yes: number; total: number; pct: number }[] = []
@@ -650,9 +617,7 @@ function generateCategoryAnalysis(
       }
     }
   }
-  const commonGaps = [...gapCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
+  const commonGaps = [...gapCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3)
   if (commonGaps.length > 0) {
     const gapNames = commonGaps.map(
       ([id, count]) => `${featureName(features, id)} (${count} terminal${count === 1 ? " fails" : "s fail"})`,
@@ -742,10 +707,7 @@ function validateHtml(html: string, key: string): void {
   // Check for unclosed strong tags
   const openStrong = (html.match(/<strong>/g) ?? []).length
   const closeStrong = (html.match(/<\/strong>/g) ?? []).length
-  assert(
-    openStrong === closeStrong,
-    `${key}: Unclosed <strong> tags (${openStrong} open, ${closeStrong} close)`,
-  )
+  assert(openStrong === closeStrong, `${key}: Unclosed <strong> tags (${openStrong} open, ${closeStrong} close)`)
 
   // Check for unclosed p tags
   const openP = (html.match(/<p>/g) ?? []).length
@@ -753,21 +715,14 @@ function validateHtml(html: string, key: string): void {
   assert(openP === closeP, `${key}: Unclosed <p> tags (${openP} open, ${closeP} close)`)
 }
 
-function validateNumbersInAnalysis(
-  key: string,
-  analysis: string,
-  stats: TerminalStats | null,
-): void {
+function validateNumbersInAnalysis(key: string, analysis: string, stats: TerminalStats | null): void {
   if (!stats) return
 
   // Extract percentage from analysis
   const pctMatch = analysis.match(/scores <strong>(\d+)%<\/strong>/)
   if (pctMatch) {
     const pctInText = Number.parseInt(pctMatch[1], 10)
-    assert(
-      pctInText === stats.pct,
-      `${key}: Percentage in text (${pctInText}%) doesn't match computed (${stats.pct}%)`,
-    )
+    assert(pctInText === stats.pct, `${key}: Percentage in text (${pctInText}%) doesn't match computed (${stats.pct}%)`)
   }
 
   // Extract yes/total counts
@@ -775,10 +730,7 @@ function validateNumbersInAnalysis(
   if (countMatch) {
     const yesInText = Number.parseInt(countMatch[1], 10)
     const totalInText = Number.parseInt(countMatch[2], 10)
-    assert(
-      yesInText === stats.yes,
-      `${key}: Pass count in text (${yesInText}) doesn't match computed (${stats.yes})`,
-    )
+    assert(yesInText === stats.yes, `${key}: Pass count in text (${yesInText}) doesn't match computed (${stats.yes})`)
     assert(
       totalInText === stats.total,
       `${key}: Total count in text (${totalInText}) doesn't match computed (${stats.total})`,
@@ -981,8 +933,7 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
     const slugs = [statsA.slug, statsB.slug].sort()
     const key = `compare/${slugs[0]}-vs-${slugs[1]}`
 
-    const [orderedA, orderedB] =
-      statsA.slug === slugs[0] ? [statsA, statsB] : [statsB, statsA]
+    const [orderedA, orderedB] = statsA.slug === slugs[0] ? [statsA, statsB] : [statsB, statsA]
     const entry = generateCompareAnalysis(
       slugs[0] === statsA.slug ? idA : idB,
       slugs[0] === statsA.slug ? idB : idA,
@@ -1036,8 +987,8 @@ try {
   const terminalCount = Object.keys(analysis).filter((k) => k.startsWith("terminal/")).length
   const baselineCount = Object.keys(analysis).filter((k) => k.startsWith("baseline/")).length
   const compareCount = Object.keys(analysis).filter((k) => k.startsWith("compare/")).length
-  const categoryCount = Object.keys(analysis).filter((k) =>
-    !k.startsWith("terminal/") && !k.startsWith("baseline/") && !k.startsWith("compare/") && !k.includes("/"),
+  const categoryCount = Object.keys(analysis).filter(
+    (k) => !k.startsWith("terminal/") && !k.startsWith("baseline/") && !k.startsWith("compare/") && !k.includes("/"),
   ).length
 
   if (isValidate) {
@@ -1086,7 +1037,9 @@ try {
   // Write output
   writeFileSync(outputPath, JSON.stringify(result, null, 2) + "\n")
   console.log(`Generated ${outputPath}`)
-  console.log(`  ${entryCount} entries (${terminalCount} terminals, ${baselineCount} baselines, ${compareCount} comparisons, ${categoryCount} categories/standards)`)
+  console.log(
+    `  ${entryCount} entries (${terminalCount} terminals, ${baselineCount} baselines, ${compareCount} comparisons, ${categoryCount} categories/standards)`,
+  )
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)
   process.exit(1)
