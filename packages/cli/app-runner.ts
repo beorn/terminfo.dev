@@ -10,12 +10,12 @@
  * 4. Read the JSON results and save as a per-backend result file
  *
  * Usage:
- *   bun src/app-runner.ts                    # Run all available apps
- *   bun src/app-runner.ts ghostty iterm2     # Run specific apps
- *   bun src/app-runner.ts --list             # List available apps
- *   bun src/app-runner.ts --force            # Re-run even if cached
+ *   bun packages/cli/app-runner.ts                    # Run all available apps
+ *   bun packages/cli/app-runner.ts ghostty iterm2     # Run specific apps
+ *   bun packages/cli/app-runner.ts --list             # List available apps
+ *   bun packages/cli/app-runner.ts --force            # Re-run even if cached
  *
- * Results are saved alongside library census results in docs/data/results/.
+ * Results are saved to content/probes-apps/.
  */
 
 import { existsSync, readFileSync, readdirSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs"
@@ -26,8 +26,8 @@ import { createHash } from "node:crypto"
 import { fromPerBackendFiles, type CensusData } from "./parse.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = join(__dirname, "..")
-const RESULTS_DIR = join(ROOT, "docs", "data", "results", "app")
+const ROOT = join(__dirname, "..", "..")
+const RESULTS_DIR = join(ROOT, "content", "probes-apps")
 const HARNESS_PATH = join(__dirname, "app-harness.ts")
 const TMP_DIR = "/tmp/terminfo-census"
 

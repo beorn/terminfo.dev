@@ -30,16 +30,16 @@ function terminalSlug(name: string, meta: Record<string, any>): string {
 }
 
 function buildSidebar() {
-  // Load backends from census results
-  const resultsDir = join(docsDir, "data", "results")
+  // Load backends from probe results
+  const probesLibsDir = join(docsDir, "..", "content", "probes-libs")
   const meta = loadBackendMeta()
   const terminals: Array<{ text: string; link: string }> = []
 
   try {
-    const files = readdirSync(resultsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
+    const files = readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
     for (const file of files) {
       try {
-        const raw = JSON.parse(readFileSync(join(resultsDir, file), "utf-8"))
+        const raw = JSON.parse(readFileSync(join(probesLibsDir, file), "utf-8"))
         if (!raw.backend) continue
         const label = meta[raw.backend]?.label ?? raw.backend
         const slug = terminalSlug(raw.backend, meta)
@@ -50,7 +50,7 @@ function buildSidebar() {
   terminals.sort((a, b) => a.text.localeCompare(b.text))
 
   // Load features.json for tags
-  const featuresPath = join(docsDir, "..", "features.json")
+  const featuresPath = join(docsDir, "..", "content", "features.json")
   const tags = new Set<string>()
   try {
     const raw = JSON.parse(readFileSync(featuresPath, "utf-8"))
@@ -62,18 +62,13 @@ function buildSidebar() {
     }
   } catch {}
 
-  const tagLabels: Record<string, string> = {
-    "ecma-48": "ECMA-48",
-    vt100: "VT100",
-    vt220: "VT220",
-    vt510: "VT510",
-    "dec-private-modes": "DEC Private Modes",
-    "xterm-extensions": "Xterm Extensions",
-    "kitty-extensions": "Kitty Extensions",
-    osc: "OSC",
-    sixel: "Sixel",
-    unicode: "Unicode",
-  }
+  // Load tag labels from content/standards.json
+  const standardsData = JSON.parse(
+    readFileSync(join(docsDir, "..", "content", "standards.json"), "utf-8"),
+  ) as Record<string, { label: string }>
+  const tagLabels: Record<string, string> = Object.fromEntries(
+    Object.entries(standardsData).map(([k, v]) => [k, v.label]),
+  )
 
   const tagOrder = [
     "ecma-48",
@@ -96,19 +91,13 @@ function buildSidebar() {
     return a.localeCompare(b)
   })
 
-  const categoryLabels: Record<string, string> = {
-    sgr: "SGR (Text Styling)",
-    cursor: "Cursor",
-    text: "Text",
-    erase: "Erase",
-    editing: "Editing",
-    modes: "Modes",
-    scrollback: "Scrollback",
-    reset: "Reset",
-    extensions: "Extensions",
-    charsets: "Character Sets",
-    device: "Device Status",
-  }
+  // Load category labels from content/categories.json
+  const categoriesData = JSON.parse(
+    readFileSync(join(docsDir, "..", "content", "categories.json"), "utf-8"),
+  ) as Record<string, { label: string; order: number }>
+  const categoryLabels: Record<string, string> = Object.fromEntries(
+    Object.entries(categoriesData).map(([k, v]) => [k, v.label]),
+  )
 
   const categoryOrder = [
     "sgr",
@@ -146,28 +135,21 @@ function buildSidebar() {
     return a.localeCompare(b)
   })
 
-  // Load app terminals from results/app/ directory
+  // Load app terminals from content/probes-apps/ directory
   const appTerminals: Array<{ text: string; link: string }> = []
   try {
-    const appDir = join(docsDir, "data", "results", "app")
-    const appFiles = readdirSync(appDir).filter((f: string) => f.endsWith(".json"))
+    const probesAppsDir = join(docsDir, "..", "content", "probes-apps")
+    const appFiles = readdirSync(probesAppsDir).filter((f: string) => f.endsWith(".json"))
     const seen = new Set<string>()
     for (const file of appFiles) {
       try {
-        const raw = JSON.parse(readFileSync(join(appDir, file), "utf-8"))
+        const raw = JSON.parse(readFileSync(join(probesAppsDir, file), "utf-8"))
         if (!raw.terminal || seen.has(raw.terminal)) continue
         seen.add(raw.terminal)
-        const labels: Record<string, string> = {
-          ghostty: "Ghostty",
-          kitty: "Kitty",
-          iterm2: "iTerm2",
-          "terminal-app": "Terminal.app",
-          warp: "Warp",
-          cmux: "cmux",
-          cursor: "Cursor",
-          "com.microsoft.VSCode": "VS Code",
-        }
-        const label = labels[raw.terminal] ?? raw.terminal
+        const terminalsData = JSON.parse(
+          readFileSync(join(docsDir, "..", "content", "terminals.json"), "utf-8"),
+        ) as Record<string, { label?: string }>
+        const label = terminalsData[raw.terminal]?.label ?? raw.terminal
         const slug = label
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")

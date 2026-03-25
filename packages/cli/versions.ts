@@ -29,9 +29,9 @@ import { ensureCachedVersion } from "@termless/core"
 const log = createLogger("census")
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const REPO_ROOT = join(__dirname, "..")
-const RESULTS_DIR = join(REPO_ROOT, "docs", "data", "results")
-const PROBES_DIR = join(REPO_ROOT, "probes")
+const REPO_ROOT = join(__dirname, "..", "..")
+const RESULTS_DIR = join(REPO_ROOT, "content", "probes-libs")
+const PROBES_DIR = join(REPO_ROOT, "packages", "probes")
 const VERSIONS_PATH = join(REPO_ROOT, "versions.json")
 // Cache dir handled by ensureCachedVersion() in backends.ts
 
@@ -152,7 +152,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["packages/census/probes/**/*.probe.ts"],
+    include: ["packages/probes/**/*.probe.ts"],
   },
 })
 `.trim()

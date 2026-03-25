@@ -25,7 +25,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /** Load feature slugs from features.json for OSC 8 hyperlinks */
 function loadFeatureSlugs(): Record<string, string> {
-  const candidates = [join(__dirname, "..", "..", "features.json"), join(__dirname, "..", "..", "..", "features.json")]
+  const candidates = [
+    join(__dirname, "..", "..", "content", "features.json"),    // from cli/src/ -> content/
+    join(__dirname, "..", "..", "..", "content", "features.json"), // fallback
+  ]
   for (const path of candidates) {
     try {
       const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, any>
@@ -281,7 +284,7 @@ program
 
         // Save results
         const { mkdirSync, writeFileSync } = await import("node:fs")
-        const dir = "docs/data/results/app"
+        const dir = "content/probes-apps"
         mkdirSync(dir, { recursive: true })
         const name = data.terminal.replace(/[^a-z0-9-]/g, "-")
         const ver = (data.terminalVersion || "unknown").replace(/[^a-z0-9.-]/g, "-")
@@ -296,7 +299,7 @@ program
       }
     }
 
-    console.log(`\nResults saved to docs/data/results/app/`)
+    console.log(`\nResults saved to content/probes-apps/`)
   })
 
 // Default action: show terminal info + help

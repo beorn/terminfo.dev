@@ -10,7 +10,7 @@ import {
   tagLabel,
   tagDescriptions,
   tagUrls,
-} from "./data/load-census"
+} from "./data/load-probes"
 
 export default {
   paths() {

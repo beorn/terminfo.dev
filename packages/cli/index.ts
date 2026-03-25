@@ -26,8 +26,8 @@ import { runVersionedCensus, probeHash, loadVersionsCatalog } from "./versions.t
 const log = createLogger("census")
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = join(__dirname, "..")
-const DEFAULT_RESULTS_DIR = join(ROOT, "docs", "data", "results")
+const ROOT = join(__dirname, "..", "..")
+const DEFAULT_RESULTS_DIR = join(ROOT, "content", "probes-libs")
 
 let RESULTS_DIR = DEFAULT_RESULTS_DIR
 
@@ -138,7 +138,7 @@ program
       if (!latestData) {
         console.log(`\nRunning census probes (hash: ${hash})...\n`)
 
-        const proc = Bun.spawn(["bun", "vitest", "run", "--config", "vitest.census.ts", "--reporter", "json"], {
+        const proc = Bun.spawn(["bun", "vitest", "run", "--config", "packages/probes/vitest.config.ts", "--reporter", "json"], {
           cwd: ROOT,
           stdout: "pipe",
           stderr: "pipe",
@@ -289,7 +289,7 @@ program.action(() => {
 // ── Helpers ──
 
 function findUnannotatedFailures(data: CensusData): Array<{ backend: string; feature: string; autoNote: string }> {
-  const annotationsPath = join(ROOT, "annotations.json")
+  const annotationsPath = join(ROOT, "content", "annotations.json")
   let annotations: Record<string, { note: string }> = {}
   try {
     annotations = JSON.parse(readFileSync(annotationsPath, "utf-8")) as Record<string, { note: string }>

@@ -15,29 +15,14 @@ hero:
 
 <script setup>
 import { ref, computed } from 'vue'
-import { data } from './data/census.data'
+import { data } from './data/probes.data'
 
 const filter = ref('')
 const categoryFilter = ref('all')
 const platformFilter = ref('all')
 
 const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'editing', 'modes', 'scrollback', 'reset', 'extensions', 'charsets', 'device', 'input', 'graphics', 'unicode']
-const categoryLabels = {
-  sgr: 'SGR (Text Styling)',
-  cursor: 'Cursor',
-  text: 'Text',
-  erase: 'Erase',
-  editing: 'Editing',
-  modes: 'Modes',
-  scrollback: 'Scrollback',
-  reset: 'Reset',
-  extensions: 'Extensions',
-  charsets: 'Character Sets',
-  device: 'Device Status',
-  input: 'Input',
-  graphics: 'Graphics',
-  unicode: 'Unicode',
-}
+const categoryLabels = data.categoryLabels ?? {}
 
 // Sort backends by score (highest first)
 const sortedBackends = computed(() => {

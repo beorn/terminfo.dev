@@ -1,8 +1,8 @@
 {
   "backend": "xtermjs",
   "version": "5.5.0",
-  "generated": "2026-03-25T17:39:31.224Z",
-  "probeHash": "7e09c86443f1",
+  "generated": "2026-03-25T19:01:03.303Z",
+  "probeHash": "9dfde8cf359e",
   "results": {
     "charsets.dec-special": true,
     "charsets.utf8": true,

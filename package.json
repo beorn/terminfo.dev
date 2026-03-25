@@ -6,12 +6,12 @@
     "dev": "vitepress dev docs",
     "build": "vitepress build docs",
     "preview": "vitepress preview docs",
-    "census": "bun src/cli.ts",
-    "census:run": "bun src/cli.ts run",
-    "census:report": "bun src/cli.ts report",
-    "census:status": "bun src/cli.ts status",
-    "census:apps": "bun src/app-runner.ts",
-    "census:apps:list": "bun src/app-runner.ts --list"
+    "census": "bun packages/cli/index.ts",
+    "census:run": "bun packages/cli/index.ts run",
+    "census:report": "bun packages/cli/index.ts report",
+    "census:status": "bun packages/cli/index.ts status",
+    "census:apps": "bun packages/cli/app-runner.ts",
+    "census:apps:list": "bun packages/cli/app-runner.ts --list"
   },
   "dependencies": {
     "@termless/core": "^0.4.0",

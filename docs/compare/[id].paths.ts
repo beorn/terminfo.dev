@@ -1,4 +1,4 @@
-import { loadCensus, featureSlug, catLabel, terminalSlug } from "../data/load-census"
+import { loadCensus, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
 
 export default {
   paths() {

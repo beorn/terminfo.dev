@@ -1,10 +1,10 @@
 /**
- * VitePress build-time data loader for census results.
+ * VitePress build-time data loader for probe results.
  *
- * Reads the unified census.json (copied from Termless during build/deploy)
- * and reshapes it for the matrix page.
+ * Reads probe result JSON files from content/probes-apps/ and content/probes-libs/,
+ * merges with curated content, and reshapes for the matrix page.
  *
- * Consumed via: import { data } from './data/census.data'
+ * Consumed via: import { data } from './data/probes.data'
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs"
 import { join, dirname } from "node:path"
@@ -12,7 +12,9 @@ import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const resultsDir = join(__dirname, "results")
+const contentDir = join(__dirname, "..", "..", "content")
+const probesAppsDir = join(contentDir, "probes-apps")
+const probesLibsDir = join(contentDir, "probes-libs")
 
 export interface BackendInfo {
   name: string
@@ -162,7 +164,7 @@ export default {
 
     // Load headless results as fallback for terminals without app results
     let headlessData: CensusData
-    const unifiedPath = join(resultsDir, "census.json")
+    const unifiedPath = join(probesLibsDir, "census.json")
     if (existsSync(unifiedPath)) {
       headlessData = loadUnifiedCensus(unifiedPath)
     } else {
@@ -229,9 +231,9 @@ function headlessToAppName(backend: string): string {
   return backend
 }
 
-/** Load community/app results from docs/data/results/app/ */
+/** Load community/app results from content/probes-apps/ */
 function loadAppResults(): CensusData {
-  const appDir = join(resultsDir, "app")
+  const appDir = probesAppsDir
   let files: string[]
   try {
     files = readdirSync(appDir).filter((f) => f.endsWith(".json"))
@@ -469,9 +471,9 @@ function loadUnifiedCensus(path: string): CensusData {
 function loadPerBackendResults(): CensusData {
   let files: string[]
   try {
-    files = readdirSync(resultsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
+    files = readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
   } catch (err) {
-    throw new Error(`Failed to read census results from ${resultsDir}: ${err}`)
+    throw new Error(`Failed to read probe results from ${probesLibsDir}: ${err}`)
   }
 
   if (files.length === 0) return emptyData()
@@ -485,7 +487,7 @@ function loadPerBackendResults(): CensusData {
 
   for (const file of files) {
     try {
-      const raw = JSON.parse(readFileSync(join(resultsDir, file), "utf-8")) as any
+      const raw = JSON.parse(readFileSync(join(probesLibsDir, file), "utf-8")) as any
       if (!raw.backend) continue
       allBackends.push({
         name: raw.backend,
@@ -514,7 +516,7 @@ function loadPerBackendResults(): CensusData {
         }
       }
     } catch (err) {
-      throw new Error(`Failed to parse census result ${file}: ${err}`)
+      throw new Error(`Failed to parse probe result ${file}: ${err}`)
     }
   }
 

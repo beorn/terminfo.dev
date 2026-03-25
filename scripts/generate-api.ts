@@ -18,8 +18,9 @@ const docsDir = join(root, "docs")
 const publicDir = join(docsDir, "public")
 const apiDir = join(publicDir, "api", "v1")
 const badgesDir = join(apiDir, "badges")
-const resultsDir = join(docsDir, "data", "results")
-const appDir = join(resultsDir, "app")
+const contentDir = join(root, "content")
+const probesAppsDir = join(contentDir, "probes-apps")
+const probesLibsDir = join(contentDir, "probes-libs")
 
 // --- Types ---
 
@@ -66,7 +67,7 @@ interface ApiData {
 // --- Loaders ---
 
 function loadFeaturesJson(): Record<string, FeatureMeta> {
-  const path = join(root, "features.json")
+  const path = join(contentDir, "features.json")
   const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, any>
   delete raw.$comment
   const result: Record<string, FeatureMeta> = {}
@@ -78,7 +79,7 @@ function loadFeaturesJson(): Record<string, FeatureMeta> {
 }
 
 function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
-  const path = join(root, "annotations.json")
+  const path = join(contentDir, "annotations.json")
   if (!existsSync(path)) return {}
   return JSON.parse(readFileSync(path, "utf-8")) as Record<string, { note: string; url?: string; result?: string }>
 }
@@ -121,16 +122,16 @@ function loadAppResults(): {
   >()
   const featureIds = new Set<string>()
 
-  if (!existsSync(appDir)) return { terminals, featureIds }
+  if (!existsSync(probesAppsDir)) return { terminals, featureIds }
 
-  const files = readdirSync(appDir).filter((f) => f.endsWith(".json"))
+  const files = readdirSync(probesAppsDir).filter((f) => f.endsWith(".json"))
   // Keep latest per terminal
   const latest = new Map<string, AppResult>()
   const platformMap = new Map<string, Set<string>>()
 
   for (const file of files) {
     try {
-      const raw = JSON.parse(readFileSync(join(appDir, file), "utf-8")) as AppResult
+      const raw = JSON.parse(readFileSync(join(probesAppsDir, file), "utf-8")) as AppResult
       if (!raw.terminal || !raw.results) continue
       const key = raw.terminal
       if (!latest.has(key) || (raw.generated ?? "") > (latest.get(key)!.generated ?? "")) {
@@ -174,10 +175,10 @@ function loadHeadlessResults(): {
   >()
   const featureIds = new Set<string>()
 
-  const files = readdirSync(resultsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
+  const files = readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
   for (const file of files) {
     try {
-      const raw = JSON.parse(readFileSync(join(resultsDir, file), "utf-8")) as any
+      const raw = JSON.parse(readFileSync(join(probesLibsDir, file), "utf-8")) as any
       if (!raw.backend) continue
       const results: Record<string, string> = {}
       const notes: Record<string, string> = {}

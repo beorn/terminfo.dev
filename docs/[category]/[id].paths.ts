@@ -1,4 +1,4 @@
-import { loadCensus, featureSlug, terminalSlug, loadFeaturesMeta, tagLabel as getTagLabel } from "../data/load-census"
+import { loadCensus, featureSlug, terminalSlug, loadFeaturesMeta, tagLabel as getTagLabel } from "../data/load-probes"
 
 export default {
   paths() {

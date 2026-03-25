@@ -1,0 +1,67 @@
+{
+  "sgr": {
+    "label": "SGR (Text Styling)",
+    "order": 1,
+    "description": "Select Graphic Rendition (SGR) controls text styling: bold, italic, underline variants, colors, strikethrough, and other visual attributes. SGR sequences are the most commonly used escape codes — every TUI framework depends on them for rendering styled text. Support ranges from universal (bold, basic colors) to inconsistent (curly underline, hyperlinks)."
+  },
+  "cursor": {
+    "label": "Cursor",
+    "order": 2,
+    "description": "Cursor control sequences for positioning, visibility, shape, and save/restore operations. Correct cursor handling is essential for TUI applications that need precise text placement. Differences in DECSC/DECRC behavior and cursor shape support are common sources of cross-terminal bugs."
+  },
+  "text": {
+    "label": "Text",
+    "order": 3,
+    "description": "Basic text output, wrapping, wide character handling (emoji, CJK), tabs, and line control. This category covers the fundamentals of terminal text rendering, including how terminals handle characters that occupy two columns (CJK ideographs, many emoji) and whether text reflows correctly when the terminal is resized."
+  },
+  "erase": {
+    "label": "Erase",
+    "order": 4,
+    "description": "Line and screen clearing operations for selective content removal. Erase sequences let applications clear portions of the screen or individual lines, optionally preserving or clearing character attributes. These sequences are heavily used by full-screen TUI applications during redraws."
+  },
+  "editing": {
+    "label": "Editing",
+    "order": 5,
+    "description": "Insert and delete operations for characters and lines. ICH, DCH, IL, and DL are core VT100/VT220 sequences used by virtually every full-screen terminal application (vim, tmux, less). They allow inserting blank space or removing content at the cursor position, shifting surrounding content to accommodate the change."
+  },
+  "modes": {
+    "label": "Modes",
+    "order": 6,
+    "description": "Terminal modes control global terminal behavior: alternate screen buffer, bracketed paste, mouse tracking, focus events, and auto-wrap. Mode support varies significantly across terminals — mouse tracking modes alone have four variants (X10, normal, button, any-event), and not all terminals implement focus reporting or all bracketed paste edge cases."
+  },
+  "scrollback": {
+    "label": "Scrollback",
+    "order": 7,
+    "description": "Scroll buffer behavior, reverse index, total line tracking, and alternate screen interaction. Scrollback handling is one of the least standardized areas of terminal emulation — terminals differ in buffer size limits, whether alternate screen content enters scrollback, and how reverse index interacts with scroll regions."
+  },
+  "reset": {
+    "label": "Reset",
+    "order": 8,
+    "description": "Terminal reset operations: SGR attribute reset, full terminal reset (RIS), and programmatic reset. Reset behavior determines how reliably an application can return the terminal to a known state. Differences in what RIS resets (cursor position, modes, scroll regions, character sets) can cause subtle bugs."
+  },
+  "extensions": {
+    "label": "Extensions",
+    "order": 9,
+    "description": "Modern terminal extensions beyond the traditional VT specification: Kitty keyboard protocol, Kitty graphics protocol, sixel inline images, OSC 8 hyperlinks, text reflow on resize, and semantic prompt markers (OSC 133). These features represent the cutting edge of terminal capability and vary widely in adoption across terminals."
+  },
+  "charsets": {
+    "label": "Character Sets",
+    "order": 10,
+    "description": "Character set designation and invocation sequences from the VT100. The DEC Special Graphics set (activated with ESC ( 0) provides box-drawing characters used by legacy TUI applications for borders and frames. Modern terminals typically default to UTF-8, making explicit character set switching less common — but the DEC Special Graphics set remains widely used."
+  },
+  "device": {
+    "label": "Device Status",
+    "order": 11,
+    "description": "Device attributes and status reporting sequences. Applications use DA1 (Device Attributes) to identify terminal type and capabilities, and DSR (Device Status Report) to query cursor position and terminal health. These query-response sequences are essential for terminal capability detection and are used by shell integration, TUI frameworks, and terminal multiplexers."
+  },
+  "input": {
+    "label": "Input Protocols",
+    "order": 12,
+    "description": "Input protocols for enhanced keyboard and mouse reporting. Modern terminals support multiple mouse tracking modes (X10, normal, button-event, urxvt, SGR, pixel) and keyboard enhancement protocols (modifyOtherKeys, Kitty keyboard) that provide richer input than traditional VT100 key sequences. These protocols enable TUI applications to handle modifier keys, mouse position, and key release events accurately."
+  },
+  "unicode": {
+    "label": "Unicode",
+    "order": 13,
+    "description": "Unicode text handling: East Asian ambiguous character width, wide character wrapping at line boundaries, and tab stop behavior with mixed-width text. Correct Unicode handling is essential for TUI applications to maintain proper cursor alignment and text layout across different scripts and character sets."
+  }
+}

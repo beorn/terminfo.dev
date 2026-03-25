@@ -1,14 +1,14 @@
 /**
- * Shared census data loader for dynamic route generators.
+ * Shared probe data loader for dynamic route generators.
  *
- * Loads data from census.data.ts at build time and provides
+ * Loads data from probes.data.ts at build time and provides
  * helper functions for slug generation and category labels.
  */
 import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import censusLoader from "./census.data"
-import type { CensusData } from "./census.data"
+import probesLoader from "./probes.data"
+import type { CensusData } from "./probes.data"
 
 export type { CensusData }
 
@@ -16,10 +16,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 let _cached: CensusData | null = null
 
-export function loadCensus(): CensusData {
-  if (!_cached) _cached = censusLoader.load()
+export function loadProbes(): CensusData {
+  if (!_cached) _cached = probesLoader.load()
   return _cached
 }
+
+/** @deprecated Use loadProbes() */
+export const loadCensus = loadProbes
 
 export interface FeatureMeta {
   name: string
