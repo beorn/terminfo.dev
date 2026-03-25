@@ -236,18 +236,46 @@ docs/.vitepress/dist/              ← 250+ static HTML pages + sitemap.xml
 | API             | `/api`                | 1     | `api.md`                   |
 | About           | `/about`              | 1     | `about.md`                 |
 
+## Re-Probing All Terminals
+
+After adding features or updating probes, re-probe everything to keep results at parity:
+
+```bash
+# 1. Headless backends (automated, fast, all backends in one run)
+cd /Users/beorn/Code/pim/km/vendor/terminfo.dev
+bunx --bun vitest run --config packages/probes/vitest.config.ts
+# Then update result files from vitest JSON output
+
+# 2. Real terminal apps (three categories)
+
+# Apps that can be auto-launched via AppleScript (Ghostty, iTerm2, Kitty, Terminal.app):
+bun terminfo probe app --all --force
+# These launch in hidden mode — apps briefly appear then hide.
+# DO NOT close terminal windows that appear — they're running the daemon.
+
+# Apps that need manual daemon start (Warp, VS Code, Cursor):
+# User must run `bun terminfo probe server --start` in each terminal,
+# then from here: `bun terminfo probe server --all`
+
+# 3. Rebuild
+bun scripts/generate-api.ts
+bun run build
+```
+
+**IMPORTANT**: Always re-probe ALL terminals when features change — partial updates leave terminals at different feature counts (e.g., 129 vs 134), which looks broken on the site.
+
 ## Adding a New Terminal
 
-1. Run probes: `bun terminfo probe app --all <terminal-name>` (or add headless backend to Termless)
+1. Run probes: `bun terminfo probe app <terminal-name>` (or add headless backend to Termless)
 2. Add metadata to `content/terminals.json` (label, slug, description, body, url)
 3. Add annotations to `content/annotations.json` for any failures that need explanation
 4. Rebuild: `bun run build`
 
 ## Adding a New Feature
 
-1. Add probe to `packages/probes/<category>.probe.ts`
+1. Add probe to BOTH `packages/probes/<category>.probe.ts` AND `cli/src/probes/index.ts`
 2. Add metadata to `content/features.json` (name, slug, url, tags, body, probe, baseline)
-3. Run probes: `bun terminfo probe termless --all --force`
+3. Re-probe all terminals (see "Re-Probing All Terminals" above)
 4. Add annotations for any unexpected failures
 5. Rebuild: `bun run build`
 
