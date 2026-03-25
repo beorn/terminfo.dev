@@ -4,7 +4,7 @@
   "os": "macos",
   "osVersion": "25.3.0",
   "source": "daemon",
-  "generated": "2026-03-25T20:14:05.457Z",
+  "generated": "2026-03-25T20:16:43.062Z",
   "results": {
     "cursor.position-report": true,
     "cursor.shape": true,
@@ -101,6 +101,7 @@
     "sgr.reset": true,
     "sgr.selective-reset.bold": true,
     "sgr.selective-reset.underline": true,
+    "sgr.selective-reset.italic": true,
     "sgr.selective-reset.inverse": true,
     "charsets.dec-special": true,
     "charsets.utf8": true,

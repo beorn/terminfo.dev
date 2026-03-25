@@ -113,6 +113,7 @@
     "sgr.fg.default": true,
     "sgr.bg.default": true,
     "sgr.selective-reset.bold": true,
+    "sgr.selective-reset.italic": true,
     "sgr.selective-reset.underline": true,
     "sgr.selective-reset.inverse": true,
     "sgr.reset": true,
