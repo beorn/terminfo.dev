@@ -6,8 +6,11 @@ hero:
   tagline: "Feature support tables for terminal emulators — powered by <a href='#how-this-works'>Termless</a>, Playwright for terminals"
   actions:
     - theme: brand
-      text: View Matrix
-      link: "#matrix"
+      text: Terminal Applications
+      link: "#summary"
+    - theme: alt
+      text: Headless Backends
+      link: "#headless"
 ---
 
 <script setup>
