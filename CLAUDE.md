@@ -100,6 +100,8 @@ Each file: `{ backend, version, results: { featureId: boolean }, notes, probeHas
 | `standards.json`   | Standard/tag metadata: label, url, description              | ~10     |
 | `categories.json`  | Category metadata: label, order, description                | ~13     |
 | `annotations.json` | Result overrides: backend:feature notes explaining failures | ~88     |
+| `baselines.json`   | Baseline tier metadata: label, emoji, color, description    | 4       |
+| `analysis.json`    | AI-generated commentary per page (regenerate with `bun analysis`) | ~43 |
 
 ### Derived: Build-Time Computation
 
@@ -157,6 +159,14 @@ bun terminfo probe here                   # Probe this terminal
 bun terminfo probe here --json            # Machine-readable output
 ```
 
+#### Analysis
+
+```bash
+bun analysis                              # Regenerate content/analysis.json from current probe data
+bun analysis:validate                     # Validate existing analysis against current data
+bun analysis --dry-run                    # Preview without writing
+```
+
 #### Reporting & Utilities
 
 ```bash
@@ -195,6 +205,26 @@ bun probe:server              # = bun terminfo probe server --all
 - **Daemon** (`probe server`): Testing ANY terminal. Run `--start` in the target terminal, then `--all` from another session. Works for Warp, SSH sessions, Linux, anything with a TTY. **Most flexible method.**
 - **Inline** (`probe here`): Quick test of the current terminal. Good for one-off checks.
 - **Manual**: For terminals where none of the above work, run `terminfo detect` and submit results.
+
+### Full Update Workflow
+
+When probe data changes (new terminals, new features, updated results):
+
+```bash
+bun terminfo probe termless --all        # 1. Run headless probes
+bun terminfo probe app --all             # 2. Run app probes (or probe server --all)
+bun analysis                             # 3. Regenerate analysis commentary
+bun run build                            # 4. Build site
+git add -A && git commit && git push     # 5. Deploy
+```
+
+**Only run `bun analysis` when probe data changed.** It reads result files and generates
+template-based commentary with real numbers. The build just uses whatever `analysis.json`
+exists — it doesn't regenerate automatically.
+
+**Annotations are required for failures.** If probes produce new failures, `bun terminfo probe`
+will exit with an error listing unannotated failures. Add explanations to
+`content/annotations.json` before the data is usable.
 
 ## Data Flow
 
