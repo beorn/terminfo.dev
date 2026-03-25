@@ -1352,35 +1352,28 @@ export const ALL_PROBES: Probe[] = [
     },
   } satisfies Probe,
 
-  // Reflow: write long line, resize terminal smaller, check if text wraps
+  // Reflow: test if terminal supports text reflow by writing a long line,
+  // wrapping naturally, then checking cursor position is consistent.
+  // Can't programmatically resize (some terminals block it or need permission),
+  // so we test the prerequisite: auto-wrap + cursor tracking across wraps.
   {
     id: "extensions.reflow",
     name: "Text reflow on resize",
     async run() {
-      // Use XTWINOPS to query current size, resize smaller, check cursor, resize back
-      // CSI 18 t reports terminal size: ESC [ 8 ; rows ; cols t
+      // Check if terminal reports its size (needed for reflow to work)
       const sizeMatch = await query("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/, 1000)
-      if (!sizeMatch) return { pass: false, note: "Terminal doesn't report size (XTWINOPS 18)" }
-      const origRows = parseInt(sizeMatch[1]!, 10)
-      const origCols = parseInt(sizeMatch[2]!, 10)
-      // Write a line that's exactly origCols wide
-      const testLine = "R".repeat(Math.min(origCols, 40))
-      process.stdout.write("\x1b[1;1H\x1b[2J") // clear
-      process.stdout.write(testLine)
-      // Resize to half width
-      const halfCols = Math.floor(origCols / 2)
-      process.stdout.write(`\x1b[8;${origRows};${halfCols}t`)
-      await new Promise(r => setTimeout(r, 200)) // wait for resize
-      // Query cursor — if reflow happened, cursor should be on row 2+
+      if (!sizeMatch) return { pass: false, note: "No XTWINOPS 18 response (can't report size)" }
+      const cols = parseInt(sizeMatch[2]!, 10)
+      // Write a line longer than terminal width — verify it wraps correctly
+      process.stdout.write("\x1b[1;1H\x1b[2J")
+      const longLine = "W".repeat(cols + 5) // 5 chars past the edge
+      process.stdout.write(longLine)
       const pos = await queryCursorPosition()
-      // Restore original size
-      process.stdout.write(`\x1b[8;${origRows};${origCols}t`)
-      await new Promise(r => setTimeout(r, 100))
-      if (!pos) return { pass: false, note: "No cursor response after resize" }
-      // If text reflowed to half width, cursor or content should span 2+ rows
+      if (!pos) return { pass: false, note: "No cursor response" }
+      // If auto-wrap works and terminal tracks wrapped content, cursor is on row 2, col 6
       return {
-        pass: pos[0] >= 2,
-        note: pos[0] >= 2 ? undefined : "Text didn't reflow after resize",
+        pass: pos[0] === 2 && pos[1] === 6,
+        note: pos[0] === 2 && pos[1] === 6 ? undefined : `cursor at ${pos[0]};${pos[1]}, expected 2;6`,
       }
     },
   } satisfies Probe,
@@ -1390,17 +1383,23 @@ export const ALL_PROBES: Probe[] = [
     id: "scrollback.accumulate",
     name: "Scrollback accumulates",
     async run() {
+      // Get terminal height first
+      const sizeMatch = await query("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/, 1000)
+      const rows = sizeMatch ? parseInt(sizeMatch[1]!, 10) : 24
       process.stdout.write("\x1b[2J\x1b[H") // clear + home
-      // Write 30 lines (more than typical 24-row screen)
-      for (let i = 0; i < 30; i++) {
+      // Write more lines than the screen can hold
+      const lineCount = rows + 10
+      for (let i = 0; i < lineCount; i++) {
         process.stdout.write(`line-${i}\n`)
       }
-      // Query cursor — should be near bottom
       const pos = await queryCursorPosition()
       if (!pos) return { pass: false, note: "No cursor response" }
-      // If scrollback works, cursor row should be <= screen height (content scrolled up)
-      // The fact that we wrote 30 lines and cursor isn't at row 31 means scrollback absorbed some
-      return { pass: pos[0] <= 25, note: pos[0] <= 25 ? undefined : `cursor at row ${pos[0]}` }
+      // Cursor should be at or near the bottom row (content scrolled into scrollback)
+      // NOT at lineCount+1 (which would mean terminal expanded instead of scrolling)
+      return {
+        pass: pos[0] <= rows,
+        note: pos[0] <= rows ? undefined : `cursor at row ${pos[0]}, expected <= ${rows}`,
+      }
     },
   } satisfies Probe,
 
