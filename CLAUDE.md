@@ -36,7 +36,7 @@ packages/                       ← source code (internal tools)
       status.ts                   config/cache status
     app-harness.ts                runs INSIDE launched terminals (not from CLI)
     app-runner.ts                 legacy app runner (superceded by src/app.ts)
-    index.ts                      legacy census CLI (superceded by src/index.ts)
+    index.ts                      legacy probes CLI (superceded by src/index.ts)
     parse.ts                      Vitest JSON result parsing
     versions.ts                   versioned backend probing
     report.tsx                    silvery-based report rendering
@@ -83,8 +83,8 @@ DERIVED     docs/data/*.ts        ← computed at build time from above two
 
 ### Measured: Probe Results
 
-`content/probes-apps/` — real terminal app results (from `bun census:apps`)
-`content/probes-libs/` — headless backend results (from `bun census:run`)
+`content/probes-apps/` — real terminal app results (from `bun terminfo probe app --all`)
+`content/probes-libs/` — headless backend results (from `bun terminfo probe termless --all`)
 `content/probes-mux/` — multiplexer results (future)
 
 Each file: `{ backend, version, results: { featureId: boolean }, notes, probeHash, generated }`
@@ -238,7 +238,7 @@ docs/.vitepress/dist/              ← 250+ static HTML pages + sitemap.xml
 
 ## Adding a New Terminal
 
-1. Run census: `bun census:apps <terminal-name>` (or add headless backend to Termless)
+1. Run probes: `bun terminfo probe app --all <terminal-name>` (or add headless backend to Termless)
 2. Add metadata to `content/terminals.json` (label, slug, description, body, url)
 3. Add annotations to `content/annotations.json` for any failures that need explanation
 4. Rebuild: `bun run build`
@@ -247,7 +247,7 @@ docs/.vitepress/dist/              ← 250+ static HTML pages + sitemap.xml
 
 1. Add probe to `packages/probes/<category>.probe.ts`
 2. Add metadata to `content/features.json` (name, slug, url, tags, body, probe, baseline)
-3. Run census: `bun census:run --force`
+3. Run probes: `bun terminfo probe termless --all --force`
 4. Add annotations for any unexpected failures
 5. Rebuild: `bun run build`
 

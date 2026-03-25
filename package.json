@@ -10,13 +10,7 @@
     "probe:server": "bun packages/cli/src/index.ts probe server --all",
     "dev": "vitepress dev docs",
     "build": "vitepress build docs",
-    "preview": "vitepress preview docs",
-    "census": "bun packages/cli/index.ts",
-    "census:run": "bun packages/cli/index.ts run",
-    "census:report": "bun packages/cli/index.ts report",
-    "census:status": "bun packages/cli/index.ts status",
-    "census:apps": "bun packages/cli/app-runner.ts",
-    "census:apps:list": "bun packages/cli/app-runner.ts --list"
+    "preview": "vitepress preview docs"
   },
   "dependencies": {
     "@termless/core": "^0.4.0",

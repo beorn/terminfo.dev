@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * App census harness — runs INSIDE a real terminal app.
+ * App probe harness — runs INSIDE a real terminal app.
  *
  * This script is launched by app-runner.ts inside each macOS terminal app
  * (Ghostty, iTerm2, Terminal.app, kitty, Warp). It runs the same probes as

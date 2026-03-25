@@ -313,15 +313,15 @@
     "result": "partial"
   },
   "vterm:cursor.position-report": {
-    "note": "onResponse callback not wired through census probe harness",
+    "note": "onResponse callback not wired through probe harness",
     "result": "partial"
   },
   "vterm:device.primary-da": {
-    "note": "onResponse callback not wired through census probe harness",
+    "note": "onResponse callback not wired through probe harness",
     "result": "partial"
   },
   "vterm:device.status-report": {
-    "note": "onResponse callback not wired through census probe harness",
+    "note": "onResponse callback not wired through probe harness",
     "result": "partial"
   },
   "vterm:modes.application-keypad": {

@@ -43,7 +43,7 @@ export async function submitResults(data: SubmitData): Promise<string | null> {
     }
   }
 
-  const title = `[census] ${data.terminal}${ver} on ${data.os} — ${pct}% (${passed}/${total})`
+  const title = `[probe] ${data.terminal}${ver} on ${data.os} — ${pct}% (${passed}/${total})`
 
   const body = `## Community Census Result
 
@@ -111,7 +111,7 @@ function hasGhCli(): boolean {
 
 function checkDuplicate(terminal: string, version: string, os: string): string | null {
   try {
-    const search = `[census] ${terminal}${version ? ` ${version}` : ""} on ${os}`
+    const search = `[probe] ${terminal}${version ? ` ${version}` : ""} on ${os}`
     const result = execFileSync(
       "gh",
       [

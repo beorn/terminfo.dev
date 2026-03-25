@@ -169,7 +169,7 @@ function termSlug(name) {
   return data.meta[name]?.slug ?? name
 }
 
-// Backend metadata comes from @termless/core via census data loader
+// Backend metadata comes from @termless/core via probes data loader
 function backendLabel(name) {
   return data.meta[name]?.label ?? name
 }
@@ -198,7 +198,7 @@ function backendTooltip(name, version) {
 </script>
 
 <div v-if="data.backends.length === 0" class="no-data">
-  <p>No census data available yet.</p>
+  <p>No probe data available yet.</p>
 </div>
 
 <div v-else>
@@ -387,7 +387,7 @@ function backendTooltip(name, version) {
 
 <p class="footer-note">
   Hover over any cell for details.<br/>
-  Data from <a href="https://termless.dev">Termless</a> census probes and <a href="https://www.npmjs.com/package/terminfo.dev">community submissions</a>.
+  Data from <a href="https://termless.dev">Termless</a> probes and <a href="https://www.npmjs.com/package/terminfo.dev">community submissions</a>.
   {{ data.generated ? 'Generated: ' + data.generated : '' }}
 </p>
 

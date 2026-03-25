@@ -1,5 +1,5 @@
 /**
- * Versioned census — run probes against older upstream versions of backends.
+ * Versioned probes — run probes against older upstream versions of backends.
  *
  * For each backend+version pair in versions.json:
  * 1. Install the upstream package at that version to a cache directory
@@ -26,7 +26,7 @@ import { createLogger } from "loggily"
 import { parseVitestJson } from "./parse.ts"
 import { ensureCachedVersion } from "@termless/core"
 
-const log = createLogger("census")
+const log = createLogger("probes")
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(__dirname, "..", "..")
@@ -159,7 +159,7 @@ export default defineConfig({
 }
 
 /**
- * Run census probes for a specific backend at a specific upstream version.
+ * Run probes for a specific backend at a specific upstream version.
  *
  * Strategy: generate a vitest config with `resolve.alias` that redirects the
  * upstream package import (e.g., @xterm/headless) to a cached version.
@@ -184,7 +184,7 @@ function runProbesForVersion(
 
   // Generate temporary vitest config
   const configContent = generateVersionedConfig(upstream, aliasTarget)
-  const configPath = join(REPO_ROOT, `.vitest.census-${backendName}-${version.replace(/\./g, "_")}.ts`)
+  const configPath = join(REPO_ROOT, `.vitest.probes-${backendName}-${version.replace(/\./g, "_")}.ts`)
 
   try {
     writeFileSync(configPath, configContent)
@@ -205,7 +205,7 @@ function runProbesForVersion(
     const json = JSON.parse(stdout)
     return parseVitestJson(json)
   } catch (e: any) {
-    // vitest exits with non-zero when tests fail — that's expected for census
+    // vitest exits with non-zero when tests fail — that's expected for probes
     // Try to parse stdout from the error
     if (e.stdout) {
       try {
@@ -233,14 +233,14 @@ export interface VersionsRunOptions {
   backends?: string[]
   /** Force re-run even if cache is valid */
   force?: boolean
-  /** Results directory (default: packages/census/results) */
+  /** Results directory (default: packages/probes/results) */
   resultsDir?: string
 }
 
 /**
- * Run versioned census — probes against older versions of backends.
+ * Run versioned probes — probes against older versions of backends.
  */
-export async function runVersionedCensus(opts?: VersionsRunOptions): Promise<VersionRunResult[]> {
+export async function runVersionedprobes(opts?: VersionsRunOptions): Promise<VersionRunResult[]> {
   const catalog = loadVersionsCatalog()
   const hash = probeHash()
   const results: VersionRunResult[] = []

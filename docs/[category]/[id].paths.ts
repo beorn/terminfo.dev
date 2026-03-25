@@ -1,8 +1,8 @@
-import { loadCensus, featureSlug, terminalSlug, loadFeaturesMeta, tagLabel as getTagLabel } from "../data/load-probes"
+import { loadProbes, featureSlug, terminalSlug, loadFeaturesMeta, tagLabel as getTagLabel } from "../data/load-probes"
 
 export default {
   paths() {
-    const data = loadCensus()
+    const data = loadProbes()
     const featuresMeta = loadFeaturesMeta()
 
     return data.features.map((f) => {

@@ -1,9 +1,9 @@
 /**
- * Census data parsing — extract backend/feature results from vitest JSON
+ * probes data parsing — extract backend/feature results from vitest JSON
  * output or per-backend result files.
  */
 
-export interface CensusData {
+export interface probesData {
   backendNames: string[]
   featureIds: string[]
   /** backend -> featureId -> pass/fail */
@@ -77,9 +77,9 @@ function collectFeatureIds(results: Map<string, Map<string, boolean>>): string[]
 // ── From vitest JSON ──
 
 /**
- * Parse vitest JSON reporter output into structured census data.
+ * Parse vitest JSON reporter output into structured probes data.
  */
-export function parseVitestJson(json: any): CensusData {
+export function parseVitestJson(json: any): probesData {
   const results = new Map<string, Map<string, boolean>>()
   const notes = new Map<string, Map<string, string>>()
 
@@ -117,9 +117,9 @@ export function parseVitestJson(json: any): CensusData {
 // ── From per-backend result files ──
 
 /**
- * Aggregate census data from individual per-backend JSON result files.
+ * Aggregate probes data from individual per-backend JSON result files.
  */
-export function fromPerBackendFiles(files: PerBackendFile[]): CensusData {
+export function fromPerBackendFiles(files: PerBackendFile[]): probesData {
   const results = new Map<string, Map<string, boolean>>()
   const notes = new Map<string, Map<string, string>>()
   const backendNames: string[] = []

@@ -1,5 +1,5 @@
 {
-  "$comment": "Feature metadata for terminfo.dev census probes. Keyed by probe dot-path ID.",
+  "$comment": "Feature metadata for terminfo.dev probes. Keyed by probe dot-path ID.",
   "sgr.bold": {
     "name": "Bold (SGR 1)",
     "slug": "sgr-1-bold",

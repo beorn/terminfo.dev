@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Census CLI — terminal capability census with silvery output.
+ * Probes CLI — terminal capability probes with silvery output.
  *
  * @example
  * ```bash
- * bun census run                # Run probes on all latest backends + show report
- * bun census run --force        # Re-run even if cached
- * bun census run xtermjs/*      # Run all xtermjs versions
- * bun census run xtermjs/5.4.0  # Run specific version
- * bun census report             # Show last saved results
- * bun census status             # Config, probes, cache
+ * bun terminfo probe termless run                # Run probes on all latest backends + show report
+ * bun terminfo probe termless run --force        # Re-run even if cached
+ * bun terminfo probe termless run xtermjs/*      # Run all xtermjs versions
+ * bun terminfo probe termless run xtermjs/5.4.0  # Run specific version
+ * bun terminfo probe termless report             # Show last saved results
+ * bun terminfo probe termless status             # Config, probes, cache
  * ```
  */
 
@@ -23,7 +23,7 @@ import { manifest, backends as allBackendNames, isReady, entry } from "@termless
 import { renderReport } from "./report.tsx"
 import { runVersionedCensus, probeHash, loadVersionsCatalog } from "./versions.ts"
 
-const log = createLogger("census")
+const log = createLogger("probes")
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..")
@@ -91,17 +91,17 @@ const installed = allBackendNames().filter(isReady)
 const available = allBackendNames().filter((n) => !isReady(n))
 
 const program = new Command()
-  .name("census")
+  .name("probes")
   .description(
-    `Terminal capability census — probe features across all backends
+    `Terminal capability probes — probe features across all backends
 
 Examples:
-  bun census run                Run probes + show report
-  bun census run --force        Re-run all probes
-  bun census run xtermjs/*      All xtermjs versions
-  bun census run xtermjs/5.4.0  Specific version
-  bun census report             Show last saved results
-  bun census status             Config, probes, cache
+  bun terminfo probe termless run                Run probes + show report
+  bun terminfo probe termless run --force        Re-run all probes
+  bun terminfo probe termless run xtermjs/*      All xtermjs versions
+  bun terminfo probe termless run xtermjs/5.4.0  Specific version
+  bun terminfo probe termless report             Show last saved results
+  bun terminfo probe termless status             Config, probes, cache
 
 Backends (${installed.length} installed): ${installed.join(", ")}${available.length > 0 ? `\nAvailable: ${available.join(", ")}` : ""}`,
   )
@@ -136,7 +136,7 @@ program
       }
 
       if (!latestData) {
-        console.log(`\nRunning census probes (hash: ${hash})...\n`)
+        console.log(`\nRunning probes (hash: ${hash})...\n`)
 
         const proc = Bun.spawn(
           ["bun", "vitest", "run", "--config", "packages/probes/vitest.config.ts", "--reporter", "json"],
@@ -214,11 +214,11 @@ program
 
 program
   .command("report")
-  .description("Show last saved census results")
+  .description("Show last saved probe results")
   .action(async () => {
     const data = loadSavedResults()
     if (!data) {
-      console.error("No saved results. Run: bun census run")
+      console.error("No saved results. Run: bun terminfo probe termless run")
       process.exit(1)
     }
     const output = await renderReport(data)
@@ -230,7 +230,7 @@ program
 
 program
   .command("status")
-  .description("Show census configuration, probes, backends, and cache status")
+  .description("Show probe configuration, probes, backends, and cache status")
   .action(() => {
     const hash = probeHash()
 
@@ -247,7 +247,7 @@ program
 
     const data = loadSavedResults()
 
-    console.log("\n@termless/census\n")
+    console.log("\n@termless/probes\n")
     console.log(`  Probe hash:    ${hash}`)
     console.log(`  Probe files:   ${probeFiles.length} (${probeFiles.join(", ")})`)
     if (data) {

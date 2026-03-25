@@ -48,7 +48,7 @@ function buildSidebar() {
   }
 
   try {
-    const files = readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
+    const files = readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "unified.json")
     for (const file of files) {
       try {
         const raw = JSON.parse(readFileSync(join(probesLibsDir, file), "utf-8"))

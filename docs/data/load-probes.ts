@@ -8,15 +8,15 @@ import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import probesLoader from "./probes.data"
-import type { CensusData } from "./probes.data"
+import type { ProbeData } from "./probes.data"
 
-export type { CensusData }
+export type { ProbeData }
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-let _cached: CensusData | null = null
+let _cached: ProbeData | null = null
 
-export function loadProbes(): CensusData {
+export function loadProbes(): ProbeData {
   if (!_cached) _cached = probesLoader.load()
   return _cached
 }
@@ -36,7 +36,7 @@ export interface FeatureMeta {
 
 let _featuresMeta: Record<string, FeatureMeta> | null = null
 
-/** Load features.json with tags and groups (richer than census featureDescriptions) */
+/** Load features.json with tags and groups (richer than probes featureDescriptions) */
 export function loadFeaturesMeta(): Record<string, FeatureMeta> {
   if (!_featuresMeta) {
     try {
@@ -81,7 +81,7 @@ export function featureSlug(id: string): string {
  * Convert backend name to a URL-friendly terminal slug using the label.
  * ghostty-native -> ghostty, xtermjs -> xterm-js, ghostty (WASM) -> ghostty-wasm
  */
-export function terminalSlug(name: string, meta: CensusData["meta"]): string {
+export function terminalSlug(name: string, meta: ProbeData["meta"]): string {
   const label = (meta[name]?.label ?? name).toLowerCase()
   return label.replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
 }

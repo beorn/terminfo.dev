@@ -1,7 +1,7 @@
 /**
  * Headless library probes — run Vitest probes against Termless backends.
  *
- * Reuses logic from the old census CLI (packages/cli/index.ts).
+ * Reuses logic from the old probes CLI (packages/cli/index.ts).
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"

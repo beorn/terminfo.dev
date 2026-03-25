@@ -1,5 +1,5 @@
 /**
- * Census infrastructure — describeBackends() + vitest assertions.
+ * probes infrastructure — describeBackends() + vitest assertions.
  *
  * Dynamically discovers all installed backends from backends.json manifest,
  * probing each with direct imports (import.meta.resolve doesn't work in
@@ -24,7 +24,7 @@ import type { TerminalBackend } from "@termless/core"
 import { manifest } from "@termless/core"
 import { createLogger } from "loggily"
 
-const log = createLogger("census")
+const log = createLogger("probes")
 
 // ── Backend resolution (dynamic discovery) ──
 // Reads the manifest for all backend names, then probes each via direct import.
@@ -92,10 +92,10 @@ for (const name of allNames) {
   }
 }
 
-log.debug?.(`Census will probe ${backends.length} backends: ${backends.map(([n]) => n).join(", ")}`)
+log.debug?.(`probes will probe ${backends.length} backends: ${backends.map(([n]) => n).join(", ")}`)
 
 if (backends.length === 0) {
-  console.warn("Warning: No backends available for census")
+  console.warn("Warning: No backends available for probes")
 }
 
 // ── Helpers ──

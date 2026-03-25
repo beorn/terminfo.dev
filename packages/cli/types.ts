@@ -1,5 +1,5 @@
 /**
- * Census types -- terminal capability probing via vitest.
+ * probes types -- terminal capability probing via vitest.
  */
 
 export type SupportLevel = "yes" | "no" | "partial" | "unknown"
@@ -15,7 +15,7 @@ export interface BackendInfo {
   engine: string
 }
 
-export interface CensusFeature {
+export interface probesFeature {
   id: string
   name: string
   category: string
@@ -23,15 +23,15 @@ export interface CensusFeature {
   results: Record<string, ProbeResult>
 }
 
-export interface CensusDatabase {
+export interface probesDatabase {
   generated: string
   termlessVersion: string
   backends: Record<string, BackendInfo>
-  features: CensusFeature[]
+  features: probesFeature[]
 }
 
 /**
- * Throw this in a census probe to indicate partial support.
+ * Throw this in a probes probe to indicate partial support.
  * The reporter interprets it as "partial" rather than "no".
  *
  * @example

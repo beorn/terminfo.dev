@@ -4,7 +4,7 @@
 
 export default class CensusReporter {
   onInit() {
-    console.log("\n@termless/census\n")
+    console.log("\n@termless/probes\n")
   }
 
   onCollected(files?: any[]) {
@@ -17,7 +17,7 @@ export default class CensusReporter {
 
   async onFinished(files?: any[], _errors?: unknown[], _coverage?: unknown, _time?: number) {
     if (!files?.length) {
-      console.log("No census files found.")
+      console.log("No probe result files found.")
       return
     }
 

@@ -1,8 +1,8 @@
-import { loadCensus, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
+import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
 
 export default {
   paths() {
-    const data = loadCensus()
+    const data = loadProbes()
 
     // Build terminal info list with stats
     const terminals = data.backends.map((b) => {

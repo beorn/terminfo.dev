@@ -1,5 +1,5 @@
 import {
-  loadCensus,
+  loadProbes,
   featureSlug,
   catLabel,
   categoryDescriptions,
@@ -14,7 +14,7 @@ import {
 
 export default {
   paths() {
-    const data = loadCensus()
+    const data = loadProbes()
     const featuresMeta = loadFeaturesMeta()
 
     // Sort backends by score (highest first)

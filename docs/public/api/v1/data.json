@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-25T20:18:14.927Z",
+  "generated": "2026-03-25T20:32:12.147Z",
   "features": {
     "charsets.dec-special": {
       "name": "DEC Special Graphics",
@@ -3106,9 +3106,9 @@
       "sgr.underline.color": "Not implemented — pure TypeScript emulator"
     },
     "vterm": {
-      "cursor.position-report": "onResponse callback not wired through census probe harness",
-      "device.primary-da": "onResponse callback not wired through census probe harness",
-      "device.status-report": "onResponse callback not wired through census probe harness",
+      "cursor.position-report": "onResponse callback not wired through probe harness",
+      "device.primary-da": "onResponse callback not wired through probe harness",
+      "device.status-report": "onResponse callback not wired through probe harness",
       "modes.application-keypad": "Application keypad mode parsed but not exposed via getMode()"
     },
     "wezterm": {

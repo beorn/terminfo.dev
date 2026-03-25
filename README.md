@@ -20,11 +20,11 @@ terminfo.dev is the "caniuse.com for terminal emulators." It shows which termina
 # Install dependencies
 bun install
 
-# Run census probes (requires termless backends installed)
-bun run census:run
+# Run probes probes (requires termless backends installed)
+bun run probes:run
 
 # View results
-bun run census:report
+bun run probes:report
 
 # Local dev server
 bun run dev
@@ -33,15 +33,15 @@ bun run dev
 bun run build
 ```
 
-## Census CLI
+## probes CLI
 
 ```bash
-bun run census:run                # Run probes + show report
-bun run census:run --force        # Re-run even if cached
-bun run census:run xtermjs/*      # All xtermjs versions
-bun run census:run xtermjs/5.4.0  # Specific version
-bun run census:report             # Show cached results
-bun run census:status             # Config, backends, cache info
+bun run probes:run                # Run probes + show report
+bun run probes:run --force        # Re-run even if cached
+bun run probes:run xtermjs/*      # All xtermjs versions
+bun run probes:run xtermjs/5.4.0  # Specific version
+bun run probes:report             # Show cached results
+bun run probes:status             # Config, backends, cache info
 ```
 
 ## Backends Tested

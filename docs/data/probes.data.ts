@@ -52,7 +52,7 @@ export interface BackendMeta {
   terminal?: TerminalMeta
 }
 
-export interface CensusData {
+export interface ProbeData {
   backends: BackendInfo[]
   features: FeatureResult[]
   /** category -> FeatureResult[] */
@@ -154,24 +154,24 @@ function loadBackendMeta(): Record<string, BackendMeta> {
   return meta
 }
 
-declare const data: CensusData
+declare const data: ProbeData
 export { data }
 
 export default {
-  load(): CensusData {
+  load(): ProbeData {
     // Load app (community) results as primary — these test real terminals
     const appData = loadAppResults()
 
     // Load headless results as fallback for terminals without app results
-    let headlessData: CensusData
-    const unifiedPath = join(probesLibsDir, "census.json")
+    let headlessData: ProbeData
+    const unifiedPath = join(probesLibsDir, "unified.json")
     if (existsSync(unifiedPath)) {
-      headlessData = loadUnifiedCensus(unifiedPath)
+      headlessData = loadUnifiedProbes(unifiedPath)
     } else {
       headlessData = loadPerBackendResults()
     }
 
-    let result: CensusData
+    let result: ProbeData
     // If we have app results, merge them as primary
     if (appData.backends.length > 0) {
       result = mergeResults(appData, headlessData)
@@ -187,7 +187,7 @@ export default {
 }
 
 /** Merge app results (primary) with headless results (fallback for missing terminals) */
-function mergeResults(app: CensusData, headless: CensusData): CensusData {
+function mergeResults(app: ProbeData, headless: ProbeData): ProbeData {
   const merged = { ...app }
 
   // Add headless-only backends that don't have app results
@@ -232,7 +232,7 @@ function headlessToAppName(backend: string): string {
 }
 
 /** Load community/app results from content/probes-apps/ */
-function loadAppResults(): CensusData {
+function loadAppResults(): ProbeData {
   const appDir = probesAppsDir
   let files: string[]
   try {
@@ -307,7 +307,7 @@ function loadAppResults(): CensusData {
     categories[f.category]!.push(f)
   }
 
-  const stats: CensusData["stats"] = {}
+  const stats: ProbeData["stats"] = {}
   for (const b of allBackends) {
     const entries = Object.values(results[b.name]!)
     const total = entries.length
@@ -384,7 +384,7 @@ function buildAppMeta(terminalName: string): BackendMeta {
   }
 }
 
-function loadUnifiedCensus(path: string): CensusData {
+function loadUnifiedProbes(path: string): ProbeData {
   const raw = JSON.parse(readFileSync(path, "utf-8")) as any
 
   const backends: BackendInfo[] = (Object.values(raw.backends ?? {}) as BackendInfo[]).map((b) => ({
@@ -440,7 +440,7 @@ function loadUnifiedCensus(path: string): CensusData {
   }
 
   // Compute per-backend stats
-  const stats: CensusData["stats"] = {}
+  const stats: ProbeData["stats"] = {}
   for (const name of backendNames) {
     const entries = Object.values(results[name]!)
     const total = entries.length
@@ -468,10 +468,10 @@ function loadUnifiedCensus(path: string): CensusData {
   }
 }
 
-function loadPerBackendResults(): CensusData {
+function loadPerBackendResults(): ProbeData {
   let files: string[]
   try {
-    files = readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
+    files = readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "unified.json")
   } catch (err) {
     throw new Error(`Failed to read probe results from ${probesLibsDir}: ${err}`)
   }
@@ -529,7 +529,7 @@ function loadPerBackendResults(): CensusData {
     categories[f.category]!.push(f)
   }
 
-  const stats: CensusData["stats"] = {}
+  const stats: ProbeData["stats"] = {}
   for (const b of allBackends) {
     const entries = Object.values(results[b.name]!)
     const total = entries.length
@@ -578,7 +578,7 @@ function loadPerBackendResults(): CensusData {
   }
 }
 
-function emptyData(): CensusData {
+function emptyData(): ProbeData {
   return {
     backends: [],
     features: [],
@@ -596,7 +596,7 @@ function emptyData(): CensusData {
   }
 }
 
-function computeBaselines(data: CensusData): void {
+function computeBaselines(data: ProbeData): void {
   const baselineOrder = ["core", "modern", "rich", "unicode"]
   const baselines: Record<string, string[]> = {}
   for (const bl of baselineOrder) baselines[bl] = []
