@@ -209,10 +209,7 @@ function printNotes(data: CensusData) {
 
 // ── Main ──
 
-export async function runTermlessProbes(
-  selectors: string[],
-  opts: { force?: boolean },
-): Promise<void> {
+export async function runTermlessProbes(selectors: string[], opts: { force?: boolean }): Promise<void> {
   const resultsDir = DEFAULT_RESULTS_DIR
 
   // If no selectors and no --all, list available backends

@@ -50,7 +50,8 @@ export async function handleServer(
   let targets = daemons
   if (daemon) {
     targets = daemons.filter(
-      (d) => d.terminal.toLowerCase() === daemon.toLowerCase() || d.terminal.toLowerCase().includes(daemon.toLowerCase()),
+      (d) =>
+        d.terminal.toLowerCase() === daemon.toLowerCase() || d.terminal.toLowerCase().includes(daemon.toLowerCase()),
     )
     if (targets.length === 0) {
       console.error(`No daemon found matching "${daemon}".`)

@@ -14,9 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 /** Load feature slugs from features.json for OSC 8 hyperlinks */
 function loadFeatureSlugs(): Record<string, string> {
   const ROOT = join(__dirname, "..", "..", "..")
-  const candidates = [
-    join(ROOT, "content", "features.json"),
-  ]
+  const candidates = [join(ROOT, "content", "features.json")]
   for (const path of candidates) {
     try {
       const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, any>

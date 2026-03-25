@@ -82,10 +82,11 @@ const APPS: AppDef[] = [
 function getAppVersion(app: AppDef): string {
   try {
     const plistPath = join(app.appPath, "Contents", "Info.plist")
-    return execSync(
-      `/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${plistPath}" 2>/dev/null`,
-      { encoding: "utf8" },
-    ).trim() || "unknown"
+    return (
+      execSync(`/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${plistPath}" 2>/dev/null`, {
+        encoding: "utf8",
+      }).trim() || "unknown"
+    )
   } catch {
     return "unknown"
   }
@@ -114,7 +115,9 @@ function launchWithServe(app: AppDef): ChildProcess | null {
     // Hide the terminal window so it doesn't steal focus
     setTimeout(() => {
       try {
-        execSync(`osascript -e 'tell application "System Events" to set visible of process "${app.name}" to false'`, { timeout: 3000 })
+        execSync(`osascript -e 'tell application "System Events" to set visible of process "${app.name}" to false'`, {
+          timeout: 3000,
+        })
       } catch {}
     }, 1500)
 
@@ -129,12 +132,19 @@ function launchWithServe(app: AppDef): ChildProcess | null {
 
   if (app.id === "iterm2") {
     try {
-      execSync(`osascript -e 'tell application "iTerm"
+      execSync(
+        `osascript -e 'tell application "iTerm"
   create window with default profile command "/tmp/terminfo-serve.sh"
-end tell'`, { timeout: 15000 })
+end tell'`,
+        { timeout: 15000 },
+      )
       // Hide iTerm so it doesn't steal focus
       setTimeout(() => {
-        try { execSync(`osascript -e 'tell application "System Events" to set visible of process "iTerm2" to false'`, { timeout: 3000 }) } catch {}
+        try {
+          execSync(`osascript -e 'tell application "System Events" to set visible of process "iTerm2" to false'`, {
+            timeout: 3000,
+          })
+        } catch {}
       }, 1000)
       return null
     } catch {
@@ -144,12 +154,19 @@ end tell'`, { timeout: 15000 })
 
   if (app.id === "terminal-app") {
     try {
-      execSync(`osascript -e 'tell application "Terminal"
+      execSync(
+        `osascript -e 'tell application "Terminal"
   do script "/tmp/terminfo-serve.sh"
-end tell'`, { timeout: 15000 })
+end tell'`,
+        { timeout: 15000 },
+      )
       // Hide Terminal so it doesn't steal focus
       setTimeout(() => {
-        try { execSync(`osascript -e 'tell application "System Events" to set visible of process "Terminal" to false'`, { timeout: 3000 }) } catch {}
+        try {
+          execSync(`osascript -e 'tell application "System Events" to set visible of process "Terminal" to false'`, {
+            timeout: 3000,
+          })
+        } catch {}
       }, 1000)
       return null
     } catch {
@@ -164,7 +181,10 @@ end tell'`, { timeout: 15000 })
 
 // ── Wait for daemon to register ──
 
-async function waitForDaemon(appId: string, timeoutMs: number = 30_000): Promise<{ port: number; terminal: string } | null> {
+async function waitForDaemon(
+  appId: string,
+  timeoutMs: number = 30_000,
+): Promise<{ port: number; terminal: string } | null> {
   const deadline = Date.now() + timeoutMs
 
   while (Date.now() < deadline) {
@@ -193,7 +213,11 @@ async function waitForDaemon(appId: string, timeoutMs: number = 30_000): Promise
 
 // ── Probe a daemon ──
 
-async function probeDaemon(port: number, appId: string, version: string): Promise<{ total: number; passed: number } | null> {
+async function probeDaemon(
+  port: number,
+  appId: string,
+  version: string,
+): Promise<{ total: number; passed: number } | null> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/probe`, { signal: AbortSignal.timeout(120_000) })
     if (!res.ok) return null
@@ -248,7 +272,10 @@ function killTerminal(proc: ChildProcess | null, app: AppDef): void {
 
 // ── Run one app ──
 
-async function runApp(app: AppDef, opts: { force?: boolean }): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+async function runApp(
+  app: AppDef,
+  opts: { force?: boolean },
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   if (!existsSync(app.appPath)) {
     return { success: false, error: "not installed" }
   }
@@ -262,7 +289,8 @@ async function runApp(app: AppDef, opts: { force?: boolean }): Promise<{ success
       try {
         const existing = JSON.parse(readFileSync(resultPath, "utf-8")) as any
         const probeCount = Object.keys(existing.results ?? {}).length
-        if (probeCount >= 120) { // recent enough probe set
+        if (probeCount >= 120) {
+          // recent enough probe set
           return { success: true, skipped: true }
         }
       } catch {}
@@ -301,19 +329,14 @@ async function runApp(app: AppDef, opts: { force?: boolean }): Promise<{ success
 
 // ── Main ──
 
-export async function handleApp(
-  terminal: string | undefined,
-  opts: { all?: boolean; force?: boolean },
-): Promise<void> {
+export async function handleApp(terminal: string | undefined, opts: { all?: boolean; force?: boolean }): Promise<void> {
   if (!terminal && !opts.all) {
     console.log("\nAvailable terminal apps:\n")
     for (const app of APPS) {
       const installed = existsSync(app.appPath)
       const version = installed ? getAppVersion(app) : ""
       const method = app.binaryPath ? "binary" : app.id === "warp" ? "manual" : "applescript"
-      console.log(
-        `  ${installed ? "+" : "-"} ${app.name.padEnd(16)} ${version.padEnd(10)} (${method})`,
-      )
+      console.log(`  ${installed ? "+" : "-"} ${app.name.padEnd(16)} ${version.padEnd(10)} (${method})`)
     }
     console.log(`\nProbe all:  \x1b[1mterminfo probe app --all\x1b[0m`)
     console.log(`Probe one:  \x1b[1mterminfo probe app ghostty\x1b[0m`)
@@ -324,9 +347,7 @@ export async function handleApp(
   let appsToRun = APPS
   if (terminal) {
     const name = terminal.toLowerCase()
-    appsToRun = APPS.filter(
-      (app) => app.id === name || app.name.toLowerCase() === name,
-    )
+    appsToRun = APPS.filter((app) => app.id === name || app.name.toLowerCase() === name)
     if (appsToRun.length === 0) {
       console.error(`Unknown terminal. Available: ${APPS.map((a) => a.id).join(", ")}`)
       process.exit(1)

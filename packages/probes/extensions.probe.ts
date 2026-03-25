@@ -81,4 +81,9 @@ describeBackends("extensions", (b) => {
     // iTerm2 inline image protocol
     feed(b, "\x1b]1337;File=inline=1:AAAA\x07")
   })
+
+  test("extensions.sixel-da1", () => {
+    // Check if DA1 response includes sixel support (attribute 4)
+    expect(b.capabilities.sixel).toBe(true)
+  })
 })

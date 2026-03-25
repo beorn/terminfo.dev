@@ -263,8 +263,7 @@ probeServer.action(async (daemon: string | undefined, opts) => {
   if (daemon) {
     targets = daemons.filter(
       (d) =>
-        d.terminal.toLowerCase() === daemon.toLowerCase() ||
-        d.terminal.toLowerCase().includes(daemon.toLowerCase()),
+        d.terminal.toLowerCase() === daemon.toLowerCase() || d.terminal.toLowerCase().includes(daemon.toLowerCase()),
     )
     if (targets.length === 0) {
       console.error(`No daemon found matching "${daemon}".`)

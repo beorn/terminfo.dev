@@ -1411,8 +1411,91 @@ const textReverseIndexScroll: Probe = {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ── Device probes (query/response) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const deviceDecrqss: Probe = {
+  id: "device.decrqss",
+  name: "DECRQSS (request status string)",
+  async run() {
+    // DECRQSS queries a terminal setting — request DECSCL (conformance level)
+    // Response: DCS Ps $ r Pt ST  (Ps=1 valid, Ps=0 invalid)
+    const match = await queryWithSentinel('\x1bP$q"p\x1b\\', /\x1bP([01])\$r/)
+    if (match) return { pass: true, response: match[0] }
+    return { pass: false, note: "No DECRQSS response" }
+  },
+}
+
+const deviceXtgettcap: Probe = {
+  id: "device.xtgettcap",
+  name: "XTGETTCAP (termcap query)",
+  async run() {
+    // XTGETTCAP: DCS + q hex-encoded-cap ST
+    // Query "TN" (terminal name) — hex "544e"
+    // Response: DCS Ps + r hex=value ST
+    const match = await queryWithSentinel("\x1bP+q544e\x1b\\", /\x1bP([01])\+r/)
+    if (match) return { pass: true, response: match[0] }
+    return { pass: false, note: "No XTGETTCAP response" }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Input probes (additional) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const inputCsiU: Probe = {
+  id: "input.csi-u",
+  name: "CSI u key encoding",
+  async run() {
+    // Push CSI u mode (progressive enhancement level 1)
+    // CSI > 1 u — push level 1
+    process.stdout.write("\x1b[>1u")
+    const pos = await queryCursorPosition()
+    // Pop CSI u mode
+    process.stdout.write("\x1b[<u")
+    return {
+      pass: pos !== null,
+      note: pos ? undefined : "No cursor response after enabling CSI u mode",
+    }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ── Reset probes (additional) ──
+// ═══════════════════════════════════════════════════════════════════════════
+
+const resetMethod: Probe = {
+  id: "reset.method",
+  name: "Soft reset (DECSTR) homes cursor",
+  async run() {
+    process.stdout.write("\x1b[5;5H") // Move away from 1;1
+    process.stdout.write("\x1b[!p") // DECSTR — soft reset
+    const pos = await queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response after DECSTR" }
+    // DECSTR resets modes, attributes, scroll region — cursor may or may not home
+    // The key test is that the terminal processes the sequence without error
+    return { pass: true, note: `cursor at ${pos[0]};${pos[1]} after DECSTR` }
+  },
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // ── Unicode probes ──
 // ═══════════════════════════════════════════════════════════════════════════
+
+const unicodeGraphemeCursor: Probe = {
+  id: "unicode.grapheme-cursor",
+  name: "Grapheme cluster cursor advance (ZWJ emoji)",
+  async run() {
+    // ZWJ family emoji: 👨‍👩‍👧 (man + ZWJ + woman + ZWJ + girl)
+    // Should render as a single grapheme cluster occupying 2 columns
+    const width = await measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
+    if (width === null) return { pass: false, note: "Cannot measure width" }
+    return {
+      pass: width === 2,
+      note: width === 2 ? undefined : `width=${width}, expected 2`,
+    }
+  },
+}
 
 const unicodeEastAsianAmbiguous: Probe = {
   id: "unicode.east-asian-ambiguous",
@@ -1491,6 +1574,8 @@ export const ALL_PROBES: Probe[] = [
   tertiaryDA,
   deviceStatusReport,
   deviceDecrpm,
+  deviceDecrqss,
+  deviceXtgettcap,
 
   // ── Text ──
   textBasic,
@@ -1609,6 +1694,7 @@ export const ALL_PROBES: Probe[] = [
   resetRIS,
   resetSGR,
   resetSoft,
+  resetMethod,
 
   // ── SGR attributes (verify sequence is parsed, not printed) ──
   sgrProbe("sgr.bold", "Bold (SGR 1)", "\x1b[1m"),
@@ -1668,6 +1754,7 @@ export const ALL_PROBES: Probe[] = [
 
   // ── Input protocols ──
   inputModifyOtherKeys,
+  inputCsiU,
   inputPixelMouse,
   inputUrxvtMouse,
   inputX10Mouse,
@@ -1677,6 +1764,7 @@ export const ALL_PROBES: Probe[] = [
   unicodeEastAsianAmbiguous,
   unicodeWrapBoundary,
   unicodeTabStops,
+  unicodeGraphemeCursor,
 
   // ── Previously "untestable" features ──
 

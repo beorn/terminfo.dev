@@ -25,9 +25,7 @@
 
 import { Command } from "commander"
 
-const program = new Command()
-  .name("terminfo")
-  .description("Terminal feature testing for terminfo.dev")
+const program = new Command().name("terminfo").description("Terminal feature testing for terminfo.dev")
 
 // ── Default action: show nice help ──
 

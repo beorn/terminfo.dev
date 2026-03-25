@@ -69,4 +69,32 @@ describeBackends("text", (b) => {
     feed(b, "\x1b[H") // Move to top
     feed(b, "\x1bM") // Reverse index
   })
+
+  test("text.combining", () => {
+    // Combining character: e + combining acute accent
+    feed(b, "e\u0301X")
+    // The combining char shouldn't take its own cell
+    const c = b.getCell(0, 1)
+    expect(c.char).toBe("X")
+  })
+
+  test("text.wide.emoji-flags", () => {
+    // Regional indicator pair: US flag
+    feed(b, "\u{1F1FA}\u{1F1F8}X")
+    // Flag should be 2 cells wide
+    expect(b.getCell(0, 0).wide).toBe(true)
+  })
+
+  test("text.wide.emoji-vs16", () => {
+    // Variation selector 16 forces emoji presentation (2 cells)
+    feed(b, "\u263A\uFE0FX")
+    expect(b.getCell(0, 0).wide).toBe(true)
+  })
+
+  test("text.wide.emoji-zwj", () => {
+    // ZWJ sequence: family emoji
+    feed(b, "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}X")
+    const text = b.getText()
+    expect(text).toContain("X")
+  })
 })

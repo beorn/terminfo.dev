@@ -37,9 +37,10 @@ function buildSidebar() {
 
   // Build set of headless backends that are subsumed by app terminals
   // (e.g. xtermjs -> VS Code) — these don't get their own page
-  const terminalsData = JSON.parse(
-    readFileSync(join(docsDir, "..", "content", "terminals.json"), "utf-8"),
-  ) as Record<string, { headlessBackends?: string[] }>
+  const terminalsData = JSON.parse(readFileSync(join(docsDir, "..", "content", "terminals.json"), "utf-8")) as Record<
+    string,
+    { headlessBackends?: string[] }
+  >
   const appSubsumedBackends = new Set<string>()
   for (const entry of Object.values(terminalsData)) {
     for (const hb of entry.headlessBackends ?? []) {
