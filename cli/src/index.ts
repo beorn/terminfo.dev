@@ -238,6 +238,67 @@ program
     }
   })
 
+program
+  .command("serve")
+  .description("Start daemon — accepts remote probe requests from other sessions")
+  .option("-p, --port <port>", "Port to listen on (default: auto)", parseInt)
+  .action(async (opts) => {
+    const { startDaemon } = await import("./serve.ts")
+    await startDaemon(opts.port ?? 0)
+  })
+
+program
+  .command("test-all")
+  .description("Run probes on all running daemons (started with 'serve')")
+  .action(async () => {
+    const { listDaemons } = await import("./serve.ts")
+    const daemons = listDaemons()
+
+    if (daemons.length === 0) {
+      console.log(`\x1b[33mNo daemons found.\x1b[0m`)
+      console.log(`Start a daemon in each terminal: \x1b[1mnpx terminfo.dev serve\x1b[0m`)
+      return
+    }
+
+    console.log(`\x1b[1mterminfo.dev\x1b[0m — testing ${daemons.length} terminal(s)\n`)
+
+    for (const d of daemons) {
+      const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
+      process.stdout.write(`  ${label.padEnd(25)} `)
+
+      try {
+        const res = await fetch(`http://127.0.0.1:${d.port}/probe`, { signal: AbortSignal.timeout(120000) })
+        if (!res.ok) {
+          console.log(`\x1b[31m✗ HTTP ${res.status}\x1b[0m`)
+          continue
+        }
+        const data = await res.json() as any
+        const passed = Object.values(data.results).filter((v: any) => v).length
+        const total = Object.keys(data.results).length
+        const pct = Math.round(passed / total * 100)
+        const color = pct >= 98 ? "\x1b[32m" : pct >= 90 ? "\x1b[33m" : "\x1b[31m"
+        console.log(`${color}${passed}/${total} (${pct}%)\x1b[0m`)
+
+        // Save results
+        const { mkdirSync, writeFileSync } = await import("node:fs")
+        const dir = "docs/data/results/app"
+        mkdirSync(dir, { recursive: true })
+        const name = data.terminal.replace(/[^a-z0-9-]/g, "-")
+        const ver = (data.terminalVersion || "unknown").replace(/[^a-z0-9.-]/g, "-")
+        writeFileSync(`${dir}/${name}-${ver}-${data.os}.json`, JSON.stringify(data, null, 2))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes("ECONNREFUSED")) {
+          console.log(`\x1b[31m✗ not running (stale daemon file)\x1b[0m`)
+        } else {
+          console.log(`\x1b[31m✗ ${msg}\x1b[0m`)
+        }
+      }
+    }
+
+    console.log(`\nResults saved to docs/data/results/app/`)
+  })
+
 // Default action: show terminal info + help
 program.action(() => {
   const terminal = detectTerminal()
@@ -248,12 +309,14 @@ program.action(() => {
   console.log(`submitted to the community database at terminfo.dev.\x1b[0m`)
   console.log(``)
   console.log(`Commands:`)
-  console.log(`  \x1b[1mprobe\x1b[0m    Run all probes and display results`)
-  console.log(`  \x1b[1msubmit\x1b[0m   Run probes and submit to terminfo.dev`)
+  console.log(`  \x1b[1mprobe\x1b[0m      Run all probes and display results`)
+  console.log(`  \x1b[1msubmit\x1b[0m     Run probes and submit to terminfo.dev`)
+  console.log(`  \x1b[1mserve\x1b[0m      Start daemon for remote testing`)
+  console.log(`  \x1b[1mtest-all\x1b[0m   Run probes on all daemons`)
   console.log(``)
   console.log(`Options:`)
-  console.log(`  \x1b[1m--json\x1b[0m   Output results as JSON (with probe command)`)
-  console.log(`  \x1b[1m--help\x1b[0m   Show this help`)
+  console.log(`  \x1b[1m--json\x1b[0m     Output results as JSON (with probe command)`)
+  console.log(`  \x1b[1m--help\x1b[0m     Show this help`)
 })
 
 program.parse()
