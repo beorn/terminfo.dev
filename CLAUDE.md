@@ -21,10 +21,19 @@ content/                        ← ALL input data
   probes-libs/                    measured: headless backend results
   probes-mux/                     measured: multiplexer results (future)
 
-packages/                       ← ALL source code
+packages/                       ← source code (internal tools)
   probes/                         probe test files (*.probe.ts, setup.ts, vitest.config.ts)
-  cli/                            census CLI (run, apps, report, status)
+  cli/                            census CLI — headless + app probes (run, apps, report, status)
   api/                            API + badge generation (future)
+
+cli/                            ← npm-publishable CLI (npx terminfo.dev)
+  src/
+    index.ts                      entry point: serve, test-all, detect, submit
+    serve.ts                      daemon: HTTP server for in-terminal probing
+    probes/                       probe implementations (run in real terminal context)
+    detect.ts                     terminal detection (TERM, DA1, etc.)
+    submit.ts                     submit results to terminfo.dev
+    tty.ts                        raw TTY I/O helpers
 
 docs/                           ← VitePress site (built → deployed)
   .vitepress/
@@ -66,17 +75,18 @@ Each file: `{ backend, version, results: { featureId: boolean }, notes, probeHas
 
 `content/` — JSON files that humans and AI edit:
 
-| File | What | Entries |
-|------|------|---------|
-| `features.json` | Feature metadata: name, slug, tags, body, probe, baseline | ~133 |
-| `terminals.json` | Terminal app metadata: label, slug, description, body, url | ~11 |
-| `standards.json` | Standard/tag metadata: label, url, description | ~10 |
-| `categories.json` | Category metadata: label, order, description | ~13 |
-| `annotations.json` | Result overrides: backend:feature notes explaining failures | ~88 |
+| File               | What                                                        | Entries |
+| ------------------ | ----------------------------------------------------------- | ------- |
+| `features.json`    | Feature metadata: name, slug, tags, body, probe, baseline   | ~133    |
+| `terminals.json`   | Terminal app metadata: label, slug, description, body, url  | ~11     |
+| `standards.json`   | Standard/tag metadata: label, url, description              | ~10     |
+| `categories.json`  | Category metadata: label, order, description                | ~13     |
+| `annotations.json` | Result overrides: backend:feature notes explaining failures | ~88     |
 
 ### Derived: Build-Time Computation
 
 `docs/data/probes.data.ts` — reads measured + curated data, computes:
+
 - Per-backend stats (total, yes, no, partial, %)
 - Baseline compliance (core/modern/rich/unicode)
 - Feature groupings by category and tag
@@ -91,47 +101,84 @@ bun install                 # Install dependencies
 bun run dev                 # Local dev server (VitePress)
 bun run build               # Build static site (250+ pages)
 bun run preview             # Preview built site
-
-# Census
-bun census:run              # Run headless probes (cached)
-bun census:run --force      # Re-run all probes
-bun census:apps             # Test real terminal apps (macOS)
-bun census:apps --list      # List available terminals
-bun census:report           # Show saved results
-bun census:status           # Cache/config status
 ```
+
+### Probe Methods (4 ways to gather terminal data)
+
+```bash
+# 1. Headless library probes (Vitest + Termless backends, in-process)
+bun census:run              # Run all, cached
+bun census:run --force      # Re-run all
+bun census:run xtermjs/*    # Specific backend, all versions
+
+# 2. App launch probes (AppleScript opens macOS terminal apps)
+bun census:apps             # Test all installed terminals
+bun census:apps ghostty     # Specific terminal
+bun census:apps --list      # Show available
+
+# 3. Serve daemon (run inside ANY terminal — most flexible)
+npx terminfo.dev serve      # Start daemon in current terminal
+npx terminfo.dev serve -p 3456  # Specific port
+
+# 4. Test all running daemons (probes every terminal running 'serve')
+npx terminfo.dev test-all   # Discover + probe all daemons
+```
+
+### Reporting & Utilities
+
+```bash
+bun census:report           # Show saved results
+bun census:status           # Config, backends, cache info
+npx terminfo.dev detect     # Detect current terminal capabilities
+npx terminfo.dev submit     # Submit results to terminfo.dev
+```
+
+### When to use which probe method
+
+- **Headless** (`census:run`): Testing library parsers. Fast, automated, CI-friendly.
+- **App launch** (`census:apps`): Testing real macOS terminals. Requires Accessibility permission for AppleScript. Doesn't work for all terminals (Warp, some Electron apps).
+- **Serve** (`serve` + `test-all`): Testing ANY terminal. User runs `serve` in the target terminal, then `test-all` from another session probes it. Works for Warp, SSH sessions, Linux, anything with a TTY. **Most flexible method.**
+- **Manual**: For terminals where none of the above work, run `npx terminfo.dev detect` and submit results.
 
 ## Data Flow
 
 ```
-Probes (packages/probes/*.probe.ts)
-  ↓ bun census:run (Vitest + Termless backends)
-  ↓ bun census:apps (real macOS terminals via AppleScript)
-content/probes-apps/*.json + content/probes-libs/*.json (MEASURED)
+4 probe methods:
+  packages/probes/*.probe.ts    ← headless: bun census:run (Vitest + Termless)
+  packages/cli/app-runner.ts    ← app launch: bun census:apps (AppleScript)
+  cli/src/serve.ts              ← daemon: npx terminfo.dev serve (HTTP in terminal)
+  cli/src/detect.ts             ← manual: npx terminfo.dev detect (standalone)
+
+  ↓ results saved to
+
+content/probes-apps/*.json      ← real terminal results
+content/probes-libs/*.json      ← headless backend results
   +
-content/*.json (CURATED)
+content/*.json                  ← editorial metadata (features, terminals, standards...)
+
   ↓ VitePress build
-docs/data/probes.data.ts (DERIVED — computes CensusData)
+
+docs/data/probes.data.ts        ← merges all data into CensusData
   ↓
-[id].paths.ts files (route generators)
+[id].paths.ts                   ← route generators (feature, terminal, compare...)
   ↓
-[id].md templates (Vue + VitePress)
+[id].md                         ← Vue templates
   ↓
-docs/.vitepress/dist/ (250+ static HTML pages + sitemap.xml)
+docs/.vitepress/dist/           ← 250+ static HTML pages + sitemap.xml
 ```
 
 ## Page Types (all generated at build time)
 
-| Type | URL Pattern | Count | Generator |
-|------|------------|-------|-----------|
-| Home matrix | `/` | 1 | `index.md` |
-| Feature detail | `/{category}/{slug}` | ~133 | `[category]/[id].paths.ts` |
-| Terminal detail | `/terminal/{slug}` | ~19 | `terminal/[id].paths.ts` |
-| Category | `/{category}` | ~13 | `[id].paths.ts` |
-| Standard/tag | `/{tag}` | ~10 | `[id].paths.ts` |
-| Comparison | `/compare/{a}-vs-{b}` | ~66 | `compare/[id].paths.ts` |
-| API | `/api` | 1 | `api.md` |
-| About | `/about` | 1 | `about.md` |
+| Type            | URL Pattern           | Count | Generator                  |
+| --------------- | --------------------- | ----- | -------------------------- |
+| Home matrix     | `/`                   | 1     | `index.md`                 |
+| Feature detail  | `/{category}/{slug}`  | ~133  | `[category]/[id].paths.ts` |
+| Terminal detail | `/terminal/{slug}`    | ~19   | `terminal/[id].paths.ts`   |
+| Category        | `/{category}`         | ~13   | `[id].paths.ts`            |
+| Standard/tag    | `/{tag}`              | ~10   | `[id].paths.ts`            |
+| Comparison      | `/compare/{a}-vs-{b}` | ~66   | `compare/[id].paths.ts`    |
+| API             | `/api`                | 1     | `api.md`                   |
+| About           | `/about`              | 1     | `about.md`                 |
 
 ## Adding a New Terminal
 
