@@ -175,6 +175,12 @@ describeBackends("sgr", (b) => {
     expect(!!cell.underline).toBe(false)
   })
 
+  test("sgr.selective-reset.italic", () => {
+    feed(b, "\x1b[3mX\x1b[23mY")
+    const cell = b.getCell(0, 1)
+    expect(cell.italic).toBe(false)
+  })
+
   test("sgr.selective-reset.inverse", () => {
     feed(b, "\x1b[7mX\x1b[27mY")
     const cell = b.getCell(0, 1)

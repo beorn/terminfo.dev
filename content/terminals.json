@@ -68,7 +68,7 @@
   },
   "com.microsoft.VSCode": {
     "label": "VS Code",
-    "slug": "vscode",
+    "slug": "vs-code",
     "url": "https://code.visualstudio.com",
     "description": "Microsoft's code editor with integrated terminal. Uses xterm.js for terminal emulation.",
     "body": "<p><strong>Visual Studio Code</strong> is Microsoft's open-source code editor, the most widely used IDE in the world. Its integrated terminal is powered by <strong>xterm.js</strong>, the most widely deployed terminal emulator — used not just in VS Code but in countless web-based terminals, cloud IDEs, and development tools.</p>\n<p>VS Code pioneered <strong>shell integration</strong> via the OSC 633 protocol, which enables features like command decoration (success/failure markers), command navigation, and sticky scroll for terminal output. This protocol is now being adopted by other terminals.</p>\n<p>The xterm.js terminal provides solid basics — truecolor, Unicode, mouse tracking, bracketed paste, and link detection. It lacks some advanced features like kitty keyboard protocol and graphics protocols, but its ubiquity means it's the baseline that most CLI tools target for compatibility.</p>",

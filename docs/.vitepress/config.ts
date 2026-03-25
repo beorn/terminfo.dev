@@ -35,12 +35,26 @@ function buildSidebar() {
   const meta = loadBackendMeta()
   const terminals: Array<{ text: string; link: string }> = []
 
+  // Build set of headless backends that are subsumed by app terminals
+  // (e.g. xtermjs -> VS Code) — these don't get their own page
+  const terminalsData = JSON.parse(
+    readFileSync(join(docsDir, "..", "content", "terminals.json"), "utf-8"),
+  ) as Record<string, { headlessBackends?: string[] }>
+  const appSubsumedBackends = new Set<string>()
+  for (const entry of Object.values(terminalsData)) {
+    for (const hb of entry.headlessBackends ?? []) {
+      appSubsumedBackends.add(hb)
+    }
+  }
+
   try {
     const files = readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "census.json")
     for (const file of files) {
       try {
         const raw = JSON.parse(readFileSync(join(probesLibsDir, file), "utf-8"))
         if (!raw.backend) continue
+        // Skip backends that are merged into an app terminal page
+        if (appSubsumedBackends.has(raw.backend)) continue
         const label = meta[raw.backend]?.label ?? raw.backend
         const slug = terminalSlug(raw.backend, meta)
         terminals.push({ text: label, link: `/terminal/${slug}` })

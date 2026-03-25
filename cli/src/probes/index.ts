@@ -1642,6 +1642,7 @@ export const ALL_PROBES: Probe[] = [
   // ── SGR selective resets ──
   sgrProbe("sgr.selective-reset.bold", "Reset bold (SGR 22)", "\x1b[1m\x1b[22m"),
   sgrProbe("sgr.selective-reset.underline", "Reset underline (SGR 24)", "\x1b[4m\x1b[24m"),
+  sgrProbe("sgr.selective-reset.italic", "Reset italic (SGR 23)", "\x1b[3m\x1b[23m"),
   sgrProbe("sgr.selective-reset.inverse", "Reset inverse (SGR 27)", "\x1b[7m\x1b[27m"),
 
   // ── Charsets ──
