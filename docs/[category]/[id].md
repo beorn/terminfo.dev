@@ -11,6 +11,8 @@ const p = params.value
 
 const backendResults = JSON.parse(p.backendResults)
 const featureTags = JSON.parse(p.featureTags || '[]')
+const appResults = backendResults.filter(r => r.type === 'app')
+const headlessResults = backendResults.filter(r => r.type === 'headless')
 
 function icon(result) {
   if (result === 'yes') return '✓'
@@ -47,19 +49,19 @@ function cls(result) {
   Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> backends ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
 </p>
 
-## Support Matrix
+## Terminal Applications
 
-<table class="support-table">
+<table v-if="appResults.length > 0" class="support-table">
   <thead>
     <tr>
-      <th>Backend</th>
+      <th>Terminal</th>
       <th>Version</th>
       <th>Support</th>
       <th>Notes</th>
     </tr>
   </thead>
   <tbody>
-    <tr v-for="r in backendResults" :key="r.name">
+    <tr v-for="r in appResults" :key="r.name">
       <td><a :href="'/terminal/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
       <td :class="cls(r.result)" class="result-cell">{{ icon(r.result) }} {{ r.result }}</td>
@@ -70,6 +72,37 @@ function cls(result) {
     </tr>
   </tbody>
 </table>
+<p v-else class="no-data-inline">No app results yet.</p>
+
+<div v-if="headlessResults.length > 0">
+
+## Headless Backends
+
+<p class="headless-note">Parser correctness only — a <span class="cell-yes-inline">✓</span> means the parser accepts the sequence.</p>
+
+<table class="support-table support-table-muted">
+  <thead>
+    <tr>
+      <th>Backend</th>
+      <th>Version</th>
+      <th>Support</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr v-for="r in headlessResults" :key="r.name">
+      <td><a :href="'/terminal/' + r.slug">{{ r.label }}</a></td>
+      <td class="version-cell">{{ r.version }}</td>
+      <td :class="cls(r.result)" class="result-cell">{{ icon(r.result) }} {{ r.result }}</td>
+      <td class="note-cell">
+        {{ r.note }}
+        <a v-if="r.url" :href="r.url" target="_blank" rel="noopener" class="upstream-link"> ↗ upstream</a>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+</div>
 
 <p class="back-link">
   <a href="/">← Back to matrix</a> · <a :href="'/' + p.featureCategory">{{ p.featureCategory }} features</a>
@@ -198,6 +231,35 @@ function cls(result) {
 .cell-partial { color: #f59e0b; }
 .cell-no { color: #ef4444; }
 .cell-unknown { color: #8b5cf6; }
+
+.cell-yes-inline {
+  color: #10b981;
+  font-weight: 700;
+}
+
+.no-data-inline {
+  color: var(--vp-c-text-3);
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.headless-note {
+  padding: 0.75em 1em;
+  background: var(--vp-c-bg-soft);
+  border-left: 3px solid var(--vp-c-text-3);
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: var(--vp-c-text-2);
+  margin-bottom: 1em;
+}
+
+.headless-note a {
+  color: var(--vp-c-brand-1);
+}
+
+.support-table-muted {
+  opacity: 0.85;
+}
 
 .back-link {
   margin-top: 2em;

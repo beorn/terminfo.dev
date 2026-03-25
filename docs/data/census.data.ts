@@ -18,6 +18,7 @@ export interface BackendInfo {
   name: string
   version: string
   engine: string
+  type?: "app" | "headless"
 }
 
 export interface FeatureResult {
@@ -213,6 +214,7 @@ function loadAppResults(): CensusData {
       name,
       version: raw.terminalVersion ?? "",
       engine: "",
+      type: "app",
     })
     results[name] = {}
     notes[name] = {}
@@ -310,7 +312,10 @@ function buildAppMeta(terminal: string): BackendMeta {
 function loadUnifiedCensus(path: string): CensusData {
   const raw = JSON.parse(readFileSync(path, "utf-8"))
 
-  const backends: BackendInfo[] = Object.values(raw.backends ?? {})
+  const backends: BackendInfo[] = (Object.values(raw.backends ?? {}) as BackendInfo[]).map((b) => ({
+    ...b,
+    type: "headless" as const,
+  }))
   const backendNames = backends.map((b) => b.name)
 
   const features: FeatureResult[] = (raw.features ?? []).map((f: any) => ({
@@ -409,6 +414,7 @@ function loadPerBackendResults(): CensusData {
         name: raw.backend,
         version: raw.version ?? "",
         engine: raw.engine ?? "",
+        type: "headless",
       })
       results[raw.backend] = {}
       notes[raw.backend] = {}

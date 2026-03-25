@@ -41,6 +41,10 @@ const sortedBackends = computed(() => {
   })
 })
 
+// Split into app (real terminals) and headless backends
+const appBackends = computed(() => sortedBackends.value.filter(b => b.type === 'app'))
+const headlessBackends = computed(() => sortedBackends.value.filter(b => b.type === 'headless'))
+
 const sortedCategories = computed(() => {
   const keys = Object.keys(data.categories)
   return keys.sort((a, b) => {
@@ -187,10 +191,12 @@ function backendTooltip(name, version) {
 
 <div v-else>
 
-## Backend Summary {#summary}
+## Terminal Applications {#summary}
 
-<div class="summary">
-  <div v-for="b in sortedBackends" :key="b.name" class="summary-row">
+<p class="section-subtitle">Tested on real terminal applications via the <a href="https://www.npmjs.com/package/terminfo.dev">community CLI</a></p>
+
+<div v-if="appBackends.length > 0" class="summary">
+  <div v-for="b in appBackends" :key="b.name" class="summary-row">
     <a class="summary-name hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
@@ -204,6 +210,7 @@ function backendTooltip(name, version) {
     </span>
   </div>
 </div>
+<p v-else class="no-data-inline">No app results yet. Run <code>npx terminfo.dev submit</code> to contribute.</p>
 
 ## Feature Matrix {#matrix}
 
@@ -223,19 +230,19 @@ function backendTooltip(name, version) {
   </label>
 </div>
 
-<div class="matrix-wrapper">
+<div v-if="appBackends.length > 0" class="matrix-wrapper">
 <table class="matrix">
   <thead>
     <tr>
       <th class="feature-col"></th>
-      <th v-for="b in sortedBackends" :key="b.name" :data-tooltip="backendTooltip(b.name, b.version)">
+      <th v-for="b in appBackends" :key="b.name" :data-tooltip="backendTooltip(b.name, b.version)">
         <a class="hover-link" :href="'/terminal/' + termSlug(b.name)">{{ backendLabel(b.name) }}</a>
       </th>
     </tr>
   </thead>
   <tbody v-for="cat in filteredCategories" :key="cat">
     <tr class="category-row">
-      <td :colspan="sortedBackends.length + 1" class="category-header">
+      <td :colspan="appBackends.length + 1" class="category-header">
         <a class="hover-link" :href="'/' + cat">{{ catLabel(cat) }}</a>
       </td>
     </tr>
@@ -243,7 +250,7 @@ function backendTooltip(name, version) {
       <td class="feature-name" :data-tooltip="featureTooltip(f)">
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
-      <td v-for="b in sortedBackends" :key="b.name"
+      <td v-for="b in appBackends" :key="b.name"
           :class="cellClass(getResult(b.name, f.id))"
           :data-tooltip="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
         <a class="cell-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ cellIcon(getResult(b.name, f.id)) }}</a>
@@ -253,29 +260,84 @@ function backendTooltip(name, version) {
 </table>
 </div>
 
+<div v-if="headlessBackends.length > 0">
+
+## Headless Backends {#headless}
+
+<p class="section-subtitle">Parser correctness tested via <a href="https://termless.dev">Termless</a> — headless libraries may not expose all features through their API</p>
+
+<div class="headless-note">
+  Headless backends test parser correctness, not rendering. A <span class="cell-yes-inline">✓</span> means the parser accepts the sequence, not that it renders correctly.
+</div>
+
+<div class="summary summary-muted">
+  <div v-for="b in headlessBackends" :key="b.name" class="summary-row">
+    <a class="summary-name hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <span class="summary-version">{{ b.version }}</span>
+    <div class="summary-bar">
+      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
+      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
+    </div>
+    <span class="summary-pct">{{ data.stats[b.name]?.pct }}%</span>
+    <span class="summary-counts">
+      {{ data.stats[b.name]?.yes }} / {{ data.stats[b.name]?.total }}
+    </span>
+  </div>
+</div>
+
+<div class="matrix-wrapper">
+<table class="matrix matrix-muted">
+  <thead>
+    <tr>
+      <th class="feature-col"></th>
+      <th v-for="b in headlessBackends" :key="b.name" :data-tooltip="backendTooltip(b.name, b.version)">
+        <a class="hover-link" :href="'/terminal/' + termSlug(b.name)">{{ backendLabel(b.name) }}</a>
+      </th>
+    </tr>
+  </thead>
+  <tbody v-for="cat in filteredCategories" :key="cat">
+    <tr class="category-row">
+      <td :colspan="headlessBackends.length + 1" class="category-header">
+        <a class="hover-link" :href="'/' + cat">{{ catLabel(cat) }}</a>
+      </td>
+    </tr>
+    <tr v-for="f in filteredFeatures(cat)" :key="f.id">
+      <td class="feature-name" :data-tooltip="featureTooltip(f)">
+        <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
+      </td>
+      <td v-for="b in headlessBackends" :key="b.name"
+          :class="cellClass(getResult(b.name, f.id))"
+          :data-tooltip="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
+        <a class="cell-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ cellIcon(getResult(b.name, f.id)) }}</a>
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+</div>
+
 <p class="footer-note">
   Hover over any cell for details.<br/>
-  Data from <a href="https://termless.dev">Termless</a> census probes.
+  Data from <a href="https://termless.dev">Termless</a> census probes and <a href="https://www.npmjs.com/package/terminfo.dev">community submissions</a>.
   {{ data.generated ? 'Generated: ' + data.generated : '' }}
 </p>
 
 ## How This Works
 
-Data is collected by [Termless](https://termless.dev) census probes — standardized
-test sequences sent to **headless terminal emulator libraries**, not the terminal
-applications themselves. Each probe writes ANSI escape sequences and reads back
-the terminal state via the library's API.
+Data comes from two complementary sources:
 
-::: warning Headless ≠ Real Terminal
-These results test **library implementations** (e.g., `@xterm/headless`, not xterm.js
-in VS Code). Some libraries don't expose all features through their headless API —
-for example, `@xterm/headless` doesn't report cursor visibility or underline variants,
-even though the full xterm.js renderer supports them. Scores reflect **API
-completeness**, not the real terminal's capabilities.
+**Terminal Applications** — tested on real terminals via the `npx terminfo.dev` community CLI.
+Each test sends escape sequences to the actual terminal and verifies behavior via cursor
+position reports, device attribute queries, and rendered width measurements. These results
+reflect what users actually experience.
 
-We're working on [app-level testing](about) that probes real terminal applications
-(iTerm2, Terminal.app, Kitty, Ghostty, Warp) to capture what users actually see.
-:::
+**Headless Backends** — tested via [Termless](https://termless.dev) against headless terminal
+emulator libraries. These test parser correctness — whether the library correctly parses and
+stores the escape sequence. A headless pass means "the parser accepts this," not "this renders
+correctly." Some features (like blink, cursor shape) may parse correctly but are not exposed
+through the library's API.
 
 </div>
 
@@ -286,6 +348,44 @@ We're working on [app-level testing](about) that probes real terminal applicatio
   border-radius: 8px;
   margin: 2em 0;
   text-align: center;
+}
+
+.no-data-inline {
+  color: var(--vp-c-text-3);
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.section-subtitle {
+  color: var(--vp-c-text-3);
+  font-size: 0.9em;
+  margin-top: -0.8em;
+  margin-bottom: 1em;
+}
+
+/* Headless note callout */
+.headless-note {
+  padding: 0.75em 1em;
+  background: var(--vp-c-bg-soft);
+  border-left: 3px solid var(--vp-c-text-3);
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: var(--vp-c-text-2);
+  margin-bottom: 1em;
+}
+
+.cell-yes-inline {
+  color: #10b981;
+  font-weight: 700;
+}
+
+/* Muted style for headless sections */
+.summary-muted {
+  opacity: 0.85;
+}
+
+.matrix-muted {
+  opacity: 0.85;
 }
 
 /* Summary section */

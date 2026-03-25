@@ -11,6 +11,8 @@ const p = params.value
 
 const features = JSON.parse(p.features)
 const backends = JSON.parse(p.backends)
+const appBackends = backends.filter(b => b.type === 'app')
+const headlessBackends = backends.filter(b => b.type === 'headless')
 
 function icon(result) {
   if (result === 'yes') return '✓'
@@ -59,14 +61,14 @@ function termTooltip(b) {
   <span v-if="p.specUrl"> · <a :href="p.specUrl" target="_blank" rel="noopener">Specification ↗</a></span>
 </p>
 
-## Support Matrix
+## Terminal Applications
 
-<div class="matrix-wrapper">
+<div v-if="appBackends.length > 0" class="matrix-wrapper">
 <table class="matrix">
   <thead>
     <tr>
       <th class="feature-col">Feature</th>
-      <th v-for="b in backends" :key="b.name" :data-tooltip="termTooltip(b)">
+      <th v-for="b in appBackends" :key="b.name" :data-tooltip="termTooltip(b)">
         <a :href="'/terminal/' + b.slug">{{ b.label }}</a>
       </th>
     </tr>
@@ -76,7 +78,7 @@ function termTooltip(b) {
       <td class="feature-name" :data-tooltip="featureTooltip(f)">
         <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
       </td>
-      <td v-for="b in backends" :key="b.name"
+      <td v-for="b in appBackends" :key="b.name"
           :class="cls(f.results[b.name]?.result)"
           :data-tooltip="tooltip(f.results[b.name]?.result, f.results[b.name]?.note)">
         <a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.results[b.name]?.result) }}</a>
@@ -84,6 +86,40 @@ function termTooltip(b) {
     </tr>
   </tbody>
 </table>
+</div>
+<p v-else class="no-data-inline">No app results yet. Run <code>npx terminfo.dev submit</code> to contribute.</p>
+
+<div v-if="headlessBackends.length > 0">
+
+## Headless Backends
+
+<p class="headless-note">Parser correctness tested via <a href="https://termless.dev">Termless</a>. A <span class="cell-yes-inline">✓</span> means the parser accepts the sequence, not that it renders correctly.</p>
+
+<div class="matrix-wrapper">
+<table class="matrix matrix-muted">
+  <thead>
+    <tr>
+      <th class="feature-col">Feature</th>
+      <th v-for="b in headlessBackends" :key="b.name" :data-tooltip="termTooltip(b)">
+        <a :href="'/terminal/' + b.slug">{{ b.label }}</a>
+      </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr v-for="f in features" :key="f.id">
+      <td class="feature-name" :data-tooltip="featureTooltip(f)">
+        <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
+      </td>
+      <td v-for="b in headlessBackends" :key="b.name"
+          :class="cls(f.results[b.name]?.result)"
+          :data-tooltip="tooltip(f.results[b.name]?.result, f.results[b.name]?.note)">
+        <a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.results[b.name]?.result) }}</a>
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
 </div>
 
 <p class="back-link">
@@ -234,6 +270,35 @@ function termTooltip(b) {
 
 [data-tooltip=""]:hover::after {
   display: none;
+}
+
+.no-data-inline {
+  color: var(--vp-c-text-3);
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.headless-note {
+  padding: 0.75em 1em;
+  background: var(--vp-c-bg-soft);
+  border-left: 3px solid var(--vp-c-text-3);
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: var(--vp-c-text-2);
+  margin-bottom: 1em;
+}
+
+.headless-note a {
+  color: var(--vp-c-brand-1);
+}
+
+.cell-yes-inline {
+  color: #10b981;
+  font-weight: 700;
+}
+
+.matrix-muted {
+  opacity: 0.85;
 }
 
 .back-link {

@@ -4,15 +4,17 @@
 matrix showing which terminal capabilities are supported by each terminal backend,
 based on automated testing rather than self-reported specs.
 
+## Two Data Sources
+
+**Terminal Applications** — tested on real terminals via the `npx terminfo.dev` community CLI. Each test sends escape sequences to the actual terminal and verifies behavior via cursor position reports, device attribute queries, and rendered width measurements. These results reflect what users actually experience.
+
+**Headless Backends** — tested via [Termless](https://termless.dev) against headless terminal emulator libraries. These test parser correctness — whether the library correctly parses and stores the escape sequence. A headless pass means "the parser accepts this" not "this renders correctly." Some features (like blink, cursor shape) may parse correctly but are not exposed through the library's API.
+
+The site shows these as two separate sections: real terminal results first (the primary data source), headless backend results second (useful for parser implementors and library authors).
+
 ## How Data Is Collected
 
-Data comes from two complementary sources:
-
-### 1. Headless Library Probes (automated)
-
-[Termless](https://termless.dev) runs 106 automated probes against headless terminal emulator libraries (xterm.js, Ghostty, Alacritty, etc.) in CI. Each probe sends an ANSI escape sequence and reads back the terminal state programmatically. Results marked **partial** (~) indicate features the real terminal supports but the headless API doesn't expose.
-
-### 2. Community CLI Probes (crowd-sourced)
+### 1. Community CLI Probes (crowd-sourced)
 
 Anyone can test their actual terminal application:
 
@@ -25,9 +27,13 @@ The CLI auto-detects your terminal (Ghostty, iTerm2, Kitty, Terminal.app, WezTer
 
 This is the same crowd-sourced model used by [caniuse.com](https://caniuse.com) for browser compatibility data.
 
+### 2. Headless Library Probes (automated)
+
+[Termless](https://termless.dev) runs automated probes against headless terminal emulator libraries (xterm.js, Ghostty, Alacritty, vterm.js, etc.) in CI. Each probe sends an ANSI escape sequence and reads back the terminal state programmatically. Results marked **partial** (~) indicate features the real terminal supports but the headless API doesn't expose.
+
 ### Why Both?
 
-Headless probes test **parser correctness** — does the terminal engine understand the sequence? Community probes test **real terminal behavior** — does the actual application handle it? The combination gives accurate results: headless catches parsing bugs, community probes catch API gaps and real-world differences.
+Community probes test **real terminal behavior** — does the actual application handle it? Headless probes test **parser correctness** — does the terminal engine understand the sequence? The combination gives accurate results: community probes capture what users actually see, headless probes catch parsing bugs and help library authors verify conformance.
 
 ## Backends Tested
 

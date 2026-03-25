@@ -29,6 +29,7 @@ export default {
       slug: terminalSlug(b.name, data.meta),
       label: data.meta[b.name]?.label ?? b.name,
       version: b.version,
+      type: b.type ?? "headless",
     }))
 
     // --- Category pages ---

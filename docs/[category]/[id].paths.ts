@@ -16,6 +16,7 @@ export default {
         slug: string
         label: string
         version: string
+        type: string
         result: string
         note: string
         url: string
@@ -31,6 +32,7 @@ export default {
           slug: terminalSlug(b.name, data.meta),
           label: data.meta[b.name]?.label ?? b.name,
           version: b.version,
+          type: b.type ?? "headless",
           result,
           note,
           url,
