@@ -290,14 +290,20 @@ function crossValidate(
   terminals: Record<string, TerminalMeta>,
   resultMap: Map<string, { results: Record<string, boolean> }>,
 ): void {
-  // Every feature ID in results must exist in features.json
+  // Features in results should be in features.json — warn for missing
+  // (probes may include features not yet documented in features.json)
+  const undocumented = new Set<string>()
   for (const [termId, data] of resultMap) {
     for (const featureId of Object.keys(data.results)) {
-      assert(
-        features[featureId],
-        `Feature '${featureId}' found in results for '${termId}' but not in features.json`,
-      )
+      if (!features[featureId]) {
+        undocumented.add(featureId)
+      }
     }
+  }
+  if (undocumented.size > 0) {
+    console.warn(
+      `Warning: ${undocumented.size} feature(s) in probe results not in features.json: ${[...undocumented].join(", ")}`,
+    )
   }
 
   // Warn (but don't throw) for terminals with no results
@@ -419,11 +425,6 @@ function generateTerminalAnalysis(
 ): AnalysisEntry {
   const parts: string[] = []
 
-  // Score summary
-  parts.push(
-    `${stats.name} scores <strong>${stats.pct}%</strong> (${stats.yes}/${stats.total}) on the terminfo.dev feature matrix`,
-  )
-
   // Baseline compliance
   const failedBaselines = Object.entries(stats.baselineCompliance)
     .filter(([, bl]) => bl.pct < 100)
@@ -432,33 +433,48 @@ function generateTerminalAnalysis(
     .filter(([, bl]) => bl.pct === 100)
     .map(([name]) => baselines[name]?.label ?? name)
 
+  // Score summary + baseline in one sentence
   if (failedBaselines.length === 0 && passedBaselines.length > 0) {
-    parts.push(`achieving <strong>100%</strong> compliance on all four baselines (${passedBaselines.join(", ")})`)
+    parts.push(
+      `${stats.name} scores <strong>${stats.pct}%</strong> (${stats.yes}/${stats.total}) on the terminfo.dev feature matrix, achieving <strong>100%</strong> compliance on all four baselines (${passedBaselines.join(", ")})`,
+    )
   } else if (failedBaselines.length > 0) {
-    parts.push(`with gaps in the ${failedBaselines.join(", ")} baseline${failedBaselines.length > 1 ? "s" : ""}`)
+    parts.push(
+      `${stats.name} scores <strong>${stats.pct}%</strong> (${stats.yes}/${stats.total}) on the terminfo.dev feature matrix, with gaps in the ${failedBaselines.join(", ")} baseline${failedBaselines.length > 1 ? "s" : ""}`,
+    )
+  } else {
+    parts.push(
+      `${stats.name} scores <strong>${stats.pct}%</strong> (${stats.yes}/${stats.total}) on the terminfo.dev feature matrix`,
+    )
   }
 
   // Ranking
   parts.push(`Ranks <strong>#${rank}</strong> of ${totalTerminals} tested terminals`)
 
+  // Only include documented features (in features.json) in human-readable lists
+  const documented = (ids: string[]) => ids.filter((id) => features[id])
+
   // Unique strengths
-  if (stats.uniquelySupported.length > 0) {
-    const names = stats.uniquelySupported.slice(0, 5).map((id) => featureName(features, id))
+  const docUniqueSupported = documented(stats.uniquelySupported)
+  if (docUniqueSupported.length > 0) {
+    const names = docUniqueSupported.slice(0, 5).map((id) => featureName(features, id))
     parts.push(`Uniquely supports: ${names.join(", ")}`)
   }
 
   // Unique gaps
-  if (stats.uniquelyMissing.length > 0 && stats.uniquelyMissing.length <= 5) {
-    const names = stats.uniquelyMissing.map((id) => featureName(features, id))
+  const docUniqueMissing = documented(stats.uniquelyMissing)
+  if (docUniqueMissing.length > 0 && docUniqueMissing.length <= 5) {
+    const names = docUniqueMissing.map((id) => featureName(features, id))
     parts.push(`Uniquely missing (all other terminals pass): ${names.join(", ")}`)
   }
 
   // Missing features (if few)
-  if (stats.missingFeatures.length > 0 && stats.missingFeatures.length <= 8) {
-    const names = stats.missingFeatures.map((id) => featureName(features, id))
+  const docMissing = documented(stats.missingFeatures)
+  if (docMissing.length > 0 && docMissing.length <= 8) {
+    const names = docMissing.map((id) => featureName(features, id))
     parts.push(`Missing: ${names.join(", ")}`)
-  } else if (stats.missingFeatures.length > 8) {
-    parts.push(`Missing <strong>${stats.missingFeatures.length}</strong> features`)
+  } else if (docMissing.length > 8) {
+    parts.push(`Missing <strong>${docMissing.length}</strong> features`)
   }
 
   return {
@@ -545,20 +561,22 @@ function generateCompareAnalysis(
 
   // Who leads
   if (statsA.pct > statsB.pct) {
-    parts.push(`${statsA.name} leads by ${statsA.pct - statsB.pct} percentage points`)
+    const diff = statsA.pct - statsB.pct
+    parts.push(`${statsA.name} leads by ${diff} percentage point${diff === 1 ? "" : "s"}`)
   } else if (statsB.pct > statsA.pct) {
-    parts.push(`${statsB.name} leads by ${statsB.pct - statsA.pct} percentage points`)
+    const diff = statsB.pct - statsA.pct
+    parts.push(`${statsB.name} leads by ${diff} percentage point${diff === 1 ? "" : "s"}`)
   } else {
     parts.push("Both terminals are tied in overall score")
   }
 
-  // Features A has that B doesn't
+  // Features A has that B doesn't (only documented features)
   const onlyA = Object.entries(statsA.results)
-    .filter(([id, v]) => v === true && statsB.results[id] !== true)
+    .filter(([id, v]) => v === true && statsB.results[id] !== true && features[id])
     .map(([id]) => id)
-  // Features B has that A doesn't
+  // Features B has that A doesn't (only documented features)
   const onlyB = Object.entries(statsB.results)
-    .filter(([id, v]) => v === true && statsA.results[id] !== true)
+    .filter(([id, v]) => v === true && statsA.results[id] !== true && features[id])
     .map(([id]) => id)
 
   if (onlyA.length > 0) {
@@ -637,7 +655,7 @@ function generateCategoryAnalysis(
     .slice(0, 3)
   if (commonGaps.length > 0) {
     const gapNames = commonGaps.map(
-      ([id, count]) => `${featureName(features, id)} (${count} terminals fail)`,
+      ([id, count]) => `${featureName(features, id)} (${count} terminal${count === 1 ? " fails" : "s fail"})`,
     )
     parts.push(`Common gaps: ${gapNames.join(", ")}`)
   }
@@ -661,7 +679,7 @@ function generateStandardAnalysis(
     .map(([id]) => id)
 
   parts.push(
-    `<strong>${stdMeta.label}</strong> defines ${taggedFeatures.length} features in the terminfo.dev matrix`,
+    `<strong>${stdMeta.label}</strong> defines ${taggedFeatures.length} feature${taggedFeatures.length === 1 ? "" : "s"} in the terminfo.dev matrix`,
   )
 
   // Adoption: how many terminals support all features in this standard?
