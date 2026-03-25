@@ -157,12 +157,20 @@ function buildSidebar() {
         if (!raw.terminal || seen.has(raw.terminal)) continue
         seen.add(raw.terminal)
         const labels: Record<string, string> = {
-          ghostty: "Ghostty", kitty: "Kitty", iterm2: "iTerm2",
-          "terminal-app": "Terminal.app", warp: "Warp", cmux: "cmux",
-          cursor: "Cursor", "com.microsoft.VSCode": "VS Code",
+          ghostty: "Ghostty",
+          kitty: "Kitty",
+          iterm2: "iTerm2",
+          "terminal-app": "Terminal.app",
+          warp: "Warp",
+          cmux: "cmux",
+          cursor: "Cursor",
+          "com.microsoft.VSCode": "VS Code",
         }
         const label = labels[raw.terminal] ?? raw.terminal
-        const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
+        const slug = label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/-+$/, "")
         appTerminals.push({ text: label, link: `/terminal/${slug}` })
       } catch {}
     }
