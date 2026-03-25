@@ -117,15 +117,185 @@ export { data }
 
 export default {
   load(): CensusData {
-    // Try unified census.json first (primary source)
+    // Load app (community) results as primary — these test real terminals
+    const appData = loadAppResults()
+
+    // Load headless results as fallback for terminals without app results
+    let headlessData: CensusData
     const unifiedPath = join(resultsDir, "census.json")
     if (existsSync(unifiedPath)) {
-      return loadUnifiedCensus(unifiedPath)
+      headlessData = loadUnifiedCensus(unifiedPath)
+    } else {
+      headlessData = loadPerBackendResults()
     }
 
-    // Try per-backend JSON files as fallback
-    return loadPerBackendResults()
+    // If we have app results, merge them as primary
+    if (appData.backends.length > 0) {
+      return mergeResults(appData, headlessData)
+    }
+
+    // Fallback to headless only
+    return headlessData
   },
+}
+
+/** Merge app results (primary) with headless results (fallback for missing terminals) */
+function mergeResults(app: CensusData, headless: CensusData): CensusData {
+  const merged = { ...app }
+
+  // Add headless-only backends that don't have app results
+  const appNames = new Set(app.backends.map(b => b.name))
+  for (const hb of headless.backends) {
+    // Map headless backend names to app terminal names
+    const appName = headlessToAppName(hb.name)
+    if (!appNames.has(appName) && !appNames.has(hb.name)) {
+      merged.backends.push(hb)
+      merged.results[hb.name] = headless.results[hb.name] ?? {}
+      merged.notes[hb.name] = headless.notes[hb.name] ?? {}
+      merged.stats[hb.name] = headless.stats[hb.name] ?? { total: 0, yes: 0, no: 0, partial: 0, pct: 0 }
+      if (headless.meta[hb.name]) merged.meta[hb.name] = headless.meta[hb.name]
+    }
+  }
+
+  return merged
+}
+
+function headlessToAppName(backend: string): string {
+  const map: Record<string, string> = {
+    "xtermjs": "com.microsoft.VSCode",
+    "ghostty-native": "ghostty",
+    "kitty": "kitty",
+  }
+  return map[backend] ?? backend
+}
+
+/** Load community/app results from docs/data/results/app/ */
+function loadAppResults(): CensusData {
+  const appDir = join(resultsDir, "app")
+  let files: string[]
+  try {
+    files = readdirSync(appDir).filter(f => f.endsWith(".json"))
+  } catch {
+    return emptyData()
+  }
+  if (files.length === 0) return emptyData()
+
+  // Keep only latest result per terminal
+  const latest = new Map<string, any>()
+  for (const file of files) {
+    try {
+      const raw = JSON.parse(readFileSync(join(appDir, file), "utf-8"))
+      if (!raw.terminal || !raw.results) continue
+      const key = raw.terminal
+      if (!latest.has(key) || (raw.generated ?? "") > (latest.get(key).generated ?? "")) {
+        latest.set(key, raw)
+      }
+    } catch {}
+  }
+
+  const allBackends: BackendInfo[] = []
+  const results: Record<string, Record<string, string>> = {}
+  const notes: Record<string, Record<string, string>> = {}
+  const featureSet = new Map<string, FeatureResult>()
+  const featureDescs = loadFeatureDescriptions()
+
+  for (const [name, raw] of latest) {
+    allBackends.push({
+      name,
+      version: raw.terminalVersion ?? "",
+      engine: "",
+    })
+    results[name] = {}
+    notes[name] = {}
+    for (const [id, val] of Object.entries(raw.results ?? {})) {
+      results[name][id] = val ? "yes" : "no"
+      if (raw.notes?.[id]) notes[name][id] = raw.notes[id]
+      if (!featureSet.has(id)) {
+        const cat = id.split(".")[0]
+        const meta = featureDescs[id]
+        featureSet.set(id, {
+          id,
+          name: meta?.name || id,
+          category: cat,
+          spec: meta?.url,
+        })
+      }
+    }
+  }
+
+  // Sort by score (highest first)
+  allBackends.sort((a, b) => {
+    const aYes = Object.values(results[a.name] ?? {}).filter(v => v === "yes").length
+    const bYes = Object.values(results[b.name] ?? {}).filter(v => v === "yes").length
+    return bYes - aYes
+  })
+
+  const features = Array.from(featureSet.values()).sort((a, b) => a.id.localeCompare(b.id))
+  const categories: Record<string, FeatureResult[]> = {}
+  for (const f of features) {
+    if (!categories[f.category]) categories[f.category] = []
+    categories[f.category].push(f)
+  }
+
+  const stats: CensusData["stats"] = {}
+  for (const b of allBackends) {
+    const entries = Object.values(results[b.name])
+    const total = entries.length
+    const yes = entries.filter(v => v === "yes").length
+    const no = entries.filter(v => v === "no").length
+    const partial = entries.filter(v => v === "partial").length
+    const pct = total > 0 ? Math.round((yes / total) * 100) : 0
+    stats[b.name] = { total, yes, no, partial, pct }
+  }
+
+  // Build meta — app metadata takes priority over headless backend metadata
+  const meta: Record<string, BackendMeta> = {}
+  for (const b of allBackends) {
+    meta[b.name] = buildAppMeta(b.name)
+  }
+
+  return {
+    backends: allBackends,
+    features,
+    categories,
+    results,
+    notes,
+    stats,
+    meta,
+    annotations: loadAnnotations(),
+    featureDescriptions: featureDescs,
+    generated: new Date().toISOString(),
+  }
+}
+
+function buildAppMeta(terminal: string): BackendMeta {
+  const labels: Record<string, string> = {
+    "ghostty": "Ghostty",
+    "kitty": "Kitty",
+    "iterm2": "iTerm2",
+    "terminal-app": "Terminal.app",
+    "warp": "Warp",
+    "cmux": "cmux",
+    "cursor": "Cursor",
+    "com.microsoft.VSCode": "VS Code",
+    "com.todesktop.230313mzl4w4u92": "Cursor",
+  }
+  const slugs: Record<string, string> = {
+    "ghostty": "ghostty",
+    "kitty": "kitty",
+    "iterm2": "iterm2",
+    "terminal-app": "terminal-app",
+    "warp": "warp",
+    "cmux": "cmux",
+    "cursor": "cursor",
+    "com.microsoft.VSCode": "vscode",
+    "com.todesktop.230313mzl4w4u92": "cursor",
+  }
+  return {
+    label: labels[terminal] ?? terminal,
+    slug: slugs[terminal] ?? terminal.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    description: `${labels[terminal] ?? terminal} terminal emulator`,
+  }
 }
 
 function loadUnifiedCensus(path: string): CensusData {
