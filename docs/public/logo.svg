@@ -1,13 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <!-- Terminal window -->
-  <rect x="8" y="16" width="112" height="96" rx="10" fill="#1e293b"/>
-  <rect x="8" y="16" width="112" height="24" rx="10" fill="#334155"/>
-  <rect x="8" y="30" width="112" height="10" fill="#334155"/>
-  <!-- Window dots -->
-  <circle cx="24" cy="28" r="4" fill="#ef4444"/>
-  <circle cx="38" cy="28" r="4" fill="#f59e0b"/>
-  <circle cx="52" cy="28" r="4" fill="#10b981"/>
-  <!-- >% prompt -->
-  <text x="28" y="88" font-family="monospace" font-size="44" font-weight="700" fill="#94a3b8" dominant-baseline="middle">&gt;</text>
-  <text x="64" y="88" font-family="monospace" font-size="44" font-weight="700" fill="#10b981" dominant-baseline="middle">%</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="7" fill="#10b981"/>
+  <rect x="1" y="1" width="30" height="30" rx="6" fill="#1a1a2e"/>
+  <!-- > chevron -->
+  <path d="M5 20l5-4.5-5-4.5" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- % sign: two dots and a diagonal -->
+  <circle cx="18" cy="12" r="2.2" fill="#10b981"/>
+  <circle cx="26" cy="20" r="2.2" fill="#10b981"/>
+  <line x1="17" y1="21" x2="27" y2="11" stroke="#10b981" stroke-width="2.2" stroke-linecap="round"/>
 </svg>
