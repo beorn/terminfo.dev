@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-25T21:45:02.672Z",
+  "generated": "2026-03-25T21:45:46.398Z",
   "features": {
     "charsets.dec-special": {
       "name": "DEC Special Graphics",
@@ -1435,9 +1435,9 @@
       ],
       "url": "https://support.apple.com/guide/terminal",
       "score": {
-        "total": 129,
-        "pass": 121,
-        "pct": 94
+        "total": 134,
+        "pass": 123,
+        "pct": 92
       }
     },
     "warp": {
@@ -2197,6 +2197,8 @@
       "device.tertiary-da": "no",
       "device.status-report": "yes",
       "device.decrpm": "no",
+      "device.decrqss": "no",
+      "device.xtgettcap": "no",
       "text.basic": "yes",
       "text.wrap": "yes",
       "text.cr": "yes",
@@ -2247,6 +2249,7 @@
       "reset.ris": "yes",
       "reset.sgr": "yes",
       "reset.soft": "yes",
+      "reset.method": "yes",
       "sgr.bold": "yes",
       "sgr.faint": "yes",
       "sgr.italic": "yes",
@@ -2294,6 +2297,7 @@
       "extensions.notifications": "yes",
       "extensions.iterm2-images": "yes",
       "input.modify-other-keys": "yes",
+      "input.csi-u": "yes",
       "input.pixel-mouse": "yes",
       "input.urxvt-mouse": "yes",
       "input.x10-mouse": "yes",
@@ -2301,6 +2305,7 @@
       "unicode.east-asian-ambiguous": "yes",
       "unicode.wrap-boundary": "yes",
       "unicode.tab-stops": "yes",
+      "unicode.grapheme-cursor": "no",
       "extensions.kitty-graphics": "no",
       "extensions.reflow": "yes",
       "scrollback.accumulate": "yes",
@@ -3110,6 +3115,8 @@
     "terminal-app": {
       "device.tertiary-da": "No DA3 response",
       "device.decrpm": "No DECRPM response",
+      "device.decrqss": "No DECRQSS response",
+      "device.xtgettcap": "No XTGETTCAP response",
       "text.wide.emoji-zwj": "width=11, expected 2",
       "text.wide.emoji-vs16": "width=1, expected 2",
       "modes.alt-screen.enter": "Behavioral: entered and responded",
@@ -3122,9 +3129,11 @@
       "modes.origin": "Behavioral: cursor at row 1 (origin mapped)",
       "modes.reverse-video": "Behavioral: responsive after enable",
       "modes.synchronized-output": "Behavioral: responsive after enable",
+      "reset.method": "cursor at 5;5 after DECSTR",
       "extensions.kitty-keyboard": "No kitty keyboard response",
       "extensions.sixel-da1": "DA1 response missing ;4 (sixel)",
       "unicode.east-asian-ambiguous": "width=1 (ambiguous chars vary by terminal/locale)",
+      "unicode.grapheme-cursor": "width=8, expected 2",
       "extensions.kitty-graphics": "No kitty graphics acknowledgment",
       "scrollback.total-lines": "Content written to scrollback",
       "modes.mouse-all": "Behavioral: responsive after enable"
