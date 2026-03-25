@@ -271,6 +271,7 @@ function backendTooltip(name, version) {
       <th class="feature-col"></th>
       <th v-for="b in appBackends" :key="b.name" :data-tooltip="backendTooltip(b.name, b.version)">
         <a class="hover-link" :href="'/terminal/' + termSlug(b.name)">{{ backendLabel(b.name) }}</a>
+        <span class="th-platforms" v-html="platformIcons(b.name)"></span>
       </th>
     </tr>
   </thead>
@@ -395,6 +396,35 @@ through the library's API.
   font-size: 0.9em;
   margin-top: -0.8em;
   margin-bottom: 1em;
+}
+
+/* Platform filter */
+.platform-filter {
+  margin-bottom: 1em;
+}
+
+.platform-filter select {
+  padding: 4px 8px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  font-size: 0.9em;
+}
+
+/* Platform icons */
+.summary-platforms {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.th-platforms {
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+  margin-top: 2px;
 }
 
 /* Headless note callout */
