@@ -266,6 +266,10 @@ function platformIcons(b) {
   position: relative;
 }
 
+[data-tooltip]:hover {
+  z-index: 50;
+}
+
 [data-tooltip]:hover::after {
   content: attr(data-tooltip);
   position: absolute;

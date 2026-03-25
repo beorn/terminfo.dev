@@ -669,6 +669,10 @@ through the library's API.
   position: relative;
 }
 
+[data-tooltip]:hover {
+  z-index: 50;
+}
+
 [data-tooltip]:hover::after {
   content: attr(data-tooltip);
   position: absolute;
