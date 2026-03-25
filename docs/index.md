@@ -456,7 +456,7 @@ through the library's API.
   display: flex;
   gap: 2px;
   justify-content: center;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 /* Headless note callout */
@@ -709,6 +709,9 @@ through the library's API.
   background: var(--vp-c-bg-soft);
   font-weight: 600;
   font-size: 0.9em;
+  padding-top: 8px !important;
+  padding-bottom: 10px !important;
+  line-height: 1.2;
   position: sticky;
   top: var(--vp-nav-height, 64px);
   z-index: 10;
