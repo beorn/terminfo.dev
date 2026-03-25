@@ -1,0 +1,42 @@
+{
+  "core": {
+    "label": "Core",
+    "emoji": "🟢",
+    "color": "#10b981",
+    "order": 0,
+    "tagline": "Every terminal should support these",
+    "description": "The universal baseline — features that have been standard since the VT100/VT220 era and are supported by every modern terminal emulator. If a terminal fails Core features, it cannot reliably run any TUI application. This baseline covers SGR text styling basics (bold, italic, underline, colors up to 256), cursor positioning and visibility, screen and line erasing, line/character editing, the alternate screen buffer, scroll regions, and basic character set handling.",
+    "forDevelopers": "If your TUI only uses Core features, it will work in every terminal — including Terminal.app, older xterm builds, and embedded terminals in IDEs. This is the safe target for maximum compatibility.",
+    "forTerminalAuthors": "100% Core compliance is table stakes. Any failure here is a bug, not a missing feature."
+  },
+  "modern": {
+    "label": "Modern",
+    "emoji": "🔵",
+    "color": "#3b82f6",
+    "order": 1,
+    "tagline": "Expected by modern TUI frameworks",
+    "description": "Features that modern TUI frameworks (silvery, Ink, Textual, Bubbletea) depend on for a good user experience. Includes truecolor (24-bit RGB), bracketed paste mode, focus reporting, mouse tracking (SGR mode), synchronized output to prevent flicker, application cursor keys, and origin mode. Most terminals released after 2018 support all Modern features.",
+    "forDevelopers": "If you're building with a modern TUI framework, target Modern baseline. Users with non-compliant terminals will see degraded UX (no mouse, no paste protection, possible flicker) but the app will still function.",
+    "forTerminalAuthors": "Modern compliance is expected by the TUI ecosystem. Missing features here will generate bug reports from users of popular terminal applications."
+  },
+  "rich": {
+    "label": "Rich",
+    "emoji": "🟣",
+    "color": "#8b5cf6",
+    "order": 2,
+    "tagline": "Advanced features for cutting-edge TUIs",
+    "description": "Cutting-edge terminal capabilities that enable the richest user experiences: the Kitty keyboard protocol (unambiguous key reporting with modifiers and release events), Kitty graphics protocol and Sixel for inline images, OSC 8 hyperlinks (clickable links in terminal output), OSC 52 clipboard access, extended underline styles (curly, dotted, dashed) with independent underline colors, semantic prompt markers (OSC 133), and text reflow on terminal resize.",
+    "forDevelopers": "Rich features enable experiences that were previously impossible in terminals — clickable links, inline images, precise keyboard input. Use feature detection (via DA1 responses or DECRPM queries) and degrade gracefully when unavailable.",
+    "forTerminalAuthors": "Rich compliance differentiates your terminal. The Kitty keyboard protocol is the most impactful single feature — it solves decades of terminal input ambiguity. Ghostty, Kitty, WezTerm, and foot lead here."
+  },
+  "unicode": {
+    "label": "Unicode",
+    "emoji": "🌐",
+    "color": "#f59e0b",
+    "order": 3,
+    "tagline": "Unicode correctness — wide chars, combining, emoji",
+    "description": "Correct handling of Unicode text: East Asian wide characters (CJK ideographs occupying two terminal columns), emoji with zero-width joiners (family emoji, skin tone modifiers), regional indicator flags, variation selectors (VS16 forcing emoji presentation), combining characters, and grapheme cluster cursor movement. These features determine whether a terminal can correctly display and navigate international text and modern emoji.",
+    "forDevelopers": "Unicode bugs cause cursor misalignment and broken layouts. If your app displays user-generated text, emoji, or CJK characters, test against the Unicode baseline. Use libraries that implement UAX #11 width calculation.",
+    "forTerminalAuthors": "Unicode correctness is the hardest baseline to achieve. The width of a character depends on Unicode version, grapheme cluster rules, variation selectors, and font metrics — and terminals must agree with each other for TUI layouts to work."
+  }
+}

@@ -204,8 +204,23 @@ function buildSidebar() {
     }
   }
 
+  // Load baselines for sidebar
+  const baselinesData = JSON.parse(
+    readFileSync(join(docsDir, "..", "content", "baselines.json"), "utf-8"),
+  ) as Record<string, { label: string; emoji: string; order: number }>
+  const baselineItems = Object.entries(baselinesData)
+    .sort(([, a], [, b]) => a.order - b.order)
+    .map(([id, bl]) => ({
+      text: `${bl.emoji} ${bl.label}`,
+      link: `/baseline/${id}`,
+    }))
+
   const sidebar = [
     { text: "Matrix", link: "/" },
+    {
+      text: "Baselines",
+      items: baselineItems,
+    },
     {
       text: "Categories",
       items: sortedCategories.map((cat) => ({
@@ -281,6 +296,13 @@ export default defineConfig({
       // Feature pages: /sgr/sgr-bold (have featureName param)
       pageData.title = `${params.featureName} — Terminal Support`
       pageData.description = `Which terminal emulators support ${params.featureName}? Support matrix showing ${params.yesCount} of ${params.totalCount} backends.`
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+    } else if (rel.startsWith("baseline/")) {
+      pageData.title = `${params.label} Baseline — Terminal Feature Support`
+      pageData.description = `${params.label} Baseline: ${params.tagline}. ${params.featureCount} features — ${params.description?.slice(0, 120)}...`
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],

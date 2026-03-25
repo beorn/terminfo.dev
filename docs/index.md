@@ -19,7 +19,22 @@ import { data } from './data/probes.data'
 
 const filter = ref('')
 const categoryFilter = ref('all')
+const baselineFilter = ref('all')
 const platformFilter = ref('all')
+
+// Baseline metadata for filter dropdown
+const baselineOptions = [
+  { id: 'core', label: 'Core', count: data.baselines.core?.length ?? 0 },
+  { id: 'modern', label: 'Modern', count: data.baselines.modern?.length ?? 0 },
+  { id: 'rich', label: 'Rich', count: data.baselines.rich?.length ?? 0 },
+  { id: 'unicode', label: 'Unicode', count: data.baselines.unicode?.length ?? 0 },
+]
+
+// Set of feature IDs in selected baseline
+const baselineFeatureIds = computed(() => {
+  if (baselineFilter.value === 'all') return null
+  return new Set(data.baselines[baselineFilter.value] ?? [])
+})
 
 const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'editing', 'modes', 'scrollback', 'reset', 'extensions', 'charsets', 'device', 'input', 'graphics', 'unicode']
 const categoryLabels = data.categoryLabels ?? {}
@@ -74,18 +89,30 @@ const filteredCategories = computed(() => {
   if (categoryFilter.value !== 'all') {
     cats = cats.filter(c => c === categoryFilter.value)
   }
+
+  // If baseline filter is active, only keep categories that have features in the baseline
+  if (baselineFeatureIds.value) {
+    cats = cats.filter(cat => {
+      return (data.categories[cat] ?? []).some(f => baselineFeatureIds.value.has(f.id))
+    })
+  }
+
   if (!filter.value) return cats
 
   const q = filter.value.toLowerCase()
   return cats.filter(cat => {
-    return data.categories[cat].some(f =>
-      f.name.toLowerCase().includes(q) || f.id.toLowerCase().includes(q)
-    )
+    return filteredFeatures(cat).length > 0
   })
 })
 
 function filteredFeatures(cat) {
-  const features = data.categories[cat] ?? []
+  let features = data.categories[cat] ?? []
+
+  // Apply baseline filter
+  if (baselineFeatureIds.value) {
+    features = features.filter(f => baselineFeatureIds.value.has(f.id))
+  }
+
   if (!filter.value) return features
   const q = filter.value.toLowerCase()
   return features.filter(f =>
@@ -239,7 +266,7 @@ function backendTooltip(name, version) {
 <p class="section-subtitle">Inspired by <a href="https://web.dev/baseline">Web Baseline</a> — minimum feature sets that terminals should support</p>
 
 <div class="baseline-grid">
-  <div v-for="bl in ['core', 'modern', 'rich', 'unicode']" :key="bl" class="baseline-card">
+  <a v-for="bl in ['core', 'modern', 'rich', 'unicode']" :key="bl" class="baseline-card baseline-card-link" :href="'/baseline/' + bl">
     <div class="baseline-header">
       <span class="baseline-icon">{{ bl === 'core' ? '🟢' : bl === 'modern' ? '🔵' : bl === 'rich' ? '🟣' : '🌐' }}</span>
       <span class="baseline-name">{{ bl.charAt(0).toUpperCase() + bl.slice(1) }}</span>
@@ -255,7 +282,7 @@ function backendTooltip(name, version) {
         <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct ?? 0 }}%</span>
       </div>
     </div>
-  </div>
+  </a>
 </div>
 
 ## Feature Matrix {#matrix}
@@ -267,6 +294,15 @@ function backendTooltip(name, version) {
       <option value="all">All</option>
       <option v-for="cat in sortedCategories" :key="cat" :value="cat">
         {{ catLabel(cat) }}
+      </option>
+    </select>
+  </label>
+  <label>
+    Baseline:
+    <select v-model="baselineFilter">
+      <option value="all">All</option>
+      <option v-for="bl in baselineOptions" :key="bl.id" :value="bl.id">
+        {{ bl.label }} ({{ bl.count }})
       </option>
     </select>
   </label>
@@ -336,7 +372,7 @@ function backendTooltip(name, version) {
 ### Headless Baseline Coverage
 
 <div class="baseline-grid">
-  <div v-for="bl in ['core', 'modern', 'rich', 'unicode']" :key="bl" class="baseline-card">
+  <a v-for="bl in ['core', 'modern', 'rich', 'unicode']" :key="bl" class="baseline-card baseline-card-link" :href="'/baseline/' + bl">
     <div class="baseline-header">
       <span class="baseline-icon">{{ bl === 'core' ? '🟢' : bl === 'modern' ? '🔵' : bl === 'rich' ? '🟣' : '🌐' }}</span>
       <span class="baseline-name">{{ bl.charAt(0).toUpperCase() + bl.slice(1) }}</span>
@@ -350,7 +386,7 @@ function backendTooltip(name, version) {
         <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct ?? 0 }}%</span>
       </div>
     </div>
-  </div>
+  </a>
 </div>
 
 <div class="matrix-wrapper">
@@ -605,6 +641,18 @@ through the library's API.
   border-radius: 8px;
   padding: 12px;
   background: var(--vp-c-bg-soft);
+}
+
+.baseline-card-link {
+  color: inherit;
+  text-decoration: none;
+  display: block;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.baseline-card-link:hover {
+  border-color: var(--vp-c-brand-1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
 .baseline-header {
