@@ -106,6 +106,24 @@ export function feed(b: TerminalBackend, text: string): void {
   b.feed(enc.encode(text))
 }
 
+const dec = new TextDecoder()
+
+/**
+ * Feed a sequence and capture any response the backend generates.
+ * Wires up onResponse before feeding, collects all response data,
+ * then restores the previous handler.
+ */
+export function feedCapture(b: TerminalBackend, text: string): string {
+  let response = ""
+  const prev = b.onResponse
+  b.onResponse = (data) => {
+    response += dec.decode(data)
+  }
+  b.feed(enc.encode(text))
+  b.onResponse = prev
+  return response
+}
+
 /** Record a note on the current test (appears in report output) */
 export function notes(msg: string): void {
   const task = (globalThis as any).__vitest_worker__?.current
@@ -136,10 +154,14 @@ export function describeBackends(name: string, fn: (b: TerminalBackend) => void)
         _b.reset()
       })
 
-      // Proxy so tests get a live reference
+      // Proxy so tests get a live reference (supports both get and set for onResponse etc.)
       const proxy = new Proxy({} as TerminalBackend, {
         get(_target, prop) {
           return (_b as any)[prop]
+        },
+        set(_target, prop, value) {
+          ;(_b as any)[prop] = value
+          return true
         },
       })
 

@@ -1,57 +1,46 @@
-import { describeBackends, feed, test, expect } from "./setup.ts"
+import { describeBackends, feed, feedCapture, test, expect } from "./setup.ts"
 
 describeBackends("device", (b) => {
   test("device.primary-da", () => {
-    // DA1: CSI c or CSI 0 c — request primary device attributes
-    // Backend should generate a response: CSI ? ... c
-    let response = ""
-    const prevHandler = b.onResponse
-    b.onResponse = (data) => {
-      response += new TextDecoder().decode(data)
-    }
-    feed(b, "\x1b[c")
-    b.onResponse = prevHandler
-    // Response should contain CSI ? followed by attributes and ending with c
+    // DA1: CSI c → response CSI ? Ps ; Ps ; ... c
+    const response = feedCapture(b, "\x1b[c")
     expect(response).toContain("?")
     expect(response.endsWith("c")).toBe(true)
   })
 
   test("device.status-report", () => {
-    // DSR 5: CSI 5 n — request device status report
-    // Backend should respond: CSI 0 n (terminal OK)
-    let response = ""
-    const prevHandler = b.onResponse
-    b.onResponse = (data) => {
-      response += new TextDecoder().decode(data)
-    }
-    feed(b, "\x1b[5n")
-    b.onResponse = prevHandler
-    // Response should be CSI 0 n (device OK)
+    // DSR 5: CSI 5 n → response CSI 0 n (device OK)
+    const response = feedCapture(b, "\x1b[5n")
     expect(response).toContain("0n")
   })
 
   test("device.secondary-da", () => {
-    // DA2: CSI > c — request secondary device attributes
-    feed(b, "\x1b[>c")
+    // DA2: CSI > c → response CSI > Pp ; Pv ; Pc c
+    const response = feedCapture(b, "\x1b[>c")
+    expect(response).toContain(">")
   })
 
   test("device.tertiary-da", () => {
-    // DA3: CSI = c
-    feed(b, "\x1b[=c")
+    // DA3: CSI = c → response DCS ! | hex ST
+    const response = feedCapture(b, "\x1b[=c")
+    expect(response.length).toBeGreaterThan(0)
   })
 
   test("device.decrqss", () => {
-    // DECRQSS: DCS $ q Pt ST
-    feed(b, '\x1bP$q"p\x1b\\')
+    // DECRQSS: DCS $ q Pt ST → response DCS Ps $ r Pt ST
+    const response = feedCapture(b, '\x1bP$q"p\x1b\\')
+    expect(response.length).toBeGreaterThan(0)
   })
 
   test("device.xtgettcap", () => {
-    // XTGETTCAP: DCS + q Pt ST
-    feed(b, "\x1bP+q544e\x1b\\")
+    // XTGETTCAP: DCS + q hex ST → response DCS 1 + r hex = value ST
+    const response = feedCapture(b, "\x1bP+q544e\x1b\\") // Query "TN"
+    expect(response.length).toBeGreaterThan(0)
   })
 
   test("device.decrpm", () => {
-    // DECRPM request: CSI ? Ps $ p
-    feed(b, "\x1b[?1$p")
+    // DECRPM: CSI ? Ps $ p → response CSI ? Ps ; Pm $ y
+    const response = feedCapture(b, "\x1b[?1$p") // Query DECCKM
+    expect(response).toContain("$y")
   })
 })

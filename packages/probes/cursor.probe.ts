@@ -1,4 +1,4 @@
-import { describeBackends, feed, test, expect } from "./setup.ts"
+import { describeBackends, feed, feedCapture, test, expect } from "./setup.ts"
 
 describeBackends("cursor", (b) => {
   test("cursor.move.absolute", () => {
@@ -60,15 +60,8 @@ describeBackends("cursor", (b) => {
 
   test("cursor.position-report", () => {
     // DSR 6: CSI 6 n — request cursor position report
-    // Backend should generate a response: CSI row ; col R
-    let response = ""
-    const prevHandler = b.onResponse
-    b.onResponse = (data) => {
-      response += new TextDecoder().decode(data)
-    }
     feed(b, "\x1b[3;5H")
-    feed(b, "\x1b[6n")
-    b.onResponse = prevHandler
+    const response = feedCapture(b, "\x1b[6n")
     // Response should be CSI 3;5 R (1-based)
     expect(response).toContain("3;5R")
   })
