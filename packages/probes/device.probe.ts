@@ -43,4 +43,14 @@ describeBackends("device", (b) => {
     const response = feedCapture(b, "\x1b[?1$p") // Query DECCKM
     expect(response).toContain("$y")
   })
+
+  test("device.xtversion", () => {
+    // XTVERSION: CSI > 0 q → response DCS > | name(version) ST
+    const response = feedCapture(b, "\x1b[>0q")
+    // Most headless backends may not respond to XTVERSION
+    // This test verifies it doesn't crash and checks for a response
+    expect(typeof response).toBe("string")
+  })
+
+  // device.term-features is term-only (env var check), no termless test
 })

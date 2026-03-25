@@ -1203,5 +1203,39 @@
     "baseline": "modern",
     "body": "DECRPM (CSI ? Pd $ p) queries whether the terminal recognizes and has enabled a specific DEC private mode. The response CSI ? Pd ; Ps $ y reports the mode state: 1=set, 2=reset, 0=not recognized. Essential for feature detection.",
     "probe": "Send CSI ? 25 $ p (query DECTCEM), verify response contains mode value."
+  },
+  "device.xtversion": {
+    "name": "Terminal Version (XTVERSION)",
+    "slug": "device-xtversion",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTVERSION (CSI > 0 q) requests the terminal's name and version string. The response is DCS > | name(version) ST. This allows applications to identify the exact terminal and version at runtime, enabling precise feature detection beyond what TERM or DA responses provide. Originally an xterm extension, now supported by many modern terminals including Ghostty, WezTerm, foot, and kitty.",
+    "probe": "Send CSI > 0 q, verify the terminal responds with a DCS > | version string."
+  },
+  "device.term-features": {
+    "name": "TERM_FEATURES env var",
+    "slug": "device-term-features",
+    "url": "https://gitlab.com/gnachman/iterm2/-/wikis/TERM_FEATURES",
+    "tags": ["iterm2"],
+    "baseline": "rich",
+    "body": "TERM_FEATURES is an environment variable proposed by iTerm2 for terminals to advertise their capabilities as a semicolon-delimited list of capability strings. Unlike escape-sequence-based detection, this approach allows applications to check capabilities without TTY I/O, making it suitable for non-interactive contexts. Adoption remains limited as most terminals prefer escape-sequence-based feature reporting.",
+    "probe": "Check whether the TERM_FEATURES environment variable is set in the terminal session."
+  },
+  "extensions.osc1337-cellsize": {
+    "name": "Cell Size Reporting (OSC 1337)",
+    "slug": "extensions-osc1337-cellsize",
+    "tags": ["osc", "iterm2"],
+    "baseline": "rich",
+    "body": "OSC 1337 ; ReportCellSize queries the terminal for the dimensions of a single character cell in pixels. The response is OSC 1337 ; ReportCellSize=height;width ST. This is essential for pixel-accurate image rendering protocols (sixel, iTerm2 inline images, kitty graphics) where applications need to know the exact pixel dimensions of cells to scale images correctly.",
+    "probe": "Send OSC 1337 ; ReportCellSize, verify the terminal responds with pixel dimensions."
+  },
+  "extensions.osc1337-capabilities": {
+    "name": "Capability Reporting (OSC 1337)",
+    "slug": "extensions-osc1337-capabilities",
+    "tags": ["osc", "iterm2"],
+    "baseline": "rich",
+    "body": "OSC 1337 ; RequestCapabilities queries the terminal to report all its supported capabilities at once. The response is OSC 1337 ; Capabilities=... ST with a structured list of supported features. This provides a single-query alternative to probing individual features, though adoption is currently limited to iTerm2.",
+    "probe": "Send OSC 1337 ; RequestCapabilities, verify the terminal responds with a capabilities list."
   }
 }

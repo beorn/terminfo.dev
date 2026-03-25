@@ -123,4 +123,31 @@ export const deviceProbes: ProbeDefinition[] = [
       }
     },
   ),
+
+  // XTVERSION — Terminal version query: CSI > 0 q → DCS > | name(version) ST
+  responseProbe(
+    "device.xtversion",
+    "\x1b[>0q",
+    /\x1bP>\|/,
+    (response) => ({
+      pass: response.length > 0 && response.includes(">|"),
+      response,
+    }),
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel("\x1b[>0q", /\x1bP>\|([^\x1b]+)\x1b\\/)
+      if (!match) return { pass: false, note: "No XTVERSION response" }
+      return { pass: true, response: match[1] }
+    },
+  ),
+
+  // TERM_FEATURES — env var check (term-only, not testable in headless)
+  probe(
+    "device.term-features",
+    null, // not testable in headless
+    async (_ctx) => {
+      const value = typeof process !== "undefined" ? process.env.TERM_FEATURES : undefined
+      if (!value) return { pass: false, note: "TERM_FEATURES env var not set" }
+      return { pass: true, response: value }
+    },
+  ),
 ]

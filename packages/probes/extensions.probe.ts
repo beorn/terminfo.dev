@@ -86,4 +86,8 @@ describeBackends("extensions", (b) => {
     // Check if DA1 response includes sixel support (attribute 4)
     expect(b.capabilities.sixel).toBe(true)
   })
+
+  // extensions.osc1337-cellsize is term-only (needs real terminal pixel response)
+
+  // extensions.osc1337-capabilities is term-only (needs real terminal response)
 })
