@@ -187,6 +187,9 @@ export async function startDaemon(port = 0): Promise<void> {
 
     const filepath = register(info)
 
+    console.log(`\x1b[33m⚠ Security warning: this opens an HTTP server on localhost:${actualPort}`)
+    console.log(`  Any local process can trigger terminal escape sequences via this server.`)
+    console.log(`  Only run this on trusted machines. Stop with Ctrl+C when done.\x1b[0m\n`)
     console.log(`\x1b[1mterminfo.dev\x1b[0m daemon running\n`)
     console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m ${terminal.version}`)
     console.log(`  Port:      \x1b[1m${actualPort}\x1b[0m`)
@@ -195,8 +198,6 @@ export async function startDaemon(port = 0): Promise<void> {
     console.log(`  Test:   curl http://localhost:${actualPort}/probe`)
     console.log(`  Info:   curl http://localhost:${actualPort}/info`)
     console.log(`  Single: curl http://localhost:${actualPort}/probe/single?id=sgr.bold`)
-    console.log(``)
-    console.log(`\x1b[2mPress Ctrl+C to stop.\x1b[0m`)
 
     // Clean up on exit
     const cleanup = () => {
