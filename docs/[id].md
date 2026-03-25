@@ -31,7 +31,7 @@ function tooltip(result, note) {
   if (result === 'yes') return 'supported'
   if (result === 'partial') return 'partial support'
   if (result === 'no') return 'not supported'
-  return ''
+  return 'Not tested — no probe data for this terminal'
 }
 
 function featureTooltip(f) {

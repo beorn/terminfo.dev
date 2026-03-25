@@ -81,7 +81,15 @@ function loadFeatureDescriptions(): Record<string, FeatureMeta> {
       if (typeof val === "string") result[id] = { name: val }
       else {
         const v = val as any
-        result[id] = { name: v.name, slug: v.slug, url: v.url, tags: v.tags, group: v.group, body: v.body, probe: v.probe }
+        result[id] = {
+          name: v.name,
+          slug: v.slug,
+          url: v.url,
+          tags: v.tags,
+          group: v.group,
+          body: v.body,
+          probe: v.probe,
+        }
       }
     }
     return result
@@ -145,7 +153,7 @@ function mergeResults(app: CensusData, headless: CensusData): CensusData {
   const merged = { ...app }
 
   // Add headless-only backends that don't have app results
-  const appNames = new Set(app.backends.map(b => b.name))
+  const appNames = new Set(app.backends.map((b) => b.name))
   for (const hb of headless.backends) {
     // Map headless backend names to app terminal names
     const appName = headlessToAppName(hb.name)
@@ -163,9 +171,9 @@ function mergeResults(app: CensusData, headless: CensusData): CensusData {
 
 function headlessToAppName(backend: string): string {
   const map: Record<string, string> = {
-    "xtermjs": "com.microsoft.VSCode",
+    xtermjs: "com.microsoft.VSCode",
     "ghostty-native": "ghostty",
-    "kitty": "kitty",
+    kitty: "kitty",
   }
   return map[backend] ?? backend
 }
@@ -175,7 +183,7 @@ function loadAppResults(): CensusData {
   const appDir = join(resultsDir, "app")
   let files: string[]
   try {
-    files = readdirSync(appDir).filter(f => f.endsWith(".json"))
+    files = readdirSync(appDir).filter((f) => f.endsWith(".json"))
   } catch {
     return emptyData()
   }
@@ -226,8 +234,8 @@ function loadAppResults(): CensusData {
 
   // Sort by score (highest first)
   allBackends.sort((a, b) => {
-    const aYes = Object.values(results[a.name] ?? {}).filter(v => v === "yes").length
-    const bYes = Object.values(results[b.name] ?? {}).filter(v => v === "yes").length
+    const aYes = Object.values(results[a.name] ?? {}).filter((v) => v === "yes").length
+    const bYes = Object.values(results[b.name] ?? {}).filter((v) => v === "yes").length
     return bYes - aYes
   })
 
@@ -242,9 +250,9 @@ function loadAppResults(): CensusData {
   for (const b of allBackends) {
     const entries = Object.values(results[b.name])
     const total = entries.length
-    const yes = entries.filter(v => v === "yes").length
-    const no = entries.filter(v => v === "no").length
-    const partial = entries.filter(v => v === "partial").length
+    const yes = entries.filter((v) => v === "yes").length
+    const no = entries.filter((v) => v === "no").length
+    const partial = entries.filter((v) => v === "partial").length
     const pct = total > 0 ? Math.round((yes / total) * 100) : 0
     stats[b.name] = { total, yes, no, partial, pct }
   }
@@ -271,24 +279,24 @@ function loadAppResults(): CensusData {
 
 function buildAppMeta(terminal: string): BackendMeta {
   const labels: Record<string, string> = {
-    "ghostty": "Ghostty",
-    "kitty": "Kitty",
-    "iterm2": "iTerm2",
+    ghostty: "Ghostty",
+    kitty: "Kitty",
+    iterm2: "iTerm2",
     "terminal-app": "Terminal.app",
-    "warp": "Warp",
-    "cmux": "cmux",
-    "cursor": "Cursor",
+    warp: "Warp",
+    cmux: "cmux",
+    cursor: "Cursor",
     "com.microsoft.VSCode": "VS Code",
     "com.todesktop.230313mzl4w4u92": "Cursor",
   }
   const slugs: Record<string, string> = {
-    "ghostty": "ghostty",
-    "kitty": "kitty",
-    "iterm2": "iterm2",
+    ghostty: "ghostty",
+    kitty: "kitty",
+    iterm2: "iterm2",
     "terminal-app": "terminal-app",
-    "warp": "warp",
-    "cmux": "cmux",
-    "cursor": "cursor",
+    warp: "warp",
+    cmux: "cmux",
+    cursor: "cursor",
     "com.microsoft.VSCode": "vscode",
     "com.todesktop.230313mzl4w4u92": "cursor",
   }
