@@ -659,16 +659,17 @@ through the library's API.
 }
 
 /* Prevent VitePress link styling inside baseline cards */
-.baseline-card-link * {
+/* Lock ALL text inside baseline cards to inherit color — prevent VitePress a:hover blue */
+.baseline-card-link,
+.baseline-card-link:hover,
+.baseline-card-link:hover * {
+  color: inherit !important;
   text-decoration: none !important;
 }
 
-.baseline-card-link .baseline-name {
-  transition: color 0.15s ease;
-}
-
+/* Only the baseline tier name gets brand color on hover */
 .baseline-card-link:hover .baseline-name {
-  color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1) !important;
 }
 
 .baseline-header {
