@@ -368,7 +368,10 @@ export default defineConfig({
   title: "Terminfo.dev",
   description: "Can your terminal do that? Feature support tables for terminal emulators.",
   cleanUrls: true,
-  head: [["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }]],
+  head: [
+    ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
+    ["script", { defer: "", src: "https://static.cloudflareinsights.com/beacon.min.js", "data-cf-beacon": '{"token": "f0f336a13fd042c992dbd2c182759cdb"}' }],
+  ],
 
   markdown: {
     config: (md) => {
