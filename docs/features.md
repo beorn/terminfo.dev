@@ -121,12 +121,8 @@ const totalCategories = computed(() => activeCategories.value.length)
 <p class="page-tagline">{{ totalFeatures }} features across {{ totalCategories }} categories — tested on every major terminal</p>
 
 <div class="beginner-intro">
-<p>A <strong>terminal emulator</strong> (like Ghostty, iTerm2, or Windows Terminal) displays text and responds to special commands called <strong>escape sequences</strong>. Every feature on this page is an escape sequence — a byte pattern that tells the terminal to do something: make text <strong>bold</strong>, move the cursor, change colors, or switch modes. The <a href="/glossary">glossary</a> explains all the technical terms.</p>
+<p>A <strong>terminal emulator</strong> (Ghostty, iTerm2, Windows Terminal) displays text and responds to special commands called <strong>escape sequences</strong>. Every feature on this page is an escape sequence — a byte pattern that tells the terminal to do something: make text <strong>bold</strong>, move the cursor, change colors, or switch modes. The <strong>shell</strong> (bash, zsh) handles commands; the terminal handles display. The <a href="/glossary">glossary</a> explains all the technical terms.</p>
 </div>
-
-::: info Terminal vs Shell
-The **terminal emulator** (Ghostty, iTerm2, Kitty) handles display -- colors, cursor, layout. The **shell** (bash, zsh) handles commands. Escape sequences talk to the terminal, not the shell. When people say "my terminal doesn't support X," they almost always mean the emulator, not the shell.
-:::
 
 ## How Escape Sequences Work
 
