@@ -283,12 +283,21 @@ function loadAppResults(): ProbeData {
   const featureSet = new Map<string, FeatureResult>()
   const featureDescs = loadFeatureDescriptions()
 
+  // Determine which terminals came from probes-mux/
+  const muxTerminals = new Set<string>()
+  try {
+    for (const file of readdirSync(probesMuxDir).filter((f) => f.endsWith(".json"))) {
+      const raw = JSON.parse(readFileSync(join(probesMuxDir, file), "utf-8")) as any
+      if (raw.terminal) muxTerminals.add(raw.terminal)
+    }
+  } catch {}
+
   for (const [name, raw] of latest) {
     allBackends.push({
       name,
       version: raw.terminalVersion ?? "",
       engine: "",
-      type: "app",
+      type: muxTerminals.has(name) ? "mux" : "app",
       platforms: [...(platformMap.get(name) ?? [])],
     })
     results[name] = {}

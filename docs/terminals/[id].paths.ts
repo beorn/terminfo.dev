@@ -86,11 +86,11 @@ export default {
           backendType: meta.type ?? "",
           backendCaveat: meta.caveat ?? "",
           // Terminal app info (separate from backend)
-          terminalName: terminal.name ?? (meta as any).label ?? b.name,
-          terminalDescription: terminal.description ?? (meta as any).description ?? "",
-          terminalBody: terminal.body ?? (meta as any).body ?? "",
-          terminalUrl: terminal.url ?? meta.url ?? "",
-          terminalRepo: terminal.repo ?? "",
+          terminalName: (meta as any).label ?? terminal.name ?? b.name,
+          terminalDescription: (meta as any).description ?? terminal.description ?? "",
+          terminalBody: (meta as any).body ?? terminal.body ?? "",
+          terminalUrl: meta.url ?? terminal.url ?? "",
+          terminalRepo: (meta as any).repo ?? terminal.repo ?? "",
           terminalAuthor: terminal.author ?? "",
           version: b.version,
           engine: b.engine,
@@ -109,9 +109,29 @@ export default {
       }
     })
 
-    // Add historical terminals from terminals.json
+    // Load terminals.json for historical terminals and terminal type classification
     const terminalsPath = join(__dirname, "..", "..", "content", "terminals.json")
-    const terminalsData = JSON.parse(readFileSync(terminalsPath, "utf-8")) as Record<string, HistoricalTerminal>
+    const terminalsData = JSON.parse(readFileSync(terminalsPath, "utf-8")) as Record<string, HistoricalTerminal & { intermediary?: boolean; headlessBackends?: string[] }>
+
+    // Classify terminal type from terminals.json metadata
+    function getTerminalType(backendName: string): string {
+      for (const [, entry] of Object.entries(terminalsData)) {
+        if (entry.slug === terminalSlug(backendName, data.meta)) {
+          if (entry.historical) return "historical"
+          if (entry.intermediary) return "mux"
+          // JS-package terminals with headless backends are libraries
+          if (entry.headlessBackends?.length && entry.label?.endsWith(".js")) return "headless"
+          if (entry.headlessBackends?.length) return "app+headless"
+          return "app"
+        }
+      }
+      return "app"
+    }
+
+    // Enrich pages with terminal type
+    for (const page of pages) {
+      ;(page.params as any).terminalType = getTerminalType(page.params.backendId)
+    }
 
     const existingSlugs = new Set(pages.map((p) => p.params.id))
 
@@ -150,6 +170,7 @@ export default {
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
           historical: "true",
+          terminalType: "historical",
           year: String(term.year ?? ""),
           manufacturer: term.manufacturer ?? "",
           significance: term.significance ?? "",

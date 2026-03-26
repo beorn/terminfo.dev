@@ -884,7 +884,6 @@
   "vt100:unicode.wrap-boundary": {
     "note": "Not in VT100/VT220 — ASCII only, no Unicode width"
   },
-
   "ghostty-native:modes.color-scheme-reporting": {
     "note": "Mode 2031 not exposed in headless mode",
     "result": "partial"
@@ -897,7 +896,6 @@
     "note": "modifyOtherKeys mode 3 not exposed in headless mode",
     "result": "partial"
   },
-
   "xtermjs:modes.color-scheme-reporting": {
     "note": "Mode 2031 not implemented in xterm.js"
   },
@@ -907,7 +905,6 @@
   "xtermjs:input.modify-other-keys-3": {
     "note": "modifyOtherKeys mode 3 not implemented in xterm.js"
   },
-
   "wezterm:modes.color-scheme-reporting": {
     "note": "Mode 2031 not exposed in headless mode",
     "result": "partial"
@@ -919,7 +916,6 @@
     "note": "modifyOtherKeys mode 3 not exposed in headless mode",
     "result": "partial"
   },
-
   "kitty:modes.color-scheme-reporting": {
     "note": "Mode 2031 not exposed via Python batch bridge",
     "result": "partial"
@@ -932,7 +928,6 @@
     "note": "modifyOtherKeys mode 3 not exposed via Python batch bridge",
     "result": "partial"
   },
-
   "alacritty:modes.color-scheme-reporting": {
     "note": "Mode 2031 not implemented in alacritty"
   },
@@ -943,7 +938,6 @@
     "note": "modifyOtherKeys mode 3 not exposed in headless mode",
     "result": "partial"
   },
-
   "vt100:modes.color-scheme-reporting": {
     "note": "Not implemented — pure TypeScript emulator"
   },
@@ -953,7 +947,6 @@
   "vt100:input.modify-other-keys-3": {
     "note": "Not implemented — pure TypeScript emulator"
   },
-
   "vterm:modes.color-scheme-reporting": {
     "note": "Mode 2031 not implemented"
   },
@@ -963,7 +956,6 @@
   "vterm:extensions.osc66-text-sizing": {
     "note": "OSC 66 text sizing not implemented"
   },
-
   "ghostty-native:extensions.osc66-text-sizing": {
     "note": "OSC 66 parsed but not exposed in headless mode",
     "result": "partial"
@@ -984,7 +976,6 @@
   "vt100:extensions.osc66-text-sizing": {
     "note": "Not implemented — pure TypeScript emulator"
   },
-
   "ghostty-native:extensions.osc52-clipboard": {
     "note": "OSC 52 clipboard not exposed in headless mode",
     "result": "partial"
@@ -1001,23 +992,9 @@
     "note": "Sixel DA1 attribute not exposed in headless API",
     "result": "partial"
   },
-
-  "xtermjs:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not available in headless mode",
-    "result": "partial"
-  },
-  "xtermjs:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not available in headless mode",
-    "result": "partial"
-  },
-  "xtermjs:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not available in headless mode",
-    "result": "partial"
-  },
   "xtermjs:extensions.sixel-da1": {
     "note": "Sixel not implemented in xterm.js"
   },
-
   "wezterm:extensions.osc52-clipboard": {
     "note": "OSC 52 clipboard not exposed in headless mode",
     "result": "partial"
@@ -1034,10 +1011,6 @@
     "note": "Sixel DA1 attribute not exposed in headless mode",
     "result": "partial"
   },
-
-  "kitty:extensions.semantic-prompts": {
-    "note": "OSC 133 semantic prompts not supported by kitty"
-  },
   "kitty:extensions.osc52-clipboard": {
     "note": "OSC 52 clipboard not exposed via Python batch bridge",
     "result": "partial"
@@ -1049,12 +1022,6 @@
   "kitty:extensions.osc11-bg-color": {
     "note": "OSC 11 color query not exposed via Python batch bridge",
     "result": "partial"
-  },
-  "kitty:extensions.osc-633-vscode": {
-    "note": "VS Code shell integration (OSC 633) not supported by kitty"
-  },
-  "kitty:extensions.iterm2-images": {
-    "note": "iTerm2 inline images not supported — kitty uses its own graphics protocol"
   },
   "kitty:extensions.osc1337-cellsize": {
     "note": "iTerm2-specific protocol not supported by kitty"
@@ -1071,7 +1038,6 @@
   "kitty:input.x10-mouse": {
     "note": "X10 mouse mode (?9) not implemented in kitty"
   },
-
   "alacritty:extensions.osc52-clipboard": {
     "note": "OSC 52 clipboard not exposed in headless mode",
     "result": "partial"
@@ -1087,7 +1053,6 @@
   "alacritty:extensions.sixel-da1": {
     "note": "Sixel not implemented in alacritty"
   },
-
   "vt100:extensions.osc52-clipboard": {
     "note": "Not implemented — pure TypeScript emulator"
   },

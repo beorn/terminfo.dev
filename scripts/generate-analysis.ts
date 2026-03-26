@@ -1342,7 +1342,7 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
     if (slugSeen.has(slug)) continue
     slugSeen.add(slug)
 
-    const key = `terminal/${slug}`
+    const key = `terminals/${slug}`
     const rank = ranks.get(termId) ?? totalTerminals
     const entry = generateTerminalAnalysis(termId, stats, rank, totalTerminals, features, baselines)
 
@@ -1360,7 +1360,7 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
     if (slugSeen.has(slug)) continue
     slugSeen.add(slug)
 
-    const key = `terminal/${slug}`
+    const key = `terminals/${slug}`
     const entry = generateHistoricalAnalysis(termId, meta)
     validateHtml(entry.analysis, key)
     output[key] = entry
