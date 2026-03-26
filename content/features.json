@@ -379,7 +379,7 @@
       "vt510"
     ],
     "body": "DECTCEM (DEC Text Cursor Enable Mode) controls cursor visibility. Hide cursor: <code>ESC [ ? 25 l</code>. Show cursor: <code>ESC [ ? 25 h</code>. TUI applications typically hide the cursor during rendering to avoid flicker, then restore it at the final cursor position. Universally supported.",
-    "probe": "Send <code>\\x1b[?25l</code> (DECTCEM reset), verify <code>cursor.visible === false</code>.",
+    "probe": "Send <code>ESC [ ? 25 l</code> (DECTCEM reset) and verify the cursor is no longer visible.",
     "baseline": "core",
     "sequence": "ESC [ ? 25 l"
   },
@@ -806,7 +806,7 @@
     ],
     "baseline": "modern",
     "body": "modifyOtherKeys (CSI > 4 ; Pv m) enables extended key reporting that distinguishes modified key combinations that would otherwise be ambiguous. At level 2, keys like Ctrl+I are reported distinctly from Tab, and Ctrl+M from Enter.",
-    "probe": "Check <code>capabilities.extensions</code> includes <code>modifyOtherKeys</code>. Verifies the backend declares support for the CSI &gt; 4 ; Pm m keyboard mode."
+    "probe": "Check if the terminal supports xterm modifyOtherKeys mode for enhanced key reporting."
   },
   "input.csi-u": {
     "name": "CSI u Key Encoding",
@@ -817,7 +817,7 @@
     ],
     "baseline": "modern",
     "body": "The fixterms/CSI u encoding reports keypresses as CSI codepoint ; modifiers u sequences. This was the precursor to the Kitty keyboard protocol and provides unambiguous key identification for terminal applications.",
-    "probe": "Check <code>capabilities.kittyKeyboard</code> flag. Verifies the backend declares support for the CSI u / kitty keyboard protocol."
+    "probe": "Query keyboard mode flags and check if the terminal supports CSI u encoding for key events."
   },
   "input.pixel-mouse": {
     "name": "Pixel Mouse Reporting (1016)",
@@ -1173,7 +1173,7 @@
       "kitty-extensions"
     ],
     "body": "The Kitty keyboard protocol solves fundamental ambiguities in traditional terminal input handling. Legacy terminals cannot distinguish between <code>Ctrl+I</code> and <code>Tab</code>, <code>Ctrl+M</code> and <code>Enter</code>, or <code>Escape</code> and the start of an escape sequence — they all produce the same byte sequences. The protocol also enables key-release events and distinguishes between different modifier key presses (left vs. right Shift).\n\nApplications opt in with <code>CSI &gt; flags u</code>, where <code>flags</code> is a bitmask selecting reporting modes: disambiguate keys (1), report event types (2), report alternate keys (4), report all keys as escape sequences (8), and report associated text (16). Keys are reported as <code>CSI unicode-key-code : shifted-key : base-layout-key ; modifiers : event-type u</code>.\n\nAdopted by Ghostty, WezTerm, foot, and rio. The protocol is progressive — applications can request only the features they need, and terminals report which flags they support.",
-    "probe": "Query keyboard mode flags via <code>\\x1b[?u</code>, check for <code>CSI ? <em>flags</em> u</code> response. Headless backends check <code>capabilities.kittyKeyboard</code>.",
+    "probe": "Query keyboard mode flags via <code>CSI ? u</code> and check for a <code>CSI ? flags u</code> response indicating Kitty keyboard protocol support.",
     "baseline": "rich",
     "sequence": "ESC [ > flags u"
   },
@@ -1185,7 +1185,7 @@
       "kitty-extensions"
     ],
     "body": "The Kitty graphics protocol enables inline image display in the terminal using a structured escape sequence format. Unlike Sixel, which encodes pixel data as ASCII characters, Kitty graphics transmits images as base64-encoded PNG, RGB, or RGBA data via APC (Application Program Command) sequences.\n\nImages are sent with <code>ESC_G &lt;control data&gt; ; &lt;payload&gt; ESC \\</code>. Large images are split into chunks using the <code>m=1</code> flag for continuation. The protocol supports placement (positioning images relative to cells), virtual image references (transmit once, display many times), animation frames, and z-layering. Each image gets a numeric ID, and Unicode placeholder characters allow images to participate in text layout and scrollback.\n\nCompared to Sixel, the Kitty protocol offers higher fidelity (full 32-bit RGBA), streaming, and compositing — but requires explicit terminal support. Adopted by Ghostty, WezTerm, and Konsole.",
-    "probe": "Check the <code>capabilities.kittyGraphics</code> flag on the backend.",
+    "probe": "Send a minimal Kitty graphics payload (<code>ESC_P G ... ESC \\</code>) and check for an acknowledgment response.",
     "baseline": "rich"
   },
   "extensions.sixel": {
@@ -1196,7 +1196,7 @@
       "sixel"
     ],
     "body": "Sixel is a bitmap graphics format developed by DEC for the VT240 terminal in 1983. Each character in a Sixel stream encodes a column of 6 vertical pixels — hence the name. The format uses DCS (Device Control String) sequences: <code>ESC P q &lt;sixel data&gt; ESC \\</code>. Pixel rows are encoded from top to bottom, with <code>$</code> for carriage return and <code>-</code> for newline (advance by 6 pixels).\n\nSixel was largely forgotten after DEC hardware disappeared, but has been revived by modern terminal emulators as a way to display inline images using only standard escape sequences. Applications like <code>img2sixel</code> and <code>chafa</code> convert images to Sixel format for terminal display.\n\nSixel support varies significantly: xterm was the first modern revival, followed by foot, WezTerm, and mlterm. Some terminals limit the color palette or image dimensions. Unlike the Kitty graphics protocol, Sixel has no placement model — images appear at the cursor position and scroll with text.",
-    "probe": "Check the <code>capabilities.sixel</code> flag on the backend.",
+    "probe": "Send a minimal Sixel image payload via DCS and verify the cursor moves (indicating the image was rendered).",
     "baseline": "rich"
   },
   "extensions.osc8": {
@@ -1208,7 +1208,7 @@
       "xterm-extensions"
     ],
     "body": "OSC 8 adds clickable hyperlinks to terminal output, similar to HTML anchor tags. The format is <code>ESC ] 8 ; params ; uri ST</code> to start a link and <code>ESC ] 8 ; ; ST</code> to end it. Text between these markers becomes a clickable hyperlink.\n\nThe <code>params</code> field supports an <code>id=value</code> parameter that groups non-contiguous text into a single link — essential for links that span multiple lines or are broken by line wrapping. When the user hovers over any part of a multi-segment link with the same <code>id</code>, all segments highlight together.\n\nTerminals typically render hyperlinks with an underline and open them in the default browser on click or Ctrl+click. Tools like <code>ls --hyperlink=auto</code>, <code>gcc</code>, and <code>grep</code> can emit OSC 8 links to file paths and URLs. Widely adopted across modern terminals including Ghostty, iTerm2, WezTerm, GNOME Terminal, and Windows Terminal.",
-    "probe": "Check the <code>capabilities.osc8Hyperlinks</code> flag. In app mode, write an OSC 8 hyperlink and verify cursor advances normally.",
+    "probe": "Write an OSC 8 hyperlink (<code>ESC ] 8 ; ; url BEL text ESC ] 8 ; ; BEL</code>) and verify the link is rendered.",
     "baseline": "rich",
     "sequence": "ESC ] 8 ; params ; uri BEL"
   },
@@ -1285,7 +1285,7 @@
       "osc"
     ],
     "body": "OSC 7 reports the current working directory to the terminal. The sequence is <code>ESC ] 7 ; file://hostname/path ST</code>. Shells emit this after each command so the terminal knows the working directory. Terminals use this to open new tabs/splits in the same directory and to make file paths in output clickable with correct relative path resolution.",
-    "probe": "Check <code>capabilities.extensions</code> includes <code>osc7</code>. Verifies the backend declares support for OSC 7 current working directory reporting.",
+    "probe": "Send <code>OSC 7 ; file://localhost/path BEL</code> and verify the terminal accepts the current directory report.",
     "baseline": "modern",
     "sequence": "ESC ] 7 ; file://host/path BEL"
   },
@@ -1297,7 +1297,7 @@
       "xterm-extensions"
     ],
     "body": "Text reflow determines what happens to scrollback content when the terminal window is resized. With reflow, long lines that were soft-wrapped at the old width re-wrap at the new width — widening the terminal unwraps them back into single lines. Without reflow, each wrapped line becomes a separate hard line, and widening the terminal leaves gaps.\n\nReflow requires the terminal to track which line breaks are \"soft\" (caused by reaching the terminal width) versus \"hard\" (caused by an explicit newline). This distinction is maintained per-line in the scrollback buffer.\n\nMost modern terminals support reflow, but the behavior differs for content inside scroll regions, content with certain SGR attributes, and content generated by full-screen applications. The alternate screen buffer typically does not reflow, since TUI applications manage their own layout.",
-    "probe": "Check the <code>capabilities.reflow</code> flag on the backend.",
+    "probe": "Write text that wraps, resize the terminal width, verify the text reflows to the new width.",
     "baseline": "rich",
     "sequence": "(behavioral — resize the terminal)"
   },
@@ -1309,7 +1309,7 @@
       "osc"
     ],
     "body": "Semantic prompts use OSC 133 markers to tell the terminal where each shell prompt, command input, and command output begins and ends. The markers are: <code>A</code> (prompt start), <code>B</code> (command input start — after prompt, before the user types), <code>C</code> (command output start — after Enter), and <code>D</code> (command finished, with exit code).\n\nWith these markers, terminals can implement features that were previously impossible: click-to-navigate between prompts, select entire command output, scroll by command boundaries, mark failed commands with a red indicator, and provide command completion times. Shell integration scripts (for bash, zsh, fish) emit these markers automatically.\n\nAlso known as shell integration or command decoration. Supported by iTerm2 (which originated the protocol), Ghostty, WezTerm, Kitty, and VS Code's integrated terminal.",
-    "probe": "Check the <code>capabilities.semanticPrompts</code> flag on the backend.",
+    "probe": "Send <code>OSC 133 ; A BEL</code> (prompt start marker) and verify the terminal accepts it without error.",
     "baseline": "rich",
     "sequence": "ESC ] 133 ; A BEL"
   },
@@ -1321,7 +1321,7 @@
     ],
     "baseline": "rich",
     "body": "<p><strong>OSC 633</strong> is VS Code's shell integration protocol, extending <a href=\"/extensions/extensions-semantic-prompts\" class=\"hover-link\">OSC 133</a> with additional markers for command detection, output boundaries, and shell state. It enables features like command decorations (green/red markers showing success/failure), run-recent-command, and sticky scroll for terminal output.</p>\n<p>The protocol uses escape sequences to mark four boundaries: <strong>prompt start</strong> (A), <strong>command start</strong> (B), <strong>command executed</strong> (C), and <strong>command finished</strong> (D, with exit code). VS Code's built-in shell integration scripts for bash, zsh, fish, and PowerShell emit these markers automatically. The terminal then knows exactly where each prompt, command, and output block begins and ends.</p>\n<p>OSC 633 adds VS Code-specific extensions beyond OSC 133: <strong>property reporting</strong> (P;key=value) for shell state like current directory and shell type, <strong>command line reporting</strong> (E) for the exact command text, and <strong>continuation prompt marking</strong> for multi-line commands. Other terminals (Kitty, WezTerm) support the base OSC 133 protocol but not the VS Code-specific extensions.</p>",
-    "probe": "Check <code>capabilities.semanticPrompts</code> flag. VS Code shell integration uses OSC 633 which is a superset of OSC 133 semantic prompts.",
+    "probe": "Send <code>OSC 633 ; A BEL</code> (VS Code prompt start marker) and verify the terminal accepts the sequence. OSC 633 is a superset of OSC 133.",
     "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
     "sequence": "ESC ] 633 ; A BEL"
   },
@@ -1333,7 +1333,7 @@
     ],
     "baseline": "rich",
     "body": "<p><strong>Desktop notifications</strong> allow terminal applications to trigger system notifications. Two competing escape sequences exist: <strong>OSC 9</strong> (iTerm2/ConEmu) sends a simple notification string, while <strong>OSC 777</strong> (rxvt-unicode) supports structured notifications with title and body. Neither is standardized — support varies widely across terminals.</p>\n<p>Common use case: long-running commands that notify when complete. Shells like zsh have plugins that automatically send a notification when a command takes longer than N seconds. The BEL character (0x07) is a simpler alternative — most terminals can be configured to show a visual bell or system notification on BEL.</p>",
-    "probe": "Check <code>capabilities.extensions</code> includes <code>osc9</code>. Verifies the backend declares support for OSC 9 desktop notification sequences."
+    "probe": "Send <code>OSC 9 ; message BEL</code> and verify the terminal accepts the notification sequence."
   },
   "extensions.iterm2-images": {
     "name": "iTerm2 Inline Images (OSC 1337)",
@@ -1343,7 +1343,7 @@
     ],
     "baseline": "rich",
     "body": "<p><strong>iTerm2 inline images</strong> use the proprietary <strong>OSC 1337</strong> protocol to display images directly in terminal output. The image data is base64-encoded and transmitted inline with the escape sequence. iTerm2 supports PNG, JPEG, GIF, and other formats.</p>\n<p>This protocol predates the Kitty graphics protocol and is simpler but less capable — it lacks features like image placement, animation control, and chunked transfer. Several other terminals (WezTerm, mintty) have adopted the iTerm2 protocol alongside or instead of Kitty graphics. The protocol is documented in iTerm2's documentation but has no formal specification.</p>",
-    "probe": "Check <code>capabilities.extensions</code> includes <code>iterm2Images</code>. Verifies the backend declares support for iTerm2 inline image protocol (OSC 1337 File=).",
+    "probe": "Check if the terminal responds to iTerm2 capability queries (OSC 1337) indicating inline image support.",
     "url": "https://iterm2.com/documentation-images.html"
   },
   "extensions.truecolor": {
@@ -1354,7 +1354,7 @@
       "xterm-extensions"
     ],
     "body": "24-bit truecolor allows terminals to display any of 16.7 million colors (256 values per R/G/B channel), far beyond the 256-color palette. The escape sequences are <code>ESC [ 38 ; 2 ; R ; G ; B m</code> for foreground and <code>ESC [ 48 ; 2 ; R ; G ; B m</code> for background.\n\nThere are two syntax variants: the original semicolon-separated format (<code>38;2;R;G;B</code>) introduced by xterm, and the colon-separated format (<code>38:2::R:G:B</code>) defined by ITU T.416. The colon format is technically more correct and avoids parsing ambiguities, but the semicolon format has wider support. Applications should use the semicolon variant for maximum compatibility.\n\nApplications can detect truecolor support via the <code>COLORTERM=truecolor</code> environment variable. Nearly all modern terminals support 24-bit color; the main exceptions are older versions of macOS Terminal.app and some minimal terminal emulators.",
-    "probe": "Check the <code>capabilities.truecolor</code> flag. In app mode, write 24-bit colored text and verify cursor advances normally.",
+    "probe": "Write text with 24-bit RGB foreground color (<code>ESC [ 38;2;R;G;B m</code>) and verify the cell stores the exact RGB values.",
     "baseline": "modern",
     "sequence": "ESC [ 38;2;R;G;B m"
   },
@@ -1783,7 +1783,7 @@
     ],
     "baseline": "rich",
     "body": "OSC 1337 ; ReportCellSize queries the terminal for the dimensions of a single character cell in pixels. The response is OSC 1337 ; ReportCellSize=height;width ST. This is essential for pixel-accurate image rendering protocols (sixel, iTerm2 inline images, kitty graphics) where applications need to know the exact pixel dimensions of cells to scale images correctly.",
-    "probe": "Query cell size with <code>OSC 1337 ; ReportCellSize BEL</code>, verify response matches <code>OSC 1337 ; ReportCellSize=H;W</code> pattern via feedCapture.",
+    "probe": "Send <code>OSC 1337 ; ReportCellSize BEL</code> and verify the terminal responds with cell dimensions.",
     "url": "https://iterm2.com/documentation-escape-codes.html"
   },
   "extensions.osc1337-capabilities": {
@@ -1795,7 +1795,7 @@
     ],
     "baseline": "rich",
     "body": "OSC 1337 ; RequestCapabilities queries the terminal to report all its supported capabilities at once. The response is OSC 1337 ; Capabilities=... ST with a structured list of supported features. This provides a single-query alternative to probing individual features, though adoption is currently limited to iTerm2.",
-    "probe": "Query capabilities with <code>OSC 1337 ; RequestCapabilities BEL</code>, verify response matches <code>OSC 1337 ; Capabilities=...</code> pattern via feedCapture.",
+    "probe": "Send <code>OSC 1337 ; ReportCellSize BEL</code> and check for a response indicating iTerm2 protocol support.",
     "url": "https://iterm2.com/documentation-escape-codes.html"
   },
   "extensions.sixel-da1": {
