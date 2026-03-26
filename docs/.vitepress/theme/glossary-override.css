@@ -2,7 +2,9 @@
 .glossary-term {
   display: inline !important;
   color: inherit !important;
-  text-decoration: none !important;
+  text-decoration: underline dotted !important;
+  text-decoration-color: var(--vp-c-divider) !important;
+  text-underline-offset: 3px !important;
   padding-bottom: 0 !important;
   cursor: help;
 }
