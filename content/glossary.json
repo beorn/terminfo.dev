@@ -513,5 +513,25 @@
     "expansion": "Alternate Screen with Cursor Save",
     "description": "Switch to alternate screen buffer and save/restore cursor position.",
     "link": "/modes/modes-alt-screen-enter"
+  },
+  "Core TUI baseline": {
+    "expansion": "Core TUI Baseline",
+    "description": "Every terminal should support these",
+    "link": "/baseline/core"
+  },
+  "Modern TUI baseline": {
+    "expansion": "Modern TUI Baseline",
+    "description": "Expected by modern TUI frameworks",
+    "link": "/baseline/modern"
+  },
+  "Rich TUI baseline": {
+    "expansion": "Rich TUI Baseline",
+    "description": "Advanced features for cutting-edge TUIs",
+    "link": "/baseline/rich"
+  },
+  "Unicode baseline": {
+    "expansion": "Unicode Baseline",
+    "description": "Unicode correctness — wide chars, combining, emoji",
+    "link": "/baseline/unicode"
   }
 }
