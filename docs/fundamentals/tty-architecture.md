@@ -48,6 +48,7 @@ A **pseudo-terminal** (PTY) is a pair of virtual devices created by the kernel:
 The PTY is what makes terminal emulators possible. Without it, applications would need to talk directly to hardware. With it, the application thinks it's connected to a physical terminal, and the terminal emulator can be any program — a GUI app, a web browser tab (via xterm.js), or even another terminal (tmux).
 
 When a terminal emulator starts, it:
+
 1. Calls `posix_openpt()` (or `openpty()`) to create a PTY pair
 2. Forks a child process (the shell)
 3. Sets the PTY slave as the child's stdin, stdout, and stderr
@@ -65,12 +66,14 @@ Between the PTY master and slave sits the **line discipline** — a kernel-level
 The line discipline handles:
 
 **Input processing (terminal → application):**
+
 - **Echo** — when you type, the line discipline writes the character back to the terminal so you can see it (the application hasn't done anything yet)
 - **Line editing** — backspace, Ctrl+U (kill line), Ctrl+W (delete word) are handled by the line discipline in canonical mode
 - **Signal generation** — Ctrl+C → SIGINT, Ctrl+Z → SIGTSTP, Ctrl+\\ → SIGQUIT
 - **Line buffering** — in canonical mode, input isn't delivered to the application until you press Enter
 
 **Output processing (application → terminal):**
+
 - **Newline translation** — LF (0x0A) is translated to CR+LF so the cursor returns to column 1. Controlled by the `onlcr` stty flag.
 - **Tab expansion** — optionally converts tabs to spaces
 - **Flow control** — Ctrl+S pauses output, Ctrl+Q resumes (XON/XOFF)
@@ -82,6 +85,7 @@ When you press Ctrl+C, the terminal emulator writes byte 0x03 to the PTY master.
 ## TUI Apps Bypass the Line Discipline
 
 Interactive applications like vim, htop, and less need to:
+
 - Receive every keypress immediately (not wait for Enter)
 - Handle Ctrl+C themselves (not let the kernel kill them)
 - Control exactly what appears on screen (not have the kernel echo input)
@@ -89,6 +93,7 @@ Interactive applications like vim, htop, and less need to:
 They do this by switching to **raw mode** — disabling the line discipline's input processing. See [stty & Line Discipline](/fundamentals/stty) for the details.
 
 In raw mode:
+
 - Every byte is delivered to the application immediately
 - No echo, no line editing, no signal generation
 - The application is fully responsible for its own display
@@ -117,7 +122,7 @@ LOCAL                              REMOTE
 
 The ssh client puts the local terminal into raw mode (so the local line discipline doesn't interfere) and tunnels all bytes over the encrypted connection. The SSH server allocates a PTY on the remote machine and connects it to the remote shell. The remote line discipline handles Ctrl+C, echo, and line editing. To the remote shell, it looks like a normal terminal session.
 
-This is why terminal escape sequences work over SSH — they're just bytes flowing through the tunnel. The remote terminal emulator (well, the remote PTY + line discipline) handles them exactly as a local session would.
+This is why terminal escape sequences work over SSH — they're just bytes flowing through the tunnel. The remote application emits escape sequences as bytes, which flow through the SSH tunnel back to the **local** terminal emulator, which parses and renders them. The remote PTY and line discipline handle input buffering, echo, and signals — not escape sequence rendering.
 
 ## Why tmux and screen Add a Layer
 
@@ -143,6 +148,7 @@ Terminal multiplexers insert an **extra PTY** between the terminal emulator and 
 The tmux server is both a PTY master (for the shell) and a terminal emulator (parsing escape sequences from the shell, maintaining a screen buffer). It then re-renders that buffer as escape sequences to the outer terminal.
 
 This double-PTY architecture is why:
+
 - **Sessions persist** when you disconnect — the tmux server keeps the inner PTY alive
 - **Some escape sequences don't pass through** — tmux must understand and re-emit every escape sequence, and it doesn't support all of them (notably, some modern protocols like Kitty graphics)
 - **There's a latency cost** — every byte takes an extra hop through tmux's terminal emulator
@@ -165,13 +171,13 @@ This is why `Ctrl+Z` works universally — it's handled by the kernel, not the a
 
 ## Key Takeaways
 
-| Component | Responsibility | Examples |
-|-----------|---------------|----------|
-| Terminal emulator | Render text, capture input, parse escape sequences | Ghostty, Kitty, iTerm2 |
-| PTY (kernel) | Virtual serial device pair connecting emulator to application | `/dev/pts/N` |
-| Line discipline (kernel) | Echo, line editing, signals, newline translation | `stty` controls its behavior |
-| Shell | Command interpretation, job control, prompt display | bash, zsh, fish |
-| Application | Whatever it does — TUI rendering, file editing, process monitoring | vim, htop, less |
+| Component                | Responsibility                                                     | Examples                     |
+| ------------------------ | ------------------------------------------------------------------ | ---------------------------- |
+| Terminal emulator        | Render text, capture input, parse escape sequences                 | Ghostty, Kitty, iTerm2       |
+| PTY (kernel)             | Virtual serial device pair connecting emulator to application      | `/dev/pts/N`                 |
+| Line discipline (kernel) | Echo, line editing, signals, newline translation                   | `stty` controls its behavior |
+| Shell                    | Command interpretation, job control, prompt display                | bash, zsh, fish              |
+| Application              | Whatever it does — TUI rendering, file editing, process monitoring | vim, htop, less              |
 
 The terminal emulator and the application never communicate directly. Everything flows through the PTY and the line discipline. This indirection is what makes the entire system work — any terminal emulator can host any application, any application can run in any terminal, and the kernel provides the glue.
 

@@ -31,7 +31,7 @@ The site shows these as two separate sections: real terminal results first (the 
 Anyone can test their actual terminal application:
 
 ```bash
-npx terminfo.dev probe     # Run 100 probes against your terminal
+npx terminfo.dev probe     # Run 148 probes against your terminal
 npx terminfo.dev submit    # Run probes + submit results
 ```
 
@@ -94,7 +94,7 @@ Features are tagged by their defining standard. Each standard page includes a li
 
 ### March 2026
 
-- **45+ new features** added across all categories — from 62 to 100+ features tested
+- **86+ new features** added across all categories — from 62 to 148 features tested
 - New categories: **Editing** (ICH/DCH/IL/DL), **Character Sets** (DEC Special Graphics), **Device Status** (DA1/DSR)
 - **Descriptive URL slugs** with standard numbers (e.g., `/sgr/sgr-4-4-dotted-underline`)
 - **xterm.js underline variants** now reported accurately (reading internal extended attributes)

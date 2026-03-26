@@ -191,6 +191,17 @@ function buildSidebar() {
     appTerminals.sort((a, b) => a.text.localeCompare(b.text))
   } catch {}
 
+  // Build comprehensive terminal list for nav (all non-historical entries from terminals.json)
+  const allTerminals: Array<{ text: string; link: string }> = []
+  const seenSlugs = new Set<string>()
+  for (const [, entry] of Object.entries(terminalsData as Record<string, any>)) {
+    if (entry.historical || !entry.slug || !entry.label) continue
+    if (seenSlugs.has(entry.slug)) continue
+    seenSlugs.add(entry.slug)
+    allTerminals.push({ text: entry.label, link: `/terminal/${entry.slug}` })
+  }
+  allTerminals.sort((a, b) => a.text.localeCompare(b.text))
+
   // Build popular comparisons from available app terminals
   const compareItems: Array<{ text: string; link: string }> = []
   const popularPairs = [
@@ -269,15 +280,11 @@ function buildSidebar() {
     },
     {
       text: "Terminals",
-      items: [...appTerminals, ...terminals.filter(t => !appTerminals.some(a => a.link === t.link))],
+      items: allTerminals,
     },
     {
       text: "Compare",
       items: compareItems,
-    },
-    {
-      text: "Backends",
-      items: terminals,
     },
     {
       text: "Historical",
@@ -302,10 +309,10 @@ function buildSidebar() {
     { text: "About", link: "/about" },
   ]
 
-  return { sidebar, terminals, sortedCategories, categoryLabels, sortedTags, tagLabels }
+  return { sidebar, terminals, allTerminals, sortedCategories, categoryLabels, sortedTags, tagLabels }
 }
 
-const { sidebar, terminals, sortedCategories, categoryLabels, sortedTags, tagLabels } = buildSidebar()
+const { sidebar, terminals, allTerminals, sortedCategories, categoryLabels, sortedTags, tagLabels } = buildSidebar()
 
 export default defineConfig({
   title: "Terminfo.dev",
@@ -492,7 +499,7 @@ export default defineConfig({
       },
       {
         text: "Terminals",
-        items: terminals,
+        items: allTerminals,
       },
       {
         text: "Fundamentals",

@@ -24,12 +24,12 @@ The result is a patchwork of detection methods. Applications check environment v
 
 The `$TERM` environment variable is the oldest and most widely used detection mechanism. The terminal emulator sets it before launching the shell, and it identifies the terminal type — in theory. Applications pass this value to the terminfo database to look up capabilities: does this terminal support 256 colors? Does it have an alternate screen? What sequence moves the cursor?
 
-The problem is that almost every modern terminal sets `$TERM` to `xterm-256color`, regardless of what it actually is. Ghostty, Kitty, iTerm2, Alacritty, WezTerm — they all default to `xterm-256color`. This isn't laziness; it's self-defense. When Ghostty tried using its own `$TERM` value (`ghostty`) during its beta period, too many applications broke because they string-match on "xterm" and reject anything else. The ncurses `tput` utility, Python's `curses` module, and countless shell scripts assume `$TERM` starts with "xterm" or is in a small list of known values.
+The problem is that `$TERM` tells you how the terminal wants to be treated, not what it actually is. Many terminals still default to `xterm-256color` — but not all. Kitty ships `xterm-kitty`, Alacritty uses `alacritty`, WezTerm uses `wezterm`, and Ghostty tried using `ghostty` during its beta period (then reverted to `xterm-ghostty` after too many applications broke because they string-match on "xterm" and reject anything else). The ncurses `tput` utility, Python's `curses` module, and countless shell scripts assume `$TERM` starts with "xterm" or is in a small list of known values — which is exactly why so many terminals still fall back to `xterm-256color`.
 
-So `$TERM` tells you almost nothing about the actual terminal. It tells you "this terminal wants to be treated like xterm with 256 colors," which is a lowest-common-denominator claim. It says nothing about truecolor, nothing about Kitty keyboard protocol, nothing about synchronized output, nothing about hyperlinks. The variable that was designed to solve terminal detection has become part of the problem.
+So `$TERM` is a compatibility hint, not a capability oracle. It tells you the baseline the terminal is willing to be treated as — which says nothing about truecolor, nothing about Kitty keyboard protocol, nothing about synchronized output, nothing about hyperlinks. The variable that was designed to solve terminal detection has become part of the problem.
 
-::: tip The $TERM lie — every terminal pretends to be xterm-256color
-Ghostty, Kitty, iTerm2, Alacritty, WezTerm, and most other modern terminals all default to `$TERM=xterm-256color`. This means `$TERM` tells you the terminal wants basic xterm compatibility — not what it actually supports. Kitty does ship a `xterm-kitty` terminfo entry and encourages setting `$TERM=xterm-kitty`, but many remote servers don't have this entry installed, so SSH sessions break. The "just use your own TERM value" approach doesn't scale when every server needs the terminfo entry pre-installed.
+::: tip $TERM is a compatibility hint, not a capability oracle
+Many terminals default to `$TERM=xterm-256color`, but others ship their own values: Kitty uses `xterm-kitty`, Alacritty uses `alacritty`, WezTerm uses `wezterm`. Either way, `$TERM` tells you how the terminal wants to be treated — not what it actually supports. Terminals that do ship custom values run into a different problem: remote servers often don't have the matching terminfo entry installed, so SSH sessions break. The "just use your own TERM value" approach doesn't scale when every server needs the terminfo entry pre-installed.
 :::
 
 ## $COLORTERM
@@ -81,20 +81,20 @@ The simplest form of runtime probing uses cursor position: the application saves
 This is what [Termless](https://termless.dev) does with headless backends — it instantiates a terminal emulator in-process, writes escape sequences, and reads back the terminal state programmatically. It's also what the `npx terminfo.dev` CLI does with real terminals — it sends probes over the PTY and reads the responses. The results are ground truth: not what a database says should work, not what an environment variable claims, but what the terminal actually did when presented with the sequence. This behavioral approach is why terminfo.dev can track features that terminfo has no vocabulary for.
 
 ::: info Why terminfo.dev probes directly instead of using terminfo
-The terminfo database has no capability entries for most modern features — Kitty keyboard protocol, OSC 8 hyperlinks, styled underlines, synchronized output, semantic prompts, Sixel graphics, clipboard access, and dozens more are invisible to terminfo. Even for features it does track, the database reflects what a terminal *should* support based on its `$TERM` value, not what it *actually* does. Runtime probing gives ground truth: send the sequence, check the result. That's why every data point on this site comes from an actual probe, not a database lookup. See [Why not terminfo?](/about#why-not-terminfo) for the full rationale.
+The terminfo database has no capability entries for most modern features — Kitty keyboard protocol, OSC 8 hyperlinks, styled underlines, synchronized output, semantic prompts, Sixel graphics, clipboard access, and dozens more are invisible to terminfo. Even for features it does track, the database reflects what a terminal _should_ support based on its `$TERM` value, not what it _actually_ does. Runtime probing gives ground truth: send the sequence, check the result. That's why every data point on this site comes from an actual probe, not a database lookup. See [Why not terminfo?](/about#why-not-terminfo) for the full rationale.
 :::
 
 ## Comparing Detection Methods
 
-| Method | Reliability | Coverage | Speed | Requires Response | Works Over SSH |
-|--------|-------------|----------|-------|-------------------|----------------|
-| **$TERM** | Low — almost everything lies | Legacy features only (via terminfo) | Instant | No | Yes |
-| **$COLORTERM** | Medium — widely adopted for color | Truecolor only | Instant | No | Depends on forwarding |
-| **terminfo** | Medium — accurate for what it tracks | Legacy features only | Instant (cached) | No | Yes (if entry installed) |
-| **DA1** | Medium — useful as sentinel | Terminal class, not specific features | Fast (~ms) | Yes | Yes |
-| **DECRPM** | High — definitive answer | Mode-toggled features only | Fast (~ms) | Yes | Yes |
-| **XTVERSION** | High — exact identity | All features (via lookup table) | Fast (~ms) | Yes | May report mux instead |
-| **Runtime probe** | Highest — ground truth | Any observable behavior | Slow (~100ms per probe) | Yes | Yes |
+| Method            | Reliability                          | Coverage                              | Speed                   | Requires Response | Works Over SSH           |
+| ----------------- | ------------------------------------ | ------------------------------------- | ----------------------- | ----------------- | ------------------------ |
+| **$TERM**         | Low — almost everything lies         | Legacy features only (via terminfo)   | Instant                 | No                | Yes                      |
+| **$COLORTERM**    | Medium — widely adopted for color    | Truecolor only                        | Instant                 | No                | Depends on forwarding    |
+| **terminfo**      | Medium — accurate for what it tracks | Legacy features only                  | Instant (cached)        | No                | Yes (if entry installed) |
+| **DA1**           | Medium — useful as sentinel          | Terminal class, not specific features | Fast (~ms)              | Yes               | Yes                      |
+| **DECRPM**        | High — definitive answer             | Mode-toggled features only            | Fast (~ms)              | Yes               | Yes                      |
+| **XTVERSION**     | High — exact identity                | All features (via lookup table)       | Fast (~ms)              | Yes               | May report mux instead   |
+| **Runtime probe** | Highest — ground truth               | Any observable behavior               | Slow (~100ms per probe) | Yes               | Yes                      |
 
 ## What Developers Should Do
 

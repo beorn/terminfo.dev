@@ -50,7 +50,7 @@ const standardsMeta = {
   },
   'xterm-extensions': {
     label: 'Xterm Extensions',
-    year: '1996+',
+    year: '1984/1996+',
     specUrl: 'https://invisible-island.net/xterm/ctlseqs/ctlseqs.html',
     tagline: "Thomas Dickey's 30-year legacy",
   },
@@ -173,7 +173,7 @@ ANSI published the X3.64 terminal standard in 1979, then withdrew it in 1994 in 
 
 ### VT100 (1978) — The Terminal That Won {#vt100}
 
-Some vendors argued the new ANSI standard was "beyond the state of the art" and couldn't be implemented affordably — the VT100 proved them wrong at $1,800. The DEC VT100 ran on an **Intel 8080 CPU with 3KB of RAM**, yet it defined terminal computing for the next five decades. It implemented the ECMA-48 escape grammar, adding scroll regions (DECSTBM), character sets, and the private mode namespace (`CSI ?`) that terminals still use today. When software says it's "VT100-compatible," it's promising support for a specific set of behaviors that this $1,800 box established in 1978.
+Some vendors argued the new ANSI standard was "beyond the state of the art" and couldn't be implemented affordably — the VT100 proved them wrong at $1,800. The DEC VT100 ran on an **Intel 8080 CPU with limited RAM**, yet it defined terminal computing for the next five decades. It implemented the ECMA-48 escape grammar, adding scroll regions (DECSTBM), character sets, and the private mode namespace (`CSI ?`) that terminals still use today. When software says it's "VT100-compatible," it's promising support for a specific set of behaviors that this $1,800 box established in 1978.
 
 The VT100's dominance wasn't accidental — DEC shipped it with the rising tide of Unix, VAX/VMS, and networking. Every competitor had to emulate it. That gravity persists: every terminal emulator today is, at its core, a VT100 emulator with extensions.
 
@@ -184,6 +184,7 @@ IBM's 80-column punch card format (1928) set the width for the IBM 3270 terminal
 :::
 
 ::: details VT100 in action
+
 ```bash
 # Scroll region: lines 2-23 scroll, line 1 stays (status bar)
 printf '\e[2;23r'
@@ -194,17 +195,19 @@ printf '\e7'
 # Restore cursor position
 printf '\e8'
 ```
+
 :::
 
 ### VT220 (1983) — Editing Operations Arrive {#vt220}
 
-The VT220's keyboard layout (LK201) was so influential that IBM's Model M design team explicitly copied its inverted-T arrow cluster and navigation key arrangement — the layout that dominates to this day. The VT220 added the **insert/delete operations** (ICH, DCH, IL, DL) that make full-screen terminal applications practical. Without VT220 editing sequences, programs like vim and tmux would have to redraw the entire screen for every character insertion. The VT220 also introduced 8-bit control codes, user-defined keys, and national replacement character sets.
+The VT220's keyboard layout (LK201) popularized the inverted-T arrow cluster and navigation key arrangement that later became standard on PC keyboards — the layout that dominates to this day. The VT220 added the **insert/delete operations** (ICH, DCH, IL, DL) that make full-screen terminal applications practical. Without VT220 editing sequences, programs like vim and tmux would have to redraw the entire screen for every character insertion. The VT220 also introduced 8-bit control codes, user-defined keys, and national replacement character sets.
 
 These editing sequences are so fundamental that it's hard to imagine terminals without them — but they weren't in the VT100. The jump from VT100 to VT220 was the jump from a display terminal to an interactive editing terminal.
 
 <p class="standard-link"><a class="hover-link" href="/vt220">View VT220 features &rarr;</a></p>
 
 ::: details VT220 editing
+
 ```bash
 # Insert 3 blank characters at cursor
 printf '\e[3@'
@@ -213,6 +216,7 @@ printf '\e[2P'
 # Insert a blank line
 printf '\e[L'
 ```
+
 :::
 
 ### Sixel (1983, Revived) — Inline Graphics {#sixel}
@@ -238,6 +242,7 @@ The "private" designation means vendor-defined: any terminal can allocate new mo
 <p class="standard-link"><a class="hover-link" href="/dec-private-modes">View DEC Private Modes features &rarr;</a></p>
 
 ::: details DEC modes in action
+
 ```bash
 # Enable bracketed paste (your terminal wraps pasted text in markers)
 printf '\e[?2004h'
@@ -248,6 +253,7 @@ printf '\e[?1049h'
 # Switch back
 printf '\e[?1049l'
 ```
+
 :::
 
 ### Unicode (1991+) — The Width Problem {#unicode}
@@ -286,6 +292,7 @@ Incorrect width calculation causes cursor positioning errors, text misalignment,
 
 ::: details The width problem in practice
 This table is supposed to be aligned — but depending on your terminal and font, the columns may be off:
+
 ```
 Name        │ Status │ Score
 ────────────┼────────┼──────
@@ -295,6 +302,7 @@ Bob         │ ✗ fail │ 42%
 José García │ ✓ done │ 88%     ← combining accent (é) = 1 column? 2?
 👨‍💻 DevBot   │ ~ wait │ 77%     ← emoji: 2 columns? more?
 ```
+
 If your terminal calculates any character's width differently from the application, the `│` separators won't line up. This is the core problem: **every terminal, every font, and every TUI library must agree on every character's width** — and they don't.
 :::
 
@@ -327,7 +335,7 @@ Powerline and Nerd Font glyphs are Private Use Area characters — they're not p
 
 <p class="standard-link"><a class="hover-link" href="/unicode">View Unicode features &rarr;</a></p>
 
-### Xterm Extensions (1996+) — Thomas Dickey's 30-Year Legacy {#xterm}
+### Xterm Extensions (1984/1996+) — Thomas Dickey's 30-Year Legacy {#xterm}
 
 xterm began as a summer project in 1984 — Mark Vandevoorde, a student of Jim Gettys, wrote it as a terminal emulator for the VAXStation 100. As Gettys later noted, "part of why xterm's internals are so horrifying is that it was originally intended that a single process be able to drive multiple displays." **One person** — Thomas Dickey — maintains xterm, ncurses, AND the terminfo database. He's been doing it since 1996. The xterm control sequences document (ctlseqs) is the single most important reference for terminal developers, documenting not just xterm's behavior but the de facto standards the rest of the ecosystem follows.
 
@@ -351,12 +359,12 @@ The OSC namespace is **open-ended** — any terminal can define new number codes
 
 Kovid Goyal, already known as the creator of <a href="https://calibre-ebook.com/" target="_blank" rel="noopener">Calibre</a> (the e-book manager), built Kitty out of frustration with existing terminal limitations. The keyboard protocol was born from a specific pain: writing a Vim-like editor where `Ctrl+I` and `Tab` needed to be different keys. Kitty introduced protocols that solve fundamental limitations of the 1978-era terminal model. The **Kitty keyboard protocol** provides unambiguous, modifier-aware key reporting — solving exactly that problem: `Ctrl+I` and `Tab` are the same byte (0x09) in traditional terminals. With the Kitty protocol, they're distinct events, and key-up events are reportable for the first time.
 
-The **Kitty graphics protocol** enables inline image display via chunked base64 transfer. Kitty also defined **extended underline styles** (curly, dotted, dashed) with independent underline colors. These extensions have been adopted by Ghostty, WezTerm, foot, and other modern terminals — making them the closest thing to an emerging standard for next-generation terminal features.
+The keyboard protocol has seen broad adoption — Ghostty, WezTerm, foot, and others now implement it, making it the closest thing to an emerging standard for terminal input. The **Kitty graphics protocol** enables inline image display via chunked base64 transfer, though its adoption is narrower: WezTerm and Kitty itself support it, but Ghostty does not. Kitty also defined **extended underline styles** (curly, dotted, dashed) with independent underline colors, which have seen wide adoption across modern terminals.
 
 <p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
 
 ::: tip Why Kitty matters
-Kitty significantly advanced terminal input by documenting key-release reporting and a comprehensive keyboard protocol. Earlier efforts like xterm's modifyOtherKeys and Leonerd's CSI u/fixterms addressed parts of this problem. Kitty's keyboard and graphics protocols are now adopted by Ghostty, WezTerm, foot, and others — making them the closest thing to an emerging standard for next-generation terminals.
+Kitty significantly advanced terminal input by documenting key-release reporting and a comprehensive keyboard protocol. Earlier efforts like xterm's modifyOtherKeys and Leonerd's CSI u/fixterms addressed parts of this problem. The keyboard protocol has been widely adopted (Ghostty, WezTerm, foot, and others), making it the closest thing to an emerging standard for terminal input. The graphics protocol has narrower adoption — supported by Kitty and WezTerm, but not by Ghostty, which chose not to implement it.
 :::
 
 ---

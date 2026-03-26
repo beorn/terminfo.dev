@@ -3,7 +3,7 @@
   "backends": {
     "xtermjs": {
       "upstream": "@xterm/headless",
-      "versions": ["5.4.0", "5.5.0", "6.0.0"]
+      "versions": ["5.4.0", "5.5.0", "6.0.0", "6.1.0-beta.195"]
     },
     "ghostty": {
       "upstream": "ghostty-web",

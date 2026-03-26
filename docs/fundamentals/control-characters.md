@@ -34,9 +34,9 @@ These 33 characters are called **C0 controls** (the "C" stands for "control," th
 <tr class="highlight-row"><td><code>07</code></td><td>7</td><td>Ctrl+G</td><td>^G</td><td>BEL</td><td>Plays a sound, flashes the title bar, or triggers a notification. Also used as an alternative string terminator for OSC sequences.</td></tr>
 <tr class="highlight-row"><td><code>08</code></td><td>8</td><td>Ctrl+H</td><td>^H</td><td>BS</td><td>Move cursor back one column (backspace). Does not delete the character.</td></tr>
 <tr class="highlight-row"><td><code>09</code></td><td>9</td><td>Ctrl+I</td><td>^I</td><td>HT</td><td>Horizontal tab — advance cursor to the next tab stop (default: every 8 columns).</td></tr>
-<tr class="highlight-row"><td><code>0A</code></td><td>10</td><td>Ctrl+J</td><td>^J</td><td>LF</td><td>Line feed — move cursor down one line. In most terminals, also performs a carriage return (newline behavior).</td></tr>
+<tr class="highlight-row"><td><code>0A</code></td><td>10</td><td>Ctrl+J</td><td>^J</td><td>LF</td><td>Line feed — move cursor down one line. Does not imply CR; the newline behavior users observe comes from the TTY line discipline translating LF→CRLF on output (<code>onlcr</code>).</td></tr>
 <tr><td><code>0B</code></td><td>11</td><td>Ctrl+K</td><td>^K</td><td>VT</td><td>Vertical tab — treated as LF by most terminals.</td></tr>
-<tr><td><code>0C</code></td><td>12</td><td>Ctrl+L</td><td>^L</td><td>FF</td><td>Form feed — treated as LF by most terminals. Shells often interpret it as "clear screen."</td></tr>
+<tr><td><code>0C</code></td><td>12</td><td>Ctrl+L</td><td>^L</td><td>FF</td><td>Form feed — treated as LF by most terminals. Readline-enabled shells bind Ctrl+L to clear-screen, but this is a shell/readline behavior, not a terminal interpretation of FF.</td></tr>
 <tr class="highlight-row"><td><code>0D</code></td><td>13</td><td>Ctrl+M</td><td>^M</td><td>CR</td><td>Carriage return — move cursor to column 1 of the current line.</td></tr>
 <tr><td><code>0E</code></td><td>14</td><td>Ctrl+N</td><td>^N</td><td>SO</td><td>Shift Out — switch to G1 character set (DEC Special Graphics on VT100).</td></tr>
 <tr><td><code>0F</code></td><td>15</td><td>Ctrl+O</td><td>^O</td><td>SI</td><td>Shift In — switch back to G0 character set (ASCII).</td></tr>
@@ -72,7 +72,7 @@ The mapping is elegant and mathematical: **Ctrl+key produces the byte value of t
 - Ctrl+M = 0x4D (`M`) - 0x40 = 0x0D (CR, carriage return)
 - Ctrl+[ = 0x5B (`[`) - 0x40 = 0x1B (ESC)
 
-This is a hardware-level mapping — it happens in the terminal emulator before the byte reaches any software. This is also why **Ctrl+I and Tab are the same byte (0x09)**: the terminal has no way to distinguish them. It's not a bug; it's the fundamental design of ASCII.
+This is a traditional terminal input encoding convention — the terminal emulator performs this mapping before the byte reaches any software. This is also why **Ctrl+I and Tab are the same byte (0x09)**: the terminal has no way to distinguish them. It's not a bug; it's the fundamental design of ASCII.
 
 ::: info Ctrl+I and Tab are the same byte (0x09)
 This is why you can't bind Ctrl+I and Tab to different actions in traditional terminals — they produce identical input. The [Kitty keyboard protocol](/kitty-extensions) solves this by reporting keys as symbolic events with modifiers, not as raw bytes. With the Kitty protocol, Ctrl+I and Tab are distinct events, and key-release events are reportable for the first time.
@@ -84,7 +84,7 @@ Of the 33 control characters, only a handful have meaningful effects in modern t
 
 **ESC (0x1B)** — The gateway to everything else on this site. ESC followed by `[` starts a CSI (Control Sequence Introducer) sequence. ESC followed by `]` starts an OSC (Operating System Command). ESC alone with a letter is a simple escape command (like ESC 7 for DECSC cursor save). Every color change, cursor movement, and mode switch begins with this one byte.
 
-**LF (0x0A)** — Line feed. Combined with CR, this is the newline operation. In most terminal configurations, LF alone performs both line-feed and carriage-return (controlled by the `onlcr` stty setting).
+**LF (0x0A)** — Line feed. Moves the cursor down one line without changing the column. Users see newline behavior because the TTY line discipline translates output LF to CRLF (the `onlcr` stty flag) — the terminal itself only moves down.
 
 **CR (0x0D)** — Carriage return. Moves the cursor to column 1. In the raw output of `\r\n`, CR does the horizontal movement and LF does the vertical movement. Many terminal applications use CR alone to overwrite the current line (progress bars, spinners).
 
@@ -104,12 +104,12 @@ When you press Ctrl+C, the terminal emulator sends byte 0x03 (ETX) to the PTY. B
 
 ASCII defines 128 characters in 7 bits (0x00–0x7F):
 
-| Range | Count | What |
-|-------|-------|------|
-| 0x00–0x1F | 32 | C0 control characters |
-| 0x20 | 1 | Space (technically a "graphic" character) |
-| 0x21–0x7E | 94 | Printable characters (letters, digits, punctuation) |
-| 0x7F | 1 | DEL (control character) |
+| Range     | Count | What                                                |
+| --------- | ----- | --------------------------------------------------- |
+| 0x00–0x1F | 32    | C0 control characters                               |
+| 0x20      | 1     | Space (technically a "graphic" character)           |
+| 0x21–0x7E | 94    | Printable characters (letters, digits, punctuation) |
+| 0x7F      | 1     | DEL (control character)                             |
 
 The C1 control range (0x80–0x9F) was defined later by ECMA-48 for 8-bit character sets. It includes single-byte equivalents for common escape sequences — 0x9B is CSI (equivalent to ESC [), 0x9D is OSC (equivalent to ESC ]). In practice, C1 controls are almost never used because they conflict with UTF-8 encoding, where bytes 0x80–0xBF are continuation bytes. The 7-bit ESC-prefixed forms are universal.
 
