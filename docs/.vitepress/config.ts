@@ -284,26 +284,55 @@ function buildSidebar() {
 
 const { sidebar, terminals, sortedCategories, categoryLabels, sortedTags, tagLabels } = buildSidebar()
 
-// Build glossary map for the markdown plugin: { "term": "expansion — description" }
+// Build glossary map for the markdown plugin: { "term": "description||link" }
+// Includes: glossary.json terms + terminal names + framework names
 function loadGlossaryMap(): Record<string, string> {
-  const glossaryPath = join(docsDir, "..", "content", "glossary.json")
+  const map: Record<string, string> = {}
+
+  // 1. Glossary terms (acronyms, concepts)
   try {
+    const glossaryPath = join(docsDir, "..", "content", "glossary.json")
     const raw = JSON.parse(readFileSync(glossaryPath, "utf-8")) as Record<
       string,
-      { expansion: string; description: string }
+      { expansion: string; description: string; link?: string }
     >
-    const map: Record<string, string> = {}
     for (const [key, entry] of Object.entries(raw)) {
-      // Encode link in description so our custom component can extract it
-      const link = (entry as any).link ?? ""
+      const link = entry.link ?? ""
       map[key] = link
         ? `${entry.expansion} — ${entry.description}||${link}`
         : `${entry.expansion} — ${entry.description}`
     }
-    return map
-  } catch {
-    return {}
-  }
+  } catch {}
+
+  // 2. Terminal names (Ghostty, Kitty, iTerm2, etc.)
+  try {
+    const terminalsPath = join(docsDir, "..", "content", "terminals.json")
+    const terminals = JSON.parse(readFileSync(terminalsPath, "utf-8")) as Record<
+      string,
+      { label: string; slug: string; description?: string }
+    >
+    for (const [, t] of Object.entries(terminals)) {
+      if (!t.label || !t.slug || t.label.length < 4) continue // skip short names
+      if (map[t.label]) continue // don't override glossary entries
+      map[t.label] = `${t.label} terminal emulator${t.description ? " — " + t.description : ""}||/terminal/${t.slug}`
+    }
+  } catch {}
+
+  // 3. Framework names (Silvery, Bubbletea, Textual, Ratatui)
+  try {
+    const frameworksPath = join(docsDir, "..", "content", "frameworks.json")
+    const frameworks = JSON.parse(readFileSync(frameworksPath, "utf-8")) as Record<
+      string,
+      { label: string; description?: string }
+    >
+    for (const [id, f] of Object.entries(frameworks)) {
+      if (!f.label || f.label.length < 4) continue
+      if (map[f.label]) continue
+      map[f.label] = `${f.label} TUI framework${f.description ? " — " + f.description : ""}||/framework/${id}`
+    }
+  } catch {}
+
+  return map
 }
 
 const glossaryMap = loadGlossaryMap()

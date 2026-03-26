@@ -13,13 +13,7 @@
       </div>
     </transition>
   </a>
-  <span
-    v-else
-    class="glossary-term"
-    @mouseenter="showTooltip = true"
-    @mouseleave="showTooltip = false"
-    tabindex="0"
-  >
+  <span v-else class="glossary-term" @mouseenter="showTooltip = true" @mouseleave="showTooltip = false" tabindex="0">
     <slot></slot>
     <transition name="fade">
       <div v-if="showTooltip" class="glossary-tooltip" role="tooltip">
@@ -30,7 +24,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed } from "vue"
 
 const props = defineProps({
   description: {
@@ -51,12 +45,12 @@ const decoded = computed(() => {
 })
 
 const link = computed(() => {
-  const parts = decoded.value.split('||')
-  return parts.length > 1 ? parts[1] : ''
+  const parts = decoded.value.split("||")
+  return parts.length > 1 ? parts[1] : ""
 })
 
 const tooltipText = computed(() => {
-  return decoded.value.split('||')[0]
+  return decoded.value.split("||")[0]
 })
 </script>
 
@@ -94,7 +88,9 @@ const tooltipText = computed(() => {
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 .fade-enter-from,
 .fade-leave-to {
