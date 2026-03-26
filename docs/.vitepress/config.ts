@@ -332,6 +332,48 @@ function loadGlossaryMap(): Record<string, string> {
     }
   } catch {}
 
+  // 4. Standard/tag names (Xterm Extensions, Kitty Extensions, etc.)
+  try {
+    const standardsPath = join(docsDir, "..", "content", "standards.json")
+    const standards = JSON.parse(readFileSync(standardsPath, "utf-8")) as Record<
+      string,
+      { label: string; description?: string }
+    >
+    for (const [id, s] of Object.entries(standards)) {
+      if (!s.label || s.label.length < 4) continue
+      if (map[s.label]) continue
+      map[s.label] = `${s.label}${s.description ? " — " + s.description.slice(0, 120) : ""}||/${id}`
+    }
+  } catch {}
+
+  // 5. Category names (SGR (Text Styling), Cursor, Modes, etc.)
+  try {
+    const categoriesPath = join(docsDir, "..", "content", "categories.json")
+    const categories = JSON.parse(readFileSync(categoriesPath, "utf-8")) as Record<
+      string,
+      { label: string; description?: string }
+    >
+    for (const [id, c] of Object.entries(categories)) {
+      if (!c.label || c.label.length < 4) continue
+      if (map[c.label]) continue
+      map[c.label] = `${c.label}${c.description ? " — " + c.description.slice(0, 120) : ""}||/${id}`
+    }
+  } catch {}
+
+  // 6. Baseline names (Core TUI, Modern TUI, etc.)
+  try {
+    const baselinesPath = join(docsDir, "..", "content", "baselines.json")
+    const baselines = JSON.parse(readFileSync(baselinesPath, "utf-8")) as Record<
+      string,
+      { label: string; tagline?: string }
+    >
+    for (const [id, b] of Object.entries(baselines)) {
+      if (!b.label || b.label.length < 4) continue
+      if (map[b.label]) continue
+      map[b.label] = `${b.label} baseline${b.tagline ? " — " + b.tagline : ""}||/baseline/${id}`
+    }
+  } catch {}
+
   return map
 }
 
