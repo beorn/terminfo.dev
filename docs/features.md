@@ -143,8 +143,8 @@ ECMA-48 defines a family of control-sequence formats (CSI, OSC, DCS, and others)
     <tr><td><code>ESC[4m</code>Hello<code>ESC[0m</code></td><td><u>Hello</u></td><td><a href="/sgr/4-underline">Underline (SGR 4)</a></td></tr>
     <tr><td><code>ESC[38;2;255;100;0m</code>Hello<code>ESC[0m</code></td><td><span style="color:#ff6400"><strong>Hello</strong></span></td><td><a href="/sgr/38-2-truecolor-fg">Truecolor</a></td></tr>
     <tr><td><code>ESC[5;10H</code></td><td><em>cursor jumps to row 5, col 10</em></td><td><a href="/cursor/cup-cursor-position">Cursor Position</a></td></tr>
-    <tr><td><code>ESC[?1049h</code></td><td><em>screen clears</em></td><td><a href="/modes/alt-screen-enter">Alternate Screen</a></td></tr>
-    <tr><td><code>ESC[6n</code></td><td>terminal replies <code>ESC[24;80R</code></td><td><a href="/cursor/dsr-6-position-report">Cursor Report</a></td></tr>
+    <tr><td><code>ESC[?1049h</code></td><td><em>screen clears</em></td><td><a href="/modes/decset-1049-alt-screen-enter">Alternate Screen</a></td></tr>
+    <tr><td><code>ESC[6n</code></td><td>terminal replies <code>ESC[24;80R</code></td><td><a href="/device/dsr-5-device-status-report">Cursor Report</a></td></tr>
     <tr><td><code>ESC[&gt;1u</code></td><td><em>keyboard sends unambiguous keys</em></td><td><a href="/extensions/kitty-keyboard">Kitty Keyboard</a></td></tr>
   </tbody>
 </table>
@@ -247,7 +247,7 @@ Modern terminal extensions beyond the traditional VT specification: **Kitty keyb
 
 Sixel (1983, revived) and Kitty graphics protocol (2017) enable inline image display in terminals. Graphics support remains fragmented — some terminals intentionally avoid image protocols for security or complexity reasons. Sixel is older and more widely supported; Kitty graphics is more capable and purpose-built.
 
-<p class="category-link"><a class="hover-link" href="/graphics">View Graphics features &rarr;</a></p>
+<p class="category-link"><a class="hover-link" href="/features">View Graphics features &rarr;</a></p>
 
 ### Character Sets — Box-Drawing from 1978
 

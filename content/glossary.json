@@ -187,7 +187,7 @@
   "alternate screen": {
     "expansion": "Alternate Screen Buffer",
     "description": "A separate screen that full-screen apps (vim, less, htop) switch to. When the app exits, your previous terminal content reappears. An xterm invention, not part of any formal standard.",
-    "link": "/modes/alt-screen-enter"
+    "link": "/modes/decset-1049-alt-screen-enter"
   },
   "bracketed paste": {
     "expansion": "Bracketed Paste Mode",
@@ -317,12 +317,12 @@
   "OSC 52": {
     "expansion": "Operating System Command 52",
     "description": "Escape sequence for reading/writing the system clipboard. Allows terminal applications to access the clipboard over SSH without X11 forwarding. Some terminals disable read access for security.",
-    "link": "/extensions/osc52-clipboard"
+    "link": "/extensions/osc-52-clipboard"
   },
   "OSC 8": {
     "expansion": "Operating System Command 8",
     "description": "Escape sequence for clickable hyperlinks in terminal output. Text between OSC 8 start and end markers becomes a link. Supported by most modern terminals.",
-    "link": "/extensions/osc8"
+    "link": "/extensions/osc-8-hyperlinks"
   },
   "CUU": {
     "expansion": "Cursor Up",
@@ -397,7 +397,7 @@
   "alternate screen buffer": {
     "expansion": "Alternate Screen Buffer",
     "description": "A separate screen for full-screen apps. When the app exits, previous content reappears.",
-    "link": "/modes/alt-screen-enter"
+    "link": "/modes/decset-1049-alt-screen-enter"
   },
   "focus reporting": {
     "expansion": "Focus Reporting",
@@ -447,7 +447,7 @@
   "OSC 133": {
     "expansion": "Semantic Prompt Markers",
     "description": "Invisible markers for shell prompt, command, and output boundaries. Enables click-to-navigate between commands.",
-    "link": "/extensions/semantic-prompts"
+    "link": "/extensions/osc-133-semantic-prompts"
   },
   "OSC 633": {
     "expansion": "VS Code Shell Integration",
@@ -457,17 +457,17 @@
   "OSC 7": {
     "expansion": "Current Working Directory",
     "description": "Report the shell current directory to the terminal. Used for tab titles and new-tab-in-same-directory.",
-    "link": "/extensions/extensions-osc7-cwd"
+    "link": "/extensions/osc-7-current-directory"
   },
   "OSC 0": {
     "expansion": "Window Icon and Title",
     "description": "Set the terminal window title and icon name.",
-    "link": "/extensions/extensions-osc0-icon-title"
+    "link": "/extensions/osc-0-icon-title"
   },
   "OSC 2": {
     "expansion": "Window Title",
     "description": "Set the terminal window title.",
-    "link": "/extensions/extensions-osc2-title"
+    "link": "/extensions/osc-2-window-title"
   },
   "OSC 4": {
     "expansion": "Color Palette",
@@ -477,12 +477,12 @@
   "OSC 10": {
     "expansion": "Foreground Color Query",
     "description": "Query the terminal default foreground color. Response is an X11 color string.",
-    "link": "/extensions/extensions-osc10-fg-color"
+    "link": "/extensions/osc-10-fg-color-query"
   },
   "OSC 11": {
     "expansion": "Background Color Query",
     "description": "Query the terminal default background color. Used for light/dark mode detection.",
-    "link": "/extensions/extensions-osc11-bg-color"
+    "link": "/extensions/osc-11-bg-color-query"
   },
   "OSC 1337": {
     "expansion": "iTerm2 Protocol",
@@ -502,17 +502,17 @@
   "Mode 2004": {
     "expansion": "Bracketed Paste Mode",
     "description": "Terminal wraps pasted text in markers so the shell knows it is pasted, not typed.",
-    "link": "/modes/bracketed-paste"
+    "link": "/modes/decset-2004-bracketed-paste"
   },
   "Mode 2026": {
     "expansion": "Synchronized Output",
     "description": "Buffer all output between start/end markers and paint as one frame. Eliminates flicker.",
-    "link": "/modes/synchronized-output"
+    "link": "/modes/decset-2026-synchronized-output"
   },
   "Mode 1049": {
     "expansion": "Alternate Screen with Cursor Save",
     "description": "Switch to alternate screen buffer and save/restore cursor position.",
-    "link": "/modes/alt-screen-enter"
+    "link": "/modes/decset-1049-alt-screen-enter"
   },
   "Core TUI baseline": {
     "expansion": "Core TUI Baseline",

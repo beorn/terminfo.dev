@@ -728,7 +728,7 @@
     "changes": null
   },
   "scrollback/alt-screen-separate-scrollback": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — no <a href=\"/modes/alt-screen-enter\" class=\"hover-link\" title=\"Alternate Screen Buffer\">alternate screen buffer</a>.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — no <a href=\"/modes/decset-1049-alt-screen-enter\" class=\"hover-link\" title=\"Alternate Screen Buffer\">alternate screen buffer</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -788,7 +788,7 @@
     "changes": null
   },
   "extensions/osc-7-current-directory": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/extensions/extensions-osc7-cwd\" class=\"hover-link\" title=\"Current Working Directory\">OSC 7</a> not implemented in <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/extensions/osc-7-current-directory\" class=\"hover-link\" title=\"Current Working Directory\">OSC 7</a> not implemented in <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
