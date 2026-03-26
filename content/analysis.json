@@ -1,5 +1,5 @@
 {
-  "$generated": "2026-03-26T07:58:17.068Z",
+  "$generated": "2026-03-26T14:56:37.217Z",
   "terminal/ghostty": {
     "analysis": "<p><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> scores <strong>95%</strong> (140/148) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#2</strong> of 8 tested terminals. Missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>, <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a>.</p>",
     "date": "2026-03-26",
@@ -13,7 +13,7 @@
     "changes": null
   },
   "terminal/iterm2": {
-    "analysis": "<p><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> scores <strong>97%</strong> (144/148) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#1</strong> of 8 tested terminals. Uniquely supports: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>. Missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a>.</p>",
+    "analysis": "<p><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> scores <strong>97%</strong> (144/148) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#1</strong> of 8 tested terminals. Uniquely supports: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>. Missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a>.</p>",
     "date": "2026-03-26",
     "probeCount": 148,
     "changes": null
@@ -83,7 +83,7 @@
     "changes": null
   },
   "baseline/rich": {
-    "analysis": "<p><strong>0</strong> of 8 tested terminals achieve 100% Rich TUI compliance. Lagging: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> (25%), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (55%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (55%). Most commonly missing: <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>.</p>",
+    "analysis": "<p><strong>0</strong> of 8 tested terminals achieve 100% Rich TUI compliance. Lagging: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> (29%), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (55%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (55%). Most commonly missing: <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -248,7 +248,7 @@
     "changes": null
   },
   "sixel": {
-    "analysis": "<p><strong><a href=\"/sixel\" class=\"hover-link\">Sixel Graphics</a></strong> defines 2 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>19%</strong>. Lowest: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> at 0% (0/1).</p>",
+    "analysis": "<p><strong><a href=\"/sixel\" class=\"hover-link\">Sixel Graphics</a></strong> defines 2 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>25%</strong>. Lowest: <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> at 0% (0/2).</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -988,7 +988,7 @@
     "changes": null
   },
   "extensions/sixel-da1": {
-    "analysis": "<p>Supported by <strong>1</strong> of <strong>7</strong> terminals (14%). Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>2</strong> of <strong>8</strong> terminals (25%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: DA1 response not available in <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> mode.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -1023,7 +1023,7 @@
     "changes": null
   },
   "standards-index": {
-    "analysis": "<p>Terminfo.dev tracks <strong>10</strong> terminal standards, from <a href=\"/ecma-48\" class=\"hover-link\" title=\"European Computer Manufacturers Association standard 48\">ECMA-48</a> (1976) to <a href=\"/kitty-extensions\" class=\"hover-link\">Kitty Extensions</a> (2017). Highest average adoption: <strong><a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a></strong> at 100%. Lowest: <strong><a href=\"/sixel\" class=\"hover-link\">Sixel Graphics</a></strong> at 19%. <strong>8</strong> of 8 terminals achieve 100% <a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a> compliance. <strong>4</strong> of 8 terminals achieve 100% <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a> compliance.</p>",
+    "analysis": "<p>Terminfo.dev tracks <strong>10</strong> terminal standards, from <a href=\"/ecma-48\" class=\"hover-link\" title=\"European Computer Manufacturers Association standard 48\">ECMA-48</a> (1976) to <a href=\"/kitty-extensions\" class=\"hover-link\">Kitty Extensions</a> (2017). Highest average adoption: <strong><a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a></strong> at 100%. Lowest: <strong><a href=\"/sixel\" class=\"hover-link\">Sixel Graphics</a></strong> at 25%. <strong>8</strong> of 8 terminals achieve 100% <a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a> compliance. <strong>4</strong> of 8 terminals achieve 100% <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a> compliance.</p>",
     "date": "2026-03-26",
     "changes": null
   },

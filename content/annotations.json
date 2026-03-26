@@ -943,24 +943,6 @@
   "vt100:extensions.sixel-da1": {
     "note": "VT100 DA1 response doesn't include sixel attribute"
   },
-  "kitty:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not supported in headless mode",
-    "result": "partial"
-  },
-  "kitty:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not supported in headless mode",
-    "result": "partial"
-  },
-  "kitty:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not supported in headless mode",
-    "result": "partial"
-  },
-  "kitty:extensions.osc-633-vscode": {
-    "note": "VS Code shell integration (OSC 633) not supported"
-  },
-  "kitty:extensions.iterm2-images": {
-    "note": "iTerm2 inline images not supported by kitty"
-  },
   "vt100:sgr.faint": {
     "note": "Not in VT100/VT220 — use vterm.js for modern SGR"
   },
