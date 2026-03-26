@@ -496,17 +496,13 @@ function generateTerminalAnalysis(
 function generateHistoricalAnalysis(termId: string, meta: TerminalMeta): AnalysisEntry {
   const parts: string[] = []
 
-  parts.push(
-    `<strong>${meta.label}</strong> (${meta.year}) was manufactured by ${meta.manufacturer ?? "unknown"}`,
-  )
+  parts.push(`<strong>${meta.label}</strong> (${meta.year}) was manufactured by ${meta.manufacturer ?? "unknown"}`)
 
   if (meta.significance) {
     parts.push(meta.significance)
   }
 
-  parts.push(
-    "This is a historical reference entry — no automated probe data is available for this terminal",
-  )
+  parts.push("This is a historical reference entry — no automated probe data is available for this terminal")
 
   return {
     analysis: `<p>${parts.join(". ")}.</p>`,

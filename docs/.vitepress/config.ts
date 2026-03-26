@@ -249,27 +249,23 @@ function buildSidebar() {
     {
       text: "Categories",
       link: "/features",
-      items: [
-        ...sortedCategories.map((cat) => ({
-          text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
-          link: `/${cat}`,
-          collapsed: true,
-          items: (categories.get(cat) ?? []).map((f) => ({
-            text: f.name,
-            link: `/${cat}/${f.slug}`,
-          })),
+      items: sortedCategories.map((cat) => ({
+        text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
+        link: `/${cat}`,
+        collapsed: true,
+        items: (categories.get(cat) ?? []).map((f) => ({
+          text: f.name,
+          link: `/${cat}/${f.slug}`,
         })),
-      ],
+      })),
     },
     {
       text: "Standards",
       link: "/standards",
-      items: [
-        ...sortedTags.map((tag) => ({
-          text: tagLabels[tag] ?? tag,
-          link: `/${tag}`,
-        })),
-      ],
+      items: sortedTags.map((tag) => ({
+        text: tagLabels[tag] ?? tag,
+        link: `/${tag}`,
+      })),
     },
     {
       text: "Terminals",

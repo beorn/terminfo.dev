@@ -146,7 +146,10 @@ export function linkifyContent(text: string): string {
         // Check no overlap with previous matches
         let overlap = false
         for (let p = absStart; p < absEnd; p++) {
-          if (occupied.has(p)) { overlap = true; break }
+          if (occupied.has(p)) {
+            overlap = true
+            break
+          }
         }
         if (overlap) continue
         for (let p = absStart; p < absEnd; p++) occupied.add(p)
@@ -160,8 +163,9 @@ export function linkifyContent(text: string): string {
   let result = text
   for (const { start, end, href, title } of matches) {
     const original = result.slice(start, end)
-    const tooltip = title ? ` data-tooltip="${title.replace(/"/g, '&quot;')}"` : ""
-    result = result.slice(0, start) + `<a href="${href}" class="hover-link"${tooltip}>${original}</a>` + result.slice(end)
+    const tooltip = title ? ` data-tooltip="${title.replace(/"/g, "&quot;")}"` : ""
+    result =
+      result.slice(0, start) + `<a href="${href}" class="hover-link"${tooltip}>${original}</a>` + result.slice(end)
   }
 
   return result

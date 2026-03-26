@@ -1,5 +1,6 @@
 /* Shared CSS tooltips via data-tooltip attribute.
-   Used by: index.md (matrix), compare/[id].md, [category]/[id].md, terminal/[id].md, [id].md */
+   Used by: index.md (matrix), compare/[id].md, [category]/[id].md, terminal/[id].md, [id].md
+   Also used by linkify-content.ts for glossary/entity tooltips in v-html content. */
 
 [data-tooltip] {
   position: relative;
@@ -12,10 +13,11 @@
 [data-tooltip]:hover::after {
   content: attr(data-tooltip);
   position: absolute;
-  bottom: 100%;
+  bottom: calc(100% + 6px);
   left: 50%;
   transform: translateX(-50%);
-  white-space: pre-line;
+  white-space: normal;
+  word-wrap: break-word;
   background: var(--vp-c-bg-soft);
   color: var(--vp-c-text-1);
   padding: 6px 10px;
@@ -23,10 +25,19 @@
   font-size: 0.82em;
   line-height: 1.4;
   pointer-events: none;
-  z-index: 100;
-  max-width: 340px;
+  z-index: 1000;
+  max-width: 300px;
+  min-width: 120px;
+  width: max-content;
   border: 1px solid var(--vp-c-divider);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Near left edge: align left instead of center */
+[data-tooltip]:first-child:hover::after,
+td:first-child [data-tooltip]:hover::after {
+  left: 0;
+  transform: none;
 }
 
 /* Don't show empty tooltips */
@@ -35,9 +46,16 @@
   display: none;
 }
 
-/* Prevent VitePress table wrappers from clipping tooltips */
-.vp-doc .vp-table {
-  overflow: visible;
+/* Prevent containers from clipping tooltips */
+.vp-doc .vp-table,
+.category-desc,
+.feature-body,
+.probe-method,
+.baseline-description,
+.framework-body,
+.terminal-body,
+.analysis-body {
+  overflow: visible !important;
 }
 
 /* Bar segment tooltips appear below */
@@ -47,4 +65,6 @@
   bottom: auto;
   top: 100%;
   margin-top: 4px;
+  white-space: pre-line;
+  max-width: 400px;
 }

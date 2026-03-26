@@ -63,15 +63,18 @@ const tooltipText = computed(() => {
   padding: 8px 12px;
   border-radius: 6px;
   z-index: 1000;
-  white-space: nowrap;
+  white-space: normal;
+  word-wrap: break-word;
+  max-width: 300px;
+  width: max-content;
   box-shadow: var(--vp-shadow-3);
   top: auto;
   bottom: calc(100% + 10px);
   left: 50%;
   line-height: 1.4;
   transform: translateX(-50%);
-  font-size: 14px;
-  text-align: center;
+  font-size: 13px;
+  text-align: left;
   pointer-events: none;
 }
 
