@@ -426,8 +426,7 @@ function backendTooltip(name, version) {
 </div>
 
 <div v-show="muxBackends.length > 0">
-
-## Multiplexers {#multiplexers}
+<h2 id="multiplexers">Multiplexers</h2>
 
 <p class="section-subtitle">Which features survive tmux and screen? Pass-through testing shows what each multiplexer correctly relays.</p>
 
