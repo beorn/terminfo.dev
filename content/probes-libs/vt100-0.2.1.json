@@ -1,7 +1,7 @@
 {
   "backend": "vt100",
   "version": "0.2.1",
-  "generated": "2026-03-26T07:03:29.746Z",
+  "generated": "2026-03-26T07:03:39.590Z",
   "probeHash": "34eda06e1595",
   "results": {
     "sgr.bold": true,

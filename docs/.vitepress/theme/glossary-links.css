@@ -5,17 +5,19 @@
 /* Glossary/entity links in markdown prose content */
 .vp-doc a.hover-link {
   color: inherit !important;
-  text-decoration: underline dotted !important;
+  text-decoration: underline dotted 1px !important;
   text-decoration-color: var(--vp-c-text-3) !important;
-  text-underline-offset: 3px;
+  text-underline-offset: 3px !important;
+  text-decoration-thickness: 1px !important;
   cursor: pointer;
   position: relative;
   font-weight: inherit !important;
   font-size: inherit !important;
   line-height: inherit !important;
+  transition: text-decoration-color 0.15s ease, color 0.15s ease;
 }
 
 .vp-doc a.hover-link:hover {
-  color: var(--vp-c-brand-1);
-  text-decoration-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1) !important;
+  text-decoration-color: var(--vp-c-brand-1) !important;
 }
