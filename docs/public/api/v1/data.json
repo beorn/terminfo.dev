@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-26T05:23:32.543Z",
+  "generated": "2026-03-26T05:25:02.384Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
@@ -659,9 +659,14 @@
       "baseline": "rich"
     },
     "extensions.sixel-da1": {
-      "name": "extensions.sixel-da1",
+      "name": "Sixel support in DA1",
       "category": "extensions",
-      "slug": "extensions-sixel-da1"
+      "slug": "sixel-da1",
+      "url": "https://vt100.net/docs/vt510-rm/DA1.html",
+      "tags": [
+        "sixel"
+      ],
+      "baseline": "rich"
     },
     "extensions.truecolor": {
       "name": "24-bit truecolor",
