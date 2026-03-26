@@ -234,10 +234,6 @@ function buildSidebar() {
       items: baselineItems,
     },
     {
-      text: "Frameworks",
-      items: frameworkItems,
-    },
-    {
       text: "Categories",
       items: [
         { text: "Overview", link: "/features" },
@@ -273,6 +269,10 @@ function buildSidebar() {
     {
       text: "Backends",
       items: terminals,
+    },
+    {
+      text: "Frameworks",
+      items: frameworkItems,
     },
     { text: "API", link: "/api" },
     { text: "Glossary", link: "/glossary" },

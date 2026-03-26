@@ -48,18 +48,31 @@ function platformIcons(b) {
 
 <div class="framework-page">
 
-<div class="framework-title-row">
-  <div>
-    <h1 class="framework-title">{{ p.label }}</h1>
-    <p class="framework-tagline">{{ p.description }}</p>
-  </div>
-</div>
+<h1 class="framework-title"><a v-if="p.url" :href="p.url" target="_blank" rel="noopener" class="framework-title-link">{{ p.label }} <span class="framework-external">↗</span></a><template v-else>{{ p.label }}</template></h1>
+<p class="framework-tagline">{{ p.description }}</p>
 
-<div class="framework-meta">
-  <span class="framework-meta-item"><strong>Language:</strong> {{ p.language }}</span>
-  <span class="framework-meta-item"><strong>Runtime:</strong> {{ p.runtime }}</span>
-  <span v-if="p.url" class="framework-meta-item"><a :href="p.url" target="_blank" rel="noopener" class="hover-link">Website</a></span>
-  <span v-if="p.repo" class="framework-meta-item"><a :href="p.repo" target="_blank" rel="noopener" class="hover-link">Source</a></span>
+<div class="framework-links">
+  <a v-if="p.url" :href="p.url" target="_blank" rel="noopener" class="framework-link-card">
+    <span class="framework-link-icon">🌐</span>
+    <span class="framework-link-text">
+      <span class="framework-link-label">Website</span>
+      <span class="framework-link-url">{{ p.url.replace(/^https?:\/\//, '') }}</span>
+    </span>
+  </a>
+  <a v-if="p.repo" :href="p.repo" target="_blank" rel="noopener" class="framework-link-card">
+    <span class="framework-link-icon">📦</span>
+    <span class="framework-link-text">
+      <span class="framework-link-label">Source</span>
+      <span class="framework-link-url">{{ p.repo.replace(/^https?:\/\/github.com\//, '') }}</span>
+    </span>
+  </a>
+  <div class="framework-link-card framework-link-meta">
+    <span class="framework-link-icon">💻</span>
+    <span class="framework-link-text">
+      <span class="framework-link-label">{{ p.language }}</span>
+      <span class="framework-link-url">{{ p.runtime }}</span>
+    </span>
+  </div>
 </div>
 
 <div class="framework-body" v-html="p.body"></div>
@@ -132,14 +145,25 @@ function platformIcons(b) {
   max-width: 100%;
 }
 
-.framework-title-row {
-  margin-bottom: 0.5em;
-}
-
 .framework-title {
   margin: 0 !important;
   padding: 0 !important;
   border: none !important;
+}
+
+.framework-title-link {
+  color: inherit !important;
+  text-decoration: none !important;
+}
+
+.framework-title-link:hover {
+  color: var(--vp-c-brand-1) !important;
+}
+
+.framework-external {
+  font-size: 0.5em;
+  vertical-align: super;
+  color: var(--vp-c-text-3);
 }
 
 .framework-tagline {
@@ -148,6 +172,56 @@ function platformIcons(b) {
   margin: 0.2em 0 0;
 }
 
+.framework-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 1.25em 0;
+}
+
+.framework-link-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  color: inherit !important;
+  text-decoration: none !important;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  min-width: 180px;
+}
+
+a.framework-link-card:hover {
+  border-color: var(--vp-c-brand-1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.framework-link-icon {
+  font-size: 1.4em;
+}
+
+.framework-link-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.framework-link-label {
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.framework-link-url {
+  font-size: 0.8em;
+  color: var(--vp-c-text-3);
+}
+
+.framework-link-meta {
+  cursor: default;
+}
+
+/* Legacy — can remove if no longer used */
 .framework-meta {
   display: flex;
   flex-wrap: wrap;

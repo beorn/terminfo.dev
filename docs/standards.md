@@ -167,6 +167,10 @@ Here's the irony: developers universally call these "ANSI escape codes," but the
 
 <p class="standard-link"><a class="hover-link" href="/ecma-48">View ECMA-48 features &rarr;</a></p>
 
+::: info "ANSI escape codes" aren't ANSI
+ANSI published the X3.64 terminal standard in 1979, then withdrew it in 1994 in favor of the international ECMA-48 / ISO 6429. The name "ANSI escape codes" persists from 1979 -- referring to a standard that no longer exists. What we actually use is ECMA-48 grammar with decades of vendor extensions.
+:::
+
 ### VT100 (1978) — The Terminal That Won
 
 The DEC VT100 ran on an **Intel 8080 CPU with 3KB of RAM**, yet it defined terminal computing for the next five decades. It implemented the ECMA-48 escape grammar, adding scroll regions (DECSTBM), character sets, and the private mode namespace (`CSI ?`) that terminals still use today. When software says it's "VT100-compatible," it's promising support for a specific set of behaviors that this $1,800 box established in 1978.
@@ -174,6 +178,10 @@ The DEC VT100 ran on an **Intel 8080 CPU with 3KB of RAM**, yet it defined termi
 The VT100's dominance wasn't accidental — DEC shipped it with the rising tide of Unix, VAX/VMS, and networking. Every competitor had to emulate it. That gravity persists: every terminal emulator today is, at its core, a VT100 emulator with extensions.
 
 <p class="standard-link"><a class="hover-link" href="/vt100">View VT100 features &rarr;</a></p>
+
+::: tip Why is your terminal 80 columns wide?
+IBM's 80-column punch card format (1928) set the width for the IBM 3270 terminal (1971), which the DEC VT100 adopted in 1978. The 24-row default comes from fitting 1,920 characters (80 x 24) into early memory architectures. Nearly 50 years later, 80x24 remains the default terminal size.
+:::
 
 ### VT220 (1983) — Editing Operations Arrive
 
@@ -205,6 +213,10 @@ Xterm pioneered **256-color** and **truecolor** (24-bit RGB) support, the **alte
 
 <p class="standard-link"><a class="hover-link" href="/xterm-extensions">View Xterm Extension features &rarr;</a></p>
 
+::: details One person maintains the terminal stack
+Thomas Dickey has single-handedly maintained xterm, ncurses, and the terminfo database since 1996 -- nearly 30 years. His xterm control sequences document (ctlseqs) is the de facto specification that every terminal implementor references. Most of what developers call "standard" terminal behavior was defined by one maintainer in one text file.
+:::
+
 ### OSC — Operating System Commands (1976+)
 
 OSC (Operating System Command) sequences use `ESC ]` for communication between applications and the terminal as an application. Unlike CSI sequences that control the display, OSC sequences talk to the host: window title (OSC 0/2), clipboard access (OSC 52), hyperlinks (OSC 8), color palette queries (OSC 4/10/11), semantic prompt markers (OSC 133), and notification (OSC 9/777).
@@ -220,6 +232,10 @@ Kovid Goyal's Kitty terminal introduced protocols that solve fundamental limitat
 The **Kitty graphics protocol** enables inline image display via chunked base64 transfer. Kitty also defined **extended underline styles** (curly, dotted, dashed) with independent underline colors. These extensions have been adopted by Ghostty, WezTerm, foot, and other modern terminals — making them the closest thing to an emerging standard for next-generation terminal features.
 
 <p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
+
+::: tip Why Kitty matters
+Before Kitty (2017), no terminal could distinguish key-down from key-up, report modifier keys accurately, or display inline images with a purpose-built protocol. Kitty's keyboard and graphics protocols are now adopted by Ghostty, WezTerm, foot, and others -- making them the closest thing to an emerging standard for next-generation terminals.
+:::
 
 ### Sixel (1983, Revived) — Inline Graphics
 
