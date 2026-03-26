@@ -29,7 +29,6 @@
   pointer-events: none;
   z-index: 10000;
   max-width: 280px;
-  width: max-content;
   border: 1px solid var(--vp-c-divider);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
