@@ -919,5 +919,118 @@
   },
   "screen:unicode.tab-stops": {
     "note": "Screen's tab stop handling differs from direct terminal"
+  },
+  "ghostty-native:extensions.sixel-da1": {
+    "note": "DA1 response doesn't include attribute 4 in headless mode",
+    "result": "partial"
+  },
+  "wezterm:extensions.sixel-da1": {
+    "note": "DA1 response doesn't include attribute 4 in headless mode",
+    "result": "partial"
+  },
+  "kitty:extensions.sixel-da1": {
+    "note": "DA1 response not available in headless mode",
+    "result": "partial"
+  },
+  "alacritty:extensions.sixel-da1": {
+    "note": "DA1 response not available in headless mode",
+    "result": "partial"
+  },
+  "xtermjs:extensions.sixel-da1": {
+    "note": "DA1 response not available in xterm.js headless mode",
+    "result": "partial"
+  },
+  "vt100:extensions.sixel-da1": {
+    "note": "VT100 DA1 response doesn't include sixel attribute"
+  },
+  "kitty:extensions.osc52-clipboard": {
+    "note": "OSC 52 clipboard not supported in headless mode",
+    "result": "partial"
+  },
+  "kitty:extensions.osc10-fg-color": {
+    "note": "OSC 10 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "kitty:extensions.osc11-bg-color": {
+    "note": "OSC 11 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "kitty:extensions.osc-633-vscode": {
+    "note": "VS Code shell integration (OSC 633) not supported"
+  },
+  "kitty:extensions.iterm2-images": {
+    "note": "iTerm2 inline images not supported by kitty"
+  },
+  "vt100:sgr.faint": {
+    "note": "Not in VT100/VT220 — use vterm.js for modern SGR"
+  },
+  "vt100:sgr.italic": {
+    "note": "Not in VT100/VT220 — use vterm.js for modern SGR"
+  },
+  "vt100:sgr.underline.double": {
+    "note": "Not in VT100/VT220 — only single underline supported"
+  },
+  "vt100:sgr.underline.curly": {
+    "note": "Not in VT100/VT220 — only single underline supported"
+  },
+  "vt100:sgr.underline.dotted": {
+    "note": "Not in VT100/VT220 — only single underline supported"
+  },
+  "vt100:sgr.underline.dashed": {
+    "note": "Not in VT100/VT220 — only single underline supported"
+  },
+  "vt100:sgr.strikethrough": {
+    "note": "Not in VT100/VT220 — use vterm.js for modern SGR"
+  },
+  "vt100:sgr.fg.bright": {
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
+  },
+  "vt100:sgr.bg.bright": {
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
+  },
+  "vt100:sgr.fg.256": {
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
+  },
+  "vt100:sgr.bg.256": {
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
+  },
+  "vt100:sgr.fg.truecolor": {
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
+  },
+  "vt100:sgr.bg.truecolor": {
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
+  },
+  "vt100:text.wide.emoji": {
+    "note": "Not in VT100/VT220 — ASCII only, no Unicode width"
+  },
+  "vt100:text.wide.cjk": {
+    "note": "Not in VT100/VT220 — ASCII only, no Unicode width"
+  },
+  "vt100:modes.alt-screen.enter": {
+    "note": "Not in VT100/VT220 — xterm extension"
+  },
+  "vt100:modes.bracketed-paste": {
+    "note": "Not in VT100/VT220 — xterm extension"
+  },
+  "vt100:modes.mouse-tracking": {
+    "note": "Not in VT100/VT220 — xterm extension"
+  },
+  "vt100:modes.focus-tracking": {
+    "note": "Not in VT100/VT220 — xterm extension"
+  },
+  "vt100:modes.mouse-all": {
+    "note": "Not in VT100/VT220 — xterm extension"
+  },
+  "vt100:extensions.truecolor": {
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
+  },
+  "vt100:input.button-event-mouse": {
+    "note": "Not in VT100/VT220 — xterm extension"
+  },
+  "vt100:scrollback.alt-screen": {
+    "note": "Not in VT100/VT220 — no alternate screen buffer"
+  },
+  "vt100:unicode.wrap-boundary": {
+    "note": "Not in VT100/VT220 — ASCII only, no Unicode width"
   }
 }

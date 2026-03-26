@@ -1,7 +1,7 @@
 {
   "backend": "vterm",
   "version": "0.2.0",
-  "generated": "2026-03-26T07:58:31.556Z",
+  "generated": "2026-03-26T08:08:37.493Z",
   "probeHash": "34eda06e1595",
   "results": {
     "sgr.bold": true,
@@ -74,7 +74,7 @@
     "erase.screen.all": true,
     "erase.screen.scrollback": true,
     "erase.character": true,
-    "erase.selective": false,
+    "erase.selective": true,
     "erase.el-with-attrs": true,
     "erase.ed-scroll-region": true,
     "editing.insert-chars": true,
@@ -126,9 +126,9 @@
     "extensions.sixel-da1": true,
     "input.modify-other-keys": true,
     "input.csi-u": true,
-    "input.pixel-mouse": false,
-    "input.urxvt-mouse": false,
-    "input.x10-mouse": false,
+    "input.pixel-mouse": true,
+    "input.urxvt-mouse": true,
+    "input.x10-mouse": true,
     "input.button-event-mouse": true,
     "reset.sgr": true,
     "reset.ris": true,
@@ -153,10 +153,6 @@
     "unicode.tab-stops": true
   },
   "notes": {
-    "erase.selective": "not supported",
-    "modes.left-right-margin": "not supported",
-    "input.pixel-mouse": "not supported",
-    "input.urxvt-mouse": "not supported",
-    "input.x10-mouse": "not supported"
+    "modes.left-right-margin": "not supported"
   }
 }
