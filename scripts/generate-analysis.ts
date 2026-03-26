@@ -298,6 +298,7 @@ function crossValidate(
   features: Record<string, FeatureMeta>,
   terminals: Record<string, TerminalMeta>,
   resultMap: Map<string, { results: Record<string, boolean> }>,
+  annotations: Record<string, { note: string; url?: string; result?: string }>,
 ): void {
   // Features in results should be in features.json — warn for missing
   // (probes may include features not yet documented in features.json)
@@ -321,6 +322,25 @@ function crossValidate(
     if (!resultMap.has(termId)) {
       console.warn(`Warning: Terminal '${termId}' has no probe results (no app or headless data)`)
     }
+  }
+
+  // ERROR: annotations on passing results are contradictions
+  const contradictions: string[] = []
+  for (const [termId, data] of resultMap) {
+    for (const [featureId, result] of Object.entries(data.results)) {
+      const annKey = `${termId}:${featureId}`
+      if (result === true && annotations[annKey]) {
+        const note = annotations[annKey].note.toLowerCase()
+        if (note.includes("not supported") || note.includes("not available") || note.includes("missing")) {
+          contradictions.push(`${annKey}: passes but annotation says "${annotations[annKey].note}"`)
+        }
+      }
+    }
+  }
+  if (contradictions.length > 0) {
+    throw new Error(
+      `${contradictions.length} annotation contradiction(s) — passing probes have "not supported" annotations:\n${contradictions.map((c) => `  ${c}`).join("\n")}\n\nFix: remove contradicting annotations from content/annotations.json`,
+    )
   }
 }
 
@@ -1290,7 +1310,7 @@ function loadAllData() {
   const resultMap = buildTerminalResultMap(terminals, appResults, libResults, annotations)
 
   // Cross-validate
-  crossValidate(features, terminals, resultMap)
+  crossValidate(features, terminals, resultMap, annotations)
 
   return { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap }
 }

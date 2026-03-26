@@ -1,7 +1,7 @@
 {
   "backend": "ghostty-native",
   "version": "1.3.1",
-  "generated": "2026-03-26T07:22:53.221Z",
+  "generated": "2026-03-26T07:58:31.556Z",
   "probeHash": "34eda06e1595",
   "results": {
     "sgr.bold": true,
@@ -123,6 +123,7 @@
     "extensions.iterm2-images": false,
     "extensions.osc1337-cellsize": false,
     "extensions.osc1337-capabilities": false,
+    "extensions.sixel-da1": false,
     "input.modify-other-keys": false,
     "input.csi-u": true,
     "input.pixel-mouse": false,
@@ -179,6 +180,7 @@
     "extensions.iterm2-images": "not supported",
     "extensions.osc1337-cellsize": "not supported",
     "extensions.osc1337-capabilities": "not supported",
+    "extensions.sixel-da1": "not supported",
     "input.modify-other-keys": "not supported",
     "input.pixel-mouse": "not supported",
     "input.urxvt-mouse": "not supported",

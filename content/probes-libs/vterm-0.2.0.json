@@ -1,7 +1,7 @@
 {
   "backend": "vterm",
   "version": "0.2.0",
-  "generated": "2026-03-26T07:22:53.221Z",
+  "generated": "2026-03-26T07:58:31.556Z",
   "probeHash": "34eda06e1595",
   "results": {
     "sgr.bold": true,
@@ -123,6 +123,7 @@
     "extensions.iterm2-images": true,
     "extensions.osc1337-cellsize": true,
     "extensions.osc1337-capabilities": true,
+    "extensions.sixel-da1": true,
     "input.modify-other-keys": true,
     "input.csi-u": true,
     "input.pixel-mouse": false,
