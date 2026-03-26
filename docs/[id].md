@@ -69,7 +69,7 @@ function platformIcons(b) {
 
 # {{ p.categoryName }}
 
-<p v-if="p.categoryDescription" class="category-desc">{{ p.categoryDescription }}</p>
+<p v-if="p.categoryDescription" class="category-desc" v-html="p.categoryDescription"></p>
 
 <p class="category-meta">
   {{ p.featureCount }} features in this {{ p.pageType === 'tag' ? 'standard' : 'category' }}

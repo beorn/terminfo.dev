@@ -12,6 +12,7 @@ import {
   tagUrls,
   loadAnalysis,
 } from "./data/load-probes"
+import { linkifyContent } from "./data/linkify-content"
 
 export default {
   paths() {
@@ -67,7 +68,7 @@ export default {
           id: cat,
           pageType: "category",
           categoryName: catLabel(cat),
-          categoryDescription: categoryDescriptions[cat] ?? "",
+          categoryDescription: linkifyContent(categoryDescriptions[cat] ?? ""),
           featureCount: String(features.length),
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),
@@ -111,7 +112,7 @@ export default {
           id: tag,
           pageType: "tag",
           categoryName: tagLabel(tag),
-          categoryDescription: tagDescriptions[tag] ?? "",
+          categoryDescription: linkifyContent(tagDescriptions[tag] ?? ""),
           specUrl: tagUrls[tag] ?? "",
           featureCount: String(featureIds.length),
           features: JSON.stringify(featureRows),
