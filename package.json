@@ -8,6 +8,7 @@
     "probe:termless": "bun packages/cli/src/index.ts probe termless --all",
     "probe:apps": "bun packages/cli/src/index.ts probe app --all",
     "probe:server": "bun packages/cli/src/index.ts probe server --all",
+    "probe:mux": "bun packages/cli/src/index.ts probe mux --all",
     "analysis": "bun scripts/generate-analysis.ts",
     "analysis:validate": "bun scripts/generate-analysis.ts --validate",
     "dev": "vitepress dev docs",

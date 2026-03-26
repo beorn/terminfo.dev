@@ -6,6 +6,7 @@ import {
   tagLabel as getTagLabel,
   loadAnalysis,
 } from "../data/load-probes"
+import { linkifyContent } from "../data/linkify-content"
 
 export default {
   paths() {
@@ -75,8 +76,8 @@ export default {
           featureName: desc?.name ?? f.name,
           featureCategory: f.category,
           specUrl: desc?.url ?? f.spec ?? "",
-          featureBody: meta?.body ?? "",
-          probeMethod: meta?.probe ?? "",
+          featureBody: linkifyContent(meta?.body ?? ""),
+          probeMethod: linkifyContent(meta?.probe ?? ""),
           featureTags: JSON.stringify(tags),
           backendResults: JSON.stringify(backendResults),
           yesCount: String(yesCount),

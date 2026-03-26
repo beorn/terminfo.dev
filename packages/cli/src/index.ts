@@ -61,6 +61,9 @@ const probe = program
     console.log(`              Uses AppleScript to open terminals and run harness.`)
     console.log(`              Requires Accessibility permission.`)
     console.log(`              \x1b[2m$ terminfo probe app --all\x1b[0m\n`)
+    console.log(`  \x1b[1mmux\x1b[0m         Probe through terminal multiplexers`)
+    console.log(`              Tests feature pass-through of tmux, screen, etc.`)
+    console.log(`              \x1b[2m$ terminfo probe mux --all\x1b[0m\n`)
     console.log(`  \x1b[1mhere\x1b[0m        Probe this terminal inline`)
     console.log(`              Sends escape sequences to stdout, reads responses.`)
     console.log(`              \x1b[2m$ terminfo probe here\x1b[0m`)
@@ -101,6 +104,18 @@ probe
   .action(async (terminal: string | undefined, opts: { all?: boolean; force?: boolean }) => {
     const { handleApp } = await import("./app.ts")
     await handleApp(terminal, opts)
+  })
+
+// ── probe mux ──
+
+probe
+  .command("mux [multiplexer]")
+  .description("Probe through terminal multiplexers (tmux, screen)")
+  .option("--all", "Probe through all installed multiplexers")
+  .option("-f, --force", "Re-run even if cached")
+  .action(async (multiplexer: string | undefined, opts: { all?: boolean; force?: boolean }) => {
+    const { handleMux } = await import("./mux.ts")
+    await handleMux(multiplexer, opts)
   })
 
 // ── probe here ──

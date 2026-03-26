@@ -1,4 +1,5 @@
 import { loadProbes, featureSlug, terminalSlug, loadFeaturesMeta, loadAnalysis } from "../data/load-probes"
+import { linkifyContent } from "../data/linkify-content"
 import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"

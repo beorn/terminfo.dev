@@ -248,8 +248,8 @@ function buildSidebar() {
     },
     {
       text: "Categories",
+      link: "/features",
       items: [
-        { text: "Overview", link: "/features" },
         ...sortedCategories.map((cat) => ({
           text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
           link: `/${cat}`,
@@ -263,8 +263,8 @@ function buildSidebar() {
     },
     {
       text: "Standards",
+      link: "/standards",
       items: [
-        { text: "Overview", link: "/standards" },
         ...sortedTags.map((tag) => ({
           text: tagLabels[tag] ?? tag,
           link: `/${tag}`,

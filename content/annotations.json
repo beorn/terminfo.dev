@@ -331,5 +331,109 @@
   "wezterm:unicode.wrap-boundary": {
     "note": "Wide char at end of line not handled correctly in headless mode",
     "result": "no"
+  },
+
+  "tmux:cursor.cup-boundaries": {
+    "note": "tmux reinterprets CUP coordinates within its own grid, boundary behavior differs"
+  },
+  "tmux:device.decrpm": {
+    "note": "tmux intercepts DECRPM — responds for its own modes, not the outer terminal"
+  },
+  "tmux:device.term-features": {
+    "note": "tmux does not pass through XTGETTCAP terminal-features query"
+  },
+  "tmux:device.tertiary-da": {
+    "note": "tmux intercepts DA3 and does not forward it to the outer terminal"
+  },
+  "tmux:device.xtgettcap": {
+    "note": "tmux intercepts XTGETTCAP queries for its own terminfo, not the outer terminal's"
+  },
+  "tmux:extensions.kitty-graphics": {
+    "note": "tmux does not support kitty graphics protocol pass-through"
+  },
+  "tmux:extensions.kitty-keyboard": {
+    "note": "tmux has partial kitty keyboard support (since 3.4) but probe detects incomplete implementation"
+  },
+  "tmux:extensions.osc10-fg-color": {
+    "note": "tmux intercepts OSC 10 (foreground color query) and returns its own value"
+  },
+  "tmux:extensions.osc11-bg-color": {
+    "note": "tmux intercepts OSC 11 (background color query) and returns its own value"
+  },
+  "tmux:extensions.osc1337-capabilities": {
+    "note": "iTerm2-specific protocol not supported by tmux"
+  },
+  "tmux:extensions.osc1337-cellsize": {
+    "note": "iTerm2-specific protocol not supported by tmux"
+  },
+  "tmux:modes.origin": {
+    "note": "tmux's DECOM handling differs from direct terminal — origin mode not fully passed through"
+  },
+
+  "screen:device.decrpm": {
+    "note": "Screen does not support DECRPM (mode reporting)"
+  },
+  "screen:device.decrqss": {
+    "note": "Screen does not support DECRQSS (setting reporting)"
+  },
+  "screen:device.term-features": {
+    "note": "Screen does not support XTGETTCAP terminal-features query"
+  },
+  "screen:device.tertiary-da": {
+    "note": "Screen does not forward DA3 to the outer terminal"
+  },
+  "screen:device.xtgettcap": {
+    "note": "Screen does not support XTGETTCAP"
+  },
+  "screen:device.xtversion": {
+    "note": "Screen does not support XTVERSION query"
+  },
+  "screen:editing.repeat-char": {
+    "note": "Screen does not support REP (repeat character)"
+  },
+  "screen:extensions.kitty-graphics": {
+    "note": "Screen does not support kitty graphics protocol"
+  },
+  "screen:extensions.kitty-keyboard": {
+    "note": "Screen does not support kitty keyboard protocol"
+  },
+  "screen:extensions.osc10-fg-color": {
+    "note": "Screen does not pass through OSC 10 color queries"
+  },
+  "screen:extensions.osc11-bg-color": {
+    "note": "Screen does not pass through OSC 11 color queries"
+  },
+  "screen:extensions.osc1337-capabilities": {
+    "note": "iTerm2-specific protocol not supported by Screen"
+  },
+  "screen:extensions.osc1337-cellsize": {
+    "note": "iTerm2-specific protocol not supported by Screen"
+  },
+  "screen:extensions.reflow": {
+    "note": "Screen does not support text reflow on resize"
+  },
+  "screen:extensions.sixel": {
+    "note": "Screen does not support sixel graphics"
+  },
+  "screen:scrollback.alt-screen": {
+    "note": "Screen's alternate screen buffer handling differs — scrollback not fully preserved"
+  },
+  "screen:text.tab": {
+    "note": "Screen's tab handling may differ from direct terminal"
+  },
+  "screen:text.wide.emoji": {
+    "note": "Screen 4.x has limited Unicode width awareness — emoji rendered as narrow"
+  },
+  "screen:text.wide.emoji-vs16": {
+    "note": "Screen 4.x does not handle VS16 emoji variation selectors"
+  },
+  "screen:text.wide.emoji-zwj": {
+    "note": "Screen 4.x does not handle ZWJ emoji sequences"
+  },
+  "screen:unicode.grapheme-cursor": {
+    "note": "Screen 4.x does not support grapheme cluster cursor positioning"
+  },
+  "screen:unicode.tab-stops": {
+    "note": "Screen's tab stop handling differs from direct terminal"
   }
 }

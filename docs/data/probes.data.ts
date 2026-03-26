@@ -14,6 +14,7 @@ import { manifest } from "@termless/core"
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
 const probesAppsDir = join(contentDir, "probes-apps")
+const probesMuxDir = join(contentDir, "probes-mux")
 const probesLibsDir = join(contentDir, "probes-libs")
 
 export interface BackendInfo {
@@ -231,29 +232,31 @@ function headlessToAppName(backend: string): string {
   return backend
 }
 
-/** Load community/app results from content/probes-apps/ */
+/** Load community/app results from content/probes-apps/ and content/probes-mux/ */
 function loadAppResults(): ProbeData {
-  const appDir = probesAppsDir
-  let files: string[]
-  try {
-    files = readdirSync(appDir).filter((f) => f.endsWith(".json"))
-  } catch {
-    return emptyData()
+  // Scan both app and mux result directories
+  const resultDirs = [probesAppsDir, probesMuxDir]
+  const allFiles: Array<{ dir: string; file: string }> = []
+  for (const dir of resultDirs) {
+    try {
+      for (const file of readdirSync(dir).filter((f) => f.endsWith(".json"))) {
+        allFiles.push({ dir, file })
+      }
+    } catch {}
   }
-  if (files.length === 0) return emptyData()
+  if (allFiles.length === 0) return emptyData()
 
   // Keep only latest result per terminal, and collect all platforms per terminal
   const latest = new Map<string, any>()
   const platformMap = new Map<string, Set<string>>()
-  for (const file of files) {
+  for (const { dir, file } of allFiles) {
     try {
-      const raw = JSON.parse(readFileSync(join(appDir, file), "utf-8")) as any
+      const raw = JSON.parse(readFileSync(join(dir, file), "utf-8")) as any
       if (!raw.terminal || !raw.results) continue
       const key = raw.terminal
       if (!latest.has(key) || (raw.generated ?? "") > (latest.get(key).generated ?? "")) {
         latest.set(key, raw)
       }
-      // Track all OS values seen for this terminal across all result files
       if (raw.os) {
         if (!platformMap.has(key)) platformMap.set(key, new Set())
         platformMap.get(key)!.add(raw.os)

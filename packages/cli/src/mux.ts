@@ -1,14 +1,14 @@
 /**
  * Mux probe mechanism — test feature pass-through of terminal multiplexers.
  *
- * Launches tmux/screen/etc. in detached mode with a serve daemon inside,
+ * Launches tmux/screen in detached mode with a serve daemon inside,
  * probes via HTTP, saves results to content/probes-mux/, then kills the session.
  *
- * This tests how features degrade when going through an intermediary —
- * the same probes that run directly on a terminal now run through the mux.
+ * This reveals how features degrade through an intermediary — the same probes
+ * that run directly on a terminal now run through the multiplexer's PTY layer.
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs"
 import { execSync } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -25,13 +25,9 @@ const CLI_ENTRY = join(ROOT, "cli", "src", "index.ts")
 interface MuxDef {
   name: string
   id: string
-  /** Check if the binary is available */
   binary: string
-  /** Get the version string */
   version: () => string
-  /** Start a detached session running the given command */
-  start: (sessionName: string, cmd: string, env: Record<string, string>) => void
-  /** Kill the detached session */
+  start: (sessionName: string, scriptPath: string) => void
   kill: (sessionName: string) => void
 }
 
@@ -45,27 +41,18 @@ const MUXES: MuxDef[] = [
     binary: "tmux",
     version: () => {
       try {
-        const out = execSync("tmux -V", { encoding: "utf-8", timeout: 3000 }).trim()
         // "tmux 3.6a" → "3.6a"
-        return out.replace(/^tmux\s+/, "")
+        return execSync("tmux -V", { encoding: "utf-8", timeout: 3000 }).trim().replace(/^tmux\s+/, "")
       } catch {
         return "unknown"
       }
     },
-    start: (session, cmd, env) => {
-      const envStr = Object.entries(env)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(" ")
-      // tmux new-session with clean env — unset terminal-specific vars so the daemon
-      // detects the mux as the terminal, not the outer terminal app
-      execSync(`tmux new-session -d -s ${session} -x 120 -y 40 "env ${envStr} ${cmd}"`, {
-        timeout: 10_000,
-        env: { ...process.env },
-      })
+    start: (session, scriptPath) => {
+      execSync(`tmux new-session -d -s ${session} -x 120 -y 40 "${scriptPath}"`, { timeout: 10_000 })
     },
     kill: (session) => {
       try {
-        execSync(`tmux kill-session -t ${session}`, { timeout: 5000 })
+        execSync(`tmux kill-session -t ${session}`, { timeout: 5000, stdio: "ignore" })
       } catch {}
     },
   },
@@ -75,27 +62,19 @@ const MUXES: MuxDef[] = [
     binary: "screen",
     version: () => {
       try {
-        const out = execSync("screen -v 2>&1", { encoding: "utf-8", timeout: 3000 }).trim()
-        // "Screen version 4.00.03 (FAU) 23-Oct-06" → "4.00.03"
-        const match = out.match(/version\s+([\d.]+)/)
-        return match?.[1] ?? "unknown"
+        // screen -v exits with code 1 but still prints version
+        const out = execSync("screen -v 2>&1 || true", { encoding: "utf-8", timeout: 3000 }).trim()
+        return out.match(/version\s+([\d.]+)/)?.[1] ?? "unknown"
       } catch {
         return "unknown"
       }
     },
-    start: (session, cmd, env) => {
-      // Write a script that sets env and runs the command — screen doesn't support inline env
-      const scriptPath = "/tmp/terminfo-mux-serve.sh"
-      const envLines = Object.entries(env)
-        .map(([k, v]) => `export ${k}="${v}"`)
-        .join("\n")
-      writeFileSync(scriptPath, `#!/bin/bash\n${envLines}\n${cmd}\n`)
-      execSync(`chmod +x ${scriptPath}`)
+    start: (session, scriptPath) => {
       execSync(`screen -dmS ${session} ${scriptPath}`, { timeout: 10_000 })
     },
     kill: (session) => {
       try {
-        execSync(`screen -S ${session} -X quit`, { timeout: 5000 })
+        execSync(`screen -S ${session} -X quit`, { timeout: 5000, stdio: "ignore" })
       } catch {}
     },
   },
@@ -105,30 +84,41 @@ const MUXES: MuxDef[] = [
 
 function whichBinary(name: string): string | null {
   try {
-    return execSync(`which ${name}`, { encoding: "utf-8", timeout: 3000 }).trim()
+    return execSync(`which ${name}`, { encoding: "utf-8", timeout: 3000 }).trim() || null
   } catch {
     return null
   }
 }
 
 /**
- * Build a clean env for the daemon inside the mux — strip outer terminal identity
- * so detect.ts detects the mux as the terminal.
+ * Write a wrapper script that clears outer terminal identity env vars
+ * so the daemon inside the mux detects the mux as the terminal.
  */
-function cleanEnv(): Record<string, string> {
-  return {
-    __CFBundleIdentifier: "",
-    TERM_PROGRAM: "",
-    TERM_PROGRAM_VERSION: "",
-    GHOSTTY_RESOURCES_DIR: "",
-    KITTY_WINDOW_ID: "",
-    WEZTERM_EXECUTABLE: "",
-    ALACRITTY_WINDOW_ID: "",
-    TERMINAL_EMULATOR: "",
-  }
+function writeServeScript(): string {
+  const scriptPath = "/tmp/terminfo-mux-serve.sh"
+  const serveCmd = `${BUN} "${CLI_ENTRY}" probe server --start`
+  writeFileSync(
+    scriptPath,
+    [
+      "#!/bin/bash",
+      "# Clear outer terminal identity so daemon detects the mux",
+      "unset __CFBundleIdentifier",
+      "unset TERM_PROGRAM",
+      "unset TERM_PROGRAM_VERSION",
+      "unset GHOSTTY_RESOURCES_DIR",
+      "unset KITTY_WINDOW_ID",
+      "unset WEZTERM_EXECUTABLE",
+      "unset ALACRITTY_WINDOW_ID",
+      "unset TERMINAL_EMULATOR",
+      serveCmd,
+      "sleep 999999", // Keep session alive after daemon starts
+    ].join("\n") + "\n",
+  )
+  execSync(`chmod +x ${scriptPath}`)
+  return scriptPath
 }
 
-/** Wait for a newly-registered daemon (started within last 60s) */
+/** Wait for a daemon that started within the last 60s */
 async function waitForDaemon(timeoutMs: number = 30_000): Promise<{ port: number; terminal: string } | null> {
   const deadline = Date.now() + timeoutMs
 
@@ -137,21 +127,17 @@ async function waitForDaemon(timeoutMs: number = 30_000): Promise<{ port: number
       mkdirSync(DAEMON_DIR, { recursive: true })
       const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
       for (const file of files) {
-        const data = JSON.parse(readFileSync(join(DAEMON_DIR, file), "utf-8")) as any
-        const started = new Date(data.started).getTime()
-        if (Date.now() - started < 60_000) {
-          // Verify it's alive
-          try {
-            const res = await fetch(`http://127.0.0.1:${data.port}/health`, { signal: AbortSignal.timeout(2000) })
-            if (res.ok) return { port: data.port, terminal: data.terminal }
-          } catch {
-            // /health might not exist — try /info instead
+        try {
+          const data = JSON.parse(readFileSync(join(DAEMON_DIR, file), "utf-8")) as any
+          const started = new Date(data.started).getTime()
+          if (Date.now() - started < 60_000) {
+            // Verify daemon is alive via /info
             try {
               const res = await fetch(`http://127.0.0.1:${data.port}/info`, { signal: AbortSignal.timeout(2000) })
               if (res.ok) return { port: data.port, terminal: data.terminal }
             } catch {}
           }
-        }
+        } catch {}
       }
     } catch {}
     await new Promise((r) => setTimeout(r, 500))
@@ -160,34 +146,26 @@ async function waitForDaemon(timeoutMs: number = 30_000): Promise<{ port: number
   return null
 }
 
-/** Clear stale daemon files to avoid false matches */
-function clearStaleDaemons(): void {
+/** Remove stale daemon files (daemons that are no longer running) */
+async function cleanStaleDaemons(): Promise<void> {
   try {
+    mkdirSync(DAEMON_DIR, { recursive: true })
     const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
     for (const file of files) {
       try {
         const data = JSON.parse(readFileSync(join(DAEMON_DIR, file), "utf-8")) as any
-        // Check if daemon is alive
-        const res = await_not_async_check(data.port)
-        if (!res) {
-          try {
-            const { unlinkSync } = require("node:fs")
-            unlinkSync(join(DAEMON_DIR, file))
-          } catch {}
-        }
-      } catch {}
+        const res = await fetch(`http://127.0.0.1:${data.port}/info`, { signal: AbortSignal.timeout(1000) })
+        if (!res.ok) throw new Error("not ok")
+      } catch {
+        try {
+          unlinkSync(join(DAEMON_DIR, file))
+        } catch {}
+      }
     }
   } catch {}
 }
 
-/** Synchronous check if a daemon port is reachable (best-effort cleanup) */
-function await_not_async_check(_port: number): boolean {
-  // We can't do sync HTTP in Node — just skip stale cleanup for now.
-  // waitForDaemon already checks health.
-  return true
-}
-
-/** Probe a daemon and save results */
+/** Probe a daemon and save results to probes-mux/ */
 async function probeDaemon(
   port: number,
   muxId: string,
@@ -202,7 +180,6 @@ async function probeDaemon(
     const total = Object.keys(results).length
     const passed = Object.values(results).filter(Boolean).length
 
-    // Save with the mux name (not the daemon's self-detected terminal)
     const result: Record<string, any> = {
       terminal: muxId,
       terminalVersion: version,
@@ -245,8 +222,7 @@ async function runMux(
   mux: MuxDef,
   opts: { force?: boolean },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
-  const binPath = whichBinary(mux.binary)
-  if (!binPath) {
+  if (!whichBinary(mux.binary)) {
     return { success: false, error: "not installed" }
   }
 
@@ -258,23 +234,25 @@ async function runMux(
     if (existsSync(resultPath)) {
       try {
         const existing = JSON.parse(readFileSync(resultPath, "utf-8")) as any
-        const probeCount = Object.keys(existing.results ?? {}).length
-        if (probeCount >= 120) {
+        if (Object.keys(existing.results ?? {}).length >= 120) {
           return { success: true, skipped: true }
         }
       } catch {}
     }
   }
 
-  // Kill any leftover session from a previous run
+  // Kill leftover session from a previous run
   mux.kill(SESSION_NAME)
   await new Promise((r) => setTimeout(r, 500))
 
-  const serveCmd = `${BUN} "${CLI_ENTRY}" probe server --start`
+  // Clean stale daemon registrations so we detect the new one
+  await cleanStaleDaemons()
+
+  const scriptPath = writeServeScript()
 
   console.log(`  Launching ${mux.name} v${version}...`)
   try {
-    mux.start(SESSION_NAME, serveCmd, cleanEnv())
+    mux.start(SESSION_NAME, scriptPath)
   } catch (e: any) {
     return { success: false, error: `Failed to start ${mux.name}: ${e.message}` }
   }
@@ -290,7 +268,6 @@ async function runMux(
   console.log(`  Probing on port ${daemon.port}...`)
   const result = await probeDaemon(daemon.port, mux.id, version)
 
-  // Clean up
   mux.kill(SESSION_NAME)
 
   if (!result) {
@@ -316,9 +293,7 @@ export async function handleMux(
     }
     console.log(`\nProbe all:  \x1b[1mterminfo probe mux --all\x1b[0m`)
     console.log(`Probe one:  \x1b[1mterminfo probe mux tmux\x1b[0m`)
-    console.log(
-      `\nApproach: launches multiplexer → starts serve daemon inside → probes via HTTP → kills session`,
-    )
+    console.log(`\nApproach: launches mux → starts serve daemon inside → probes via HTTP → kills session`)
     return
   }
 
@@ -332,7 +307,6 @@ export async function handleMux(
     }
   }
 
-  // Filter to installed only
   muxesToRun = muxesToRun.filter((m) => !!whichBinary(m.binary))
   if (muxesToRun.length === 0) {
     console.error("No multiplexers available to test.")
@@ -341,12 +315,12 @@ export async function handleMux(
 
   console.log(`\nProbing through ${muxesToRun.length} multiplexer(s)\n`)
 
-  const results: Array<{ mux: MuxDef; result: Awaited<ReturnType<typeof runMux>> }> = []
+  const outcomes: Array<{ mux: MuxDef; result: Awaited<ReturnType<typeof runMux>> }> = []
 
   for (const mux of muxesToRun) {
     console.log(`--- ${mux.name} ---`)
     const result = await runMux(mux, { force: opts.force })
-    results.push({ mux, result })
+    outcomes.push({ mux, result })
 
     if (result.skipped) {
       console.log(`  Cached (120+ probes). Use --force to re-run.`)
@@ -361,7 +335,7 @@ export async function handleMux(
   }
 
   console.log("\n=== Summary ===\n")
-  for (const { mux, result } of results) {
+  for (const { mux, result } of outcomes) {
     const status = result.skipped ? "cached" : result.success ? "OK" : `FAIL: ${result.error}`
     console.log(`  ${mux.name.padEnd(16)} ${status}`)
   }

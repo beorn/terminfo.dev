@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
+import { linkifyContent } from "../data/linkify-content"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 

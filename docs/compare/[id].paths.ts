@@ -1,4 +1,5 @@
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis, loadFeaturesMeta } from "../data/load-probes"
+import { linkifyContent } from "../data/linkify-content"
 
 export default {
   paths() {

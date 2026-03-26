@@ -19,7 +19,7 @@ content/                        ← ALL input data
   annotations.json                result overrides (backend:feature notes)
   probes-apps/                    measured: real terminal results
   probes-libs/                    measured: headless backend results
-  probes-mux/                     measured: multiplexer results (future)
+  probes-mux/                     measured: multiplexer pass-through results
 
 packages/                       ← source code (internal tools)
   probes/                         probe test files (*.probe.ts, setup.ts, vitest.config.ts)
@@ -29,6 +29,7 @@ packages/                       ← source code (internal tools)
       termless.ts                 headless library probes (Vitest + Termless)
       server.ts                   daemon probe mechanism (start/list/probe daemons)
       app.ts                      macOS app probes (AppleScript)
+      mux.ts                      multiplexer pass-through probes (tmux, screen)
       here.ts                     inline TTY probes
       detect.ts                   terminal detection
       submit.ts                   result submission
@@ -85,7 +86,7 @@ DERIVED     docs/data/*.ts        ← computed at build time from above two
 
 `content/probes-apps/` — real terminal app results (from `bun terminfo probe app --all`)
 `content/probes-libs/` — headless backend results (from `bun terminfo probe termless --all`)
-`content/probes-mux/` — multiplexer results (future)
+`content/probes-mux/` — multiplexer pass-through results (from `bun terminfo probe mux --all`)
 
 Each file: `{ backend, version, results: { featureId: boolean }, notes, probeHash, generated }`
 
@@ -132,7 +133,7 @@ bun terminfo                              # Show help
 bun terminfo probe                        # List 4 probe mechanisms
 ```
 
-#### Probe Methods (4 mechanisms)
+#### Probe Methods (5 mechanisms)
 
 ```bash
 # 1. Headless library probes (Vitest + Termless backends, in-process)
@@ -154,7 +155,12 @@ bun terminfo probe app                    # List installed terminals
 bun terminfo probe app --all              # Probe all installed terminals
 bun terminfo probe app ghostty            # Probe specific terminal
 
-# 4. Inline probes (probe this terminal directly)
+# 4. Multiplexer probes (test pass-through of tmux, screen, etc.)
+bun terminfo probe mux                    # List installed multiplexers
+bun terminfo probe mux --all              # Probe through all multiplexers
+bun terminfo probe mux tmux              # Probe through tmux specifically
+
+# 5. Inline probes (probe this terminal directly)
 bun terminfo probe here                   # Probe this terminal
 bun terminfo probe here --json            # Machine-readable output
 ```
@@ -196,6 +202,7 @@ npx terminfo.dev detect                   # Detect terminal
 bun probe:termless            # = bun terminfo probe termless --all
 bun probe:apps                # = bun terminfo probe app --all
 bun probe:server              # = bun terminfo probe server --all
+bun probe:mux                 # = bun terminfo probe mux --all
 ```
 
 ### When to use which probe method
@@ -203,6 +210,7 @@ bun probe:server              # = bun terminfo probe server --all
 - **Headless** (`probe termless`): Testing library parsers. Fast, automated, CI-friendly.
 - **App launch** (`probe app`): Testing real macOS terminals. Requires Accessibility permission for AppleScript. Doesn't work for all terminals (Warp, some Electron apps).
 - **Daemon** (`probe server`): Testing ANY terminal. Run `--start` in the target terminal, then `--all` from another session. Works for Warp, SSH sessions, Linux, anything with a TTY. **Most flexible method.**
+- **Mux** (`probe mux`): Testing multiplexer pass-through (tmux, screen). Launches the mux with a daemon inside, probes via HTTP, saves to `content/probes-mux/`. Shows which features each mux correctly relays vs. strips.
 - **Inline** (`probe here`): Quick test of the current terminal. Good for one-off checks.
 - **Manual**: For terminals where none of the above work, run `terminfo detect` and submit results.
 
@@ -213,9 +221,10 @@ When probe data changes (new terminals, new features, updated results):
 ```bash
 bun terminfo probe termless --all        # 1. Run headless probes
 bun terminfo probe app --all             # 2. Run app probes (or probe server --all)
-bun analysis                             # 3. Regenerate analysis commentary
-bun run build                            # 4. Build site
-git add -A && git commit && git push     # 5. Deploy
+bun terminfo probe mux --all             # 3. Run multiplexer probes
+bun analysis                             # 4. Regenerate analysis commentary
+bun run build                            # 5. Build site
+git add -A && git commit && git push     # 6. Deploy
 ```
 
 **Only run `bun analysis` when probe data changed.** It reads result files and generates
@@ -229,15 +238,17 @@ will exit with an error listing unannotated failures. Add explanations to
 ## Data Flow
 
 ```
-4 probe methods:
+5 probe methods:
   packages/probes/*.probe.ts       ← termless: bun terminfo probe termless (Vitest + Termless)
   packages/cli/app-runner.ts       ← app:      bun terminfo probe app (AppleScript)
   cli/src/serve.ts                 ← server:   bun terminfo probe server (HTTP daemon)
+  packages/cli/src/mux.ts          ← mux:      bun terminfo probe mux (multiplexer pass-through)
   cli/src/probes/                  ← here:     bun terminfo probe here (inline TTY)
 
   ↓ results saved to
 
 content/probes-apps/*.json         ← real terminal results (app + server + here)
+content/probes-mux/*.json          ← multiplexer pass-through results (mux)
 content/probes-libs/*.json         ← headless backend results (termless)
   +
 content/*.json                     ← editorial metadata (features, terminals, standards...)

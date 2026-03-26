@@ -86,6 +86,24 @@
     "manifestBackend": "xtermjs",
     "platforms": ["macos"]
   },
+  "tmux": {
+    "label": "tmux",
+    "slug": "tmux",
+    "url": "https://github.com/tmux/tmux",
+    "description": "Terminal multiplexer — session persistence, window management, and pane splitting. The most widely used multiplexer.",
+    "body": "<p><strong>tmux</strong> (terminal multiplexer) was created by <strong>Nicholas Marriott</strong> in 2007 as a modern, BSD-licensed replacement for GNU Screen. It has become the de facto standard terminal multiplexer, used by millions of developers for session persistence, window management, and pane splitting.</p>\n<p>As an intermediary between the terminal emulator and the application, tmux maintains its own VT parser and re-renders output through its internal grid. This means features must be explicitly supported by tmux to pass through — it doesn't transparently relay escape sequences. tmux has steadily added support for modern features: truecolor (since 2.2), OSC 8 hyperlinks (3.4), extended underlines, and partial kitty keyboard support.</p>\n<p>tmux's pass-through mode (<code>\\ePtmux;</code>) allows applications to send escape sequences directly to the outer terminal, bypassing tmux's parser. This is used for features tmux doesn't natively support, like sixel graphics and some query responses. However, pass-through is fragile and not universally reliable.</p>",
+    "platforms": ["macos", "linux"],
+    "intermediary": true
+  },
+  "screen": {
+    "label": "GNU Screen",
+    "slug": "screen",
+    "url": "https://www.gnu.org/software/screen/",
+    "description": "The original terminal multiplexer. Session persistence and window management since 1987.",
+    "body": "<p><strong>GNU Screen</strong>, first released in 1987, is the original terminal multiplexer. It introduced the concept of persistent terminal sessions that survive disconnection — a capability that was revolutionary for remote system administration over unreliable connections.</p>\n<p>Screen's VT emulation is conservative, supporting basic ANSI/VT100 features but lacking many modern extensions. It does not support truecolor (24-bit RGB), kitty keyboard protocol, or kitty graphics. Its 256-color support requires explicit configuration. As an intermediary, Screen strips or mishandles many modern escape sequences that newer terminals support.</p>\n<p>While tmux has largely replaced Screen for new users, Screen remains installed by default on many Linux distributions and is still widely used in legacy environments, embedded systems, and situations where tmux isn't available.</p>",
+    "platforms": ["macos", "linux"],
+    "intermediary": true
+  },
   "vt52-historical": {
     "label": "DEC VT52",
     "slug": "vt52-historical",
