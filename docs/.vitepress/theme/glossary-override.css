@@ -1,0 +1,13 @@
+/* Override vitepress-plugin-glossary scoped styles to blend into text */
+.glossary-term {
+  display: inline !important;
+  color: inherit !important;
+  text-decoration: none !important;
+  padding-bottom: 0 !important;
+  cursor: help;
+}
+
+.glossary-term:hover {
+  text-decoration: underline dotted !important;
+  text-decoration-color: var(--vp-c-text-3) !important;
+}

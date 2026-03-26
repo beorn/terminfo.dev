@@ -116,14 +116,14 @@ const analysisKey = 'standards-index'
 <p class="page-tagline">50 years of terminal protocols — from teletypes to GPU-rendered emoji</p>
 
 <div class="beginner-intro">
-<p>Terminal emulators speak a protocol — <strong>escape sequences</strong> — that dates back to 1976. There is no single standard; instead, layers of specifications from different eras build on each other. The <a href="/vt100">VT100</a> (1978) defined the basics, <a href="/xterm-extensions">xterm</a> extended them for decades, and modern terminals like <a href="/terminal/ghostty">Ghostty</a> and <a href="/terminal/kitty">Kitty</a> add new protocols for keyboards, graphics, and more. The <a href="/glossary">glossary</a> explains all the acronyms.</p>
+<p>There is no single terminal standard. What exists is layers — ECMA-48 (1976) defined the grammar, DEC's VT series (1978–1993) implemented it, xterm extended it for decades, and modern terminals add new protocols. This page maps the archaeology. See the <a href="/glossary">glossary</a> for acronyms.</p>
 </div>
 
 ## The Layers of Terminal Standards
 
 There is no single authoritative standard for modern terminals. What exists is a stack of layers, each building on the one before it, with increasing levels of vendor-specificity and decreasing levels of formal standardization.
 
-At the base is **ECMA-48** (1976) — the grammar. It defines how escape sequences are structured: CSI, OSC, DCS, and the parameter syntax that every terminal speaks. Above that sits **DEC's VT series** (1978-1993) — the implementations that made the grammar real. The VT100 became so dominant that "ANSI terminal" effectively means "VT100-compatible." Then comes **xterm** (1996-present) — Thomas Dickey's three-decade project that extended the VT model with truecolor, mouse tracking, and clipboard access. Finally, **modern protocols** like the Kitty keyboard protocol and inline graphics (Kitty, Sixel) push terminals beyond what the original standards ever imagined.
+At the base is **ECMA-48** (1976) — the grammar. It defines how escape sequences are structured: CSI, OSC, DCS, and the parameter syntax that every terminal speaks. Above that sits **DEC's VT series** (1978–1993) — the implementations that made the grammar real. The VT100 became so dominant that "ANSI terminal" effectively means "VT100-compatible." Then comes **xterm** (1996-present) — Thomas Dickey's three-decade project that extended the VT model with truecolor, mouse tracking, and clipboard access. Finally, **modern protocols** like the Kitty keyboard protocol and inline graphics (Kitty, Sixel) push terminals beyond what the original standards ever imagined.
 
 The messy truth: most of what developers call "ANSI escape codes" aren't ANSI at all. ANSI withdrew their terminal standard (X3.64) in 1994. What we actually use is a patchwork of ECMA-48 grammar, DEC private extensions, xterm innovations, and modern protocol proposals — held together by decades of copy-the-leader compatibility.
 
@@ -168,7 +168,7 @@ Here's the irony: developers universally call these "ANSI escape codes," but the
 <p class="standard-link"><a class="hover-link" href="/ecma-48">View ECMA-48 features &rarr;</a></p>
 
 ::: info "ANSI escape codes" aren't ANSI
-ANSI published the X3.64 terminal standard in 1979, then withdrew it in 1994 in favor of the international ECMA-48 / ISO 6429. The name "ANSI escape codes" persists from 1979 -- referring to a standard that no longer exists. What we actually use is ECMA-48 grammar with decades of vendor extensions.
+ANSI published the X3.64 terminal standard in 1979, then withdrew it in 1994 in favor of the international ECMA-48 / ISO 6429. The name "ANSI escape codes" persists from 1979 — referring to a standard that no longer exists. What we actually use is ECMA-48 grammar with decades of vendor extensions.
 :::
 
 ### VT100 (1978) — The Terminal That Won
@@ -199,7 +199,7 @@ The VT510 was DEC's last terminal before the company was acquired by Compaq in 1
 
 ### DEC Private Modes (1978+) — The Negotiation Protocol
 
-DEC private modes use the **`?` prefix** in CSI sequences to toggle terminal behaviors: `CSI ? Pm h` (DECSET) to enable, `CSI ? Pm l` (DECRST) to disable. This namespace is the primary mechanism for feature negotiation between applications and terminals. Cursor visibility (?25), auto-wrap (?7), alternate screen (?1049), mouse tracking (?1000-1006), bracketed paste (?2004), focus events (?1004) — all controlled via DEC private modes.
+DEC private modes use the **`?` prefix** in CSI sequences to toggle terminal behaviors: `CSI ? Pm h` (DECSET) to enable, `CSI ? Pm l` (DECRST) to disable. This namespace is the primary mechanism for feature negotiation between applications and terminals. Cursor visibility (?25), auto-wrap (?7), alternate screen (?1049), mouse tracking (?1000–1006), bracketed paste (?2004), focus events (?1004) — all controlled via DEC private modes.
 
 The "private" designation means vendor-defined: any terminal can allocate new mode numbers without conflicting with ECMA-48's standard modes. This extensibility is why DEC private modes remain the backbone of terminal feature control.
 
@@ -214,7 +214,7 @@ Xterm pioneered **256-color** and **truecolor** (24-bit RGB) support, the **alte
 <p class="standard-link"><a class="hover-link" href="/xterm-extensions">View Xterm Extension features &rarr;</a></p>
 
 ::: details One person maintains the terminal stack
-Thomas Dickey has single-handedly maintained xterm, ncurses, and the terminfo database since 1996 -- nearly 30 years. His xterm control sequences document (ctlseqs) is the de facto specification that every terminal implementor references. Most of what developers call "standard" terminal behavior was defined by one maintainer in one text file.
+Thomas Dickey has single-handedly maintained xterm, ncurses, and the terminfo database since 1996 — nearly 30 years. His xterm control sequences document (ctlseqs) is the de facto specification that every terminal implementor references. Most of what developers call "standard" terminal behavior was defined by one maintainer in one text file.
 :::
 
 ### OSC — Operating System Commands (1976+)
@@ -234,7 +234,7 @@ The **Kitty graphics protocol** enables inline image display via chunked base64 
 <p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
 
 ::: tip Why Kitty matters
-Before Kitty (2017), no terminal could distinguish key-down from key-up, report modifier keys accurately, or display inline images with a purpose-built protocol. Kitty's keyboard and graphics protocols are now adopted by Ghostty, WezTerm, foot, and others -- making them the closest thing to an emerging standard for next-generation terminals.
+Before Kitty (2017), no terminal could distinguish key-down from key-up, report modifier keys accurately, or display inline images with a purpose-built protocol. Kitty's keyboard and graphics protocols are now adopted by Ghostty, WezTerm, foot, and others — making them the closest thing to an emerging standard for next-generation terminals.
 :::
 
 ### Sixel (1983, Revived) — Inline Graphics

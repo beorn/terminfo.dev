@@ -121,7 +121,7 @@ const totalCategories = computed(() => activeCategories.value.length)
 <p class="page-tagline">{{ totalFeatures }} features across {{ totalCategories }} categories — tested on every major terminal</p>
 
 <div class="beginner-intro">
-<p>A <strong>terminal emulator</strong> (Ghostty, iTerm2, Windows Terminal) displays text and responds to special commands called <strong>escape sequences</strong>. Every feature on this page is an escape sequence — a byte pattern that tells the terminal to do something: make text <strong>bold</strong>, move the cursor, change colors, or switch modes. The <strong>shell</strong> (bash, zsh) handles commands; the terminal handles display. The <a href="/glossary">glossary</a> explains all the technical terms.</p>
+<p>Every color change, cursor move, and mode switch in your terminal is an <strong>escape sequence</strong> — a byte pattern your terminal interprets instead of displaying. This page catalogs them all, with support data from every major terminal. See the <a href="/glossary">glossary</a> for acronyms.</p>
 </div>
 
 ## How Escape Sequences Work
@@ -151,7 +151,7 @@ The beauty of the system is its simplicity: terminals only need to parse one gra
 </div>
 
 ::: tip
-Every escape sequence starts with `ESC` (byte `0x1B`). Your terminal processes thousands of these per second -- a single screen redraw in vim or htop can involve hundreds of cursor moves, color changes, and text writes, all encoded as these tiny byte patterns.
+Every escape sequence starts with `ESC` (byte `0x1B`). Your terminal processes thousands of these per second — a single screen redraw in vim or htop can involve hundreds of cursor moves, color changes, and text writes, all encoded as these tiny byte patterns.
 :::
 
 ## Categories
@@ -230,13 +230,13 @@ SGR attribute reset (SGR 0), full terminal reset (RIS), soft reset (DECSTR), and
 <p class="category-link"><a class="hover-link" href="/reset">View Reset features &rarr;</a></p>
 
 ::: details Why do terminals disagree on emoji width?
-A single emoji can be 1--7 Unicode codepoints but should occupy 2 terminal columns. The `wcwidth()` function (from 1988) predates emoji entirely. Different terminals use different Unicode versions for width tables, and there's no standard for grapheme cluster width. This is why TUI layouts break with emoji.
+A single emoji can be 1–7 Unicode codepoints but should occupy 2 terminal columns. The `wcwidth()` function (from 1988) predates emoji entirely. Different terminals use different Unicode versions for width tables, and there's no standard for grapheme cluster width. This is why TUI layouts break with emoji.
 :::
 
 ### Extensions — The Cutting Edge
 
 ::: tip The Kitty keyboard problem
-Traditional terminals can't distinguish `Ctrl+I` from `Tab` -- they're the same byte (`0x09`). The Kitty keyboard protocol fixes this by sending unambiguous key reports with modifier information. It's being adopted across Ghostty, WezTerm, foot, and other modern terminals.
+Traditional terminals can't distinguish `Ctrl+I` from `Tab` — they're the same byte (`0x09`). The Kitty keyboard protocol fixes this by sending unambiguous key reports with modifier information. It's being adopted across Ghostty, WezTerm, foot, and other modern terminals.
 :::
 
 Modern terminal extensions beyond the traditional VT specification: **Kitty keyboard protocol** (unambiguous key reporting), **Kitty graphics** and **Sixel** (inline images), **OSC 8 hyperlinks** (clickable links in terminal output), **text reflow** on resize, and **semantic prompt markers** (OSC 133). These features vary widely in adoption and represent the frontier of terminal capability.
