@@ -159,7 +159,7 @@ The messy truth: most of what developers call "ANSI escape codes" aren't ANSI at
   </a>
 </div>
 
-### ECMA-48 (1976) — The Grammar That Started Everything
+### ECMA-48 (1976) — The Grammar That Started Everything {#ecma-48}
 
 First published by ECMA International in 1976 (5th edition 1991), ECMA-48 defines the **CSI (Control Sequence Introducer)** grammar that every escape sequence uses. The `ESC [` prefix, the parameter syntax, the SGR (Select Graphic Rendition) codes for text styling — all of it flows from this one document. It also defines cursor movement (CUP, CUU, CUD), erase operations (EL, ED), and scroll control.
 
@@ -171,7 +171,7 @@ Here's the irony: developers universally call these "ANSI escape codes," but the
 ANSI published the X3.64 terminal standard in 1979, then withdrew it in 1994 in favor of the international ECMA-48 / ISO 6429. The name "ANSI escape codes" persists from 1979 — referring to a standard that no longer exists. What we actually use is ECMA-48 grammar with decades of vendor extensions.
 :::
 
-### VT100 (1978) — The Terminal That Won
+### VT100 (1978) — The Terminal That Won {#vt100}
 
 The DEC VT100 ran on an **Intel 8080 CPU with 3KB of RAM**, yet it defined terminal computing for the next five decades. It implemented the ECMA-48 escape grammar, adding scroll regions (DECSTBM), character sets, and the private mode namespace (`CSI ?`) that terminals still use today. When software says it's "VT100-compatible," it's promising support for a specific set of behaviors that this $1,800 box established in 1978.
 
@@ -183,7 +183,20 @@ The VT100's dominance wasn't accidental — DEC shipped it with the rising tide 
 IBM's 80-column punch card format (1928) set the width for the IBM 3270 terminal (1971), which the DEC VT100 adopted in 1978. The 24-row default comes from fitting 1,920 characters (80 x 24) into early memory architectures. Nearly 50 years later, 80x24 remains the default terminal size.
 :::
 
-### VT220 (1983) — Editing Operations Arrive
+::: details VT100 in action
+```bash
+# Scroll region: lines 2-23 scroll, line 1 stays (status bar)
+printf '\e[2;23r'
+# Cursor to row 5, column 10
+printf '\e[5;10H'
+# Save cursor position
+printf '\e7'
+# Restore cursor position
+printf '\e8'
+```
+:::
+
+### VT220 (1983) — Editing Operations Arrive {#vt220}
 
 The VT220 added the **insert/delete operations** (ICH, DCH, IL, DL) that make full-screen terminal applications practical. Without VT220 editing sequences, programs like vim and tmux would have to redraw the entire screen for every character insertion. The VT220 also introduced 8-bit control codes, user-defined keys, and national replacement character sets.
 
@@ -191,13 +204,24 @@ These editing sequences are so fundamental that it's hard to imagine terminals w
 
 <p class="standard-link"><a class="hover-link" href="/vt220">View VT220 features &rarr;</a></p>
 
-### VT510 (1993) — DEC's Late VT Reference
+::: details VT220 editing
+```bash
+# Insert 3 blank characters at cursor
+printf '\e[3@'
+# Delete 2 characters at cursor
+printf '\e[2P'
+# Insert a blank line
+printf '\e[L'
+```
+:::
+
+### VT510 (1993) — DEC's Late VT Reference {#vt510}
 
 The VT510 was one of DEC's later VT models; the VT520 and VT525 followed before DEC was acquired by Compaq in 1998. No modern terminal implements the full VT510 spec, but specific features like **DECTCEM** (cursor visibility) and **DECSCNM** (reverse video) became universal. The VT510 Reference Manual remains the most cited document for terminal implementors — it's the closest thing to a comprehensive reference for DEC escape sequences.
 
 <p class="standard-link"><a class="hover-link" href="/vt510">View VT510 features &rarr;</a></p>
 
-### DEC Private Modes (1978+) — The Negotiation Protocol
+### DEC Private Modes (1978+) — The Negotiation Protocol {#dec-modes}
 
 DEC private modes use the **`?` prefix** in CSI sequences to toggle terminal behaviors: `CSI ? Pm h` (DECSET) to enable, `CSI ? Pm l` (DECRST) to disable. This namespace is the primary mechanism for feature negotiation between applications and terminals. Cursor visibility (?25), auto-wrap (?7), alternate screen (?1049), mouse tracking (?1000–1006), bracketed paste (?2004), focus events (?1004) — all controlled via DEC private modes.
 
@@ -205,7 +229,20 @@ The "private" designation means vendor-defined: any terminal can allocate new mo
 
 <p class="standard-link"><a class="hover-link" href="/dec-private-modes">View DEC Private Modes features &rarr;</a></p>
 
-### Xterm Extensions (1996+) — Thomas Dickey's 30-Year Legacy
+::: details DEC modes in action
+```bash
+# Enable bracketed paste (your terminal wraps pasted text in markers)
+printf '\e[?2004h'
+# Enable mouse tracking (clicks reported to your app)
+printf '\e[?1000h'
+# Switch to alternate screen (vim, htop, less do this)
+printf '\e[?1049h'
+# Switch back
+printf '\e[?1049l'
+```
+:::
+
+### Xterm Extensions (1996+) — Thomas Dickey's 30-Year Legacy {#xterm}
 
 **One person** — Thomas Dickey — maintains xterm, ncurses, AND the terminfo database. He's been doing it since 1996. The xterm control sequences document (ctlseqs) is the single most important reference for terminal developers, documenting not just xterm's behavior but the de facto standards the rest of the ecosystem follows.
 
@@ -217,7 +254,7 @@ Xterm became the reference for many widely deployed extensions, including **256-
 Thomas Dickey has single-handedly maintained xterm, ncurses, and the terminfo database since 1996 — nearly 30 years. His xterm control sequences document (ctlseqs) is the de facto specification that every terminal implementor references. Most of what developers call "standard" terminal behavior was defined by one maintainer in one text file.
 :::
 
-### OSC — Operating System Commands (1976+)
+### OSC — Operating System Commands (1976+) {#osc}
 
 OSC (Operating System Command) sequences use `ESC ]` for communication between applications and the terminal as an application. Unlike CSI sequences that control the display, OSC sequences talk to the host: window title (OSC 0/2), clipboard access (OSC 52), hyperlinks (OSC 8), color palette queries (OSC 4/10/11), semantic prompt markers (OSC 133), and notification (OSC 9/777).
 
@@ -225,7 +262,7 @@ The OSC namespace is **open-ended** — any terminal can define new number codes
 
 <p class="standard-link"><a class="hover-link" href="/osc">View OSC features &rarr;</a></p>
 
-### Kitty Extensions (2017) — The Modern Revolution
+### Kitty Extensions (2017) — The Modern Revolution {#kitty}
 
 Kovid Goyal's Kitty terminal introduced protocols that solve fundamental limitations of the 1978-era terminal model. The **Kitty keyboard protocol** provides unambiguous, modifier-aware key reporting — solving a problem from 1978: `Ctrl+I` and `Tab` are the same byte (0x09) in traditional terminals. With the Kitty protocol, they're distinct events, and key-up events are reportable for the first time.
 
@@ -237,7 +274,7 @@ The **Kitty graphics protocol** enables inline image display via chunked base64 
 Kitty significantly advanced terminal input by documenting key-release reporting and a comprehensive keyboard protocol. Earlier efforts like xterm's modifyOtherKeys and Leonerd's CSI u/fixterms addressed parts of this problem. Kitty's keyboard and graphics protocols are now adopted by Ghostty, WezTerm, foot, and others — making them the closest thing to an emerging standard for next-generation terminals.
 :::
 
-### Sixel (1983, Revived) — Inline Graphics
+### Sixel (1983, Revived) — Inline Graphics {#sixel}
 
 **Sixel graphics were designed for dot-matrix printers in 1983.** The format encodes raster images as printable ASCII characters, where each character represents a 1x6 pixel column — hence "six pixels." DEC included Sixel support in the VT240 and VT340 terminals for displaying charts and diagrams.
 
@@ -245,11 +282,72 @@ Sixel was largely dormant for decades until modern terminals (xterm, foot, WezTe
 
 <p class="standard-link"><a class="hover-link" href="/sixel">View Sixel features &rarr;</a></p>
 
-### Unicode (1991+) — The Width Problem
+### Unicode (1991+) — The Width Problem {#unicode}
+
+#### Before Unicode: The Character Set Wars
+
+Before Unicode, every language needed its own character encoding — and they were mutually incompatible:
+
+<div class="escape-examples">
+<table>
+<thead><tr><th>Encoding</th><th>Region</th><th>Characters</th><th>Bytes</th></tr></thead>
+<tbody>
+<tr><td><strong>ASCII</strong></td><td>US/UK</td><td>128 characters (A-Z, 0-9, symbols)</td><td>7-bit</td></tr>
+<tr><td><strong>ISO 8859-1</strong> (Latin-1)</td><td>Western Europe</td><td>256 characters (adds àéñü etc.)</td><td>8-bit</td></tr>
+<tr><td><strong>Shift-JIS</strong></td><td>Japan</td><td>~7,000 kanji + kana</td><td>1-2 bytes</td></tr>
+<tr><td><strong>GB2312</strong></td><td>China</td><td>~6,700 simplified Chinese characters</td><td>2 bytes</td></tr>
+<tr><td><strong>EUC-KR</strong></td><td>Korea</td><td>~2,350 hangul syllables + hanja</td><td>1-2 bytes</td></tr>
+<tr><td><strong>KOI8-R</strong></td><td>Russia</td><td>Cyrillic alphabet</td><td>8-bit</td></tr>
+</tbody>
+</table>
+</div>
+
+A Japanese terminal couldn't display Chinese text. A German terminal couldn't display Russian. Emails between countries garbled characters. The web was a mess of `Content-Type: text/html; charset=iso-8859-1` headers that were wrong half the time.
+
+Unicode solved this by assigning a unique number (code point) to every character in every writing system — currently over 149,000 characters across 161 scripts. UTF-8 encodes these code points in 1-4 bytes, is backward-compatible with ASCII, and is now the dominant encoding on the web and in terminals.
+
+#### The Width Problem
 
 Unicode's challenge for terminals isn't character _encoding_ — UTF-8 is universal. The challenge is **width calculation**. East Asian characters (CJK ideographs) and many emoji occupy two terminal columns ("wide" or "fullwidth"), while most Latin/Cyrillic/Arabic characters occupy one. UAX #11 defines width classes, but terminals must also handle combining characters, variation selectors, zero-width joiners, and emoji sequences.
 
 Incorrect width calculation causes cursor positioning errors, text misalignment, and broken TUI layouts. It's one of the hardest problems in terminal emulation because the Unicode Standard keeps adding new characters, and terminals, libraries, and the C `wcwidth()` function all update at different rates.
+
+::: details The width problem in practice
+```
+Normal:  Hello     (5 columns)
+CJK:     你好      (4 columns — each char is 2 wide)
+Emoji:   👨‍👩‍👧‍👦    (2 columns? 8 columns? depends on your terminal)
+Mixed:   Hi你好👋  (2 + 4 + 2 = 8 columns... maybe)
+```
+Every terminal must agree on these widths or TUI layouts break — columns misalign, text overwrites adjacent cells, cursor position drifts.
+:::
+
+#### Powerline and Prompt Art
+
+Unicode didn't just solve the character encoding problem — it enabled a new artform: **terminal prompt customization**.
+
+The **Powerline** project (2012) pioneered the use of custom Unicode glyphs to create visually striking shell prompts with angled separators, branch indicators, and status icons. These characters live in Unicode's Private Use Area (PUA, U+E000-U+F8FF) and require patched fonts to display.
+
+**Nerd Fonts** took this further by patching popular programming fonts (Fira Code, JetBrains Mono, Hack, Iosevka) with thousands of additional glyphs: file type icons, git symbols, weather icons, and more. A modern shell prompt might use:
+
+<div class="escape-examples">
+<table>
+<thead><tr><th>Glyph</th><th>Unicode</th><th>Use</th></tr></thead>
+<tbody>
+<tr><td> (U+E0B0)</td><td>U+E0B0</td><td>Powerline right arrow separator</td></tr>
+<tr><td> (U+E0B2)</td><td>U+E0B2</td><td>Powerline left arrow separator</td></tr>
+<tr><td> (U+E0A0)</td><td>U+E0A0</td><td>Git branch symbol</td></tr>
+<tr><td> (U+F115)</td><td>U+F115</td><td>Folder icon (Nerd Font)</td></tr>
+<tr><td> (U+F0E7)</td><td>U+F0E7</td><td>Lightning bolt (command duration)</td></tr>
+</tbody>
+</table>
+</div>
+
+Tools like **Starship**, **Powerlevel10k** (Zsh), **Oh My Posh**, and **Tide** (Fish) build elaborate prompts that show git status, language versions, cloud context, and execution time — all using these custom glyphs. The result is that terminal prompts have become a form of personal expression, with developers sharing screenshots of their setups and customizing every detail.
+
+::: tip Nerd Fonts and terminal compatibility
+Powerline and Nerd Font glyphs are Private Use Area characters — they're not part of the Unicode standard and won't render without the right font. If you see boxes or question marks instead of arrows and icons, you need to install a Nerd Font and configure your terminal to use it.
+:::
 
 <p class="standard-link"><a class="hover-link" href="/unicode">View Unicode features &rarr;</a></p>
 
