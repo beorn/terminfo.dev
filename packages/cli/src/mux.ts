@@ -42,7 +42,9 @@ const MUXES: MuxDef[] = [
     version: () => {
       try {
         // "tmux 3.6a" → "3.6a"
-        return execSync("tmux -V", { encoding: "utf-8", timeout: 3000 }).trim().replace(/^tmux\s+/, "")
+        return execSync("tmux -V", { encoding: "utf-8", timeout: 3000 })
+          .trim()
+          .replace(/^tmux\s+/, "")
       } catch {
         return "unknown"
       }
@@ -280,10 +282,7 @@ async function runMux(
 
 // ── Main handler ──
 
-export async function handleMux(
-  muxName: string | undefined,
-  opts: { all?: boolean; force?: boolean },
-): Promise<void> {
+export async function handleMux(muxName: string | undefined, opts: { all?: boolean; force?: boolean }): Promise<void> {
   if (!muxName && !opts.all) {
     console.log("\nAvailable multiplexers:\n")
     for (const mux of MUXES) {
