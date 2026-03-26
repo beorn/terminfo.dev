@@ -302,6 +302,7 @@ function buildSidebar() {
         { text: "TTY Architecture", link: "/fundamentals/tty-architecture" },
         { text: "Terminal Modes & stty", link: "/fundamentals/stty" },
         { text: "Terminal Detection", link: "/fundamentals/term-detection" },
+        { text: "Terminal Security", link: "/fundamentals/security" },
       ],
     },
     { text: "API", link: "/api" },
@@ -379,6 +380,16 @@ export default defineConfig({
       pageData.title = "Terminal Detection: $TERM, DA1, DECRPM, Runtime Probing"
       pageData.description =
         "How applications discover terminal capabilities — $TERM (unreliable), $COLORTERM, DA1, DECRPM mode reports, XTVERSION, and runtime behavioral probing."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
+    if (rel === "fundamentals/security.md") {
+      pageData.title = "Terminal Security: Clipboard, Paste Injection, Escape Attacks"
+      pageData.description =
+        "Terminal attack surfaces — OSC 52 clipboard exfiltration, OSC 8 hyperlink spoofing, paste injection without bracketed paste, escape sequence injection in logs, and title bar spoofing."
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
@@ -509,6 +520,7 @@ export default defineConfig({
           { text: "TTY Architecture", link: "/fundamentals/tty-architecture" },
           { text: "Terminal Modes & stty", link: "/fundamentals/stty" },
           { text: "Terminal Detection", link: "/fundamentals/term-detection" },
+          { text: "Terminal Security", link: "/fundamentals/security" },
         ],
       },
       { text: "About", link: "/about" },

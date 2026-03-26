@@ -52,6 +52,15 @@ Every terminal session involves the same layers, whether you're running `ls` in 
     <p class="fundamentals-tagline">$TERM, $COLORTERM, DA1, DECRPM, runtime probing</p>
     <p class="fundamentals-desc">How applications discover what the terminal supports — from unreliable environment variables to runtime escape sequence queries. Why static databases fall short.</p>
   </a>
+
+  <a class="fundamentals-card fundamentals-card-link" href="/fundamentals/security">
+    <div class="fundamentals-header">
+      <span class="fundamentals-icon">🔒</span>
+      <span class="fundamentals-name">Terminal Security</span>
+    </div>
+    <p class="fundamentals-tagline">Clipboard access, paste injection, escape sequence attacks</p>
+    <p class="fundamentals-desc">Attack surfaces hiding in escape sequences — OSC 52 clipboard exfiltration, hyperlink spoofing, paste injection, log poisoning, and title bar attacks. What modern terminals do about them.</p>
+  </a>
 </div>
 
 ## How These Layers Connect

@@ -5,8 +5,10 @@ next: false
 ---
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { data as glossary } from './data/glossary.data'
+
+const search = ref('')
 
 // Sort entries alphabetically by acronym
 const sortedEntries = computed(() => {
@@ -14,10 +16,21 @@ const sortedEntries = computed(() => {
     .sort(([a], [b]) => a.localeCompare(b))
 })
 
+// Filter by search query (matches acronym, expansion, or description)
+const filteredEntries = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  if (!q) return sortedEntries.value
+  return sortedEntries.value.filter(([acronym, entry]) =>
+    acronym.toLowerCase().includes(q) ||
+    entry.expansion.toLowerCase().includes(q) ||
+    entry.description.toLowerCase().includes(q)
+  )
+})
+
 // Group by first letter
 const grouped = computed(() => {
   const groups = new Map()
-  for (const [acronym, entry] of sortedEntries.value) {
+  for (const [acronym, entry] of filteredEntries.value) {
     const letter = acronym[0].toUpperCase()
     if (!groups.has(letter)) groups.set(letter, [])
     groups.get(letter).push({ acronym, ...entry })
@@ -26,11 +39,27 @@ const grouped = computed(() => {
 })
 
 const letters = computed(() => [...grouped.value.keys()].sort())
+
+const resultCount = computed(() => filteredEntries.value.length)
+const totalCount = computed(() => sortedEntries.value.length)
 </script>
 
 # Glossary
 
 Terminal acronyms and technical terms.
+
+<div class="glossary-search">
+  <input
+    v-model="search"
+    type="text"
+    placeholder="Filter glossary..."
+    class="glossary-search-input"
+    aria-label="Filter glossary terms"
+  />
+  <span v-if="search.trim()" class="glossary-search-count">
+    {{ resultCount }} of {{ totalCount }} terms
+  </span>
+</div>
 
 <div class="glossary-nav">
   <a v-for="letter in letters" :key="letter" :href="'#' + letter" class="glossary-letter">{{ letter }}</a>
@@ -52,7 +81,51 @@ Terminal acronyms and technical terms.
   </template>
 </div>
 
+<div v-if="search.trim() && resultCount === 0" class="glossary-no-results">
+  No matching terms found.
+</div>
+
 <style>
+.glossary-search {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.glossary-search-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-1);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.glossary-search-input::placeholder {
+  color: var(--vp-c-text-3);
+}
+
+.glossary-search-input:focus {
+  border-color: var(--vp-c-brand-1);
+}
+
+.glossary-search-count {
+  font-size: 0.85rem;
+  color: var(--vp-c-text-3);
+  white-space: nowrap;
+}
+
+.glossary-no-results {
+  padding: 2rem;
+  text-align: center;
+  color: var(--vp-c-text-3);
+  font-size: 0.95rem;
+}
+
 .glossary-nav {
   display: flex;
   flex-wrap: wrap;

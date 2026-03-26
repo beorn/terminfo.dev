@@ -1,7 +1,7 @@
 /**
  * Custom markdown-it plugin for glossary/entity linking.
  * Replaces vitepress-plugin-glossary with correct longest-match-first,
- * every-occurrence linking, and support for inline formatting contexts.
+ * first-occurrence-only linking, and support for inline formatting contexts.
  *
  * Renders: <a href="/path" class="hover-link" data-tooltip="expansion — description">term</a>
  * Uses existing CSS tooltip infrastructure (tooltip.css + glossary-links.css).
@@ -161,15 +161,19 @@ function buildEntityList(contentDir: string): Entity[] {
 /**
  * Replace entity mentions in a text string with <a> tags.
  * Entities are processed longest-first; positions already matched are skipped.
+ * If `linkedTerms` is provided, only the first occurrence of each term per page is linked.
  */
-function replaceEntities(text: string, entities: Entity[]): string {
+function replaceEntities(text: string, entities: Entity[], linkedTerms?: Set<string>): string {
   // Collect all matches with positions
   const matches: Array<{ start: number; end: number; entity: Entity }> = []
   const occupied = new Set<number>()
 
   for (const entity of entities) {
+    // Skip entities already linked earlier on this page
+    if (linkedTerms?.has(entity.term)) continue
     entity.pattern.lastIndex = 0
     let m: RegExpExecArray | null
+    let matched = false
     while ((m = entity.pattern.exec(text)) !== null) {
       const start = m.index
       const end = start + m[0].length
@@ -181,12 +185,20 @@ function replaceEntities(text: string, entities: Entity[]): string {
         }
       }
       if (overlap) continue
+      // Only link the first occurrence per page
+      if (matched) continue
+      matched = true
       for (let p = start; p < end; p++) occupied.add(p)
       matches.push({ start, end, entity })
     }
   }
 
   if (matches.length === 0) return text
+
+  // Mark all matched terms as linked for the rest of this page
+  if (linkedTerms) {
+    for (const { entity } of matches) linkedTerms.add(entity.term)
+  }
 
   // Apply in reverse order so offsets stay valid
   matches.sort((a, b) => b.start - a.start)
@@ -230,8 +242,9 @@ function isInsideLinkOrHeading(tokens: Token[], idx: number): { insideLink: bool
 /**
  * Replace entity mentions in raw HTML content (html_block tokens).
  * Skips text inside tags, <a>, <code>, <h1>–<h6>, and <script>/<style>.
+ * If `linkedTerms` is provided, only the first occurrence of each term per page is linked.
  */
-function replaceInHtml(html: string, entities: Entity[]): string {
+function replaceInHtml(html: string, entities: Entity[], linkedTerms?: Set<string>): string {
   // Identify text regions outside HTML tags and skip zones
   const skipTags = /^<(a|code|h[1-6]|script|style|pre)\b/i
   const skipClose = /^<\/(a|code|h[1-6]|script|style|pre)>/i
@@ -269,7 +282,11 @@ function replaceInHtml(html: string, entities: Entity[]): string {
   const occupied = new Set<number>()
 
   for (const entity of entities) {
+    // Skip entities already linked earlier on this page
+    if (linkedTerms?.has(entity.term)) continue
+    let matched = false
     for (const region of textRegions) {
+      if (matched) break
       const segment = html.slice(region.start, region.end)
       entity.pattern.lastIndex = 0
       let m: RegExpExecArray | null
@@ -284,6 +301,9 @@ function replaceInHtml(html: string, entities: Entity[]): string {
           }
         }
         if (overlap) continue
+        // Only link the first occurrence per page
+        if (matched) continue
+        matched = true
         for (let p = absStart; p < absEnd; p++) occupied.add(p)
         matches.push({ start: absStart, end: absEnd, entity })
       }
@@ -291,6 +311,11 @@ function replaceInHtml(html: string, entities: Entity[]): string {
   }
 
   if (matches.length === 0) return html
+
+  // Mark all matched terms as linked for the rest of this page
+  if (linkedTerms) {
+    for (const { entity } of matches) linkedTerms.add(entity.term)
+  }
 
   matches.sort((a, b) => b.start - a.start)
   let result = html
@@ -315,10 +340,13 @@ export function glossaryLinksPlugin(md: MarkdownIt, contentDir: string) {
   // We override md.core.ruler to walk block tokens (paragraphs, etc.),
   // find their inline children, and replace text tokens that contain entity matches.
   md.core.ruler.push("glossary_links", (state) => {
+    // Track which terms have been linked — each term only gets linked once per page
+    const linkedTerms = new Set<string>()
+
     for (const blockToken of state.tokens) {
       // Process HTML blocks (tables, divs embedded in markdown)
       if (blockToken.type === "html_block" && blockToken.content) {
-        blockToken.content = replaceInHtml(blockToken.content, entities)
+        blockToken.content = replaceInHtml(blockToken.content, entities, linkedTerms)
         continue
       }
 
@@ -366,7 +394,7 @@ export function glossaryLinksPlugin(md: MarkdownIt, contentDir: string) {
           continue
         }
 
-        const replaced = replaceEntities(child.content, entities)
+        const replaced = replaceEntities(child.content, entities, linkedTerms)
         if (replaced === child.content) {
           // No changes — keep original token
           newChildren.push(child)

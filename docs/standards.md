@@ -165,6 +165,19 @@ In the early 1970s, European computer manufacturers needed a common language for
 
 Here's the irony: developers universally call these "ANSI escape codes," but the ANSI standard (X3.64) that referenced this work was **withdrawn in 1994**. The surviving standard is ECMA-48, maintained by ECMA International. ISO/IEC 6429 is the ISO equivalent. None of them have been updated since 1991 — the standard is frozen, while terminals continue extending the parameter space with vendor innovations.
 
+::: info At a glance
+**Introduced:**
+- The `ESC [` (CSI) grammar — the universal escape sequence prefix
+- SGR codes for text styling (bold, underline, color)
+- Cursor movement primitives (CUP, CUU, CUD, CUF, CUB)
+- Erase operations (EL, ED) and scroll control
+
+**Still matters:**
+- Every terminal escape sequence uses ECMA-48's CSI parameter syntax
+- SGR codes are the universal way to style terminal text
+- The `?` private-mode prefix that DEC exploited is defined here
+:::
+
 <p class="standard-link"><a class="hover-link" href="/ecma-48">View ECMA-48 features &rarr;</a></p>
 
 ::: info "ANSI escape codes" aren't ANSI
@@ -176,6 +189,19 @@ ANSI published the X3.64 terminal standard in 1979, then withdrew it in 1994 in 
 Some vendors argued the new ANSI standard was "beyond the state of the art" and couldn't be implemented affordably — the VT100 proved them wrong at $1,800. The DEC VT100 ran on an **Intel 8080 CPU with limited RAM**, yet it defined terminal computing for the next five decades. It implemented the ECMA-48 escape grammar, adding scroll regions (DECSTBM), character sets, and the private mode namespace (`CSI ?`) that terminals still use today. When software says it's "VT100-compatible," it's promising support for a specific set of behaviors that this $1,800 box established in 1978.
 
 The VT100's dominance wasn't accidental — DEC shipped it with the rising tide of Unix, VAX/VMS, and networking. Every competitor had to emulate it. That gravity persists: every terminal emulator today is, at its core, a VT100 emulator with extensions.
+
+::: info At a glance
+**Introduced:**
+- Scroll regions (DECSTBM) — status bars, split panes
+- The `CSI ?` private mode namespace for vendor extensions
+- Character set switching (G0/G1, line-drawing characters)
+- 80/132 column mode switching
+
+**Still matters:**
+- "VT100-compatible" is still the baseline every terminal must meet
+- Scroll regions power every full-screen TUI (vim, tmux, htop)
+- Line-drawing characters render box UIs in every terminal
+:::
 
 <p class="standard-link"><a class="hover-link" href="/vt100">View VT100 features &rarr;</a></p>
 
@@ -204,6 +230,18 @@ The VT220's keyboard layout (LK201) popularized the inverted-T arrow cluster and
 
 These editing sequences are so fundamental that it's hard to imagine terminals without them — but they weren't in the VT100. The jump from VT100 to VT220 was the jump from a display terminal to an interactive editing terminal.
 
+::: info At a glance
+**Introduced:**
+- Insert/delete character (ICH, DCH) and line (IL, DL) operations
+- 8-bit control codes and national replacement character sets
+- The LK201 keyboard layout (inverted-T arrows, navigation cluster)
+
+**Still matters:**
+- Every full-screen editor (vim, nano, emacs) depends on ICH/DCH/IL/DL
+- tmux and screen use editing sequences for efficient pane updates
+- The keyboard layout from the LK201 is still the PC standard
+:::
+
 <p class="standard-link"><a class="hover-link" href="/vt220">View VT220 features &rarr;</a></p>
 
 ::: details VT220 editing
@@ -225,11 +263,35 @@ Sixel originated not as a terminal feature but as a **printer protocol** — DEC
 
 Sixel was largely dormant for decades until modern terminals (xterm, foot, WezTerm, mlterm, contour) revived it as a way to display inline images using only standard escape sequences — no terminal-specific protocol required. The Sixel vs. Kitty graphics debate is one of the liveliest in the terminal ecosystem: Sixel is older and more widely supported; Kitty graphics is more capable and purpose-built.
 
+::: info At a glance
+**Introduced:**
+- Inline raster graphics encoded as printable ASCII characters
+- 6-vertical-pixel columns (the "six" in Sixel) for compact encoding
+- A terminal graphics protocol that predates all modern alternatives
+
+**Still matters:**
+- Widest inline image support among modern terminals (xterm, foot, WezTerm, mlterm)
+- Only graphics protocol that works over plain SSH without special setup
+- Active competitor to Kitty graphics in the terminal image display debate
+:::
+
 <p class="standard-link"><a class="hover-link" href="/sixel">View Sixel features &rarr;</a></p>
 
 ### VT510 (1993) — DEC's Late VT Reference {#vt510}
 
 By 1993, hardware terminals were already losing to PCs running terminal emulator software. The VT510 was among the last dedicated terminals anyone would build — but its reference manual outlived the hardware. The VT520 and VT525 followed before DEC was acquired by Compaq in 1998. No modern terminal implements the full VT510 spec, but specific features like **DECTCEM** (cursor visibility) and **DECSCNM** (reverse video) became universal. The VT510 Reference Manual remains the most cited document for terminal implementors — it's the closest thing to a comprehensive reference for DEC escape sequences.
+
+::: info At a glance
+**Introduced:**
+- The most comprehensive DEC escape sequence reference manual
+- Consolidated documentation of all prior VT-series features
+- Multiple pages and session management
+
+**Still matters:**
+- The VT510 Reference Manual is the go-to document for terminal implementors
+- DECTCEM (cursor show/hide) is used by virtually every TUI application
+- DECSCNM (reverse video) remains a supported mode in modern terminals
+:::
 
 <p class="standard-link"><a class="hover-link" href="/vt510">View VT510 features &rarr;</a></p>
 
@@ -238,6 +300,19 @@ By 1993, hardware terminals were already losing to PCs running terminal emulator
 The `?` prefix was DEC's escape hatch — ECMA-48 reserved it for vendor-specific extensions, and DEC used it so aggressively that their "private" modes became the most important public feature of terminal control. DEC private modes use the **`?` prefix** in CSI sequences to toggle terminal behaviors: `CSI ? Pm h` (DECSET) to enable, `CSI ? Pm l` (DECRST) to disable. This namespace is the primary mechanism for feature negotiation between applications and terminals. Cursor visibility (?25), auto-wrap (?7), alternate screen (?1049), mouse tracking (?1000–1006), bracketed paste (?2004), focus events (?1004) — all controlled via DEC private modes.
 
 The "private" designation means vendor-defined: any terminal can allocate new mode numbers without conflicting with ECMA-48's standard modes. This extensibility is why DEC private modes remain the backbone of terminal feature control.
+
+::: info At a glance
+**Introduced:**
+- DECSET/DECRST (`CSI ? h` / `CSI ? l`) — the toggle mechanism for terminal features
+- Alternate screen buffer (?1049) — lets apps draw without destroying scrollback
+- Bracketed paste (?2004) — safe paste handling that prevents code injection
+- Mouse tracking modes (?1000-1006) — click and drag reporting to applications
+
+**Still matters:**
+- Every TUI app uses alternate screen, cursor visibility, and auto-wrap modes
+- Bracketed paste is a security-critical feature enabled by default in most shells
+- Mouse tracking powers interactive terminal UIs (lazygit, btop, TUI file managers)
+:::
 
 <p class="standard-link"><a class="hover-link" href="/dec-private-modes">View DEC Private Modes features &rarr;</a></p>
 
@@ -290,6 +365,20 @@ Unicode's challenge for terminals isn't character _encoding_ — UTF-8 is univer
 
 Incorrect width calculation causes cursor positioning errors, text misalignment, and broken TUI layouts. It's one of the hardest problems in terminal emulation because the Unicode Standard keeps adding new characters, and terminals, libraries, and the C `wcwidth()` function all update at different rates.
 
+::: info At a glance
+**Introduced:**
+- A single encoding (UTF-8) replacing dozens of incompatible regional character sets
+- East Asian width classes — characters that occupy 1 or 2 terminal columns
+- Combining characters, variation selectors, and zero-width joiners
+- Emoji sequences (skin tones, ZWJ families, flags)
+
+**Still matters:**
+- Width calculation disagreements between app and terminal break TUI layouts
+- `wcwidth()` implementations lag behind new Unicode versions by years
+- Emoji rendering is the most common source of terminal alignment bugs today
+- Nerd Fonts and Powerline glyphs are the backbone of modern shell prompts
+:::
+
 ::: details The width problem in practice
 This table is supposed to be aligned — but depending on your terminal and font, the columns may be off:
 
@@ -341,6 +430,19 @@ xterm began as a summer project in 1984 — Mark Vandevoorde, a student of Jim G
 
 Xterm became the reference for many widely deployed extensions, including **256-color** support, the **alternate screen buffer** with cursor save, four **mouse tracking modes**, **focus reporting**, **bracketed paste**, **OSC 8 hyperlinks**, and **OSC 52 clipboard access**. Most features that developers think of as "standard" were actually xterm innovations that other terminals copied.
 
+::: info At a glance
+**Introduced:**
+- 256-color and truecolor (24-bit RGB) SGR extensions
+- Focus reporting (?1004) — apps know when the terminal gains/loses focus
+- OSC 52 clipboard access — programmatic read/write of the system clipboard
+- OSC 8 hyperlinks — clickable URLs in terminal output
+
+**Still matters:**
+- Truecolor is now expected by every modern TUI (delta, bat, lazygit)
+- The xterm ctlseqs document is the de facto spec every terminal implementor references
+- Most "standard" terminal features were xterm innovations first
+:::
+
 <p class="standard-link"><a class="hover-link" href="/xterm-extensions">View Xterm Extension features &rarr;</a></p>
 
 ::: details One person maintains the terminal stack
@@ -353,6 +455,19 @@ The distinction is architectural: CSI sequences control what the terminal displa
 
 The OSC namespace is **open-ended** — any terminal can define new number codes without conflicting with CSI-based controls. This makes it the preferred extension point for modern terminal features that don't fit the CSI model.
 
+::: info At a glance
+**Introduced:**
+- Window title setting (OSC 0/2) — the tab label in every terminal
+- Semantic prompt markers (OSC 133) — shells tell the terminal where prompts are
+- Color palette queries (OSC 4/10/11) — apps can detect and adapt to the theme
+- An open-ended namespace for out-of-band terminal communication
+
+**Still matters:**
+- OSC 52 clipboard access is how tmux and vim share the system clipboard
+- OSC 8 hyperlinks make `ls`, `grep`, and compiler output clickable
+- OSC 133 powers shell integration in iTerm2, WezTerm, and VS Code terminal
+:::
+
 <p class="standard-link"><a class="hover-link" href="/osc">View OSC features &rarr;</a></p>
 
 ### Kitty Extensions (2017) — The Modern Revolution {#kitty}
@@ -360,6 +475,19 @@ The OSC namespace is **open-ended** — any terminal can define new number codes
 Kovid Goyal, already known as the creator of <a href="https://calibre-ebook.com/" target="_blank" rel="noopener">Calibre</a> (the e-book manager), built Kitty out of frustration with existing terminal limitations. The keyboard protocol was born from a specific pain: writing a Vim-like editor where `Ctrl+I` and `Tab` needed to be different keys. Kitty introduced protocols that solve fundamental limitations of the 1978-era terminal model. The **Kitty keyboard protocol** provides unambiguous, modifier-aware key reporting — solving exactly that problem: `Ctrl+I` and `Tab` are the same byte (0x09) in traditional terminals. With the Kitty protocol, they're distinct events, and key-up events are reportable for the first time.
 
 The keyboard protocol has seen broad adoption — Ghostty, WezTerm, foot, and others now implement it, making it the closest thing to an emerging standard for terminal input. The **Kitty graphics protocol** enables inline image display via chunked base64 transfer, though its adoption is narrower: WezTerm and Kitty itself support it, but Ghostty does not. Kitty also defined **extended underline styles** (curly, dotted, dashed) with independent underline colors, which have seen wide adoption across modern terminals.
+
+::: info At a glance
+**Introduced:**
+- Unambiguous keyboard protocol — `Ctrl+I` and `Tab` are finally distinct events
+- Key-release reporting — apps can detect when a key is released, not just pressed
+- Kitty graphics protocol — chunked base64 inline image display
+- Extended underline styles (curly, dotted, dashed) with independent colors
+
+**Still matters:**
+- The keyboard protocol is adopted by Ghostty, WezTerm, foot, and others
+- Extended underlines power squiggly-line error indicators in terminal editors
+- Kitty graphics is the highest-fidelity inline image protocol available
+:::
 
 <p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
 
