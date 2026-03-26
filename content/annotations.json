@@ -483,12 +483,6 @@
     "note": "Headless mode has no output stream for XTVERSION responses",
     "result": "partial"
   },
-  "kitty:extensions.osc1337-cellsize": {
-    "note": "iTerm2-specific protocol not supported by kitty"
-  },
-  "kitty:extensions.osc1337-capabilities": {
-    "note": "iTerm2-specific protocol not supported by kitty"
-  },
   "kitty:input.pixel-mouse": {
     "note": "SGR pixel mouse mode not exposed via Python batch bridge",
     "result": "partial"
