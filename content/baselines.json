@@ -5,9 +5,9 @@
     "color": "#10b981",
     "order": 0,
     "tagline": "Every terminal should support these",
-    "description": "The universal baseline — features that have been standard since the VT100/VT220 era and are supported by every modern terminal emulator. If a terminal fails Core features, it cannot reliably run any TUI application. This baseline covers SGR text styling basics (bold, italic, underline, colors up to 256), cursor positioning and visibility, screen and line erasing, line/character editing, the alternate screen buffer, scroll regions, and basic character set handling.",
+    "description": "The universal baseline — features that have been standard since the VT100/VT220 era and are expected in any general-purpose modern terminal emulator. If a terminal fails Core features, it cannot reliably run any TUI application. This baseline covers SGR text styling basics (bold, italic, underline, colors up to 256), cursor positioning and visibility, screen and line erasing, line/character editing, the alternate screen buffer, scroll regions, and basic character set handling.",
     "forDevelopers": "If your TUI only uses Core features, it will work in every terminal — including Terminal.app, older xterm builds, and embedded terminals in IDEs. This is the safe target for maximum compatibility.",
-    "forTerminalAuthors": "100% Core compliance is table stakes. Any failure here is a bug, not a missing feature."
+    "forTerminalAuthors": "100% Core compliance is table stakes. For general-purpose terminals, Core failures will usually surface as interoperability bugs."
   },
   "modern": {
     "label": "Modern TUI",

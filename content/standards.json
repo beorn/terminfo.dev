@@ -17,7 +17,7 @@
   "vt510": {
     "label": "VT510",
     "url": "https://vt100.net/docs/vt510-rm/contents.html",
-    "description": "Features from the DEC VT510 (1993), the final terminal in DEC's VT series. The VT510 added cursor visibility control (DECTCEM), reverse video mode (DECSCNM), and scroll up/down commands (SU/SD). While no modern terminal implements the full VT510 specification, specific VT510 features like DECTCEM have become universal. The VT510 Reference Manual remains the most complete documentation of DEC escape sequences and is frequently cited as a primary reference for terminal implementors."
+    "description": "Features from the DEC VT510 (1993), one of the later terminals in DEC's VT series (the VT520 and VT525 followed). The VT510 added cursor visibility control (DECTCEM), reverse video mode (DECSCNM), and scroll up/down commands (SU/SD). While no modern terminal implements the full VT510 specification, specific VT510 features like DECTCEM have become universal. The VT510 Reference Manual remains the most complete documentation of DEC escape sequences and is frequently cited as a primary reference for terminal implementors."
   },
   "dec-private-modes": {
     "label": "DEC Private Modes",
@@ -27,7 +27,7 @@
   "xterm-extensions": {
     "label": "Xterm Extensions",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "description": "Extensions introduced by xterm, the reference X11 terminal emulator maintained by Thomas Dickey, and adopted as de facto standards across the ecosystem. xterm pioneered 256-color (SGR 38;5/48;5) and truecolor (SGR 38;2/48;2) support, the alternate screen buffer with cursor save (?1049), four mouse tracking modes (X10, normal, button-event, any-event), focus reporting (?1004), bracketed paste (?2004), OSC 8 hyperlinks, OSC 52 clipboard access, and text reflow on resize. The xterm control sequences document (ctlseqs) is the most comprehensive reference for modern terminal escape sequences."
+    "description": "Extensions introduced by xterm, the reference X11 terminal emulator maintained by Thomas Dickey, and adopted as de facto standards across the ecosystem. Xterm became the reference for many widely deployed extensions, including 256-color (SGR 38;5/48;5) support, the alternate screen buffer with cursor save (?1049), four mouse tracking modes (X10, normal, button-event, any-event), focus reporting (?1004), bracketed paste (?2004), OSC 8 hyperlinks, OSC 52 clipboard access, and text reflow on resize. The xterm control sequences document (ctlseqs) is the most comprehensive reference for modern terminal escape sequences."
   },
   "kitty-extensions": {
     "label": "Kitty Extensions",

@@ -40,7 +40,7 @@ const standardsMeta = {
     label: 'VT510',
     year: '1993',
     specUrl: 'https://vt100.net/docs/vt510-rm/contents.html',
-    tagline: "DEC's final terminal",
+    tagline: "DEC's late VT reference",
   },
   'dec-private-modes': {
     label: 'DEC Private Modes',
@@ -119,6 +119,10 @@ const analysisKey = 'standards-index'
 <p>There is no single terminal standard. What exists is layers — ECMA-48 (1976) defined the grammar, DEC's VT series (1978–1993) implemented it, xterm extended it for decades, and modern terminals add new protocols. This page maps the archaeology. See the <a href="/glossary">glossary</a> for acronyms.</p>
 </div>
 
+::: info Formal standards vs de facto specs
+Some entries below are formal standards (ECMA-48, Unicode). Others are hardware reference manuals (VT100–VT510), implementation documents (xterm ctlseqs), or protocol proposals (Kitty extensions). All have shaped how terminals work — but they carry different levels of authority.
+:::
+
 ## The Layers of Terminal Standards
 
 There is no single authoritative standard for modern terminals. What exists is a stack of layers, each building on the one before it, with increasing levels of vendor-specificity and decreasing levels of formal standardization.
@@ -191,9 +195,9 @@ These editing sequences are so fundamental that it's hard to imagine terminals w
 
 <p class="standard-link"><a class="hover-link" href="/vt220">View VT220 features &rarr;</a></p>
 
-### VT510 (1993) — DEC's Final Terminal
+### VT510 (1993) — DEC's Late VT Reference
 
-The VT510 was DEC's last terminal before the company was acquired by Compaq in 1998. No modern terminal implements the full VT510 spec, but specific features like **DECTCEM** (cursor visibility) and **DECSCNM** (reverse video) became universal. The VT510 Reference Manual remains the most cited document for terminal implementors — it's the closest thing to a comprehensive reference for DEC escape sequences.
+The VT510 was one of DEC's later VT models; the VT520 and VT525 followed before DEC was acquired by Compaq in 1998. No modern terminal implements the full VT510 spec, but specific features like **DECTCEM** (cursor visibility) and **DECSCNM** (reverse video) became universal. The VT510 Reference Manual remains the most cited document for terminal implementors — it's the closest thing to a comprehensive reference for DEC escape sequences.
 
 <p class="standard-link"><a class="hover-link" href="/vt510">View VT510 features &rarr;</a></p>
 
@@ -209,7 +213,7 @@ The "private" designation means vendor-defined: any terminal can allocate new mo
 
 **One person** — Thomas Dickey — maintains xterm, ncurses, AND the terminfo database. He's been doing it since 1996. The xterm control sequences document (ctlseqs) is the single most important reference for terminal developers, documenting not just xterm's behavior but the de facto standards the rest of the ecosystem follows.
 
-Xterm pioneered **256-color** and **truecolor** (24-bit RGB) support, the **alternate screen buffer** with cursor save, four **mouse tracking modes**, **focus reporting**, **bracketed paste**, **OSC 8 hyperlinks**, and **OSC 52 clipboard access**. Most features that developers think of as "standard" were actually xterm innovations that other terminals copied.
+Xterm became the reference for many widely deployed extensions, including **256-color** support, the **alternate screen buffer** with cursor save, four **mouse tracking modes**, **focus reporting**, **bracketed paste**, **OSC 8 hyperlinks**, and **OSC 52 clipboard access**. Most features that developers think of as "standard" were actually xterm innovations that other terminals copied.
 
 <p class="standard-link"><a class="hover-link" href="/xterm-extensions">View Xterm Extension features &rarr;</a></p>
 
@@ -234,7 +238,7 @@ The **Kitty graphics protocol** enables inline image display via chunked base64 
 <p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
 
 ::: tip Why Kitty matters
-Before Kitty (2017), no terminal could distinguish key-down from key-up, report modifier keys accurately, or display inline images with a purpose-built protocol. Kitty's keyboard and graphics protocols are now adopted by Ghostty, WezTerm, foot, and others — making them the closest thing to an emerging standard for next-generation terminals.
+Kitty significantly advanced terminal input by documenting key-release reporting and a comprehensive keyboard protocol. Earlier efforts like xterm's modifyOtherKeys and Leonerd's CSI u/fixterms addressed parts of this problem. Kitty's keyboard and graphics protocols are now adopted by Ghostty, WezTerm, foot, and others — making them the closest thing to an emerging standard for next-generation terminals.
 :::
 
 ### Sixel (1983, Revived) — Inline Graphics

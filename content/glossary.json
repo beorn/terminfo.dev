@@ -243,5 +243,75 @@
     "expansion": "Red, Green, Blue",
     "description": "Color model using three values (0-255 each) to specify any of 16.7 million colors. Used by truecolor escape sequences.",
     "link": "/sgr"
+  },
+  "terminfo": {
+    "expansion": "Terminal Information Database",
+    "description": "A compiled database mapping terminal names to their capabilities (colors, cursor control, key sequences). Used by ncurses and most Unix TUI libraries. Limited to capabilities known at compile time — cannot describe modern features like Kitty keyboard or OSC 8.",
+    "link": "/about"
+  },
+  "termcap": {
+    "expansion": "Terminal Capability Database",
+    "description": "The predecessor to terminfo, created by Bill Joy in 1978 for vi. Text-based format with 2-character capability codes. Largely replaced by terminfo but still referenced in documentation.",
+    "link": "/standards"
+  },
+  "ncurses": {
+    "expansion": "New Curses",
+    "description": "Free reimplementation of the Unix curses TUI library, maintained by Thomas Dickey since 1996. The most widely used TUI library on Unix systems. Uses terminfo for terminal capability lookup.",
+    "link": "/standards"
+  },
+  "wcwidth": {
+    "expansion": "Wide Character Width",
+    "description": "A C function that returns the display width (1 or 2 columns) of a Unicode character. Based on Unicode's East Asian Width property (UAX #11). Predates emoji and doesn't handle grapheme clusters, variation selectors, or ZWJ sequences.",
+    "link": "/unicode"
+  },
+  "ZWJ": {
+    "expansion": "Zero-Width Joiner",
+    "description": "A Unicode character (U+200D) that joins adjacent characters into a single grapheme cluster. Used in emoji sequences: 👨‍👩‍👧 is three emoji joined by two ZWJs. Terminals must handle these for correct cursor positioning.",
+    "link": "/unicode"
+  },
+  "VS16": {
+    "expansion": "Variation Selector 16",
+    "description": "A Unicode character (U+FE0F) that forces emoji presentation of the preceding character. Without VS16, some characters display as text (1 column); with VS16, they display as emoji (2 columns). Terminal width calculation must account for this.",
+    "link": "/unicode"
+  },
+  "C1": {
+    "expansion": "C1 Control Codes",
+    "description": "Single-byte control characters in the 0x80–0x9F range defined by ECMA-48. Include CSI (0x9B), OSC (0x9D), DCS (0x90). Rarely used in practice because they conflict with UTF-8 encoding — the 7-bit ESC-prefixed forms are universal instead.",
+    "link": "/ecma-48"
+  },
+  "BEL": {
+    "expansion": "Bell Character",
+    "description": "ASCII character 0x07. Originally rang a physical bell. In modern terminals, may flash the title bar, play a sound, or trigger a notification. Also used as the string terminator in some OSC sequences (alternative to ST).",
+    "link": "/features"
+  },
+  "ST": {
+    "expansion": "String Terminator",
+    "description": "The ESC \\ sequence that ends OSC, DCS, and other string-type escape sequences. BEL (0x07) is accepted as an alternative terminator by most terminals.",
+    "link": "/features"
+  },
+  "modifyOtherKeys": {
+    "expansion": "Xterm Modify Other Keys",
+    "description": "An xterm mode that reports modifier keys for non-special characters. Predates the Kitty keyboard protocol. Enabled via CSI > 4 ; 2 m. Less comprehensive than Kitty's protocol but more widely supported in older terminals.",
+    "link": "/xterm-extensions"
+  },
+  "CSI u": {
+    "expansion": "CSI u Keyboard Protocol",
+    "description": "A keyboard reporting format proposed by Leonerd (Paul Evans) in the fixterms specification. Uses CSI ... u sequences for unambiguous key reporting. Influenced the Kitty keyboard protocol, which extended and formalized the approach.",
+    "link": "/extensions"
+  },
+  "Sixel": {
+    "expansion": "Six-Pixel Graphics",
+    "description": "A raster image format from DEC (1983) that encodes images as printable ASCII characters, each representing a 1×6 pixel column. Revived in modern terminals for inline image display. Uses DCS sequences.",
+    "link": "/sixel"
+  },
+  "OSC 52": {
+    "expansion": "Operating System Command 52",
+    "description": "Escape sequence for reading/writing the system clipboard. Allows terminal applications to access the clipboard over SSH without X11 forwarding. Some terminals disable read access for security.",
+    "link": "/extensions"
+  },
+  "OSC 8": {
+    "expansion": "Operating System Command 8",
+    "description": "Escape sequence for clickable hyperlinks in terminal output. Text between OSC 8 start and end markers becomes a link. Supported by most modern terminals.",
+    "link": "/extensions"
   }
 }

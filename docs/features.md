@@ -118,19 +118,19 @@ const totalCategories = computed(() => activeCategories.value.length)
 
 # Terminal Features
 
-<p class="page-tagline">{{ totalFeatures }} features across {{ totalCategories }} categories — tested on every major terminal</p>
+<p class="page-tagline">{{ totalFeatures }} features across {{ totalCategories }} categories — tested across major terminal emulators</p>
 
 <div class="beginner-intro">
-<p>Every color change, cursor move, and mode switch in your terminal is an <strong>escape sequence</strong> — a byte pattern your terminal interprets instead of displaying. This page catalogs them all, with support data from every major terminal. See the <a href="/glossary">glossary</a> for acronyms.</p>
+<p>Most terminal features — color changes, cursor moves, mode switches — are controlled by <strong>escape sequences</strong>, byte patterns your terminal interprets instead of displaying. Some features (text wrapping, character width, scrollback behavior) are behavioral properties that terminals implement without explicit control sequences. This page catalogs them all, with support data from major terminals. See the <a href="/glossary">glossary</a> for acronyms.</p>
 </div>
 
 ## How Escape Sequences Work
 
-Every terminal feature is an **escape sequence** — a special byte pattern that tells the terminal to do something other than display text. When a program writes `\x1b[1m`, it's not printing four characters; it's telling the terminal "make the following text bold." The terminal intercepts the pattern, changes its internal state, and displays subsequent characters accordingly.
+Most terminal features are controlled by **escape sequences** — special byte patterns that tell the terminal to do something other than display text. When a program writes `\x1b[1m`, it's not printing four characters; it's telling the terminal "make the following text bold." The terminal intercepts the pattern, changes its internal state, and displays subsequent characters accordingly. Some features below are behavioral properties — like text wrapping and character width — that terminals implement without explicit control sequences.
 
 The **CSI (Control Sequence Introducer)** `ESC [` (hex `1b 5b`) is the prefix for most sequences. What follows the CSI determines the operation: **SGR** (`m` suffix) for text styling, **CUP** (`H` suffix) for cursor positioning, **DECSET** (`?...h`) for enabling modes. Parameters are semicolon-separated numbers. Sub-parameters (colon-separated, from ECMA-48 but rarely used until Kitty adopted them) enable richer expressions like `4:3` for curly underline.
 
-The beauty of the system is its simplicity: terminals only need to parse one grammar (ECMA-48's CSI format) to handle hundreds of features. The complexity lives in **which parameter values each terminal recognizes** — and that's exactly what terminfo.dev measures.
+ECMA-48 defines a family of control-sequence formats (CSI, OSC, DCS, and others); terminals differ mainly in which parameters and functions they implement. The complexity lives in **which parameter values each terminal recognizes** — and that's exactly what terminfo.dev measures.
 
 ### Escape Sequences in Action
 
@@ -151,7 +151,7 @@ The beauty of the system is its simplicity: terminals only need to parse one gra
 </div>
 
 ::: tip
-Every escape sequence starts with `ESC` (byte `0x1B`). Your terminal processes thousands of these per second — a single screen redraw in vim or htop can involve hundreds of cursor moves, color changes, and text writes, all encoded as these tiny byte patterns.
+In practice, control sequences use the 7-bit form starting with `ESC` (byte `0x1B`). ECMA-48 also defines 8-bit C1 forms (e.g., CSI as `0x9B`), but they're rarely used. Your terminal processes thousands of these per second — a single screen redraw in vim or htop can involve hundreds of cursor moves, color changes, and text writes, all encoded as these tiny byte patterns.
 :::
 
 ## Categories
@@ -230,7 +230,7 @@ SGR attribute reset (SGR 0), full terminal reset (RIS), soft reset (DECSTR), and
 <p class="category-link"><a class="hover-link" href="/reset">View Reset features &rarr;</a></p>
 
 ::: details Why do terminals disagree on emoji width?
-A single emoji can be 1–7 Unicode codepoints but should occupy 2 terminal columns. The `wcwidth()` function (from 1988) predates emoji entirely. Different terminals use different Unicode versions for width tables, and there's no standard for grapheme cluster width. This is why TUI layouts break with emoji.
+A single displayed emoji may be one codepoint or a longer grapheme cluster but should occupy 2 terminal columns. The `wcwidth()` function (from 1988) predates emoji entirely. Different terminals use different Unicode versions for width tables, and there's no standard for grapheme cluster width. This is why TUI layouts break with emoji.
 :::
 
 ### Extensions — The Cutting Edge
@@ -242,6 +242,12 @@ Traditional terminals can't distinguish `Ctrl+I` from `Tab` — they're the same
 Modern terminal extensions beyond the traditional VT specification: **Kitty keyboard protocol** (unambiguous key reporting), **Kitty graphics** and **Sixel** (inline images), **OSC 8 hyperlinks** (clickable links in terminal output), **text reflow** on resize, and **semantic prompt markers** (OSC 133). These features vary widely in adoption and represent the frontier of terminal capability.
 
 <p class="category-link"><a class="hover-link" href="/extensions">View Extension features &rarr;</a></p>
+
+### Graphics — Inline Images
+
+Sixel (1983, revived) and Kitty graphics protocol (2017) enable inline image display in terminals. Graphics support remains fragmented — some terminals intentionally avoid image protocols for security or complexity reasons. Sixel is older and more widely supported; Kitty graphics is more capable and purpose-built.
+
+<p class="category-link"><a class="hover-link" href="/graphics">View Graphics features &rarr;</a></p>
 
 ### Character Sets — Box-Drawing from 1978
 
