@@ -269,7 +269,7 @@ function buildSidebar() {
     },
     {
       text: "Terminals",
-      items: appTerminals,
+      items: [...appTerminals, ...terminals.filter(t => !appTerminals.some(a => a.link === t.link))],
     },
     {
       text: "Compare",
