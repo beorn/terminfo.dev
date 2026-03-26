@@ -24,7 +24,7 @@ import { withRawMode, drainStdin } from "./tty.ts"
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
 
 /** Resolve the absolute path to the probes module (once, at startup). */
-const PROBES_PATH = require.resolve("./probes/index.ts")
+const PROBES_PATH = require.resolve("./probes/unified.ts")
 
 /**
  * Dynamically load probes, busting the module cache so that changes
@@ -32,8 +32,8 @@ const PROBES_PATH = require.resolve("./probes/index.ts")
  */
 async function loadProbes() {
   delete require.cache[PROBES_PATH]
-  const mod = await import("./probes/index.ts")
-  return mod.ALL_PROBES as import("./probes/index.ts").Probe[]
+  const mod = await import("./probes/unified.ts")
+  return mod.ALL_PROBES as import("./probes/unified.ts").Probe[]
 }
 
 interface DaemonInfo {

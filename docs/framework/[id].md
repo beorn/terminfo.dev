@@ -109,6 +109,42 @@ function platformIcons(b) {
   max-width: 100%;
 }
 
+/* Inline callout for v-html content (can't use ::: tip in JSON) */
+.callout-tip {
+  border-left: 3px solid var(--vp-c-brand-1);
+  background: var(--vp-c-bg-soft);
+  border-radius: 0 8px 8px 0;
+  padding: 12px 16px;
+  margin: 1em 0;
+}
+
+.callout-title {
+  font-weight: 700;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vp-c-brand-1);
+  margin: 0 0 6px;
+}
+
+.callout-tip p:last-child {
+  margin: 0;
+  font-size: 0.92em;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+}
+
+.callout-tip a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.callout-tip a:hover {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+}
+
 .framework-title {
   margin: 0 !important;
   padding: 0 !important;

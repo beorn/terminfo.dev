@@ -340,7 +340,7 @@ export default defineConfig({
     if (rel === "features.md") {
       pageData.title = "Terminal Features: How Escape Sequences Work"
       pageData.description =
-"Terminal escape sequences — SGR styling, cursor control, modes, extensions, Unicode. Every feature tested on every major terminal emulator."
+        "Terminal escape sequences — SGR styling, cursor control, modes, extensions, Unicode. Every feature tested on every major terminal emulator."
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],

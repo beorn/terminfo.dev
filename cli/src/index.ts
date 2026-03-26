@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { detectTerminal } from "./detect.ts"
-import { ALL_PROBES } from "./probes/index.ts"
+import { ALL_PROBES } from "./probes/unified.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
 import { submitResults } from "./submit.ts"
 
