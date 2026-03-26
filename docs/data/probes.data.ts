@@ -205,6 +205,19 @@ function mergeResults(app: ProbeData, headless: ProbeData): ProbeData {
     }
   }
 
+  // Overlay terminals.json body/description on all meta entries (app + headless)
+  const terminalsContent = loadTerminals()
+  for (const [name, meta] of Object.entries(merged.meta)) {
+    const t = terminalsContent[name]
+    if (t) {
+      if (t.body && !meta.body) meta.body = t.body
+      if (t.description && !meta.description) meta.description = t.description
+      if (t.url && !meta.url) meta.url = t.url
+      if (t.label) meta.label = t.label
+      if (t.slug) meta.slug = t.slug
+    }
+  }
+
   // Merge headless-only features into the feature list
   const existingIds = new Set(merged.features.map((f) => f.id))
   for (const hf of headless.features) {
