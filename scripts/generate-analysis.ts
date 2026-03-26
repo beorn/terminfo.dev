@@ -686,6 +686,74 @@ function generateStandardAnalysis(
   }
 }
 
+// --- Feature analysis ---
+
+function generateFeatureAnalysis(
+  featureId: string,
+  feature: FeatureMeta,
+  allStats: Map<string, TerminalStats>,
+  annotations: Record<string, { note: string; url?: string; result?: string }>,
+): AnalysisEntry {
+  const parts: string[] = []
+  const category = featureId.split(".")[0]
+  const slug = feature.slug ?? featureId.replaceAll(".", "-")
+
+  // Count support across terminals that have this feature
+  let supported = 0
+  let unsupported = 0
+  const unsupportedNames: string[] = []
+  const notesMap: string[] = []
+
+  for (const [termId, stats] of allStats) {
+    if (!(featureId in stats.results)) continue
+    if (stats.results[featureId]) {
+      supported++
+    } else {
+      unsupported++
+      unsupportedNames.push(stats.name)
+      const ann = annotations[`${termId}:${featureId}`]
+      if (ann?.note) notesMap.push(`${stats.name}: ${ann.note}`)
+    }
+  }
+
+  const total = supported + unsupported
+  if (total === 0) return { analysis: "", date: new Date().toISOString().slice(0, 10), changes: null }
+
+  const pct = Math.round((supported / total) * 100)
+
+  // Support summary
+  if (supported === total) {
+    parts.push(`Supported by <strong>all ${total}</strong> tested terminals — universal adoption`)
+  } else if (supported === 0) {
+    parts.push(`<strong>Not supported</strong> by any tested terminal`)
+  } else {
+    parts.push(`Supported by <strong>${supported}</strong> of <strong>${total}</strong> terminals (${pct}%)`)
+  }
+
+  // Who doesn't support it
+  if (unsupportedNames.length > 0 && unsupportedNames.length <= 5) {
+    parts.push(`Not supported by: ${unsupportedNames.join(", ")}`)
+  }
+
+  // Baseline context
+  if (feature.baseline) {
+    parts.push(
+      `Part of the <strong>${feature.baseline === "core" ? "Core TUI" : feature.baseline === "modern" ? "Modern TUI" : feature.baseline === "rich" ? "Rich TUI" : "Unicode"}</strong> baseline`,
+    )
+  }
+
+  // Notable annotations
+  if (notesMap.length > 0 && notesMap.length <= 3) {
+    parts.push(`Notes: ${notesMap.join("; ")}`)
+  }
+
+  return {
+    analysis: `<p>${parts.join(". ")}.</p>`,
+    date: new Date().toISOString().slice(0, 10),
+    changes: null,
+  }
+}
+
 // --- Popular comparisons ---
 
 const POPULAR_COMPARISONS: [string, string][] = [
@@ -906,7 +974,7 @@ function loadAllData() {
 }
 
 function generateAnalysis(): Record<string, AnalysisEntry> {
-  const { features, terminals, categories, standards, baselines, resultMap } = loadAllData()
+  const { features, terminals, categories, standards, baselines, annotations, resultMap } = loadAllData()
   const baselineFeatures = buildBaselineFeatureMap(features)
   const output: Record<string, AnalysisEntry> = {}
 
@@ -986,6 +1054,18 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
     const entry = generateStandardAnalysis(stdId, stdMeta, allStats, features)
     validateHtml(entry.analysis, key)
     output[key] = entry
+  }
+
+  // 6. Feature pages
+  for (const [featureId, featureMeta] of Object.entries(features)) {
+    const category = featureId.split(".")[0]
+    const slug = featureMeta.slug ?? featureId.replaceAll(".", "-")
+    const key = `${category}/${slug}`
+    const entry = generateFeatureAnalysis(featureId, featureMeta, allStats, annotations)
+    if (entry.analysis) {
+      validateHtml(entry.analysis, key)
+      output[key] = entry
+    }
   }
 
   // Post-process: auto-link entity mentions in all analysis text

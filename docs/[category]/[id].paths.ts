@@ -1,9 +1,10 @@
-import { loadProbes, featureSlug, terminalSlug, loadFeaturesMeta, tagLabel as getTagLabel } from "../data/load-probes"
+import { loadProbes, featureSlug, terminalSlug, loadFeaturesMeta, tagLabel as getTagLabel, loadAnalysis } from "../data/load-probes"
 
 export default {
   paths() {
     const data = loadProbes()
     const featuresMeta = loadFeaturesMeta()
+    const allAnalysis = loadAnalysis()
 
     return data.features.map((f) => {
       const slug = featureSlug(f.id)
@@ -57,6 +58,8 @@ export default {
         label: getTagLabel(t),
       }))
 
+      const a = allAnalysis[`${f.category}/${slug}`]
+
       return {
         params: {
           category: f.category,
@@ -71,6 +74,9 @@ export default {
           backendResults: JSON.stringify(backendResults),
           yesCount: String(yesCount),
           totalCount: String(totalCount),
+          analysis: a?.analysis ?? "",
+          analysisDate: a?.date ?? "",
+          analysisChanges: a?.changes ?? "",
         },
       }
     })

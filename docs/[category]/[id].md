@@ -52,6 +52,15 @@ function termTooltip(r) {
   <strong>How this is tested:</strong> <span v-html="p.probeMethod"></span>
 </div>
 
+<div v-if="p.analysis" class="analysis">
+  <div class="analysis-header">
+    <span class="analysis-label">Analysis</span>
+    <span class="analysis-date">{{ p.analysisDate }}</span>
+  </div>
+  <div class="analysis-body" v-html="p.analysis"></div>
+  <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
+</div>
+
 <p class="feature-score">
   Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> backends ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
 </p>
