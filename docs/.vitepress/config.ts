@@ -308,7 +308,7 @@ function buildSidebar() {
       link: "/terminals",
       items: [
         { text: "App Terminals", items: termAppTerminals },
-        { text: "Headless Backends", link: "/backends", items: termLibraries },
+        { text: "Parser Backends", link: "/backends", items: termLibraries },
         { text: "Multiplexers", link: "/multiplexers", items: termMultiplexers },
         { text: "Historical", items: historicalTerminals.map(({ text, link }) => ({ text, link })) },
       ],
@@ -481,9 +481,9 @@ export default defineConfig({
       return
     }
     if (rel === "backends.md") {
-      pageData.title = "Headless Terminal Backends: Parser Libraries That Power Embedded Terminals"
+      pageData.title = "Parser Backends: Standalone Libraries and App Parser Engines"
       pageData.description =
-        "Terminal emulator libraries tested headlessly — xterm.js, vterm.js, Alacritty, Ghostty, Kitty, WezTerm. Parser correctness for escape sequences, independent of rendering."
+        "Terminal parser backends tested without a GUI — standalone libraries (xterm.js, vterm.js, vt100.js) and app parser engines (Alacritty, Ghostty, Kitty, WezTerm). Escape sequence correctness, independent of rendering."
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
@@ -491,9 +491,9 @@ export default defineConfig({
       return
     }
     if (rel === "terminals.md") {
-      pageData.title = "Terminal Emulators: App Terminals, Headless Backends, and Multiplexers"
+      pageData.title = "Terminal Emulators: App Terminals, Parser Backends, and Multiplexers"
       pageData.description =
-        "Every terminal emulator tested by terminfo.dev — app terminals (Ghostty, Kitty, iTerm2), headless backends (xterm.js, vterm.js), multiplexers (tmux, Screen), and historical terminals (VT100, VT220, xterm)."
+        "Every terminal emulator tested by terminfo.dev — app terminals (Ghostty, Kitty, iTerm2), parser backends (xterm.js, vterm.js), multiplexers (tmux, Screen), and historical terminals (VT100, VT220, xterm)."
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
@@ -592,6 +592,7 @@ export default defineConfig({
       },
       {
         text: "Terminals",
+        link: "/terminals",
         items: [
           { text: "App Terminals", items: termAppTerminals },
           { text: "Libraries", items: termLibraries },

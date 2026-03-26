@@ -4,10 +4,10 @@ outline: deep
 
 # Terminals
 
-<p class="page-tagline">Terminal emulators tested across three categories: app terminals, headless backends, and multiplexers</p>
+<p class="page-tagline">Terminal emulators tested across three categories: app terminals, parser backends, and multiplexers</p>
 
 <div class="beginner-intro">
-<p>terminfo.dev tests terminal emulators across three categories. <strong>App terminals</strong> are the GUI applications you interact with daily. <strong>Headless backends</strong> are the parser libraries that power embedded terminals (like VS Code's integrated terminal). <strong>Multiplexers</strong> sit between your terminal and your shell, adding session persistence but filtering escape sequences along the way. We also document <strong>historical terminals</strong> that defined the standards every modern emulator builds on.</p>
+<p>terminfo.dev tests terminal emulators across three categories. <strong>App terminals</strong> are the GUI applications you interact with daily. <strong>Parser backends</strong> are standalone libraries and app parser engines tested without a GUI (like xterm.js, which powers VS Code's integrated terminal). <strong>Multiplexers</strong> sit between your terminal and your shell, adding session persistence but filtering escape sequences along the way. We also document <strong>historical terminals</strong> that defined the standards every modern emulator builds on.</p>
 </div>
 
 ## App Terminals
@@ -90,9 +90,9 @@ Standalone terminal applications tested on real hardware via automated probing. 
 
 </div>
 
-## Headless Backends
+## Parser Backends
 
-Terminal emulator libraries tested without rendering -- the parser and state machine in isolation. These power embedded terminals, testing frameworks, and server-side applications. See [Headless Backends](/backends) for details on how headless testing differs from app testing.
+Terminal emulator parsers tested without rendering -- the parser and state machine in isolation. These include standalone libraries that power embedded terminals, and app parser engines from full terminals tested in headless mode. See [Parser Backends](/backends) for the full taxonomy and testing methodology.
 
 <div class="term-grid">
 

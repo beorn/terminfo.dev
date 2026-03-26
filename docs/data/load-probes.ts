@@ -108,7 +108,10 @@ export const categoryDescriptions: Record<string, string> = Object.fromEntries(
 
 function loadStandards(): Record<string, { label: string; url: string; description: string; body?: string }> {
   const path = join(__dirname, "..", "..", "content", "standards.json")
-  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, { label: string; url: string; description: string; body?: string }>
+  return JSON.parse(readFileSync(path, "utf-8")) as Record<
+    string,
+    { label: string; url: string; description: string; body?: string }
+  >
 }
 
 export const tagLabels: Record<string, string> = Object.fromEntries(

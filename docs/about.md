@@ -18,7 +18,7 @@ terminfo.dev takes a different approach: **probe the terminal directly** and rep
 
 ## Three Data Sources
 
-**[Terminal Applications](/)** — tested on real terminals via the `npx terminfo.dev` community CLI or automated app launch probes. Each test sends escape sequences to the actual terminal and verifies behavior via cursor position reports, device attribute queries, and rendered width measurements. These results reflect what users actually experience. Currently 7 terminal apps tested: Ghostty, iTerm2, Kitty, Terminal.app, Warp, VS Code, and Cursor.
+**[Terminal Applications](/)** — tested on real terminals via the `npx terminfo.dev` community CLI or automated app launch probes. Each test sends escape sequences to the actual terminal and verifies behavior via cursor position reports, device attribute queries, and rendered width measurements. These results reflect what users actually experience. Currently 8 terminal apps tested: Ghostty, iTerm2, Kitty, Terminal.app, Warp, VS Code, Cursor, and cmux.
 
 **[Headless Backends](/backends)** — tested via [Termless](https://termless.dev) against headless terminal emulator libraries. These test parser correctness — whether the library correctly parses and stores the escape sequence. A headless pass means "the parser accepts this" not "this renders correctly." Some features (like blink, cursor shape) may parse correctly but are not exposed through the library's API. Currently 7 headless backends tested (some with multiple versions).
 

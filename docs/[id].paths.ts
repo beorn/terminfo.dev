@@ -28,9 +28,9 @@ function loadTerminals(): Record<string, { body?: string; [k: string]: unknown }
 
 /** Map standard/tag IDs to their corresponding historical terminal entry in terminals.json */
 const tagToHistoricalTerminal: Record<string, string> = {
-  "vt100": "vt100-historical",
-  "vt220": "vt220-historical",
-  "vt510": "vt510-historical",
+  vt100: "vt100-historical",
+  vt220: "vt220-historical",
+  vt510: "vt510-historical",
   "xterm-extensions": "xterm-historical",
 }
 
@@ -90,7 +90,7 @@ export default {
       // If this category ID also exists as a standard/tag, include body content
       const catBody = tagBodies[cat] ?? ""
       const catHistTermKey = tagToHistoricalTerminal[cat]
-      const catHistBody = catHistTermKey ? terminals[catHistTermKey]?.body ?? "" : ""
+      const catHistBody = catHistTermKey ? (terminals[catHistTermKey]?.body ?? "") : ""
 
       return {
         params: {
@@ -141,7 +141,7 @@ export default {
 
       // Historical terminal body for standards with a corresponding hardware terminal
       const histTermKey = tagToHistoricalTerminal[tag]
-      const histBody = histTermKey ? terminals[histTermKey]?.body ?? "" : ""
+      const histBody = histTermKey ? (terminals[histTermKey]?.body ?? "") : ""
 
       return {
         params: {

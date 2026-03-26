@@ -35,6 +35,15 @@ function featureTooltip(f) {
 const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
 const isHistorical = p.historical === 'true'
 
+const typeBadge = (() => {
+  const t = p.terminalType
+  if (t === 'historical') return { label: 'Historical Terminal', cls: 'badge-historical', note: 'Reference entry \u2014 no automated probe data' }
+  if (t === 'mux') return { label: 'Multiplexer', cls: 'badge-mux', note: '' }
+  if (t === 'headless') return { label: 'Headless Backend', cls: 'badge-backend', note: '' }
+  if (t === 'app+headless') return { label: 'App Terminal + Parser Backend', cls: 'badge-dual', note: '' }
+  return { label: 'App Terminal', cls: 'badge-app', note: '' }
+})()
+
 const crossLinks = {
   'vt100-historical': [
     { text: 'VT100 standard features', link: '/vt100' },
@@ -65,6 +74,9 @@ const relatedPages = crossLinks[p.id] ?? []
 <div class="backend-page">
 
 # {{ p.terminalName }}
+
+<span :class="['terminal-type-badge', typeBadge.cls]">{{ typeBadge.label }}</span>
+<p v-if="typeBadge.note" class="badge-note">{{ typeBadge.note }}</p>
 
 <p v-if="p.terminalDescription" class="terminal-desc">{{ p.terminalDescription }}</p>
 
@@ -351,5 +363,49 @@ const relatedPages = crossLinks[p.id] ?? []
   background: var(--vp-c-bg-soft);
   border-radius: 6px;
   border-left: 3px solid var(--vp-c-brand-1);
+}
+
+.terminal-type-badge {
+  display: inline-block;
+  font-size: 0.8em;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  margin-top: -0.5em;
+  margin-bottom: 0.25em;
+  line-height: 1.6;
+}
+
+.badge-app {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+}
+
+.badge-dual {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+}
+
+.badge-backend {
+  background: var(--vp-c-indigo-soft);
+  color: var(--vp-c-indigo-1);
+}
+
+.badge-mux {
+  background: var(--vp-c-purple-soft);
+  color: var(--vp-c-purple-1);
+}
+
+.badge-historical {
+  background: var(--vp-c-yellow-soft);
+  color: var(--vp-c-yellow-1);
+}
+
+.badge-note {
+  font-size: 0.85em;
+  color: var(--vp-c-text-3);
+  margin-top: 0;
+  margin-bottom: 0.5em;
+  font-style: italic;
 }
 </style>
