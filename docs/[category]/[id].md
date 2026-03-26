@@ -46,6 +46,10 @@ function termTooltip(r) {
   <span v-if="p.specUrl"> · <a :href="p.specUrl" target="_blank" rel="noopener">Specification ↗</a></span>
 </p>
 
+<div v-if="p.sequence" class="feature-sequence">
+  <code>{{ p.sequence }}</code>
+</div>
+
 <div v-if="p.featureBody" class="feature-body" v-html="p.featureBody"></div>
 
 <div v-if="p.probeMethod" class="probe-method">
@@ -139,6 +143,20 @@ function termTooltip(r) {
 
 .feature-meta a {
   color: var(--vp-c-brand-1);
+}
+
+.feature-sequence {
+  margin: 0.75em 0;
+}
+
+.feature-sequence code {
+  font-family: var(--vp-font-family-mono);
+  font-size: 1.1em;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-1);
+  letter-spacing: 0.5px;
 }
 
 .feature-body {

@@ -78,6 +78,7 @@ export default {
           specUrl: desc?.url ?? f.spec ?? "",
           featureBody: linkifyContent(meta?.body ?? ""),
           probeMethod: linkifyContent(meta?.probe ?? ""),
+          sequence: (meta as any)?.sequence ?? "",
           featureTags: JSON.stringify(tags),
           backendResults: JSON.stringify(backendResults),
           yesCount: String(yesCount),

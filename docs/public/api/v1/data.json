@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-26T07:38:48.913Z",
+  "generated": "2026-03-26T07:42:22.338Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
@@ -260,7 +260,7 @@
     "device.secondary-da": {
       "name": "Secondary Device Attributes (DA2)",
       "category": "device",
-      "slug": "device-secondary-da",
+      "slug": "da2-secondary-device-attributes",
       "url": "https://vt100.net/docs/vt510-rm/DA2.html",
       "tags": [
         "vt220"
@@ -291,7 +291,7 @@
     "device.tertiary-da": {
       "name": "Tertiary Device Attributes (DA3)",
       "category": "device",
-      "slug": "device-tertiary-da",
+      "slug": "da3-tertiary-device-attributes",
       "url": "https://vt100.net/docs/vt510-rm/DA3.html",
       "tags": [
         "vt510"

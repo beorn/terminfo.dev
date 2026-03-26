@@ -291,4 +291,22 @@ export const extensionsProbes: ProbeDefinition[] = [
       return { pass: true, response: match[1] }
     },
   ),
+
+  // Sixel support advertised in DA1 response (attribute 4)
+  probe(
+    "extensions.sixel-da1",
+    (ctx) => {
+      const response = ctx.feedCapture("\x1b[c")
+      // DA1 response: CSI ? Ps ; Ps ; ... c — attribute 4 = sixel
+      const pass = /;4[;c]/.test(response)
+      return { pass, note: pass ? undefined : "DA1 response missing attribute 4 (sixel)" }
+    },
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel("\x1b[c", /\x1b\[\?([0-9;]+)c/)
+      if (!match) return { pass: false, note: "No DA1 response" }
+      const attrs = match[1]!.split(";")
+      const pass = attrs.includes("4")
+      return { pass, note: pass ? `DA1 attrs: ${match[1]}` : `DA1 attrs: ${match[1]} (no sixel)` }
+    },
+  ),
 ]
