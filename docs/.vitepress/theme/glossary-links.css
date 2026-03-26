@@ -19,5 +19,7 @@
 
 .vp-doc a.hover-link:hover {
   color: var(--vp-c-brand-1) !important;
+  text-decoration: underline solid 1px !important;
   text-decoration-color: var(--vp-c-brand-1) !important;
+  text-decoration-thickness: 1px !important;
 }
