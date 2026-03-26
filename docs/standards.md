@@ -133,12 +133,12 @@ The messy truth: most of what developers call "ANSI escape codes" aren't ANSI at
 <table>
   <thead><tr><th>Standard</th><th>Example Sequence</th><th>Effect</th></tr></thead>
   <tbody>
-    <tr><td><a href="/ecma-48" class="hover-link">ECMA-48</a></td><td><code>ESC[1m</code>Bold<code>ESC[0m</code></td><td><strong>Bold</strong> — <a href="/sgr" class="hover-link">SGR</a> text styling</td></tr>
-    <tr><td><a href="/vt100" class="hover-link">VT100</a></td><td><code>ESC[5;10H</code></td><td>Cursor to row 5, col 10 — <a href="/cursor/cup-cursor-position" class="hover-link">CUP</a></td></tr>
-    <tr><td><a href="/vt220" class="hover-link">VT220</a></td><td><code>ESC[2P</code></td><td>Delete 2 characters — <a href="/editing" class="hover-link">DCH</a></td></tr>
-    <tr><td><a href="/xterm-extensions" class="hover-link">Xterm</a></td><td><code>ESC[38;2;255;0;0m</code>Red<code>ESC[0m</code></td><td><span style="color:red">Red</span> — truecolor</td></tr>
-    <tr><td><a href="/kitty-extensions" class="hover-link">Kitty</a></td><td><code>ESC[&gt;1u</code></td><td>Unambiguous keyboard mode</td></tr>
-    <tr><td><a href="/osc" class="hover-link">OSC</a></td><td><code>ESC]8;;url\x07</code>Link<code>ESC]8;;\x07</code></td><td><a href="/extensions" class="hover-link">Hyperlinks</a></td></tr>
+    <tr><td><a href="/ecma-48">ECMA-48</a></td><td><code>ESC[1m</code>Bold<code>ESC[0m</code></td><td><strong>Bold</strong> — SGR text styling</td></tr>
+    <tr><td><a href="/vt100">VT100</a></td><td><code>ESC[5;10H</code></td><td>Cursor to row 5, col 10</td></tr>
+    <tr><td><a href="/vt220">VT220</a></td><td><code>ESC[2P</code></td><td>Delete 2 characters at cursor</td></tr>
+    <tr><td><a href="/xterm-extensions">Xterm</a></td><td><code>ESC[38;2;255;0;0m</code>Red<code>ESC[0m</code></td><td><span style="color:red">Red</span> — truecolor</td></tr>
+    <tr><td><a href="/kitty-extensions">Kitty</a></td><td><code>ESC[&gt;1u</code></td><td>Unambiguous keyboard mode</td></tr>
+    <tr><td><a href="/osc">OSC</a></td><td><code>ESC]8;;url\x07</code>Link<code>ESC]8;;\x07</code></td><td>Hyperlinks</td></tr>
   </tbody>
 </table>
 </div>

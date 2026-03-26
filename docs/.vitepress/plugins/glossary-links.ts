@@ -214,6 +214,78 @@ function isInsideLinkOrHeading(tokens: Token[], idx: number): { insideLink: bool
   return { insideLink, insideHeading }
 }
 
+/**
+ * Replace entity mentions in raw HTML content (html_block tokens).
+ * Skips text inside tags, <a>, <code>, <h1>–<h6>, and <script>/<style>.
+ */
+function replaceInHtml(html: string, entities: Entity[]): string {
+  // Identify text regions outside HTML tags and skip zones
+  const skipTags = /^<(a|code|h[1-6]|script|style|pre)\b/i
+  const skipClose = /^<\/(a|code|h[1-6]|script|style|pre)>/i
+  const textRegions: Array<{ start: number; end: number }> = []
+  let i = 0
+  let skipDepth = 0
+
+  while (i < html.length) {
+    if (html[i] === "<") {
+      const tagEnd = html.indexOf(">", i)
+      if (tagEnd === -1) break
+      const tag = html.slice(i, tagEnd + 1)
+
+      if (skipClose.test(tag)) {
+        skipDepth = Math.max(0, skipDepth - 1)
+      } else if (skipTags.test(tag)) {
+        skipDepth++
+      }
+      i = tagEnd + 1
+    } else {
+      if (skipDepth === 0) {
+        const nextTag = html.indexOf("<", i)
+        const end = nextTag === -1 ? html.length : nextTag
+        if (end > i) textRegions.push({ start: i, end })
+        i = end
+      } else {
+        const nextTag = html.indexOf("<", i)
+        i = nextTag === -1 ? html.length : nextTag
+      }
+    }
+  }
+
+  // Collect matches across text regions
+  const matches: Array<{ start: number; end: number; entity: Entity }> = []
+  const occupied = new Set<number>()
+
+  for (const entity of entities) {
+    for (const region of textRegions) {
+      const segment = html.slice(region.start, region.end)
+      entity.pattern.lastIndex = 0
+      let m: RegExpExecArray | null
+      while ((m = entity.pattern.exec(segment)) !== null) {
+        const absStart = region.start + m.index
+        const absEnd = absStart + m[0].length
+        let overlap = false
+        for (let p = absStart; p < absEnd; p++) {
+          if (occupied.has(p)) { overlap = true; break }
+        }
+        if (overlap) continue
+        for (let p = absStart; p < absEnd; p++) occupied.add(p)
+        matches.push({ start: absStart, end: absEnd, entity })
+      }
+    }
+  }
+
+  if (matches.length === 0) return html
+
+  matches.sort((a, b) => b.start - a.start)
+  let result = html
+  for (const { start, end, entity } of matches) {
+    const original = result.slice(start, end)
+    const tooltip = entity.tooltip ? ` data-tooltip="${escapeAttr(entity.tooltip)}"` : ""
+    result = result.slice(0, start) + `<a href="${entity.href}" class="hover-link"${tooltip}>${original}</a>` + result.slice(end)
+  }
+  return result
+}
+
 export function glossaryLinksPlugin(md: MarkdownIt, contentDir: string) {
   const entities = buildEntityList(contentDir)
 
@@ -225,6 +297,12 @@ export function glossaryLinksPlugin(md: MarkdownIt, contentDir: string) {
   // find their inline children, and replace text tokens that contain entity matches.
   md.core.ruler.push("glossary_links", (state) => {
     for (const blockToken of state.tokens) {
+      // Process HTML blocks (tables, divs embedded in markdown)
+      if (blockToken.type === "html_block" && blockToken.content) {
+        blockToken.content = replaceInHtml(blockToken.content, entities)
+        continue
+      }
+
       // Only process inline tokens (paragraphs, list items, etc.)
       if (blockToken.type !== "inline" || !blockToken.children) continue
 

@@ -596,7 +596,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "modifyOtherKeys (CSI > 4 ; Pv m) enables extended key reporting that distinguishes modified key combinations that would otherwise be ambiguous. At level 2, keys like Ctrl+I are reported distinctly from Tab, and Ctrl+M from Enter.",
-    "probe": "Enable modifyOtherKeys level 2 via CSI > 4 ; 2 m. Verify the terminal accepts the sequence without error."
+    "probe": "Check <code>capabilities.extensions</code> includes <code>modifyOtherKeys</code>. Verifies the backend declares support for the CSI &gt; 4 ; Pm m keyboard mode."
   },
   "input.csi-u": {
     "name": "CSI u Key Encoding",
@@ -605,7 +605,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "The fixterms/CSI u encoding reports keypresses as CSI codepoint ; modifiers u sequences. This was the precursor to the Kitty keyboard protocol and provides unambiguous key identification for terminal applications.",
-    "probe": "Check if terminal supports CSI u encoding by querying keyboard mode."
+    "probe": "Check <code>capabilities.kittyKeyboard</code> flag. Verifies the backend declares support for the CSI u / kitty keyboard protocol."
   },
   "input.pixel-mouse": {
     "name": "Pixel Mouse Reporting (1016)",
@@ -629,7 +629,7 @@
     "tags": ["dec-private-modes"],
     "baseline": "modern",
     "body": "X10 compatibility mouse tracking (mode 9) reports only button press events, not releases or motion. This is the oldest mouse tracking mode, limited to coordinates up to 223 and press-only events.",
-    "probe": "Enable mode 9 via CSI ? 9 h, verify via DECRPM that the mode is recognized."
+    "probe": "Enable X10 mouse mode (<code>CSI ? 9 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true."
   },
   "input.button-event-mouse": {
     "name": "Button-Event Mouse (1002)",
@@ -637,7 +637,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "Button-event tracking (mode 1002) reports mouse button press, release, and motion while a button is held. More detailed than basic tracking (1000) but less verbose than all-motion tracking (1003).",
-    "probe": "Enable mode 1002 via CSI ? 1002 h, verify via DECRPM that the mode is recognized."
+    "probe": "Enable button-event mouse tracking (<code>CSI ? 1002 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true."
   },
   "modes.alt-screen.enter": {
     "name": "Enter alt screen (DECSET 1049)",
@@ -914,7 +914,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 allows terminal applications to read from and write to the system clipboard. To set the clipboard: <code>ESC ] 52 ; c ; &lt;base64-data&gt; ST</code>. To query it: <code>ESC ] 52 ; c ; ? ST</code>, and the terminal responds with the base64-encoded clipboard contents.\n\nThis is particularly valuable for remote sessions (SSH, tmux, mosh) where the application has no direct access to the local system clipboard. A vim session inside tmux over SSH can yank text to the user's local clipboard without any special tooling.\n\nSecurity is a concern: clipboard read access lets any application running in the terminal silently exfiltrate clipboard contents. Many terminals disable read access by default or prompt the user for confirmation, while still allowing clipboard writes. The <code>c</code> parameter selects the clipboard buffer \u2014 <code>c</code> for clipboard, <code>p</code> for primary selection (X11).",
-    "probe": "Capability check for <code>osc52</code> in the backend's extensions set.",
+    "probe": "Set clipboard via <code>OSC 52 ; c ; &lt;base64&gt; BEL</code>, then query with <code>OSC 52 ; c ; ? BEL</code> and verify response contains the data. Confirms read/write clipboard support.",
     "baseline": "modern"
   },
   "extensions.osc10-fg-color": {
@@ -923,7 +923,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 10 queries the terminal's default foreground color. The query is <code>ESC ] 10 ; ? ST</code> and the terminal responds with the color in X11 <code>rgb:RR/GG/BB</code> format. Applications use this to detect light vs. dark themes and adapt their color schemes accordingly.",
-    "probe": "Send <code>\\x1b]10;?\\x07</code> (OSC 10 query), verify no crash. Response (if any) contains the foreground color in <code>rgb:RR/GG/BB</code> format.",
+    "probe": "Query foreground color with <code>OSC 10 ; ? BEL</code>, verify response matches <code>OSC 10 ; rgb:...</code> pattern via feedCapture.",
     "baseline": "modern"
   },
   "extensions.osc11-bg-color": {
@@ -932,7 +932,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 11 queries the terminal's default background color. The query is <code>ESC ] 11 ; ? ST</code>. The response format matches OSC 10. This is the most reliable way to detect whether the user has a dark or light terminal theme \u2014 compare the background color's luminance to determine the appropriate color palette.",
-    "probe": "Send <code>\\x1b]11;?\\x07</code> (OSC 11 query), verify no crash. Response (if any) contains the background color in <code>rgb:RR/GG/BB</code> format.",
+    "probe": "Query background color with <code>OSC 11 ; ? BEL</code>, verify response matches <code>OSC 11 ; rgb:...</code> pattern via feedCapture.",
     "baseline": "modern"
   },
   "extensions.osc7-cwd": {
@@ -941,7 +941,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc"],
     "body": "OSC 7 reports the current working directory to the terminal. The sequence is <code>ESC ] 7 ; file://hostname/path ST</code>. Shells emit this after each command so the terminal knows the working directory. Terminals use this to open new tabs/splits in the same directory and to make file paths in output clickable with correct relative path resolution.",
-    "probe": "Send <code>\\x1b]7;file:///tmp\\x07</code> (OSC 7), verify no crash.",
+    "probe": "Check <code>capabilities.extensions</code> includes <code>osc7</code>. Verifies the backend declares support for OSC 7 current working directory reporting.",
     "baseline": "modern"
   },
   "extensions.reflow": {
@@ -968,7 +968,7 @@
     "tags": ["osc"],
     "baseline": "rich",
     "body": "OSC 633 is VS Code's shell integration protocol, extending OSC 133 with additional markers for command detection, output boundaries, and shell state. It enables features like command decorations, run recent command, and sticky scroll in VS Code's integrated terminal.",
-    "probe": "Send OSC 633 ; A ST, verify terminal accepts the sequence."
+    "probe": "Check <code>capabilities.semanticPrompts</code> flag. VS Code shell integration uses OSC 633 which is a superset of OSC 133 semantic prompts."
   },
   "extensions.notifications": {
     "name": "Desktop Notifications (OSC 9/777)",
@@ -976,7 +976,7 @@
     "tags": ["osc"],
     "baseline": "rich",
     "body": "OSC 9 (iTerm2) and OSC 777 (rxvt-unicode) trigger desktop notifications from terminal applications. These allow long-running commands to notify the user when complete, even if the terminal window is not focused.",
-    "probe": "Send OSC 9 notification sequence, verify terminal accepts it without error."
+    "probe": "Check <code>capabilities.extensions</code> includes <code>osc9</code>. Verifies the backend declares support for OSC 9 desktop notification sequences."
   },
   "extensions.iterm2-images": {
     "name": "iTerm2 Inline Images",
@@ -984,7 +984,7 @@
     "tags": ["osc"],
     "baseline": "rich",
     "body": "iTerm2's inline image protocol uses OSC 1337 ; File= to display images directly in the terminal. The image data is base64-encoded and transmitted inline. Supported by iTerm2, WezTerm, mintty, and several other terminals.",
-    "probe": "Send OSC 1337 ; File=inline=1 with a small base64 image, verify terminal accepts the sequence."
+    "probe": "Check <code>capabilities.extensions</code> includes <code>iterm2Images</code>. Verifies the backend declares support for iTerm2 inline image protocol (OSC 1337 File=)."
   },
   "extensions.truecolor": {
     "name": "24-bit truecolor",
@@ -1318,7 +1318,7 @@
     "tags": ["osc", "iterm2"],
     "baseline": "rich",
     "body": "OSC 1337 ; ReportCellSize queries the terminal for the dimensions of a single character cell in pixels. The response is OSC 1337 ; ReportCellSize=height;width ST. This is essential for pixel-accurate image rendering protocols (sixel, iTerm2 inline images, kitty graphics) where applications need to know the exact pixel dimensions of cells to scale images correctly.",
-    "probe": "Send OSC 1337 ; ReportCellSize, verify the terminal responds with pixel dimensions."
+    "probe": "Query cell size with <code>OSC 1337 ; ReportCellSize BEL</code>, verify response matches <code>OSC 1337 ; ReportCellSize=H;W</code> pattern via feedCapture."
   },
   "extensions.osc1337-capabilities": {
     "name": "Capability Reporting (OSC 1337)",
@@ -1326,7 +1326,7 @@
     "tags": ["osc", "iterm2"],
     "baseline": "rich",
     "body": "OSC 1337 ; RequestCapabilities queries the terminal to report all its supported capabilities at once. The response is OSC 1337 ; Capabilities=... ST with a structured list of supported features. This provides a single-query alternative to probing individual features, though adoption is currently limited to iTerm2.",
-    "probe": "Send OSC 1337 ; RequestCapabilities, verify the terminal responds with a capabilities list."
+    "probe": "Query capabilities with <code>OSC 1337 ; RequestCapabilities BEL</code>, verify response matches <code>OSC 1337 ; Capabilities=...</code> pattern via feedCapture."
   },
   "extensions.sixel-da1": {
     "name": "Sixel support in DA1",
