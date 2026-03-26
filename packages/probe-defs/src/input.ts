@@ -4,7 +4,7 @@ import { probe } from "./helpers.ts"
 export const inputProbes: ProbeDefinition[] = [
   probe(
     "input.modify-other-keys",
-    null, // No TerminalMode for modifyOtherKeys — can't verify in headless
+    (ctx) => ({ pass: ctx.capabilities.extensions.has("modifyOtherKeys") }),
     async (ctx) => {
       ctx.write("\x1b[>4;2m") // enable modifyOtherKeys mode 2
       const pos = await ctx.queryCursorPosition()

@@ -201,7 +201,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 7 — current working directory
   probe(
     "extensions.osc7-cwd",
-    null, // No way to verify CWD storage in headless — no getter in TermlessContext
+    (ctx) => ({ pass: ctx.capabilities.extensions.has("osc7") }),
     async (ctx) => {
       ctx.write("\x1b]7;file:///tmp\x07")
       const pos = await ctx.queryCursorPosition()
@@ -229,7 +229,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 9 — desktop notifications
   probe(
     "extensions.notifications",
-    null, // No way to verify notification storage in headless — no getter in TermlessContext
+    (ctx) => ({ pass: ctx.capabilities.extensions.has("osc9") }),
     async (ctx) => {
       ctx.write("\x1b]9;Test\x07")
       const pos = await ctx.queryCursorPosition()
@@ -243,7 +243,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 1337 — iTerm2 inline images
   probe(
     "extensions.iterm2-images",
-    null, // No way to verify image parsing in headless — no pixel framebuffer
+    (ctx) => ({ pass: ctx.capabilities.extensions.has("iterm2Images") }),
     async (ctx) => {
       ctx.write("\x1b]1337;File=inline=1:AAAA\x07")
       const pos = await ctx.queryCursorPosition()

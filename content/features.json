@@ -613,7 +613,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "SGR-Pixels mouse mode (mode 1016) reports mouse coordinates in pixels rather than cells. This enables sub-cell precision for applications that need exact pointer positioning, such as terminal-based drawing tools or image viewers.",
-    "probe": "Enable mode 1016 via CSI ? 1016 h, verify via DECRPM that the mode is recognized."
+    "probe": "Enable SGR pixel mouse (<code>CSI ? 1016 h</code>), check <code>getMode(\"pixelMouse\")</code> returns true."
   },
   "input.urxvt-mouse": {
     "name": "urxvt Mouse Reporting (1015)",
@@ -621,7 +621,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "urxvt-style mouse reporting (mode 1015) uses decimal encoding for coordinates, extending reporting beyond the 223-column limit of traditional X10 encoding. Less common than SGR mouse (1006) but still supported by some terminals.",
-    "probe": "Enable mode 1015 via CSI ? 1015 h, verify via DECRPM that the mode is recognized."
+    "probe": "Enable urxvt mouse mode (<code>CSI ? 1015 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true. Verifies the backend recognizes this specific mouse encoding."
   },
   "input.x10-mouse": {
     "name": "X10 Mouse Tracking (9)",
@@ -737,7 +737,7 @@
     "tags": ["vt510"],
     "baseline": "rich",
     "body": "DECLRMM (mode 69) enables left and right scroll margins, similar to top/bottom margins set by DECSTBM. When enabled, DECSLRM sets the left and right margins. Scrolling and editing operations are confined to the margin area.",
-    "probe": "Enable mode 69 via CSI ? 69 h, verify via DECRPM that the mode is recognized."
+    "probe": "Enable DECLRMM (<code>CSI ? 69 h</code>), check <code>getMode(\"leftRightMargin\")</code> returns true. Confirms the backend tracks left/right margin mode."
   },
   "modes.insert-replace": {
     "name": "Insert/replace mode (IRM)",

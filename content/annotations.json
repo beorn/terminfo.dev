@@ -38,6 +38,18 @@
     "note": "Parser handles DECSCNM but headless mode doesn't expose the state",
     "result": "partial"
   },
+  "xtermjs:extensions.osc7-cwd": {
+    "note": "OSC 7 not implemented in xterm.js headless"
+  },
+  "xtermjs:extensions.notifications": {
+    "note": "OSC 9 notifications not implemented in xterm.js"
+  },
+  "xtermjs:extensions.iterm2-images": {
+    "note": "iTerm2 inline images not implemented in xterm.js"
+  },
+  "xtermjs:input.modify-other-keys": {
+    "note": "modifyOtherKeys not implemented in xterm.js"
+  },
   "xtermjs:extensions.kitty-keyboard": {
     "note": "Not implemented in xterm.js"
   },
@@ -202,6 +214,18 @@
     "note": "Button-event mouse tracking not exposed via headless API",
     "result": "partial"
   },
+  "ghostty-native:extensions.osc7-cwd": {
+    "note": "OSC 7 CWD reporting not supported in headless mode"
+  },
+  "ghostty-native:extensions.notifications": {
+    "note": "OSC 9 notifications not supported in headless mode"
+  },
+  "ghostty-native:extensions.iterm2-images": {
+    "note": "iTerm2 inline images not supported in headless mode"
+  },
+  "ghostty-native:input.modify-other-keys": {
+    "note": "modifyOtherKeys mode not supported in headless mode"
+  },
   "ghostty:modes.left-right-margin": {
     "note": "DECLRMM not tracked by ghostty-web WASM backend"
   },
@@ -215,6 +239,21 @@
     "note": "SGR pixel mouse mode not tracked by ghostty-web WASM backend"
   },
 
+  "alacritty:extensions.osc7-cwd": {
+    "note": "OSC 7 CWD reporting not exposed via alacritty_terminal API",
+    "result": "partial"
+  },
+  "alacritty:extensions.notifications": {
+    "note": "OSC 9 notifications not exposed via alacritty_terminal API",
+    "result": "partial"
+  },
+  "alacritty:extensions.iterm2-images": {
+    "note": "iTerm2 inline images not supported by alacritty"
+  },
+  "alacritty:input.modify-other-keys": {
+    "note": "modifyOtherKeys not exposed via alacritty_terminal API",
+    "result": "partial"
+  },
   "alacritty:erase.screen.all": {
     "note": "Alacritty's ED 2 doesn't clear scrollback content from buffer"
   },
@@ -335,6 +374,21 @@
     "note": "VS16 emoji variation selectors not handled"
   },
 
+  "kitty:extensions.osc7-cwd": {
+    "note": "OSC 7 CWD reporting not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:extensions.notifications": {
+    "note": "OSC 9 notifications not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:extensions.iterm2-images": {
+    "note": "iTerm2 inline images not supported by kitty"
+  },
+  "kitty:input.modify-other-keys": {
+    "note": "modifyOtherKeys not exposed via Python batch bridge",
+    "result": "partial"
+  },
   "kitty:extensions.semantic-prompts": {
     "note": "Not implemented in kitty"
   },
@@ -449,6 +503,18 @@
     "result": "partial"
   },
 
+  "vt100:extensions.osc7-cwd": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.notifications": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.iterm2-images": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:input.modify-other-keys": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
   "vt100:extensions.kitty-graphics": {
     "note": "Not implemented — pure TypeScript emulator"
   },
@@ -679,6 +745,21 @@
   },
   "wezterm:input.pixel-mouse": {
     "note": "SGR pixel mouse mode not exposed via wezterm-term API",
+    "result": "partial"
+  },
+  "wezterm:extensions.osc7-cwd": {
+    "note": "OSC 7 CWD reporting not exposed via wezterm-term API",
+    "result": "partial"
+  },
+  "wezterm:extensions.notifications": {
+    "note": "OSC 9 notifications not exposed via wezterm-term API",
+    "result": "partial"
+  },
+  "wezterm:extensions.iterm2-images": {
+    "note": "iTerm2 inline images not supported by wezterm"
+  },
+  "wezterm:input.modify-other-keys": {
+    "note": "modifyOtherKeys not exposed via wezterm-term API",
     "result": "partial"
   },
   "wezterm:cursor.cup-boundaries": {

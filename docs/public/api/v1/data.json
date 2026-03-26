@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-26T07:04:11.655Z",
+  "generated": "2026-03-26T07:13:07.472Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
@@ -1613,9 +1613,9 @@
       "type": "headless",
       "url": "https://alacritty.org",
       "score": {
-        "total": 142,
+        "total": 146,
         "pass": 110,
-        "pct": 77
+        "pct": 75
       }
     },
     "vt100": {
@@ -1623,9 +1623,9 @@
       "version": "0.2.1",
       "type": "headless",
       "score": {
-        "total": 142,
+        "total": 146,
         "pass": 103,
-        "pct": 73
+        "pct": 71
       }
     },
     "vterm": {
@@ -1633,9 +1633,9 @@
       "version": "0.2.0",
       "type": "headless",
       "score": {
-        "total": 142,
-        "pass": 137,
-        "pct": 96
+        "total": 146,
+        "pass": 141,
+        "pct": 97
       }
     },
     "wezterm": {
@@ -1644,9 +1644,9 @@
       "type": "headless",
       "url": "https://wezfurlong.org/wezterm",
       "score": {
-        "total": 142,
+        "total": 146,
         "pass": 108,
-        "pct": 76
+        "pct": 74
       }
     }
   },
@@ -2815,9 +2815,13 @@
       "extensions.osc52-clipboard": "partial",
       "extensions.osc10-fg-color": "partial",
       "extensions.osc11-bg-color": "partial",
+      "extensions.osc7-cwd": "partial",
       "extensions.osc-633-vscode": "no",
+      "extensions.notifications": "partial",
+      "extensions.iterm2-images": "no",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
+      "input.modify-other-keys": "partial",
       "input.csi-u": "yes",
       "input.pixel-mouse": "partial",
       "input.urxvt-mouse": "no",
@@ -2959,9 +2963,13 @@
       "extensions.osc52-clipboard": "partial",
       "extensions.osc10-fg-color": "partial",
       "extensions.osc11-bg-color": "partial",
+      "extensions.osc7-cwd": "no",
       "extensions.osc-633-vscode": "no",
+      "extensions.notifications": "no",
+      "extensions.iterm2-images": "no",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
+      "input.modify-other-keys": "no",
       "input.csi-u": "no",
       "input.pixel-mouse": "no",
       "input.urxvt-mouse": "no",
@@ -3103,9 +3111,13 @@
       "extensions.osc52-clipboard": "yes",
       "extensions.osc10-fg-color": "yes",
       "extensions.osc11-bg-color": "yes",
+      "extensions.osc7-cwd": "yes",
       "extensions.osc-633-vscode": "yes",
+      "extensions.notifications": "yes",
+      "extensions.iterm2-images": "yes",
       "extensions.osc1337-cellsize": "yes",
       "extensions.osc1337-capabilities": "yes",
+      "input.modify-other-keys": "yes",
       "input.csi-u": "yes",
       "input.pixel-mouse": "no",
       "input.urxvt-mouse": "no",
@@ -3247,9 +3259,13 @@
       "extensions.osc52-clipboard": "partial",
       "extensions.osc10-fg-color": "partial",
       "extensions.osc11-bg-color": "partial",
+      "extensions.osc7-cwd": "partial",
       "extensions.osc-633-vscode": "yes",
+      "extensions.notifications": "partial",
+      "extensions.iterm2-images": "no",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
+      "input.modify-other-keys": "partial",
       "input.csi-u": "yes",
       "input.pixel-mouse": "partial",
       "input.urxvt-mouse": "no",
@@ -3519,9 +3535,13 @@
       "extensions.osc52-clipboard": "OSC 52 clipboard not supported in headless mode",
       "extensions.osc10-fg-color": "OSC 10 color query not supported in headless mode",
       "extensions.osc11-bg-color": "OSC 11 color query not supported in headless mode",
+      "extensions.osc7-cwd": "OSC 7 CWD reporting not exposed via alacritty_terminal API",
       "extensions.osc-633-vscode": "VS Code shell integration (OSC 633) not supported",
+      "extensions.notifications": "OSC 9 notifications not exposed via alacritty_terminal API",
+      "extensions.iterm2-images": "iTerm2 inline images not supported by alacritty",
       "extensions.osc1337-cellsize": "iTerm2-specific protocol not supported",
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not supported",
+      "input.modify-other-keys": "modifyOtherKeys not exposed via alacritty_terminal API",
       "input.pixel-mouse": "SGR pixel mouse mode not exposed via alacritty_terminal API",
       "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
       "input.x10-mouse": "X10 mouse mode (?9) not implemented",
@@ -3559,9 +3579,13 @@
       "extensions.osc52-clipboard": "OSC 52 clipboard not supported in headless mode",
       "extensions.osc10-fg-color": "OSC 10 color query not supported in headless mode",
       "extensions.osc11-bg-color": "OSC 11 color query not supported in headless mode",
+      "extensions.osc7-cwd": "Not implemented — pure TypeScript emulator",
       "extensions.osc-633-vscode": "VS Code shell integration (OSC 633) not supported",
+      "extensions.notifications": "Not implemented — pure TypeScript emulator",
+      "extensions.iterm2-images": "Not implemented — pure TypeScript emulator",
       "extensions.osc1337-cellsize": "iTerm2-specific protocol not implemented — pure TypeScript emulator",
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not implemented — pure TypeScript emulator",
+      "input.modify-other-keys": "Not implemented — pure TypeScript emulator",
       "input.csi-u": "CSI u keyboard protocol not implemented",
       "input.pixel-mouse": "SGR pixel mouse mode not implemented — pure TypeScript emulator",
       "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
@@ -3603,8 +3627,12 @@
       "extensions.osc52-clipboard": "OSC 52 clipboard not supported in headless mode",
       "extensions.osc10-fg-color": "OSC 10 color query not supported in headless mode",
       "extensions.osc11-bg-color": "OSC 11 color query not supported in headless mode",
+      "extensions.osc7-cwd": "OSC 7 CWD reporting not exposed via wezterm-term API",
+      "extensions.notifications": "OSC 9 notifications not exposed via wezterm-term API",
+      "extensions.iterm2-images": "iTerm2 inline images not supported by wezterm",
       "extensions.osc1337-cellsize": "iTerm2-specific protocol not supported",
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not supported",
+      "input.modify-other-keys": "modifyOtherKeys not exposed via wezterm-term API",
       "input.pixel-mouse": "SGR pixel mouse mode not exposed via wezterm-term API",
       "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
       "input.x10-mouse": "X10 mouse mode (?9) not implemented",
