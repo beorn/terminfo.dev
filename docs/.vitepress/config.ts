@@ -377,17 +377,23 @@ export default defineConfig({
       { text: "Matrix", link: "/" },
       {
         text: "Features",
-        items: sortedCategories.map((cat) => ({
-          text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
-          link: `/${cat}`,
-        })),
+        items: [
+          { text: "All Features", link: "/features" },
+          ...sortedCategories.map((cat) => ({
+            text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
+            link: `/${cat}`,
+          })),
+        ],
       },
       {
         text: "Standards",
-        items: sortedTags.map((tag) => ({
-          text: tagLabels[tag] ?? tag,
-          link: `/${tag}`,
-        })),
+        items: [
+          { text: "All Standards", link: "/standards" },
+          ...sortedTags.map((tag) => ({
+            text: tagLabels[tag] ?? tag,
+            link: `/${tag}`,
+          })),
+        ],
       },
       {
         text: "Terminals",
