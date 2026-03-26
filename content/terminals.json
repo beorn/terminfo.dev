@@ -5,13 +5,9 @@
     "url": "https://ghostty.org",
     "description": "GPU-accelerated terminal by Mitchell Hashimoto. Written in Zig, Metal/OpenGL/Vulkan. Excellent standards compliance.",
     "body": "<p>Ghostty is a terminal emulator created by <strong>Mitchell Hashimoto</strong>, founder of HashiCorp (Terraform, Vagrant, Vault). Written in <strong>Zig</strong> with GPU-accelerated rendering via Metal (macOS), OpenGL, and Vulkan. First released in late 2024 after years of development, Ghostty quickly gained attention for its focus on correctness and performance.</p>\n<p>Ghostty's architecture separates the terminal emulation core into <strong>libghostty</strong>, a reusable library that other projects can embed. This is how <strong>cmux</strong> (the Ghostty multiplexer) gets its terminal emulation — it links against libghostty directly. The library handles VT parsing, grid management, and rendering, while the app adds window management and platform integration.</p>\n<p>Among modern terminals, Ghostty has some of the best standards compliance, supporting kitty keyboard protocol, kitty graphics, sixel, OSC 8 hyperlinks, semantic prompts, and full Unicode including grapheme clustering. It scores consistently near the top of terminfo.dev's feature matrix.</p>",
-    "headlessBackends": [
-      "ghostty-native"
-    ],
+    "headlessBackends": ["ghostty-native"],
     "manifestBackend": "ghostty",
-    "platforms": [
-      "macos"
-    ]
+    "platforms": ["macos"]
   },
   "kitty": {
     "label": "Kitty",
@@ -19,13 +15,9 @@
     "url": "https://sw.kovidgoyal.net/kitty",
     "description": "GPU-accelerated terminal by Kovid Goyal. Pioneer of the Kitty keyboard and graphics protocols. Written in C/Python.",
     "body": "<p><strong>Kitty</strong> was created by <strong>Kovid Goyal</strong> and first released in 2017. Written in C and Python with <strong>OpenGL GPU rendering</strong>, it was one of the first terminals to use the GPU for text rendering, achieving smooth scrolling and low latency that traditional CPU-rendered terminals couldn't match.</p>\n<p>Kitty's most lasting contribution to the terminal ecosystem is the <strong>Kitty keyboard protocol</strong> (CSI u), which solves decades-old ambiguity in how terminals encode keypresses. The protocol has since been adopted by Ghostty, WezTerm, foot, and others. Kitty also pioneered the <strong>Kitty graphics protocol</strong> for inline image display and introduced extended underline styles (curly, dotted, dashed) with independent underline colors — features now standard in modern terminals.</p>\n<p>Kitty supports a rich extension ecosystem through \"kittens\" — small Python programs that run inside the terminal. Notable kittens include an image viewer, SSH integration, and a diff viewer. The terminal also features native tab and window management, remote control via IPC, and extensive Unicode support.</p>",
-    "headlessBackends": [
-      "kitty"
-    ],
+    "headlessBackends": ["kitty"],
     "manifestBackend": "kitty",
-    "platforms": [
-      "macos"
-    ]
+    "platforms": ["macos"]
   },
   "iterm2": {
     "label": "iTerm2",
@@ -34,9 +26,7 @@
     "description": "Feature-rich macOS terminal with split panes, profiles, and extensive customization. Native Cocoa app.",
     "body": "<p><strong>iTerm2</strong> is the most popular third-party terminal for macOS, created by <strong>George Nachman</strong>. It's a successor to the original iTerm project, first released in 2010 as a native Cocoa application. iTerm2 has been the de facto \"power user\" terminal on macOS for over a decade.</p>\n<p>iTerm2 pioneered several features that became ecosystem standards: <strong>shell integration</strong> via OSC 133 semantic prompts (marking prompt, command, and output boundaries), the <strong>iTerm2 image protocol</strong> (OSC 1337) for inline image display, and sophisticated profile management. Its split pane system, tmux integration, and Instant Replay (scrubbing through terminal history) remain unmatched in many competitors.</p>\n<p>While iTerm2 supports truecolor and most modern escape sequences, it has been slower to adopt some newer protocols like the kitty keyboard protocol. It remains the most feature-complete terminal on macOS for users who don't need GPU acceleration, with features like triggers (automated actions on pattern matches), password manager integration, and extensive mouse reporting.</p>",
     "headlessBackends": [],
-    "platforms": [
-      "macos"
-    ]
+    "platforms": ["macos"]
   },
   "terminal-app": {
     "label": "Terminal.app",
@@ -45,9 +35,7 @@
     "description": "Apple's built-in macOS terminal. Ships with every Mac.",
     "body": "<p><strong>Terminal.app</strong> is Apple's built-in terminal emulator, shipping with every Mac since <strong>Mac OS X 10.0</strong> (March 2001). Evolved from the NeXTSTEP Terminal application that Steve Jobs brought back to Apple, it has been maintained by Apple's developer tools team for over two decades. It is the terminal most macOS users encounter first, and for many developers it is all they ever need.</p>\n<p>Terminal.app takes a deliberately <strong>conservative approach</strong> to feature adoption. It was slow to support truecolor and still lacks modern protocols like the kitty keyboard protocol, kitty graphics, and sixel. However, it provides solid basics: UTF-8 support, 256-color mode, mouse tracking, bracketed paste, and deep integration with macOS — Profiles for appearance management, Services menu integration, Touch Bar support, and Secure Keyboard Entry to prevent keystroke logging.</p>\n<p>Apple added <strong>shell integration</strong> (marks and bookmarks) to Terminal.app, allowing users to navigate between command prompts and fold/unfold command output. Despite its limitations compared to third-party alternatives like iTerm2 and Ghostty, Terminal.app remains the compatibility baseline for macOS CLI tools and the default terminal in every macOS installation worldwide.</p>",
     "headlessBackends": [],
-    "platforms": [
-      "macos"
-    ]
+    "platforms": ["macos"]
   },
   "warp": {
     "label": "Warp",
@@ -56,9 +44,7 @@
     "description": "AI-powered terminal with blocks-based UI. Rust-based, GPU-accelerated.",
     "body": "<p><strong>Warp</strong> is a modern terminal built in <strong>Rust</strong> with GPU acceleration, backed by venture capital funding. It breaks from the traditional terminal paradigm with a <strong>blocks-based UI</strong> where each command and its output form a distinct visual block that can be selected, copied, and shared independently.</p>\n<p>Warp's most distinctive feature is its AI integration — it offers command suggestions, natural language to shell translation, and inline documentation. The terminal also features a modern text editor for command input (with selection, multi-cursor, and syntax highlighting) rather than the traditional readline-style input.</p>\n<p>Under the hood, Warp uses its own GPU-rendered terminal emulator with good standards compliance. It supports truecolor, mouse tracking, bracketed paste, and most modern escape sequences. The Rust codebase provides native performance while the GPU renderer handles smooth scrolling and high-DPI displays. Available on macOS and Linux.</p>",
     "headlessBackends": [],
-    "platforms": [
-      "macos"
-    ]
+    "platforms": ["macos"]
   },
   "cursor": {
     "label": "Cursor",
@@ -68,9 +54,7 @@
     "body": "<p><strong>Cursor</strong> is an AI-focused code editor created by <strong>Anysphere</strong>, a San Francisco startup founded in 2022 by MIT graduates. Built as a fork of <strong>VS Code</strong>, Cursor adds AI pair programming features — chat, command generation, multi-file edits, and code completion powered by large language models. It became one of the fastest-growing developer tools in 2024, attracting significant venture funding and crossing 100,000 paying users.</p>\n<p>Since Cursor's terminal is powered by <strong>xterm.js</strong> (the same engine as VS Code), its terminal capabilities are identical — good basic support with truecolor, mouse tracking, and Unicode, but lacking some modern protocols like kitty keyboard and graphics protocols. Cursor inherits VS Code's OSC 633 shell integration protocol for command decorations and navigation.</p>\n<p>The terminal is a secondary interface in Cursor; its focus is squarely on the editor and AI experience. For terminal feature support, Cursor tracks upstream xterm.js releases — improvements there benefit Cursor automatically.</p>",
     "headlessBackends": [],
     "manifestBackend": "xtermjs",
-    "platforms": [
-      "macos"
-    ]
+    "platforms": ["macos"]
   },
   "com.microsoft.VSCode": {
     "label": "VS Code",
@@ -80,9 +64,17 @@
     "body": "<p><strong>Visual Studio Code</strong> is Microsoft's open-source code editor, the most widely used IDE in the world. Its integrated terminal is powered by <strong>xterm.js</strong>, the most widely deployed terminal emulator — used not just in VS Code but in countless web-based terminals, cloud IDEs, and development tools.</p>\n<p>VS Code pioneered <strong>shell integration</strong> via the OSC 633 protocol, which enables features like command decoration (success/failure markers), command navigation, and sticky scroll for terminal output. This protocol is now being adopted by other terminals.</p>\n<p>The xterm.js terminal provides solid basics — truecolor, Unicode, mouse tracking, bracketed paste, and link detection. It lacks some advanced features like kitty keyboard protocol and graphics protocols, but its ubiquity means it's the baseline that most CLI tools target for compatibility.</p>",
     "headlessBackends": [],
     "manifestBackend": "xtermjs",
-    "platforms": [
-      "macos"
-    ]
+    "platforms": ["macos"]
+  },
+  "cmux-app": {
+    "label": "cmux",
+    "slug": "cmux",
+    "url": "https://cmux.com/",
+    "description": "Terminal built on libghostty. Inherits Ghostty's complete VT parser and standards compliance.",
+    "body": "<p><strong>cmux</strong> is a terminal built by the <strong>Ghostty project</strong>, powered by <strong>libghostty</strong> — the same terminal emulation library that drives Ghostty. Unlike traditional multiplexers (despite the name), cmux is a full terminal application that inherits Ghostty's complete VT parser, renderer, and standards compliance.</p>\n<p>Because cmux links directly against libghostty, it supports the same feature set as Ghostty: kitty keyboard protocol, kitty graphics, sixel, OSC 8 hyperlinks, semantic prompts, and full Unicode with grapheme clustering. Its feature score on terminfo.dev should be nearly identical to Ghostty's.</p>",
+    "headlessBackends": [],
+    "manifestBackend": "ghostty",
+    "platforms": ["macos"]
   },
   "tmux": {
     "label": "tmux",
@@ -90,10 +82,7 @@
     "url": "https://github.com/tmux/tmux",
     "description": "Terminal multiplexer — session persistence, window management, and pane splitting. The most widely used multiplexer.",
     "body": "<p><strong>tmux</strong> (terminal multiplexer) was created by <strong>Nicholas Marriott</strong> in 2007 as a modern, BSD-licensed replacement for GNU Screen. It has become the de facto standard terminal multiplexer, used by millions of developers for session persistence, window management, and pane splitting.</p>\n<p>As an intermediary between the terminal emulator and the application, tmux maintains its own VT parser and re-renders output through its internal grid. This means features must be explicitly supported by tmux to pass through — it doesn't transparently relay escape sequences. tmux has steadily added support for modern features: truecolor (since 2.2), OSC 8 hyperlinks (3.4), extended underlines, and partial kitty keyboard support.</p>\n<p>tmux's pass-through mode (<code>\\ePtmux;</code>) allows applications to send escape sequences directly to the outer terminal, bypassing tmux's parser. This is used for features tmux doesn't natively support, like sixel graphics and some query responses. However, pass-through is fragile and not universally reliable.</p>",
-    "platforms": [
-      "macos",
-      "linux"
-    ],
+    "platforms": ["macos", "linux"],
     "intermediary": true
   },
   "screen": {
@@ -102,10 +91,7 @@
     "url": "https://www.gnu.org/software/screen/",
     "description": "The original terminal multiplexer. Session persistence and window management since 1987.",
     "body": "<p><strong>GNU Screen</strong>, originally written by <strong>Oliver Laumann</strong> at the Technical University of Berlin in 1987, is the original terminal multiplexer and one of the oldest continuously maintained Unix utilities. It invented the concept of <strong>detach and reattach</strong> — disconnecting from a terminal session and reconnecting later with all processes still running. This was revolutionary for system administrators working over dial-up and unreliable network connections, and the concept became fundamental to remote server management.</p>\n<p>Screen's VT emulation is conservative, supporting basic ANSI/VT100 features but lacking many modern extensions. It does not support truecolor (24-bit RGB), kitty keyboard protocol, or kitty graphics. Its 256-color support requires explicit configuration. As an intermediary, Screen strips or mishandles many modern escape sequences that newer terminals support.</p>\n<p>While tmux (written in 2007 as a BSD-licensed alternative) has largely replaced Screen for new users, Screen remains installed by default on many Linux distributions and is still the multiplexer of choice in embedded systems, rescue environments, and minimal server images. Its <code>hardstatus</code> line — a customizable status bar at the bottom of the terminal — was the precursor to tmux's status line and influenced the design of terminal status bars everywhere.</p>",
-    "platforms": [
-      "macos",
-      "linux"
-    ],
+    "platforms": ["macos", "linux"],
     "intermediary": true
   },
   "vt52-historical": {
@@ -151,9 +137,7 @@
     "url": "https://invisible-island.net/xterm/",
     "description": "The reference X11 terminal emulator. Maintained by Thomas Dickey since 1996.",
     "body": "<p><strong>xterm</strong> was written in the summer of 1984 by Mark Vandevoorde, a student of Jim Gettys, as a terminal emulator for the X Window System. Thomas Dickey took over maintenance around 1996 and has maintained it single-handedly ever since — currently at patch 403 (October 2025).</p><p>xterm's influence on the terminal ecosystem is immeasurable. It pioneered <strong>256-color support</strong>, <strong>truecolor</strong> (24-bit RGB), the <strong>alternate screen buffer</strong> with cursor save (?1049), four <strong>mouse tracking modes</strong>, <strong>focus reporting</strong>, <strong>bracketed paste</strong>, <strong>OSC 8 hyperlinks</strong>, and <strong>OSC 52 clipboard access</strong>. The xterm control sequences document (ctlseqs) maintained by Dickey is the de facto standard that every terminal implementor references.</p><p>Dickey also maintains <strong>ncurses</strong> (the terminal UI library) and the <strong>terminfo database</strong> — making him perhaps the most critical single maintainer in the entire Unix terminal infrastructure stack.</p>",
-    "platforms": [
-      "linux"
-    ],
+    "platforms": ["linux"],
     "historical": true,
     "year": 1984,
     "manufacturer": "MIT / Thomas Dickey",
@@ -179,14 +163,8 @@
     "repo": "https://github.com/beorn/vterm",
     "description": "Full-featured TypeScript terminal emulator targeting 100% of the terminfo.dev feature matrix.",
     "body": "<p><strong>vterm.js</strong> is a comprehensive terminal emulator library written in pure TypeScript with zero dependencies. It targets 100% coverage of the terminfo.dev feature matrix — every SGR attribute (including blink, overline, curly/dotted/dashed underline with independent colors), all cursor shapes (DECSCUSR), every DEC private mode, OSC 8 hyperlinks, device attribute responses (DA1/DA2/DSR/DECRPM), DEC Special Graphics character sets, synchronized output, and full Unicode width handling including emoji ZWJ sequences and variation selectors.</p><p>vterm.js is the <strong>default backend for <a href=\"https://termless.dev\" class=\"hover-link\">Termless</a></strong> — the headless terminal testing framework that powers terminfo.dev's probe infrastructure. Where <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> covers ~58% of the feature matrix (the common baseline), vterm.js targets 100% — including the edge cases, modern protocols, and obscure DEC sequences that comprehensive testing requires.</p><p>Pure TypeScript, zero dependencies, runs on any JavaScript runtime (Bun, Node.js, Deno, browsers). Provides an <code>onResponse</code> callback for DA1/DA2/DSR queries — enabling bidirectional terminal communication testing that most headless emulators can't do.</p>",
-    "headlessBackends": [
-      "vterm"
-    ],
-    "platforms": [
-      "macos",
-      "linux",
-      "windows"
-    ]
+    "headlessBackends": ["vterm"],
+    "platforms": ["macos", "linux", "windows"]
   },
   "vt100": {
     "label": "vt100.js",
@@ -195,14 +173,8 @@
     "repo": "https://github.com/beorn/vt100",
     "description": "Lightweight pure TypeScript VT100/VT220 terminal emulator. Zero dependencies, fast, ~90% feature coverage.",
     "body": "<p><strong>vt100.js</strong> is a lightweight, zero-dependency terminal emulator written in pure TypeScript. It covers approximately 58% of the terminfo.dev feature matrix — SGR styling (bold, italic, underline, 256-color, truecolor), cursor positioning and visibility, scroll regions, alternate screen buffer, and basic character set handling. The coverage is a deliberate tradeoff: by focusing on the most commonly used features, vt100.js stays small, fast, and easy to reason about.</p>\n<p>vt100.js was originally designed as the default backend for <a href=\"https://termless.dev\" class=\"hover-link\">Termless</a> (headless terminal testing). <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a> has since replaced it as the default, offering near-100% feature coverage. The two libraries are complementary: vt100.js for speed in CI pipelines where only common features matter, vterm.js for thoroughness when standards compliance is the goal.</p>\n<p>Pure TypeScript, zero dependencies, runs on any JavaScript runtime (Bun, Node.js, Deno, browsers).</p>",
-    "headlessBackends": [
-      "vt100"
-    ],
-    "platforms": [
-      "macos",
-      "linux",
-      "windows"
-    ]
+    "headlessBackends": ["vt100"],
+    "platforms": ["macos", "linux", "windows"]
   },
   "alacritty": {
     "label": "Alacritty",
@@ -211,14 +183,8 @@
     "repo": "https://github.com/alacritty/alacritty",
     "description": "GPU-accelerated terminal emulator written in Rust. Pioneered GPU rendering for terminals in 2017.",
     "body": "<p><strong>Alacritty</strong> was the first terminal emulator to use <strong>GPU-accelerated rendering</strong>, announced by Joe Wilm in January 2017. Written in Rust, it proved that GPU rendering could dramatically improve terminal performance — achieving smooth scrolling and low latency that traditional CPU-rendered terminals couldn't match.</p><p>Alacritty is deliberately minimal: no tabs, no splits, no built-in multiplexer. It's designed to do one thing well — render text fast — and delegates everything else to tools like tmux. Configuration is via a YAML file. This minimalism is polarizing: some developers love the simplicity, others want integrated features.</p><p>The <code>alacritty_terminal</code> Rust crate (the parser/emulator core) is reusable outside Alacritty itself. Termless uses it as a headless backend via napi-rs bindings, testing parser correctness without any rendering.</p>",
-    "headlessBackends": [
-      "alacritty"
-    ],
-    "platforms": [
-      "macos",
-      "linux",
-      "windows"
-    ]
+    "headlessBackends": ["alacritty"],
+    "platforms": ["macos", "linux", "windows"]
   },
   "wezterm": {
     "label": "WezTerm",
@@ -227,14 +193,8 @@
     "repo": "https://github.com/wez/wezterm",
     "description": "Rust terminal emulator with built-in multiplexer, Lua configuration, and SSH domain support.",
     "body": "<p><strong>WezTerm</strong> is a cross-platform terminal emulator and multiplexer written in Rust by <strong>Wez Furlong</strong>, a veteran systems engineer known for his work on PHP internals, Mercurial, and the Watchman file watcher at Facebook. First released in 2018, WezTerm reflects Furlong's philosophy of building practical, feature-complete tools — unlike Alacritty's minimalism, WezTerm is batteries-included, replacing tmux/screen with built-in tabs, splits, and remote session management.</p>\n<p>WezTerm's most distinctive feature is its <strong>Lua-based configuration</strong>. Where most terminals use static YAML or TOML, WezTerm's config is a full Lua program — enabling dynamic keybindings, conditional themes, complex layouts, and event-driven behavior. Its <strong>SSH domain multiplexing</strong> with auto-reconnection lets terminal sessions survive network drops and resume transparently, a feature rarely found outside dedicated SSH tools like Mosh.</p>\n<p>WezTerm supports the kitty keyboard protocol, kitty graphics protocol, sixel, OSC 8 hyperlinks, and extensive Unicode support including grapheme clustering. The <code>wezterm-term</code> Rust crate provides the terminal emulation core, which Termless uses as a headless backend for cross-terminal testing.</p>",
-    "headlessBackends": [
-      "wezterm"
-    ],
-    "platforms": [
-      "macos",
-      "linux",
-      "windows"
-    ]
+    "headlessBackends": ["wezterm"],
+    "platforms": ["macos", "linux", "windows"]
   },
   "xtermjs": {
     "label": "xterm.js",
@@ -243,13 +203,7 @@
     "repo": "https://github.com/xtermjs/xterm.js",
     "description": "The most widely deployed terminal emulator — powers VS Code, Cursor, and countless web terminals.",
     "body": "<p><strong>xterm.js</strong> is the most widely deployed terminal emulator in the world. It powers the integrated terminal in <a href=\"/terminals/vs-code\" class=\"hover-link\">VS Code</a>, <a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a>, and thousands of web-based terminals, cloud IDEs, and development tools. If you've used a terminal in a browser, you've almost certainly used xterm.js.</p><p>Originally a port of the xterm X11 terminal to JavaScript, xterm.js has evolved into a mature, GPU-accelerated terminal renderer with Canvas and WebGL backends. It supports truecolor, Unicode, mouse tracking, bracketed paste, and link detection.</p><p>VS Code pioneered <strong>shell integration</strong> via the OSC 633 protocol using xterm.js, enabling command decorations, run-recent-command, and sticky scroll. The xterm.js headless package (<code>@xterm/headless</code>) provides the parser without rendering — used by Termless as a backend.</p>",
-    "headlessBackends": [
-      "xtermjs"
-    ],
-    "platforms": [
-      "macos",
-      "linux",
-      "windows"
-    ]
+    "headlessBackends": ["xtermjs"],
+    "platforms": ["macos", "linux", "windows"]
   }
 }
