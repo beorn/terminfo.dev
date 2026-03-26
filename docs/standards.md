@@ -215,6 +215,14 @@ printf '\e[L'
 ```
 :::
 
+### Sixel (1983, Revived) — Inline Graphics {#sixel}
+
+**Sixel graphics were designed for dot-matrix printers in 1983.** The format encodes raster images as printable ASCII characters, where each character represents a 1x6 pixel column — hence "six pixels." DEC included Sixel support in the VT240 and VT340 terminals for displaying charts and diagrams.
+
+Sixel was largely dormant for decades until modern terminals (xterm, foot, WezTerm, mlterm, contour) revived it as a way to display inline images using only standard escape sequences — no terminal-specific protocol required. The Sixel vs. Kitty graphics debate is one of the liveliest in the terminal ecosystem: Sixel is older and more widely supported; Kitty graphics is more capable and purpose-built.
+
+<p class="standard-link"><a class="hover-link" href="/sixel">View Sixel features &rarr;</a></p>
+
 ### VT510 (1993) — DEC's Late VT Reference {#vt510}
 
 The VT510 was one of DEC's later VT models; the VT520 and VT525 followed before DEC was acquired by Compaq in 1998. No modern terminal implements the full VT510 spec, but specific features like **DECTCEM** (cursor visibility) and **DECSCNM** (reverse video) became universal. The VT510 Reference Manual remains the most cited document for terminal implementors — it's the closest thing to a comprehensive reference for DEC escape sequences.
@@ -241,46 +249,6 @@ printf '\e[?1049h'
 printf '\e[?1049l'
 ```
 :::
-
-### Xterm Extensions (1996+) — Thomas Dickey's 30-Year Legacy {#xterm}
-
-**One person** — Thomas Dickey — maintains xterm, ncurses, AND the terminfo database. He's been doing it since 1996. The xterm control sequences document (ctlseqs) is the single most important reference for terminal developers, documenting not just xterm's behavior but the de facto standards the rest of the ecosystem follows.
-
-Xterm became the reference for many widely deployed extensions, including **256-color** support, the **alternate screen buffer** with cursor save, four **mouse tracking modes**, **focus reporting**, **bracketed paste**, **OSC 8 hyperlinks**, and **OSC 52 clipboard access**. Most features that developers think of as "standard" were actually xterm innovations that other terminals copied.
-
-<p class="standard-link"><a class="hover-link" href="/xterm-extensions">View Xterm Extension features &rarr;</a></p>
-
-::: details One person maintains the terminal stack
-Thomas Dickey has single-handedly maintained xterm, ncurses, and the terminfo database since 1996 — nearly 30 years. His xterm control sequences document (ctlseqs) is the de facto specification that every terminal implementor references. Most of what developers call "standard" terminal behavior was defined by one maintainer in one text file.
-:::
-
-### OSC — Operating System Commands (1976+) {#osc}
-
-OSC (Operating System Command) sequences use `ESC ]` for communication between applications and the terminal as an application. Unlike CSI sequences that control the display, OSC sequences talk to the host: window title (OSC 0/2), clipboard access (OSC 52), hyperlinks (OSC 8), color palette queries (OSC 4/10/11), semantic prompt markers (OSC 133), and notification (OSC 9/777).
-
-The OSC namespace is **open-ended** — any terminal can define new number codes without conflicting with CSI-based controls. This makes it the preferred extension point for modern terminal features that don't fit the CSI model.
-
-<p class="standard-link"><a class="hover-link" href="/osc">View OSC features &rarr;</a></p>
-
-### Kitty Extensions (2017) — The Modern Revolution {#kitty}
-
-Kovid Goyal's Kitty terminal introduced protocols that solve fundamental limitations of the 1978-era terminal model. The **Kitty keyboard protocol** provides unambiguous, modifier-aware key reporting — solving a problem from 1978: `Ctrl+I` and `Tab` are the same byte (0x09) in traditional terminals. With the Kitty protocol, they're distinct events, and key-up events are reportable for the first time.
-
-The **Kitty graphics protocol** enables inline image display via chunked base64 transfer. Kitty also defined **extended underline styles** (curly, dotted, dashed) with independent underline colors. These extensions have been adopted by Ghostty, WezTerm, foot, and other modern terminals — making them the closest thing to an emerging standard for next-generation terminal features.
-
-<p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
-
-::: tip Why Kitty matters
-Kitty significantly advanced terminal input by documenting key-release reporting and a comprehensive keyboard protocol. Earlier efforts like xterm's modifyOtherKeys and Leonerd's CSI u/fixterms addressed parts of this problem. Kitty's keyboard and graphics protocols are now adopted by Ghostty, WezTerm, foot, and others — making them the closest thing to an emerging standard for next-generation terminals.
-:::
-
-### Sixel (1983, Revived) — Inline Graphics {#sixel}
-
-**Sixel graphics were designed for dot-matrix printers in 1983.** The format encodes raster images as printable ASCII characters, where each character represents a 1x6 pixel column — hence "six pixels." DEC included Sixel support in the VT240 and VT340 terminals for displaying charts and diagrams.
-
-Sixel was largely dormant for decades until modern terminals (xterm, foot, WezTerm, mlterm, contour) revived it as a way to display inline images using only standard escape sequences — no terminal-specific protocol required. The Sixel vs. Kitty graphics debate is one of the liveliest in the terminal ecosystem: Sixel is older and more widely supported; Kitty graphics is more capable and purpose-built.
-
-<p class="standard-link"><a class="hover-link" href="/sixel">View Sixel features &rarr;</a></p>
 
 ### Unicode (1991+) — The Width Problem {#unicode}
 
@@ -358,6 +326,38 @@ Powerline and Nerd Font glyphs are Private Use Area characters — they're not p
 :::
 
 <p class="standard-link"><a class="hover-link" href="/unicode">View Unicode features &rarr;</a></p>
+
+### Xterm Extensions (1996+) — Thomas Dickey's 30-Year Legacy {#xterm}
+
+**One person** — Thomas Dickey — maintains xterm, ncurses, AND the terminfo database. He's been doing it since 1996. The xterm control sequences document (ctlseqs) is the single most important reference for terminal developers, documenting not just xterm's behavior but the de facto standards the rest of the ecosystem follows.
+
+Xterm became the reference for many widely deployed extensions, including **256-color** support, the **alternate screen buffer** with cursor save, four **mouse tracking modes**, **focus reporting**, **bracketed paste**, **OSC 8 hyperlinks**, and **OSC 52 clipboard access**. Most features that developers think of as "standard" were actually xterm innovations that other terminals copied.
+
+<p class="standard-link"><a class="hover-link" href="/xterm-extensions">View Xterm Extension features &rarr;</a></p>
+
+::: details One person maintains the terminal stack
+Thomas Dickey has single-handedly maintained xterm, ncurses, and the terminfo database since 1996 — nearly 30 years. His xterm control sequences document (ctlseqs) is the de facto specification that every terminal implementor references. Most of what developers call "standard" terminal behavior was defined by one maintainer in one text file.
+:::
+
+### OSC — Operating System Commands (1976+) {#osc}
+
+OSC (Operating System Command) sequences use `ESC ]` for communication between applications and the terminal as an application. Unlike CSI sequences that control the display, OSC sequences talk to the host: window title (OSC 0/2), clipboard access (OSC 52), hyperlinks (OSC 8), color palette queries (OSC 4/10/11), semantic prompt markers (OSC 133), and notification (OSC 9/777).
+
+The OSC namespace is **open-ended** — any terminal can define new number codes without conflicting with CSI-based controls. This makes it the preferred extension point for modern terminal features that don't fit the CSI model.
+
+<p class="standard-link"><a class="hover-link" href="/osc">View OSC features &rarr;</a></p>
+
+### Kitty Extensions (2017) — The Modern Revolution {#kitty}
+
+Kovid Goyal's Kitty terminal introduced protocols that solve fundamental limitations of the 1978-era terminal model. The **Kitty keyboard protocol** provides unambiguous, modifier-aware key reporting — solving a problem from 1978: `Ctrl+I` and `Tab` are the same byte (0x09) in traditional terminals. With the Kitty protocol, they're distinct events, and key-up events are reportable for the first time.
+
+The **Kitty graphics protocol** enables inline image display via chunked base64 transfer. Kitty also defined **extended underline styles** (curly, dotted, dashed) with independent underline colors. These extensions have been adopted by Ghostty, WezTerm, foot, and other modern terminals — making them the closest thing to an emerging standard for next-generation terminal features.
+
+<p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
+
+::: tip Why Kitty matters
+Kitty significantly advanced terminal input by documenting key-release reporting and a comprehensive keyboard protocol. Earlier efforts like xterm's modifyOtherKeys and Leonerd's CSI u/fixterms addressed parts of this problem. Kitty's keyboard and graphics protocols are now adopted by Ghostty, WezTerm, foot, and others — making them the closest thing to an emerging standard for next-generation terminals.
+:::
 
 ---
 
