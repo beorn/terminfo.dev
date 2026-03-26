@@ -210,7 +210,7 @@ function buildSidebar() {
     seenSlugs.add(entry.slug)
     const item = { text: entry.label, link: `/terminals/${entry.slug}` }
 
-    if (entry.intermediary || key === "cmux") {
+    if (entry.intermediary) {
       termMultiplexers.push(item)
     } else if (entry.headlessBackends?.length > 0 && entry.label.endsWith(".js")) {
       // JS-package terminals (vt100.js, vterm.js, xterm.js) are embeddable libraries,

@@ -62,7 +62,7 @@ docs/                           ← VitePress site (built → deployed)
     probes.data.ts                build-time loader (reads content/, computes CensusData)
     load-probes.ts                shared helpers (slugs, labels, tag resolution)
   index.md                        home matrix page
-  terminal/[id].md                terminal detail pages
+  terminals/[id].md               terminal detail pages
   [category]/[id].md              feature detail pages
   [id].md                         category + standard pages
   compare/[id].md                 comparison pages
@@ -270,7 +270,7 @@ docs/.vitepress/dist/              ← 250+ static HTML pages + sitemap.xml
 | --------------- | --------------------- | ----- | -------------------------- |
 | Home matrix     | `/`                   | 1     | `index.md`                 |
 | Feature detail  | `/{category}/{slug}`  | ~133  | `[category]/[id].paths.ts` |
-| Terminal detail | `/terminal/{slug}`    | ~19   | `terminal/[id].paths.ts`   |
+| Terminal detail | `/terminals/{slug}`   | ~19   | `terminals/[id].paths.ts`  |
 | Category        | `/{category}`         | ~13   | `[id].paths.ts`            |
 | Standard/tag    | `/{tag}`              | ~10   | `[id].paths.ts`            |
 | Comparison      | `/compare/{a}-vs-{b}` | ~66   | `compare/[id].paths.ts`    |
