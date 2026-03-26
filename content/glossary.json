@@ -313,5 +313,60 @@
     "expansion": "Operating System Command 8",
     "description": "Escape sequence for clickable hyperlinks in terminal output. Text between OSC 8 start and end markers becomes a link. Supported by most modern terminals.",
     "link": "/extensions"
+  },
+  "CUU": {
+    "expansion": "Cursor Up",
+    "description": "Move cursor up N rows.",
+    "link": "/cursor"
+  },
+  "CUD": {
+    "expansion": "Cursor Down",
+    "description": "Move cursor down N rows.",
+    "link": "/cursor"
+  },
+  "CUF": {
+    "expansion": "Cursor Forward",
+    "description": "Move cursor right N columns.",
+    "link": "/cursor"
+  },
+  "CUB": {
+    "expansion": "Cursor Back",
+    "description": "Move cursor left N columns.",
+    "link": "/cursor"
+  },
+  "CHA": {
+    "expansion": "Cursor Horizontal Absolute",
+    "description": "Move cursor to column N on the current row.",
+    "link": "/cursor"
+  },
+  "CNL": {
+    "expansion": "Cursor Next Line",
+    "description": "Move cursor to the beginning of the line N rows down.",
+    "link": "/cursor"
+  },
+  "IL": {
+    "expansion": "Insert Lines",
+    "description": "Insert N blank lines at cursor position, pushing existing lines down.",
+    "link": "/editing"
+  },
+  "DL": {
+    "expansion": "Delete Lines",
+    "description": "Delete N lines at cursor position, pulling lines up from below.",
+    "link": "/editing"
+  },
+  "SU": {
+    "expansion": "Scroll Up",
+    "description": "Scroll the display up N lines. New blank lines appear at the bottom.",
+    "link": "/scrollback"
+  },
+  "SD": {
+    "expansion": "Scroll Down",
+    "description": "Scroll the display down N lines. New blank lines appear at the top.",
+    "link": "/scrollback"
+  },
+  "ECH": {
+    "expansion": "Erase Character",
+    "description": "Erase N characters at cursor position without moving the cursor.",
+    "link": "/erase"
   }
 }

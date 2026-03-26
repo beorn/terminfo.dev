@@ -29,6 +29,19 @@ function loadEntities(): Entity[] {
   if (_entities) return _entities
   const entities: Entity[] = []
 
+  // Glossary terms (CSI, SGR, ECMA-48, CUP, etc. — no length filter, all curated)
+  try {
+    const raw = JSON.parse(readFileSync(join(contentDir, "glossary.json"), "utf-8")) as Record<string, any>
+    for (const [key, entry] of Object.entries(raw)) {
+      if (!entry.link) continue
+      entities.push({
+        pattern: new RegExp(`\\b${escapeRegex(key)}\\b`, "g"),
+        href: entry.link,
+        title: `${entry.expansion} — ${entry.description}`,
+      })
+    }
+  } catch {}
+
   // Terminals
   try {
     const raw = JSON.parse(readFileSync(join(contentDir, "terminals.json"), "utf-8")) as Record<string, any>
