@@ -576,19 +576,23 @@ export default defineConfig({
       { text: "Matrix", link: "/" },
       {
         text: "Features",
-        link: "/features",
-        items: sortedCategories.map((cat) => ({
-          text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
-          link: `/${cat}`,
-        })),
+        items: [
+          { text: "All Features", link: "/features" },
+          ...sortedCategories.map((cat) => ({
+            text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
+            link: `/${cat}`,
+          })),
+        ],
       },
       {
         text: "Standards",
-        link: "/standards",
-        items: sortedTags.map((tag) => ({
-          text: tagLabels[tag] ?? tag,
-          link: `/${tag}`,
-        })),
+        items: [
+          { text: "All Standards", link: "/standards" },
+          ...sortedTags.map((tag) => ({
+            text: tagLabels[tag] ?? tag,
+            link: `/${tag}`,
+          })),
+        ],
       },
       {
         text: "Terminals",
@@ -602,8 +606,8 @@ export default defineConfig({
       },
       {
         text: "Fundamentals",
-        link: "/fundamentals",
         items: [
+          { text: "Overview", link: "/fundamentals" },
           { text: "Control Characters", link: "/fundamentals/control-characters" },
           { text: "TTY Architecture", link: "/fundamentals/tty-architecture" },
           { text: "Terminal Modes & stty", link: "/fundamentals/stty" },
