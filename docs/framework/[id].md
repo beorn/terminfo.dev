@@ -48,6 +48,12 @@ function platformIcons(b) {
 
 <div class="framework-page">
 
+<nav class="breadcrumb">
+  <span>Frameworks</span>
+  <span class="sep">›</span>
+  <span>{{ p.label }}</span>
+</nav>
+
 <h1 class="framework-title"><a v-if="p.url" :href="p.url" target="_blank" rel="noopener" class="framework-title-link">{{ p.label }} <span class="framework-external">↗</span></a><template v-else>{{ p.label }}</template></h1>
 <p class="framework-tagline">{{ p.description }}</p>
 

@@ -69,9 +69,27 @@ const crossLinks = {
   ],
 }
 const relatedPages = crossLinks[p.id] ?? []
+
+const breadcrumbParent = (() => {
+  const t = p.terminalType
+  if (t === 'headless') return { label: 'Parser Backends', link: '/backends' }
+  if (t === 'mux') return { label: 'Multiplexers', link: '/multiplexers' }
+  if (t === 'historical') return { label: 'Historical', link: '/terminals' }
+  return { label: 'Terminals', link: '/terminals' }
+})()
 </script>
 
 <div class="backend-page">
+
+<nav class="breadcrumb">
+  <a href="/terminals">Terminals</a>
+  <template v-if="breadcrumbParent.label !== 'Terminals'">
+    <span class="sep">›</span>
+    <a :href="breadcrumbParent.link">{{ breadcrumbParent.label }}</a>
+  </template>
+  <span class="sep">›</span>
+  <span>{{ p.terminalName }}</span>
+</nav>
 
 # {{ p.terminalName }}
 

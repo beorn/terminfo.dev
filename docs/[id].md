@@ -85,6 +85,12 @@ function platformIcons(b) {
 
 <div class="category-page">
 
+<nav class="breadcrumb">
+  <a :href="p.pageType === 'tag' ? '/standards' : '/features'">{{ p.pageType === 'tag' ? 'Standards' : 'Features' }}</a>
+  <span class="sep">›</span>
+  <span>{{ p.categoryName }}</span>
+</nav>
+
 # {{ p.categoryName }}
 
 <p v-if="p.categoryDescription" class="category-desc" v-html="p.categoryDescription"></p>

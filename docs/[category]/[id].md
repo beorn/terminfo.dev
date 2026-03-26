@@ -38,6 +38,14 @@ function termTooltip(r) {
 
 <div class="feature-page">
 
+<nav class="breadcrumb">
+  <a href="/features">Features</a>
+  <span class="sep">›</span>
+  <a :href="'/' + p.featureCategory">{{ p.categoryLabel }}</a>
+  <span class="sep">›</span>
+  <span>{{ p.featureName }}</span>
+</nav>
+
 # {{ p.featureName }}
 
 <p class="feature-meta">

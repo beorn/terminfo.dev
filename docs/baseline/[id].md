@@ -87,6 +87,12 @@ function platformIcons(b) {
 
 <div class="baseline-page">
 
+<nav class="breadcrumb">
+  <span>Baselines</span>
+  <span class="sep">›</span>
+  <span>{{ p.label }}</span>
+</nav>
+
 <div class="baseline-title-row">
   <span class="baseline-title-icon">{{ p.emoji }}</span>
   <div>

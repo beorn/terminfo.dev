@@ -71,6 +71,12 @@ for (const cat of categories) {
 
 <div class="compare-page">
 
+<nav class="breadcrumb">
+  <span>Compare</span>
+  <span class="sep">›</span>
+  <span>{{ p.termALabel }} vs {{ p.termBLabel }}</span>
+</nav>
+
 # {{ p.termALabel }} vs {{ p.termBLabel }}
 
 <p class="compare-subtitle">Side-by-side terminal feature comparison</p>

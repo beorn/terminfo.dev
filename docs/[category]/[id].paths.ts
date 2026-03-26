@@ -4,6 +4,7 @@ import {
   terminalSlug,
   loadFeaturesMeta,
   tagLabel as getTagLabel,
+  catLabel,
   loadAnalysis,
 } from "../data/load-probes"
 import { linkifyContent } from "../data/linkify-content"
@@ -75,6 +76,7 @@ export default {
           featureId: f.id,
           featureName: desc?.name ?? f.name,
           featureCategory: f.category,
+          categoryLabel: catLabel(f.category),
           specUrl: desc?.url ?? f.spec ?? "",
           featureBody: linkifyContent(meta?.body ?? ""),
           probeMethod: linkifyContent(meta?.probe ?? ""),

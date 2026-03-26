@@ -3,6 +3,7 @@ import "./tooltip.css"
 import "./result-cells.css"
 import "./analysis.css"
 import "./glossary-links.css"
+import "./breadcrumb.css"
 
 export default {
   extends: DefaultTheme,

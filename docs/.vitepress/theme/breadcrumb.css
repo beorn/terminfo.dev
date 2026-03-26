@@ -1,0 +1,19 @@
+.breadcrumb {
+  font-size: 0.85em;
+  color: var(--vp-c-text-3);
+  margin-bottom: 4px;
+}
+
+.breadcrumb a {
+  color: var(--vp-c-text-2);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  color: var(--vp-c-brand-1);
+}
+
+.breadcrumb .sep {
+  margin: 0 6px;
+  color: var(--vp-c-text-3);
+}
