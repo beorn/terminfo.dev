@@ -73,7 +73,7 @@ export default {
 
       const terminal = (meta as any).terminal ?? {}
 
-      const a = allAnalysis["terminal/" + slug]
+      const a = allAnalysis["terminals/" + slug]
 
       return {
         params: {
@@ -119,7 +119,7 @@ export default {
       if (!term.historical) continue
       if (existingSlugs.has(term.slug)) continue
 
-      const a = allAnalysis["terminal/" + term.slug]
+      const a = allAnalysis["terminals/" + term.slug]
 
       pages.push({
         params: {

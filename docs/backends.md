@@ -7,7 +7,7 @@ outline: deep
 <p class="page-tagline">Terminal emulator libraries that parse escape sequences without rendering to a screen</p>
 
 <div class="beginner-intro">
-<p>A headless backend is a terminal emulator library — the parser and state machine that interprets escape sequences, stripped of any GUI. They power embedded terminals (VS Code's terminal is <a href="/terminal/xterm-js">xterm.js</a>), testing frameworks (<a href="https://termless.dev">Termless</a> uses multiple backends), and server-side applications that need to understand terminal output without displaying it.</p>
+<p>A headless backend is a terminal emulator library — the parser and state machine that interprets escape sequences, stripped of any GUI. They power embedded terminals (VS Code's terminal is <a href="/terminals/xterm-js">xterm.js</a>), testing frameworks (<a href="https://termless.dev">Termless</a> uses multiple backends), and server-side applications that need to understand terminal output without displaying it.</p>
 </div>
 
 ## Parser Testing vs Real Terminal Testing
@@ -40,7 +40,7 @@ Backend testing reveals these constraints:
 
 <div class="backend-grid">
 
-<a class="backend-card" href="/terminal/xterm-js">
+<a class="backend-card" href="/terminals/xterm-js">
   <div class="backend-header">
     <span class="backend-name">xterm.js</span>
     <span class="backend-lang">TypeScript</span>
@@ -48,7 +48,7 @@ Backend testing reveals these constraints:
   <p class="backend-desc">The most widely deployed terminal emulator. Powers VS Code, Cursor, Hyper, and most web-based terminals. Its feature support defines the capability floor for millions of developers.</p>
 </a>
 
-<a class="backend-card" href="/terminal/vterm">
+<a class="backend-card" href="/terminals/vterm-js">
   <div class="backend-header">
     <span class="backend-name">vterm.js</span>
     <span class="backend-lang">TypeScript</span>
@@ -56,7 +56,7 @@ Backend testing reveals these constraints:
   <p class="backend-desc">Full-featured terminal emulator targeting 100% feature support. Built for correctness — a reference implementation for modern terminal behavior.</p>
 </a>
 
-<a class="backend-card" href="/terminal/vt100-js">
+<a class="backend-card" href="/terminals/vt100-js">
   <div class="backend-header">
     <span class="backend-name">vt100.js</span>
     <span class="backend-lang">TypeScript</span>
@@ -64,7 +64,7 @@ Backend testing reveals these constraints:
   <p class="backend-desc">Lightweight VT100/VT220-era emulator. Covers the core terminal baseline without modern extensions — useful as a compatibility reference point.</p>
 </a>
 
-<a class="backend-card" href="/terminal/alacritty">
+<a class="backend-card" href="/terminals/alacritty">
   <div class="backend-header">
     <span class="backend-name">Alacritty</span>
     <span class="backend-lang">Rust</span>
@@ -72,7 +72,7 @@ Backend testing reveals these constraints:
   <p class="backend-desc">The parser from the minimal, GPU-accelerated Rust terminal. Alacritty's headless mode exposes the same VTE-based parser that powers the full application.</p>
 </a>
 
-<a class="backend-card" href="/terminal/wezterm">
+<a class="backend-card" href="/terminals/wezterm">
   <div class="backend-header">
     <span class="backend-name">WezTerm</span>
     <span class="backend-lang">Rust</span>
@@ -80,7 +80,7 @@ Backend testing reveals these constraints:
   <p class="backend-desc">Terminal + multiplexer with a rich parser. WezTerm's headless mode tests the same termwiz parser that handles the full application's escape sequence processing.</p>
 </a>
 
-<a class="backend-card" href="/terminal/kitty">
+<a class="backend-card" href="/terminals/kitty">
   <div class="backend-header">
     <span class="backend-name">Kitty</span>
     <span class="backend-lang">C / Python</span>
@@ -88,7 +88,7 @@ Backend testing reveals these constraints:
   <p class="backend-desc">GPU-accelerated terminal with its own extension protocol. Kitty's headless mode tests the parser that implements the Kitty keyboard protocol, graphics protocol, and other innovations.</p>
 </a>
 
-<a class="backend-card" href="/terminal/ghostty">
+<a class="backend-card" href="/terminals/ghostty">
   <div class="backend-header">
     <span class="backend-name">Ghostty</span>
     <span class="backend-lang">Zig</span>

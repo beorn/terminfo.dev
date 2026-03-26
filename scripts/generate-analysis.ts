@@ -1129,7 +1129,7 @@ function linkify(
     if (!t.label || !t.slug) continue
     entities.push({
       pattern: new RegExp(`\\b${escapeRegex(t.label)}\\b`, "g"),
-      href: `/terminal/${t.slug}`,
+      href: `/terminals/${t.slug}`,
     })
   }
 
@@ -1471,13 +1471,13 @@ try {
 
   const outputPath = join(contentDir, "analysis.json")
   const entryCount = Object.keys(analysis).length
-  const terminalCount = Object.keys(analysis).filter((k) => k.startsWith("terminal/")).length
+  const terminalCount = Object.keys(analysis).filter((k) => k.startsWith("terminals/")).length
   const baselineCount = Object.keys(analysis).filter((k) => k.startsWith("baseline/")).length
   const compareCount = Object.keys(analysis).filter((k) => k.startsWith("compare/")).length
   const frameworkCount = Object.keys(analysis).filter((k) => k.startsWith("framework/")).length
   const categoryCount = Object.keys(analysis).filter(
     (k) =>
-      !k.startsWith("terminal/") &&
+      !k.startsWith("terminals/") &&
       !k.startsWith("baseline/") &&
       !k.startsWith("compare/") &&
       !k.startsWith("framework/") &&

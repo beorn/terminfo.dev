@@ -106,9 +106,9 @@ export const categoryDescriptions: Record<string, string> = Object.fromEntries(
   Object.entries(loadCategories()).map(([k, v]) => [k, v.description]),
 )
 
-function loadStandards(): Record<string, { label: string; url: string; description: string }> {
+function loadStandards(): Record<string, { label: string; url: string; description: string; body?: string }> {
   const path = join(__dirname, "..", "..", "content", "standards.json")
-  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, { label: string; url: string; description: string }>
+  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, { label: string; url: string; description: string; body?: string }>
 }
 
 export const tagLabels: Record<string, string> = Object.fromEntries(
@@ -121,6 +121,10 @@ export const tagUrls: Record<string, string> = Object.fromEntries(
 
 export const tagDescriptions: Record<string, string> = Object.fromEntries(
   Object.entries(loadStandards()).map(([k, v]) => [k, v.description]),
+)
+
+export const tagBodies: Record<string, string> = Object.fromEntries(
+  Object.entries(loadStandards()).map(([k, v]) => [k, v.body ?? ""]),
 )
 
 export function tagLabel(tag: string): string {

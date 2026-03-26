@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-26T16:47:23.122Z",
+  "generated": "2026-03-26T18:07:34.467Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
@@ -616,6 +616,26 @@
       ],
       "baseline": "modern"
     },
+    "extensions.osc5522-clipboard": {
+      "name": "OSC 5522 advanced clipboard",
+      "category": "extensions",
+      "slug": "osc5522-clipboard",
+      "url": "https://sw.kovidgoyal.net/kitty/clipboard/",
+      "tags": [
+        "kitty"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.osc66-text-sizing": {
+      "name": "OSC 66 text sizing",
+      "category": "extensions",
+      "slug": "osc66-text-sizing",
+      "url": "https://sw.kovidgoyal.net/kitty/text-sizing-protocol/",
+      "tags": [
+        "kitty"
+      ],
+      "baseline": "rich"
+    },
     "extensions.osc7-cwd": {
       "name": "Current directory (OSC 7)",
       "category": "extensions",
@@ -717,6 +737,16 @@
       ],
       "baseline": "modern"
     },
+    "input.modify-other-keys-3": {
+      "name": "modifyOtherKeys mode 3",
+      "category": "input",
+      "slug": "modify-other-keys-3",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "xterm-ext"
+      ],
+      "baseline": "rich"
+    },
     "input.pixel-mouse": {
       "name": "Pixel Mouse Reporting (1016)",
       "category": "input",
@@ -810,6 +840,16 @@
       "tags": [
         "dec-private-modes",
         "xterm-extensions"
+      ],
+      "baseline": "modern"
+    },
+    "modes.color-scheme-reporting": {
+      "name": "Mode 2031 color scheme reporting",
+      "category": "modes",
+      "slug": "mode-2031-color-scheme",
+      "url": "https://contour-terminal.org/vt-extensions/color-palette-update-notifications/",
+      "tags": [
+        "xterm-ext"
       ],
       "baseline": "modern"
     },
@@ -1639,9 +1679,9 @@
       "type": "headless",
       "url": "https://alacritty.org",
       "score": {
-        "total": 147,
+        "total": 151,
         "pass": 107,
-        "pct": 73
+        "pct": 71
       }
     },
     "vt100": {
@@ -1649,9 +1689,9 @@
       "version": "0.2.1",
       "type": "headless",
       "score": {
-        "total": 147,
+        "total": 151,
         "pass": 85,
-        "pct": 58
+        "pct": 56
       }
     },
     "vterm": {
@@ -1659,9 +1699,9 @@
       "version": "0.2.0",
       "type": "headless",
       "score": {
-        "total": 147,
-        "pass": 145,
-        "pct": 99
+        "total": 151,
+        "pass": 146,
+        "pct": 97
       }
     },
     "wezterm": {
@@ -1670,9 +1710,9 @@
       "type": "headless",
       "url": "https://wezfurlong.org/wezterm",
       "score": {
-        "total": 147,
+        "total": 151,
         "pass": 106,
-        "pct": 72
+        "pct": 70
       }
     }
   },
@@ -2821,6 +2861,7 @@
       "modes.mouse-all": "yes",
       "modes.application-keypad": "yes",
       "modes.left-right-margin": "partial",
+      "modes.color-scheme-reporting": "no",
       "device.primary-da": "partial",
       "device.status-report": "partial",
       "device.secondary-da": "partial",
@@ -2838,21 +2879,24 @@
       "extensions.semantic-prompts": "no",
       "extensions.osc2-title": "yes",
       "extensions.osc0-icon-title": "yes",
-      "extensions.osc52-clipboard": "no",
-      "extensions.osc10-fg-color": "no",
-      "extensions.osc11-bg-color": "no",
+      "extensions.osc52-clipboard": "partial",
+      "extensions.osc10-fg-color": "partial",
+      "extensions.osc11-bg-color": "partial",
       "extensions.osc7-cwd": "partial",
       "extensions.osc-633-vscode": "no",
       "extensions.notifications": "partial",
       "extensions.iterm2-images": "no",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
+      "extensions.osc66-text-sizing": "no",
+      "extensions.osc5522-clipboard": "no",
       "extensions.sixel-da1": "no",
       "input.modify-other-keys": "partial",
       "input.csi-u": "yes",
       "input.pixel-mouse": "partial",
       "input.urxvt-mouse": "no",
       "input.x10-mouse": "no",
+      "input.modify-other-keys-3": "partial",
       "input.button-event-mouse": "yes",
       "reset.sgr": "yes",
       "reset.ris": "yes",
@@ -2970,6 +3014,7 @@
       "modes.mouse-all": "no",
       "modes.application-keypad": "yes",
       "modes.left-right-margin": "no",
+      "modes.color-scheme-reporting": "no",
       "device.primary-da": "yes",
       "device.status-report": "yes",
       "device.secondary-da": "no",
@@ -2996,12 +3041,15 @@
       "extensions.iterm2-images": "no",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
+      "extensions.osc66-text-sizing": "no",
+      "extensions.osc5522-clipboard": "no",
       "extensions.sixel-da1": "no",
       "input.modify-other-keys": "no",
       "input.csi-u": "no",
       "input.pixel-mouse": "no",
       "input.urxvt-mouse": "no",
       "input.x10-mouse": "no",
+      "input.modify-other-keys-3": "no",
       "input.button-event-mouse": "no",
       "reset.sgr": "yes",
       "reset.ris": "yes",
@@ -3119,6 +3167,7 @@
       "modes.mouse-all": "yes",
       "modes.application-keypad": "partial",
       "modes.left-right-margin": "no",
+      "modes.color-scheme-reporting": "no",
       "device.primary-da": "yes",
       "device.status-report": "yes",
       "device.secondary-da": "yes",
@@ -3145,12 +3194,15 @@
       "extensions.iterm2-images": "yes",
       "extensions.osc1337-cellsize": "yes",
       "extensions.osc1337-capabilities": "yes",
+      "extensions.osc66-text-sizing": "no",
+      "extensions.osc5522-clipboard": "no",
       "extensions.sixel-da1": "yes",
       "input.modify-other-keys": "yes",
       "input.csi-u": "yes",
       "input.pixel-mouse": "yes",
       "input.urxvt-mouse": "yes",
       "input.x10-mouse": "yes",
+      "input.modify-other-keys-3": "yes",
       "input.button-event-mouse": "yes",
       "reset.sgr": "yes",
       "reset.ris": "yes",
@@ -3268,6 +3320,7 @@
       "modes.mouse-all": "yes",
       "modes.application-keypad": "partial",
       "modes.left-right-margin": "partial",
+      "modes.color-scheme-reporting": "partial",
       "device.primary-da": "partial",
       "device.status-report": "partial",
       "device.secondary-da": "partial",
@@ -3285,21 +3338,24 @@
       "extensions.semantic-prompts": "yes",
       "extensions.osc2-title": "yes",
       "extensions.osc0-icon-title": "yes",
-      "extensions.osc52-clipboard": "no",
-      "extensions.osc10-fg-color": "no",
-      "extensions.osc11-bg-color": "no",
+      "extensions.osc52-clipboard": "partial",
+      "extensions.osc10-fg-color": "partial",
+      "extensions.osc11-bg-color": "partial",
       "extensions.osc7-cwd": "partial",
       "extensions.osc-633-vscode": "yes",
       "extensions.notifications": "partial",
       "extensions.iterm2-images": "no",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
-      "extensions.sixel-da1": "no",
+      "extensions.osc66-text-sizing": "no",
+      "extensions.osc5522-clipboard": "no",
+      "extensions.sixel-da1": "partial",
       "input.modify-other-keys": "partial",
       "input.csi-u": "yes",
       "input.pixel-mouse": "partial",
       "input.urxvt-mouse": "no",
       "input.x10-mouse": "no",
+      "input.modify-other-keys-3": "partial",
       "input.button-event-mouse": "yes",
       "reset.sgr": "yes",
       "reset.ris": "yes",
@@ -3554,6 +3610,7 @@
       "modes.reverse-video": "Not exposed via alacritty_terminal API",
       "modes.mouse-sgr": "SGR mouse encoding not exposed via alacritty_terminal API",
       "modes.left-right-margin": "DECLRMM not exposed via alacritty_terminal API",
+      "modes.color-scheme-reporting": "Mode 2031 not implemented in alacritty",
       "device.primary-da": "Headless mode has no output stream for DA1 responses",
       "device.status-report": "Headless mode has no output stream for DSR responses",
       "device.secondary-da": "Headless mode has no output stream for DA2 responses",
@@ -3565,20 +3622,23 @@
       "extensions.kitty-graphics": "Not implemented in alacritty",
       "extensions.sixel": "Not implemented in alacritty",
       "extensions.semantic-prompts": "Not implemented in alacritty",
-      "extensions.osc52-clipboard": "not supported",
-      "extensions.osc10-fg-color": "not supported",
-      "extensions.osc11-bg-color": "not supported",
+      "extensions.osc52-clipboard": "OSC 52 clipboard not exposed in headless mode",
+      "extensions.osc10-fg-color": "OSC 10 color query not exposed in headless mode",
+      "extensions.osc11-bg-color": "OSC 11 color query not exposed in headless mode",
       "extensions.osc7-cwd": "OSC 7 CWD reporting not exposed via alacritty_terminal API",
       "extensions.osc-633-vscode": "VS Code shell integration (OSC 633) not supported",
       "extensions.notifications": "OSC 9 notifications not exposed via alacritty_terminal API",
       "extensions.iterm2-images": "iTerm2 inline images not supported by alacritty",
       "extensions.osc1337-cellsize": "iTerm2-specific protocol not supported",
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not supported",
-      "extensions.sixel-da1": "not supported",
+      "extensions.osc66-text-sizing": "OSC 66 text sizing not implemented in alacritty",
+      "extensions.osc5522-clipboard": "OSC 5522 not implemented in alacritty",
+      "extensions.sixel-da1": "Sixel not implemented in alacritty",
       "input.modify-other-keys": "modifyOtherKeys not exposed via alacritty_terminal API",
       "input.pixel-mouse": "SGR pixel mouse mode not exposed via alacritty_terminal API",
       "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
       "input.x10-mouse": "X10 mouse mode (?9) not implemented",
+      "input.modify-other-keys-3": "modifyOtherKeys mode 3 not exposed in headless mode",
       "reset.soft": "DECSTR resets modes but headless probe reads stale state"
     },
     "vt100": {
@@ -3613,6 +3673,7 @@
       "modes.mouse-sgr": "SGR mouse encoding not implemented — pure TypeScript emulator",
       "modes.mouse-all": "Not in VT100/VT220 — xterm extension",
       "modes.left-right-margin": "DECLRMM not implemented — pure TypeScript emulator",
+      "modes.color-scheme-reporting": "Not implemented — pure TypeScript emulator",
       "device.secondary-da": "No output stream — pure TypeScript emulator",
       "device.tertiary-da": "No output stream — pure TypeScript emulator",
       "device.decrqss": "No output stream — pure TypeScript emulator",
@@ -3626,21 +3687,24 @@
       "extensions.osc8": "Not implemented — pure TypeScript emulator",
       "extensions.reflow": "Not implemented — pure TypeScript emulator",
       "extensions.semantic-prompts": "Not implemented — pure TypeScript emulator",
-      "extensions.osc52-clipboard": "not supported",
-      "extensions.osc10-fg-color": "not supported",
-      "extensions.osc11-bg-color": "not supported",
+      "extensions.osc52-clipboard": "Not implemented — pure TypeScript emulator",
+      "extensions.osc10-fg-color": "Not implemented — pure TypeScript emulator",
+      "extensions.osc11-bg-color": "Not implemented — pure TypeScript emulator",
       "extensions.osc7-cwd": "Not implemented — pure TypeScript emulator",
       "extensions.osc-633-vscode": "VS Code shell integration (OSC 633) not supported",
       "extensions.notifications": "Not implemented — pure TypeScript emulator",
       "extensions.iterm2-images": "Not implemented — pure TypeScript emulator",
       "extensions.osc1337-cellsize": "iTerm2-specific protocol not implemented — pure TypeScript emulator",
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not implemented — pure TypeScript emulator",
-      "extensions.sixel-da1": "not supported",
+      "extensions.osc66-text-sizing": "Not implemented — pure TypeScript emulator",
+      "extensions.osc5522-clipboard": "Not implemented — pure TypeScript emulator",
+      "extensions.sixel-da1": "Not implemented — pure TypeScript emulator",
       "input.modify-other-keys": "Not implemented — pure TypeScript emulator",
       "input.csi-u": "CSI u keyboard protocol not implemented",
       "input.pixel-mouse": "SGR pixel mouse mode not implemented — pure TypeScript emulator",
       "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
       "input.x10-mouse": "X10 mouse mode (?9) not implemented",
+      "input.modify-other-keys-3": "Not implemented — pure TypeScript emulator",
       "input.button-event-mouse": "Not in VT100/VT220 — xterm extension",
       "scrollback.alt-screen": "Not in VT100/VT220 — no alternate screen buffer",
       "unicode.wrap-boundary": "Not in VT100/VT220 — ASCII only, no Unicode width",
@@ -3650,6 +3714,9 @@
     },
     "vterm": {
       "modes.left-right-margin": "DECLRMM not implemented",
+      "modes.color-scheme-reporting": "Mode 2031 not implemented",
+      "extensions.osc66-text-sizing": "OSC 66 text sizing not implemented",
+      "extensions.osc5522-clipboard": "OSC 5522 not implemented",
       "modes.application-keypad": "Application keypad mode parsed but not exposed via getMode()"
     },
     "wezterm": {
@@ -3670,6 +3737,7 @@
       "modes.mouse-sgr": "SGR mouse encoding not exposed via wezterm-term API",
       "modes.application-keypad": "Not exposed via wezterm-term API",
       "modes.left-right-margin": "DECLRMM not exposed via wezterm-term API",
+      "modes.color-scheme-reporting": "Mode 2031 not exposed in headless mode",
       "device.primary-da": "Headless mode has no output stream for DA1 responses",
       "device.status-report": "Headless mode has no output stream for DSR responses",
       "device.secondary-da": "Headless mode has no output stream for DA2 responses",
@@ -3679,19 +3747,22 @@
       "device.decrpm": "Headless mode has no output stream for DECRPM responses",
       "device.xtversion": "Headless mode has no output stream for XTVERSION responses",
       "extensions.kitty-graphics": "Not implemented in wezterm-term crate",
-      "extensions.osc52-clipboard": "not supported",
-      "extensions.osc10-fg-color": "not supported",
-      "extensions.osc11-bg-color": "not supported",
+      "extensions.osc52-clipboard": "OSC 52 clipboard not exposed in headless mode",
+      "extensions.osc10-fg-color": "OSC 10 color query not exposed in headless mode",
+      "extensions.osc11-bg-color": "OSC 11 color query not exposed in headless mode",
       "extensions.osc7-cwd": "OSC 7 CWD reporting not exposed via wezterm-term API",
       "extensions.notifications": "OSC 9 notifications not exposed via wezterm-term API",
       "extensions.iterm2-images": "iTerm2 inline images not supported by wezterm",
       "extensions.osc1337-cellsize": "iTerm2-specific protocol not supported",
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not supported",
-      "extensions.sixel-da1": "not supported",
+      "extensions.osc66-text-sizing": "OSC 66 text sizing not implemented in wezterm",
+      "extensions.osc5522-clipboard": "OSC 5522 not implemented in wezterm",
+      "extensions.sixel-da1": "Sixel DA1 attribute not exposed in headless mode",
       "input.modify-other-keys": "modifyOtherKeys not exposed via wezterm-term API",
       "input.pixel-mouse": "SGR pixel mouse mode not exposed via wezterm-term API",
       "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
       "input.x10-mouse": "X10 mouse mode (?9) not implemented",
+      "input.modify-other-keys-3": "modifyOtherKeys mode 3 not exposed in headless mode",
       "reset.soft": "DECSTR resets modes but headless probe reads stale state",
       "unicode.wrap-boundary": "Wide char at end of line not handled correctly in headless mode"
     }

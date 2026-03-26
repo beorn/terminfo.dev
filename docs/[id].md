@@ -16,18 +16,18 @@ const headlessBackends = backends.filter(b => b.type === 'headless')
 
 const crossLinks = {
   'vt100': [
-    { text: 'DEC VT100 (historical terminal)', link: '/terminal/vt100-historical' },
-    { text: 'vt100.js (headless backend)', link: '/terminal/vt100-js' },
+    { text: 'DEC VT100 (historical terminal)', link: '/terminals/vt100-historical' },
+    { text: 'vt100.js (headless backend)', link: '/terminals/vt100-js' },
   ],
   'vt220': [
-    { text: 'DEC VT220 (historical terminal)', link: '/terminal/vt220-historical' },
+    { text: 'DEC VT220 (historical terminal)', link: '/terminals/vt220-historical' },
   ],
   'xterm-extensions': [
-    { text: 'xterm (historical terminal)', link: '/terminal/xterm-historical' },
-    { text: 'xterm.js (headless backend)', link: '/terminal/xterm-js' },
+    { text: 'xterm (historical terminal)', link: '/terminals/xterm-historical' },
+    { text: 'xterm.js (headless backend)', link: '/terminals/xterm-js' },
   ],
   'kitty-extensions': [
-    { text: 'Kitty (terminal app)', link: '/terminal/kitty' },
+    { text: 'Kitty (terminal app)', link: '/terminals/kitty' },
   ],
 }
 const relatedPages = crossLinks[p.id] ?? []
@@ -98,6 +98,13 @@ function platformIcons(b) {
   See also: <span v-for="(r, i) in relatedPages"><a :href="r.link">{{ r.text }}</a><span v-if="i < relatedPages.length - 1"> · </span></span>
 </div>
 
+<div v-if="p.body" class="standard-body" v-html="p.body"></div>
+
+<div v-if="p.historicalBody" class="historical-context">
+  <h3>Historical Context</h3>
+  <div v-html="p.historicalBody"></div>
+</div>
+
 <div v-if="p.analysis" class="analysis">
   <div class="analysis-header">
     <span class="analysis-label">Analysis</span>
@@ -115,7 +122,7 @@ function platformIcons(b) {
     <tr>
       <th class="feature-col">Feature</th>
       <th v-for="b in appBackends" :key="b.name" :data-tooltip="termTooltip(b)">
-        <a :href="'/terminal/' + b.slug">{{ b.label }}</a>
+        <a :href="'/terminals/' + b.slug">{{ b.label }}</a>
         <span class="th-platforms" v-html="platformIcons(b)"></span>
       </th>
     </tr>
@@ -148,7 +155,7 @@ function platformIcons(b) {
     <tr>
       <th class="feature-col">Feature</th>
       <th v-for="b in headlessBackends" :key="b.name" :data-tooltip="termTooltip(b)">
-        <a :href="'/terminal/' + b.slug">{{ b.label }}</a>
+        <a :href="'/terminals/' + b.slug">{{ b.label }}</a>
       </th>
     </tr>
   </thead>
@@ -208,6 +215,77 @@ function platformIcons(b) {
 
 .see-also a:hover {
   text-decoration: underline;
+}
+
+.standard-body {
+  margin: 1.5em 0;
+  font-size: 1em;
+  line-height: 1.7;
+  color: var(--vp-c-text-1);
+}
+
+.standard-body :deep(p) {
+  margin: 0.75em 0;
+}
+
+.standard-body :deep(code) {
+  font-size: 0.9em;
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-1);
+}
+
+.standard-body :deep(a) {
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.standard-body :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.historical-context {
+  margin: 1.5em 0;
+  padding: 1em 1.25em;
+  border-left: 3px solid var(--vp-c-brand-2);
+  background: var(--vp-c-bg-soft);
+  border-radius: 0 6px 6px 0;
+}
+
+.historical-context h3 {
+  margin: 0 0 0.5em;
+  font-size: 1.05em;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+}
+
+.historical-context :deep(p) {
+  margin: 0.6em 0;
+  font-size: 0.95em;
+  line-height: 1.65;
+  color: var(--vp-c-text-2);
+}
+
+.historical-context :deep(code) {
+  font-size: 0.85em;
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  background: var(--vp-c-bg-alt);
+  color: var(--vp-c-text-1);
+}
+
+.historical-context :deep(a) {
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.historical-context :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.historical-context :deep(strong) {
+  color: var(--vp-c-text-1);
 }
 
 .matrix-wrapper {

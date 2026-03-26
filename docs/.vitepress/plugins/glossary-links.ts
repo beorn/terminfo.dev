@@ -64,7 +64,7 @@ function buildEntityList(contentDir: string): Entity[] {
       entities.push({
         term: t.label,
         pattern: new RegExp(`\\b${escapeRegex(t.label)}\\b`, "g"),
-        href: `/terminal/${t.slug}`,
+        href: `/terminals/${t.slug}`,
         tooltip: t.description || `${t.label} terminal emulator`,
         tooltipOnly: false,
       })

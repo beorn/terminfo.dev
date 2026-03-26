@@ -114,7 +114,7 @@ function platformIcons(b) {
 
 <div v-if="appScores.length > 0" class="summary">
   <div v-for="s in appScores" :key="s.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminal/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
     <span class="summary-platforms" v-html="platformIcons(s)"></span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
@@ -132,7 +132,7 @@ function platformIcons(b) {
 
 <div class="summary summary-muted">
   <div v-for="s in headlessScores" :key="s.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminal/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
       <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
@@ -167,7 +167,7 @@ function platformIcons(b) {
     <tr>
       <th class="feature-col">Feature</th>
       <th v-for="b in appBackends" :key="b.name" :data-tooltip="termTooltip(b)">
-        <a :href="'/terminal/' + b.slug">{{ b.label }}</a>
+        <a :href="'/terminals/' + b.slug">{{ b.label }}</a>
         <span class="th-platforms" v-html="platformIcons(b)"></span>
       </th>
     </tr>
@@ -200,7 +200,7 @@ function platformIcons(b) {
     <tr>
       <th class="feature-col">Feature</th>
       <th v-for="b in headlessBackends" :key="b.name" :data-tooltip="termTooltip(b)">
-        <a :href="'/terminal/' + b.slug">{{ b.label }}</a>
+        <a :href="'/terminals/' + b.slug">{{ b.label }}</a>
       </th>
     </tr>
   </thead>

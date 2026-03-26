@@ -53,7 +53,7 @@ function loadEntities(): Entity[] {
       if (!t.label || !t.slug || t.label.length < 4) continue
       entities.push({
         pattern: new RegExp(`\\b${escapeRegex(t.label)}\\b`, "g"),
-        href: `/terminal/${t.slug}`,
+        href: `/terminals/${t.slug}`,
         title: t.description,
       })
     }

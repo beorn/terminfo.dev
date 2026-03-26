@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { join, dirname } from "node:path"
+import { fileURLToPath } from "node:url"
 import {
   loadProbes,
   featureSlug,
@@ -10,9 +13,26 @@ import {
   tagLabel,
   tagDescriptions,
   tagUrls,
+  tagBodies,
   loadAnalysis,
 } from "./data/load-probes"
 import { linkifyContent } from "./data/linkify-content"
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+/** Load terminals.json for historical terminal body content */
+function loadTerminals(): Record<string, { body?: string; [k: string]: unknown }> {
+  const path = join(__dirname, "..", "content", "terminals.json")
+  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, { body?: string }>
+}
+
+/** Map standard/tag IDs to their corresponding historical terminal entry in terminals.json */
+const tagToHistoricalTerminal: Record<string, string> = {
+  "vt100": "vt100-historical",
+  "vt220": "vt220-historical",
+  "vt510": "vt510-historical",
+  "xterm-extensions": "xterm-historical",
+}
 
 export default {
   paths() {
@@ -40,6 +60,10 @@ export default {
     const allAnalysis = loadAnalysis()
 
     // --- Category pages ---
+    // Load terminals early so category pages can include historical body
+    // when a category ID matches a standard/tag ID (e.g. "unicode")
+    const terminals = loadTerminals()
+
     const categoryPages = Object.entries(data.categories).map(([cat, features]) => {
       const featureRows = features.map((f) => {
         const desc = data.featureDescriptions[f.id]
@@ -63,12 +87,20 @@ export default {
 
       const a = allAnalysis[cat]
 
+      // If this category ID also exists as a standard/tag, include body content
+      const catBody = tagBodies[cat] ?? ""
+      const catHistTermKey = tagToHistoricalTerminal[cat]
+      const catHistBody = catHistTermKey ? terminals[catHistTermKey]?.body ?? "" : ""
+
       return {
         params: {
           id: cat,
           pageType: "category",
           categoryName: catLabel(cat),
           categoryDescription: linkifyContent(categoryDescriptions[cat] ?? ""),
+          body: linkifyContent(catBody),
+          historicalBody: linkifyContent(catHistBody),
+          specUrl: tagUrls[cat] ?? "",
           featureCount: String(features.length),
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),
@@ -107,6 +139,10 @@ export default {
 
       const a = allAnalysis[tag]
 
+      // Historical terminal body for standards with a corresponding hardware terminal
+      const histTermKey = tagToHistoricalTerminal[tag]
+      const histBody = histTermKey ? terminals[histTermKey]?.body ?? "" : ""
+
       return {
         params: {
           id: tag,
@@ -114,6 +150,8 @@ export default {
           categoryName: tagLabel(tag),
           categoryDescription: linkifyContent(tagDescriptions[tag] ?? ""),
           specUrl: tagUrls[tag] ?? "",
+          body: linkifyContent(tagBodies[tag] ?? ""),
+          historicalBody: linkifyContent(histBody),
           featureCount: String(featureIds.length),
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),

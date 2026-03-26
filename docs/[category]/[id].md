@@ -82,7 +82,7 @@ function termTooltip(r) {
   </thead>
   <tbody>
     <tr v-for="r in appResults" :key="r.name">
-      <td :data-tooltip="termTooltip(r)"><a :href="'/terminal/' + r.slug">{{ r.label }}</a></td>
+      <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
       <td :class="cls(r.result)" class="result-cell">{{ icon(r.result) }} {{ r.result }}</td>
       <td class="note-cell">
@@ -111,7 +111,7 @@ function termTooltip(r) {
   </thead>
   <tbody>
     <tr v-for="r in headlessResults" :key="r.name">
-      <td :data-tooltip="termTooltip(r)"><a :href="'/terminal/' + r.slug">{{ r.label }}</a></td>
+      <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
       <td :class="cls(r.result)" class="result-cell">{{ icon(r.result) }} {{ r.result }}</td>
       <td class="note-cell">

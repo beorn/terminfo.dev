@@ -249,7 +249,7 @@ function backendTooltip(name, version) {
 
 <div v-if="appBackends.length > 0" class="summary">
   <div v-for="b in appBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-platforms" v-html="platformIcons(b.name)"></span>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
@@ -322,7 +322,7 @@ function backendTooltip(name, version) {
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in appBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
         <span class="th-platforms" v-html="platformIcons(b.name)"></span>
       </th>
     </tr>
@@ -359,7 +359,7 @@ function backendTooltip(name, version) {
 
 <div class="summary summary-muted">
   <div v-for="b in headlessBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
@@ -399,7 +399,7 @@ function backendTooltip(name, version) {
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in headlessBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
       </th>
     </tr>
   </thead>
@@ -433,7 +433,7 @@ function backendTooltip(name, version) {
 
 <div class="summary summary-muted">
   <div v-for="b in muxBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
@@ -453,7 +453,7 @@ function backendTooltip(name, version) {
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in muxBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
       </th>
     </tr>
   </thead>
@@ -496,7 +496,7 @@ function backendTooltip(name, version) {
     <h3>Standards</h3>
     <p>From VT100 to Kitty — 50 years of terminal protocols and escape sequence standards.</p>
   </a>
-  <a href="/terminal/vt100-historical" class="explore-card">
+  <a href="/terminals/vt100-historical" class="explore-card">
     <h3>Historical Terminals</h3>
     <p>The terminals that shaped computing — VT52, VT100, VT220, xterm, and VT510.</p>
   </a>

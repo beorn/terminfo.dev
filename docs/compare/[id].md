@@ -79,7 +79,7 @@ for (const cat of categories) {
 
 <div class="compare-summary">
   <div class="compare-card">
-    <a :href="'/terminal/' + p.termASlug" class="compare-card-link">
+    <a :href="'/terminals/' + p.termASlug" class="compare-card-link">
       <h3>{{ p.termALabel }}</h3>
     </a>
     <div class="compare-score">{{ p.termAPct }}<span class="compare-pct">%</span></div>
@@ -88,7 +88,7 @@ for (const cat of categories) {
   </div>
   <div class="compare-vs">vs</div>
   <div class="compare-card">
-    <a :href="'/terminal/' + p.termBSlug" class="compare-card-link">
+    <a :href="'/terminals/' + p.termBSlug" class="compare-card-link">
       <h3>{{ p.termBLabel }}</h3>
     </a>
     <div class="compare-score">{{ p.termBPct }}<span class="compare-pct">%</span></div>
@@ -119,10 +119,10 @@ for (const cat of categories) {
     <tr>
       <th class="feature-col">Feature</th>
       <th :data-tooltip="termTooltip(p.termALabel, p.termADescription, p.termAType, p.termAUrl)">
-        <a :href="'/terminal/' + p.termASlug">{{ p.termALabel }}</a>
+        <a :href="'/terminals/' + p.termASlug">{{ p.termALabel }}</a>
       </th>
       <th :data-tooltip="termTooltip(p.termBLabel, p.termBDescription, p.termBType, p.termBUrl)">
-        <a :href="'/terminal/' + p.termBSlug">{{ p.termBLabel }}</a>
+        <a :href="'/terminals/' + p.termBSlug">{{ p.termBLabel }}</a>
       </th>
     </tr>
   </thead>

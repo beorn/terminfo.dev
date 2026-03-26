@@ -38,22 +38,22 @@ const isHistorical = p.historical === 'true'
 const crossLinks = {
   'vt100-historical': [
     { text: 'VT100 standard features', link: '/vt100' },
-    { text: 'vt100.js (headless backend)', link: '/terminal/vt100-js' },
+    { text: 'vt100.js (headless backend)', link: '/terminals/vt100-js' },
   ],
   'vt100-js': [
     { text: 'VT100 standard features', link: '/vt100' },
-    { text: 'DEC VT100 (historical)', link: '/terminal/vt100-historical' },
+    { text: 'DEC VT100 (historical)', link: '/terminals/vt100-historical' },
   ],
   'vt220-historical': [
     { text: 'VT220 standard features', link: '/vt220' },
   ],
   'xterm-historical': [
     { text: 'Xterm Extensions standard', link: '/xterm-extensions' },
-    { text: 'xterm.js (headless backend)', link: '/terminal/xterm-js' },
+    { text: 'xterm.js (headless backend)', link: '/terminals/xterm-js' },
   ],
   'xterm-js': [
     { text: 'Xterm Extensions standard', link: '/xterm-extensions' },
-    { text: 'xterm (historical)', link: '/terminal/xterm-historical' },
+    { text: 'xterm (historical)', link: '/terminals/xterm-historical' },
   ],
   'kitty': [
     { text: 'Kitty Extensions standard', link: '/kitty-extensions' },

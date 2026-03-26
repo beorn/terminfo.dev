@@ -202,7 +202,7 @@ const appLabels: Record<string, string> = {
   iterm2: "iTerm2",
   "terminal-app": "Terminal.app",
   warp: "Warp",
-  cmux: "cmux",
+
   cursor: "Cursor",
   "com.microsoft.VSCode": "VS Code",
   "com.todesktop.230313mzl4w4u92": "Cursor",

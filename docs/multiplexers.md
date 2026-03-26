@@ -85,14 +85,14 @@ The synchronized output mode (`CSI ? 2026 h`) prevents screen tearing during rap
 ## Multiplexers
 
 <div class="mux-grid">
-  <a class="mux-card" href="/terminal/tmux">
+  <a class="mux-card" href="/terminals/tmux">
     <div class="mux-header">
       <span class="mux-name">tmux</span>
       <span class="mux-year">2007</span>
     </div>
     <p class="mux-desc">The dominant multiplexer. Active development, growing protocol support. Added Sixel graphics in 3.4, partial Kitty keyboard via <code>extended-keys</code>. Highly configurable with a rich plugin ecosystem.</p>
   </a>
-  <a class="mux-card" href="/terminal/screen">
+  <a class="mux-card" href="/terminals/gnu-screen">
     <div class="mux-header">
       <span class="mux-name">GNU Screen</span>
       <span class="mux-year">1987</span>

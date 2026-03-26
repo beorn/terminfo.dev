@@ -66,7 +66,7 @@ function buildSidebar() {
         if (appSubsumedBackends.has(raw.backend)) continue
         const label = meta[raw.backend]?.label ?? raw.backend
         const slug = terminalSlug(raw.backend, meta)
-        terminals.push({ text: label, link: `/terminal/${slug}` })
+        terminals.push({ text: label, link: `/terminals/${slug}` })
       } catch {}
     }
   } catch {}
@@ -166,7 +166,7 @@ function buildSidebar() {
     if (entry.historical && entry.slug && entry.label) {
       historicalTerminals.push({
         text: `${entry.label} (${entry.year})`,
-        link: `/terminal/${entry.slug}`,
+        link: `/terminals/${entry.slug}`,
         year: entry.year ?? 0,
       })
     }
@@ -192,7 +192,7 @@ function buildSidebar() {
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/-+$/, "")
-        appTerminals.push({ text: label, link: `/terminal/${slug}` })
+        appTerminals.push({ text: label, link: `/terminals/${slug}` })
       } catch {}
     }
     appTerminals.sort((a, b) => a.text.localeCompare(b.text))
@@ -208,7 +208,7 @@ function buildSidebar() {
     if (entry.historical || !entry.slug || !entry.label) continue
     if (seenSlugs.has(entry.slug)) continue
     seenSlugs.add(entry.slug)
-    const item = { text: entry.label, link: `/terminal/${entry.slug}` }
+    const item = { text: entry.label, link: `/terminals/${entry.slug}` }
 
     if (entry.intermediary || key === "cmux") {
       termMultiplexers.push(item)
@@ -239,7 +239,7 @@ function buildSidebar() {
     ["Ghostty", "Terminal.app"],
     ["Kitty", "Terminal.app"],
   ]
-  const appTerminalSlugs = new Map(appTerminals.map((t) => [t.text, t.link.replace("/terminal/", "")]))
+  const appTerminalSlugs = new Map(appTerminals.map((t) => [t.text, t.link.replace("/terminals/", "")]))
   for (const [a, b] of popularPairs) {
     const slugA = appTerminalSlugs.get(a)
     const slugB = appTerminalSlugs.get(b)
@@ -305,21 +305,13 @@ function buildSidebar() {
     },
     {
       text: "Terminals",
+      link: "/terminals",
       items: [
         { text: "App Terminals", items: termAppTerminals },
-        { text: "Libraries", items: termLibraries },
-        { text: "Multiplexers", items: termMultiplexers },
+        { text: "Headless Backends", link: "/backends", items: termLibraries },
+        { text: "Multiplexers", link: "/multiplexers", items: termMultiplexers },
         { text: "Historical", items: historicalTerminals.map(({ text, link }) => ({ text, link })) },
       ],
-    },
-    {
-      text: "Multiplexers",
-      link: "/multiplexers",
-      items: termMultiplexers,
-    },
-    {
-      text: "Backends",
-      link: "/backends",
     },
     {
       text: "Compare",
@@ -495,6 +487,16 @@ export default defineConfig({
       ]
       return
     }
+    if (rel === "terminals.md") {
+      pageData.title = "Terminal Emulators: App Terminals, Headless Backends, and Multiplexers"
+      pageData.description =
+        "Every terminal emulator tested by terminfo.dev — app terminals (Ghostty, Kitty, iTerm2), headless backends (xterm.js, vterm.js), multiplexers (tmux, Screen), and historical terminals (VT100, VT220, xterm)."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
     if (rel === "glossary.md") {
       pageData.title = "Terminal Glossary: Acronyms and Technical Terms"
       pageData.description =
@@ -517,7 +519,7 @@ export default defineConfig({
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
       ]
-    } else if (rel.startsWith("terminal/")) {
+    } else if (rel.startsWith("terminals/")) {
       if (params.historical === "true") {
         pageData.title = `${params.backendName} (${params.year}) — Historical Terminal`
         pageData.description = `${params.backendName}: ${params.significance ?? params.backendDescription ?? "Historical terminal"}`
