@@ -114,7 +114,6 @@
   "xtermjs:device.xtversion": {
     "note": "XTVERSION not implemented in xterm.js"
   },
-
   "ghostty-native:extensions.osc2-title": {
     "note": "Title not exposed via native Zig API",
     "result": "partial"
@@ -250,7 +249,6 @@
   "ghostty:input.pixel-mouse": {
     "note": "SGR pixel mouse mode not tracked by ghostty-web WASM backend"
   },
-
   "alacritty:extensions.osc7-cwd": {
     "note": "OSC 7 CWD reporting not exposed via alacritty_terminal API",
     "result": "partial"
@@ -395,7 +393,6 @@
     "note": "SGR mouse encoding not exposed via alacritty_terminal API",
     "result": "partial"
   },
-
   "kitty:extensions.osc7-cwd": {
     "note": "OSC 7 CWD reporting not exposed via Python batch bridge",
     "result": "partial"
@@ -403,9 +400,6 @@
   "kitty:extensions.notifications": {
     "note": "OSC 9 notifications not exposed via Python batch bridge",
     "result": "partial"
-  },
-  "kitty:extensions.iterm2-images": {
-    "note": "iTerm2 inline images not supported by kitty"
   },
   "kitty:input.modify-other-keys": {
     "note": "modifyOtherKeys not exposed via Python batch bridge",
@@ -499,21 +493,6 @@
     "note": "SGR pixel mouse mode not exposed via Python batch bridge",
     "result": "partial"
   },
-  "kitty:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not supported in headless mode",
-    "result": "partial"
-  },
-  "kitty:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not supported in headless mode",
-    "result": "partial"
-  },
-  "kitty:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not supported in headless mode",
-    "result": "partial"
-  },
-  "kitty:extensions.osc-633-vscode": {
-    "note": "VS Code shell integration (OSC 633) not supported"
-  },
   "kitty:input.urxvt-mouse": {
     "note": "urxvt mouse mode (?1015) not implemented"
   },
@@ -532,7 +511,6 @@
     "note": "All-motion mouse tracking not exposed via Python batch bridge",
     "result": "partial"
   },
-
   "vt100:extensions.osc7-cwd": {
     "note": "Not implemented — pure TypeScript emulator"
   },
@@ -671,7 +649,6 @@
   "vt100:text.wide.emoji-vs16": {
     "note": "VS16 emoji variation selectors not handled"
   },
-
   "wezterm:extensions.kitty-graphics": {
     "note": "Not implemented in wezterm-term crate"
   },
@@ -841,7 +818,6 @@
     "note": "Headless mode has no output stream for XTVERSION responses",
     "result": "partial"
   },
-
   "tmux:cursor.cup-boundaries": {
     "note": "tmux reinterprets CUP coordinates within its own grid, boundary behavior differs"
   },
@@ -878,7 +854,6 @@
   "tmux:modes.origin": {
     "note": "tmux's DECOM handling differs from direct terminal — origin mode not fully passed through"
   },
-
   "screen:device.decrpm": {
     "note": "Screen does not support DECRPM (mode reporting)"
   },

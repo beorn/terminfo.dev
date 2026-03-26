@@ -1,5 +1,5 @@
 {
-  "$generated": "2026-03-26T07:52:53.799Z",
+  "$generated": "2026-03-26T07:56:38.476Z",
   "terminal/ghostty": {
     "analysis": "<p><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> scores <strong>95%</strong> (140/148) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#2</strong> of 8 tested terminals. Missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>, <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a>.</p>",
     "date": "2026-03-26",
