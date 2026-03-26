@@ -98,42 +98,6 @@ function platformIcons(b) {
 
 <p class="baseline-note">{{ p.label }} works best with the <a :href="'/baseline/' + p.baseline" class="hover-link">{{ p.baselineLabel }}</a> baseline ({{ p.featureCount }} features). It runs on less capable terminals but degrades gracefully — some features may be unavailable or visually reduced.</p>
 
-## Compatible Terminals
-
-### Terminal Applications
-
-<div v-if="appScores.length > 0" class="summary">
-  <div v-for="s in appScores" :key="s.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminal/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
-    <span class="summary-platforms" v-html="platformIcons(s)"></span>
-    <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
-    </div>
-    <span class="summary-pct">{{ s.pct }}%</span>
-    <span class="summary-counts">{{ s.yes }} / {{ s.total }}</span>
-  </div>
-</div>
-<p v-else class="no-data-inline">No app results yet.</p>
-
-<div v-if="headlessScores.length > 0">
-
-### Headless Backends
-
-<div class="summary summary-muted">
-  <div v-for="s in headlessScores" :key="s.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminal/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
-    <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
-    </div>
-    <span class="summary-pct">{{ s.pct }}%</span>
-    <span class="summary-counts">{{ s.yes }} / {{ s.total }}</span>
-  </div>
-</div>
-
-</div>
-
 <p class="back-link">
   <a href="/">&#8592; Back to matrix</a>
 </p>
