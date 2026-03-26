@@ -7,7 +7,7 @@
     "runtime": "Bun / Node.js",
     "description": "React TUI framework with 30+ components, layout feedback, 100+ terminal protocol sequences. 177KB gzipped, zero native dependencies.",
     "baseline": "modern",
-    "body": "<p><strong>Silvery</strong> is a React-based TUI framework that brings component-driven development to the terminal. With 30+ built-in components (SelectList, TextInput, VirtualList, CommandPalette, ProgressBar), semantic theming with 38 palettes, and layout feedback via useContentRect, it enables responsive terminal UIs that were previously impossible.</p><p>Silvery requires the <strong>Modern TUI</strong> baseline — truecolor for its theme system, mouse tracking for interactive components, bracketed paste for text input, and synchronized output for flicker-free rendering. It gracefully degrades on terminals missing Rich features (Kitty keyboard, graphics protocols).</p>"
+    "body": "<p><strong>Silvery</strong> is a React-based TUI framework that brings component-driven development to the terminal. With 30+ built-in components (SelectList, TextInput, VirtualList, CommandPalette, ProgressBar), semantic theming with 38 palettes, and layout feedback via useContentRect, it enables responsive terminal UIs that were previously impossible.</p><p>Silvery works best with the <strong>Modern TUI</strong> baseline — truecolor for its theme system, mouse tracking for interactive components, bracketed paste for text input, and synchronized output for flicker-free rendering. It gracefully degrades on terminals missing Rich features (Kitty keyboard, graphics protocols).</p>"
   },
   "ink": {
     "label": "Ink",
@@ -27,7 +27,7 @@
     "runtime": "Python 3.8+",
     "description": "Python TUI framework with CSS-like styling, rich widget library, and web deployment via Textual Web.",
     "baseline": "modern",
-    "body": "<p><strong>Textual</strong> by Textualize is a Python TUI framework that brings CSS-like styling to the terminal. It features a rich widget library (buttons, trees, tabs, data tables, markdown viewers), reactive data binding, and the ability to serve TUIs as web apps via Textual Web.</p><p>Textual requires the <strong>Modern TUI</strong> baseline — truecolor for its CSS color system, mouse tracking for interactive widgets, and bracketed paste for text input. It also benefits from Rich features like hyperlinks when available.</p>"
+    "body": "<p><strong>Textual</strong> by Textualize is a Python TUI framework that brings CSS-like styling to the terminal. It features a rich widget library (buttons, trees, tabs, data tables, markdown viewers), reactive data binding, and the ability to serve TUIs as web apps via Textual Web.</p><p>Textual works best with the <strong>Modern TUI</strong> baseline — truecolor for its CSS color system, mouse tracking for interactive widgets, and bracketed paste for text input. It also benefits from Rich features like hyperlinks when available.</p>"
   },
   "bubbletea": {
     "label": "Bubbletea",
@@ -37,7 +37,7 @@
     "runtime": "Go",
     "description": "Go TUI framework based on The Elm Architecture. Part of the Charm ecosystem (Lip Gloss, Bubbles).",
     "baseline": "modern",
-    "body": "<p><strong>Bubbletea</strong> is a Go TUI framework by Charm that uses The Elm Architecture (TEA) — a functional pattern of Model, Update, and View. It's part of the broader Charm ecosystem: Lip Gloss for styling, Bubbles for reusable components, and Wish for SSH apps.</p><p>Bubbletea requires the <strong>Modern TUI</strong> baseline — truecolor for Lip Gloss styling, mouse tracking for interactive components, and alternate screen for full-screen apps. Its companion library Bubbles provides pre-built components for common patterns (text input, lists, spinners, viewports).</p>"
+    "body": "<p><strong>Bubbletea</strong> is a Go TUI framework by Charm that uses The Elm Architecture (TEA) — a functional pattern of Model, Update, and View. It's part of the broader Charm ecosystem: Lip Gloss for styling, Bubbles for reusable components, and Wish for SSH apps.</p><p>Bubbletea works best with the <strong>Modern TUI</strong> baseline — truecolor for Lip Gloss styling, mouse tracking for interactive components, and alternate screen for full-screen apps. Its companion library Bubbles provides pre-built components for common patterns (text input, lists, spinners, viewports).</p>"
   },
   "ratatui": {
     "label": "Ratatui",
@@ -47,7 +47,7 @@
     "runtime": "Rust",
     "description": "Rust TUI framework (successor to tui-rs). Immediate-mode rendering with a rich widget set.",
     "baseline": "modern",
-    "body": "<p><strong>Ratatui</strong> is the most popular Rust TUI framework, a community fork of tui-rs. It uses immediate-mode rendering — you redraw the entire UI each frame, and the library diffs against the previous frame to minimize terminal output.</p><p>Ratatui requires the <strong>Modern TUI</strong> baseline — truecolor for its color system, mouse tracking for interactive widgets, and alternate screen for full-screen rendering. It supports multiple backends (crossterm, termion, termwiz) and has a growing ecosystem of third-party widgets.</p>"
+    "body": "<p><strong>Ratatui</strong> is the most popular Rust TUI framework, a community fork of tui-rs. It uses immediate-mode rendering — you redraw the entire UI each frame, and the library diffs against the previous frame to minimize terminal output.</p><p>Ratatui works best with the <strong>Modern TUI</strong> baseline — truecolor for its color system, mouse tracking for interactive widgets, and alternate screen for full-screen rendering. It supports multiple backends (crossterm, termion, termwiz) and has a growing ecosystem of third-party widgets.</p>"
   },
   "blessed": {
     "label": "Blessed",

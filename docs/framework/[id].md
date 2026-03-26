@@ -86,7 +86,7 @@ function platformIcons(b) {
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
 </div>
 
-## Required Baseline
+## Recommended Baseline
 
 <div class="baseline-badge">
   <a :href="'/baseline/' + p.baseline" class="baseline-link">
@@ -96,7 +96,7 @@ function platformIcons(b) {
   <span class="baseline-tagline-text">{{ p.baselineTagline }}</span>
 </div>
 
-<p class="baseline-note">{{ p.label }} requires the <a :href="'/baseline/' + p.baseline" class="hover-link">{{ p.baselineLabel }}</a> baseline ({{ p.featureCount }} features). Terminals meeting this baseline can run {{ p.label }} applications with full functionality.</p>
+<p class="baseline-note">{{ p.label }} works best with the <a :href="'/baseline/' + p.baseline" class="hover-link">{{ p.baselineLabel }}</a> baseline ({{ p.featureCount }} features). It runs on less capable terminals but degrades gracefully — some features may be unavailable or visually reduced.</p>
 
 ## Compatible Terminals
 
