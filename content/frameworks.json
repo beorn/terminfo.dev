@@ -1,0 +1,62 @@
+{
+  "silvery": {
+    "label": "Silvery",
+    "url": "https://silvery.dev",
+    "repo": "https://github.com/beorn/silvery",
+    "language": "TypeScript",
+    "runtime": "Bun / Node.js",
+    "description": "React TUI framework with 30+ components, layout feedback, 100+ terminal protocol sequences. 177KB gzipped, zero native dependencies.",
+    "baseline": "modern",
+    "body": "<p><strong>Silvery</strong> is a React-based TUI framework that brings component-driven development to the terminal. With 30+ built-in components (SelectList, TextInput, VirtualList, CommandPalette, ProgressBar), semantic theming with 38 palettes, and layout feedback via useContentRect, it enables responsive terminal UIs that were previously impossible.</p><p>Silvery requires the <strong>Modern TUI</strong> baseline — truecolor for its theme system, mouse tracking for interactive components, bracketed paste for text input, and synchronized output for flicker-free rendering. It gracefully degrades on terminals missing Rich features (Kitty keyboard, graphics protocols).</p>"
+  },
+  "ink": {
+    "label": "Ink",
+    "url": "https://github.com/vadimdemedes/ink",
+    "repo": "https://github.com/vadimdemedes/ink",
+    "language": "TypeScript",
+    "runtime": "Node.js",
+    "description": "React for CLIs. The most widely used React terminal renderer, pioneering JSX-to-terminal since 2017.",
+    "baseline": "core",
+    "body": "<p><strong>Ink</strong> pioneered React-based terminal rendering in 2017 and remains the most widely used library in its category. It renders React components to the terminal using Yoga for flexbox layout and chalk for colors.</p><p>Ink targets the <strong>Core TUI</strong> baseline — it works with basic SGR colors (256-color mode), cursor positioning, and alternate screen. It does not require truecolor, mouse tracking, or modern protocols, making it compatible with virtually every terminal including older ones.</p>"
+  },
+  "textual": {
+    "label": "Textual",
+    "url": "https://textual.textualize.io",
+    "repo": "https://github.com/Textualize/textual",
+    "language": "Python",
+    "runtime": "Python 3.8+",
+    "description": "Python TUI framework with CSS-like styling, rich widget library, and web deployment via Textual Web.",
+    "baseline": "modern",
+    "body": "<p><strong>Textual</strong> by Textualize is a Python TUI framework that brings CSS-like styling to the terminal. It features a rich widget library (buttons, trees, tabs, data tables, markdown viewers), reactive data binding, and the ability to serve TUIs as web apps via Textual Web.</p><p>Textual requires the <strong>Modern TUI</strong> baseline — truecolor for its CSS color system, mouse tracking for interactive widgets, and bracketed paste for text input. It also benefits from Rich features like hyperlinks when available.</p>"
+  },
+  "bubbletea": {
+    "label": "Bubbletea",
+    "url": "https://github.com/charmbracelet/bubbletea",
+    "repo": "https://github.com/charmbracelet/bubbletea",
+    "language": "Go",
+    "runtime": "Go",
+    "description": "Go TUI framework based on The Elm Architecture. Part of the Charm ecosystem (Lip Gloss, Bubbles).",
+    "baseline": "modern",
+    "body": "<p><strong>Bubbletea</strong> is a Go TUI framework by Charm that uses The Elm Architecture (TEA) — a functional pattern of Model, Update, and View. It's part of the broader Charm ecosystem: Lip Gloss for styling, Bubbles for reusable components, and Wish for SSH apps.</p><p>Bubbletea requires the <strong>Modern TUI</strong> baseline — truecolor for Lip Gloss styling, mouse tracking for interactive components, and alternate screen for full-screen apps. Its companion library Bubbles provides pre-built components for common patterns (text input, lists, spinners, viewports).</p>"
+  },
+  "ratatui": {
+    "label": "Ratatui",
+    "url": "https://ratatui.rs",
+    "repo": "https://github.com/ratatui/ratatui",
+    "language": "Rust",
+    "runtime": "Rust",
+    "description": "Rust TUI framework (successor to tui-rs). Immediate-mode rendering with a rich widget set.",
+    "baseline": "modern",
+    "body": "<p><strong>Ratatui</strong> is the most popular Rust TUI framework, a community fork of tui-rs. It uses immediate-mode rendering — you redraw the entire UI each frame, and the library diffs against the previous frame to minimize terminal output.</p><p>Ratatui requires the <strong>Modern TUI</strong> baseline — truecolor for its color system, mouse tracking for interactive widgets, and alternate screen for full-screen rendering. It supports multiple backends (crossterm, termion, termwiz) and has a growing ecosystem of third-party widgets.</p>"
+  },
+  "blessed": {
+    "label": "Blessed",
+    "url": "https://github.com/chjj/blessed",
+    "repo": "https://github.com/chjj/blessed",
+    "language": "JavaScript",
+    "runtime": "Node.js",
+    "description": "A curses-like library for Node.js. Mature but unmaintained since 2017.",
+    "baseline": "core",
+    "body": "<p><strong>Blessed</strong> was the original Node.js TUI library, providing a curses-like API with a rich widget set (lists, forms, tables, logs). Written in pure JavaScript with no native dependencies.</p><p>Blessed targets the <strong>Core TUI</strong> baseline — it works with basic terminal features and predates most modern protocols. The library has been unmaintained since 2017 but still sees usage in legacy projects. For new projects, consider Ink (React-based) or Silvery (React + modern protocols).</p>"
+  }
+}

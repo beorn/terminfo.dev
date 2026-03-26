@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-26T00:06:22.508Z",
+  "generated": "2026-03-26T00:13:11.753Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
@@ -1517,9 +1517,9 @@
         "macos"
       ],
       "score": {
-        "total": 134,
-        "pass": 125,
-        "pct": 93
+        "total": 147,
+        "pass": 135,
+        "pct": 92
       }
     },
     "ghostty": {
@@ -1587,9 +1587,9 @@
       ],
       "url": "https://www.warp.dev",
       "score": {
-        "total": 134,
-        "pass": 124,
-        "pct": 93
+        "total": 147,
+        "pass": 135,
+        "pct": 92
       }
     },
     "alacritty": {
@@ -1906,7 +1906,20 @@
       "scrollback.total-lines": "yes",
       "scrollback.alt-screen": "yes",
       "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes"
+      "modes.mouse-all": "yes",
+      "cursor.cup-boundaries": "yes",
+      "cursor.cuu-past-top": "yes",
+      "cursor.cud-past-bottom": "yes",
+      "cursor.cup-scroll-region": "yes",
+      "erase.el-with-attrs": "yes",
+      "erase.ed-scroll-region": "yes",
+      "scrollback.decstbm": "yes",
+      "scrollback.decstbm-reset": "yes",
+      "charsets.g0-g1-switching": "yes",
+      "charsets.dec-line-drawing": "yes",
+      "device.xtversion": "no",
+      "extensions.osc1337-cellsize": "no",
+      "extensions.osc1337-capabilities": "no"
     },
     "ghostty": {
       "cursor.position-report": "yes",
@@ -2638,7 +2651,20 @@
       "scrollback.total-lines": "yes",
       "scrollback.alt-screen": "yes",
       "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes"
+      "modes.mouse-all": "yes",
+      "cursor.cup-boundaries": "yes",
+      "cursor.cuu-past-top": "yes",
+      "cursor.cud-past-bottom": "yes",
+      "cursor.cup-scroll-region": "yes",
+      "erase.el-with-attrs": "yes",
+      "erase.ed-scroll-region": "yes",
+      "scrollback.decstbm": "yes",
+      "scrollback.decstbm-reset": "yes",
+      "charsets.g0-g1-switching": "yes",
+      "charsets.dec-line-drawing": "yes",
+      "device.xtversion": "yes",
+      "extensions.osc1337-cellsize": "no",
+      "extensions.osc1337-capabilities": "no"
     },
     "alacritty": {
       "erase.line.right": "yes",
@@ -3279,7 +3305,18 @@
       "unicode.grapheme-cursor": "width=6, expected 2",
       "extensions.kitty-graphics": "No kitty graphics acknowledgment",
       "scrollback.total-lines": "Content written to scrollback",
-      "modes.mouse-all": "DECRPM: mode reset"
+      "modes.mouse-all": "DECRPM: mode reset",
+      "cursor.cup-boundaries": "row=23, col=217 (clamped to screen bounds)",
+      "cursor.cup-scroll-region": "row=5 (origin mode mapped to scroll region top)",
+      "erase.el-with-attrs": "cursor at col 3 after erase + write OK",
+      "erase.ed-scroll-region": "responsive after ED inside scroll region",
+      "scrollback.decstbm": "responsive after DECSTBM set",
+      "scrollback.decstbm-reset": "responsive after DECSTBM reset",
+      "charsets.g0-g1-switching": "G0/G1 switching works, cursor advanced correctly",
+      "charsets.dec-line-drawing": "DEC line drawing chars rendered, cursor advanced",
+      "device.xtversion": "No XTVERSION response",
+      "extensions.osc1337-cellsize": "No OSC 1337 ReportCellSize response",
+      "extensions.osc1337-capabilities": "No OSC 1337 RequestCapabilities response"
     },
     "ghostty": {
       "cursor.cup-scroll-region": "got 1;1, expected 5;1",

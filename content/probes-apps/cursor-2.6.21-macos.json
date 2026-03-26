@@ -139,7 +139,20 @@
     "scrollback.total-lines": true,
     "scrollback.alt-screen": true,
     "modes.alt-screen.exit": true,
-    "modes.mouse-all": true
+    "modes.mouse-all": true,
+    "cursor.cup-boundaries": true,
+    "cursor.cuu-past-top": true,
+    "cursor.cud-past-bottom": true,
+    "cursor.cup-scroll-region": true,
+    "erase.el-with-attrs": true,
+    "erase.ed-scroll-region": true,
+    "scrollback.decstbm": true,
+    "scrollback.decstbm-reset": true,
+    "charsets.g0-g1-switching": true,
+    "charsets.dec-line-drawing": true,
+    "device.xtversion": false,
+    "extensions.osc1337-cellsize": false,
+    "extensions.osc1337-capabilities": false
   },
   "notes": {
     "device.tertiary-da": "No DA3 response",
@@ -165,7 +178,18 @@
     "unicode.grapheme-cursor": "width=6, expected 2",
     "extensions.kitty-graphics": "No kitty graphics acknowledgment",
     "scrollback.total-lines": "Content written to scrollback",
-    "modes.mouse-all": "DECRPM: mode reset"
+    "modes.mouse-all": "DECRPM: mode reset",
+    "cursor.cup-boundaries": "row=23, col=217 (clamped to screen bounds)",
+    "cursor.cup-scroll-region": "row=5 (origin mode mapped to scroll region top)",
+    "erase.el-with-attrs": "cursor at col 3 after erase + write OK",
+    "erase.ed-scroll-region": "responsive after ED inside scroll region",
+    "scrollback.decstbm": "responsive after DECSTBM set",
+    "scrollback.decstbm-reset": "responsive after DECSTBM reset",
+    "charsets.g0-g1-switching": "G0/G1 switching works, cursor advanced correctly",
+    "charsets.dec-line-drawing": "DEC line drawing chars rendered, cursor advanced",
+    "device.xtversion": "No XTVERSION response",
+    "extensions.osc1337-cellsize": "No OSC 1337 ReportCellSize response",
+    "extensions.osc1337-capabilities": "No OSC 1337 RequestCapabilities response"
   },
   "responses": {
     "cursor.position-report": "3;5",
@@ -195,6 +219,16 @@
     "extensions.osc10-fg-color": "rgb:3333/3333/3333",
     "extensions.osc11-bg-color": "rgb:ffff/ffff/ffff",
     "unicode.east-asian-ambiguous": "1",
-    "modes.mouse-all": "reset"
+    "modes.mouse-all": "reset",
+    "cursor.cup-boundaries": "23;217",
+    "cursor.cuu-past-top": "1;1",
+    "cursor.cud-past-bottom": "23;1",
+    "cursor.cup-scroll-region": "5;1",
+    "erase.el-with-attrs": "1;3",
+    "erase.ed-scroll-region": "1;3",
+    "scrollback.decstbm": "1;3",
+    "scrollback.decstbm-reset": "1;3",
+    "charsets.g0-g1-switching": "1;6",
+    "charsets.dec-line-drawing": "1;7"
   }
 }

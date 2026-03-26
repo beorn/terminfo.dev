@@ -216,11 +216,24 @@ function buildSidebar() {
       link: `/baseline/${id}`,
     }))
 
+  // Load frameworks for sidebar
+  const frameworksData = JSON.parse(
+    readFileSync(join(docsDir, "..", "content", "frameworks.json"), "utf-8"),
+  ) as Record<string, { label: string }>
+  const frameworkItems = Object.entries(frameworksData).map(([id, fw]) => ({
+    text: fw.label,
+    link: `/framework/${id}`,
+  }))
+
   const sidebar = [
     { text: "Matrix", link: "/" },
     {
       text: "Baselines",
       items: baselineItems,
+    },
+    {
+      text: "Frameworks",
+      items: frameworkItems,
     },
     {
       text: "Categories",
@@ -297,6 +310,13 @@ export default defineConfig({
       // Feature pages: /sgr/sgr-bold (have featureName param)
       pageData.title = `${params.featureName} — Terminal Support`
       pageData.description = `Which terminal emulators support ${params.featureName}? Support matrix showing ${params.yesCount} of ${params.totalCount} backends.`
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+    } else if (rel.startsWith("framework/")) {
+      pageData.title = `${params.label} — TUI Framework Terminal Compatibility`
+      pageData.description = `${params.label}: ${params.description} Requires the ${params.baselineLabel} baseline (${params.featureCount} features).`
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],

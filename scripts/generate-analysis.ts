@@ -150,6 +150,23 @@ function loadBaselines(): Record<string, BaselineMeta> {
   return loadJson<Record<string, BaselineMeta>>(join(contentDir, "baselines.json"), "baseline metadata")
 }
 
+interface FrameworkMeta {
+  label: string
+  url: string
+  repo: string
+  language: string
+  runtime: string
+  description: string
+  baseline: string
+  body: string
+}
+
+function loadFrameworks(): Record<string, FrameworkMeta> {
+  const path = join(contentDir, "frameworks.json")
+  if (!existsSync(path)) return {}
+  return loadJson<Record<string, FrameworkMeta>>(path, "framework metadata")
+}
+
 function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
   const path = join(contentDir, "annotations.json")
   if (!existsSync(path)) return {}
@@ -754,6 +771,86 @@ function generateFeatureAnalysis(
   }
 }
 
+// --- Framework analysis ---
+
+function generateFrameworkAnalysis(
+  fwId: string,
+  fw: FrameworkMeta,
+  allStats: Map<string, TerminalStats>,
+  features: Record<string, FeatureMeta>,
+  baselines: Record<string, BaselineMeta>,
+  allFrameworks: Record<string, FrameworkMeta>,
+): AnalysisEntry {
+  const parts: string[] = []
+  const terminals = [...allStats.values()]
+
+  const baselineName = fw.baseline
+  const baselineMeta = baselines[baselineName]
+  const baselineLabel = baselineMeta?.label ?? baselineName
+
+  // Count terminals that meet the required baseline (100% compliance)
+  const compatible = terminals.filter((s) => s.baselineCompliance[baselineName]?.pct === 100)
+  const incompatible = terminals.filter(
+    (s) => s.baselineCompliance[baselineName]?.pct !== undefined && s.baselineCompliance[baselineName].pct < 100,
+  )
+
+  if (compatible.length === terminals.length) {
+    parts.push(
+      `${fw.label} requires the ${baselineLabel} baseline — <strong>all ${terminals.length}</strong> tested terminals are fully compatible`,
+    )
+  } else {
+    parts.push(
+      `${fw.label} requires the ${baselineLabel} baseline — <strong>${compatible.length}</strong> of ${terminals.length} tested terminals are fully compatible`,
+    )
+  }
+
+  if (compatible.length > 0 && compatible.length <= 8) {
+    const names = compatible.map((s) => s.name)
+    parts.push(`Compatible: ${names.join(", ")}`)
+  }
+
+  if (incompatible.length > 0 && incompatible.length <= 5) {
+    const laggards = incompatible.map(
+      (s) => `${s.name} (${s.baselineCompliance[baselineName]?.pct ?? 0}%)`,
+    )
+    parts.push(`Partial compatibility: ${laggards.join(", ")}`)
+  }
+
+  // Compare with other frameworks in the same baseline tier
+  const sameTier = Object.entries(allFrameworks).filter(
+    ([id, f]) => id !== fwId && f.baseline === baselineName,
+  )
+  if (sameTier.length > 0) {
+    const names = sameTier.map(([, f]) => f.label)
+    parts.push(
+      `Same baseline tier (${baselineLabel}) as ${names.join(", ")}`,
+    )
+  }
+
+  // Mention frameworks with different baselines for context
+  const otherTiers = Object.entries(allFrameworks).filter(
+    ([id, f]) => id !== fwId && f.baseline !== baselineName,
+  )
+  if (otherTiers.length > 0) {
+    const grouped = new Map<string, string[]>()
+    for (const [, f] of otherTiers) {
+      const bl = baselines[f.baseline]?.label ?? f.baseline
+      if (!grouped.has(bl)) grouped.set(bl, [])
+      grouped.get(bl)!.push(f.label)
+    }
+    const descriptions = [...grouped.entries()].map(
+      ([bl, names]) => `${names.join(", ")} (${bl})`,
+    )
+    parts.push(`Other frameworks target: ${descriptions.join("; ")}`)
+  }
+
+  return {
+    analysis: `<p>${parts.join(". ")}.</p>`,
+    date: new Date().toISOString().slice(0, 10),
+    changes: null,
+  }
+}
+
 // --- Popular comparisons ---
 
 const POPULAR_COMPARISONS: [string, string][] = [
@@ -961,6 +1058,7 @@ function loadAllData() {
   const standards = loadStandards()
   const baselines = loadBaselines()
   const annotations = loadAnnotations()
+  const frameworks = loadFrameworks()
 
   const appResults = loadProbeDir(probesAppsDir)
   const libResults = loadProbeDir(probesLibsDir)
@@ -970,11 +1068,11 @@ function loadAllData() {
   // Cross-validate
   crossValidate(features, terminals, resultMap)
 
-  return { features, terminals, categories, standards, baselines, annotations, resultMap }
+  return { features, terminals, categories, standards, baselines, annotations, frameworks, resultMap }
 }
 
 function generateAnalysis(): Record<string, AnalysisEntry> {
-  const { features, terminals, categories, standards, baselines, annotations, resultMap } = loadAllData()
+  const { features, terminals, categories, standards, baselines, annotations, frameworks, resultMap } = loadAllData()
   const baselineFeatures = buildBaselineFeatureMap(features)
   const output: Record<string, AnalysisEntry> = {}
 
@@ -1068,6 +1166,16 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
     }
   }
 
+  // 7. Framework pages
+  for (const [fwId, fw] of Object.entries(frameworks)) {
+    const key = `framework/${fwId}`
+    const entry = generateFrameworkAnalysis(fwId, fw, allStats, features, baselines, frameworks)
+    if (entry.analysis) {
+      validateHtml(entry.analysis, key)
+      output[key] = entry
+    }
+  }
+
   // Post-process: auto-link entity mentions in all analysis text
   for (const [key, entry] of Object.entries(output)) {
     entry.analysis = linkify(entry.analysis, terminals, features, categories, standards, baselines)
@@ -1094,8 +1202,9 @@ try {
   const terminalCount = Object.keys(analysis).filter((k) => k.startsWith("terminal/")).length
   const baselineCount = Object.keys(analysis).filter((k) => k.startsWith("baseline/")).length
   const compareCount = Object.keys(analysis).filter((k) => k.startsWith("compare/")).length
+  const frameworkCount = Object.keys(analysis).filter((k) => k.startsWith("framework/")).length
   const categoryCount = Object.keys(analysis).filter(
-    (k) => !k.startsWith("terminal/") && !k.startsWith("baseline/") && !k.startsWith("compare/") && !k.includes("/"),
+    (k) => !k.startsWith("terminal/") && !k.startsWith("baseline/") && !k.startsWith("compare/") && !k.startsWith("framework/") && !k.includes("/"),
   ).length
 
   if (isValidate) {
@@ -1131,6 +1240,7 @@ try {
     console.log(`  ${terminalCount} terminal pages`)
     console.log(`  ${baselineCount} baseline pages`)
     console.log(`  ${compareCount} comparison pages`)
+    console.log(`  ${frameworkCount} framework pages`)
     console.log(`  ${categoryCount} category/standard pages`)
     console.log()
     for (const [key, entry] of Object.entries(analysis)) {
@@ -1145,7 +1255,7 @@ try {
   writeFileSync(outputPath, JSON.stringify(result, null, 2) + "\n")
   console.log(`Generated ${outputPath}`)
   console.log(
-    `  ${entryCount} entries (${terminalCount} terminals, ${baselineCount} baselines, ${compareCount} comparisons, ${categoryCount} categories/standards)`,
+    `  ${entryCount} entries (${terminalCount} terminals, ${baselineCount} baselines, ${compareCount} comparisons, ${frameworkCount} frameworks, ${categoryCount} categories/standards)`,
   )
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)

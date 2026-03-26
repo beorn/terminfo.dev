@@ -1,4 +1,11 @@
-import { loadProbes, featureSlug, terminalSlug, loadFeaturesMeta, tagLabel as getTagLabel, loadAnalysis } from "../data/load-probes"
+import {
+  loadProbes,
+  featureSlug,
+  terminalSlug,
+  loadFeaturesMeta,
+  tagLabel as getTagLabel,
+  loadAnalysis,
+} from "../data/load-probes"
 
 export default {
   paths() {
