@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
+import { markdownGlossaryPlugin } from "vitepress-plugin-glossary"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const docsDir = join(__dirname, "..")
@@ -283,11 +284,40 @@ function buildSidebar() {
 
 const { sidebar, terminals, sortedCategories, categoryLabels, sortedTags, tagLabels } = buildSidebar()
 
+// Build glossary map for the markdown plugin: { "term": "expansion — description" }
+function loadGlossaryMap(): Record<string, string> {
+  const glossaryPath = join(docsDir, "..", "content", "glossary.json")
+  try {
+    const raw = JSON.parse(readFileSync(glossaryPath, "utf-8")) as Record<
+      string,
+      { expansion: string; description: string }
+    >
+    const map: Record<string, string> = {}
+    for (const [key, entry] of Object.entries(raw)) {
+      map[key] = `${entry.expansion} — ${entry.description}`
+    }
+    return map
+  } catch {
+    return {}
+  }
+}
+
+const glossaryMap = loadGlossaryMap()
+
 export default defineConfig({
   title: "Terminfo.dev",
   description: "Can your terminal do that? Feature support tables for terminal emulators.",
   cleanUrls: true,
   head: [["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }]],
+
+  markdown: {
+    config: (md) => {
+      md.use(markdownGlossaryPlugin, {
+        glossary: glossaryMap,
+        firstOccurrenceOnly: true,
+      })
+    },
+  },
 
   sitemap: {
     hostname: "https://terminfo.dev",

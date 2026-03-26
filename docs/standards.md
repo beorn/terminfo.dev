@@ -123,6 +123,22 @@ At the base is **ECMA-48** (1976) — the grammar. It defines how escape sequenc
 
 The messy truth: most of what developers call "ANSI escape codes" aren't ANSI at all. ANSI withdrew their terminal standard (X3.64) in 1994. What we actually use is a patchwork of ECMA-48 grammar, DEC private extensions, xterm innovations, and modern protocol proposals — held together by decades of copy-the-leader compatibility.
 
+### Example Sequences by Standard
+
+<div class="escape-examples">
+<table>
+  <thead><tr><th>Standard</th><th>Example Sequence</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><a href="/ecma-48">ECMA-48</a></td><td><code>ESC[1m</code>Bold<code>ESC[0m</code></td><td><strong>Bold</strong> — SGR text styling</td></tr>
+    <tr><td><a href="/vt100">VT100</a></td><td><code>ESC[5;10H</code></td><td>Cursor to row 5, col 10</td></tr>
+    <tr><td><a href="/vt220">VT220</a></td><td><code>ESC[2P</code></td><td>Delete 2 characters at cursor</td></tr>
+    <tr><td><a href="/xterm-extensions">Xterm</a></td><td><code>ESC[38;2;255;0;0m</code>Red<code>ESC[0m</code></td><td><span style="color:red">Red</span> — truecolor</td></tr>
+    <tr><td><a href="/kitty-extensions">Kitty</a></td><td><code>ESC[&gt;1u</code></td><td>Unambiguous keyboard mode</td></tr>
+    <tr><td><a href="/osc">OSC</a></td><td><code>ESC]8;;url\x07</code>Link<code>ESC]8;;\x07</code></td><td><a href="#">Link</a> — hyperlinks</td></tr>
+  </tbody>
+</table>
+</div>
+
 ## Standards
 
 <div class="standards-grid">
@@ -346,6 +362,46 @@ Incorrect width calculation causes cursor positioning errors, text misalignment,
 }
 
 .back-link a:hover {
+  text-decoration: underline;
+}
+
+.escape-examples table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  margin: 1.5em 0;
+}
+
+.escape-examples th,
+.escape-examples td {
+  padding: 8px 12px;
+  border: 1px solid var(--vp-c-divider);
+  text-align: left;
+}
+
+.escape-examples th {
+  background: var(--vp-c-bg-soft);
+  font-weight: 600;
+}
+
+.escape-examples code {
+  font-size: 0.85em;
+  background: var(--vp-c-bg-soft);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.escape-examples td:nth-child(2) {
+  font-size: 1.05em;
+}
+
+.escape-examples a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.escape-examples a:hover {
+  color: var(--vp-c-brand-1);
   text-decoration: underline;
 }
 </style>

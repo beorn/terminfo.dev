@@ -128,6 +128,24 @@ The **CSI (Control Sequence Introducer)** `ESC [` (hex `1b 5b`) is the prefix fo
 
 The beauty of the system is its simplicity: terminals only need to parse one grammar (ECMA-48's CSI format) to handle hundreds of features. The complexity lives in **which parameter values each terminal recognizes** — and that's exactly what terminfo.dev measures.
 
+### Escape Sequences in Action
+
+<div class="escape-examples">
+<table>
+  <thead><tr><th>Sequence</th><th>Renders</th><th>Feature</th></tr></thead>
+  <tbody>
+    <tr><td><code>ESC[1m</code>Hello<code>ESC[0m</code></td><td><strong>Hello</strong></td><td><a href="/sgr/sgr-1-bold">Bold (SGR 1)</a></td></tr>
+    <tr><td><code>ESC[3m</code>Hello<code>ESC[0m</code></td><td><em>Hello</em></td><td><a href="/sgr/sgr-3-italic">Italic (SGR 3)</a></td></tr>
+    <tr><td><code>ESC[4m</code>Hello<code>ESC[0m</code></td><td><u>Hello</u></td><td><a href="/sgr/sgr-4-underline">Underline (SGR 4)</a></td></tr>
+    <tr><td><code>ESC[38;2;255;100;0m</code>Hello<code>ESC[0m</code></td><td><span style="color:#ff6400"><strong>Hello</strong></span></td><td><a href="/sgr/sgr-38-2-truecolor-fg">Truecolor</a></td></tr>
+    <tr><td><code>ESC[5;10H</code></td><td><em>cursor jumps to row 5, col 10</em></td><td><a href="/cursor/cup-cursor-position">Cursor Position</a></td></tr>
+    <tr><td><code>ESC[?1049h</code></td><td><em>screen clears</em></td><td><a href="/modes/modes-alt-screen-enter">Alternate Screen</a></td></tr>
+    <tr><td><code>ESC[6n</code></td><td>terminal replies <code>ESC[24;80R</code></td><td><a href="/cursor/dsr-6-cursor-position-report">Cursor Report</a></td></tr>
+    <tr><td><code>ESC[&gt;1u</code></td><td><em>keyboard sends unambiguous keys</em></td><td><a href="/extensions/extensions-kitty-keyboard">Kitty Keyboard</a></td></tr>
+  </tbody>
+</table>
+</div>
+
 ## Categories
 
 <div class="category-grid">
@@ -376,6 +394,46 @@ The combination captures both dimensions: community probes test what users see, 
 }
 
 .back-link a:hover {
+  text-decoration: underline;
+}
+
+.escape-examples table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  margin: 1.5em 0;
+}
+
+.escape-examples th,
+.escape-examples td {
+  padding: 8px 12px;
+  border: 1px solid var(--vp-c-divider);
+  text-align: left;
+}
+
+.escape-examples th {
+  background: var(--vp-c-bg-soft);
+  font-weight: 600;
+}
+
+.escape-examples code {
+  font-size: 0.85em;
+  background: var(--vp-c-bg-soft);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.escape-examples td:nth-child(2) {
+  font-size: 1.05em;
+}
+
+.escape-examples a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.escape-examples a:hover {
+  color: var(--vp-c-brand-1);
   text-decoration: underline;
 }
 </style>
