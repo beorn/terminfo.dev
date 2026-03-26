@@ -592,11 +592,11 @@ export default defineConfig({
       },
       {
         text: "Terminals",
-        link: "/terminals",
         items: [
+          { text: "All Terminals", link: "/terminals" },
           { text: "App Terminals", items: termAppTerminals },
-          { text: "Libraries", items: termLibraries },
-          { text: "Multiplexers", items: termMultiplexers },
+          { text: "Parser Backends", link: "/backends", items: termLibraries },
+          { text: "Multiplexers", link: "/multiplexers", items: termMultiplexers },
           { text: "Historical", items: historicalTerminals.map(({ text, link }) => ({ text, link })) },
         ],
       },
