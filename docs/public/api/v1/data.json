@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-26T07:25:28.500Z",
+  "generated": "2026-03-26T07:35:17.232Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
@@ -527,6 +527,7 @@
       "name": "OSC 633 VS Code Integration",
       "category": "extensions",
       "slug": "extensions-osc-633-vscode",
+      "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
       "tags": [
         "osc"
       ],

@@ -443,5 +443,75 @@
     "expansion": "C0 Control Characters",
     "description": "The 33 non-printable ASCII characters in the 0x00–0x1F range plus DEL (0x7F). Includes ESC, BS, TAB, LF, CR, and BEL. Predates escape sequences — these are single-byte terminal commands.",
     "link": "/fundamentals/control-characters"
+  },
+  "OSC 133": {
+    "expansion": "Semantic Prompt Markers",
+    "description": "Invisible markers for shell prompt, command, and output boundaries. Enables click-to-navigate between commands.",
+    "link": "/extensions/extensions-semantic-prompts"
+  },
+  "OSC 633": {
+    "expansion": "VS Code Shell Integration",
+    "description": "VS Code extension of OSC 133 with additional markers for command detection and shell state.",
+    "link": "/extensions/extensions-osc-633-vscode"
+  },
+  "OSC 7": {
+    "expansion": "Current Working Directory",
+    "description": "Report the shell current directory to the terminal. Used for tab titles and new-tab-in-same-directory.",
+    "link": "/extensions/extensions-osc7-cwd"
+  },
+  "OSC 0": {
+    "expansion": "Window Icon and Title",
+    "description": "Set the terminal window title and icon name.",
+    "link": "/extensions/extensions-osc0-icon-title"
+  },
+  "OSC 2": {
+    "expansion": "Window Title",
+    "description": "Set the terminal window title.",
+    "link": "/extensions/extensions-osc2-title"
+  },
+  "OSC 4": {
+    "expansion": "Color Palette",
+    "description": "Query or set entries in the terminal 256-color palette.",
+    "link": "/extensions"
+  },
+  "OSC 10": {
+    "expansion": "Foreground Color Query",
+    "description": "Query the terminal default foreground color. Response is an X11 color string.",
+    "link": "/extensions/extensions-osc10-fg-color"
+  },
+  "OSC 11": {
+    "expansion": "Background Color Query",
+    "description": "Query the terminal default background color. Used for light/dark mode detection.",
+    "link": "/extensions/extensions-osc11-bg-color"
+  },
+  "OSC 1337": {
+    "expansion": "iTerm2 Protocol",
+    "description": "iTerm2 proprietary extensions including inline images, shell integration, and capability reporting.",
+    "link": "/extensions"
+  },
+  "SGR 38": {
+    "expansion": "Set Foreground Color",
+    "description": "Extended foreground color: SGR 38;5;N for 256-color, SGR 38;2;R;G;B for truecolor.",
+    "link": "/sgr"
+  },
+  "SGR 48": {
+    "expansion": "Set Background Color",
+    "description": "Extended background color: SGR 48;5;N for 256-color, SGR 48;2;R;G;B for truecolor.",
+    "link": "/sgr"
+  },
+  "Mode 2004": {
+    "expansion": "Bracketed Paste Mode",
+    "description": "Terminal wraps pasted text in markers so the shell knows it is pasted, not typed.",
+    "link": "/modes"
+  },
+  "Mode 2026": {
+    "expansion": "Synchronized Output",
+    "description": "Buffer all output between start/end markers and paint as one frame. Eliminates flicker.",
+    "link": "/modes"
+  },
+  "Mode 1049": {
+    "expansion": "Alternate Screen with Cursor Save",
+    "description": "Switch to alternate screen buffer and save/restore cursor position.",
+    "link": "/modes/modes-alt-screen-enter"
   }
 }
