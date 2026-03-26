@@ -304,31 +304,39 @@ Before Unicode, every language needed its own character encoding — and they we
 
 A Japanese terminal couldn't display Chinese text. A German terminal couldn't display Russian. Emails between countries garbled characters. The web was a mess of `Content-Type: text/html; charset=iso-8859-1` headers that were wrong half the time.
 
-Unicode solved this by assigning a unique number (code point) to every character in every writing system — currently over 149,000 characters across 161 scripts. UTF-8 encodes these code points in 1-4 bytes, is backward-compatible with ASCII, and is now the dominant encoding on the web and in terminals.
+Unicode solved this by assigning a unique number (code point) to every character in every writing system — currently over 149,000 characters across 161 scripts. <a href="https://en.wikipedia.org/wiki/UTF-8" target="_blank" rel="noopener">UTF-8</a> encodes these code points in 1–4 bytes, is backward-compatible with ASCII, and is now the dominant encoding on the web and in terminals.
+
+::: info The Unix connection
+Unicode emerged from the same world as Unix terminals. <a href="https://en.wikipedia.org/wiki/Joe_Becker_(Unicode)" target="_blank" rel="noopener">Joe Becker</a> (Xerox), <a href="https://en.wikipedia.org/wiki/Lee_Collins_(Unicode)" target="_blank" rel="noopener">Lee Collins</a> (Apple), and <a href="https://en.wikipedia.org/wiki/Mark_Davis_(Unicode)" target="_blank" rel="noopener">Mark Davis</a> (Apple) drafted the initial proposal in 1987. UTF-8 — the encoding that made Unicode practical — was designed by <a href="https://en.wikipedia.org/wiki/Rob_Pike" target="_blank" rel="noopener">Rob Pike</a> and <a href="https://en.wikipedia.org/wiki/Ken_Thompson" target="_blank" rel="noopener">Ken Thompson</a> (creators of Unix and Plan 9) on a placemat in a New Jersey diner in 1992. It was adopted by Plan 9, then Linux, then the web. The people who built Unix also built the encoding that terminals use today.
+:::
 
 #### The Width Problem
 
-Unicode's challenge for terminals isn't character _encoding_ — UTF-8 is universal. The challenge is **width calculation**. East Asian characters (CJK ideographs) and many emoji occupy two terminal columns ("wide" or "fullwidth"), while most Latin/Cyrillic/Arabic characters occupy one. UAX #11 defines width classes, but terminals must also handle combining characters, variation selectors, zero-width joiners, and emoji sequences.
+Unicode's challenge for terminals isn't character _encoding_ — UTF-8 is universal. The challenge is **width calculation**. East Asian characters (CJK ideographs) and many emoji occupy two terminal columns ("wide" or "fullwidth"), while most Latin/Cyrillic/Arabic characters occupy one. <a href="https://unicode.org/reports/tr11/" target="_blank" rel="noopener">UAX #11</a> defines width classes, but terminals must also handle combining characters, variation selectors, zero-width joiners, and emoji sequences.
 
 Incorrect width calculation causes cursor positioning errors, text misalignment, and broken TUI layouts. It's one of the hardest problems in terminal emulation because the Unicode Standard keeps adding new characters, and terminals, libraries, and the C `wcwidth()` function all update at different rates.
 
 ::: details The width problem in practice
+This table is supposed to be aligned — but depending on your terminal and font, the columns may be off:
 ```
-Normal:  Hello     (5 columns)
-CJK:     你好      (4 columns — each char is 2 wide)
-Emoji:   👨‍👩‍👧‍👦    (2 columns? 8 columns? depends on your terminal)
-Mixed:   Hi你好👋  (2 + 4 + 2 = 8 columns... maybe)
+Name        │ Status │ Score
+────────────┼────────┼──────
+Alice       │ ✓ done │ 98%
+Bob         │ ✗ fail │ 42%
+田中太郎    │ ✓ done │ 95%     ← CJK: each char = 2 columns
+José García │ ✓ done │ 88%     ← combining accent (é) = 1 column? 2?
+👨‍💻 DevBot   │ ~ wait │ 77%     ← emoji: 2 columns? more?
 ```
-Every terminal must agree on these widths or TUI layouts break — columns misalign, text overwrites adjacent cells, cursor position drifts.
+If your terminal calculates any character's width differently from the application, the `│` separators won't line up. This is the core problem: **every terminal, every font, and every TUI library must agree on every character's width** — and they don't.
 :::
 
 #### Powerline and Prompt Art
 
 Unicode didn't just solve the character encoding problem — it enabled a new artform: **terminal prompt customization**.
 
-The **Powerline** project (2012) pioneered the use of custom Unicode glyphs to create visually striking shell prompts with angled separators, branch indicators, and status icons. These characters live in Unicode's Private Use Area (PUA, U+E000-U+F8FF) and require patched fonts to display.
+The <a href="https://github.com/powerline/powerline" target="_blank" rel="noopener"><strong>Powerline</strong></a> project (2012) pioneered the use of custom Unicode glyphs to create visually striking shell prompts with angled separators, branch indicators, and status icons. These characters live in Unicode's Private Use Area (PUA, U+E000–U+F8FF) and require patched fonts to display.
 
-**Nerd Fonts** took this further by patching popular programming fonts (Fira Code, JetBrains Mono, Hack, Iosevka) with thousands of additional glyphs: file type icons, git symbols, weather icons, and more. A modern shell prompt might use:
+<a href="https://www.nerdfonts.com/" target="_blank" rel="noopener"><strong>Nerd Fonts</strong></a> took this further by patching popular programming fonts (<a href="https://github.com/tonsky/FiraCode" target="_blank" rel="noopener">Fira Code</a>, <a href="https://www.jetbrains.com/lp/mono/" target="_blank" rel="noopener">JetBrains Mono</a>, Hack, <a href="https://typeof.net/Iosevka/" target="_blank" rel="noopener">Iosevka</a>) with thousands of additional glyphs: file type icons, git symbols, weather icons, and more. A modern shell prompt might use:
 
 <div class="escape-examples">
 <table>
@@ -343,7 +351,7 @@ The **Powerline** project (2012) pioneered the use of custom Unicode glyphs to c
 </table>
 </div>
 
-Tools like **Starship**, **Powerlevel10k** (Zsh), **Oh My Posh**, and **Tide** (Fish) build elaborate prompts that show git status, language versions, cloud context, and execution time — all using these custom glyphs. The result is that terminal prompts have become a form of personal expression, with developers sharing screenshots of their setups and customizing every detail.
+Tools like <a href="https://starship.rs/" target="_blank" rel="noopener"><strong>Starship</strong></a>, <a href="https://github.com/romkatv/powerlevel10k" target="_blank" rel="noopener"><strong>Powerlevel10k</strong></a> (Zsh), <a href="https://ohmyposh.dev/" target="_blank" rel="noopener"><strong>Oh My Posh</strong></a>, and <a href="https://github.com/IlanCosman/tide" target="_blank" rel="noopener"><strong>Tide</strong></a> (Fish) build elaborate prompts that show git status, language versions, cloud context, and execution time — all using these custom glyphs. The result is that terminal prompts have become a form of personal expression, with developers sharing screenshots of their setups and customizing every detail.
 
 ::: tip Nerd Fonts and terminal compatibility
 Powerline and Nerd Font glyphs are Private Use Area characters — they're not part of the Unicode standard and won't render without the right font. If you see boxes or question marks instead of arrows and icons, you need to install a Nerd Font and configure your terminal to use it.
