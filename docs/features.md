@@ -138,14 +138,14 @@ ECMA-48 defines a family of control-sequence formats (CSI, OSC, DCS, and others)
 <table>
   <thead><tr><th>Sequence</th><th>Renders</th><th>Feature</th></tr></thead>
   <tbody>
-    <tr><td><code>ESC[1m</code>Hello<code>ESC[0m</code></td><td><strong>Hello</strong></td><td><a href="/sgr/sgr-1-bold">Bold (SGR 1)</a></td></tr>
-    <tr><td><code>ESC[3m</code>Hello<code>ESC[0m</code></td><td><em>Hello</em></td><td><a href="/sgr/sgr-3-italic">Italic (SGR 3)</a></td></tr>
-    <tr><td><code>ESC[4m</code>Hello<code>ESC[0m</code></td><td><u>Hello</u></td><td><a href="/sgr/sgr-4-underline">Underline (SGR 4)</a></td></tr>
-    <tr><td><code>ESC[38;2;255;100;0m</code>Hello<code>ESC[0m</code></td><td><span style="color:#ff6400"><strong>Hello</strong></span></td><td><a href="/sgr/sgr-38-2-truecolor-fg">Truecolor</a></td></tr>
+    <tr><td><code>ESC[1m</code>Hello<code>ESC[0m</code></td><td><strong>Hello</strong></td><td><a href="/sgr/1-bold">Bold (SGR 1)</a></td></tr>
+    <tr><td><code>ESC[3m</code>Hello<code>ESC[0m</code></td><td><em>Hello</em></td><td><a href="/sgr/3-italic">Italic (SGR 3)</a></td></tr>
+    <tr><td><code>ESC[4m</code>Hello<code>ESC[0m</code></td><td><u>Hello</u></td><td><a href="/sgr/4-underline">Underline (SGR 4)</a></td></tr>
+    <tr><td><code>ESC[38;2;255;100;0m</code>Hello<code>ESC[0m</code></td><td><span style="color:#ff6400"><strong>Hello</strong></span></td><td><a href="/sgr/38-2-truecolor-fg">Truecolor</a></td></tr>
     <tr><td><code>ESC[5;10H</code></td><td><em>cursor jumps to row 5, col 10</em></td><td><a href="/cursor/cup-cursor-position">Cursor Position</a></td></tr>
-    <tr><td><code>ESC[?1049h</code></td><td><em>screen clears</em></td><td><a href="/modes/modes-alt-screen-enter">Alternate Screen</a></td></tr>
-    <tr><td><code>ESC[6n</code></td><td>terminal replies <code>ESC[24;80R</code></td><td><a href="/cursor/dsr-6-cursor-position-report">Cursor Report</a></td></tr>
-    <tr><td><code>ESC[&gt;1u</code></td><td><em>keyboard sends unambiguous keys</em></td><td><a href="/extensions/extensions-kitty-keyboard">Kitty Keyboard</a></td></tr>
+    <tr><td><code>ESC[?1049h</code></td><td><em>screen clears</em></td><td><a href="/modes/alt-screen-enter">Alternate Screen</a></td></tr>
+    <tr><td><code>ESC[6n</code></td><td>terminal replies <code>ESC[24;80R</code></td><td><a href="/cursor/dsr-6-position-report">Cursor Report</a></td></tr>
+    <tr><td><code>ESC[&gt;1u</code></td><td><em>keyboard sends unambiguous keys</em></td><td><a href="/extensions/kitty-keyboard">Kitty Keyboard</a></td></tr>
   </tbody>
 </table>
 </div>

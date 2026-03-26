@@ -187,7 +187,7 @@
   "alternate screen": {
     "expansion": "Alternate Screen Buffer",
     "description": "A separate screen that full-screen apps (vim, less, htop) switch to. When the app exits, your previous terminal content reappears. An xterm invention, not part of any formal standard.",
-    "link": "/modes/modes-alt-screen-enter"
+    "link": "/modes/alt-screen-enter"
   },
   "bracketed paste": {
     "expansion": "Bracketed Paste Mode",
@@ -317,12 +317,12 @@
   "OSC 52": {
     "expansion": "Operating System Command 52",
     "description": "Escape sequence for reading/writing the system clipboard. Allows terminal applications to access the clipboard over SSH without X11 forwarding. Some terminals disable read access for security.",
-    "link": "/extensions/extensions-osc52-clipboard"
+    "link": "/extensions/osc52-clipboard"
   },
   "OSC 8": {
     "expansion": "Operating System Command 8",
     "description": "Escape sequence for clickable hyperlinks in terminal output. Text between OSC 8 start and end markers becomes a link. Supported by most modern terminals.",
-    "link": "/extensions/extensions-osc8"
+    "link": "/extensions/osc8"
   },
   "CUU": {
     "expansion": "Cursor Up",
@@ -397,7 +397,7 @@
   "alternate screen buffer": {
     "expansion": "Alternate Screen Buffer",
     "description": "A separate screen for full-screen apps. When the app exits, previous content reappears.",
-    "link": "/modes/modes-alt-screen-enter"
+    "link": "/modes/alt-screen-enter"
   },
   "focus reporting": {
     "expansion": "Focus Reporting",
@@ -447,7 +447,7 @@
   "OSC 133": {
     "expansion": "Semantic Prompt Markers",
     "description": "Invisible markers for shell prompt, command, and output boundaries. Enables click-to-navigate between commands.",
-    "link": "/extensions/extensions-semantic-prompts"
+    "link": "/extensions/semantic-prompts"
   },
   "OSC 633": {
     "expansion": "VS Code Shell Integration",
@@ -502,17 +502,17 @@
   "Mode 2004": {
     "expansion": "Bracketed Paste Mode",
     "description": "Terminal wraps pasted text in markers so the shell knows it is pasted, not typed.",
-    "link": "/modes/modes-bracketed-paste"
+    "link": "/modes/bracketed-paste"
   },
   "Mode 2026": {
     "expansion": "Synchronized Output",
     "description": "Buffer all output between start/end markers and paint as one frame. Eliminates flicker.",
-    "link": "/modes/modes-synchronized-output"
+    "link": "/modes/synchronized-output"
   },
   "Mode 1049": {
     "expansion": "Alternate Screen with Cursor Save",
     "description": "Switch to alternate screen buffer and save/restore cursor position.",
-    "link": "/modes/modes-alt-screen-enter"
+    "link": "/modes/alt-screen-enter"
   },
   "Core TUI baseline": {
     "expansion": "Core TUI Baseline",

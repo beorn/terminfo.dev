@@ -706,7 +706,7 @@
     ],
     "baseline": "rich",
     "body": "DECSED (CSI ? Ps J) erases only unprotected characters, leaving characters with the protected attribute (DECSCA, SGR 1 m) intact. Used for form-based applications where static labels should survive screen clears.",
-    "probe": "Write \"ABCDE\", move cursor home, send DECSED (<code>CSI ? 2 J</code>), verify <code>getCell(0,0)</code> is empty. Confirms selective erase display is recognized.",
+    "probe": "Write \"ABCDE\", move cursor home, send DECSED (<code>CSI ? 2 J</code>), verify the text is erased. Confirms selective erase display is recognized.",
     "url": "https://vt100.net/docs/vt510-rm/DECSED.html"
   },
   "erase.el-with-attrs": {
@@ -1320,7 +1320,7 @@
       "osc"
     ],
     "baseline": "rich",
-    "body": "<p><strong>OSC 633</strong> is VS Code's shell integration protocol, extending <a href=\"/extensions/extensions-semantic-prompts\" class=\"hover-link\">OSC 133</a> with additional markers for command detection, output boundaries, and shell state. It enables features like command decorations (green/red markers showing success/failure), run-recent-command, and sticky scroll for terminal output.</p>\n<p>The protocol uses escape sequences to mark four boundaries: <strong>prompt start</strong> (A), <strong>command start</strong> (B), <strong>command executed</strong> (C), and <strong>command finished</strong> (D, with exit code). VS Code's built-in shell integration scripts for bash, zsh, fish, and PowerShell emit these markers automatically. The terminal then knows exactly where each prompt, command, and output block begins and ends.</p>\n<p>OSC 633 adds VS Code-specific extensions beyond OSC 133: <strong>property reporting</strong> (P;key=value) for shell state like current directory and shell type, <strong>command line reporting</strong> (E) for the exact command text, and <strong>continuation prompt marking</strong> for multi-line commands. Other terminals (Kitty, WezTerm) support the base OSC 133 protocol but not the VS Code-specific extensions.</p>",
+    "body": "<p><strong>OSC 633</strong> is VS Code's shell integration protocol, extending <a href=\"/extensions/semantic-prompts\" class=\"hover-link\">OSC 133</a> with additional markers for command detection, output boundaries, and shell state. It enables features like command decorations (green/red markers showing success/failure), run-recent-command, and sticky scroll for terminal output.</p>\n<p>The protocol uses escape sequences to mark four boundaries: <strong>prompt start</strong> (A), <strong>command start</strong> (B), <strong>command executed</strong> (C), and <strong>command finished</strong> (D, with exit code). VS Code's built-in shell integration scripts for bash, zsh, fish, and PowerShell emit these markers automatically. The terminal then knows exactly where each prompt, command, and output block begins and ends.</p>\n<p>OSC 633 adds VS Code-specific extensions beyond OSC 133: <strong>property reporting</strong> (P;key=value) for shell state like current directory and shell type, <strong>command line reporting</strong> (E) for the exact command text, and <strong>continuation prompt marking</strong> for multi-line commands. Other terminals (Kitty, WezTerm) support the base OSC 133 protocol but not the VS Code-specific extensions.</p>",
     "probe": "Send <code>OSC 633 ; A BEL</code> (VS Code prompt start marker) and verify the terminal accepts the sequence. OSC 633 is a superset of OSC 133.",
     "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
     "sequence": "ESC ] 633 ; A BEL"
@@ -1568,7 +1568,7 @@
     ],
     "baseline": "core",
     "body": "RI (ESC M) at the top of the scroll region scrolls the entire region down, inserting a blank line at the top. This is the inverse of a newline at the bottom of the scroll region. Used for smooth scrolling and status line implementations.",
-    "probe": "Set scroll region, write MARKER at top, reverse index — verify MARKER shifted from row 0 to row 1 via <code>getCell(1,0)</code>.",
+    "probe": "Set scroll region, write text at top row, send Reverse Index (<code>ESC M</code>), verify content shifted down by one line.",
     "url": "https://vt100.net/docs/vt510-rm/RI.html"
   },
   "text.overwrite": {
@@ -1806,7 +1806,7 @@
       "sixel"
     ],
     "body": "DA1 (Primary Device Attributes) response includes attribute 4, indicating sixel graphics support. This is the standard way for applications to detect sixel capability — send CSI c, check if the response contains ;4; in the attribute list. More reliable than attempting to render a sixel image and checking if the cursor moved.",
-    "probe": "Check if the DA1 response (CSI ? Ps ; Ps ; ... c) includes attribute 4 (sixel graphics). In headless mode, checks capabilities.sixel flag.",
+    "probe": "Check if the DA1 response (<code>CSI ? Ps ; Ps ; ... c</code>) includes attribute 4, indicating sixel graphics support.",
     "baseline": "rich"
   }
 }
