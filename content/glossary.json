@@ -408,5 +408,40 @@
     "expansion": "Scroll Region (DECSTBM)",
     "description": "Define a range of lines that scroll independently. Used by TUIs for status bars, headers.",
     "link": "/scrollback"
+  },
+  "TTY": {
+    "expansion": "Teletypewriter",
+    "description": "Originally a physical printing terminal. Now refers to the kernel subsystem that manages terminal I/O — the TTY driver, line discipline, and pseudo-terminal (PTY) devices.",
+    "link": "/fundamentals/tty-architecture"
+  },
+  "raw mode": {
+    "expansion": "Raw Terminal Mode",
+    "description": "A TTY line discipline setting where every byte is delivered to the application immediately — no echo, no line editing, no signal generation. What TUI apps use. Opposite of canonical mode.",
+    "link": "/fundamentals/stty"
+  },
+  "canonical mode": {
+    "expansion": "Canonical (Cooked) Terminal Mode",
+    "description": "The default TTY line discipline mode where input is line-buffered (delivered on Enter), with echo and basic line editing (backspace, Ctrl+U). Also called cooked mode.",
+    "link": "/fundamentals/stty"
+  },
+  "line discipline": {
+    "expansion": "TTY Line Discipline",
+    "description": "A kernel-level module that sits between the PTY and the application. Handles echo, line editing, signal generation (Ctrl+C → SIGINT), and newline translation. Controlled via stty.",
+    "link": "/fundamentals/stty"
+  },
+  "process group": {
+    "expansion": "Process Group",
+    "description": "A set of processes that receive signals together. The foreground process group gets keyboard signals (SIGINT, SIGTSTP). Background groups are stopped if they try to read from the terminal.",
+    "link": "/fundamentals/tty-architecture"
+  },
+  "job control": {
+    "expansion": "Job Control",
+    "description": "Shell feature for managing foreground/background processes. Ctrl+Z suspends (SIGTSTP), fg resumes in foreground, bg resumes in background. Relies on the kernel's process group and TTY subsystem.",
+    "link": "/fundamentals/tty-architecture"
+  },
+  "C0": {
+    "expansion": "C0 Control Characters",
+    "description": "The 33 non-printable ASCII characters in the 0x00–0x1F range plus DEL (0x7F). Includes ESC, BS, TAB, LF, CR, and BEL. Predates escape sequences — these are single-byte terminal commands.",
+    "link": "/fundamentals/control-characters"
   }
 }

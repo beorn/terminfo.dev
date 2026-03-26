@@ -287,6 +287,16 @@ function buildSidebar() {
       text: "Frameworks",
       items: frameworkItems,
     },
+    {
+      text: "Fundamentals",
+      link: "/fundamentals",
+      items: [
+        { text: "Control Characters", link: "/fundamentals/control-characters" },
+        { text: "TTY Architecture", link: "/fundamentals/tty-architecture" },
+        { text: "Terminal Modes & stty", link: "/fundamentals/stty" },
+        { text: "Terminal Detection", link: "/fundamentals/term-detection" },
+      ],
+    },
     { text: "API", link: "/api" },
     { text: "Glossary", link: "/glossary" },
     { text: "About", link: "/about" },
@@ -316,6 +326,58 @@ export default defineConfig({
 
   transformPageData(pageData) {
     const rel = pageData.relativePath
+
+    // SEO for Fundamentals pages
+    if (rel === "fundamentals.md") {
+      pageData.title = "How Terminals Work: Architecture, Control Characters, Detection"
+      pageData.description =
+        "The architecture behind every terminal session — control characters, PTY, kernel TTY discipline, raw mode, and runtime feature detection. Foundational concepts for understanding terminal emulators."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
+    if (rel === "fundamentals/control-characters.md") {
+      pageData.title = "C0 Control Characters: ASCII Control Codes in Terminals"
+      pageData.description =
+        "All 33 ASCII control characters (0x00–0x1F, 0x7F) and their terminal behavior. ESC, BS, TAB, LF, CR, BEL — the bytes that predate escape sequences."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
+    if (rel === "fundamentals/tty-architecture.md") {
+      pageData.title = "TTY Architecture: PTY, Line Discipline, Shell, and Terminal"
+      pageData.description =
+        "How pseudo-terminals connect terminal emulators to shells. The kernel TTY line discipline, PTY master/slave pairs, and why SSH and tmux work."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
+    if (rel === "fundamentals/stty.md") {
+      pageData.title = "stty & Terminal Modes: Raw Mode, Canonical Mode, Signals"
+      pageData.description =
+        "Raw mode vs canonical mode, echo, signal characters, input/output processing flags. How stty controls the kernel TTY line discipline and why TUI apps bypass it."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
+    if (rel === "fundamentals/term-detection.md") {
+      pageData.title = "Terminal Detection: $TERM, DA1, DECRPM, Runtime Probing"
+      pageData.description =
+        "How applications discover terminal capabilities — $TERM (unreliable), $COLORTERM, DA1, DECRPM mode reports, XTVERSION, and runtime behavioral probing."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
 
     // SEO for static index pages
     if (rel === "standards.md") {
@@ -431,6 +493,16 @@ export default defineConfig({
       {
         text: "Terminals",
         items: terminals,
+      },
+      {
+        text: "Fundamentals",
+        link: "/fundamentals",
+        items: [
+          { text: "Control Characters", link: "/fundamentals/control-characters" },
+          { text: "TTY Architecture", link: "/fundamentals/tty-architecture" },
+          { text: "Terminal Modes & stty", link: "/fundamentals/stty" },
+          { text: "Terminal Detection", link: "/fundamentals/term-detection" },
+        ],
       },
       { text: "About", link: "/about" },
       { text: "API", link: "/api" },
