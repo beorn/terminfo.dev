@@ -1,4 +1,4 @@
-import { describeBackends, feed, test, expect } from "./setup.ts"
+import { describeBackends, feed, feedCapture, test, expect } from "./setup.ts"
 
 describeBackends("modes", (b) => {
   test("modes.alt-screen.enter", () => {
@@ -42,8 +42,8 @@ describeBackends("modes", (b) => {
   })
 
   test("modes.synchronized-output", () => {
-    // DECSET 2026: synchronized output mode
-    // Most backends may not track this mode, so we just verify no crash
+    // DECSET 2026: synchronized output mode — verify text renders normally
+    // between sync brackets (headless emulator has no display to pause)
     feed(b, "\x1b[?2026h")
     feed(b, "Hello")
     feed(b, "\x1b[?2026l")
@@ -68,19 +68,19 @@ describeBackends("modes", (b) => {
   })
 
   test("modes.mouse-sgr", () => {
-    // DECSET 1006: SGR mouse encoding
+    // DECSET 1006: SGR mouse encoding — verify DECRPM reports mode as set
     feed(b, "\x1b[?1006h")
-    // Just verify no crash — not all backends expose this as a queryable mode
+    const response = feedCapture(b, "\x1b[?1006$p")
+    // DECRPM response should indicate mode is set (value 1)
+    expect(response).toContain("$y")
     feed(b, "\x1b[?1006l")
-    expect(true).toBe(true)
   })
 
   test("modes.mouse-all", () => {
-    // DECSET 1003: all motion mouse tracking
+    // DECSET 1003: all motion mouse tracking — verify mode is tracked
     feed(b, "\x1b[?1003h")
-    // Just verify no crash — not all backends expose this as a queryable mode
+    expect(b.getMode("mouseTracking")).toBe(true)
     feed(b, "\x1b[?1003l")
-    expect(true).toBe(true)
   })
 
   test("modes.application-keypad", () => {
@@ -93,7 +93,10 @@ describeBackends("modes", (b) => {
   })
 
   test("modes.left-right-margin", () => {
-    // DECLRMM: CSI ? 69 h
+    // DECLRMM: CSI ? 69 h — verify sequence is consumed without corruption
     feed(b, "\x1b[?69h")
+    feed(b, "OK")
+    expect(b.getText()).toContain("OK")
+    feed(b, "\x1b[?69l")
   })
 })

@@ -175,12 +175,19 @@ function platformIcons(b) {
 
 .matrix-wrapper {
   margin: 1em 0;
+  overflow: visible;
 }
 
 /* Override VitePress default table overflow-x:auto which clips tooltips */
 .matrix-wrapper table {
   display: table;
-  overflow-x: visible;
+  overflow: visible;
+}
+
+/* VitePress wraps tables in .vp-table with overflow-x:auto — override it */
+.matrix-wrapper :deep(.vp-table),
+.category-page :deep(.vp-table) {
+  overflow: visible;
 }
 
 .matrix {

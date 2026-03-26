@@ -73,8 +73,11 @@ describeBackends("cursor", (b) => {
   })
 
   test("cursor.reverse-wrap", () => {
-    // Reverse wrap mode: CSI ? 45 h
+    // Reverse wrap mode: CSI ? 45 h — verify sequence is consumed without corruption
     feed(b, "\x1b[?45h")
+    feed(b, "OK")
+    expect(b.getText()).toContain("OK")
+    feed(b, "\x1b[?45l")
   })
 
   test("cursor.cup-boundaries", () => {

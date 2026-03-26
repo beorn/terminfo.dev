@@ -748,12 +748,17 @@ through the library's API.
 /* Matrix table — page scrolls naturally, only headers stick */
 .matrix-wrapper {
   margin: 1em 0;
+  overflow: visible;
 }
 
 /* Override VitePress default table overflow-x:auto which breaks sticky */
 .matrix-wrapper table {
   display: table;
-  overflow-x: visible;
+  overflow: visible;
+}
+
+.matrix-wrapper :deep(.vp-table) {
+  overflow: visible;
 }
 
 .matrix {

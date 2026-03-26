@@ -35,6 +35,11 @@
   display: none;
 }
 
+/* Prevent VitePress table wrappers from clipping tooltips */
+.vp-doc .vp-table {
+  overflow: visible;
+}
+
 /* Bar segment tooltips appear below */
 .bar-yes[data-tooltip]:hover::after,
 .bar-partial[data-tooltip]:hover::after,
