@@ -153,5 +153,95 @@
     "expansion": "Xterm Get Terminal Capability",
     "description": "Query the terminal for a specific terminfo capability value via DCS.",
     "link": "/device/device-xtgettcap"
+  },
+  "terminal emulator": {
+    "expansion": "Terminal Emulator",
+    "description": "A program that simulates a hardware terminal. Ghostty, iTerm2, and Windows Terminal are terminal emulators — they display text and interpret escape sequences.",
+    "link": "/features"
+  },
+  "shell": {
+    "expansion": "Shell",
+    "description": "The command interpreter (bash, zsh, fish) that runs inside a terminal emulator. The shell handles commands; the terminal handles display.",
+    "link": "/features"
+  },
+  "escape sequence": {
+    "expansion": "Escape Sequence",
+    "description": "A special byte pattern starting with ESC (0x1B) that tells the terminal to do something other than display text — like change colors, move the cursor, or switch modes.",
+    "link": "/features"
+  },
+  "scrollback": {
+    "expansion": "Scrollback Buffer",
+    "description": "The history of text that has scrolled off the top of the terminal screen. You scroll up to see it. Size varies by terminal (typically 1,000–100,000 lines).",
+    "link": "/scrollback"
+  },
+  "alternate screen": {
+    "expansion": "Alternate Screen Buffer",
+    "description": "A separate screen that full-screen apps (vim, less, htop) switch to. When the app exits, your previous terminal content reappears. An xterm invention, not part of any formal standard.",
+    "link": "/modes/modes-alt-screen-enter"
+  },
+  "bracketed paste": {
+    "expansion": "Bracketed Paste Mode",
+    "description": "A safety feature: the terminal wraps pasted text in special markers so the shell knows it's pasted, not typed. Prevents accidental command execution from pasting text containing newlines.",
+    "link": "/modes"
+  },
+  "truecolor": {
+    "expansion": "24-bit RGB Color",
+    "description": "Specify any of 16.7 million colors using red/green/blue values (0-255 each). Before truecolor, terminals were limited to 256 indexed colors.",
+    "link": "/sgr/sgr-38-2-truecolor-fg"
+  },
+  "mouse tracking": {
+    "expansion": "Mouse Tracking",
+    "description": "Terminal mode that reports mouse clicks, movement, and scroll wheel events to the application. Enables clickable TUI interfaces. Multiple protocols exist (X10, SGR, urxvt).",
+    "link": "/modes"
+  },
+  "synchronized output": {
+    "expansion": "Synchronized Output (Mode 2026)",
+    "description": "Buffers all terminal output between start/end markers and paints it as one frame. Eliminates the visible flicker when clearing and redrawing the screen.",
+    "link": "/modes"
+  },
+  "text reflow": {
+    "expansion": "Text Reflow",
+    "description": "When you resize the terminal window, wrapped lines re-wrap to fit the new width instead of staying broken. Not all terminals support this.",
+    "link": "/extensions"
+  },
+  "wide character": {
+    "expansion": "Wide Character (Fullwidth)",
+    "description": "A character that occupies two terminal columns instead of one. CJK ideographs (Chinese, Japanese, Korean) and many emoji are wide characters.",
+    "link": "/unicode"
+  },
+  "CJK": {
+    "expansion": "Chinese, Japanese, Korean",
+    "description": "The three East Asian writing systems whose characters are 'fullwidth' — they occupy two terminal columns each. Correct width calculation is essential for TUI layout.",
+    "link": "/unicode"
+  },
+  "grapheme cluster": {
+    "expansion": "Grapheme Cluster",
+    "description": "What humans perceive as a single character — which may be multiple Unicode codepoints. The family emoji is 7 codepoints but one grapheme cluster occupying 2 terminal columns.",
+    "link": "/unicode"
+  },
+  "headless": {
+    "expansion": "Headless Terminal",
+    "description": "A terminal emulator library running without a visible window — used for automated testing. It parses escape sequences but doesn't render pixels.",
+    "link": "/about"
+  },
+  "reverse index": {
+    "expansion": "Reverse Index (RI)",
+    "description": "Move the cursor up one line. If already at the top of the scroll region, scroll the content down instead. The opposite of a newline.",
+    "link": "/scrollback"
+  },
+  "auto-wrap": {
+    "expansion": "Auto-Wrap Mode (DECAWM)",
+    "description": "When text reaches the right edge of the terminal, automatically continue on the next line. Almost always enabled — disabling it causes text to overwrite the last column.",
+    "link": "/modes"
+  },
+  "semantic prompts": {
+    "expansion": "Semantic Prompt Markers (OSC 133)",
+    "description": "Invisible markers that tell the terminal where each shell prompt, command, and output starts and ends. Enables click-to-navigate between commands and red/green indicators for success/failure.",
+    "link": "/extensions"
+  },
+  "RGB": {
+    "expansion": "Red, Green, Blue",
+    "description": "Color model using three values (0-255 each) to specify any of 16.7 million colors. Used by truecolor escape sequences.",
+    "link": "/sgr"
   }
 }

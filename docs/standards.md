@@ -115,6 +115,10 @@ const analysisKey = 'standards-index'
 
 <p class="page-tagline">50 years of terminal protocols — from teletypes to GPU-rendered emoji</p>
 
+<div class="beginner-intro">
+<p>Terminal emulators speak a protocol — <strong>escape sequences</strong> — that dates back to 1976. There is no single standard; instead, layers of specifications from different eras build on each other. The <a href="/vt100">VT100</a> (1978) defined the basics, <a href="/xterm-extensions">xterm</a> extended them for decades, and modern terminals like <a href="/terminal/ghostty">Ghostty</a> and <a href="/terminal/kitty">Kitty</a> add new protocols for keyboards, graphics, and more. The <a href="/glossary">glossary</a> explains all the acronyms.</p>
+</div>
+
 ## The Layers of Terminal Standards
 
 There is no single authoritative standard for modern terminals. What exists is a stack of layers, each building on the one before it, with increasing levels of vendor-specificity and decreasing levels of formal standardization.
@@ -240,6 +244,26 @@ Incorrect width calculation causes cursor positioning errors, text misalignment,
 </p>
 
 <style>
+.beginner-intro {
+  background: var(--vp-c-bg-soft);
+  border-radius: 8px;
+  padding: 1em 1.25em;
+  margin-bottom: 1.5em;
+  font-size: 0.95em;
+  line-height: 1.6;
+}
+
+.beginner-intro a {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.beginner-intro a:hover {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+}
+
 .page-tagline {
   font-size: 1.15em;
   color: var(--vp-c-text-2);

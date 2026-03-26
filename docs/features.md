@@ -120,6 +120,10 @@ const totalCategories = computed(() => activeCategories.value.length)
 
 <p class="page-tagline">{{ totalFeatures }} features across {{ totalCategories }} categories — tested on every major terminal</p>
 
+<div class="beginner-intro">
+<p>A <strong>terminal emulator</strong> (like Ghostty, iTerm2, or Windows Terminal) displays text and responds to special commands called <strong>escape sequences</strong>. Every feature on this page is an escape sequence — a byte pattern that tells the terminal to do something: make text <strong>bold</strong>, move the cursor, change colors, or switch modes. The <a href="/glossary">glossary</a> explains all the technical terms.</p>
+</div>
+
 ## How Escape Sequences Work
 
 Every terminal feature is an **escape sequence** — a special byte pattern that tells the terminal to do something other than display text. When a program writes `\x1b[1m`, it's not printing four characters; it's telling the terminal "make the following text bold." The terminal intercepts the pattern, changes its internal state, and displays subsequent characters accordingly.
@@ -268,6 +272,26 @@ The combination captures both dimensions: community probes test what users see, 
 </p>
 
 <style>
+.beginner-intro {
+  background: var(--vp-c-bg-soft);
+  border-radius: 8px;
+  padding: 1em 1.25em;
+  margin-bottom: 1.5em;
+  font-size: 0.95em;
+  line-height: 1.6;
+}
+
+.beginner-intro a {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.beginner-intro a:hover {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+}
+
 .page-tagline {
   font-size: 1.15em;
   color: var(--vp-c-text-2);
