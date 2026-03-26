@@ -11,7 +11,7 @@ The site is named terminfo.dev, but it works differently from the traditional te
 **terminfo** (maintained by Thomas Dickey alongside ncurses) is a compiled capability database: it maps terminal names to supported features. Applications query it via `$TERM` to discover what the terminal can do. This system works well for established features — but it has fundamental limitations for modern terminal capabilities:
 
 - **No vocabulary for modern features.** terminfo has no capability entries for Kitty keyboard protocol, OSC 8 hyperlinks, semantic prompts (OSC 133), synchronized output, or Sixel/Kitty graphics. These features are invisible to terminfo-based applications.
-- **Static, not observed.** terminfo entries describe what a terminal *should* support, not what it *actually does*. Bugs, version differences, and configuration changes aren't captured.
+- **Static, not observed.** terminfo entries describe what a terminal _should_ support, not what it _actually does_. Bugs, version differences, and configuration changes aren't captured.
 - **`$TERM` is unreliable.** Most terminals set `$TERM` to `xterm-256color` regardless of their actual capabilities, because too many applications string-match on "xterm."
 
 terminfo.dev takes a different approach: **probe the terminal directly** and report what actually works. The feature matrix on this site reflects observed behavior, not self-reported capabilities.

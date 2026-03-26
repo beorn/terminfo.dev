@@ -1,5 +1,5 @@
 import DefaultTheme from "vitepress/theme"
-import GlossaryTooltip from "vitepress-plugin-glossary/vue"
+import GlossaryTooltip from "./GlossaryTooltip.vue"
 import "./tooltip.css"
 import "./result-cells.css"
 import "./analysis.css"

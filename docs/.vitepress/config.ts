@@ -294,7 +294,11 @@ function loadGlossaryMap(): Record<string, string> {
     >
     const map: Record<string, string> = {}
     for (const [key, entry] of Object.entries(raw)) {
-      map[key] = `${entry.expansion} — ${entry.description}`
+      // Encode link in description so our custom component can extract it
+      const link = (entry as any).link ?? ""
+      map[key] = link
+        ? `${entry.expansion} — ${entry.description}||${link}`
+        : `${entry.expansion} — ${entry.description}`
     }
     return map
   } catch {

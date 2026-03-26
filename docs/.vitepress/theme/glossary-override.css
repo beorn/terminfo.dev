@@ -1,4 +1,5 @@
-/* Override vitepress-plugin-glossary scoped styles to blend into text */
+/* Override vitepress-plugin-glossary scoped styles.
+   Our custom GlossaryTooltip.vue renders linked terms as <a> tags. */
 .glossary-term {
   display: inline !important;
   color: inherit !important;
@@ -7,9 +8,18 @@
   text-underline-offset: 3px !important;
   padding-bottom: 0 !important;
   cursor: help;
+  position: relative;
+}
+
+/* Linked glossary terms (rendered as <a>) */
+.glossary-term-linked {
+  cursor: pointer;
 }
 
 .glossary-term:hover {
-  text-decoration: underline dotted !important;
   text-decoration-color: var(--vp-c-text-3) !important;
+}
+
+.glossary-term-linked:hover {
+  color: var(--vp-c-brand-1) !important;
 }
