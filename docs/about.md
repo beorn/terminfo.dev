@@ -82,7 +82,7 @@ Features are tagged by their defining standard. Each standard page includes a li
 
 - [ECMA-48](/ecma-48) (ISO/IEC 6429) — the CSI grammar, SGR, cursor control, erase
 - [VT100](/vt100) — DEC's foundational terminal (1978)
-- [VT510](/vt510) — the final DEC VT terminal (1993)
+- [VT510](/vt510) — a late DEC VT reference terminal (1993)
 - [DEC Private Modes](/dec-private-modes) — DECSET/DECRST mode toggles
 - [Xterm Extensions](/xterm-extensions) — 256/truecolor, mouse, bracketed paste
 - [Kitty Extensions](/kitty-extensions) — keyboard protocol, graphics, underline styles

@@ -11,7 +11,7 @@
   },
   "OSC": {
     "expansion": "Operating System Command",
-    "description": "Escape sequences for terminal-to-application communication: window title, clipboard, hyperlinks.",
+    "description": "Escape sequences for application-to-terminal communication: window title, clipboard, hyperlinks.",
     "link": "/osc"
   },
   "DCS": {
@@ -131,7 +131,7 @@
   },
   "VT510": {
     "expansion": "Video Terminal 510",
-    "description": "DEC's final terminal (1993). Added cursor visibility (DECTCEM), reverse video (DECSCNM), and scroll commands (SU/SD).",
+    "description": "One of DEC's later VT terminals (1993). Added cursor visibility (DECTCEM), reverse video (DECSCNM), and scroll commands (SU/SD).",
     "link": "/vt510"
   },
   "TEA": {
