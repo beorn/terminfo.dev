@@ -6,7 +6,7 @@
 
 export async function handleSubmit(opts: { terminalName?: string; terminalVersion?: string }): Promise<void> {
   const { detectTerminal } = await import("../../../cli/src/detect.ts")
-  const { ALL_PROBES } = await import("../../../cli/src/probes/index.ts")
+  const { ALL_PROBES } = await import("../../../cli/src/probes/unified.ts")
   const { withRawMode, drainStdin } = await import("../../../cli/src/tty.ts")
   const { submitResults } = await import("../../../cli/src/submit.ts")
 

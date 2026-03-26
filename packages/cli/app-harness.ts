@@ -4,7 +4,7 @@
  *
  * This script is launched by app-runner.ts inside each macOS terminal app
  * (Ghostty, iTerm2, Terminal.app, kitty, Warp). It runs the same probes as
- * the serve daemon (`cli/src/probes/index.ts`) — feeding escape sequences
+ * the serve daemon (`cli/src/probes/unified.ts`) — feeding escape sequences
  * to stdout and reading terminal responses from stdin to test what the REAL
  * terminal actually supports.
  *
@@ -13,7 +13,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
-import { ALL_PROBES } from "../../cli/src/probes/index.ts"
+import { ALL_PROBES } from "../../cli/src/probes/unified.ts"
 import { withRawMode, drainStdin } from "../../cli/src/tty.ts"
 
 // ── Main ──
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   }
 
   // Compute probe hash from the shared probe definitions
-  const probesPath = new URL("../../cli/src/probes/index.ts", import.meta.url).pathname
+  const probesPath = new URL("../../cli/src/probes/unified.ts", import.meta.url).pathname
   const probesContent = readFileSync(probesPath)
   const probeHash = createHash("md5").update(probesContent).digest("hex").slice(0, 12)
 

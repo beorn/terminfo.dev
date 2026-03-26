@@ -303,7 +303,7 @@ bun run build
 
 ## Adding a New Feature
 
-1. Add probe to BOTH `packages/probes/<category>.probe.ts` AND `cli/src/probes/index.ts`
+1. Add probe to `packages/probe-defs/src/<category>.ts` (unified — covers both termless and term)
 2. Add metadata to `content/features.json` (name, slug, url, tags, body, probe, baseline)
 3. Re-probe all terminals (see "Re-Probing All Terminals" above)
 4. Add annotations for any unexpected failures
