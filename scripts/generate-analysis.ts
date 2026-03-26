@@ -150,6 +150,18 @@ function loadBaselines(): Record<string, BaselineMeta> {
   return loadJson<Record<string, BaselineMeta>>(join(contentDir, "baselines.json"), "baseline metadata")
 }
 
+interface GlossaryEntry {
+  expansion: string
+  description: string
+  link?: string
+}
+
+function loadGlossary(): Record<string, GlossaryEntry> {
+  const path = join(contentDir, "glossary.json")
+  if (!existsSync(path)) return {}
+  return loadJson<Record<string, GlossaryEntry>>(path, "glossary")
+}
+
 interface FrameworkMeta {
   label: string
   url: string
@@ -1050,8 +1062,9 @@ function generateFeaturesIndexAnalysis(
 
 /**
  * Post-process analysis HTML to auto-link mentions of terminals, features,
- * baselines, categories, and standards. Uses hover-link styling (inherit color,
- * brand on hover). Skips text already inside <a> tags or <strong> tags.
+ * baselines, categories, standards, and glossary acronyms. Uses hover-link
+ * styling (inherit color, brand on hover). Adds title tooltips for glossary
+ * acronyms. Skips text already inside <a> tags or <strong> tags.
  */
 function linkify(
   html: string,
@@ -1060,9 +1073,10 @@ function linkify(
   categories: Record<string, CategoryMeta>,
   standards: Record<string, StandardMeta>,
   baselines: Record<string, BaselineMeta>,
+  glossary: Record<string, GlossaryEntry> = {},
 ): string {
-  // Build lookup: display name → { href, original } sorted longest-first to avoid partial matches
-  const entities: Array<{ pattern: RegExp; href: string }> = []
+  // Build lookup: display name → { href, original, title? } sorted longest-first to avoid partial matches
+  const entities: Array<{ pattern: RegExp; href: string; title?: string }> = []
 
   // Terminals (by label)
   for (const [, t] of Object.entries(terminals)) {
@@ -1126,6 +1140,35 @@ function linkify(
     })
   }
 
+  // Build glossary title lookup — maps matched text to expansion tooltip
+  const glossaryTitles = new Map<string, string>()
+  for (const [acronym, entry] of Object.entries(glossary)) {
+    glossaryTitles.set(acronym, entry.expansion)
+  }
+
+  // Add title tooltips to existing entities when they match a glossary term
+  for (const entity of entities) {
+    if (entity.title) continue // already has a title
+    // Extract the literal text from the regex source (strip \b and other anchors)
+    const literal = entity.pattern.source.replace(/\\b|\\s\+.*|\(\?!\\w\)/g, "").replace(/\\\\/g, "\\")
+    const title = glossaryTitles.get(literal)
+    if (title) entity.title = title
+  }
+
+  // Add glossary-only acronyms that aren't already covered by other entities
+  // (skip very short acronyms < 4 chars to avoid false positives like ED, EL, ICH)
+  const coveredPatterns = new Set(entities.map((e) => e.pattern.source))
+  for (const [acronym, entry] of Object.entries(glossary)) {
+    if (!entry.link || acronym.length < 4) continue
+    const source = `\\b${escapeRegex(acronym)}\\b`
+    if (coveredPatterns.has(source)) continue
+    entities.push({
+      pattern: new RegExp(source, "g"),
+      href: entry.link,
+      title: entry.expansion,
+    })
+  }
+
   // Sort by pattern length descending (longer matches first)
   entities.sort((a, b) => b.pattern.source.length - a.pattern.source.length)
 
@@ -1160,25 +1203,32 @@ function linkify(
       const nextTag = html.indexOf("<", i)
       const text = nextTag === -1 ? html.slice(i) : html.slice(i, nextTag)
 
-      // Apply entity linking to this text chunk
-      let linked = text
-      const alreadyLinked = new Set<number>() // character positions already in a link
-
-      for (const { pattern, href } of entities) {
-        pattern.lastIndex = 0
-        linked = linked.replace(pattern, (match, offset) => {
-          // Skip if this position is already inside a generated link
-          for (let p = offset; p < offset + match.length; p++) {
-            if (alreadyLinked.has(p)) return match
-          }
-          // Mark positions as linked
-          // (approximate — works for non-overlapping replacements)
-          for (let p = offset; p < offset + match.length; p++) {
-            alreadyLinked.add(p)
-          }
-          return `<a href="${href}" class="hover-link">${match}</a>`
-        })
+      // Collect all non-overlapping matches in a single pass, then apply.
+      // This avoids sequential .replace() re-processing its own HTML output
+      // (which would corrupt title attributes by matching words inside them).
+      const matches: Array<{ start: number; end: number; href: string; title?: string; text: string }> = []
+      for (const entity of entities) {
+        entity.pattern.lastIndex = 0
+        let m: RegExpExecArray | null
+        while ((m = entity.pattern.exec(text)) !== null) {
+          const start = m.index
+          const end = start + m[0].length
+          // Skip if overlapping with an already-collected match
+          if (matches.some((prev) => start < prev.end && end > prev.start)) continue
+          matches.push({ start, end, href: entity.href, title: entity.title, text: m[0] })
+        }
       }
+      // Sort by position and build result
+      matches.sort((a, b) => a.start - b.start)
+      let linked = ""
+      let pos = 0
+      for (const m of matches) {
+        linked += text.slice(pos, m.start)
+        const titleAttr = m.title ? ` title="${escapeHtmlAttr(m.title)}"` : ""
+        linked += `<a href="${m.href}" class="hover-link"${titleAttr}>${m.text}</a>`
+        pos = m.end
+      }
+      linked += text.slice(pos)
 
       result += linked
       i = nextTag === -1 ? html.length : nextTag
@@ -1192,6 +1242,10 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
 // --- Main ---
 
 function loadAllData() {
@@ -1202,6 +1256,7 @@ function loadAllData() {
   const baselines = loadBaselines()
   const annotations = loadAnnotations()
   const frameworks = loadFrameworks()
+  const glossary = loadGlossary()
 
   const appResults = loadProbeDir(probesAppsDir)
   const libResults = loadProbeDir(probesLibsDir)
@@ -1211,11 +1266,12 @@ function loadAllData() {
   // Cross-validate
   crossValidate(features, terminals, resultMap)
 
-  return { features, terminals, categories, standards, baselines, annotations, frameworks, resultMap }
+  return { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap }
 }
 
 function generateAnalysis(): Record<string, AnalysisEntry> {
-  const { features, terminals, categories, standards, baselines, annotations, frameworks, resultMap } = loadAllData()
+  const { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap } =
+    loadAllData()
   const baselineFeatures = buildBaselineFeatureMap(features)
   const output: Record<string, AnalysisEntry> = {}
 
@@ -1335,7 +1391,7 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
 
   // Post-process: auto-link entity mentions in all analysis text
   for (const [key, entry] of Object.entries(output)) {
-    entry.analysis = linkify(entry.analysis, terminals, features, categories, standards, baselines)
+    entry.analysis = linkify(entry.analysis, terminals, features, categories, standards, baselines, glossary)
   }
 
   return output

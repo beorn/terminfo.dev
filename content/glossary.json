@@ -1,0 +1,157 @@
+{
+  "CSI": {
+    "expansion": "Control Sequence Introducer",
+    "description": "The ESC [ prefix that starts most terminal escape sequences. Defined in ECMA-48.",
+    "link": "/ecma-48"
+  },
+  "SGR": {
+    "expansion": "Select Graphic Rendition",
+    "description": "Escape sequences for text styling: bold, italic, underline, colors, etc.",
+    "link": "/sgr"
+  },
+  "OSC": {
+    "expansion": "Operating System Command",
+    "description": "Escape sequences for terminal-to-application communication: window title, clipboard, hyperlinks.",
+    "link": "/osc"
+  },
+  "DCS": {
+    "expansion": "Device Control String",
+    "description": "Escape sequences for device-specific data (Sixel graphics, DECRQSS queries).",
+    "link": "/standards"
+  },
+  "DEC": {
+    "expansion": "Digital Equipment Corporation",
+    "description": "The company that created the VT100 terminal series. Their private mode sequences (DECSET/DECRST) are still the primary mechanism for terminal feature negotiation.",
+    "link": "/dec-private-modes"
+  },
+  "ECMA-48": {
+    "expansion": "European Computer Manufacturers Association standard 48",
+    "description": "The foundational standard for terminal control sequences, first published in 1976. Also known as ISO 6429 and (formerly) ANSI X3.64.",
+    "link": "/ecma-48"
+  },
+  "ANSI": {
+    "expansion": "American National Standards Institute",
+    "description": "Published the X3.64 terminal standard in 1979, withdrawn in 1994 in favor of ISO 6429. The name persists in 'ANSI escape codes'.",
+    "link": "/standards"
+  },
+  "DECRPM": {
+    "expansion": "DEC Private Mode Report",
+    "description": "Response sequence reporting whether a DEC private mode is set, reset, or unrecognized.",
+    "link": "/device/device-decrpm"
+  },
+  "DECRQSS": {
+    "expansion": "DEC Request Status String",
+    "description": "Query the terminal for current settings (SGR attributes, scroll region, etc.).",
+    "link": "/device/device-decrqss"
+  },
+  "DECSET": {
+    "expansion": "DEC Private Mode Set",
+    "description": "CSI ? Pm h — enable a DEC private mode (alt screen, mouse tracking, bracketed paste, etc.).",
+    "link": "/dec-private-modes"
+  },
+  "DECRST": {
+    "expansion": "DEC Private Mode Reset",
+    "description": "CSI ? Pm l — disable a DEC private mode.",
+    "link": "/dec-private-modes"
+  },
+  "DECTCEM": {
+    "expansion": "DEC Text Cursor Enable Mode",
+    "description": "DEC private mode ?25 — show/hide the text cursor.",
+    "link": "/cursor/dectcem-hide-cursor"
+  },
+  "DECAWM": {
+    "expansion": "DEC Auto Wrap Mode",
+    "description": "DEC private mode ?7 — automatically wrap text at the right margin.",
+    "link": "/modes"
+  },
+  "DECSTBM": {
+    "expansion": "DEC Set Top and Bottom Margins",
+    "description": "Define the scroll region — lines between top and bottom margins scroll independently.",
+    "link": "/scrollback"
+  },
+  "DECSC": {
+    "expansion": "DEC Save Cursor",
+    "description": "Save cursor position and attributes for later restoration with DECRC.",
+    "link": "/cursor/decsc-save-restore-cursor"
+  },
+  "DECSCUSR": {
+    "expansion": "DEC Set Cursor Style",
+    "description": "Set cursor shape: block, underline, or bar; blinking or steady.",
+    "link": "/cursor/decscusr-cursor-shape"
+  },
+  "DA1": {
+    "expansion": "Primary Device Attributes",
+    "description": "Query the terminal for its type and supported features. The terminal responds with its capability flags.",
+    "link": "/device/da1-primary-device-attributes"
+  },
+  "DSR": {
+    "expansion": "Device Status Report",
+    "description": "Query the terminal for status information, most commonly cursor position (DSR 6).",
+    "link": "/device/dsr-5-device-status-report"
+  },
+  "CUP": {
+    "expansion": "Cursor Position",
+    "description": "CSI row ; col H — move cursor to absolute position. The most fundamental cursor command.",
+    "link": "/cursor/cup-cursor-position"
+  },
+  "EL": {
+    "expansion": "Erase in Line",
+    "description": "Clear part of the current line (right of cursor, left of cursor, or entire line).",
+    "link": "/erase"
+  },
+  "ED": {
+    "expansion": "Erase in Display",
+    "description": "Clear part of the screen (below cursor, above cursor, or entire screen).",
+    "link": "/erase"
+  },
+  "ICH": {
+    "expansion": "Insert Character",
+    "description": "Insert blank characters at cursor position, shifting existing characters right.",
+    "link": "/editing"
+  },
+  "DCH": {
+    "expansion": "Delete Character",
+    "description": "Delete characters at cursor position, shifting remaining characters left.",
+    "link": "/editing"
+  },
+  "RIS": {
+    "expansion": "Reset to Initial State",
+    "description": "Full terminal reset — cursor, modes, scroll regions, character sets, colors all reset.",
+    "link": "/reset"
+  },
+  "VT100": {
+    "expansion": "Video Terminal 100",
+    "description": "DEC's 1978 terminal that defined the escape sequence grammar used by every modern terminal emulator.",
+    "link": "/vt100"
+  },
+  "VT220": {
+    "expansion": "Video Terminal 220",
+    "description": "DEC's 1983 terminal that added insert/delete operations (ICH, DCH, IL, DL) and 8-bit controls.",
+    "link": "/vt220"
+  },
+  "VT510": {
+    "expansion": "Video Terminal 510",
+    "description": "DEC's final terminal (1993). Added cursor visibility (DECTCEM), reverse video (DECSCNM), and scroll commands (SU/SD).",
+    "link": "/vt510"
+  },
+  "TEA": {
+    "expansion": "The Elm Architecture",
+    "description": "A functional UI pattern: Model → Update → View. Used by Bubbletea (Go) and Silvery's optional app framework.",
+    "link": "/framework/bubbletea"
+  },
+  "TUI": {
+    "expansion": "Text User Interface",
+    "description": "A graphical user interface rendered in a terminal using text characters and escape sequences.",
+    "link": "/features"
+  },
+  "PTY": {
+    "expansion": "Pseudo-Terminal",
+    "description": "A virtual terminal device that allows a process to interact with a terminal emulator as if it were a real serial terminal.",
+    "link": "/features"
+  },
+  "XTGETTCAP": {
+    "expansion": "Xterm Get Terminal Capability",
+    "description": "Query the terminal for a specific terminfo capability value via DCS.",
+    "link": "/device/device-xtgettcap"
+  }
+}

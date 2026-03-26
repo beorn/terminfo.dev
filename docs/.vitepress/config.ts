@@ -274,6 +274,7 @@ function buildSidebar() {
       items: terminals,
     },
     { text: "API", link: "/api" },
+    { text: "Glossary", link: "/glossary" },
     { text: "About", link: "/about" },
   ]
 
@@ -310,6 +311,16 @@ export default defineConfig({
       pageData.title = "Terminal Features: How Escape Sequences Work"
       pageData.description =
         "134+ features across 13 categories — SGR styling, cursor control, modes, extensions, Unicode. Tested on every major terminal emulator."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
+    if (rel === "glossary.md") {
+      pageData.title = "Terminal Glossary: Acronyms and Technical Terms"
+      pageData.description =
+        "Quick reference for terminal acronyms — CSI, SGR, OSC, DEC, ECMA-48, and 30+ more. Each term explained with links to detailed feature pages."
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
@@ -397,6 +408,7 @@ export default defineConfig({
       },
       { text: "About", link: "/about" },
       { text: "API", link: "/api" },
+      { text: "Glossary", link: "/glossary" },
     ],
 
     // Sidebar on all pages except home (home uses layout: home, which hides sidebar)
