@@ -317,12 +317,12 @@
   "OSC 52": {
     "expansion": "Operating System Command 52",
     "description": "Escape sequence for reading/writing the system clipboard. Allows terminal applications to access the clipboard over SSH without X11 forwarding. Some terminals disable read access for security.",
-    "link": "/extensions"
+    "link": "/extensions/extensions-osc52-clipboard"
   },
   "OSC 8": {
     "expansion": "Operating System Command 8",
     "description": "Escape sequence for clickable hyperlinks in terminal output. Text between OSC 8 start and end markers becomes a link. Supported by most modern terminals.",
-    "link": "/extensions"
+    "link": "/extensions/extensions-osc8"
   },
   "CUU": {
     "expansion": "Cursor Up",
@@ -487,27 +487,27 @@
   "OSC 1337": {
     "expansion": "iTerm2 Protocol",
     "description": "iTerm2 proprietary extensions including inline images, shell integration, and capability reporting.",
-    "link": "/extensions"
+    "link": "/extensions/extensions-osc1337-capabilities"
   },
   "SGR 38": {
     "expansion": "Set Foreground Color",
     "description": "Extended foreground color: SGR 38;5;N for 256-color, SGR 38;2;R;G;B for truecolor.",
-    "link": "/sgr"
+    "link": "/sgr/sgr-38-2-truecolor-fg"
   },
   "SGR 48": {
     "expansion": "Set Background Color",
     "description": "Extended background color: SGR 48;5;N for 256-color, SGR 48;2;R;G;B for truecolor.",
-    "link": "/sgr"
+    "link": "/sgr/sgr-48-5-256-color-bg"
   },
   "Mode 2004": {
     "expansion": "Bracketed Paste Mode",
     "description": "Terminal wraps pasted text in markers so the shell knows it is pasted, not typed.",
-    "link": "/modes"
+    "link": "/modes/modes-bracketed-paste"
   },
   "Mode 2026": {
     "expansion": "Synchronized Output",
     "description": "Buffer all output between start/end markers and paint as one frame. Eliminates flicker.",
-    "link": "/modes"
+    "link": "/modes/modes-synchronized-output"
   },
   "Mode 1049": {
     "expansion": "Alternate Screen with Cursor Save",
