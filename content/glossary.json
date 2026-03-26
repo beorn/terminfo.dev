@@ -129,10 +129,20 @@
     "description": "DEC's 1983 terminal that added insert/delete operations (ICH, DCH, IL, DL) and 8-bit controls.",
     "link": "/vt220"
   },
+  "VT52": {
+    "expansion": "Video Terminal 52",
+    "description": "DEC's 1975 pre-ANSI terminal with proprietary escape sequences predating ECMA-48. First DEC video terminal with cursor addressing.",
+    "link": "/terminal/vt52-historical"
+  },
   "VT510": {
     "expansion": "Video Terminal 510",
     "description": "One of DEC's later VT terminals (1993). Added cursor visibility (DECTCEM), reverse video (DECSCNM), and scroll commands (SU/SD).",
     "link": "/vt510"
+  },
+  "xterm": {
+    "expansion": "X Terminal Emulator",
+    "description": "The reference X11 terminal emulator (1984), maintained by Thomas Dickey since 1996. Defined most 'standard' terminal behavior including 256-color, truecolor, mouse tracking, and bracketed paste.",
+    "link": "/terminal/xterm-historical"
   },
   "TEA": {
     "expansion": "The Elm Architecture",

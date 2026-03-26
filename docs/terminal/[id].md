@@ -9,7 +9,7 @@ import { useData } from 'vitepress'
 const { params } = useData()
 const p = params.value
 
-const categories = JSON.parse(p.categories)
+const categories = p.categories ? JSON.parse(p.categories) : []
 
 function icon(result) {
   if (result === 'yes') return '✓'
@@ -33,6 +33,7 @@ function featureTooltip(f) {
 }
 
 const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
+const isHistorical = p.historical === 'true'
 </script>
 
 <div class="backend-page">
@@ -40,6 +41,11 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
 # {{ p.terminalName }}
 
 <p v-if="p.terminalDescription" class="terminal-desc">{{ p.terminalDescription }}</p>
+
+<div v-if="isHistorical" class="historical-badge">
+  <span class="historical-icon">&#x1F4DC;</span>
+  <span>Historical Terminal · {{ p.year }} · {{ p.manufacturer }}</span>
+</div>
 
 <div class="terminal-links">
   <span v-if="p.terminalUrl"><a :href="p.terminalUrl" target="_blank" rel="noopener">{{ p.terminalUrl }}</a></span>
@@ -49,15 +55,19 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
 
 <div v-if="p.terminalBody" class="terminal-body" v-html="p.terminalBody"></div>
 
-<div class="backend-info">
+<div v-if="isHistorical && p.significance" class="historical-significance">
+  <strong>Significance:</strong> {{ p.significance }}
+</div>
+
+<div v-if="!isHistorical && p.backendDescription" class="backend-info">
   <strong>Backend:</strong> {{ p.backendDescription }}
   <span v-if="p.backendType"> ({{ p.backendType }})</span>
   <span v-if="p.version"> · v{{ p.version }}</span>
 </div>
 
-<p v-if="p.backendCaveat" class="backend-caveat">⚠ {{ p.backendCaveat }}</p>
+<p v-if="p.backendCaveat" class="backend-caveat">&#x26A0; {{ p.backendCaveat }}</p>
 
-<div class="score-card">
+<div v-if="!isHistorical && p.total" class="score-card">
   <div class="score-number">{{ p.pct }}<span class="score-pct">%</span></div>
   <div class="score-detail">
     <span class="score-yes">{{ p.yes }} passed</span> ·
@@ -269,5 +279,32 @@ const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US',
 
 .back-link a:hover {
   text-decoration: underline;
+}
+
+.historical-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  padding: 0.75em 1em;
+  margin: 0.75em 0 1em;
+  font-size: 0.95em;
+  color: var(--vp-c-text-2);
+}
+
+.historical-icon {
+  font-size: 1.3em;
+}
+
+.historical-significance {
+  color: var(--vp-c-text-2);
+  font-size: 0.95em;
+  margin: 1em 0;
+  padding: 0.75em 1em;
+  background: var(--vp-c-bg-soft);
+  border-radius: 6px;
+  border-left: 3px solid var(--vp-c-brand-1);
 }
 </style>

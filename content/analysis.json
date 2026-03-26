@@ -1,5 +1,5 @@
 {
-  "$generated": "2026-03-26T05:47:58.606Z",
+  "$generated": "2026-03-26T06:32:20.917Z",
   "terminal/ghostty": {
     "analysis": "<p><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> scores <strong>95%</strong> (140/148) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#2</strong> of 8 tested terminals. Missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/device/device-tertiary-da\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/extensions-osc1337-cellsize\" class=\"hover-link\">Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/extensions-osc1337-capabilities\" class=\"hover-link\">Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\">Kitty graphics protocol</a>, <a href=\"/device/device-term-features\" class=\"hover-link\">TERM_FEATURES env var</a>.</p>",
     "date": "2026-03-26",
@@ -40,6 +40,36 @@
     "analysis": "<p><a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> scores <strong>93%</strong> (137/148) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Rich TUI, <a href=\"/unicode\" class=\"hover-link\">Unicode</a> baselines. Ranks <strong>#3</strong> of 8 tested terminals. Missing <strong>11</strong> features.</p>",
     "date": "2026-03-26",
     "probeCount": 148,
+    "changes": null
+  },
+  "terminal/vt52-historical": {
+    "analysis": "<p><strong><a href=\"/terminal/vt52-historical\" class=\"hover-link\">DEC VT52</a></strong> (1975) was manufactured by Digital Equipment Corporation (DEC). First DEC video terminal with cursor addressing. This is a historical reference entry — no automated probe data is available for this terminal.</p>",
+    "date": "2026-03-26",
+    "probeCount": 0,
+    "changes": null
+  },
+  "terminal/vt100-historical": {
+    "analysis": "<p><strong><a href=\"/terminal/vt100-historical\" class=\"hover-link\">DEC VT100</a></strong> (1978) was manufactured by Digital Equipment Corporation (DEC). Defined the <a href=\"/features\" class=\"hover-link\" title=\"Escape Sequence\">escape sequence</a> grammar used by every modern terminal. This is a historical reference entry — no automated probe data is available for this terminal.</p>",
+    "date": "2026-03-26",
+    "probeCount": 0,
+    "changes": null
+  },
+  "terminal/vt220-historical": {
+    "analysis": "<p><strong><a href=\"/terminal/vt220-historical\" class=\"hover-link\">DEC VT220</a></strong> (1983) was manufactured by Digital Equipment Corporation (DEC). Introduced editing operations (ICH/DCH/IL/DL) used by every TUI application. This is a historical reference entry — no automated probe data is available for this terminal.</p>",
+    "date": "2026-03-26",
+    "probeCount": 0,
+    "changes": null
+  },
+  "terminal/xterm-historical": {
+    "analysis": "<p><strong><a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a></strong> (1984) was manufactured by MIT / Thomas Dickey. De facto reference implementation — defined most 'standard' terminal behavior. This is a historical reference entry — no automated probe data is available for this terminal.</p>",
+    "date": "2026-03-26",
+    "probeCount": 0,
+    "changes": null
+  },
+  "terminal/vt510-historical": {
+    "analysis": "<p><strong><a href=\"/terminal/vt510-historical\" class=\"hover-link\">DEC VT510</a></strong> (1993) was manufactured by Digital Equipment Corporation (DEC). Reference manual remains the most cited terminal specification. This is a historical reference entry — no automated probe data is available for this terminal.</p>",
+    "date": "2026-03-26",
+    "probeCount": 0,
     "changes": null
   },
   "baseline/core": {

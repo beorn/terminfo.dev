@@ -153,6 +153,19 @@ function buildSidebar() {
     return a.localeCompare(b)
   })
 
+  // Load historical terminals from content/terminals.json
+  const historicalTerminals: Array<{ text: string; link: string; year: number }> = []
+  for (const [, entry] of Object.entries(terminalsData as Record<string, any>)) {
+    if (entry.historical && entry.slug && entry.label) {
+      historicalTerminals.push({
+        text: `${entry.label} (${entry.year})`,
+        link: `/terminal/${entry.slug}`,
+        year: entry.year ?? 0,
+      })
+    }
+  }
+  historicalTerminals.sort((a, b) => a.year - b.year)
+
   // Load app terminals from content/probes-apps/ directory
   const appTerminals: Array<{ text: string; link: string }> = []
   try {
@@ -269,6 +282,10 @@ function buildSidebar() {
     {
       text: "Backends",
       items: terminals,
+    },
+    {
+      text: "Historical",
+      items: historicalTerminals.map(({ text, link }) => ({ text, link })),
     },
     {
       text: "Frameworks",
@@ -445,8 +462,13 @@ export default defineConfig({
         ["meta", { property: "og:description", content: pageData.description }],
       ]
     } else if (rel.startsWith("terminal/")) {
-      pageData.title = `${params.backendName} — Terminal Feature Support`
-      pageData.description = `${params.backendName} terminal emulator feature support: ${params.pct}% (${params.yes}/${params.total} features). ${params.backendDescription}`
+      if (params.historical === "true") {
+        pageData.title = `${params.backendName} (${params.year}) — Historical Terminal`
+        pageData.description = `${params.backendName}: ${params.significance ?? params.backendDescription ?? "Historical terminal"}`
+      } else {
+        pageData.title = `${params.backendName} — Terminal Feature Support`
+        pageData.description = `${params.backendName} terminal emulator feature support: ${params.pct}% (${params.yes}/${params.total} features). ${params.backendDescription}`
+      }
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],

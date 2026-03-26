@@ -43,6 +43,12 @@ interface TerminalMeta {
   headlessBackends?: string[]
   manifestBackend?: string
   platforms?: string[]
+  historical?: boolean
+  year?: number
+  manufacturer?: string
+  cpu?: string
+  significance?: string
+  repo?: string
 }
 
 interface CategoryMeta {
@@ -309,8 +315,9 @@ function crossValidate(
     )
   }
 
-  // Warn (but don't throw) for terminals with no results
-  for (const termId of Object.keys(terminals)) {
+  // Warn (but don't throw) for terminals with no results (skip historical — they have no probes)
+  for (const [termId, meta] of Object.entries(terminals)) {
+    if (meta.historical) continue
     if (!resultMap.has(termId)) {
       console.warn(`Warning: Terminal '${termId}' has no probe results (no app or headless data)`)
     }
@@ -482,6 +489,29 @@ function generateTerminalAnalysis(
     analysis: `<p>${parts.join(". ")}.</p>`,
     date: new Date().toISOString().slice(0, 10),
     probeCount: stats.total,
+    changes: null,
+  }
+}
+
+function generateHistoricalAnalysis(termId: string, meta: TerminalMeta): AnalysisEntry {
+  const parts: string[] = []
+
+  parts.push(
+    `<strong>${meta.label}</strong> (${meta.year}) was manufactured by ${meta.manufacturer ?? "unknown"}`,
+  )
+
+  if (meta.significance) {
+    parts.push(meta.significance)
+  }
+
+  parts.push(
+    "This is a historical reference entry — no automated probe data is available for this terminal",
+  )
+
+  return {
+    analysis: `<p>${parts.join(". ")}.</p>`,
+    date: new Date().toISOString().slice(0, 10),
+    probeCount: 0,
     changes: null,
   }
 }
@@ -1304,6 +1334,19 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
     validateHtml(entry.analysis, key)
     validateNumbersInAnalysis(key, entry.analysis, stats)
 
+    output[key] = entry
+  }
+
+  // 1b. Historical terminal pages (no probe data)
+  for (const [termId, meta] of Object.entries(terminals)) {
+    if (!meta.historical) continue
+    const slug = meta.slug
+    if (slugSeen.has(slug)) continue
+    slugSeen.add(slug)
+
+    const key = `terminal/${slug}`
+    const entry = generateHistoricalAnalysis(termId, meta)
+    validateHtml(entry.analysis, key)
     output[key] = entry
   }
 

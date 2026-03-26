@@ -1,11 +1,31 @@
+import { readFileSync } from "node:fs"
+import { join, dirname } from "node:path"
+import { fileURLToPath } from "node:url"
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+interface HistoricalTerminal {
+  label: string
+  slug: string
+  url?: string
+  description?: string
+  body?: string
+  platforms?: string[]
+  historical?: boolean
+  year?: number
+  manufacturer?: string
+  cpu?: string
+  significance?: string
+  repo?: string
+}
 
 export default {
   paths() {
     const data = loadProbes()
     const allAnalysis = loadAnalysis()
 
-    return data.backends.map((b) => {
+    const pages = data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
       const stats = data.stats[b.name] ?? { total: 0, yes: 0, no: 0, partial: 0, pct: 0 }
       const slug = terminalSlug(b.name, data.meta)
@@ -83,8 +103,59 @@ export default {
           analysis: a?.analysis ?? "",
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
+          historical: "false",
         },
       }
     })
+
+    // Add historical terminals from terminals.json
+    const terminalsPath = join(__dirname, "..", "..", "content", "terminals.json")
+    const terminalsData = JSON.parse(readFileSync(terminalsPath, "utf-8")) as Record<string, HistoricalTerminal>
+
+    const existingSlugs = new Set(pages.map((p) => p.params.id))
+
+    for (const [termId, term] of Object.entries(terminalsData)) {
+      if (!term.historical) continue
+      if (existingSlugs.has(term.slug)) continue
+
+      const a = allAnalysis["terminal/" + term.slug]
+
+      pages.push({
+        params: {
+          id: term.slug,
+          backendId: termId,
+          backendName: term.label,
+          backendDescription: "",
+          backendUrl: "",
+          backendUpstream: "",
+          backendType: "",
+          backendCaveat: "",
+          terminalName: term.label,
+          terminalDescription: term.description ?? "",
+          terminalBody: term.body ?? "",
+          terminalUrl: term.url ?? "",
+          terminalRepo: term.repo ?? "",
+          terminalAuthor: "",
+          version: "",
+          engine: "",
+          generated: "",
+          total: "",
+          yes: "",
+          no: "",
+          partial: "",
+          pct: "",
+          categories: "",
+          analysis: a?.analysis ?? "",
+          analysisDate: a?.date ?? "",
+          analysisChanges: a?.changes ?? "",
+          historical: "true",
+          year: String(term.year ?? ""),
+          manufacturer: term.manufacturer ?? "",
+          significance: term.significance ?? "",
+        } as any,
+      })
+    }
+
+    return pages
   },
 }

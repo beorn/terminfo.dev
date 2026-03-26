@@ -85,5 +85,67 @@
     "headlessBackends": [],
     "manifestBackend": "xtermjs",
     "platforms": ["macos"]
+  },
+  "vt52-historical": {
+    "label": "DEC VT52",
+    "slug": "vt52-historical",
+    "url": "https://vt100.net/docs/vt52-ug/",
+    "description": "DEC's pre-ANSI terminal. Proprietary escape sequences predating ECMA-48. DEC, 1975.",
+    "body": "<p>The <strong>DEC VT52</strong> (1975) was DEC's first video terminal with cursor addressing — before the VT100, before ANSI escape sequences existed. It used a proprietary escape sequence language (e.g., <code>ESC Y</code> followed by coordinates) that was simpler but incompatible with the later ECMA-48 standard.</p><p>The VT52 matters because many terminal emulators still offer a 'VT52 compatibility mode,' and its escape sequences occasionally surface in legacy systems. The VT52's 80\u00d724 display established the screen size that the VT100 would standardize.</p>",
+    "platforms": [],
+    "historical": true,
+    "year": 1975,
+    "manufacturer": "Digital Equipment Corporation (DEC)",
+    "significance": "First DEC video terminal with cursor addressing"
+  },
+  "vt100-historical": {
+    "label": "DEC VT100",
+    "slug": "vt100-historical",
+    "url": "https://vt100.net/docs/vt100-ug/",
+    "description": "The terminal that defined terminal emulation. DEC, 1978.",
+    "body": "<p>The <strong>DEC VT100</strong>, released in August 1978, was the first popular terminal to implement the ANSI X3.64 (ECMA-48) escape sequence standard. Running on an Intel 8080 CPU with just 3KB of RAM and 8KB of ROM, it proved that the new standard could be implemented affordably — silencing critics who called it 'beyond the state of the art.'</p><p>The VT100's 80\u00d724 display became the universal terminal size (inherited from IBM's 3270, which got it from 80-column punch cards). Its escape sequence grammar — <code>ESC [</code> for CSI, the parameter syntax, scroll regions (DECSTBM), character sets — defined what 'terminal compatible' means to this day. DEC shipped over 6 million terminals in the VT series.</p><p>Every modern terminal emulator is, at its core, a VT100 emulator with extensions. When software claims 'VT100 compatibility,' it's promising support for the specific behaviors this $1,800 box established nearly 50 years ago.</p>",
+    "platforms": [],
+    "historical": true,
+    "year": 1978,
+    "manufacturer": "Digital Equipment Corporation (DEC)",
+    "cpu": "Intel 8080",
+    "significance": "Defined the escape sequence grammar used by every modern terminal"
+  },
+  "vt220-historical": {
+    "label": "DEC VT220",
+    "slug": "vt220-historical",
+    "url": "https://vt100.net/docs/vt220-rm/contents.html",
+    "description": "Added editing operations and 8-bit controls. DEC, 1983.",
+    "body": "<p>The <strong>DEC VT220</strong>, released in November 1983, was DEC's most commercially successful terminal — over 1 million units shipped, commanding 42% market share in 1986. Priced at $1,295, it replaced the VT100 as the standard office terminal.</p><p>The VT220 introduced <strong>insert/delete operations</strong> (ICH, DCH, IL, DL) that are fundamental to every full-screen terminal application — vim, tmux, less all depend on these sequences. It also added 8-bit control codes, user-defined keys, and national replacement character sets.</p><p>The VT220's <strong>LK201 keyboard layout</strong> shaped every keyboard that followed. IBM's Model M design team explicitly copied the inverted-T arrow cluster, navigation keys, and numeric keypad arrangement. The VT220 also controversially moved the Escape key from the upper-left corner, sparking a debate that persists through Vim users today.</p>",
+    "platforms": [],
+    "historical": true,
+    "year": 1983,
+    "manufacturer": "Digital Equipment Corporation (DEC)",
+    "significance": "Introduced editing operations (ICH/DCH/IL/DL) used by every TUI application"
+  },
+  "xterm-historical": {
+    "label": "xterm",
+    "slug": "xterm-historical",
+    "url": "https://invisible-island.net/xterm/",
+    "description": "The reference X11 terminal emulator. Maintained by Thomas Dickey since 1996.",
+    "body": "<p><strong>xterm</strong> was written in the summer of 1984 by Mark Vandevoorde, a student of Jim Gettys, as a terminal emulator for the X Window System. Thomas Dickey took over maintenance around 1996 and has maintained it single-handedly ever since — currently at patch 403 (October 2025).</p><p>xterm's influence on the terminal ecosystem is immeasurable. It pioneered <strong>256-color support</strong>, <strong>truecolor</strong> (24-bit RGB), the <strong>alternate screen buffer</strong> with cursor save (?1049), four <strong>mouse tracking modes</strong>, <strong>focus reporting</strong>, <strong>bracketed paste</strong>, <strong>OSC 8 hyperlinks</strong>, and <strong>OSC 52 clipboard access</strong>. The xterm control sequences document (ctlseqs) maintained by Dickey is the de facto standard that every terminal implementor references.</p><p>Dickey also maintains <strong>ncurses</strong> (the terminal UI library) and the <strong>terminfo database</strong> — making him perhaps the most critical single maintainer in the entire Unix terminal infrastructure stack.</p>",
+    "platforms": ["linux"],
+    "historical": true,
+    "year": 1984,
+    "manufacturer": "MIT / Thomas Dickey",
+    "repo": "https://github.com/ThomasDickey/xterm-snapshots",
+    "significance": "De facto reference implementation — defined most 'standard' terminal behavior"
+  },
+  "vt510-historical": {
+    "label": "DEC VT510",
+    "slug": "vt510-historical",
+    "url": "https://vt100.net/docs/vt510-rm/contents.html",
+    "description": "One of DEC's later VT terminals. Reference manual remains the most cited spec. DEC, 1993.",
+    "body": "<p>The <strong>DEC VT510</strong>, released in 1993, was one of DEC's later VT-series terminals (the VT520 and VT525 followed before DEC's acquisition by Compaq in 1998). While no modern terminal implements the full VT510 specification, specific features like <strong>DECTCEM</strong> (cursor visibility control) and <strong>DECSCNM</strong> (reverse video mode) became universal.</p><p>The VT510 Reference Manual remains the <strong>most cited document</strong> for terminal implementors — it's the closest thing to a comprehensive reference for DEC escape sequences. When terminal developers need to understand a DEC private mode, they reach for the VT510 manual.</p>",
+    "platforms": [],
+    "historical": true,
+    "year": 1993,
+    "manufacturer": "Digital Equipment Corporation (DEC)",
+    "significance": "Reference manual remains the most cited terminal specification"
   }
 }
