@@ -100,45 +100,68 @@ function loadEntities(): Entity[] {
 /**
  * Linkify plain text content — wraps known entity names in <a> tags.
  * Safe for use with v-html. Skips text already inside HTML tags.
+ *
+ * Uses a two-pass approach to avoid replacing inside generated attributes:
+ * 1. Find all matches on the original text (collect offsets)
+ * 2. Apply replacements in reverse order (so offsets stay valid)
  */
 export function linkifyContent(text: string): string {
   if (!text) return text
   const entities = loadEntities()
 
-  // Process text segments (outside existing HTML tags)
-  let result = ""
+  // First: identify text regions (outside HTML tags and <a>...</a> blocks)
+  const textRegions: Array<{ start: number; end: number }> = []
   let i = 0
   while (i < text.length) {
     if (text[i] === "<") {
-      const end = text.indexOf(">", i)
-      if (end === -1) { result += text.slice(i); break }
-      const tag = text.slice(i, end + 1)
-      result += tag
-      // Skip inside <a> tags
+      const tagEnd = text.indexOf(">", i)
+      if (tagEnd === -1) break
+      const tag = text.slice(i, tagEnd + 1)
       if (tag.startsWith("<a ") || tag === "<a>") {
-        const closeA = text.indexOf("</a>", end)
-        if (closeA !== -1) { result += text.slice(end + 1, closeA + 4); i = closeA + 4; continue }
+        const closeA = text.indexOf("</a>", tagEnd)
+        i = closeA !== -1 ? closeA + 4 : tagEnd + 1
+      } else {
+        i = tagEnd + 1
       }
-      i = end + 1
     } else {
       const nextTag = text.indexOf("<", i)
-      const segment = nextTag === -1 ? text.slice(i) : text.slice(i, nextTag)
-
-      let linked = segment
-      const used = new Set<number>()
-      for (const { pattern, href, title } of entities) {
-        pattern.lastIndex = 0
-        linked = linked.replace(pattern, (match, offset) => {
-          for (let p = offset; p < offset + match.length; p++) if (used.has(p)) return match
-          for (let p = offset; p < offset + match.length; p++) used.add(p)
-          const t = title ? ` title="${title.replace(/"/g, "&quot;")}"` : ""
-          return `<a href="${href}" class="hover-link"${t}>${match}</a>`
-        })
-      }
-
-      result += linked
-      i = nextTag === -1 ? text.length : nextTag
+      const end = nextTag === -1 ? text.length : nextTag
+      if (end > i) textRegions.push({ start: i, end })
+      i = end
     }
   }
+
+  // Second: collect all matches across text regions
+  const matches: Array<{ start: number; end: number; href: string; title?: string }> = []
+  const occupied = new Set<number>()
+
+  for (const { pattern, href, title } of entities) {
+    for (const region of textRegions) {
+      const segment = text.slice(region.start, region.end)
+      pattern.lastIndex = 0
+      let m: RegExpExecArray | null
+      while ((m = pattern.exec(segment)) !== null) {
+        const absStart = region.start + m.index
+        const absEnd = absStart + m[0].length
+        // Check no overlap with previous matches
+        let overlap = false
+        for (let p = absStart; p < absEnd; p++) {
+          if (occupied.has(p)) { overlap = true; break }
+        }
+        if (overlap) continue
+        for (let p = absStart; p < absEnd; p++) occupied.add(p)
+        matches.push({ start: absStart, end: absEnd, href, title })
+      }
+    }
+  }
+
+  // Third: apply in reverse order so offsets stay valid
+  matches.sort((a, b) => b.start - a.start)
+  let result = text
+  for (const { start, end, href, title } of matches) {
+    const original = result.slice(start, end)
+    result = result.slice(0, start) + `<a href="${href}" class="hover-link">${original}</a>` + result.slice(end)
+  }
+
   return result
 }
