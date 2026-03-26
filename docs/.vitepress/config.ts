@@ -239,7 +239,7 @@ function buildSidebar() {
     {
       text: "Categories",
       items: [
-        { text: "All Features", link: "/features" },
+        { text: "Overview", link: "/features" },
         ...sortedCategories.map((cat) => ({
           text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
           link: `/${cat}`,
@@ -254,7 +254,7 @@ function buildSidebar() {
     {
       text: "Standards",
       items: [
-        { text: "All Standards", link: "/standards" },
+        { text: "Overview", link: "/standards" },
         ...sortedTags.map((tag) => ({
           text: tagLabels[tag] ?? tag,
           link: `/${tag}`,
@@ -377,23 +377,19 @@ export default defineConfig({
       { text: "Matrix", link: "/" },
       {
         text: "Features",
-        items: [
-          { text: "All Features", link: "/features" },
-          ...sortedCategories.map((cat) => ({
-            text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
-            link: `/${cat}`,
-          })),
-        ],
+        link: "/features",
+        items: sortedCategories.map((cat) => ({
+          text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
+          link: `/${cat}`,
+        })),
       },
       {
         text: "Standards",
-        items: [
-          { text: "All Standards", link: "/standards" },
-          ...sortedTags.map((tag) => ({
-            text: tagLabels[tag] ?? tag,
-            link: `/${tag}`,
-          })),
-        ],
+        link: "/standards",
+        items: sortedTags.map((tag) => ({
+          text: tagLabels[tag] ?? tag,
+          link: `/${tag}`,
+        })),
       },
       {
         text: "Terminals",
