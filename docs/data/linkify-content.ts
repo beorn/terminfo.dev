@@ -160,7 +160,8 @@ export function linkifyContent(text: string): string {
   let result = text
   for (const { start, end, href, title } of matches) {
     const original = result.slice(start, end)
-    result = result.slice(0, start) + `<a href="${href}" class="hover-link">${original}</a>` + result.slice(end)
+    const tooltip = title ? ` data-tooltip="${title.replace(/"/g, '&quot;')}"` : ""
+    result = result.slice(0, start) + `<a href="${href}" class="hover-link"${tooltip}>${original}</a>` + result.slice(end)
   }
 
   return result
