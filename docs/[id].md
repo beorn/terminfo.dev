@@ -14,6 +14,24 @@ const backends = JSON.parse(p.backends)
 const appBackends = backends.filter(b => b.type === 'app')
 const headlessBackends = backends.filter(b => b.type === 'headless')
 
+const crossLinks = {
+  'vt100': [
+    { text: 'DEC VT100 (historical terminal)', link: '/terminal/vt100-historical' },
+    { text: 'vt100.js (headless backend)', link: '/terminal/vt100-js' },
+  ],
+  'vt220': [
+    { text: 'DEC VT220 (historical terminal)', link: '/terminal/vt220-historical' },
+  ],
+  'xterm-extensions': [
+    { text: 'xterm (historical terminal)', link: '/terminal/xterm-historical' },
+    { text: 'xterm.js (headless backend)', link: '/terminal/xterm-js' },
+  ],
+  'kitty-extensions': [
+    { text: 'Kitty (terminal app)', link: '/terminal/kitty' },
+  ],
+}
+const relatedPages = crossLinks[p.id] ?? []
+
 function icon(result) {
   if (result === 'yes') return '✓'
   if (result === 'partial') return '~'
@@ -75,6 +93,10 @@ function platformIcons(b) {
   {{ p.featureCount }} features in this {{ p.pageType === 'tag' ? 'standard' : 'category' }}
   <span v-if="p.specUrl"> · <a :href="p.specUrl" target="_blank" rel="noopener">Specification ↗</a></span>
 </p>
+
+<div v-if="relatedPages.length" class="see-also">
+  See also: <span v-for="(r, i) in relatedPages"><a :href="r.link">{{ r.text }}</a><span v-if="i < relatedPages.length - 1"> · </span></span>
+</div>
 
 <div v-if="p.analysis" class="analysis">
   <div class="analysis-header">
@@ -171,6 +193,21 @@ function platformIcons(b) {
 
 .category-meta a {
   color: var(--vp-c-brand-1);
+}
+
+.see-also {
+  color: var(--vp-c-text-3);
+  font-size: 0.9em;
+  margin: 0.5em 0 1em;
+}
+
+.see-also a {
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.see-also a:hover {
+  text-decoration: underline;
 }
 
 .matrix-wrapper {

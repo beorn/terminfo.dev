@@ -34,6 +34,32 @@ function featureTooltip(f) {
 
 const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
 const isHistorical = p.historical === 'true'
+
+const crossLinks = {
+  'vt100-historical': [
+    { text: 'VT100 standard features', link: '/vt100' },
+    { text: 'vt100.js (headless backend)', link: '/terminal/vt100-js' },
+  ],
+  'vt100-js': [
+    { text: 'VT100 standard features', link: '/vt100' },
+    { text: 'DEC VT100 (historical)', link: '/terminal/vt100-historical' },
+  ],
+  'vt220-historical': [
+    { text: 'VT220 standard features', link: '/vt220' },
+  ],
+  'xterm-historical': [
+    { text: 'Xterm Extensions standard', link: '/xterm-extensions' },
+    { text: 'xterm.js (headless backend)', link: '/terminal/xterm-js' },
+  ],
+  'xterm-js': [
+    { text: 'Xterm Extensions standard', link: '/xterm-extensions' },
+    { text: 'xterm (historical)', link: '/terminal/xterm-historical' },
+  ],
+  'kitty': [
+    { text: 'Kitty Extensions standard', link: '/kitty-extensions' },
+  ],
+}
+const relatedPages = crossLinks[p.id] ?? []
 </script>
 
 <div class="backend-page">
@@ -41,6 +67,10 @@ const isHistorical = p.historical === 'true'
 # {{ p.terminalName }}
 
 <p v-if="p.terminalDescription" class="terminal-desc">{{ p.terminalDescription }}</p>
+
+<div v-if="relatedPages.length" class="see-also">
+  See also: <span v-for="(r, i) in relatedPages"><a :href="r.link">{{ r.text }}</a><span v-if="i < relatedPages.length - 1"> · </span></span>
+</div>
 
 <div v-if="isHistorical" class="historical-badge">
   <span class="historical-icon">&#x1F4DC;</span>
@@ -126,6 +156,21 @@ const isHistorical = p.historical === 'true'
   color: var(--vp-c-text-2);
   margin-top: -0.5em;
   line-height: 1.6;
+}
+
+.see-also {
+  color: var(--vp-c-text-3);
+  font-size: 0.9em;
+  margin: 0.5em 0 1em;
+}
+
+.see-also a {
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+
+.see-also a:hover {
+  text-decoration: underline;
 }
 
 .terminal-links {

@@ -167,16 +167,18 @@ Here's the irony: developers universally call these "ANSI escape codes," but the
 
 ::: info At a glance
 **Introduced:**
+
 - The `ESC [` (CSI) grammar — the universal escape sequence prefix
 - SGR codes for text styling (bold, underline, color)
 - Cursor movement primitives (CUP, CUU, CUD, CUF, CUB)
 - Erase operations (EL, ED) and scroll control
 
 **Still matters:**
+
 - Every terminal escape sequence uses ECMA-48's CSI parameter syntax
 - SGR codes are the universal way to style terminal text
 - The `?` private-mode prefix that DEC exploited is defined here
-:::
+  :::
 
 <p class="standard-link"><a class="hover-link" href="/ecma-48">View ECMA-48 features &rarr;</a></p>
 
@@ -192,16 +194,18 @@ The VT100's dominance wasn't accidental — DEC shipped it with the rising tide 
 
 ::: info At a glance
 **Introduced:**
+
 - Scroll regions (DECSTBM) — status bars, split panes
 - The `CSI ?` private mode namespace for vendor extensions
 - Character set switching (G0/G1, line-drawing characters)
 - 80/132 column mode switching
 
 **Still matters:**
+
 - "VT100-compatible" is still the baseline every terminal must meet
 - Scroll regions power every full-screen TUI (vim, tmux, htop)
 - Line-drawing characters render box UIs in every terminal
-:::
+  :::
 
 <p class="standard-link"><a class="hover-link" href="/vt100">View VT100 features &rarr;</a></p>
 
@@ -232,15 +236,17 @@ These editing sequences are so fundamental that it's hard to imagine terminals w
 
 ::: info At a glance
 **Introduced:**
+
 - Insert/delete character (ICH, DCH) and line (IL, DL) operations
 - 8-bit control codes and national replacement character sets
 - The LK201 keyboard layout (inverted-T arrows, navigation cluster)
 
 **Still matters:**
+
 - Every full-screen editor (vim, nano, emacs) depends on ICH/DCH/IL/DL
 - tmux and screen use editing sequences for efficient pane updates
 - The keyboard layout from the LK201 is still the PC standard
-:::
+  :::
 
 <p class="standard-link"><a class="hover-link" href="/vt220">View VT220 features &rarr;</a></p>
 
@@ -265,15 +271,17 @@ Sixel was largely dormant for decades until modern terminals (xterm, foot, WezTe
 
 ::: info At a glance
 **Introduced:**
+
 - Inline raster graphics encoded as printable ASCII characters
 - 6-vertical-pixel columns (the "six" in Sixel) for compact encoding
 - A terminal graphics protocol that predates all modern alternatives
 
 **Still matters:**
+
 - Widest inline image support among modern terminals (xterm, foot, WezTerm, mlterm)
 - Only graphics protocol that works over plain SSH without special setup
 - Active competitor to Kitty graphics in the terminal image display debate
-:::
+  :::
 
 <p class="standard-link"><a class="hover-link" href="/sixel">View Sixel features &rarr;</a></p>
 
@@ -283,15 +291,17 @@ By 1993, hardware terminals were already losing to PCs running terminal emulator
 
 ::: info At a glance
 **Introduced:**
+
 - The most comprehensive DEC escape sequence reference manual
 - Consolidated documentation of all prior VT-series features
 - Multiple pages and session management
 
 **Still matters:**
+
 - The VT510 Reference Manual is the go-to document for terminal implementors
 - DECTCEM (cursor show/hide) is used by virtually every TUI application
 - DECSCNM (reverse video) remains a supported mode in modern terminals
-:::
+  :::
 
 <p class="standard-link"><a class="hover-link" href="/vt510">View VT510 features &rarr;</a></p>
 
@@ -303,16 +313,18 @@ The "private" designation means vendor-defined: any terminal can allocate new mo
 
 ::: info At a glance
 **Introduced:**
+
 - DECSET/DECRST (`CSI ? h` / `CSI ? l`) — the toggle mechanism for terminal features
 - Alternate screen buffer (?1049) — lets apps draw without destroying scrollback
 - Bracketed paste (?2004) — safe paste handling that prevents code injection
 - Mouse tracking modes (?1000-1006) — click and drag reporting to applications
 
 **Still matters:**
+
 - Every TUI app uses alternate screen, cursor visibility, and auto-wrap modes
 - Bracketed paste is a security-critical feature enabled by default in most shells
 - Mouse tracking powers interactive terminal UIs (lazygit, btop, TUI file managers)
-:::
+  :::
 
 <p class="standard-link"><a class="hover-link" href="/dec-private-modes">View DEC Private Modes features &rarr;</a></p>
 
@@ -367,17 +379,19 @@ Incorrect width calculation causes cursor positioning errors, text misalignment,
 
 ::: info At a glance
 **Introduced:**
+
 - A single encoding (UTF-8) replacing dozens of incompatible regional character sets
 - East Asian width classes — characters that occupy 1 or 2 terminal columns
 - Combining characters, variation selectors, and zero-width joiners
 - Emoji sequences (skin tones, ZWJ families, flags)
 
 **Still matters:**
+
 - Width calculation disagreements between app and terminal break TUI layouts
 - `wcwidth()` implementations lag behind new Unicode versions by years
 - Emoji rendering is the most common source of terminal alignment bugs today
 - Nerd Fonts and Powerline glyphs are the backbone of modern shell prompts
-:::
+  :::
 
 ::: details The width problem in practice
 This table is supposed to be aligned — but depending on your terminal and font, the columns may be off:
@@ -432,16 +446,18 @@ Xterm became the reference for many widely deployed extensions, including **256-
 
 ::: info At a glance
 **Introduced:**
+
 - 256-color and truecolor (24-bit RGB) SGR extensions
 - Focus reporting (?1004) — apps know when the terminal gains/loses focus
 - OSC 52 clipboard access — programmatic read/write of the system clipboard
 - OSC 8 hyperlinks — clickable URLs in terminal output
 
 **Still matters:**
+
 - Truecolor is now expected by every modern TUI (delta, bat, lazygit)
 - The xterm ctlseqs document is the de facto spec every terminal implementor references
 - Most "standard" terminal features were xterm innovations first
-:::
+  :::
 
 <p class="standard-link"><a class="hover-link" href="/xterm-extensions">View Xterm Extension features &rarr;</a></p>
 
@@ -457,16 +473,18 @@ The OSC namespace is **open-ended** — any terminal can define new number codes
 
 ::: info At a glance
 **Introduced:**
+
 - Window title setting (OSC 0/2) — the tab label in every terminal
 - Semantic prompt markers (OSC 133) — shells tell the terminal where prompts are
 - Color palette queries (OSC 4/10/11) — apps can detect and adapt to the theme
 - An open-ended namespace for out-of-band terminal communication
 
 **Still matters:**
+
 - OSC 52 clipboard access is how tmux and vim share the system clipboard
 - OSC 8 hyperlinks make `ls`, `grep`, and compiler output clickable
 - OSC 133 powers shell integration in iTerm2, WezTerm, and VS Code terminal
-:::
+  :::
 
 <p class="standard-link"><a class="hover-link" href="/osc">View OSC features &rarr;</a></p>
 
@@ -478,16 +496,18 @@ The keyboard protocol has seen broad adoption — Ghostty, WezTerm, foot, and ot
 
 ::: info At a glance
 **Introduced:**
+
 - Unambiguous keyboard protocol — `Ctrl+I` and `Tab` are finally distinct events
 - Key-release reporting — apps can detect when a key is released, not just pressed
 - Kitty graphics protocol — chunked base64 inline image display
 - Extended underline styles (curly, dotted, dashed) with independent colors
 
 **Still matters:**
+
 - The keyboard protocol is adopted by Ghostty, WezTerm, foot, and others
 - Extended underlines power squiggly-line error indicators in terminal editors
 - Kitty graphics is the highest-fidelity inline image protocol available
-:::
+  :::
 
 <p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
 

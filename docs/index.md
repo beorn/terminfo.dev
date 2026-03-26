@@ -11,6 +11,9 @@ hero:
     - theme: alt
       text: Headless Backends
       link: "#headless-backends"
+    - theme: alt
+      text: Multiplexers
+      link: "#multiplexers"
 ---
 
 <script setup>
@@ -51,6 +54,7 @@ const sortedBackends = computed(() => {
 // Split into app (real terminals) and headless backends
 const allAppBackends = computed(() => sortedBackends.value.filter(b => b.type === 'app'))
 const headlessBackends = computed(() => sortedBackends.value.filter(b => b.type === 'headless'))
+const muxBackends = computed(() => sortedBackends.value.filter(b => b.type === 'mux'))
 
 // Filter app backends by platform
 const appBackends = computed(() => {
@@ -421,15 +425,98 @@ function backendTooltip(name, version) {
 
 </div>
 
+<div v-if="muxBackends.length > 0">
+
+## Multiplexers {#multiplexers}
+
+<p class="section-subtitle">Which features survive tmux and screen? Pass-through testing shows what each multiplexer correctly relays.</p>
+
+<div class="summary summary-muted">
+  <div v-for="b in muxBackends" :key="b.name" class="summary-row">
+    <a class="summary-name hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <span class="summary-version">{{ b.version }}</span>
+    <div class="summary-bar">
+      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
+      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
+    </div>
+    <span class="summary-pct">{{ data.stats[b.name]?.pct }}%</span>
+    <span class="summary-counts">
+      {{ data.stats[b.name]?.yes }} / {{ data.stats[b.name]?.total }}
+    </span>
+  </div>
+</div>
+
+<div class="matrix-wrapper">
+<table class="matrix matrix-muted">
+  <thead>
+    <tr>
+      <th class="feature-col"></th>
+      <th v-for="b in muxBackends" :key="b.name">
+        <a class="hover-link" :href="'/terminal/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+      </th>
+    </tr>
+  </thead>
+  <tbody v-for="cat in filteredCategories" :key="cat">
+    <tr class="category-row">
+      <td :colspan="muxBackends.length + 1" class="category-header">
+        <a class="hover-link" :href="'/' + cat">{{ catLabel(cat) }}</a>
+      </td>
+    </tr>
+    <tr v-for="f in filteredFeatures(cat)" :key="f.id">
+      <td class="feature-name" :data-tooltip="featureTooltip(f)">
+        <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
+      </td>
+      <td v-for="b in muxBackends" :key="b.name"
+          :class="cellClass(getResult(b.name, f.id))"
+          :data-tooltip="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
+        <a class="cell-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ cellIcon(getResult(b.name, f.id)) }}</a>
+      </td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+</div>
+
 <p class="footer-note">
   Hover over any cell for details.<br/>
   Data from <a href="https://termless.dev">Termless</a> probes and <a href="https://www.npmjs.com/package/terminfo.dev">community submissions</a>.
   {{ data.generated ? 'Generated: ' + data.generated : '' }}
 </p>
 
+## Explore
+
+<div class="explore-grid">
+  <a href="/fundamentals" class="explore-card">
+    <h3>Fundamentals</h3>
+    <p>How terminals work — control characters, PTY architecture, stty, and feature detection.</p>
+  </a>
+  <a href="/standards" class="explore-card">
+    <h3>Standards</h3>
+    <p>From VT100 to Kitty — 50 years of terminal protocols and escape sequence standards.</p>
+  </a>
+  <a href="/terminal/vt100-historical" class="explore-card">
+    <h3>Historical Terminals</h3>
+    <p>The terminals that shaped computing — VT52, VT100, VT220, xterm, and VT510.</p>
+  </a>
+  <a href="/baseline/core" class="explore-card">
+    <h3>Baselines</h3>
+    <p>What should your terminal support? Minimum feature sets from core to rich.</p>
+  </a>
+  <a href="/glossary" class="explore-card">
+    <h3>Glossary</h3>
+    <p>CSI, SGR, OSC, DEC... terminal terminology explained.</p>
+  </a>
+  <a href="/compare/ghostty-vs-kitty" class="explore-card">
+    <h3>Compare</h3>
+    <p>Side-by-side terminal feature comparison.</p>
+  </a>
+</div>
+
 ## How This Works
 
-Data comes from two complementary sources:
+Data comes from three complementary sources:
 
 **Terminal Applications** — tested on real terminals via the `npx terminfo.dev` community CLI.
 Each test sends escape sequences to the actual terminal and verifies behavior via cursor
@@ -442,9 +529,64 @@ stores the escape sequence. A headless pass means "the parser accepts this," not
 correctly." Some features (like blink, cursor shape) may parse correctly but are not exposed
 through the library's API.
 
+**Multiplexers** — tested by running probes through terminal multiplexers (tmux, screen) to
+measure pass-through fidelity. A multiplexer pass means the escape sequence was correctly
+relayed to the underlying terminal. Failures indicate sequences that the multiplexer intercepts,
+strips, or mishandles.
+
 </div>
 
 <style>
+/* Explore card grid */
+.explore-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 1.5em 0;
+}
+
+@media (max-width: 960px) {
+  .explore-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 580px) {
+  .explore-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.explore-card {
+  display: block;
+  padding: 16px 18px;
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.explore-card:hover {
+  border-color: var(--vp-c-brand-1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.explore-card h3 {
+  margin: 0 0 6px;
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+}
+
+.explore-card p {
+  margin: 0;
+  font-size: 0.85em;
+  line-height: 1.45;
+  color: var(--vp-c-text-2);
+}
+
 .no-data {
   padding: 2em;
   background: var(--vp-c-danger-soft);

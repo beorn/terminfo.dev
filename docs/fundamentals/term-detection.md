@@ -100,27 +100,27 @@ The terminfo database has no capability entries for most modern features — Kit
 
 Beyond `$TERM` and `$COLORTERM`, many terminals set additional environment variables that reveal their identity. These aren't standardized — each terminal chooses its own — but collectively they cover most of the major emulators.
 
-| Variable | Set By | Value |
-| --- | --- | --- |
-| **`TERM_PROGRAM`** | Most modern terminals | Terminal name: `iTerm.app`, `WezTerm`, `ghostty`, `Apple_Terminal`, `tmux` |
-| **`TERM_PROGRAM_VERSION`** | Most modern terminals | Version string (e.g., `3.5.2`, `1.1.0`) — useful for feature gating by version |
-| **`VTE_VERSION`** | VTE-based terminals (GNOME Terminal, Tilix, Terminator) | Encoded version number (e.g., `7200` = 0.72.0). Reliable for detecting the VTE family on Linux |
-| **`KITTY_WINDOW_ID`** | Kitty | Window identifier. Its presence confirms Kitty — the value itself is rarely useful |
-| **`WT_SESSION`** | Windows Terminal | Session GUID. Reliable way to detect Windows Terminal, even under WSL |
-| **`GHOSTTY_RESOURCES_DIR`** | Ghostty | Path to Ghostty's resource bundle. Confirms Ghostty is the host terminal |
-| **`ITERM_SESSION_ID`** | iTerm2 | Session identifier (e.g., `w0t0p0:4A2B3C`). Confirms iTerm2 — also encodes window/tab/pane |
+| Variable                    | Set By                                                  | Value                                                                                          |
+| --------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| **`TERM_PROGRAM`**          | Most modern terminals                                   | Terminal name: `iTerm.app`, `WezTerm`, `ghostty`, `Apple_Terminal`, `tmux`                     |
+| **`TERM_PROGRAM_VERSION`**  | Most modern terminals                                   | Version string (e.g., `3.5.2`, `1.1.0`) — useful for feature gating by version                 |
+| **`VTE_VERSION`**           | VTE-based terminals (GNOME Terminal, Tilix, Terminator) | Encoded version number (e.g., `7200` = 0.72.0). Reliable for detecting the VTE family on Linux |
+| **`KITTY_WINDOW_ID`**       | Kitty                                                   | Window identifier. Its presence confirms Kitty — the value itself is rarely useful             |
+| **`WT_SESSION`**            | Windows Terminal                                        | Session GUID. Reliable way to detect Windows Terminal, even under WSL                          |
+| **`GHOSTTY_RESOURCES_DIR`** | Ghostty                                                 | Path to Ghostty's resource bundle. Confirms Ghostty is the host terminal                       |
+| **`ITERM_SESSION_ID`**      | iTerm2                                                  | Session identifier (e.g., `w0t0p0:4A2B3C`). Confirms iTerm2 — also encodes window/tab/pane     |
 
 These variables are fast to check (no round-trip to the terminal) and more specific than `$TERM`. A common pattern is to check `TERM_PROGRAM` first for a quick identification, then fall back to XTVERSION or DECRPM for terminals that don't set it.
 
 ::: warning These variables don't survive multiplexers
-tmux, screen, and SSH sessions typically strip or override these variables. If your application needs to detect the *outer* terminal from inside tmux, environment variables won't help — you'll need escape-sequence queries like XTVERSION or DA1, which pass through the multiplexer to the real terminal.
+tmux, screen, and SSH sessions typically strip or override these variables. If your application needs to detect the _outer_ terminal from inside tmux, environment variables won't help — you'll need escape-sequence queries like XTVERSION or DA1, which pass through the multiplexer to the real terminal.
 :::
 
 ## Multiplexer and SSH Caveats
 
 Terminal detection gets significantly harder when multiplexers (tmux, screen, Zellij) or SSH sessions sit between the application and the real terminal. Each layer can distort the signals that detection mechanisms rely on.
 
-**tmux overrides `$TERM`.** When tmux starts, it replaces the terminal's `$TERM` value with `tmux-256color` or `screen-256color` (depending on its `default-terminal` setting). The application sees tmux's terminal type, not the outer terminal's. This is correct behavior — tmux *is* the terminal from the application's perspective — but it means `$TERM` tells you nothing about the real terminal's capabilities. tmux may support fewer features than the outer terminal (for example, it only recently added support for styled underlines and still doesn't support Kitty graphics).
+**tmux overrides `$TERM`.** When tmux starts, it replaces the terminal's `$TERM` value with `tmux-256color` or `screen-256color` (depending on its `default-terminal` setting). The application sees tmux's terminal type, not the outer terminal's. This is correct behavior — tmux _is_ the terminal from the application's perspective — but it means `$TERM` tells you nothing about the real terminal's capabilities. tmux may support fewer features than the outer terminal (for example, it only recently added support for styled underlines and still doesn't support Kitty graphics).
 
 **SSH strips environment variables.** By default, `sshd` only accepts a small whitelist of environment variables from the client (typically `LANG`, `LC_*`, and `TERM`). Variables like `TERM_PROGRAM`, `COLORTERM`, `KITTY_WINDOW_ID`, and `GHOSTTY_RESOURCES_DIR` are not forwarded. You can configure `SendEnv` on the client and `AcceptEnv` on the server, but most users don't, and you can't count on it for general-purpose detection.
 
@@ -129,11 +129,12 @@ Terminal detection gets significantly harder when multiplexers (tmux, screen, Ze
 **Escape-sequence queries pass through — mostly.** DA1, DECRPM, and XTVERSION queries travel through tmux and SSH to the outer terminal, and the responses travel back. This makes them more reliable than environment variables in nested scenarios. However, there are caveats: XTVERSION inside tmux returns tmux's identity (`tmux 3.5`), not the outer terminal's. tmux can also intercept and modify some responses. And some escape sequences that the outer terminal supports may be consumed by tmux rather than passed through to the application.
 
 ::: tip Detection strategy inside multiplexers
+
 1. Check `$TMUX` or `$STY` to detect that you're inside a multiplexer
 2. Use DECRPM to probe the multiplexer's capabilities (which may be a subset of the outer terminal's)
 3. If you need the outer terminal's identity, try `XTVERSION` passthrough via tmux's `\ePtmux;` DCS wrapper — but be prepared for it to fail
 4. Accept that inside a multiplexer, you're constrained to whatever the multiplexer exposes
-:::
+   :::
 
 ## Practical Detection Recipes
 
@@ -184,17 +185,17 @@ def query_da1(timeout=0.5):
 
 ```js
 function detectCapabilities() {
-  const env = process.env;
+  const env = process.env
   return {
-    truecolor: /^(truecolor|24bit)$/i.test(env.COLORTERM ?? ''),
-    term: env.TERM ?? 'unknown',
+    truecolor: /^(truecolor|24bit)$/i.test(env.COLORTERM ?? ""),
+    term: env.TERM ?? "unknown",
     program: env.TERM_PROGRAM ?? null,
     version: env.TERM_PROGRAM_VERSION ?? null,
-    isTmux: 'TMUX' in env,
-    isSSH: 'SSH_TTY' in env || 'SSH_CLIENT' in env,
-    isKitty: 'KITTY_WINDOW_ID' in env,
-    is256color: /256color/.test(env.TERM ?? ''),
-  };
+    isTmux: "TMUX" in env,
+    isSSH: "SSH_TTY" in env || "SSH_CLIENT" in env,
+    isKitty: "KITTY_WINDOW_ID" in env,
+    is256color: /256color/.test(env.TERM ?? ""),
+  }
 }
 ```
 

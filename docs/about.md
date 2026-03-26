@@ -55,15 +55,15 @@ Community probes test **real terminal behavior** — does the actual application
 
 ## Headless Backends Tested
 
-| Backend            | Engine                       | Description                                        |
-| ------------------ | ---------------------------- | -------------------------------------------------- |
+| Backend            | Engine                       | Description                                                    |
+| ------------------ | ---------------------------- | -------------------------------------------------------------- |
 | **xterm.js**       | @xterm/headless              | The most widely used web terminal emulator (4 versions tested) |
-| **Ghostty Native** | libghostty-vt (Zig)          | Native Ghostty via Zig N-API bindings              |
-| **vt100.js**       | Pure TypeScript              | Termless's built-in zero-dependency emulator       |
-| **vterm.js**       | Pure TypeScript              | Full-featured emulator targeting 100% coverage     |
-| **WezTerm**        | wezterm-term (napi-rs)       | Broadest protocol support: sixel, semantic prompts |
-| **Alacritty**      | alacritty_terminal (napi-rs) | Rust parser with strong reflow                     |
-| **Kitty**          | kitty (C, GPL source)        | Kitty's parser built from source                   |
+| **Ghostty Native** | libghostty-vt (Zig)          | Native Ghostty via Zig N-API bindings                          |
+| **vt100.js**       | Pure TypeScript              | Termless's built-in zero-dependency emulator                   |
+| **vterm.js**       | Pure TypeScript              | Full-featured emulator targeting 100% coverage                 |
+| **WezTerm**        | wezterm-term (napi-rs)       | Broadest protocol support: sixel, semantic prompts             |
+| **Alacritty**      | alacritty_terminal (napi-rs) | Rust parser with strong reflow                                 |
+| **Kitty**          | kitty (C, GPL source)        | Kitty's parser built from source                               |
 
 ## Feature Categories
 

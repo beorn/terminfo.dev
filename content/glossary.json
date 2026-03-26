@@ -533,5 +533,50 @@
     "expansion": "Unicode Baseline",
     "description": "Unicode correctness — wide chars, combining, emoji",
     "link": "/baseline/unicode"
+  },
+  "Kitty": {
+    "expansion": "Kitty Terminal Emulator",
+    "description": "GPU-accelerated terminal by Kovid Goyal. Pioneer of the Kitty keyboard and graphics protocols.",
+    "link": "/terminal/kitty"
+  },
+  "Ghostty": {
+    "expansion": "Ghostty Terminal Emulator",
+    "description": "GPU-accelerated terminal by Mitchell Hashimoto, written in Zig with excellent standards compliance.",
+    "link": "/terminal/ghostty"
+  },
+  "WezTerm": {
+    "expansion": "WezTerm Terminal Emulator",
+    "description": "Rust terminal emulator and multiplexer by Wez Furlong with Lua configuration and SSH domain support.",
+    "link": "/terminal/wezterm"
+  },
+  "Alacritty": {
+    "expansion": "Alacritty Terminal Emulator",
+    "description": "GPU-accelerated minimal terminal written in Rust. Pioneered GPU rendering for terminals in 2017.",
+    "link": "/terminal/alacritty"
+  },
+  "xterm.js": {
+    "expansion": "xterm.js Terminal Emulator",
+    "description": "The most widely deployed terminal emulator — powers VS Code, Cursor, and countless web terminals.",
+    "link": "/terminal/xterm-js"
+  },
+  "vterm.js": {
+    "expansion": "vterm.js Terminal Emulator",
+    "description": "Full-featured TypeScript terminal emulator targeting 100% of the terminfo.dev feature matrix.",
+    "link": "/terminal/vterm"
+  },
+  "vt100.js": {
+    "expansion": "vt100.js Terminal Emulator",
+    "description": "Lightweight pure TypeScript VT100/VT220 terminal emulator with zero dependencies.",
+    "link": "/terminal/vt100-js"
+  },
+  "tmux": {
+    "expansion": "Terminal Multiplexer",
+    "description": "The most widely used terminal multiplexer — session persistence, window management, and pane splitting.",
+    "link": "/terminal/tmux"
+  },
+  "GNU Screen": {
+    "expansion": "GNU Screen Terminal Multiplexer",
+    "description": "The original terminal multiplexer (1987). Session persistence and detach/reattach for remote work.",
+    "link": "/terminal/screen"
   }
 }

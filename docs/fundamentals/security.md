@@ -16,7 +16,7 @@ next: false
 
 OSC 52 (`\e]52;c;<base64-data>\a`) lets applications read and write the system clipboard through the terminal. This is genuinely useful — it's how copying works over SSH, in tmux, and in terminal-based editors that can't access the system clipboard directly.
 
-The security problem: any program that can write to stdout can also write to your clipboard. And if clipboard *reading* is enabled, any program can silently read whatever you last copied — passwords, tokens, private keys.
+The security problem: any program that can write to stdout can also write to your clipboard. And if clipboard _reading_ is enabled, any program can silently read whatever you last copied — passwords, tokens, private keys.
 
 ```bash
 # Write "hello" to the clipboard via OSC 52
@@ -28,19 +28,20 @@ printf '\e]52;c;?\a'
 
 **How terminals handle this:**
 
-| Policy | Behavior | Terminals |
-|--------|----------|-----------|
+| Policy                      | Behavior                         | Terminals                       |
+| --------------------------- | -------------------------------- | ------------------------------- |
 | Write allowed, read blocked | Default in most modern terminals | Ghostty, iTerm2, Kitty, WezTerm |
-| Both blocked by default | Must opt in via settings | Terminal.app |
-| Both allowed | Full access | Some older xterm configs |
+| Both blocked by default     | Must opt in via settings         | Terminal.app                    |
+| Both allowed                | Full access                      | Some older xterm configs        |
 
 Reading the clipboard is the dangerous operation. A compromised process in a tmux session could silently capture anything you copy. Most terminals now block clipboard reads by default and require explicit opt-in.
 
 ::: warning What to do
+
 - Verify clipboard read is disabled in your terminal's settings (it usually is by default).
 - If you enable OSC 52 read for remote workflows, scope it to specific sessions or hosts.
 - Libraries: don't assume OSC 52 read works. Fall back gracefully — check the terminal's response or use platform clipboard tools (`pbcopy`, `xclip`).
-:::
+  :::
 
 ## OSC 8: Hyperlink Spoofing
 
@@ -54,15 +55,17 @@ printf '\e]8;;https://evil.example.com\e\\Google\e]8;;\e\\'
 A user sees "Google" as a clickable link in their terminal. Clicking it opens `evil.example.com`. This is the same class of attack as HTML phishing links, but in a context where users may not expect it.
 
 **Where this matters:**
+
 - `git log` output with OSC 8 links to commit URLs
 - Build tool output linking to error documentation
 - Any CLI that renders URLs from untrusted input (package managers showing dependency URLs, etc.)
 
 ::: warning What to do
+
 - Hover before clicking: most terminals show the actual URL on hover (like a browser).
 - If your application renders links from untrusted sources, sanitize the URL or display the raw URL alongside the link text.
 - Terminal authors: show the real URL in a tooltip or status bar, as browsers do.
-:::
+  :::
 
 ## Paste Injection & Bracketed Paste
 
@@ -100,10 +103,11 @@ printf '\e[?2004l'
 **Current status:** All modern terminals support bracketed paste. Most modern shells enable it by default. The risk is primarily in legacy shells, minimal environments, or applications that don't enable it.
 
 ::: warning What to do
+
 - Use a modern shell (zsh, fish, bash 5.1+) — they enable bracketed paste automatically.
 - If writing a TUI application that accepts text input, enable mode 2004 and handle the paste markers.
 - Be cautious pasting commands from websites. Use a plain text editor as an intermediate step if unsure.
-:::
+  :::
 
 ## Escape Injection in Logs
 
@@ -112,6 +116,7 @@ If untrusted data gets written to a file without sanitization, and that file is 
 **The attack:** An attacker submits a username, HTTP header, or log message containing escape sequences. The sequences sit inert in the log file (they're just bytes). When an admin runs `cat server.log` or pages through it with `less`, the terminal parses them.
 
 Possible effects:
+
 - **Hide evidence**: move the cursor and overwrite lines, making malicious entries invisible
 - **Change the title bar**: use OSC 0 to display a fake path or hostname, confusing the admin
 - **Alter terminal state**: change colors, enable alternate screen, move the cursor to arbitrary positions
@@ -124,10 +129,11 @@ echo -e 'normal log line\n\e[1A\e[2K\e[1A\e[2Knormal log line' >> server.log
 ```
 
 ::: warning What to do
+
 - **Viewing logs**: Use `cat -v` (shows control characters as `^[`), `less -R` (passes through color but blocks most others), or a log viewer that strips escapes.
 - **Writing logs**: Sanitize user input before logging. Strip or escape bytes in the 0x00-0x1F range (especially 0x1B/ESC). Most logging libraries do this by default.
 - **Piping untrusted data**: Use `| cat -v` or `| sed 's/\x1b\[[0-9;]*[a-zA-Z]//g'` to strip ANSI sequences.
-:::
+  :::
 
 ## Title and Icon Attacks
 
@@ -143,15 +149,16 @@ printf '\e]2;My Title\a'
 
 If an attacker can write to your terminal (e.g., through a log file, a malicious SSH banner, or crafted data in a pipeline), they can change the window title to display misleading information — a fake hostname, a different directory path, or a spoofed user identity.
 
-Some older terminals also supported *reading* the title back via a query sequence (OSC 21). This created an injection risk: an attacker could set the title to contain shell commands, then trigger a title query. The terminal would send the title contents back through stdin, where the shell might execute them. Modern terminals have disabled title query responses.
+Some older terminals also supported _reading_ the title back via a query sequence (OSC 21). This created an injection risk: an attacker could set the title to contain shell commands, then trigger a title query. The terminal would send the title contents back through stdin, where the shell might execute them. Modern terminals have disabled title query responses.
 
-**Current status:** Title setting is generally considered low-risk and is widely allowed. Title *querying* is blocked by default in all modern terminals due to the injection risk.
+**Current status:** Title setting is generally considered low-risk and is widely allowed. Title _querying_ is blocked by default in all modern terminals due to the injection risk.
 
 ::: warning What to do
+
 - Terminal authors: never respond to title query sequences (OSC 21) with the actual title contents. Most modern terminals already block this.
 - Users: be aware that window titles can be set by remote content. Don't rely on the title bar to verify which host or directory you're in.
 - Sanitize data before passing it to title-setting sequences in your application. Strip control characters and limit the length.
-:::
+  :::
 
 ## Further Reading
 

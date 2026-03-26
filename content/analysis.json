@@ -48,8 +48,8 @@
     "probeCount": 147,
     "changes": null
   },
-  "terminal/vt100-headless": {
-    "analysis": "<p><a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> scores <strong>58%</strong> (85/147) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\">Unicode</a> baselines. Ranks <strong>#13</strong> of 13 tested terminals. Missing <strong>62</strong> features.</p>",
+  "terminal/vt100-js": {
+    "analysis": "<p><a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> scores <strong>58%</strong> (85/147) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\">Unicode</a> baselines. Ranks <strong>#13</strong> of 13 tested terminals. Missing <strong>62</strong> features.</p>",
     "date": "2026-03-26",
     "probeCount": 147,
     "changes": null
@@ -103,22 +103,22 @@
     "changes": null
   },
   "baseline/core": {
-    "analysis": "<p><strong>6</strong> of 13 tested terminals achieve 100% Core TUI compliance. Lagging: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> (89%), <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a> (97%), <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> (99%). Most commonly missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/erase/el-erase-with-bg-color\" class=\"hover-link\">EL erases with bg color</a>, <a href=\"/sgr/2-faint-dim\" class=\"hover-link\">Faint/dim (SGR 2)</a>.</p>",
+    "analysis": "<p><strong>6</strong> of 13 tested terminals achieve 100% Core TUI compliance. Lagging: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> (89%), <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a> (97%), <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> (99%). Most commonly missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/erase/el-erase-with-bg-color\" class=\"hover-link\">EL erases with bg color</a>, <a href=\"/sgr/2-faint-dim\" class=\"hover-link\">Faint/dim (SGR 2)</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "baseline/modern": {
-    "analysis": "<p><strong>5</strong> of 13 tested terminals achieve 100% Modern TUI compliance. Lagging: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> (38%), <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> (87%), <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a> (87%). Most commonly missing: <a href=\"/extensions/osc-52-clipboard\" class=\"hover-link\">Clipboard access (OSC 52)</a>, <a href=\"/extensions/osc-10-fg-color-query\" class=\"hover-link\">Foreground color query (OSC 10)</a>, <a href=\"/extensions/osc-11-bg-color-query\" class=\"hover-link\">Background color query (OSC 11)</a>.</p>",
+    "analysis": "<p><strong>5</strong> of 13 tested terminals achieve 100% Modern TUI compliance. Lagging: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> (38%), <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> (87%), <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a> (87%). Most commonly missing: <a href=\"/extensions/osc-52-clipboard\" class=\"hover-link\">Clipboard access (OSC 52)</a>, <a href=\"/extensions/osc-10-fg-color-query\" class=\"hover-link\">Foreground color query (OSC 10)</a>, <a href=\"/extensions/osc-11-bg-color-query\" class=\"hover-link\">Background color query (OSC 11)</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "baseline/rich": {
-    "analysis": "<p><strong>0</strong> of 13 tested terminals achieve 100% Rich TUI compliance. Lagging: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> (5%), <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> (24%), <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a> (24%). Most commonly missing: <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>, <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>.</p>",
+    "analysis": "<p><strong>0</strong> of 13 tested terminals achieve 100% Rich TUI compliance. Lagging: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> (5%), <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> (24%), <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a> (24%). Most commonly missing: <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>, <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "baseline/unicode": {
-    "analysis": "<p><strong>3</strong> of 13 tested terminals achieve 100% <a href=\"/unicode\" class=\"hover-link\">Unicode</a> compliance. Lagging: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> (38%), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (63%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (63%). Most commonly missing: <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/unicode/grapheme-cursor\" class=\"hover-link\">Grapheme Cluster Cursor Movement</a>.</p>",
+    "analysis": "<p><strong>3</strong> of 13 tested terminals achieve 100% <a href=\"/unicode\" class=\"hover-link\">Unicode</a> compliance. Lagging: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> (38%), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (63%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (63%). Most commonly missing: <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/unicode/grapheme-cursor\" class=\"hover-link\">Grapheme Cluster Cursor Movement</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -233,47 +233,47 @@
     "changes": null
   },
   "unicode": {
-    "analysis": "<p><strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> defines 10 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>76%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> at 40% (4/10).</p>",
+    "analysis": "<p><strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> defines 10 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>76%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> at 40% (4/10).</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "ecma-48": {
-    "analysis": "<p><strong><a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a></strong> defines 60 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> and 5 more. Lowest: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> at 90% (54/60).</p>",
+    "analysis": "<p><strong><a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a></strong> defines 60 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>99%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> and 5 more. Lowest: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> at 90% (54/60).</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "vt100": {
-    "analysis": "<p><strong><a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a></strong> defines 50 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>98%</strong>. Full compliance (100%): <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a> and 1 more. Lowest: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> at 94% (47/50).</p>",
+    "analysis": "<p><strong><a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a></strong> defines 50 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>98%</strong>. Full compliance (100%): <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a> and 1 more. Lowest: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> at 94% (47/50).</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "vt220": {
-    "analysis": "<p><strong><a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a></strong> defines 4 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>92%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> and 5 more. Lowest: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> at 50% (2/4).</p>",
+    "analysis": "<p><strong><a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a></strong> defines 4 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>92%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> and 5 more. Lowest: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> at 50% (2/4).</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "vt510": {
-    "analysis": "<p><strong><a href=\"/vt510\" class=\"hover-link\" title=\"Video Terminal 510\">VT510</a></strong> defines 10 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>83%</strong>. Full compliance (100%): <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>. Lowest: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> at 50% (5/10).</p>",
+    "analysis": "<p><strong><a href=\"/vt510\" class=\"hover-link\" title=\"Video Terminal 510\">VT510</a></strong> defines 10 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>83%</strong>. Full compliance (100%): <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>. Lowest: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> at 50% (5/10).</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "dec-private-modes": {
-    "analysis": "<p><strong><a href=\"/dec-private-modes\" class=\"hover-link\">DEC Private Modes</a></strong> defines 22 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>94%</strong>. Full compliance (100%): <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a> and 1 more. Lowest: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> at 59% (13/22).</p>",
+    "analysis": "<p><strong><a href=\"/dec-private-modes\" class=\"hover-link\">DEC Private Modes</a></strong> defines 22 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>94%</strong>. Full compliance (100%): <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a> and 1 more. Lowest: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> at 59% (13/22).</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "xterm-extensions": {
-    "analysis": "<p><strong><a href=\"/xterm-extensions\" class=\"hover-link\">Xterm Extensions</a></strong> defines 33 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>86%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> at 21% (7/33).</p>",
+    "analysis": "<p><strong><a href=\"/xterm-extensions\" class=\"hover-link\">Xterm Extensions</a></strong> defines 33 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>86%</strong>. Full compliance (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> at 21% (7/33).</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "kitty-extensions": {
-    "analysis": "<p><strong><a href=\"/kitty-extensions\" class=\"hover-link\">Kitty Extensions</a></strong> defines 6 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>73%</strong>. Full compliance (100%): <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> at 0% (0/6).</p>",
+    "analysis": "<p><strong><a href=\"/kitty-extensions\" class=\"hover-link\">Kitty Extensions</a></strong> defines 6 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>73%</strong>. Full compliance (100%): <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> at 0% (0/6).</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "osc": {
-    "analysis": "<p><strong>Operating System Commands (OSC)</strong> defines 13 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>66%</strong>. Full compliance (100%): <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a> at 15% (2/13).</p>",
+    "analysis": "<p><strong>Operating System Commands (OSC)</strong> defines 13 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>66%</strong>. Full compliance (100%): <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a> at 15% (2/13).</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -288,12 +288,12 @@
     "changes": null
   },
   "sgr/2-faint-dim": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — use <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a> for modern SGR.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — use <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a> for modern SGR.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "sgr/3-italic": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — use <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a> for modern SGR.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — use <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a> for modern SGR.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -303,27 +303,27 @@
     "changes": null
   },
   "sgr/21-double-underline": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only single underline supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only single underline supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "sgr/4-3-curly-underline": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only single underline supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only single underline supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "sgr/4-4-dotted-underline": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only single underline supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only single underline supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "sgr/4-5-dashed-underline": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only single underline supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only single underline supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "sgr/58-underline-color": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -343,7 +343,7 @@
     "changes": null
   },
   "sgr/9-strikethrough": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — use <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a> for modern SGR.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — use <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a> for modern SGR.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -363,12 +363,12 @@
     "changes": null
   },
   "sgr/90-97-bright-fg": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "sgr/100-107-bright-bg": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -383,22 +383,22 @@
     "changes": null
   },
   "sgr/38-5-256-color-fg": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "sgr/48-5-256-color-bg": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "sgr/38-2-truecolor-fg": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "sgr/48-2-truecolor-bg": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -433,7 +433,7 @@
     "changes": null
   },
   "cursor/decscusr-cursor-shape": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -508,7 +508,7 @@
     "changes": null
   },
   "cursor/cup-decom-scroll-region": {
-    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a> not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a> not implemented — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -553,12 +553,12 @@
     "changes": null
   },
   "erase/selective-decsed": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: DECSED not implemented — pure TypeScript emulator; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: DECSED (selective erase) not supported in alacritty; <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>: DECSED (selective erase) not supported in wezterm-term.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: DECSED not implemented — pure TypeScript emulator; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: DECSED (selective erase) not supported in alacritty; <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>: DECSED (selective erase) not supported in wezterm-term.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "erase/el-erase-with-bg-color": {
-    "analysis": "<p>Supported by <strong>11</strong> of <strong>13</strong> terminals (85%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: EL doesn't preserve SGR background — pure TypeScript emulator; <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>: EL doesn't preserve SGR background in <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> mode.</p>",
+    "analysis": "<p>Supported by <strong>11</strong> of <strong>13</strong> terminals (85%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: EL doesn't preserve SGR background — pure TypeScript emulator; <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>: EL doesn't preserve SGR background in <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> mode.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -588,42 +588,42 @@
     "changes": null
   },
   "editing/rep-repeat-character": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: REP not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: REP not implemented — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "input/modify-other-keys": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/input/modify-other-keys\" class=\"hover-link\" title=\"Xterm Modify Other Keys\">modifyOtherKeys</a> not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/input/modify-other-keys\" class=\"hover-link\" title=\"Xterm Modify Other Keys\">modifyOtherKeys</a> not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "input/csi-u-encoding": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: <a href=\"/extensions\" class=\"hover-link\" title=\"CSI u Keyboard Protocol\">CSI u</a> keyboard protocol not implemented; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/extensions\" class=\"hover-link\" title=\"CSI u Keyboard Protocol\">CSI u</a> keyboard protocol not implemented.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: <a href=\"/extensions\" class=\"hover-link\" title=\"CSI u Keyboard Protocol\">CSI u</a> keyboard protocol not implemented; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/extensions\" class=\"hover-link\" title=\"CSI u Keyboard Protocol\">CSI u</a> keyboard protocol not implemented.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "input/pixel-mouse-1016": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: SGR pixel mouse mode not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: SGR pixel mouse mode not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: SGR pixel mouse mode not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: SGR pixel mouse mode not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "input/urxvt-mouse-1015": {
-    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "input/x10-mouse-9": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: X10 mouse mode (?9) not implemented; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: X10 mouse mode (?9) not implemented; <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>: X10 mouse mode (?9) not implemented.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: X10 mouse mode (?9) not implemented; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: X10 mouse mode (?9) not implemented; <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>: X10 mouse mode (?9) not implemented.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "input/button-event-mouse-1002": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "modes/decset-1049-alt-screen-enter": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -633,7 +633,7 @@
     "changes": null
   },
   "modes/decset-2004-bracketed-paste": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -643,22 +643,22 @@
     "changes": null
   },
   "modes/decset-1000-mouse-tracking": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "modes/decset-1006-sgr-mouse": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: SGR mouse encoding not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: SGR mouse encoding not implemented — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "modes/decset-1003-all-motion-mouse": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "modes/decset-1004-focus-tracking": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — <a href=\"/terminal/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a> extension.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -673,7 +673,7 @@
     "changes": null
   },
   "modes/left-right-margin-69": {
-    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>: DECLRMM not implemented; <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: DECLRMM not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: DECLRMM not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vterm\" class=\"hover-link\">vterm.js</a>: DECLRMM not implemented; <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: DECLRMM not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: DECLRMM not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -728,7 +728,7 @@
     "changes": null
   },
   "scrollback/alt-screen-separate-scrollback": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — no <a href=\"/modes/alt-screen-enter\" class=\"hover-link\" title=\"Alternate Screen Buffer\">alternate screen buffer</a>.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — no <a href=\"/modes/alt-screen-enter\" class=\"hover-link\" title=\"Alternate Screen Buffer\">alternate screen buffer</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -743,7 +743,7 @@
     "changes": null
   },
   "extensions/kitty-keyboard-protocol": {
-    "analysis": "<p>Supported by <strong>7</strong> of <strong>13</strong> terminals (54%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: Not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>7</strong> of <strong>13</strong> terminals (54%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: Not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -753,12 +753,12 @@
     "changes": null
   },
   "extensions/sixel-graphics": {
-    "analysis": "<p>Supported by <strong>4</strong> of <strong>13</strong> terminals (31%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: Not implemented in alacritty; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: Not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>4</strong> of <strong>13</strong> terminals (31%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: Not implemented in alacritty; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: Not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "extensions/osc-8-hyperlinks": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -773,52 +773,52 @@
     "changes": null
   },
   "extensions/osc-52-clipboard": {
-    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "extensions/osc-10-fg-color-query": {
-    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "extensions/osc-11-bg-color-query": {
-    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "extensions/osc-7-current-directory": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/extensions/extensions-osc7-cwd\" class=\"hover-link\" title=\"Current Working Directory\">OSC 7</a> not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a> <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/extensions/extensions-osc7-cwd\" class=\"hover-link\" title=\"Current Working Directory\">OSC 7</a> not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a> <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "extensions/text-reflow": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "extensions/osc-133-semantic-prompts": {
-    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: Not implemented in alacritty; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: Not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: Not implemented in alacritty; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: Not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "extensions/osc-633-vscode": {
-    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> <a href=\"/features\" class=\"hover-link\" title=\"Shell\">shell</a> integration (<a href=\"/extensions/osc-633-vscode\" class=\"hover-link\" title=\"VS Code Shell Integration\">OSC 633</a>) not supported; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> <a href=\"/features\" class=\"hover-link\" title=\"Shell\">shell</a> integration (<a href=\"/extensions/osc-633-vscode\" class=\"hover-link\" title=\"VS Code Shell Integration\">OSC 633</a>) not supported; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> <a href=\"/features\" class=\"hover-link\" title=\"Shell\">shell</a> integration (<a href=\"/extensions/osc-633-vscode\" class=\"hover-link\" title=\"VS Code Shell Integration\">OSC 633</a>) not supported.</p>",
+    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> <a href=\"/features\" class=\"hover-link\" title=\"Shell\">shell</a> integration (<a href=\"/extensions/osc-633-vscode\" class=\"hover-link\" title=\"VS Code Shell Integration\">OSC 633</a>) not supported; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> <a href=\"/features\" class=\"hover-link\" title=\"Shell\">shell</a> integration (<a href=\"/extensions/osc-633-vscode\" class=\"hover-link\" title=\"VS Code Shell Integration\">OSC 633</a>) not supported; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> <a href=\"/features\" class=\"hover-link\" title=\"Shell\">shell</a> integration (<a href=\"/extensions/osc-633-vscode\" class=\"hover-link\" title=\"VS Code Shell Integration\">OSC 633</a>) not supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "extensions/notifications-osc-9": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: OSC 9 notifications not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: OSC 9 notifications not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "extensions/iterm2-images": {
-    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>13</strong> terminals (62%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "extensions/24-bit-truecolor": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — only 8 standard colors supported.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -833,12 +833,12 @@
     "changes": null
   },
   "text/cjk-wide-chars": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — ASCII only, no <a href=\"/unicode\" class=\"hover-link\">Unicode</a> width.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — ASCII only, no <a href=\"/unicode\" class=\"hover-link\">Unicode</a> width.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "text/emoji-wide-chars": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — ASCII only, no <a href=\"/unicode\" class=\"hover-link\">Unicode</a> width; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: Headless mode reports emoji as single-width.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>13</strong> terminals (77%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — ASCII only, no <a href=\"/unicode\" class=\"hover-link\">Unicode</a> width; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: Headless mode reports emoji as single-width.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -848,7 +848,7 @@
     "changes": null
   },
   "text/emoji-regional-indicator-flags": {
-    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Emoji flag sequences not rendered as wide characters; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: Emoji flag sequences not rendered as wide characters; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: Emoji flag sequences not rendered as wide characters.</p>",
+    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>, <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Emoji flag sequences not rendered as wide characters; <a href=\"/terminal/alacritty\" class=\"hover-link\">Alacritty</a>: Emoji flag sequences not rendered as wide characters; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: Emoji flag sequences not rendered as wide characters.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -858,7 +858,7 @@
     "changes": null
   },
   "text/combining-characters": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Combining characters not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Combining characters not implemented — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -873,7 +873,7 @@
     "changes": null
   },
   "unicode/wrap-boundary": {
-    "analysis": "<p>Supported by <strong>11</strong> of <strong>13</strong> terminals (85%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — ASCII only, no <a href=\"/unicode\" class=\"hover-link\">Unicode</a> width; <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>: Wide char at end of line not handled correctly in <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> mode.</p>",
+    "analysis": "<p>Supported by <strong>11</strong> of <strong>13</strong> terminals (85%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: Not in <a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a>/<a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — ASCII only, no <a href=\"/unicode\" class=\"hover-link\">Unicode</a> width; <a href=\"/terminal/wezterm\" class=\"hover-link\">WezTerm</a>: Wide char at end of line not handled correctly in <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> mode.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -973,32 +973,32 @@
     "changes": null
   },
   "device/da2-secondary-device-attributes": {
-    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>12</strong> of <strong>13</strong> terminals (92%). Not supported by: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "device/da3-tertiary-device-attributes": {
-    "analysis": "<p>Supported by <strong>4</strong> of <strong>13</strong> terminals (31%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for DA3 responses; <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: DA3 not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>4</strong> of <strong>13</strong> terminals (31%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for DA3 responses; <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: DA3 not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "device/decrqss": {
-    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/decrqss\" class=\"hover-link\" title=\"DEC Request Status String\">DECRQSS</a> responses; <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/decrqss\" class=\"hover-link\" title=\"DEC Request Status String\">DECRQSS</a> responses; <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "device/xtgettcap": {
-    "analysis": "<p>Supported by <strong>5</strong> of <strong>13</strong> terminals (38%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/xtgettcap\" class=\"hover-link\" title=\"Xterm Get Terminal Capability\">XTGETTCAP</a> responses; <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/device/xtgettcap\" class=\"hover-link\" title=\"Xterm Get Terminal Capability\">XTGETTCAP</a> not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>5</strong> of <strong>13</strong> terminals (38%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/xtgettcap\" class=\"hover-link\" title=\"Xterm Get Terminal Capability\">XTGETTCAP</a> responses; <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/device/xtgettcap\" class=\"hover-link\" title=\"Xterm Get Terminal Capability\">XTGETTCAP</a> not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "device/decrpm": {
-    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/decrpm\" class=\"hover-link\" title=\"DEC Private Mode Report\">DECRPM</a> responses; <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>9</strong> of <strong>13</strong> terminals (69%). Not supported by: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/decrpm\" class=\"hover-link\" title=\"DEC Private Mode Report\">DECRPM</a> responses; <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "device/xtversion": {
-    "analysis": "<p>Supported by <strong>7</strong> of <strong>13</strong> terminals (54%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for XTVERSION responses; <a href=\"/terminal/vt100-headless\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: XTVERSION not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>7</strong> of <strong>13</strong> terminals (54%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for XTVERSION responses; <a href=\"/terminal/vt100-js\" class=\"hover-link\">vt100.js</a>: No output stream — pure TypeScript emulator; <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>: XTVERSION not implemented in <a href=\"/terminal/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },

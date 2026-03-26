@@ -5,6 +5,13 @@ import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
 
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const docsDir = join(__dirname, "..")
 
@@ -191,16 +198,34 @@ function buildSidebar() {
     appTerminals.sort((a, b) => a.text.localeCompare(b.text))
   } catch {}
 
-  // Build comprehensive terminal list for nav (all non-historical entries from terminals.json)
-  const allTerminals: Array<{ text: string; link: string }> = []
+  // Build terminal groups by type
+  const termAppTerminals: Array<{ text: string; link: string }> = []
+  const termLibraries: Array<{ text: string; link: string }> = []
+  const termMultiplexers: Array<{ text: string; link: string }> = []
+
   const seenSlugs = new Set<string>()
-  for (const [, entry] of Object.entries(terminalsData as Record<string, any>)) {
+  for (const [key, entry] of Object.entries(terminalsData as Record<string, any>)) {
     if (entry.historical || !entry.slug || !entry.label) continue
     if (seenSlugs.has(entry.slug)) continue
     seenSlugs.add(entry.slug)
-    allTerminals.push({ text: entry.label, link: `/terminal/${entry.slug}` })
+    const item = { text: entry.label, link: `/terminal/${entry.slug}` }
+
+    if (entry.intermediary || key === "cmux") {
+      termMultiplexers.push(item)
+    } else if (entry.headlessBackends?.length > 0 && entry.label.endsWith(".js")) {
+      // JS-package terminals (vt100.js, vterm.js, xterm.js) are embeddable libraries,
+      // not standalone GUI terminals like Alacritty/WezTerm which also have headless backends
+      termLibraries.push(item)
+    } else {
+      termAppTerminals.push(item)
+    }
   }
-  allTerminals.sort((a, b) => a.text.localeCompare(b.text))
+  termAppTerminals.sort((a, b) => a.text.localeCompare(b.text))
+  termLibraries.sort((a, b) => a.text.localeCompare(b.text))
+  termMultiplexers.sort((a, b) => a.text.localeCompare(b.text))
+
+  // Flat list for convenience (used in nav dropdown)
+  const allTerminals = [...termAppTerminals, ...termLibraries, ...termMultiplexers]
 
   // Build popular comparisons from available app terminals
   const compareItems: Array<{ text: string; link: string }> = []
@@ -280,15 +305,25 @@ function buildSidebar() {
     },
     {
       text: "Terminals",
-      items: allTerminals,
+      items: [
+        { text: "App Terminals", items: termAppTerminals },
+        { text: "Libraries", items: termLibraries },
+        { text: "Multiplexers", items: termMultiplexers },
+        { text: "Historical", items: historicalTerminals.map(({ text, link }) => ({ text, link })) },
+      ],
+    },
+    {
+      text: "Multiplexers",
+      link: "/multiplexers",
+      items: termMultiplexers,
+    },
+    {
+      text: "Backends",
+      link: "/backends",
     },
     {
       text: "Compare",
       items: compareItems,
-    },
-    {
-      text: "Historical",
-      items: historicalTerminals.map(({ text, link }) => ({ text, link })),
     },
     {
       text: "Frameworks",
@@ -310,10 +345,32 @@ function buildSidebar() {
     { text: "About", link: "/about" },
   ]
 
-  return { sidebar, terminals, allTerminals, sortedCategories, categoryLabels, sortedTags, tagLabels }
+  return {
+    sidebar,
+    terminals,
+    allTerminals,
+    termAppTerminals,
+    termLibraries,
+    termMultiplexers,
+    historicalTerminals,
+    sortedCategories,
+    categoryLabels,
+    sortedTags,
+    tagLabels,
+  }
 }
 
-const { sidebar, terminals, allTerminals, sortedCategories, categoryLabels, sortedTags, tagLabels } = buildSidebar()
+const {
+  sidebar,
+  termAppTerminals,
+  termLibraries,
+  termMultiplexers,
+  historicalTerminals,
+  sortedCategories,
+  categoryLabels,
+  sortedTags,
+  tagLabels,
+} = buildSidebar()
 
 export default defineConfig({
   title: "Terminfo.dev",
@@ -418,6 +475,26 @@ export default defineConfig({
       ]
       return
     }
+    if (rel === "multiplexers.md") {
+      pageData.title = "Terminal Multiplexers: tmux, GNU Screen, and the Pass-Through Problem"
+      pageData.description =
+        "How tmux and GNU Screen intercept escape sequences between your terminal and shell. Which features survive, which get dropped, and how to test multiplexer compatibility."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
+    if (rel === "backends.md") {
+      pageData.title = "Headless Terminal Backends: Parser Libraries That Power Embedded Terminals"
+      pageData.description =
+        "Terminal emulator libraries tested headlessly — xterm.js, vterm.js, Alacritty, Ghostty, Kitty, WezTerm. Parser correctness for escape sequences, independent of rendering."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
     if (rel === "glossary.md") {
       pageData.title = "Terminal Glossary: Acronyms and Technical Terms"
       pageData.description =
@@ -479,7 +556,7 @@ export default defineConfig({
       const type = params.pageType === "tag" ? "Standard" : "Category"
       pageData.title = `${params.categoryName} — Terminal Feature ${type}`
       pageData.description =
-        params.categoryDescription ||
+        stripHtml(params.categoryDescription) ||
         `${params.categoryName}: ${params.featureCount} terminal features compared across backends.`
       pageData.frontmatter.head = [
         ["meta", { property: "og:title", content: pageData.title }],
@@ -510,7 +587,12 @@ export default defineConfig({
       },
       {
         text: "Terminals",
-        items: allTerminals,
+        items: [
+          { text: "App Terminals", items: termAppTerminals },
+          { text: "Libraries", items: termLibraries },
+          { text: "Multiplexers", items: termMultiplexers },
+          { text: "Historical", items: historicalTerminals.map(({ text, link }) => ({ text, link })) },
+        ],
       },
       {
         text: "Fundamentals",
