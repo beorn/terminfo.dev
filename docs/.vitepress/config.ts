@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
-import { markdownGlossaryPlugin } from "vitepress-plugin-glossary"
+import { glossaryLinksPlugin } from "./plugins/glossary-links"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const docsDir = join(__dirname, "..")
@@ -297,107 +297,6 @@ function buildSidebar() {
 
 const { sidebar, terminals, sortedCategories, categoryLabels, sortedTags, tagLabels } = buildSidebar()
 
-// Build glossary map for the markdown plugin: { "term": "description||link" }
-// Includes: glossary.json terms + terminal names + framework names
-function loadGlossaryMap(): Record<string, string> {
-  const map: Record<string, string> = {}
-
-  // 1. Glossary terms (acronyms, concepts)
-  try {
-    const glossaryPath = join(docsDir, "..", "content", "glossary.json")
-    const raw = JSON.parse(readFileSync(glossaryPath, "utf-8")) as Record<
-      string,
-      { expansion: string; description: string; link?: string }
-    >
-    for (const [key, entry] of Object.entries(raw)) {
-      const link = entry.link ?? ""
-      map[key] = link
-        ? `${entry.expansion} — ${entry.description}||${link}`
-        : `${entry.expansion} — ${entry.description}`
-    }
-  } catch {}
-
-  // 2. Terminal names (Ghostty, Kitty, iTerm2, etc.)
-  try {
-    const terminalsPath = join(docsDir, "..", "content", "terminals.json")
-    const terminals = JSON.parse(readFileSync(terminalsPath, "utf-8")) as Record<
-      string,
-      { label: string; slug: string; description?: string }
-    >
-    for (const [, t] of Object.entries(terminals)) {
-      if (!t.label || !t.slug || t.label.length < 4) continue // skip short names
-      if (map[t.label]) continue // don't override glossary entries
-      map[t.label] = `${t.label} terminal emulator${t.description ? " — " + t.description : ""}||/terminal/${t.slug}`
-    }
-  } catch {}
-
-  // 3. Framework names (Silvery, Bubbletea, Textual, Ratatui)
-  try {
-    const frameworksPath = join(docsDir, "..", "content", "frameworks.json")
-    const frameworks = JSON.parse(readFileSync(frameworksPath, "utf-8")) as Record<
-      string,
-      { label: string; description?: string }
-    >
-    for (const [id, f] of Object.entries(frameworks)) {
-      if (!f.label || f.label.length < 4) continue
-      if (map[f.label]) continue
-      map[f.label] = `${f.label} TUI framework${f.description ? " — " + f.description : ""}||/framework/${id}`
-    }
-  } catch {}
-
-  // 4. Standard/tag names (Xterm Extensions, Kitty Extensions, etc.)
-  try {
-    const standardsPath = join(docsDir, "..", "content", "standards.json")
-    const standards = JSON.parse(readFileSync(standardsPath, "utf-8")) as Record<
-      string,
-      { label: string; description?: string }
-    >
-    for (const [id, s] of Object.entries(standards)) {
-      if (!s.label || s.label.length < 4) continue
-      if (map[s.label]) continue
-      map[s.label] = `${s.label}${s.description ? " — " + s.description.slice(0, 120) : ""}||/${id}`
-    }
-  } catch {}
-
-  // 5. Category names (SGR (Text Styling), Cursor, Modes, etc.)
-  try {
-    const categoriesPath = join(docsDir, "..", "content", "categories.json")
-    const categories = JSON.parse(readFileSync(categoriesPath, "utf-8")) as Record<
-      string,
-      { label: string; description?: string }
-    >
-    for (const [id, c] of Object.entries(categories)) {
-      if (!c.label || c.label.length < 4) continue
-      if (map[c.label]) continue
-      map[c.label] = `${c.label}${c.description ? " — " + c.description.slice(0, 120) : ""}||/${id}`
-    }
-  } catch {}
-
-  // 6. Baseline names (Core TUI, Modern TUI, etc.)
-  try {
-    const baselinesPath = join(docsDir, "..", "content", "baselines.json")
-    const baselines = JSON.parse(readFileSync(baselinesPath, "utf-8")) as Record<
-      string,
-      { label: string; tagline?: string }
-    >
-    for (const [id, b] of Object.entries(baselines)) {
-      if (!b.label || b.label.length < 4) continue
-      if (map[b.label]) continue
-      map[b.label] = `${b.label} baseline${b.tagline ? " — " + b.tagline : ""}||/baseline/${id}`
-    }
-  } catch {}
-
-  // Sort keys longest-first so regex alternation prefers longer matches
-  // (e.g., "Kitty Extensions" matches before "Kitty")
-  const sorted: Record<string, string> = {}
-  for (const key of Object.keys(map).sort((a, b) => b.length - a.length)) {
-    sorted[key] = map[key]
-  }
-  return sorted
-}
-
-const glossaryMap = loadGlossaryMap()
-
 export default defineConfig({
   title: "Terminfo.dev",
   description: "Can your terminal do that? Feature support tables for terminal emulators.",
@@ -406,10 +305,8 @@ export default defineConfig({
 
   markdown: {
     config: (md) => {
-      md.use(markdownGlossaryPlugin, {
-        glossary: glossaryMap,
-        firstOccurrenceOnly: false,
-      })
+      const contentDir = join(docsDir, "..", "content")
+      glossaryLinksPlugin(md, contentDir)
     },
   },
 

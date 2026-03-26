@@ -50,6 +50,33 @@
   "xtermjs:extensions.semantic-prompts": {
     "note": "Not implemented in xterm.js"
   },
+  "xtermjs:modes.left-right-margin": {
+    "note": "DECLRMM not implemented in xterm.js"
+  },
+  "xtermjs:extensions.osc1337-cellsize": {
+    "note": "iTerm2-specific protocol not supported"
+  },
+  "xtermjs:extensions.osc1337-capabilities": {
+    "note": "iTerm2-specific protocol not supported"
+  },
+  "xtermjs:input.pixel-mouse": {
+    "note": "SGR pixel mouse mode not implemented in xterm.js"
+  },
+  "xtermjs:text.wide.emoji-flags": {
+    "note": "Emoji flag sequences not rendered as wide characters"
+  },
+  "xtermjs:text.wide.emoji-vs16": {
+    "note": "VS16 emoji variation selectors not handled"
+  },
+  "xtermjs:device.tertiary-da": {
+    "note": "DA3 not implemented in xterm.js"
+  },
+  "xtermjs:device.xtgettcap": {
+    "note": "XTGETTCAP not implemented in xterm.js"
+  },
+  "xtermjs:device.xtversion": {
+    "note": "XTVERSION not implemented in xterm.js"
+  },
 
   "ghostty-native:extensions.osc2-title": {
     "note": "Title not exposed via native Zig API",
@@ -90,6 +117,59 @@
   "ghostty-native:reset.soft": {
     "note": "DECSTR resets modes but headless probe reads stale state",
     "result": "partial"
+  },
+  "ghostty-native:modes.left-right-margin": {
+    "note": "DECLRMM not exposed via native Zig API",
+    "result": "partial"
+  },
+  "ghostty-native:extensions.osc1337-cellsize": {
+    "note": "iTerm2-specific protocol not supported in headless mode"
+  },
+  "ghostty-native:extensions.osc1337-capabilities": {
+    "note": "iTerm2-specific protocol not supported in headless mode"
+  },
+  "ghostty-native:input.pixel-mouse": {
+    "note": "SGR pixel mouse mode not exposed via native Zig API",
+    "result": "partial"
+  },
+  "ghostty-native:text.wide.emoji-vs16": {
+    "note": "VS16 emoji variation selectors not handled by native Zig API"
+  },
+  "ghostty-native:device.secondary-da": {
+    "note": "Headless mode has no output stream for DA2 responses",
+    "result": "partial"
+  },
+  "ghostty-native:device.tertiary-da": {
+    "note": "Headless mode has no output stream for DA3 responses",
+    "result": "partial"
+  },
+  "ghostty-native:device.decrqss": {
+    "note": "Headless mode has no output stream for DECRQSS responses",
+    "result": "partial"
+  },
+  "ghostty-native:device.xtgettcap": {
+    "note": "Headless mode has no output stream for XTGETTCAP responses",
+    "result": "partial"
+  },
+  "ghostty-native:device.decrpm": {
+    "note": "Headless mode has no output stream for DECRPM responses",
+    "result": "partial"
+  },
+  "ghostty-native:device.xtversion": {
+    "note": "Headless mode has no output stream for XTVERSION responses",
+    "result": "partial"
+  },
+  "ghostty:modes.left-right-margin": {
+    "note": "DECLRMM not tracked by ghostty-web WASM backend"
+  },
+  "ghostty:extensions.osc1337-cellsize": {
+    "note": "iTerm2-specific protocol not supported"
+  },
+  "ghostty:extensions.osc1337-capabilities": {
+    "note": "iTerm2-specific protocol not supported"
+  },
+  "ghostty:input.pixel-mouse": {
+    "note": "SGR pixel mouse mode not tracked by ghostty-web WASM backend"
   },
 
   "alacritty:erase.screen.all": {
@@ -146,6 +226,50 @@
     "note": "DECSTR resets modes but headless probe reads stale state",
     "result": "partial"
   },
+  "alacritty:modes.left-right-margin": {
+    "note": "DECLRMM not exposed via alacritty_terminal API",
+    "result": "partial"
+  },
+  "alacritty:device.secondary-da": {
+    "note": "Headless mode has no output stream for DA2 responses",
+    "result": "partial"
+  },
+  "alacritty:device.tertiary-da": {
+    "note": "Headless mode has no output stream for DA3 responses",
+    "result": "partial"
+  },
+  "alacritty:device.decrqss": {
+    "note": "Headless mode has no output stream for DECRQSS responses",
+    "result": "partial"
+  },
+  "alacritty:device.xtgettcap": {
+    "note": "Headless mode has no output stream for XTGETTCAP responses",
+    "result": "partial"
+  },
+  "alacritty:device.decrpm": {
+    "note": "Headless mode has no output stream for DECRPM responses",
+    "result": "partial"
+  },
+  "alacritty:device.xtversion": {
+    "note": "Headless mode has no output stream for XTVERSION responses",
+    "result": "partial"
+  },
+  "alacritty:extensions.osc1337-cellsize": {
+    "note": "iTerm2-specific protocol not supported"
+  },
+  "alacritty:extensions.osc1337-capabilities": {
+    "note": "iTerm2-specific protocol not supported"
+  },
+  "alacritty:input.pixel-mouse": {
+    "note": "SGR pixel mouse mode not exposed via alacritty_terminal API",
+    "result": "partial"
+  },
+  "alacritty:text.wide.emoji-flags": {
+    "note": "Emoji flag sequences not rendered as wide characters"
+  },
+  "alacritty:text.wide.emoji-vs16": {
+    "note": "VS16 emoji variation selectors not handled"
+  },
 
   "kitty:extensions.semantic-prompts": {
     "note": "Not implemented in kitty"
@@ -195,6 +319,44 @@
   },
   "kitty:reset.soft": {
     "note": "DECSTR resets modes but headless probe reads stale state",
+    "result": "partial"
+  },
+  "kitty:modes.left-right-margin": {
+    "note": "DECLRMM not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:device.secondary-da": {
+    "note": "Headless mode has no output stream for DA2 responses",
+    "result": "partial"
+  },
+  "kitty:device.tertiary-da": {
+    "note": "Headless mode has no output stream for DA3 responses",
+    "result": "partial"
+  },
+  "kitty:device.decrqss": {
+    "note": "Headless mode has no output stream for DECRQSS responses",
+    "result": "partial"
+  },
+  "kitty:device.xtgettcap": {
+    "note": "Headless mode has no output stream for XTGETTCAP responses",
+    "result": "partial"
+  },
+  "kitty:device.decrpm": {
+    "note": "Headless mode has no output stream for DECRPM responses",
+    "result": "partial"
+  },
+  "kitty:device.xtversion": {
+    "note": "Headless mode has no output stream for XTVERSION responses",
+    "result": "partial"
+  },
+  "kitty:extensions.osc1337-cellsize": {
+    "note": "iTerm2-specific protocol not supported by kitty"
+  },
+  "kitty:extensions.osc1337-capabilities": {
+    "note": "iTerm2-specific protocol not supported by kitty"
+  },
+  "kitty:input.pixel-mouse": {
+    "note": "SGR pixel mouse mode not exposed via Python batch bridge",
     "result": "partial"
   },
 
@@ -248,6 +410,51 @@
   },
   "vt100:reset.soft": {
     "note": "DECSTR not implemented — pure TypeScript emulator"
+  },
+  "vt100:modes.left-right-margin": {
+    "note": "DECLRMM not implemented — pure TypeScript emulator"
+  },
+  "vt100:cursor.cup-scroll-region": {
+    "note": "CUP with DECOM not implemented — pure TypeScript emulator"
+  },
+  "vt100:text.combining": {
+    "note": "Combining characters not implemented — pure TypeScript emulator"
+  },
+  "vt100:device.secondary-da": {
+    "note": "No output stream — pure TypeScript emulator"
+  },
+  "vt100:device.tertiary-da": {
+    "note": "No output stream — pure TypeScript emulator"
+  },
+  "vt100:device.decrqss": {
+    "note": "No output stream — pure TypeScript emulator"
+  },
+  "vt100:device.xtgettcap": {
+    "note": "No output stream — pure TypeScript emulator"
+  },
+  "vt100:device.decrpm": {
+    "note": "No output stream — pure TypeScript emulator"
+  },
+  "vt100:device.xtversion": {
+    "note": "No output stream — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc1337-cellsize": {
+    "note": "iTerm2-specific protocol not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc1337-capabilities": {
+    "note": "iTerm2-specific protocol not implemented — pure TypeScript emulator"
+  },
+  "vt100:input.pixel-mouse": {
+    "note": "SGR pixel mouse mode not implemented — pure TypeScript emulator"
+  },
+  "vt100:erase.el-with-attrs": {
+    "note": "EL doesn't preserve SGR background — pure TypeScript emulator"
+  },
+  "vt100:text.wide.emoji-flags": {
+    "note": "Emoji flag sequences not rendered as wide characters"
+  },
+  "vt100:text.wide.emoji-vs16": {
+    "note": "VS16 emoji variation selectors not handled"
   },
 
   "wezterm:extensions.kitty-graphics": {
@@ -309,25 +516,66 @@
     "note": "DECSTR resets modes but headless probe reads stale state",
     "result": "partial"
   },
-  "vterm:cursor.position-report": {
-    "note": "onResponse callback not wired through probe harness",
-    "result": "partial"
-  },
-  "vterm:device.primary-da": {
-    "note": "onResponse callback not wired through probe harness",
-    "result": "partial"
-  },
-  "vterm:device.status-report": {
-    "note": "onResponse callback not wired through probe harness",
-    "result": "partial"
-  },
   "vterm:modes.application-keypad": {
     "note": "Application keypad mode parsed but not exposed via getMode()",
     "result": "partial"
   },
+  "vterm:modes.left-right-margin": {
+    "note": "DECLRMM not implemented"
+  },
+  "vterm:input.pixel-mouse": {
+    "note": "SGR pixel mouse mode (?1016) not implemented"
+  },
   "wezterm:unicode.wrap-boundary": {
     "note": "Wide char at end of line not handled correctly in headless mode",
     "result": "no"
+  },
+  "wezterm:modes.left-right-margin": {
+    "note": "DECLRMM not exposed via wezterm-term API",
+    "result": "partial"
+  },
+  "wezterm:extensions.osc1337-cellsize": {
+    "note": "iTerm2-specific protocol not supported"
+  },
+  "wezterm:extensions.osc1337-capabilities": {
+    "note": "iTerm2-specific protocol not supported"
+  },
+  "wezterm:input.pixel-mouse": {
+    "note": "SGR pixel mouse mode not exposed via wezterm-term API",
+    "result": "partial"
+  },
+  "wezterm:cursor.cup-boundaries": {
+    "note": "CUP boundary behavior differs in wezterm-term headless mode"
+  },
+  "wezterm:text.wide.emoji-vs16": {
+    "note": "VS16 emoji variation selectors not handled"
+  },
+  "wezterm:erase.el-with-attrs": {
+    "note": "EL doesn't preserve SGR background in headless mode"
+  },
+  "wezterm:device.secondary-da": {
+    "note": "Headless mode has no output stream for DA2 responses",
+    "result": "partial"
+  },
+  "wezterm:device.tertiary-da": {
+    "note": "Headless mode has no output stream for DA3 responses",
+    "result": "partial"
+  },
+  "wezterm:device.decrqss": {
+    "note": "Headless mode has no output stream for DECRQSS responses",
+    "result": "partial"
+  },
+  "wezterm:device.xtgettcap": {
+    "note": "Headless mode has no output stream for XTGETTCAP responses",
+    "result": "partial"
+  },
+  "wezterm:device.decrpm": {
+    "note": "Headless mode has no output stream for DECRPM responses",
+    "result": "partial"
+  },
+  "wezterm:device.xtversion": {
+    "note": "Headless mode has no output stream for XTVERSION responses",
+    "result": "partial"
   },
 
   "tmux:cursor.cup-boundaries": {

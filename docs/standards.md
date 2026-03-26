@@ -116,12 +116,8 @@ const analysisKey = 'standards-index'
 <p class="page-tagline">50 years of terminal protocols — from teletypes to GPU-rendered emoji</p>
 
 <div class="beginner-intro">
-<p>There is no single terminal standard. What exists is layers — ECMA-48 (1976) defined the grammar, DEC's VT series (1978–1993) implemented it, xterm extended it for decades, and modern terminals add new protocols. This page maps the archaeology. See the <a href="/glossary">glossary</a> for acronyms.</p>
+<p>There is no single terminal standard — what exists is layers. Some are formal standards (ECMA-48, Unicode), others are hardware reference manuals (VT100–VT510), implementation documents (xterm ctlseqs), or protocol proposals (Kitty extensions). All shaped how terminals work, with different levels of authority. See the <a href="/glossary">glossary</a> for acronyms.</p>
 </div>
-
-::: info Formal standards vs de facto specs
-Some entries below are formal standards (ECMA-48, Unicode). Others are hardware reference manuals (VT100–VT510), implementation documents (xterm ctlseqs), or protocol proposals (Kitty extensions). All have shaped how terminals work — but they carry different levels of authority.
-:::
 
 ## The Layers of Terminal Standards
 

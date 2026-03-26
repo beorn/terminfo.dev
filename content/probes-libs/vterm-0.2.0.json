@@ -1,7 +1,7 @@
 {
   "backend": "vterm",
   "version": "0.2.0",
-  "generated": "2026-03-26T06:47:45.303Z",
+  "generated": "2026-03-26T06:56:10.510Z",
   "probeHash": "34eda06e1595",
   "results": {
     "sgr.bold": true,
@@ -121,8 +121,8 @@
     "extensions.osc-633-vscode": true,
     "extensions.notifications": true,
     "extensions.iterm2-images": true,
-    "extensions.osc1337-cellsize": false,
-    "extensions.osc1337-capabilities": false,
+    "extensions.osc1337-cellsize": true,
+    "extensions.osc1337-capabilities": true,
     "input.modify-other-keys": true,
     "input.csi-u": true,
     "input.pixel-mouse": false,
@@ -153,8 +153,6 @@
   },
   "notes": {
     "modes.left-right-margin": "not supported",
-    "extensions.osc1337-cellsize": "not supported",
-    "extensions.osc1337-capabilities": "not supported",
     "input.pixel-mouse": "not supported"
   }
 }

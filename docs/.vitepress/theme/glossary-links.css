@@ -1,0 +1,19 @@
+/* Glossary link styles for markdown-it glossary-links plugin.
+   Links rendered as: <a href="/path" class="hover-link" data-tooltip="...">term</a>
+   Tooltip rendering is handled by tooltip.css (shared [data-tooltip] rules). */
+
+/* Glossary/entity links in markdown prose content */
+.vp-doc a.hover-link {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--vp-c-text-3);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  position: relative;
+  font-weight: inherit;
+}
+
+.vp-doc a.hover-link:hover {
+  color: var(--vp-c-brand-1);
+  text-decoration-color: var(--vp-c-brand-1);
+}
