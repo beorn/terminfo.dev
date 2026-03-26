@@ -59,6 +59,27 @@
   "xtermjs:extensions.osc1337-capabilities": {
     "note": "iTerm2-specific protocol not supported"
   },
+  "xtermjs:extensions.osc52-clipboard": {
+    "note": "OSC 52 clipboard not supported in headless mode",
+    "result": "partial"
+  },
+  "xtermjs:extensions.osc10-fg-color": {
+    "note": "OSC 10 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "xtermjs:extensions.osc11-bg-color": {
+    "note": "OSC 11 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "xtermjs:extensions.osc-633-vscode": {
+    "note": "VS Code shell integration (OSC 633) not supported"
+  },
+  "xtermjs:input.csi-u": {
+    "note": "CSI u keyboard protocol not implemented"
+  },
+  "xtermjs:input.urxvt-mouse": {
+    "note": "urxvt mouse mode (?1015) not implemented"
+  },
   "xtermjs:input.pixel-mouse": {
     "note": "SGR pixel mouse mode not implemented in xterm.js"
   },
@@ -157,6 +178,28 @@
   },
   "ghostty-native:device.xtversion": {
     "note": "Headless mode has no output stream for XTVERSION responses",
+    "result": "partial"
+  },
+  "ghostty-native:extensions.osc52-clipboard": {
+    "note": "OSC 52 clipboard not supported in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:extensions.osc10-fg-color": {
+    "note": "OSC 10 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:extensions.osc11-bg-color": {
+    "note": "OSC 11 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:input.urxvt-mouse": {
+    "note": "urxvt mouse mode (?1015) not implemented"
+  },
+  "ghostty-native:input.x10-mouse": {
+    "note": "X10 mouse mode (?9) not implemented"
+  },
+  "ghostty-native:input.button-event-mouse": {
+    "note": "Button-event mouse tracking not exposed via headless API",
     "result": "partial"
   },
   "ghostty:modes.left-right-margin": {
@@ -264,6 +307,27 @@
     "note": "SGR pixel mouse mode not exposed via alacritty_terminal API",
     "result": "partial"
   },
+  "alacritty:extensions.osc52-clipboard": {
+    "note": "OSC 52 clipboard not supported in headless mode",
+    "result": "partial"
+  },
+  "alacritty:extensions.osc10-fg-color": {
+    "note": "OSC 10 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "alacritty:extensions.osc11-bg-color": {
+    "note": "OSC 11 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "alacritty:extensions.osc-633-vscode": {
+    "note": "VS Code shell integration (OSC 633) not supported"
+  },
+  "alacritty:input.urxvt-mouse": {
+    "note": "urxvt mouse mode (?1015) not implemented"
+  },
+  "alacritty:input.x10-mouse": {
+    "note": "X10 mouse mode (?9) not implemented"
+  },
   "alacritty:text.wide.emoji-flags": {
     "note": "Emoji flag sequences not rendered as wide characters"
   },
@@ -359,6 +423,31 @@
     "note": "SGR pixel mouse mode not exposed via Python batch bridge",
     "result": "partial"
   },
+  "kitty:extensions.osc52-clipboard": {
+    "note": "OSC 52 clipboard not supported in headless mode",
+    "result": "partial"
+  },
+  "kitty:extensions.osc10-fg-color": {
+    "note": "OSC 10 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "kitty:extensions.osc11-bg-color": {
+    "note": "OSC 11 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "kitty:extensions.osc-633-vscode": {
+    "note": "VS Code shell integration (OSC 633) not supported"
+  },
+  "kitty:input.urxvt-mouse": {
+    "note": "urxvt mouse mode (?1015) not implemented"
+  },
+  "kitty:input.x10-mouse": {
+    "note": "X10 mouse mode (?9) not implemented"
+  },
+  "kitty:input.button-event-mouse": {
+    "note": "Button-event mouse tracking not exposed via headless API",
+    "result": "partial"
+  },
 
   "vt100:extensions.kitty-graphics": {
     "note": "Not implemented — pure TypeScript emulator"
@@ -444,6 +533,30 @@
   "vt100:extensions.osc1337-capabilities": {
     "note": "iTerm2-specific protocol not implemented — pure TypeScript emulator"
   },
+  "vt100:extensions.osc52-clipboard": {
+    "note": "OSC 52 clipboard not supported in headless mode",
+    "result": "partial"
+  },
+  "vt100:extensions.osc10-fg-color": {
+    "note": "OSC 10 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "vt100:extensions.osc11-bg-color": {
+    "note": "OSC 11 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "vt100:extensions.osc-633-vscode": {
+    "note": "VS Code shell integration (OSC 633) not supported"
+  },
+  "vt100:input.csi-u": {
+    "note": "CSI u keyboard protocol not implemented"
+  },
+  "vt100:input.urxvt-mouse": {
+    "note": "urxvt mouse mode (?1015) not implemented"
+  },
+  "vt100:input.x10-mouse": {
+    "note": "X10 mouse mode (?9) not implemented"
+  },
   "vt100:input.pixel-mouse": {
     "note": "SGR pixel mouse mode not implemented — pure TypeScript emulator"
   },
@@ -516,6 +629,24 @@
     "note": "DECSTR resets modes but headless probe reads stale state",
     "result": "partial"
   },
+  "wezterm:extensions.osc52-clipboard": {
+    "note": "OSC 52 clipboard not supported in headless mode",
+    "result": "partial"
+  },
+  "wezterm:extensions.osc10-fg-color": {
+    "note": "OSC 10 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "wezterm:extensions.osc11-bg-color": {
+    "note": "OSC 11 color query not supported in headless mode",
+    "result": "partial"
+  },
+  "wezterm:input.urxvt-mouse": {
+    "note": "urxvt mouse mode (?1015) not implemented"
+  },
+  "wezterm:input.x10-mouse": {
+    "note": "X10 mouse mode (?9) not implemented"
+  },
   "vterm:modes.application-keypad": {
     "note": "Application keypad mode parsed but not exposed via getMode()",
     "result": "partial"
@@ -525,6 +656,12 @@
   },
   "vterm:input.pixel-mouse": {
     "note": "SGR pixel mouse mode (?1016) not implemented"
+  },
+  "vterm:input.urxvt-mouse": {
+    "note": "urxvt mouse mode (?1015) not implemented"
+  },
+  "vterm:input.x10-mouse": {
+    "note": "X10 mouse mode (?9) not implemented"
   },
   "wezterm:unicode.wrap-boundary": {
     "note": "Wide char at end of line not handled correctly in headless mode",

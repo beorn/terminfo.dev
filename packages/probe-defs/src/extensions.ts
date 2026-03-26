@@ -151,8 +151,13 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.osc52-clipboard",
     (ctx) => {
-      const has = ctx.capabilities.extensions.has("osc52")
-      return { pass: has || true }
+      // Set clipboard data, then query it back via feedCapture
+      const testData = btoa("terminfo-test")
+      ctx.feed(`\x1b]52;c;${testData}\x07`)
+      const response = ctx.feedCapture("\x1b]52;c;?\x07")
+      if (response.includes("52;c;")) return { pass: true }
+      // Fallback: check if the sequence was at least consumed (title didn't change)
+      return { pass: false, note: "No OSC 52 query response" }
     },
     async (ctx) => {
       const testData = btoa("terminfo-test")
@@ -167,8 +172,9 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.osc10-fg-color",
     (ctx) => {
-      ctx.feed("\x1b]10;?\x07")
-      return { pass: true }
+      const response = ctx.feedCapture("\x1b]10;?\x07")
+      const pass = /\x1b\]10;/.test(response)
+      return { pass, note: pass ? undefined : "No OSC 10 response" }
     },
     async (ctx) => {
       const match = await ctx.queryWithSentinel("\x1b]10;?\x07", /\x1b\]10;([^\x07\x1b]+)[\x07\x1b]/)
@@ -181,8 +187,9 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.osc11-bg-color",
     (ctx) => {
-      ctx.feed("\x1b]11;?\x07")
-      return { pass: true }
+      const response = ctx.feedCapture("\x1b]11;?\x07")
+      const pass = /\x1b\]11;/.test(response)
+      return { pass, note: pass ? undefined : "No OSC 11 response" }
     },
     async (ctx) => {
       const match = await ctx.queryWithSentinel("\x1b]11;?\x07", /\x1b\]11;([^\x07\x1b]+)[\x07\x1b]/)
@@ -194,10 +201,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 7 — current working directory
   probe(
     "extensions.osc7-cwd",
-    (ctx) => {
-      ctx.feed("\x1b]7;file:///tmp\x07")
-      return { pass: true }
-    },
+    null, // No way to verify CWD storage in headless — no getter in TermlessContext
     async (ctx) => {
       ctx.write("\x1b]7;file:///tmp\x07")
       const pos = await ctx.queryCursorPosition()
@@ -208,13 +212,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 633 — VS Code shell integration
   probe(
     "extensions.osc-633-vscode",
-    (ctx) => {
-      ctx.feed("\x1b]633;A\x07")
-      ctx.feed("\x1b]633;B\x07")
-      ctx.feed("\x1b]633;C\x07")
-      ctx.feed("\x1b]633;D\x07")
-      return { pass: true }
-    },
+    (ctx) => ({ pass: ctx.capabilities.semanticPrompts === true }),
     async (ctx) => {
       ctx.write("\x1b]633;A\x07")
       ctx.write("\x1b]633;B\x07")
@@ -231,10 +229,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 9 — desktop notifications
   probe(
     "extensions.notifications",
-    (ctx) => {
-      ctx.feed("\x1b]9;Test notification\x07")
-      return { pass: true }
-    },
+    null, // No way to verify notification storage in headless — no getter in TermlessContext
     async (ctx) => {
       ctx.write("\x1b]9;Test\x07")
       const pos = await ctx.queryCursorPosition()
@@ -248,10 +243,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 1337 — iTerm2 inline images
   probe(
     "extensions.iterm2-images",
-    (ctx) => {
-      ctx.feed("\x1b]1337;File=inline=1:AAAA\x07")
-      return { pass: true }
-    },
+    null, // No way to verify image parsing in headless — no pixel framebuffer
     async (ctx) => {
       ctx.write("\x1b]1337;File=inline=1:AAAA\x07")
       const pos = await ctx.queryCursorPosition()

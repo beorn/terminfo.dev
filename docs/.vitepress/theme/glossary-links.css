@@ -4,13 +4,15 @@
 
 /* Glossary/entity links in markdown prose content */
 .vp-doc a.hover-link {
-  color: inherit;
-  text-decoration: underline dotted;
-  text-decoration-color: var(--vp-c-text-3);
+  color: inherit !important;
+  text-decoration: underline dotted !important;
+  text-decoration-color: var(--vp-c-text-3) !important;
   text-underline-offset: 3px;
   cursor: pointer;
   position: relative;
-  font-weight: inherit;
+  font-weight: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
 }
 
 .vp-doc a.hover-link:hover {

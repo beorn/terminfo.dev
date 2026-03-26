@@ -4,11 +4,7 @@ import { probe } from "./helpers.ts"
 export const inputProbes: ProbeDefinition[] = [
   probe(
     "input.modify-other-keys",
-    (ctx) => {
-      ctx.feed("\x1b[>4;1m")
-      ctx.feed("\x1b[>4;2m")
-      return { pass: true }
-    },
+    null, // No TerminalMode for modifyOtherKeys — can't verify in headless
     async (ctx) => {
       ctx.write("\x1b[>4;2m") // enable modifyOtherKeys mode 2
       const pos = await ctx.queryCursorPosition()
@@ -22,10 +18,7 @@ export const inputProbes: ProbeDefinition[] = [
 
   probe(
     "input.csi-u",
-    (ctx) => {
-      ctx.feed("\x1b[97u") // 'a' in CSI u encoding
-      return { pass: true }
-    },
+    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
     async (ctx) => {
       ctx.write("\x1b[>1u") // push CSI u level 1
       const pos = await ctx.queryCursorPosition()
@@ -60,7 +53,10 @@ export const inputProbes: ProbeDefinition[] = [
     "input.urxvt-mouse",
     (ctx) => {
       ctx.feed("\x1b[?1015h")
-      return { pass: true }
+      // Check if the backend recognizes this mode
+      const pass = ctx.getMode("mouseTracking") === true
+      ctx.feed("\x1b[?1015l")
+      return { pass }
     },
     async (ctx) => {
       ctx.write("\x1b[?1015h") // enable urxvt mouse
@@ -77,7 +73,10 @@ export const inputProbes: ProbeDefinition[] = [
     "input.x10-mouse",
     (ctx) => {
       ctx.feed("\x1b[?9h")
-      return { pass: true }
+      // Check if the backend recognizes X10 mouse mode
+      const pass = ctx.getMode("mouseTracking") === true
+      ctx.feed("\x1b[?9l")
+      return { pass }
     },
     async (ctx) => {
       ctx.write("\x1b[?9h") // enable X10 mouse
@@ -94,7 +93,9 @@ export const inputProbes: ProbeDefinition[] = [
     "input.button-event-mouse",
     (ctx) => {
       ctx.feed("\x1b[?1002h")
-      return { pass: true }
+      const pass = ctx.getMode("mouseTracking") === true
+      ctx.feed("\x1b[?1002l")
+      return { pass }
     },
     async (ctx) => {
       ctx.write("\x1b[?1002h") // enable button-event mouse

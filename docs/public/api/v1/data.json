@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-26T06:58:51.924Z",
+  "generated": "2026-03-26T07:03:35.607Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
@@ -1613,9 +1613,9 @@
       "type": "headless",
       "url": "https://alacritty.org",
       "score": {
-        "total": 146,
-        "pass": 120,
-        "pct": 82
+        "total": 142,
+        "pass": 110,
+        "pct": 77
       }
     },
     "vt100": {
@@ -1623,9 +1623,9 @@
       "version": "0.2.1",
       "type": "headless",
       "score": {
-        "total": 146,
-        "pass": 114,
-        "pct": 78
+        "total": 142,
+        "pass": 103,
+        "pct": 73
       }
     },
     "vterm": {
@@ -1633,9 +1633,9 @@
       "version": "0.2.0",
       "type": "headless",
       "score": {
-        "total": 146,
-        "pass": 143,
-        "pct": 98
+        "total": 142,
+        "pass": 137,
+        "pct": 96
       }
     },
     "wezterm": {
@@ -1644,9 +1644,9 @@
       "type": "headless",
       "url": "https://wezfurlong.org/wezterm",
       "score": {
-        "total": 146,
-        "pass": 117,
-        "pct": 80
+        "total": 142,
+        "pass": 108,
+        "pct": 76
       }
     }
   },
@@ -2812,20 +2812,16 @@
       "extensions.semantic-prompts": "no",
       "extensions.osc2-title": "yes",
       "extensions.osc0-icon-title": "yes",
-      "extensions.osc52-clipboard": "yes",
-      "extensions.osc10-fg-color": "yes",
-      "extensions.osc11-bg-color": "yes",
-      "extensions.osc7-cwd": "yes",
-      "extensions.osc-633-vscode": "yes",
-      "extensions.notifications": "yes",
-      "extensions.iterm2-images": "yes",
+      "extensions.osc52-clipboard": "partial",
+      "extensions.osc10-fg-color": "partial",
+      "extensions.osc11-bg-color": "partial",
+      "extensions.osc-633-vscode": "no",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
-      "input.modify-other-keys": "yes",
       "input.csi-u": "yes",
       "input.pixel-mouse": "partial",
-      "input.urxvt-mouse": "yes",
-      "input.x10-mouse": "yes",
+      "input.urxvt-mouse": "no",
+      "input.x10-mouse": "no",
       "input.button-event-mouse": "yes",
       "reset.sgr": "yes",
       "reset.ris": "yes",
@@ -2960,20 +2956,16 @@
       "extensions.semantic-prompts": "no",
       "extensions.osc2-title": "yes",
       "extensions.osc0-icon-title": "yes",
-      "extensions.osc52-clipboard": "yes",
-      "extensions.osc10-fg-color": "yes",
-      "extensions.osc11-bg-color": "yes",
-      "extensions.osc7-cwd": "yes",
-      "extensions.osc-633-vscode": "yes",
-      "extensions.notifications": "yes",
-      "extensions.iterm2-images": "yes",
+      "extensions.osc52-clipboard": "partial",
+      "extensions.osc10-fg-color": "partial",
+      "extensions.osc11-bg-color": "partial",
+      "extensions.osc-633-vscode": "no",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
-      "input.modify-other-keys": "yes",
-      "input.csi-u": "yes",
+      "input.csi-u": "no",
       "input.pixel-mouse": "no",
-      "input.urxvt-mouse": "yes",
-      "input.x10-mouse": "yes",
+      "input.urxvt-mouse": "no",
+      "input.x10-mouse": "no",
       "input.button-event-mouse": "yes",
       "reset.sgr": "yes",
       "reset.ris": "yes",
@@ -3111,17 +3103,13 @@
       "extensions.osc52-clipboard": "yes",
       "extensions.osc10-fg-color": "yes",
       "extensions.osc11-bg-color": "yes",
-      "extensions.osc7-cwd": "yes",
       "extensions.osc-633-vscode": "yes",
-      "extensions.notifications": "yes",
-      "extensions.iterm2-images": "yes",
       "extensions.osc1337-cellsize": "yes",
       "extensions.osc1337-capabilities": "yes",
-      "input.modify-other-keys": "yes",
       "input.csi-u": "yes",
       "input.pixel-mouse": "no",
-      "input.urxvt-mouse": "yes",
-      "input.x10-mouse": "yes",
+      "input.urxvt-mouse": "no",
+      "input.x10-mouse": "no",
       "input.button-event-mouse": "yes",
       "reset.sgr": "yes",
       "reset.ris": "yes",
@@ -3256,20 +3244,16 @@
       "extensions.semantic-prompts": "yes",
       "extensions.osc2-title": "yes",
       "extensions.osc0-icon-title": "yes",
-      "extensions.osc52-clipboard": "yes",
-      "extensions.osc10-fg-color": "yes",
-      "extensions.osc11-bg-color": "yes",
-      "extensions.osc7-cwd": "yes",
+      "extensions.osc52-clipboard": "partial",
+      "extensions.osc10-fg-color": "partial",
+      "extensions.osc11-bg-color": "partial",
       "extensions.osc-633-vscode": "yes",
-      "extensions.notifications": "yes",
-      "extensions.iterm2-images": "yes",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
-      "input.modify-other-keys": "yes",
       "input.csi-u": "yes",
       "input.pixel-mouse": "partial",
-      "input.urxvt-mouse": "yes",
-      "input.x10-mouse": "yes",
+      "input.urxvt-mouse": "no",
+      "input.x10-mouse": "no",
       "input.button-event-mouse": "yes",
       "reset.sgr": "yes",
       "reset.ris": "yes",
@@ -3532,9 +3516,15 @@
       "extensions.kitty-graphics": "Not implemented in alacritty",
       "extensions.sixel": "Not implemented in alacritty",
       "extensions.semantic-prompts": "Not implemented in alacritty",
+      "extensions.osc52-clipboard": "OSC 52 clipboard not supported in headless mode",
+      "extensions.osc10-fg-color": "OSC 10 color query not supported in headless mode",
+      "extensions.osc11-bg-color": "OSC 11 color query not supported in headless mode",
+      "extensions.osc-633-vscode": "VS Code shell integration (OSC 633) not supported",
       "extensions.osc1337-cellsize": "iTerm2-specific protocol not supported",
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not supported",
       "input.pixel-mouse": "SGR pixel mouse mode not exposed via alacritty_terminal API",
+      "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
+      "input.x10-mouse": "X10 mouse mode (?9) not implemented",
       "reset.soft": "DECSTR resets modes but headless probe reads stale state"
     },
     "vt100": {
@@ -3566,14 +3556,23 @@
       "extensions.osc8": "Not implemented — pure TypeScript emulator",
       "extensions.reflow": "Not implemented — pure TypeScript emulator",
       "extensions.semantic-prompts": "Not implemented — pure TypeScript emulator",
+      "extensions.osc52-clipboard": "OSC 52 clipboard not supported in headless mode",
+      "extensions.osc10-fg-color": "OSC 10 color query not supported in headless mode",
+      "extensions.osc11-bg-color": "OSC 11 color query not supported in headless mode",
+      "extensions.osc-633-vscode": "VS Code shell integration (OSC 633) not supported",
       "extensions.osc1337-cellsize": "iTerm2-specific protocol not implemented — pure TypeScript emulator",
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not implemented — pure TypeScript emulator",
+      "input.csi-u": "CSI u keyboard protocol not implemented",
       "input.pixel-mouse": "SGR pixel mouse mode not implemented — pure TypeScript emulator",
+      "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
+      "input.x10-mouse": "X10 mouse mode (?9) not implemented",
       "reset.soft": "DECSTR not implemented — pure TypeScript emulator"
     },
     "vterm": {
       "modes.left-right-margin": "DECLRMM not implemented",
       "input.pixel-mouse": "SGR pixel mouse mode (?1016) not implemented",
+      "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
+      "input.x10-mouse": "X10 mouse mode (?9) not implemented",
       "modes.application-keypad": "Application keypad mode parsed but not exposed via getMode()"
     },
     "wezterm": {
@@ -3601,9 +3600,14 @@
       "device.decrpm": "Headless mode has no output stream for DECRPM responses",
       "device.xtversion": "Headless mode has no output stream for XTVERSION responses",
       "extensions.kitty-graphics": "Not implemented in wezterm-term crate",
+      "extensions.osc52-clipboard": "OSC 52 clipboard not supported in headless mode",
+      "extensions.osc10-fg-color": "OSC 10 color query not supported in headless mode",
+      "extensions.osc11-bg-color": "OSC 11 color query not supported in headless mode",
       "extensions.osc1337-cellsize": "iTerm2-specific protocol not supported",
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not supported",
       "input.pixel-mouse": "SGR pixel mouse mode not exposed via wezterm-term API",
+      "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
+      "input.x10-mouse": "X10 mouse mode (?9) not implemented",
       "reset.soft": "DECSTR resets modes but headless probe reads stale state",
       "unicode.wrap-boundary": "Wide char at end of line not handled correctly in headless mode"
     }
