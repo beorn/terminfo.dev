@@ -95,6 +95,10 @@
   "xtermjs:input.pixel-mouse": {
     "note": "SGR pixel mouse mode not implemented in xterm.js"
   },
+  "xtermjs:modes.mouse-sgr": {
+    "note": "SGR mouse encoding not exposed in xterm.js headless mode",
+    "result": "partial"
+  },
   "xtermjs:text.wide.emoji-flags": {
     "note": "Emoji flag sequences not rendered as wide characters"
   },
@@ -225,6 +229,14 @@
   },
   "ghostty-native:input.modify-other-keys": {
     "note": "modifyOtherKeys mode not supported in headless mode"
+  },
+  "ghostty-native:modes.mouse-sgr": {
+    "note": "SGR mouse encoding not exposed via native Zig API",
+    "result": "partial"
+  },
+  "ghostty-native:modes.mouse-all": {
+    "note": "All-motion mouse tracking not exposed via native Zig API",
+    "result": "partial"
   },
   "ghostty:modes.left-right-margin": {
     "note": "DECLRMM not tracked by ghostty-web WASM backend"
@@ -373,6 +385,16 @@
   "alacritty:text.wide.emoji-vs16": {
     "note": "VS16 emoji variation selectors not handled"
   },
+  "alacritty:cursor.reverse-wrap": {
+    "note": "Reverse wrap not supported in alacritty headless mode"
+  },
+  "alacritty:erase.selective": {
+    "note": "DECSED (selective erase) not supported in alacritty"
+  },
+  "alacritty:modes.mouse-sgr": {
+    "note": "SGR mouse encoding not exposed via alacritty_terminal API",
+    "result": "partial"
+  },
 
   "kitty:extensions.osc7-cwd": {
     "note": "OSC 7 CWD reporting not exposed via Python batch bridge",
@@ -502,6 +524,14 @@
     "note": "Button-event mouse tracking not exposed via headless API",
     "result": "partial"
   },
+  "kitty:modes.mouse-sgr": {
+    "note": "SGR mouse encoding not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:modes.mouse-all": {
+    "note": "All-motion mouse tracking not exposed via Python batch bridge",
+    "result": "partial"
+  },
 
   "vt100:extensions.osc7-cwd": {
     "note": "Not implemented — pure TypeScript emulator"
@@ -626,6 +656,12 @@
   "vt100:input.pixel-mouse": {
     "note": "SGR pixel mouse mode not implemented — pure TypeScript emulator"
   },
+  "vt100:erase.selective": {
+    "note": "DECSED not implemented — pure TypeScript emulator"
+  },
+  "vt100:modes.mouse-sgr": {
+    "note": "SGR mouse encoding not implemented — pure TypeScript emulator"
+  },
   "vt100:erase.el-with-attrs": {
     "note": "EL doesn't preserve SGR background — pure TypeScript emulator"
   },
@@ -713,6 +749,13 @@
   "wezterm:input.x10-mouse": {
     "note": "X10 mouse mode (?9) not implemented"
   },
+  "wezterm:erase.selective": {
+    "note": "DECSED (selective erase) not supported in wezterm-term"
+  },
+  "wezterm:modes.mouse-sgr": {
+    "note": "SGR mouse encoding not exposed via wezterm-term API",
+    "result": "partial"
+  },
   "vterm:modes.application-keypad": {
     "note": "Application keypad mode parsed but not exposed via getMode()",
     "result": "partial"
@@ -728,6 +771,9 @@
   },
   "vterm:input.x10-mouse": {
     "note": "X10 mouse mode (?9) not implemented"
+  },
+  "vterm:erase.selective": {
+    "note": "DECSED (selective erase) not implemented"
   },
   "wezterm:unicode.wrap-boundary": {
     "note": "Wide char at end of line not handled correctly in headless mode",

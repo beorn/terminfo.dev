@@ -401,7 +401,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "Reverse wrap mode (mode 45) allows backspace at column 0 to wrap to the end of the previous line. Without this mode, backspace at column 0 is a no-op. Useful for command-line editing across wrapped lines.",
-    "probe": "Enable mode 45, position at column 0 row 1, send BS, verify cursor wraps to end of row 0."
+    "probe": "Enable auto-wrap + reverse wrap, fill row 0 to trigger wrap to row 1, backspace — verify cursor reverse-wraps to end of row 0 via <code>getCursor()</code>."
   },
   "cursor.cup-boundaries": {
     "name": "CUP at screen boundaries",
@@ -524,7 +524,7 @@
     "tags": ["vt220"],
     "baseline": "rich",
     "body": "DECSED (CSI ? Ps J) erases only unprotected characters, leaving characters with the protected attribute (DECSCA, SGR 1 m) intact. Used for form-based applications where static labels should survive screen clears.",
-    "probe": "Set protected attribute, write text, run DECSED, verify protected text remains."
+    "probe": "Write \"ABCDE\", move cursor home, send DECSED (<code>CSI ? 2 J</code>), verify <code>getCell(0,0)</code> is empty. Confirms selective erase display is recognized."
   },
   "erase.el-with-attrs": {
     "name": "EL erases with bg color",
@@ -692,7 +692,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "SGR mouse mode replaces the legacy X10 mouse encoding with a format that supports arbitrarily large coordinates. Enable with <code>ESC [ ? 1006 h</code> (in addition to a tracking mode like ?1000 or ?1003). Mouse events are reported as <code>ESC [ &lt; button ; col ; row M</code> for press and <code>ESC [ &lt; button ; col ; row m</code> for release.\n\nThe SGR format solves critical limitations of legacy mouse reporting: coordinates are decimal (no 223-column limit), button press and release are distinguishable by the final character (M vs m), and the format is unambiguous (no byte-value collisions with control characters). All modern TUI frameworks use SGR mouse mode.",
-    "probe": "Send <code>\\x1b[?1006h</code> then <code>\\x1b[?1006l</code>, verify no crash from the SGR mouse encoding mode toggle.",
+    "probe": "Enable SGR mouse (<code>CSI ? 1006 h</code>), check <code>getMode(\"sgrMouse\")</code> returns true. Confirms the backend tracks SGR mouse encoding mode.",
     "baseline": "modern"
   },
   "modes.mouse-all": {
@@ -701,7 +701,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "DECSET 1003 enables all-motion mouse tracking \u2014 the terminal reports mouse movement events even when no button is pressed. The sequence is <code>ESC [ ? 1003 h</code>. This generates significantly more traffic than normal tracking (?1000) or button-event tracking (?1002), so applications should only enable it when hover effects are needed.",
-    "probe": "Send <code>\\x1b[?1003h</code> then <code>\\x1b[?1003l</code>, verify no crash from the all-motion mouse mode toggle.",
+    "probe": "Enable all-motion mouse (<code>CSI ? 1003 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true. Confirms the backend recognizes mode 1003.",
     "baseline": "modern"
   },
   "modes.focus-tracking": {
@@ -1156,7 +1156,7 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "RI (ESC M) at the top of the scroll region scrolls the entire region down, inserting a blank line at the top. This is the inverse of a newline at the bottom of the scroll region. Used for smooth scrolling and status line implementations.",
-    "probe": "Set cursor to scroll region top, send RI (ESC M), verify content scrolls down."
+    "probe": "Set scroll region, write MARKER at top, reverse index — verify MARKER shifted from row 0 to row 1 via <code>getCell(1,0)</code>."
   },
   "text.overwrite": {
     "name": "Overwrite at cursor",
