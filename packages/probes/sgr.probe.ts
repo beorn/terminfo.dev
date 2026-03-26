@@ -99,9 +99,15 @@ describeBackends("sgr", (b) => {
 
   test("sgr.overline", () => {
     feed(b, "\x1b[53mX")
-    // Overline is not yet in the Cell interface, so we check the raw property
+    // Overline may not be in every backend's Cell interface yet.
+    // Check the raw property if present; at minimum verify sequence is consumed.
     const cell = b.getCell(0, 0) as any
-    expect(cell.overline === true || cell.overline === undefined).toBe(true)
+    if ("overline" in cell) {
+      expect(cell.overline).toBe(true)
+    } else {
+      // Backend doesn't expose overline — verify sequence didn't corrupt text
+      expect(cell.char).toBe("X")
+    }
   })
 
   test("sgr.underline.color", () => {

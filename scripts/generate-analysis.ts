@@ -810,27 +810,19 @@ function generateFrameworkAnalysis(
   }
 
   if (incompatible.length > 0 && incompatible.length <= 5) {
-    const laggards = incompatible.map(
-      (s) => `${s.name} (${s.baselineCompliance[baselineName]?.pct ?? 0}%)`,
-    )
+    const laggards = incompatible.map((s) => `${s.name} (${s.baselineCompliance[baselineName]?.pct ?? 0}%)`)
     parts.push(`Partial compatibility: ${laggards.join(", ")}`)
   }
 
   // Compare with other frameworks in the same baseline tier
-  const sameTier = Object.entries(allFrameworks).filter(
-    ([id, f]) => id !== fwId && f.baseline === baselineName,
-  )
+  const sameTier = Object.entries(allFrameworks).filter(([id, f]) => id !== fwId && f.baseline === baselineName)
   if (sameTier.length > 0) {
     const names = sameTier.map(([, f]) => f.label)
-    parts.push(
-      `Same baseline tier (${baselineLabel}) as ${names.join(", ")}`,
-    )
+    parts.push(`Same baseline tier (${baselineLabel}) as ${names.join(", ")}`)
   }
 
   // Mention frameworks with different baselines for context
-  const otherTiers = Object.entries(allFrameworks).filter(
-    ([id, f]) => id !== fwId && f.baseline !== baselineName,
-  )
+  const otherTiers = Object.entries(allFrameworks).filter(([id, f]) => id !== fwId && f.baseline !== baselineName)
   if (otherTiers.length > 0) {
     const grouped = new Map<string, string[]>()
     for (const [, f] of otherTiers) {
@@ -838,9 +830,7 @@ function generateFrameworkAnalysis(
       if (!grouped.has(bl)) grouped.set(bl, [])
       grouped.get(bl)!.push(f.label)
     }
-    const descriptions = [...grouped.entries()].map(
-      ([bl, names]) => `${names.join(", ")} (${bl})`,
-    )
+    const descriptions = [...grouped.entries()].map(([bl, names]) => `${names.join(", ")} (${bl})`)
     parts.push(`Other frameworks target: ${descriptions.join("; ")}`)
   }
 
@@ -900,6 +890,159 @@ function validateNumbersInAnalysis(key: string, analysis: string, stats: Termina
       totalInText === stats.total,
       `${key}: Total count in text (${totalInText}) doesn't match computed (${stats.total})`,
     )
+  }
+}
+
+// --- Index page analyses ---
+
+function generateStandardsIndexAnalysis(
+  standards: Record<string, StandardMeta>,
+  allStats: Map<string, TerminalStats>,
+  features: Record<string, FeatureMeta>,
+): AnalysisEntry {
+  const parts: string[] = []
+  const terminals = [...allStats.values()]
+
+  // Count total standards and features
+  const standardIds = Object.keys(standards)
+  parts.push(
+    `Terminfo.dev tracks <strong>${standardIds.length}</strong> terminal standards, from ECMA-48 (1976) to Kitty Extensions (2017)`,
+  )
+
+  // Find which standard has best/worst adoption
+  const stdAdoption: { id: string; label: string; avgPct: number }[] = []
+  for (const [stdId, stdMeta] of Object.entries(standards)) {
+    const taggedFeatures = Object.entries(features)
+      .filter(([, f]) => f.tags?.includes(stdId))
+      .map(([id]) => id)
+    if (taggedFeatures.length === 0) continue
+
+    let totalPct = 0
+    let count = 0
+    for (const stats of terminals) {
+      const relevant = taggedFeatures.filter((id) => id in stats.results)
+      if (relevant.length === 0) continue
+      const yes = relevant.filter((id) => stats.results[id] === true).length
+      totalPct += Math.round((yes / relevant.length) * 100)
+      count++
+    }
+    if (count > 0) {
+      stdAdoption.push({ id: stdId, label: stdMeta.label, avgPct: Math.round(totalPct / count) })
+    }
+  }
+
+  stdAdoption.sort((a, b) => b.avgPct - a.avgPct)
+
+  if (stdAdoption.length >= 2) {
+    const best = stdAdoption[0]
+    const worst = stdAdoption[stdAdoption.length - 1]
+    parts.push(
+      `Highest average adoption: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
+    )
+  }
+
+  // Count terminals with 100% on foundational standards
+  const foundational = ["ecma-48", "vt100"]
+  for (const stdId of foundational) {
+    const taggedFeatures = Object.entries(features)
+      .filter(([, f]) => f.tags?.includes(stdId))
+      .map(([id]) => id)
+    if (taggedFeatures.length === 0) continue
+    const perfect = terminals.filter((stats) => {
+      const relevant = taggedFeatures.filter((id) => id in stats.results)
+      const yes = relevant.filter((id) => stats.results[id] === true).length
+      return relevant.length > 0 && yes === relevant.length
+    })
+    if (perfect.length > 0) {
+      parts.push(
+        `<strong>${perfect.length}</strong> of ${terminals.length} terminals achieve 100% ${standards[stdId]?.label ?? stdId} compliance`,
+      )
+    }
+  }
+
+  return {
+    analysis: `<p>${parts.join(". ")}.</p>`,
+    date: new Date().toISOString().slice(0, 10),
+    changes: null,
+  }
+}
+
+function generateFeaturesIndexAnalysis(
+  categories: Record<string, CategoryMeta>,
+  allStats: Map<string, TerminalStats>,
+  features: Record<string, FeatureMeta>,
+): AnalysisEntry {
+  const parts: string[] = []
+  const terminals = [...allStats.values()]
+
+  // Total feature count
+  const totalFeatures = Object.keys(features).length
+  const totalCategories = Object.keys(categories).length
+  parts.push(
+    `The terminfo.dev matrix covers <strong>${totalFeatures}</strong> features across <strong>${totalCategories}</strong> categories`,
+  )
+
+  // Find best category (highest avg adoption) and worst
+  const catAdoption: { id: string; label: string; avgPct: number }[] = []
+  for (const [catId, catMeta] of Object.entries(categories)) {
+    const catFeatures = Object.entries(features)
+      .filter(([id]) => id.startsWith(catId + "."))
+      .map(([id]) => id)
+    if (catFeatures.length === 0) continue
+
+    let totalPct = 0
+    let count = 0
+    for (const stats of terminals) {
+      const relevant = catFeatures.filter((id) => id in stats.results)
+      if (relevant.length === 0) continue
+      const yes = relevant.filter((id) => stats.results[id] === true).length
+      totalPct += Math.round((yes / relevant.length) * 100)
+      count++
+    }
+    if (count > 0) {
+      catAdoption.push({ id: catId, label: catMeta.label, avgPct: Math.round(totalPct / count) })
+    }
+  }
+
+  catAdoption.sort((a, b) => b.avgPct - a.avgPct)
+
+  if (catAdoption.length >= 2) {
+    const best = catAdoption[0]
+    const worst = catAdoption[catAdoption.length - 1]
+    parts.push(
+      `Best-supported category: <strong>${best.label}</strong> (${best.avgPct}% average). Most challenging: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
+    )
+  }
+
+  // Count universally supported features
+  const universalCount = Object.keys(features).filter((fid) => {
+    return terminals.every((stats) => {
+      if (!(fid in stats.results)) return true // skip if not tested
+      return stats.results[fid] === true
+    })
+  }).length
+
+  if (universalCount > 0) {
+    parts.push(`<strong>${universalCount}</strong> features are universally supported by all tested terminals`)
+  }
+
+  // Count features with zero support
+  const zeroSupport = Object.keys(features).filter((fid) => {
+    const tested = terminals.filter((stats) => fid in stats.results)
+    if (tested.length === 0) return false
+    return tested.every((stats) => stats.results[fid] !== true)
+  }).length
+
+  if (zeroSupport > 0) {
+    parts.push(
+      `<strong>${zeroSupport}</strong> feature${zeroSupport === 1 ? " has" : "s have"} zero support across all tested terminals`,
+    )
+  }
+
+  return {
+    analysis: `<p>${parts.join(". ")}.</p>`,
+    date: new Date().toISOString().slice(0, 10),
+    changes: null,
   }
 }
 
@@ -1176,6 +1319,20 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
     }
   }
 
+  // 8. Standards index page
+  {
+    const entry = generateStandardsIndexAnalysis(standards, allStats, features)
+    validateHtml(entry.analysis, "standards-index")
+    output["standards-index"] = entry
+  }
+
+  // 9. Features index page
+  {
+    const entry = generateFeaturesIndexAnalysis(categories, allStats, features)
+    validateHtml(entry.analysis, "features-index")
+    output["features-index"] = entry
+  }
+
   // Post-process: auto-link entity mentions in all analysis text
   for (const [key, entry] of Object.entries(output)) {
     entry.analysis = linkify(entry.analysis, terminals, features, categories, standards, baselines)
@@ -1204,7 +1361,12 @@ try {
   const compareCount = Object.keys(analysis).filter((k) => k.startsWith("compare/")).length
   const frameworkCount = Object.keys(analysis).filter((k) => k.startsWith("framework/")).length
   const categoryCount = Object.keys(analysis).filter(
-    (k) => !k.startsWith("terminal/") && !k.startsWith("baseline/") && !k.startsWith("compare/") && !k.startsWith("framework/") && !k.includes("/"),
+    (k) =>
+      !k.startsWith("terminal/") &&
+      !k.startsWith("baseline/") &&
+      !k.startsWith("compare/") &&
+      !k.startsWith("framework/") &&
+      !k.includes("/"),
   ).length
 
   if (isValidate) {

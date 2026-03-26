@@ -59,7 +59,12 @@ describeBackends("erase", (b) => {
 
   test("erase.selective", () => {
     // DECSED: CSI ? 2 J — selective erase entire screen
+    // Verify the sequence is consumed without corrupting the text stream.
+    // Full DECSCA/DECSED semantics (protected vs unprotected attributes)
+    // are rarely implemented; the key requirement is clean consumption.
     feed(b, "ABCDE\x1b[?2J")
+    feed(b, "OK")
+    expect(b.getText()).toContain("OK")
   })
 
   test("erase.el-with-attrs", () => {

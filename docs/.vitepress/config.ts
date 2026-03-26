@@ -217,9 +217,10 @@ function buildSidebar() {
     }))
 
   // Load frameworks for sidebar
-  const frameworksData = JSON.parse(
-    readFileSync(join(docsDir, "..", "content", "frameworks.json"), "utf-8"),
-  ) as Record<string, { label: string }>
+  const frameworksData = JSON.parse(readFileSync(join(docsDir, "..", "content", "frameworks.json"), "utf-8")) as Record<
+    string,
+    { label: string }
+  >
   const frameworkItems = Object.entries(frameworksData).map(([id, fw]) => ({
     text: fw.label,
     link: `/framework/${id}`,
@@ -237,22 +238,28 @@ function buildSidebar() {
     },
     {
       text: "Categories",
-      items: sortedCategories.map((cat) => ({
-        text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
-        link: `/${cat}`,
-        collapsed: true,
-        items: (categories.get(cat) ?? []).map((f) => ({
-          text: f.name,
-          link: `/${cat}/${f.slug}`,
+      items: [
+        { text: "All Features", link: "/features" },
+        ...sortedCategories.map((cat) => ({
+          text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
+          link: `/${cat}`,
+          collapsed: true,
+          items: (categories.get(cat) ?? []).map((f) => ({
+            text: f.name,
+            link: `/${cat}/${f.slug}`,
+          })),
         })),
-      })),
+      ],
     },
     {
       text: "Standards",
-      items: sortedTags.map((tag) => ({
-        text: tagLabels[tag] ?? tag,
-        link: `/${tag}`,
-      })),
+      items: [
+        { text: "All Standards", link: "/standards" },
+        ...sortedTags.map((tag) => ({
+          text: tagLabels[tag] ?? tag,
+          link: `/${tag}`,
+        })),
+      ],
     },
     {
       text: "Terminals",
@@ -286,11 +293,33 @@ export default defineConfig({
   },
 
   transformPageData(pageData) {
+    const rel = pageData.relativePath
+
+    // SEO for static index pages
+    if (rel === "standards.md") {
+      pageData.title = "Terminal Standards: From VT100 to Kitty"
+      pageData.description =
+        "50 years of terminal protocols — ECMA-48, VT100, VT220, VT510, xterm, Kitty, OSC, Sixel, and Unicode. History, specs, and feature coverage for each standard."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
+    if (rel === "features.md") {
+      pageData.title = "Terminal Features: How Escape Sequences Work"
+      pageData.description =
+        "134+ features across 13 categories — SGR styling, cursor control, modes, extensions, Unicode. Tested on every major terminal emulator."
+      pageData.frontmatter.head = [
+        ["meta", { property: "og:title", content: pageData.title }],
+        ["meta", { property: "og:description", content: pageData.description }],
+      ]
+      return
+    }
+
     // Set SEO titles and descriptions for dynamic route pages
     const params = pageData.params as Record<string, string> | undefined
     if (!params) return
-
-    const rel = pageData.relativePath
 
     if (rel.startsWith("compare/")) {
       pageData.title = `${params.termALabel} vs ${params.termBLabel} — Terminal Feature Comparison`
