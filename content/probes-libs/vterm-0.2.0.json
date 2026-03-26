@@ -1,7 +1,7 @@
 {
   "backend": "vterm",
   "version": "0.2.0",
-  "generated": "2026-03-26T17:02:11.318Z",
+  "generated": "2026-03-26T17:08:38.238Z",
   "probeHash": "34eda06e1595",
   "results": {
     "sgr.bold": true,
@@ -97,6 +97,7 @@
     "modes.mouse-all": true,
     "modes.application-keypad": true,
     "modes.left-right-margin": false,
+    "modes.color-scheme-reporting": false,
     "device.primary-da": true,
     "device.status-report": true,
     "device.secondary-da": true,
@@ -123,12 +124,15 @@
     "extensions.iterm2-images": true,
     "extensions.osc1337-cellsize": true,
     "extensions.osc1337-capabilities": true,
+    "extensions.osc66-text-sizing": false,
+    "extensions.osc5522-clipboard": false,
     "extensions.sixel-da1": true,
     "input.modify-other-keys": true,
     "input.csi-u": true,
     "input.pixel-mouse": true,
     "input.urxvt-mouse": true,
     "input.x10-mouse": true,
+    "input.modify-other-keys-3": true,
     "input.button-event-mouse": true,
     "reset.sgr": true,
     "reset.ris": true,
@@ -153,6 +157,9 @@
     "unicode.tab-stops": true
   },
   "notes": {
-    "modes.left-right-margin": "not supported"
+    "modes.left-right-margin": "not supported",
+    "modes.color-scheme-reporting": "not supported",
+    "extensions.osc66-text-sizing": "not supported",
+    "extensions.osc5522-clipboard": "not supported"
   }
 }

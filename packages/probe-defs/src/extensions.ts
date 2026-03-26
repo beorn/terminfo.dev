@@ -292,6 +292,64 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
   ),
 
+  // OSC 9;4 — progress bar (ConEmu protocol, adopted by Ghostty, iTerm2, Windows Terminal, etc.)
+  probe(
+    "extensions.osc9-progress",
+    // Headless: no way to detect OSC 9;4 support (all backends silently consume unknown OSC)
+    null,
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]9;4;1;50\x07") // set progress to 50%
+      const pos = await ctx.queryCursorPosition()
+      ctx.write("\x1b]9;4;0\x07") // clear progress
+      if (!pos) return { pass: false, note: "No cursor response" }
+      // If terminal consumed the OSC, cursor should still be at col 1
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 66 — text sizing protocol (Kitty, sets text scale/cell width)
+  probe(
+    "extensions.osc66-text-sizing",
+    (ctx) => {
+      // Check if backend responds to OSC 66 query (not just silently consuming)
+      const response = ctx.feedCapture("\x1b]66;?\x07")
+      const pass = /\x1b\]66;/.test(response)
+      return { pass, note: pass ? undefined : "No OSC 66 query response" }
+    },
+    async (ctx) => {
+      // Query current text sizing state
+      const match = await ctx.queryWithSentinel("\x1b]66;?\x07", /\x1b\]66;([^\x07\x1b]*)[\x07\x1b]/)
+      if (match) return { pass: true, response: match[1] }
+      // Fallback: try setting and verify cursor didn't move (consumed)
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]66;s=2\x07")
+      const pos = await ctx.queryCursorPosition()
+      ctx.write("\x1b]66;s=1\x07") // reset
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return { pass: pos.col === 1, note: pos.col === 1 ? "Consumed (no query)" : "Not recognized" }
+    },
+  ),
+
+  // OSC 5522 — advanced clipboard (Kitty protocol, MIME-aware paste events)
+  probe(
+    "extensions.osc5522-clipboard",
+    (ctx) => {
+      // OSC 5522 is the kitty clipboard protocol. Query clipboard metadata.
+      const response = ctx.feedCapture("\x1b]5522;?\x07")
+      if (/\x1b\]5522;/.test(response)) return { pass: true, response }
+      return { pass: false, note: "No OSC 5522 response" }
+    },
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel("\x1b]5522;?\x07", /\x1b\]5522;([^\x07\x1b]*)[\x07\x1b]/)
+      if (match) return { pass: true, response: match[1] }
+      return { pass: false, note: "No OSC 5522 response" }
+    },
+  ),
+
   // Sixel support advertised in DA1 response (attribute 4)
   probe(
     "extensions.sixel-da1",

@@ -4,10 +4,7 @@
     "name": "Bold (SGR 1)",
     "slug": "1-bold",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "SGR 1 activates bold text rendering. The sequence is <code>ESC [ 1 m</code>. Bold is one of the original VT100 text attributes and is universally supported across terminals.\n\nHistorically, some terminals render SGR 1 as increased intensity (brighter color) rather than heavier font weight — and some do both. When bold is active alongside one of the standard foreground colors (SGR 30-37), certain terminals will substitute the corresponding bright color (SGR 90-97). This means bold red may appear as bright red rather than bold red, depending on the terminal and its configuration.\n\nBold is reset by SGR 0 (reset all) or SGR 22 (reset bold/dim). Note that SGR 22 resets both bold and faint — there is no way to reset one without the other.",
     "probe": "Send <code>\\x1b[1m</code>X, verify the cell at (0,0) has <code>bold=true</code>. Confirms the SGR 1 attribute is parsed and applied to the character cell.",
     "baseline": "core",
@@ -17,10 +14,7 @@
     "name": "Faint/dim (SGR 2)",
     "slug": "2-faint-dim",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "SGR 2 renders text with reduced intensity (dimmed). The sequence is <code>ESC [ 2 m</code>. Commonly used for secondary or de-emphasized text in TUI applications — status bars, disabled items, or metadata.\n\nFaint is reset by SGR 22, which also resets bold (SGR 1). There is no separate reset code for faint alone. Most modern terminals support faint rendering, typically by reducing the alpha or brightness of the foreground color.",
     "probe": "Send <code>\\x1b[2m</code>X, verify the cell at (0,0) has <code>dim=true</code>. Confirms SGR 2 (faint) is parsed and stored as a distinct attribute.",
     "baseline": "core",
@@ -30,9 +24,7 @@
     "name": "Italic (SGR 3)",
     "slug": "3-italic",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "body": "SGR 3 renders text in italic style. The sequence is <code>ESC [ 3 m</code>. Reset with SGR 23. Italic requires the terminal font to have an italic variant — monospace fonts without italics typically render it as normal text or with a slight color change.\n\nItalic was not supported on early hardware terminals and was historically rendered as inverse video on some systems. Modern terminals with proper font support render true italics, commonly used for comments, emphasis, and documentation in TUI applications and syntax-highlighted output.",
     "probe": "Send <code>\\x1b[3m</code>X, verify the cell at (0,0) has <code>italic=true</code>.",
     "baseline": "core",
@@ -42,10 +34,7 @@
     "name": "Underline (SGR 4)",
     "slug": "4-underline",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "underline",
     "body": "SGR 4 draws a single underline beneath text. The sequence is <code>ESC [ 4 m</code>. One of the original VT100 attributes, universally supported across terminals. Reset with SGR 24.",
     "probe": "Send <code>\\x1b[4m</code>X, verify the cell has a truthy <code>underline</code> attribute.",
@@ -56,9 +45,7 @@
     "name": "Double underline (SGR 21)",
     "slug": "21-double-underline",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "group": "underline",
     "body": "SGR 21 draws a double underline beneath text. The sequence is <code>ESC [ 21 m</code>. Also accessible via the Kitty sub-parameter syntax as <code>ESC [ 4:2 m</code>. Reset with SGR 24. Support varies — some older terminals treat SGR 21 as bold-off rather than double underline.",
     "probe": "Send <code>\\x1b[21m</code>X, verify <code>underline === \"double\"</code>. Tests whether SGR 21 is interpreted as double underline rather than bold-off.",
@@ -69,9 +56,7 @@
     "name": "Curly underline (SGR 4:3)",
     "slug": "4-3-curly-underline",
     "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-    "tags": [
-      "kitty-extensions"
-    ],
+    "tags": ["kitty-extensions"],
     "group": "underline",
     "body": "SGR 4:3 draws a wavy/curly underline beneath text, using the ECMA-48 colon sub-parameter syntax: <code>ESC [ 4:3 m</code>. This underline style was introduced by Kitty and is commonly used by editors and IDEs to indicate spelling errors, lint warnings, or diagnostic information — similar to the red squiggly underline in graphical editors.\n\nCombine with SGR 58 (underline color) to set the underline color independently of the text color, e.g., red curly underline under normally-colored text for errors. Adopted by Ghostty, WezTerm, foot, and other modern terminals. Reset with SGR 24.",
     "probe": "Send <code>\\x1b[4:3m</code>X (colon sub-parameter syntax), verify <code>underline === \"curly\"</code>.",
@@ -82,9 +67,7 @@
     "name": "Dotted underline (SGR 4:4)",
     "slug": "4-4-dotted-underline",
     "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-    "tags": [
-      "kitty-extensions"
-    ],
+    "tags": ["kitty-extensions"],
     "group": "underline",
     "body": "SGR 4:4 draws a dotted underline beneath text: <code>ESC [ 4:4 m</code>. Part of the Kitty extended underline styles. Can be combined with SGR 58 for colored underlines. Reset with SGR 24.",
     "probe": "Send <code>\\x1b[4:4m</code>X, verify <code>underline === \"dotted\"</code>.",
@@ -95,9 +78,7 @@
     "name": "Dashed underline (SGR 4:5)",
     "slug": "4-5-dashed-underline",
     "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-    "tags": [
-      "kitty-extensions"
-    ],
+    "tags": ["kitty-extensions"],
     "group": "underline",
     "body": "SGR 4:5 draws a dashed underline beneath text: <code>ESC [ 4:5 m</code>. Part of the Kitty extended underline styles. Can be combined with SGR 58 for colored underlines. Reset with SGR 24.",
     "probe": "Send <code>\\x1b[4:5m</code>X, verify <code>underline === \"dashed\"</code>.",
@@ -108,9 +89,7 @@
     "name": "Underline color (SGR 58)",
     "slug": "58-underline-color",
     "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-    "tags": [
-      "kitty-extensions"
-    ],
+    "tags": ["kitty-extensions"],
     "group": "underline",
     "body": "SGR 58 sets the underline color independently of the text foreground color. The syntax mirrors SGR 38 (foreground): <code>ESC [ 58:2::R:G:B m</code> for truecolor, <code>ESC [ 58:5:N m</code> for 256-color. Reset the underline color to default with SGR 59.\n\nThis is particularly useful with curly underlines (SGR 4:3) for diagnostic indicators: red underline for errors, yellow for warnings, blue for hints — all while keeping the text color unchanged. Introduced by Kitty and adopted by other modern terminals.",
     "probe": "Send <code>\\x1b[4m\\x1b[58;2;255;0;128m</code>X, verify the cell has <code>underline</code> active and <code>underlineColor</code> matches RGB(255, 0, 128).",
@@ -121,10 +100,7 @@
     "name": "Blink (SGR 5)",
     "slug": "5-blink",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "SGR 5 causes text to blink at a steady rate. The sequence is <code>ESC [ 5 m</code>. Many modern terminals intentionally do not implement blinking, as it is considered distracting and an accessibility concern. Terminals that do support it typically allow the user to disable it in preferences.",
     "probe": "Send <code>\\x1b[5m</code>X, verify <code>blink=true</code> on the cell.",
     "baseline": "modern",
@@ -134,10 +110,7 @@
     "name": "Inverse video (SGR 7)",
     "slug": "7-inverse-video",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "SGR 7 swaps the foreground and background colors of the text. The sequence is <code>ESC [ 7 m</code>. Universally supported. Commonly used for selection highlighting, cursor rendering, and visual emphasis in TUI applications. Reset with SGR 27.",
     "probe": "Send <code>\\x1b[7m</code>X, verify <code>inverse=true</code> on the cell.",
     "baseline": "core",
@@ -147,9 +120,7 @@
     "name": "Hidden/invisible (SGR 8)",
     "slug": "8-hidden",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "body": "SGR 8 renders text invisible by setting the foreground color to match the background. The sequence is <code>ESC [ 8 m</code>. The text is still present and selectable — it is hidden visually but not removed from the terminal buffer. Reset with SGR 28.",
     "probe": "Send <code>\\x1b[8m</code>X, verify <code>hidden=true</code> on the cell.",
     "baseline": "core",
@@ -159,9 +130,7 @@
     "name": "Strikethrough (SGR 9)",
     "slug": "9-strikethrough",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "body": "SGR 9 draws a horizontal line through the middle of the text. The sequence is <code>ESC [ 9 m</code>. Used in TUI applications to indicate deleted, deprecated, or completed items. Reset with SGR 29. Widely supported in modern terminals.",
     "probe": "Send <code>\\x1b[9m</code>X, verify <code>strikethrough=true</code> on the cell.",
     "baseline": "core",
@@ -171,9 +140,7 @@
     "name": "Overline (SGR 53)",
     "slug": "53-overline",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "body": "SGR 53 draws a line above the text, the mirror image of underline. The sequence is <code>ESC [ 53 m</code>. Reset with SGR 55. Overline is one of the lesser-used ECMA-48 attributes and was adopted by modern terminals relatively recently. It can be useful for horizontal rules, header decoration, or combined with underline for a boxed text effect.",
     "probe": "Send <code>\\x1b[53m</code>X, check for <code>overline</code> property on the cell.",
     "baseline": "modern",
@@ -183,9 +150,7 @@
     "name": "Standard fg colors (SGR 30-37)",
     "slug": "30-37-standard-fg",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "group": "colors",
     "body": "SGR 30-37 set the foreground text color to one of 8 standard colors: black (30), red (31), green (32), yellow (33), blue (34), magenta (35), cyan (36), white (37). Universally supported. The actual displayed color depends on the terminal's color scheme — \"red\" in one theme may look very different from \"red\" in another.",
     "probe": "Send <code>\\x1b[31m</code>X (red), verify the cell's foreground color has a red channel > 100.",
@@ -196,9 +161,7 @@
     "name": "Standard bg colors (SGR 40-47)",
     "slug": "40-47-standard-bg",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "group": "colors",
     "body": "SGR 40-47 set the background color to one of 8 standard colors: black (40), red (41), green (42), yellow (43), blue (44), magenta (45), cyan (46), white (47). Universally supported. As with foreground colors, the actual RGB values depend on the terminal's configured color scheme.",
     "probe": "Send <code>\\x1b[42m</code>X (green bg), verify the cell's background color has a green channel > 100.",
@@ -209,9 +172,7 @@
     "name": "Bright fg colors (SGR 90-97)",
     "slug": "90-97-bright-fg",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 90-97 set the foreground to one of 8 bright (high-intensity) colors, corresponding to the standard colors at higher intensity. Originally an xterm extension, now universally supported. These provide 8 additional named colors beyond SGR 30-37 without requiring 256-color or truecolor support.",
     "probe": "Send <code>\\x1b[91m</code>X (bright red), verify the foreground red channel > 150.",
@@ -222,9 +183,7 @@
     "name": "Bright bg colors (SGR 100-107)",
     "slug": "100-107-bright-bg",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 100-107 set the background to one of 8 bright (high-intensity) colors. The bright background counterpart to SGR 90-97 bright foreground colors. Originally an xterm extension, now universally supported.",
     "probe": "Send <code>\\x1b[102m</code>X (bright green bg), verify the background green channel > 150.",
@@ -235,9 +194,7 @@
     "name": "Default fg color (SGR 39)",
     "slug": "39-default-fg",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "group": "colors",
     "body": "SGR 39 resets the foreground color to the terminal's default, without affecting other attributes. The sequence is <code>ESC [ 39 m</code>. This is more targeted than SGR 0, which resets all attributes. Useful when you want to clear a color change while preserving bold, underline, or other active attributes.",
     "probe": "Send <code>\\x1b[31m</code>X<code>\\x1b[39m</code>Y, verify the second cell's foreground is reset to default (null).",
@@ -248,9 +205,7 @@
     "name": "Default bg color (SGR 49)",
     "slug": "49-default-bg",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "group": "colors",
     "body": "SGR 49 resets the background color to the terminal's default, without affecting other attributes. The sequence is <code>ESC [ 49 m</code>. The counterpart of SGR 39 (default foreground).",
     "probe": "Send <code>\\x1b[42m</code>X<code>\\x1b[49m</code>Y, verify the second cell's background is reset to default (null).",
@@ -261,9 +216,7 @@
     "name": "256-color fg (SGR 38;5)",
     "slug": "38-5-256-color-fg",
     "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 38;5;N sets the foreground to one of 256 colors. The sequence is <code>ESC [ 38;5;N m</code> where N is 0-255. Colors 0-7 are the standard colors, 8-15 are bright, 16-231 are a 6x6x6 color cube, and 232-255 are a grayscale ramp. This palette provides a reasonable range of colors that works across most modern terminals without requiring truecolor support.",
     "probe": "Send <code>\\x1b[38;5;196m</code>X (256-color red), verify the foreground red channel > 200.",
@@ -274,9 +227,7 @@
     "name": "256-color bg (SGR 48;5)",
     "slug": "48-5-256-color-bg",
     "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 48;5;N sets the background to one of 256 colors. The sequence is <code>ESC [ 48;5;N m</code>. Same palette as SGR 38;5 (256-color foreground): 0-15 standard/bright, 16-231 color cube, 232-255 grayscale.",
     "probe": "Send <code>\\x1b[48;5;21m</code>X (256-color blue), verify the background blue channel > 100.",
@@ -287,9 +238,7 @@
     "name": "24-bit fg (SGR 38;2)",
     "slug": "38-2-truecolor-fg",
     "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#24-bit",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 38;2;R;G;B sets the foreground to a 24-bit RGB color. The sequence is <code>ESC [ 38;2;R;G;B m</code> where R, G, B are 0-255. There is also a colon-separated variant <code>ESC [ 38:2::R:G:B m</code> per ITU T.416, but the semicolon format has wider compatibility.\n\nThis gives applications access to 16.7 million colors. Applications can check for truecolor support via <code>COLORTERM=truecolor</code> or <code>COLORTERM=24bit</code> in the environment.",
     "probe": "Send <code>\\x1b[38;2;255;128;0m</code>X, verify the foreground color matches RGB(255, 128, 0) exactly.",
@@ -300,9 +249,7 @@
     "name": "24-bit bg (SGR 48;2)",
     "slug": "48-2-truecolor-bg",
     "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#24-bit",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 48;2;R;G;B sets the background to a 24-bit RGB color. The sequence is <code>ESC [ 48;2;R;G;B m</code>. Same syntax variants and compatibility notes as SGR 38;2 (24-bit foreground).",
     "probe": "Send <code>\\x1b[48;2;0;255;128m</code>X, verify the background color matches RGB(0, 255, 128) exactly.",
@@ -313,9 +260,7 @@
     "name": "Reset bold/dim (SGR 22)",
     "slug": "22-reset-bold",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "group": "selective-reset",
     "body": "SGR 22 resets both bold (SGR 1) and faint/dim (SGR 2) attributes. The sequence is <code>ESC [ 22 m</code>. There is no way to reset bold without also resetting faint, or vice versa — they share this single reset code.",
     "probe": "Send <code>\\x1b[1m</code>X<code>\\x1b[22m</code>Y, verify the second cell has <code>bold=false</code> and <code>dim=false</code>.",
@@ -325,9 +270,7 @@
     "name": "Reset underline (SGR 24)",
     "slug": "24-reset-underline",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "group": "selective-reset",
     "body": "SGR 24 resets all underline styles — single, double, curly, dotted, and dashed. The sequence is <code>ESC [ 24 m</code>.",
     "probe": "Send <code>\\x1b[4m</code>X<code>\\x1b[24m</code>Y, verify the second cell has no underline.",
@@ -337,9 +280,7 @@
     "name": "Reset inverse (SGR 27)",
     "slug": "27-reset-inverse",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "group": "selective-reset",
     "body": "SGR 27 resets the inverse video (SGR 7) attribute, restoring the original foreground/background color relationship. The sequence is <code>ESC [ 27 m</code>.",
     "probe": "Send <code>\\x1b[7m</code>X<code>\\x1b[27m</code>Y, verify the second cell has <code>inverse=false</code>.",
@@ -349,9 +290,7 @@
     "name": "Reset italic (SGR 23)",
     "slug": "23-reset-italic",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "group": "selective-reset",
     "body": "SGR 23 resets the italic (SGR 3) attribute, returning text to upright rendering. The sequence is <code>ESC [ 23 m</code>. This is a targeted reset that does not affect other active attributes like bold, underline, or colors.",
     "probe": "Send <code>\\x1b[3m</code>X<code>\\x1b[23m</code>Y, verify the second cell has <code>italic=false</code>.",
@@ -361,10 +300,7 @@
     "name": "Reset all (SGR 0)",
     "slug": "0-reset",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "SGR 0 resets all text attributes to their defaults: removes bold, faint, italic, underline, blink, inverse, hidden, strikethrough, overline, and resets foreground and background colors. The sequence is <code>ESC [ 0 m</code> or simply <code>ESC [ m</code> (parameter defaults to 0). Universally supported and the most fundamental SGR sequence.",
     "probe": "Send <code>\\x1b[1;3;4m</code>X<code>\\x1b[0m</code>Y, verify the second cell has bold, italic, and underline all cleared.",
     "baseline": "core",
@@ -374,10 +310,7 @@
     "name": "Hide cursor (DECTCEM)",
     "slug": "dectcem-hide-cursor",
     "url": "https://vt100.net/docs/vt510-rm/DECTCEM.html",
-    "tags": [
-      "dec-private-modes",
-      "vt510"
-    ],
+    "tags": ["dec-private-modes", "vt510"],
     "body": "DECTCEM (DEC Text Cursor Enable Mode) controls cursor visibility. Hide cursor: <code>ESC [ ? 25 l</code>. Show cursor: <code>ESC [ ? 25 h</code>. TUI applications typically hide the cursor during rendering to avoid flicker, then restore it at the final cursor position. Universally supported.",
     "probe": "Send <code>ESC [ ? 25 l</code> (DECTCEM reset) and verify the cursor is no longer visible.",
     "baseline": "core",
@@ -387,10 +320,7 @@
     "name": "Cursor shape (DECSCUSR)",
     "slug": "decscusr-cursor-shape",
     "url": "https://vt100.net/docs/vt510-rm/DECSCUSR.html",
-    "tags": [
-      "dec-private-modes",
-      "vt510"
-    ],
+    "tags": ["dec-private-modes", "vt510"],
     "body": "DECSCUSR (DEC Set Cursor Style) changes the cursor appearance. The sequence is <code>ESC [ N SP q</code> where N is: 0 or 1 (blinking block), 2 (steady block), 3 (blinking underline), 4 (steady underline), 5 (blinking bar/I-beam), 6 (steady bar). Applications use this to signal editing mode — for example, vim uses a block cursor in normal mode and a bar cursor in insert mode.",
     "probe": "Send <code>\\x1b[6 q</code> (DECSCUSR steady bar), verify cursor style is <code>\"beam\"</code>.",
     "baseline": "modern",
@@ -400,10 +330,7 @@
     "name": "Cursor position (CUP)",
     "slug": "cup-cursor-position",
     "url": "https://vt100.net/docs/vt510-rm/CUP.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "movement",
     "body": "CUP (Cursor Position) moves the cursor to an absolute row and column. The sequence is <code>ESC [ row ; col H</code>, where row and column are 1-based. <code>ESC [ H</code> (no parameters) moves to the home position (1,1). This is the most fundamental cursor positioning command and is used by every full-screen TUI application.",
     "probe": "Send <code>\\x1b[5;10H</code> (CUP), verify cursor is at row 4, col 9 (0-based). In app mode, query with DSR 6 and verify response <code>\\x1b[5;10R</code>.",
@@ -414,10 +341,7 @@
     "name": "Cursor up (CUU)",
     "slug": "cuu-cursor-up",
     "url": "https://vt100.net/docs/vt510-rm/CUU.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "movement",
     "body": "CUU moves the cursor up by N rows without changing the column. The sequence is <code>ESC [ N A</code> (default N=1). The cursor stops at the top margin of the scroll region and does not wrap or scroll.",
     "probe": "Move cursor down 5 then up 2 via <code>\\x1b[5B\\x1b[2A</code>, verify cursor row is 3 (0-based).",
@@ -428,10 +352,7 @@
     "name": "Cursor down (CUD)",
     "slug": "cud-cursor-down",
     "url": "https://vt100.net/docs/vt510-rm/CUD.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "movement",
     "body": "CUD moves the cursor down by N rows without changing the column. The sequence is <code>ESC [ N B</code> (default N=1). The cursor stops at the bottom margin of the scroll region and does not wrap or scroll.",
     "probe": "Send <code>\\x1b[3B</code> (CUD 3), verify cursor row is 3 (0-based).",
@@ -442,10 +363,7 @@
     "name": "Cursor forward (CUF)",
     "slug": "cuf-cursor-forward",
     "url": "https://vt100.net/docs/vt510-rm/CUF.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "movement",
     "body": "CUF moves the cursor forward (right) by N columns. The sequence is <code>ESC [ N C</code> (default N=1). The cursor stops at the right edge of the screen and does not wrap to the next line.",
     "probe": "Send <code>\\x1b[5C</code> (CUF 5), verify cursor column is 5 (0-based).",
@@ -456,10 +374,7 @@
     "name": "Cursor back (CUB)",
     "slug": "cub-cursor-back",
     "url": "https://vt100.net/docs/vt510-rm/CUB.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "movement",
     "body": "CUB moves the cursor back (left) by N columns. The sequence is <code>ESC [ N D</code> (default N=1). The cursor stops at the left edge of the screen and does not wrap to the previous line.",
     "probe": "Write \"ABC\" then send <code>\\x1b[2D</code> (CUB 2), verify cursor column is 1 (0-based).",
@@ -470,10 +385,7 @@
     "name": "Cursor home",
     "slug": "home",
     "url": "https://vt100.net/docs/vt510-rm/CUP.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "movement",
     "body": "Moves the cursor to the home position (row 1, column 1). Equivalent to <code>ESC [ H</code> or <code>ESC [ 1;1 H</code>. This is a special case of CUP with no parameters.",
     "probe": "Write \"ABC\" then send <code>\\x1b[H</code> (CUP no params), verify cursor is at (0, 0).",
@@ -484,9 +396,7 @@
     "name": "Cursor horizontal absolute (CHA)",
     "slug": "cha-cursor-horizontal-absolute",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "body": "CHA moves the cursor to an absolute column on the current row. The sequence is <code>ESC [ N G</code> where N is the 1-based column number (default 1). Unlike CUP, this only changes the horizontal position, leaving the row unchanged.",
     "probe": "Write \"ABCDE\" then send <code>\\x1b[3G</code> (CHA), verify cursor column is 2 (0-based).",
     "baseline": "modern",
@@ -496,9 +406,7 @@
     "name": "Cursor next line (CNL)",
     "slug": "cnl-cursor-next-line",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "body": "CNL moves the cursor to the beginning of the line N rows down. The sequence is <code>ESC [ N E</code> (default N=1). Unlike CUD, which preserves the column, CNL always sets the column to 1.",
     "probe": "Write \"ABC\" then send <code>\\x1b[2E</code> (CNL 2), verify cursor is at row 2, column 0.",
     "baseline": "modern",
@@ -508,10 +416,7 @@
     "name": "Cursor position report (DSR 6)",
     "slug": "dsr-6-cursor-position-report",
     "url": "https://vt100.net/docs/vt510-rm/DSR.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "DSR 6 (Device Status Report) queries the current cursor position. The application sends <code>ESC [ 6 n</code> and the terminal responds with <code>ESC [ row ; col R</code>. This request-response mechanism is used by shell integration scripts, TUI frameworks, and applications that need to know where the cursor is before rendering content.",
     "probe": "Move cursor to row 3, col 5 via <code>\\x1b[3;5H</code>, send DSR 6 (<code>\\x1b[6n</code>), verify response contains <code>3;5R</code>.",
     "baseline": "modern",
@@ -521,10 +426,7 @@
     "name": "Save/restore cursor (DECSC)",
     "slug": "decsc-save-restore-cursor",
     "url": "https://vt100.net/docs/vt510-rm/DECSC.html",
-    "tags": [
-      "dec-private-modes",
-      "vt100"
-    ],
+    "tags": ["dec-private-modes", "vt100"],
     "body": "DECSC saves the cursor position and attributes; DECRC restores them. Save: <code>ESC 7</code>. Restore: <code>ESC 8</code>. Also available as CSI variants: <code>ESC [ s</code> (save) and <code>ESC [ u</code> (restore). The saved state includes cursor position, character attributes, character set, and origin mode. Applications use this to temporarily move the cursor for status updates without disrupting the main content area.",
     "probe": "Write \"AB\", save with <code>\\x1b7</code> (DECSC), move to (5,5), restore with <code>\\x1b8</code> (DECRC), verify cursor returned to col 2, row 0.",
     "baseline": "core",
@@ -533,9 +435,7 @@
   "cursor.reverse-wrap": {
     "name": "Reverse Wrap (Mode 45)",
     "slug": "reverse-wrap-45",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "Reverse wrap mode (mode 45) allows backspace at column 0 to wrap to the end of the previous line. Without this mode, backspace at column 0 is a no-op. Useful for command-line editing across wrapped lines.",
     "probe": "Enable auto-wrap + reverse wrap, fill row 0 to trigger wrap to row 1, backspace — verify cursor reverse-wraps to end of row 0 via <code>getCursor()</code>.",
@@ -545,10 +445,7 @@
     "name": "CUP at screen boundaries",
     "slug": "cup-screen-boundaries",
     "url": "https://vt100.net/docs/vt510-rm/CUP.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "CUP (Cursor Position, CSI row ; col H) with out-of-bounds parameters should clamp the cursor to the screen edges rather than wrapping or producing undefined behavior. Sending <code>CSI 999 ; 999 H</code> should place the cursor at the last row and last column of the visible screen. This is important for applications that use CUP with large values as a shorthand for \"move to bottom-right corner\" without querying screen dimensions first.",
     "probe": "Send <code>\\x1b[999;999H</code>, verify cursor is at (rows-1, cols-1) — not beyond the screen boundaries."
@@ -557,10 +454,7 @@
     "name": "CUU stops at top",
     "slug": "cuu-past-top",
     "url": "https://vt100.net/docs/vt510-rm/CUU.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "CUU (Cursor Up, CSI Pn A) should stop at the top margin of the scroll region, or row 1 if no scroll region is set. Moving up with a count exceeding the current row should clamp to row 0 rather than wrapping to the bottom. This prevents cursor escape from the visible area and is relied upon by screen-clearing routines that use large CUU counts.",
     "probe": "Position at row 3, send <code>\\x1b[999A</code> (CUU with count 999), verify cursor stopped at row 0."
@@ -569,10 +463,7 @@
     "name": "CUD stops at bottom",
     "slug": "cud-past-bottom",
     "url": "https://vt100.net/docs/vt510-rm/CUD.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "CUD (Cursor Down, CSI Pn B) should stop at the bottom margin of the scroll region, or the last row if no scroll region is set. Moving down with a count exceeding the remaining rows should clamp to the last row rather than scrolling or wrapping. Unlike a linefeed at the bottom margin, CUD never triggers scrolling — it simply stops.",
     "probe": "Position at row 0, send <code>\\x1b[999B</code> (CUD with count 999), verify cursor stopped at the last row."
@@ -581,10 +472,7 @@
     "name": "CUP with DECOM",
     "slug": "cup-decom-scroll-region",
     "url": "https://vt100.net/docs/vt510-rm/DECOM.html",
-    "tags": [
-      "dec-private-modes",
-      "vt100"
-    ],
+    "tags": ["dec-private-modes", "vt100"],
     "baseline": "core",
     "body": "When DECOM (Origin Mode, CSI ? 6 h) is set, CUP coordinates become relative to the current scroll region set by DECSTBM. With a scroll region of rows 5-15 and DECOM enabled, <code>CSI 1 ; 1 H</code> moves the cursor to row 5 (the top of the scroll region) rather than the absolute top of the screen. This interaction between DECSTBM and DECOM is fundamental to how full-screen applications partition the terminal into independently scrolling regions.",
     "probe": "Set DECSTBM 5;15, enable DECOM, send <code>\\x1b[1;1H</code>, verify cursor is at row 4 (0-based scroll region top). Disable DECOM and reset scroll region."
@@ -593,10 +481,7 @@
     "name": "Erase to EOL (EL 0)",
     "slug": "el-0-erase-to-eol",
     "url": "https://vt100.net/docs/vt510-rm/EL.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "line",
     "body": "EL 0 erases from the cursor position to the end of the line. The sequence is <code>ESC [ 0 K</code> or <code>ESC [ K</code> (parameter defaults to 0). This is the most commonly used erase sequence — TUI applications use it after writing content on a line to clear any leftover characters from a previous render.",
     "probe": "Write \"XXXXX\", move to col 1 via <code>\\x1b[1G</code>, send <code>\\x1b[K</code> (EL 0), verify cell at (0,0) is blank.",
@@ -607,10 +492,7 @@
     "name": "Erase to BOL (EL 1)",
     "slug": "el-1-erase-to-bol",
     "url": "https://vt100.net/docs/vt510-rm/EL.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "line",
     "body": "EL 1 erases from the beginning of the line to the cursor position (inclusive). The sequence is <code>ESC [ 1 K</code>. Less commonly used than EL 0 (erase to end of line).",
     "probe": "Write \"XXXXX\", move to col 3, send <code>\\x1b[1K</code> (EL 1), verify cell at (0,0) is blank.",
@@ -621,10 +503,7 @@
     "name": "Erase line (EL 2)",
     "slug": "el-2-erase-line",
     "url": "https://vt100.net/docs/vt510-rm/EL.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "line",
     "body": "EL 2 erases the entire current line. The sequence is <code>ESC [ 2 K</code>. The cursor position is not changed. Used to clear a full line before rewriting it.",
     "probe": "Write \"XXXXX\", send <code>\\x1b[2K</code> (EL 2), verify cell at (0,0) is blank.",
@@ -635,10 +514,7 @@
     "name": "Erase above (ED 1)",
     "slug": "ed-1-erase-above",
     "url": "https://vt100.net/docs/vt510-rm/ED.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "screen",
     "body": "ED 1 erases from the beginning of the screen to the cursor position (inclusive). The sequence is <code>ESC [ 1 J</code>. Clears all content above and to the left of the cursor.",
     "probe": "Write three lines, position cursor at row 3 col 2, send <code>\\x1b[1J</code> (ED 1), verify cell at (0,0) is blank.",
@@ -649,10 +525,7 @@
     "name": "Erase screen (ED 2)",
     "slug": "ed-2-erase-screen",
     "url": "https://vt100.net/docs/vt510-rm/ED.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "screen",
     "body": "ED 2 erases the entire visible screen. The sequence is <code>ESC [ 2 J</code>. The cursor position is not changed. Does not affect the scrollback buffer — use ED 3 to clear scrollback.",
     "probe": "Write three lines, send <code>\\x1b[2J</code> (ED 2), verify all visible content is cleared.",
@@ -663,10 +536,7 @@
     "name": "Erase below (ED 0)",
     "slug": "ed-0-erase-below",
     "url": "https://vt100.net/docs/vt510-rm/ED.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "group": "screen",
     "body": "ED 0 erases from the cursor position to the end of the screen. The sequence is <code>ESC [ 0 J</code> or <code>ESC [ J</code> (parameter defaults to 0). Commonly used to clear the screen below a status bar or after repositioning content.",
     "probe": "Write three lines, move home, send <code>\\x1b[J</code> (ED 0), verify line 2 content is gone.",
@@ -677,9 +547,7 @@
     "name": "Erase scrollback (ED 3)",
     "slug": "ed-3-erase-scrollback",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "group": "screen",
     "body": "ED 3 clears the scrollback buffer. The sequence is <code>ESC [ 3 J</code>. An xterm extension not part of ECMA-48. Applications may use this for security purposes (clearing sensitive output from scrollback after a password prompt) or to implement a \"clear\" command that truly clears all terminal history.",
     "probe": "Write 30 lines to fill scrollback, send <code>\\x1b[3J</code> (ED 3), verify total line count is at most screen height.",
@@ -690,9 +558,7 @@
     "name": "Erase character (ECH)",
     "slug": "ech-erase-character",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "body": "ECH replaces N characters at the cursor position with blank spaces. The sequence is <code>ESC [ N X</code> (default N=1). Unlike delete (DCH), erase does not shift subsequent characters — it overwrites in place. The cursor position is not changed.",
     "probe": "Write \"ABCDE\", move to col 1, send <code>\\x1b[3X</code> (ECH 3), verify first 3 cells are blank and \"D\" remains at col 3.",
     "baseline": "core",
@@ -701,9 +567,7 @@
   "erase.selective": {
     "name": "Selective Erase (DECSED)",
     "slug": "selective-decsed",
-    "tags": [
-      "vt220"
-    ],
+    "tags": ["vt220"],
     "baseline": "rich",
     "body": "DECSED (CSI ? Ps J) erases only unprotected characters, leaving characters with the protected attribute (DECSCA, SGR 1 m) intact. Used for form-based applications where static labels should survive screen clears.",
     "probe": "Write \"ABCDE\", move cursor home, send DECSED (<code>CSI ? 2 J</code>), verify the text is erased. Confirms selective erase display is recognized.",
@@ -713,10 +577,7 @@
     "name": "EL erases with bg color",
     "slug": "el-erase-with-bg-color",
     "url": "https://vt100.net/docs/vt510-rm/EL.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "EL (Erase in Line) should fill erased cells with the current background color, not the default background. When a background color is set via SGR (e.g., SGR 42 for green) before issuing EL, the erased area should be painted with that background color. This is how TUI applications create colored status bars, highlighted regions, and filled backgrounds — they set a background color and erase the line to paint the entire line with that color.",
     "probe": "Set green background with <code>\\x1b[42m</code>, write text, move to start of line, send <code>\\x1b[K</code> (EL 0), verify erased cells have the green background color."
@@ -725,10 +586,7 @@
     "name": "ED at scroll region boundary",
     "slug": "ed-scroll-region-boundary",
     "url": "https://vt100.net/docs/vt510-rm/ED.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "ED (Erase in Display) behavior when a scroll region (DECSTBM) is active varies by terminal. Some terminals erase only within the scroll region, while others erase the full screen regardless. The key edge case is that content outside the scroll region should generally be preserved by ED operations performed inside the region. This matters for applications that use scroll regions with fixed header/footer areas.",
     "probe": "Write \"KEEP_THIS\" on row 0, set scroll region 3;10, move cursor inside region, send <code>\\x1b[J</code> (ED 0), verify row 0 still contains \"KEEP_THIS\"."
@@ -737,10 +595,7 @@
     "name": "Insert characters (ICH)",
     "slug": "ich-insert-characters",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48",
-      "vt220"
-    ],
+    "tags": ["ecma-48", "vt220"],
     "body": "ICH inserts N blank characters at the cursor position, shifting existing characters to the right. The sequence is <code>ESC [ N @</code> (default N=1). Characters pushed past the right margin are lost. Used by editors (vim, emacs) and terminal multiplexers (tmux, screen) for inline text insertion without redrawing the entire line.",
     "probe": "Write \"ABCDE\", move to col 1, send <code>\\x1b[2@</code> (ICH 2), verify 2 blanks inserted and \"A\" shifted to col 2.",
     "baseline": "modern",
@@ -750,10 +605,7 @@
     "name": "Delete characters (DCH)",
     "slug": "dch-delete-characters",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48",
-      "vt220"
-    ],
+    "tags": ["ecma-48", "vt220"],
     "body": "DCH deletes N characters at the cursor position, shifting subsequent characters to the left. The sequence is <code>ESC [ N P</code> (default N=1). Blank characters are inserted at the right margin to fill the vacated space. The complement of ICH (insert characters).",
     "probe": "Write \"ABCDE\", move to col 1, send <code>\\x1b[2P</code> (DCH 2), verify \"C\" is now at col 0.",
     "baseline": "modern",
@@ -763,10 +615,7 @@
     "name": "Insert lines (IL)",
     "slug": "il-insert-lines",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "IL inserts N blank lines at the cursor row, scrolling existing lines down within the scroll region. The sequence is <code>ESC [ N L</code> (default N=1). Lines scrolled past the bottom margin are lost. Used by full-screen applications to make room for new content without redrawing the entire screen.",
     "probe": "Write 3 lines, move to row 2, send <code>\\x1b[1L</code> (IL 1), verify row 1 is blank and original content shifted down.",
     "baseline": "modern",
@@ -776,10 +625,7 @@
     "name": "Delete lines (DL)",
     "slug": "dl-delete-lines",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "DL deletes N lines at the cursor row, scrolling lines below upward within the scroll region. The sequence is <code>ESC [ N M</code> (default N=1). Blank lines are inserted at the bottom margin. The complement of IL (insert lines).",
     "probe": "Write 3 lines, move to row 2, send <code>\\x1b[1M</code> (DL 1), verify LINE3 moved up to row 1.",
     "baseline": "modern",
@@ -789,9 +635,7 @@
     "name": "Repeat character (REP)",
     "slug": "rep-repeat-character",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "body": "REP repeats the preceding graphic character N times. The sequence is <code>ESC [ N b</code> (default N=1). This is a bandwidth optimization — instead of sending the same character hundreds of times (e.g., filling a row with dashes), the application sends the character once followed by REP. Not all terminals implement this sequence.",
     "probe": "Write \"X\" then send <code>\\x1b[4b</code> (REP 4), verify 5 consecutive X characters (1 original + 4 repeats).",
     "baseline": "modern",
@@ -801,9 +645,7 @@
     "name": "modifyOtherKeys",
     "slug": "modify-other-keys",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "modifyOtherKeys (CSI > 4 ; Pv m) enables extended key reporting that distinguishes modified key combinations that would otherwise be ambiguous. At level 2, keys like Ctrl+I are reported distinctly from Tab, and Ctrl+M from Enter.",
     "probe": "Check if the terminal supports xterm modifyOtherKeys mode for enhanced key reporting."
@@ -812,9 +654,7 @@
     "name": "CSI u Key Encoding",
     "slug": "csi-u-encoding",
     "url": "http://www.leonerd.org.uk/hacks/fixterms/",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "The fixterms/CSI u encoding reports keypresses as CSI codepoint ; modifiers u sequences. This was the precursor to the Kitty keyboard protocol and provides unambiguous key identification for terminal applications.",
     "probe": "Query keyboard mode flags and check if the terminal supports CSI u encoding for key events."
@@ -822,9 +662,7 @@
   "input.pixel-mouse": {
     "name": "Pixel Mouse Reporting (1016)",
     "slug": "pixel-mouse-1016",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "SGR-Pixels mouse mode (mode 1016) reports mouse coordinates in pixels rather than cells. This enables sub-cell precision for applications that need exact pointer positioning, such as terminal-based drawing tools or image viewers.",
     "probe": "Enable SGR pixel mouse (<code>CSI ? 1016 h</code>), check <code>getMode(\"pixelMouse\")</code> returns true.",
@@ -833,9 +671,7 @@
   "input.urxvt-mouse": {
     "name": "urxvt Mouse Reporting (1015)",
     "slug": "urxvt-mouse-1015",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "urxvt-style mouse reporting (mode 1015) uses decimal encoding for coordinates, extending reporting beyond the 223-column limit of traditional X10 encoding. Less common than SGR mouse (1006) but still supported by some terminals.",
     "probe": "Enable urxvt mouse mode (<code>CSI ? 1015 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true. Verifies the backend recognizes this specific mouse encoding.",
@@ -844,9 +680,7 @@
   "input.x10-mouse": {
     "name": "X10 Mouse Tracking (9)",
     "slug": "x10-mouse-9",
-    "tags": [
-      "dec-private-modes"
-    ],
+    "tags": ["dec-private-modes"],
     "baseline": "modern",
     "body": "X10 compatibility mouse tracking (mode 9) reports only button press events, not releases or motion. This is the oldest mouse tracking mode, limited to coordinates up to 223 and press-only events.",
     "probe": "Enable X10 mouse mode (<code>CSI ? 9 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true.",
@@ -855,9 +689,7 @@
   "input.button-event-mouse": {
     "name": "Button-Event Mouse (1002)",
     "slug": "button-event-mouse-1002",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "Button-event tracking (mode 1002) reports mouse button press, release, and motion while a button is held. More detailed than basic tracking (1000) but less verbose than all-motion tracking (1003).",
     "probe": "Enable button-event mouse tracking (<code>CSI ? 1002 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true.",
@@ -867,10 +699,7 @@
     "name": "Enter alt screen (DECSET 1049)",
     "slug": "decset-1049-alt-screen-enter",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
-    "tags": [
-      "dec-private-modes",
-      "xterm-extensions"
-    ],
+    "tags": ["dec-private-modes", "xterm-extensions"],
     "group": "alt-screen",
     "body": "DECSET 1049 switches to the alternate screen buffer and saves the cursor position. The sequence is <code>ESC [ ? 1049 h</code>. The alternate screen is a separate buffer used by full-screen TUI applications (vim, less, htop, tmux) so they can render without disturbing the user's scrollback history.\n\nWhen the application exits and sends DECRST 1049, the terminal restores the original buffer contents and cursor position — the user's previous shell output reappears as if the TUI never ran. This is why closing vim brings back the terminal content that was there before.\n\nMode 1049 combines three operations: save cursor (DECSC), switch to alt screen (?47), and clear the alt screen. Universally supported in modern terminals.",
     "probe": "Send <code>\\x1b[?1049h</code> (DECSET 1049), verify <code>altScreen</code> mode is active.",
@@ -881,10 +710,7 @@
     "name": "Exit alt screen (DECRST 1049)",
     "slug": "decrst-1049-alt-screen-exit",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
-    "tags": [
-      "dec-private-modes",
-      "xterm-extensions"
-    ],
+    "tags": ["dec-private-modes", "xterm-extensions"],
     "group": "alt-screen",
     "body": "DECRST 1049 exits the alternate screen buffer and restores the cursor position. The sequence is <code>ESC [ ? 1049 l</code>. Restores the main screen buffer, including all scrollback content that was present before the application entered the alternate screen.",
     "probe": "Enter then exit alt screen via <code>\\x1b[?1049h</code> / <code>\\x1b[?1049l</code>, verify <code>altScreen</code> mode is off.",
@@ -895,10 +721,7 @@
     "name": "Bracketed paste (DECSET 2004)",
     "slug": "decset-2004-bracketed-paste",
     "url": "https://cirw.in/blog/bracketed-paste",
-    "tags": [
-      "dec-private-modes",
-      "xterm-extensions"
-    ],
+    "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "Bracketed paste mode wraps pasted text in special escape sequences so applications can distinguish pasted content from typed input. Enable with <code>ESC [ ? 2004 h</code>. When active, pasted text is bracketed between <code>ESC [ 200 ~</code> (start) and <code>ESC [ 201 ~</code> (end).\n\nThis is a security feature: without bracketed paste, pasting text containing newlines into a shell prompt would immediately execute commands. With bracketed paste, the shell can treat the entire paste as literal text. This also enables editors to handle paste correctly — vim can enter paste mode automatically, preserving indentation rather than auto-indenting each line.\n\nWidely adopted. Most modern shells (bash, zsh, fish) and editors (vim, emacs) enable bracketed paste by default.",
     "probe": "Send <code>\\x1b[?2004h</code> (DECSET 2004), verify <code>bracketedPaste</code> mode is active.",
     "baseline": "modern",
@@ -908,9 +731,7 @@
     "name": "Synchronized output (DECSET 2026)",
     "slug": "decset-2026-synchronized-output",
     "url": "https://gitlab.freedesktop.org/terminal-wg/specifications/-/merge_requests/2",
-    "tags": [
-      "dec-private-modes"
-    ],
+    "tags": ["dec-private-modes"],
     "body": "Synchronized output prevents flicker during screen updates by batching terminal output. The application sends <code>ESC [ ? 2026 h</code> before a render and <code>ESC [ ? 2026 l</code> after. The terminal buffers all output between these markers and renders it as a single atomic frame.\n\nWithout synchronized output, complex TUI updates (clearing screen, repositioning cursor, writing content) may partially render between frames, causing visible tearing or flicker. This is especially noticeable over slow connections or with complex layouts.\n\nThis protocol was proposed by the terminal-wg (Terminal Working Group) and adopted by Ghostty, Kitty, WezTerm, foot, Contour, and other modern terminals. It has become the standard way to achieve flicker-free TUI rendering.",
     "probe": "Send <code>\\x1b[?2026h</code>, write text, send <code>\\x1b[?2026l</code>, verify output rendered without crash.",
     "baseline": "modern",
@@ -920,10 +741,7 @@
     "name": "Mouse tracking (DECSET 1000)",
     "slug": "decset-1000-mouse-tracking",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-    "tags": [
-      "dec-private-modes",
-      "xterm-extensions"
-    ],
+    "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "DECSET 1000 enables basic mouse click reporting (Normal tracking mode). The sequence is <code>ESC [ ? 1000 h</code>. When enabled, button press and release events are reported to the application. The legacy X10 encoding reports coordinates as single bytes offset by 32, limiting reports to the first 223 columns/rows. For larger terminals, use SGR mouse mode (DECSET 1006) instead.",
     "probe": "Send <code>\\x1b[?1000h</code> (DECSET 1000), verify <code>mouseTracking</code> mode is active.",
     "baseline": "modern",
@@ -933,10 +751,7 @@
     "name": "SGR mouse mode (DECSET 1006)",
     "slug": "decset-1006-sgr-mouse",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "dec-private-modes",
-      "xterm-extensions"
-    ],
+    "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "SGR mouse mode replaces the legacy X10 mouse encoding with a format that supports arbitrarily large coordinates. Enable with <code>ESC [ ? 1006 h</code> (in addition to a tracking mode like ?1000 or ?1003). Mouse events are reported as <code>ESC [ &lt; button ; col ; row M</code> for press and <code>ESC [ &lt; button ; col ; row m</code> for release.\n\nThe SGR format solves critical limitations of legacy mouse reporting: coordinates are decimal (no 223-column limit), button press and release are distinguishable by the final character (M vs m), and the format is unambiguous (no byte-value collisions with control characters). All modern TUI frameworks use SGR mouse mode.",
     "probe": "Enable SGR mouse (<code>CSI ? 1006 h</code>), check <code>getMode(\"sgrMouse\")</code> returns true. Confirms the backend tracks SGR mouse encoding mode.",
     "baseline": "modern",
@@ -946,10 +761,7 @@
     "name": "All motion mouse (DECSET 1003)",
     "slug": "decset-1003-all-motion-mouse",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "dec-private-modes",
-      "xterm-extensions"
-    ],
+    "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "DECSET 1003 enables all-motion mouse tracking — the terminal reports mouse movement events even when no button is pressed. The sequence is <code>ESC [ ? 1003 h</code>. This generates significantly more traffic than normal tracking (?1000) or button-event tracking (?1002), so applications should only enable it when hover effects are needed.",
     "probe": "Enable all-motion mouse (<code>CSI ? 1003 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true. Confirms the backend recognizes mode 1003.",
     "baseline": "modern",
@@ -959,10 +771,7 @@
     "name": "Focus tracking (DECSET 1004)",
     "slug": "decset-1004-focus-tracking",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-FocusIn_FocusOut",
-    "tags": [
-      "dec-private-modes",
-      "xterm-extensions"
-    ],
+    "tags": ["dec-private-modes", "xterm-extensions"],
     "body": "DECSET 1004 enables focus in/out event reporting. The sequence is <code>ESC [ ? 1004 h</code>. When the terminal window gains focus, it sends <code>ESC [ I</code>; when it loses focus, it sends <code>ESC [ O</code>. Applications use this to pause animations, dim the UI, or refresh data when the user returns to the window.",
     "probe": "Send <code>\\x1b[?1004h</code> (DECSET 1004), verify <code>focusTracking</code> mode is active.",
     "baseline": "modern",
@@ -972,10 +781,7 @@
     "name": "Reverse video (DECSCNM)",
     "slug": "decscnm-reverse-video",
     "url": "https://vt100.net/docs/vt510-rm/DECSCNM.html",
-    "tags": [
-      "dec-private-modes",
-      "vt510"
-    ],
+    "tags": ["dec-private-modes", "vt510"],
     "body": "DECSCNM (Screen Mode) swaps the default foreground and background colors for the entire screen. Enable with <code>ESC [ ? 5 h</code>, disable with <code>ESC [ ? 5 l</code>. This is a global mode that affects all displayed content, distinct from SGR 7 which only affects individual character cells.",
     "probe": "Send <code>\\x1b[?5h</code> (DECSCNM), verify <code>reverseVideo</code> mode is active.",
     "baseline": "core",
@@ -985,10 +791,7 @@
     "name": "Origin mode (DECOM)",
     "slug": "decom-origin-mode",
     "url": "https://vt100.net/docs/vt510-rm/DECOM.html",
-    "tags": [
-      "dec-private-modes",
-      "vt100"
-    ],
+    "tags": ["dec-private-modes", "vt100"],
     "body": "DECOM (Origin Mode) changes how cursor positioning works relative to scroll margins. Enable with <code>ESC [ ? 6 h</code>. When active, cursor coordinates are relative to the scroll region rather than the entire screen, and the cursor is confined within the scroll region boundaries. Used by applications that operate within scroll regions to simplify coordinate calculations.",
     "probe": "Send <code>\\x1b[?6h</code> (DECOM), verify <code>originMode</code> is active, then reset with <code>\\x1b[?6l</code>.",
     "baseline": "modern",
@@ -997,9 +800,7 @@
   "modes.left-right-margin": {
     "name": "Left/Right Margins (DECLRMM, Mode 69)",
     "slug": "left-right-margin-69",
-    "tags": [
-      "vt510"
-    ],
+    "tags": ["vt510"],
     "baseline": "rich",
     "body": "DECLRMM (mode 69) enables left and right scroll margins, similar to top/bottom margins set by DECSTBM. When enabled, DECSLRM sets the left and right margins. Scrolling and editing operations are confined to the margin area.",
     "probe": "Enable DECLRMM (<code>CSI ? 69 h</code>), check <code>getMode(\"leftRightMargin\")</code> returns true. Confirms the backend tracks left/right margin mode.",
@@ -1009,9 +810,7 @@
     "name": "Insert/replace mode (IRM)",
     "slug": "irm-insert-replace-mode",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "body": "IRM (Insert/Replace Mode) controls whether new characters insert (shifting existing content right) or replace (overwriting) at the cursor. Enable insert mode with <code>ESC [ 4 h</code>, disable (replace mode) with <code>ESC [ 4 l</code>. Replace mode is the default. Most modern TUI applications use explicit ICH/DCH sequences rather than IRM.",
     "probe": "Write \"ABC\", move to col 1, send <code>\\x1b[4h</code> (IRM), write \"X\", verify X is at col 0 and A shifted to col 1.",
     "baseline": "modern",
@@ -1021,10 +820,7 @@
     "name": "App cursor keys (DECCKM)",
     "slug": "decckm-app-cursor-keys",
     "url": "https://vt100.net/docs/vt510-rm/DECCKM.html",
-    "tags": [
-      "dec-private-modes",
-      "vt100"
-    ],
+    "tags": ["dec-private-modes", "vt100"],
     "body": "DECCKM changes the escape sequences generated by arrow keys. Enable with <code>ESC [ ? 1 h</code>. In normal mode, arrow keys send CSI sequences (<code>ESC [ A</code>); in application mode, they send SS3 sequences (<code>ESC O A</code>). Full-screen applications typically enable application cursor mode to get unambiguous key input.",
     "probe": "Send <code>\\x1b[?1h</code> (DECCKM), verify <code>applicationCursor</code> mode is active.",
     "baseline": "modern",
@@ -1034,10 +830,7 @@
     "name": "Application keypad (DECKPAM)",
     "slug": "deckpam-application-keypad",
     "url": "https://vt100.net/docs/vt510-rm/DECKPAM.html",
-    "tags": [
-      "dec-private-modes",
-      "vt100"
-    ],
+    "tags": ["dec-private-modes", "vt100"],
     "body": "DECKPAM switches the numeric keypad to application mode, where numpad keys send escape sequences instead of numeric characters. Enable with <code>ESC =</code>, disable with <code>ESC &gt;</code>. This allows applications to distinguish numpad keys from the main keyboard number row.",
     "probe": "Send <code>\\x1b=</code> (DECKPAM), verify <code>applicationKeypad</code> is active. Then send <code>\\x1b></code> (DECKPNM), verify it is off.",
     "baseline": "modern",
@@ -1047,10 +840,7 @@
     "name": "Auto-wrap (DECAWM)",
     "slug": "decawm-auto-wrap",
     "url": "https://vt100.net/docs/vt510-rm/DECAWM.html",
-    "tags": [
-      "dec-private-modes",
-      "vt100"
-    ],
+    "tags": ["dec-private-modes", "vt100"],
     "body": "DECAWM controls whether text automatically wraps to the next line when it reaches the right margin. Enable with <code>ESC [ ? 7 h</code> (default on), disable with <code>ESC [ ? 7 l</code>. When disabled, characters written past the right margin overwrite the last column. Most terminals default to auto-wrap enabled.",
     "probe": "Write 80+ characters, verify text wraps to the next row.",
     "baseline": "core",
@@ -1059,9 +849,7 @@
   "scrollback.accumulate": {
     "name": "Scrollback accumulates",
     "slug": "accumulates",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "body": "Tests whether lines scrolled off the top of the visible screen are preserved in the scrollback buffer. This is fundamental terminal behavior — without scrollback accumulation, users cannot scroll up to see previous output. Virtually all modern terminals maintain a scrollback buffer, though the maximum size varies.",
     "probe": "Write 30 lines (exceeding the 24-row screen), verify total line count exceeds 24.",
     "baseline": "core",
@@ -1070,9 +858,7 @@
   "scrollback.total-lines": {
     "name": "Total line count",
     "slug": "total-lines",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "body": "Tests whether the terminal can report the total number of lines in the buffer (visible + scrollback). This is used by testing frameworks and terminal introspection tools to verify scrollback behavior.",
     "probe": "Write 30 lines, verify total line count is at least 30.",
     "baseline": "core",
@@ -1082,10 +868,7 @@
     "name": "Scroll up (SU)",
     "slug": "su-scroll-up",
     "url": "https://vt100.net/docs/vt510-rm/SU.html",
-    "tags": [
-      "ecma-48",
-      "vt510"
-    ],
+    "tags": ["ecma-48", "vt510"],
     "body": "SU scrolls the content within the scroll region up by N lines, inserting blank lines at the bottom. The sequence is <code>ESC [ N S</code> (default N=1). Lines scrolled off the top enter the scrollback buffer (on the main screen). Used by applications to scroll content without moving the cursor.",
     "probe": "Write \"TOP\" on row 1 then fill the screen, send <code>\\x1b[S</code> (SU 1), verify row 0 no longer starts with \"T\".",
     "baseline": "core",
@@ -1095,10 +878,7 @@
     "name": "Scroll down (SD)",
     "slug": "sd-scroll-down",
     "url": "https://vt100.net/docs/vt510-rm/SD.html",
-    "tags": [
-      "ecma-48",
-      "vt510"
-    ],
+    "tags": ["ecma-48", "vt510"],
     "body": "SD scrolls the content within the scroll region down by N lines, inserting blank lines at the top. The sequence is <code>ESC [ N T</code> (default N=1). Lines scrolled off the bottom margin are lost. The counterpart of SU (scroll up).",
     "probe": "Write 3 lines, send <code>\\x1b[T</code> (SD 1), verify row 0 is now blank (content shifted down).",
     "baseline": "core",
@@ -1108,10 +888,7 @@
     "name": "Reverse index (RI)",
     "slug": "ri-reverse-index",
     "url": "https://vt100.net/docs/vt510-rm/RI.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "RI moves the cursor up one line. If the cursor is at the top margin of the scroll region, the content scrolls down and a blank line is inserted at the top. The sequence is <code>ESC M</code>. This is the reverse of a line feed at the bottom of the scroll region. Used by applications that need to insert content above the current cursor position.",
     "probe": "Write 3 lines, move to row 0, send <code>\\x1bM</code> (RI), verify row 0 is now blank.",
     "baseline": "core",
@@ -1121,10 +898,7 @@
     "name": "Scroll region (DECSTBM)",
     "slug": "decstbm-scroll-region",
     "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
-    "tags": [
-      "dec-private-modes",
-      "vt100"
-    ],
+    "tags": ["dec-private-modes", "vt100"],
     "body": "DECSTBM (Set Top and Bottom Margins) defines a scroll region — a subset of rows where scrolling operations take effect. The sequence is <code>ESC [ top ; bottom r</code>, where top and bottom are 1-based row numbers. <code>ESC [ r</code> resets to the full screen.\n\nScroll regions are fundamental to TUI applications. A terminal multiplexer like tmux uses them to scroll one pane without affecting others. Editors use them to scroll the document area while keeping status bars fixed. When content scrolls within the region, lines outside the region remain untouched.\n\nVirtually every full-screen terminal application depends on DECSTBM. Universally supported since the VT100.",
     "probe": "Send <code>\\x1b[5;10r</code> (DECSTBM), verify cursor moves to home position (0,0). Then reset with <code>\\x1b[r</code>.",
     "baseline": "core",
@@ -1134,9 +908,7 @@
     "name": "Alt screen separate scrollback",
     "slug": "alt-screen-separate-scrollback",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "body": "Tests whether the alternate screen buffer maintains its own separate scrollback, independent from the main screen's scrollback. Most terminals do not provide scrollback in the alternate screen — full-screen applications are expected to manage their own scrolling. Some terminals (like Kitty) offer configurable behavior for alternate screen scrollback.",
     "probe": "Write \"NORMAL\", enter alt screen with <code>\\x1b[?1049h</code>, verify <code>altScreen</code> mode is active.",
     "baseline": "core"
@@ -1145,10 +917,7 @@
     "name": "DECSTBM constrains scrolling",
     "slug": "decstbm-constrained-scrolling",
     "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
-    "tags": [
-      "dec-private-modes",
-      "vt100"
-    ],
+    "tags": ["dec-private-modes", "vt100"],
     "baseline": "core",
     "body": "When a scroll region is set via DECSTBM, scrolling (line feeds, index, SU/SD) should be constrained to the defined region. Lines outside the scroll region must remain fixed. This is the fundamental mechanism that enables fixed headers, footers, and split-screen layouts in TUI applications. Without proper scroll region isolation, tmux panes, vim status bars, and editor chrome would be disrupted by scrolling content.",
     "probe": "Write \"FIXED_TOP\" on row 0, set DECSTBM 3;10, move inside region, write enough lines to trigger scrolling, verify row 0 still contains \"FIXED_TOP\"."
@@ -1157,10 +926,7 @@
     "name": "DECSTBM reset to full screen",
     "slug": "decstbm-reset-full-screen",
     "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
-    "tags": [
-      "dec-private-modes",
-      "vt100"
-    ],
+    "tags": ["dec-private-modes", "vt100"],
     "baseline": "core",
     "body": "DECSTBM with no parameters (<code>ESC [ r</code>) resets the scroll region to the full screen. After reset, scrolling operations should affect all rows. Applications use this to restore normal scrolling behavior after using scroll regions. Failing to properly reset can leave the terminal in a state where only part of the screen scrolls, causing rendering corruption for subsequent applications.",
     "probe": "Set DECSTBM 5;10, then send <code>\\x1b[r</code> (no params), write 30 lines, verify full-screen scrolling works (total lines > screen height)."
@@ -1169,9 +935,7 @@
     "name": "Kitty keyboard protocol",
     "slug": "kitty-keyboard-protocol",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/",
-    "tags": [
-      "kitty-extensions"
-    ],
+    "tags": ["kitty-extensions"],
     "body": "The Kitty keyboard protocol solves fundamental ambiguities in traditional terminal input handling. Legacy terminals cannot distinguish between <code>Ctrl+I</code> and <code>Tab</code>, <code>Ctrl+M</code> and <code>Enter</code>, or <code>Escape</code> and the start of an escape sequence — they all produce the same byte sequences. The protocol also enables key-release events and distinguishes between different modifier key presses (left vs. right Shift).\n\nApplications opt in with <code>CSI &gt; flags u</code>, where <code>flags</code> is a bitmask selecting reporting modes: disambiguate keys (1), report event types (2), report alternate keys (4), report all keys as escape sequences (8), and report associated text (16). Keys are reported as <code>CSI unicode-key-code : shifted-key : base-layout-key ; modifiers : event-type u</code>.\n\nAdopted by Ghostty, WezTerm, foot, and rio. The protocol is progressive — applications can request only the features they need, and terminals report which flags they support.",
     "probe": "Query keyboard mode flags via <code>CSI ? u</code> and check for a <code>CSI ? flags u</code> response indicating Kitty keyboard protocol support.",
     "baseline": "rich",
@@ -1181,9 +945,7 @@
     "name": "Kitty graphics protocol",
     "slug": "kitty-graphics-protocol",
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/",
-    "tags": [
-      "kitty-extensions"
-    ],
+    "tags": ["kitty-extensions"],
     "body": "The Kitty graphics protocol enables inline image display in the terminal using a structured escape sequence format. Unlike Sixel, which encodes pixel data as ASCII characters, Kitty graphics transmits images as base64-encoded PNG, RGB, or RGBA data via APC (Application Program Command) sequences.\n\nImages are sent with <code>ESC_G &lt;control data&gt; ; &lt;payload&gt; ESC \\</code>. Large images are split into chunks using the <code>m=1</code> flag for continuation. The protocol supports placement (positioning images relative to cells), virtual image references (transmit once, display many times), animation frames, and z-layering. Each image gets a numeric ID, and Unicode placeholder characters allow images to participate in text layout and scrollback.\n\nCompared to Sixel, the Kitty protocol offers higher fidelity (full 32-bit RGBA), streaming, and compositing — but requires explicit terminal support. Adopted by Ghostty, WezTerm, and Konsole.",
     "probe": "Send a minimal Kitty graphics payload (<code>ESC_P G ... ESC \\</code>) and check for an acknowledgment response.",
     "baseline": "rich"
@@ -1192,9 +954,7 @@
     "name": "Sixel graphics",
     "slug": "sixel-graphics",
     "url": "https://en.wikipedia.org/wiki/Sixel",
-    "tags": [
-      "sixel"
-    ],
+    "tags": ["sixel"],
     "body": "Sixel is a bitmap graphics format developed by DEC for the VT240 terminal in 1983. Each character in a Sixel stream encodes a column of 6 vertical pixels — hence the name. The format uses DCS (Device Control String) sequences: <code>ESC P q &lt;sixel data&gt; ESC \\</code>. Pixel rows are encoded from top to bottom, with <code>$</code> for carriage return and <code>-</code> for newline (advance by 6 pixels).\n\nSixel was largely forgotten after DEC hardware disappeared, but has been revived by modern terminal emulators as a way to display inline images using only standard escape sequences. Applications like <code>img2sixel</code> and <code>chafa</code> convert images to Sixel format for terminal display.\n\nSixel support varies significantly: xterm was the first modern revival, followed by foot, WezTerm, and mlterm. Some terminals limit the color palette or image dimensions. Unlike the Kitty graphics protocol, Sixel has no placement model — images appear at the cursor position and scroll with text.",
     "probe": "Send a minimal Sixel image payload via DCS and verify the cursor moves (indicating the image was rendered).",
     "baseline": "rich"
@@ -1203,10 +963,7 @@
     "name": "Hyperlinks (OSC 8)",
     "slug": "osc-8-hyperlinks",
     "url": "https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda",
-    "tags": [
-      "osc",
-      "xterm-extensions"
-    ],
+    "tags": ["osc", "xterm-extensions"],
     "body": "OSC 8 adds clickable hyperlinks to terminal output, similar to HTML anchor tags. The format is <code>ESC ] 8 ; params ; uri ST</code> to start a link and <code>ESC ] 8 ; ; ST</code> to end it. Text between these markers becomes a clickable hyperlink.\n\nThe <code>params</code> field supports an <code>id=value</code> parameter that groups non-contiguous text into a single link — essential for links that span multiple lines or are broken by line wrapping. When the user hovers over any part of a multi-segment link with the same <code>id</code>, all segments highlight together.\n\nTerminals typically render hyperlinks with an underline and open them in the default browser on click or Ctrl+click. Tools like <code>ls --hyperlink=auto</code>, <code>gcc</code>, and <code>grep</code> can emit OSC 8 links to file paths and URLs. Widely adopted across modern terminals including Ghostty, iTerm2, WezTerm, GNOME Terminal, and Windows Terminal.",
     "probe": "Write an OSC 8 hyperlink (<code>ESC ] 8 ; ; url BEL text ESC ] 8 ; ; BEL</code>) and verify the link is rendered.",
     "baseline": "rich",
@@ -1216,10 +973,7 @@
     "name": "Window title (OSC 2)",
     "slug": "osc-2-window-title",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands",
-    "tags": [
-      "osc",
-      "xterm-extensions"
-    ],
+    "tags": ["osc", "xterm-extensions"],
     "body": "OSC 2 sets the terminal window title. The sequence is <code>ESC ] 2 ; title ST</code> where ST is the string terminator (<code>ESC \\</code> or BEL). Used by shells to display the current directory or running command in the window title bar or tab header.",
     "probe": "Send <code>\\x1b]2;Test Title\\x07</code> (OSC 2), verify <code>getTitle()</code> contains \"Test Title\".",
     "baseline": "modern",
@@ -1229,10 +983,7 @@
     "name": "Icon and title (OSC 0)",
     "slug": "osc-0-icon-title",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "osc",
-      "xterm-extensions"
-    ],
+    "tags": ["osc", "xterm-extensions"],
     "body": "OSC 0 sets both the icon name and window title simultaneously. The sequence is <code>ESC ] 0 ; title ST</code>. In practice, the \"icon name\" is a legacy concept from X11 window managers — most modern terminals treat OSC 0 identically to OSC 2 (window title only).",
     "probe": "Send <code>\\x1b]0;My Title\\x07</code> (OSC 0), verify <code>getTitle()</code> contains \"My Title\".",
     "baseline": "modern",
@@ -1242,10 +993,7 @@
     "name": "Clipboard access (OSC 52)",
     "slug": "osc-52-clipboard",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "osc",
-      "xterm-extensions"
-    ],
+    "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 allows terminal applications to read from and write to the system clipboard. To set the clipboard: <code>ESC ] 52 ; c ; &lt;base64-data&gt; ST</code>. To query it: <code>ESC ] 52 ; c ; ? ST</code>, and the terminal responds with the base64-encoded clipboard contents.\n\nThis is particularly valuable for remote sessions (SSH, tmux, mosh) where the application has no direct access to the local system clipboard. A vim session inside tmux over SSH can yank text to the user's local clipboard without any special tooling.\n\nSecurity is a concern: clipboard read access lets any application running in the terminal silently exfiltrate clipboard contents. Many terminals disable read access by default or prompt the user for confirmation, while still allowing clipboard writes. The <code>c</code> parameter selects the clipboard buffer — <code>c</code> for clipboard, <code>p</code> for primary selection (X11).",
     "probe": "Set clipboard via <code>OSC 52 ; c ; &lt;base64&gt; BEL</code>, then query with <code>OSC 52 ; c ; ? BEL</code> and verify response contains the data. Confirms read/write clipboard support.",
     "baseline": "modern",
@@ -1255,10 +1003,7 @@
     "name": "Foreground color query (OSC 10)",
     "slug": "osc-10-fg-color-query",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "osc",
-      "xterm-extensions"
-    ],
+    "tags": ["osc", "xterm-extensions"],
     "body": "OSC 10 queries the terminal's default foreground color. The query is <code>ESC ] 10 ; ? ST</code> and the terminal responds with the color in X11 <code>rgb:RR/GG/BB</code> format. Applications use this to detect light vs. dark themes and adapt their color schemes accordingly.",
     "probe": "Query foreground color with <code>OSC 10 ; ? BEL</code>, verify response matches <code>OSC 10 ; rgb:...</code> pattern via feedCapture.",
     "baseline": "modern",
@@ -1268,10 +1013,7 @@
     "name": "Background color query (OSC 11)",
     "slug": "osc-11-bg-color-query",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "osc",
-      "xterm-extensions"
-    ],
+    "tags": ["osc", "xterm-extensions"],
     "body": "OSC 11 queries the terminal's default background color. The query is <code>ESC ] 11 ; ? ST</code>. The response format matches OSC 10. This is the most reliable way to detect whether the user has a dark or light terminal theme — compare the background color's luminance to determine the appropriate color palette.",
     "probe": "Query background color with <code>OSC 11 ; ? BEL</code>, verify response matches <code>OSC 11 ; rgb:...</code> pattern via feedCapture.",
     "baseline": "modern",
@@ -1281,9 +1023,7 @@
     "name": "Current directory (OSC 7)",
     "slug": "osc-7-current-directory",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "osc"
-    ],
+    "tags": ["osc"],
     "body": "OSC 7 reports the current working directory to the terminal. The sequence is <code>ESC ] 7 ; file://hostname/path ST</code>. Shells emit this after each command so the terminal knows the working directory. Terminals use this to open new tabs/splits in the same directory and to make file paths in output clickable with correct relative path resolution.",
     "probe": "Send <code>OSC 7 ; file://localhost/path BEL</code> and verify the terminal accepts the current directory report.",
     "baseline": "modern",
@@ -1293,9 +1033,7 @@
     "name": "Text reflow on resize",
     "slug": "text-reflow",
     "url": "https://github.com/xtermjs/xterm.js/wiki/Reflow",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "body": "Text reflow determines what happens to scrollback content when the terminal window is resized. With reflow, long lines that were soft-wrapped at the old width re-wrap at the new width — widening the terminal unwraps them back into single lines. Without reflow, each wrapped line becomes a separate hard line, and widening the terminal leaves gaps.\n\nReflow requires the terminal to track which line breaks are \"soft\" (caused by reaching the terminal width) versus \"hard\" (caused by an explicit newline). This distinction is maintained per-line in the scrollback buffer.\n\nMost modern terminals support reflow, but the behavior differs for content inside scroll regions, content with certain SGR attributes, and content generated by full-screen applications. The alternate screen buffer typically does not reflow, since TUI applications manage their own layout.",
     "probe": "Write text that wraps, resize the terminal width, verify the text reflows to the new width.",
     "baseline": "rich",
@@ -1305,9 +1043,7 @@
     "name": "Semantic prompts (OSC 133)",
     "slug": "osc-133-semantic-prompts",
     "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
-    "tags": [
-      "osc"
-    ],
+    "tags": ["osc"],
     "body": "Semantic prompts use OSC 133 markers to tell the terminal where each shell prompt, command input, and command output begins and ends. The markers are: <code>A</code> (prompt start), <code>B</code> (command input start — after prompt, before the user types), <code>C</code> (command output start — after Enter), and <code>D</code> (command finished, with exit code).\n\nWith these markers, terminals can implement features that were previously impossible: click-to-navigate between prompts, select entire command output, scroll by command boundaries, mark failed commands with a red indicator, and provide command completion times. Shell integration scripts (for bash, zsh, fish) emit these markers automatically.\n\nAlso known as shell integration or command decoration. Supported by iTerm2 (which originated the protocol), Ghostty, WezTerm, Kitty, and VS Code's integrated terminal.",
     "probe": "Send <code>OSC 133 ; A BEL</code> (prompt start marker) and verify the terminal accepts it without error.",
     "baseline": "rich",
@@ -1316,9 +1052,7 @@
   "extensions.osc-633-vscode": {
     "name": "VS Code Shell Integration (OSC 633)",
     "slug": "osc-633-vscode",
-    "tags": [
-      "osc"
-    ],
+    "tags": ["osc"],
     "baseline": "rich",
     "body": "<p><strong>OSC 633</strong> is VS Code's shell integration protocol, extending <a href=\"/extensions/semantic-prompts\" class=\"hover-link\">OSC 133</a> with additional markers for command detection, output boundaries, and shell state. It enables features like command decorations (green/red markers showing success/failure), run-recent-command, and sticky scroll for terminal output.</p>\n<p>The protocol uses escape sequences to mark four boundaries: <strong>prompt start</strong> (A), <strong>command start</strong> (B), <strong>command executed</strong> (C), and <strong>command finished</strong> (D, with exit code). VS Code's built-in shell integration scripts for bash, zsh, fish, and PowerShell emit these markers automatically. The terminal then knows exactly where each prompt, command, and output block begins and ends.</p>\n<p>OSC 633 adds VS Code-specific extensions beyond OSC 133: <strong>property reporting</strong> (P;key=value) for shell state like current directory and shell type, <strong>command line reporting</strong> (E) for the exact command text, and <strong>continuation prompt marking</strong> for multi-line commands. Other terminals (Kitty, WezTerm) support the base OSC 133 protocol but not the VS Code-specific extensions.</p>",
     "probe": "Send <code>OSC 633 ; A BEL</code> (VS Code prompt start marker) and verify the terminal accepts the sequence. OSC 633 is a superset of OSC 133.",
@@ -1328,9 +1062,7 @@
   "extensions.notifications": {
     "name": "Desktop Notifications (OSC 9/777)",
     "slug": "notifications-osc-9",
-    "tags": [
-      "osc"
-    ],
+    "tags": ["osc"],
     "baseline": "rich",
     "body": "<p><strong>Desktop notifications</strong> allow terminal applications to trigger system notifications. Two competing escape sequences exist: <strong>OSC 9</strong> (iTerm2/ConEmu) sends a simple notification string, while <strong>OSC 777</strong> (rxvt-unicode) supports structured notifications with title and body. Neither is standardized — support varies widely across terminals.</p>\n<p>Common use case: long-running commands that notify when complete. Shells like zsh have plugins that automatically send a notification when a command takes longer than N seconds. The BEL character (0x07) is a simpler alternative — most terminals can be configured to show a visual bell or system notification on BEL.</p>",
     "probe": "Send <code>OSC 9 ; message BEL</code> and verify the terminal accepts the notification sequence."
@@ -1338,9 +1070,7 @@
   "extensions.iterm2-images": {
     "name": "iTerm2 Inline Images (OSC 1337)",
     "slug": "iterm2-images",
-    "tags": [
-      "osc"
-    ],
+    "tags": ["osc"],
     "baseline": "rich",
     "body": "<p><strong>iTerm2 inline images</strong> use the proprietary <strong>OSC 1337</strong> protocol to display images directly in terminal output. The image data is base64-encoded and transmitted inline with the escape sequence. iTerm2 supports PNG, JPEG, GIF, and other formats.</p>\n<p>This protocol predates the Kitty graphics protocol and is simpler but less capable — it lacks features like image placement, animation control, and chunked transfer. Several other terminals (WezTerm, mintty) have adopted the iTerm2 protocol alongside or instead of Kitty graphics. The protocol is documented in iTerm2's documentation but has no formal specification.</p>",
     "probe": "Check if the terminal responds to iTerm2 capability queries (OSC 1337) indicating inline image support.",
@@ -1350,9 +1080,7 @@
     "name": "24-bit truecolor",
     "slug": "24-bit-truecolor",
     "url": "https://github.com/termstandard/colors",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "body": "24-bit truecolor allows terminals to display any of 16.7 million colors (256 values per R/G/B channel), far beyond the 256-color palette. The escape sequences are <code>ESC [ 38 ; 2 ; R ; G ; B m</code> for foreground and <code>ESC [ 48 ; 2 ; R ; G ; B m</code> for background.\n\nThere are two syntax variants: the original semicolon-separated format (<code>38;2;R;G;B</code>) introduced by xterm, and the colon-separated format (<code>38:2::R:G:B</code>) defined by ITU T.416. The colon format is technically more correct and avoids parsing ambiguities, but the semicolon format has wider support. Applications should use the semicolon variant for maximum compatibility.\n\nApplications can detect truecolor support via the <code>COLORTERM=truecolor</code> environment variable. Nearly all modern terminals support 24-bit color; the main exceptions are older versions of macOS Terminal.app and some minimal terminal emulators.",
     "probe": "Write text with 24-bit RGB foreground color (<code>ESC [ 38;2;R;G;B m</code>) and verify the cell stores the exact RGB values.",
     "baseline": "modern",
@@ -1375,9 +1103,7 @@
   "text.wide.cjk": {
     "name": "CJK wide chars (2 cols)",
     "slug": "cjk-wide-chars",
-    "tags": [
-      "unicode"
-    ],
+    "tags": ["unicode"],
     "group": "wide",
     "body": "Tests whether CJK (Chinese, Japanese, Korean) ideographs correctly occupy two terminal columns. The Unicode Standard Annex #11 defines East Asian Width properties. Terminals must account for this in cursor positioning — after rendering a CJK character, the cursor advances by 2 columns, not 1. Incorrect width handling breaks TUI layouts and cursor alignment.",
     "probe": "Write U+4E2D (CJK character), verify the cell has <code>wide=true</code> (occupies 2 columns).",
@@ -1387,9 +1113,7 @@
   "text.wide.emoji": {
     "name": "Emoji wide chars (2 cols)",
     "slug": "emoji-wide-chars",
-    "tags": [
-      "unicode"
-    ],
+    "tags": ["unicode"],
     "group": "wide",
     "body": "Tests whether emoji characters correctly occupy two terminal columns. Emoji width handling is more complex than CJK — it involves variation selectors (VS15 for text, VS16 for emoji presentation), zero-width joiners (ZWJ sequences like family emoji), and skin tone modifiers. Terminals frequently disagree on emoji widths, especially for newer Unicode additions.",
     "probe": "Write U+1F389 (party popper emoji), verify the cell has <code>wide=true</code> (occupies 2 columns).",
@@ -1399,9 +1123,7 @@
   "text.wide.emoji-zwj": {
     "name": "Emoji ZWJ sequences (2 cols)",
     "slug": "emoji-zwj-sequences",
-    "tags": [
-      "unicode"
-    ],
+    "tags": ["unicode"],
     "group": "wide",
     "body": "Zero Width Joiner (ZWJ) sequences combine multiple emoji into a single glyph. For example, 👨‍👩‍👧‍👦 (family) is four person emoji joined with ZWJ characters. A terminal that handles ZWJ correctly renders this as a single 2-column wide glyph, not as four separate emoji.",
     "probe": "Write a ZWJ sequence (e.g., family emoji), verify it renders as a single 2-column glyph rather than separate emoji.",
@@ -1411,9 +1133,7 @@
   "text.wide.emoji-flags": {
     "name": "Regional indicator flags (2 cols)",
     "slug": "emoji-regional-indicator-flags",
-    "tags": [
-      "unicode"
-    ],
+    "tags": ["unicode"],
     "group": "wide",
     "body": "Regional Indicator symbols are paired to form flag emoji. For example, 🇺🇸 (US flag) is the sequence U+1F1FA U+1F1F8. A terminal that handles these correctly renders the pair as a single 2-column wide flag glyph.",
     "probe": "Write a regional indicator pair (e.g., U+1F1FA U+1F1F8 for US flag), verify it renders as a single 2-column glyph.",
@@ -1423,9 +1143,7 @@
   "text.wide.emoji-vs16": {
     "name": "Variation selector 16 (emoji presentation)",
     "slug": "variation-selector-16-emoji",
-    "tags": [
-      "unicode"
-    ],
+    "tags": ["unicode"],
     "group": "wide",
     "body": "Variation Selector 16 (VS-16, U+FE0F) forces emoji presentation for characters that have both text and emoji forms. For example, ☺ (U+263A) is 1 column in text presentation, but ☺️ (U+263A + VS-16) should be 2 columns in emoji presentation.",
     "probe": "Write a character with Variation Selector 16 (e.g., U+263A + U+FE0F), verify it occupies 2 columns in emoji presentation.",
@@ -1435,9 +1153,7 @@
   "text.combining": {
     "name": "Combining characters (0 cols)",
     "slug": "combining-characters",
-    "tags": [
-      "unicode"
-    ],
+    "tags": ["unicode"],
     "body": "Combining characters (like accents, diacritical marks) attach to the preceding base character and should occupy zero additional columns. For example, é can be written as e + U+0301 (combining acute accent) — the cursor should advance by 1 column, not 2.",
     "probe": "Write a base character followed by a combining accent (e.g., e + U+0301), verify the combined character occupies 1 column, not 2.",
     "baseline": "unicode",
@@ -1447,9 +1163,7 @@
     "name": "East Asian Ambiguous Width",
     "slug": "east-asian-ambiguous",
     "url": "https://www.unicode.org/reports/tr11/",
-    "tags": [
-      "unicode"
-    ],
+    "tags": ["unicode"],
     "baseline": "unicode",
     "body": "Characters with East_Asian_Width=Ambiguous (e.g., Greek letters, mathematical symbols, box-drawing characters) have context-dependent width. In CJK contexts they're typically rendered as wide (2 cells), in Western contexts as narrow (1 cell). Terminal width calculation must match the terminal's rendering.",
     "probe": "Write an Ambiguous-width character (e.g., U+00A7 Section Sign), measure cursor displacement."
@@ -1457,9 +1171,7 @@
   "unicode.grapheme-cursor": {
     "name": "Grapheme Cluster Cursor Movement",
     "slug": "grapheme-cursor",
-    "tags": [
-      "unicode"
-    ],
+    "tags": ["unicode"],
     "baseline": "unicode",
     "body": "Cursor movement (CUF/CUB) should respect grapheme cluster boundaries. Moving the cursor back over a ZWJ emoji sequence should skip the entire sequence, not individual codepoints. Many terminals still move by codepoint rather than grapheme cluster.",
     "probe": "Write an emoji ZWJ sequence, move cursor back by 1, verify cursor position.",
@@ -1468,9 +1180,7 @@
   "unicode.wrap-boundary": {
     "name": "Wide Char at Line Wrap",
     "slug": "wrap-boundary",
-    "tags": [
-      "unicode"
-    ],
+    "tags": ["unicode"],
     "baseline": "unicode",
     "body": "When a wide character (CJK or emoji) would begin in the last column of the line, it should wrap to the next line rather than being split across the boundary. The last column should be left blank.",
     "probe": "Fill line to last column, write a wide character, verify it appears on the next line.",
@@ -1480,10 +1190,7 @@
     "name": "Tab stops",
     "slug": "ht-tab-stops",
     "url": "https://vt100.net/docs/vt510-rm/HT.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "HT (Horizontal Tab) advances the cursor to the next tab stop. Default tab stops are set every 8 columns. The tab character (0x09) does not produce visible output — it moves the cursor forward. Tab stops can be set with HTS and cleared with TBC.",
     "probe": "Write tab then \"X\", verify X appears at column 8 (after the default 8-column tab stop).",
     "baseline": "core"
@@ -1492,10 +1199,7 @@
     "name": "Tab Stops (HT)",
     "slug": "tab-stops",
     "url": "https://vt100.net/docs/vt510-rm/HT.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "HT (0x09) advances the cursor to the next tab stop. Default tab stops are at every 8th column. Terminals should support HTS (ESC H) to set custom tab stops and TBC (CSI 3 g) to clear them.",
     "probe": "Send a tab character, verify cursor moves to column 8."
@@ -1504,10 +1208,7 @@
     "name": "Carriage return",
     "slug": "cr-carriage-return",
     "url": "https://vt100.net/docs/vt510-rm/CR.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "CR (0x0D) moves the cursor to the beginning of the current line without advancing to the next line. Used in combination with LF for line endings, and on its own for overwriting the current line (e.g., progress bars).",
     "probe": "Write \"AB\\rC\", verify C overwrote A at col 0 while B remains at col 1.",
     "baseline": "core"
@@ -1516,10 +1217,7 @@
     "name": "Line feed",
     "slug": "lf-line-feed",
     "url": "https://vt100.net/docs/vt510-rm/LF.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "LF (0x0A) moves the cursor down one line. If the cursor is at the bottom of the scroll region, the content scrolls up and a blank line appears at the bottom. On most terminals, LF also performs an implicit carriage return (moves to column 1), though the VT100 specification treats LF as vertical movement only.",
     "probe": "Write \"A\\r\\nB\", verify A is at cell (0,0) and B is at cell (1,0).",
     "baseline": "core"
@@ -1528,10 +1226,7 @@
     "name": "Backspace (BS)",
     "slug": "bs-backspace",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "BS (0x08) moves the cursor one position to the left. It does not delete the character — the character remains until overwritten. The cursor stops at column 1 and does not wrap to the previous line.",
     "probe": "Write \"AB\\x08C\", verify backspace moved cursor back so C overwrote B at col 1, while A remains at col 0.",
     "baseline": "core"
@@ -1540,10 +1235,7 @@
     "name": "Index (IND)",
     "slug": "ind-index",
     "url": "https://vt100.net/docs/vt510-rm/IND.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "IND (Index) moves the cursor down one line without changing the column. The sequence is <code>ESC D</code>. If the cursor is at the bottom margin of the scroll region, the content scrolls up. Unlike LF, IND never performs a carriage return.",
     "probe": "Write \"A\" then send <code>\\x1bD</code> (IND), verify cursor moved down to row 1.",
     "baseline": "core"
@@ -1552,10 +1244,7 @@
     "name": "Next line (NEL)",
     "slug": "nel-next-line",
     "url": "https://vt100.net/docs/vt510-rm/NEL.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "NEL (Next Line) moves the cursor to the beginning of the next line. The sequence is <code>ESC E</code>. Equivalent to a carriage return followed by a line feed (CR + LF). If the cursor is at the bottom margin, the content scrolls up.",
     "probe": "Write \"ABC\" then send <code>\\x1bE</code> (NEL), verify cursor is at row 1, col 0.",
     "baseline": "core"
@@ -1563,9 +1252,7 @@
   "text.reverse-index-scroll": {
     "name": "Reverse Index at Scroll Top",
     "slug": "reverse-index-scroll",
-    "tags": [
-      "vt100"
-    ],
+    "tags": ["vt100"],
     "baseline": "core",
     "body": "RI (ESC M) at the top of the scroll region scrolls the entire region down, inserting a blank line at the top. This is the inverse of a newline at the bottom of the scroll region. Used for smooth scrolling and status line implementations.",
     "probe": "Set scroll region, write text at top row, send Reverse Index (<code>ESC M</code>), verify content shifted down by one line.",
@@ -1581,9 +1268,7 @@
   "reset.sgr": {
     "name": "SGR reset clears attributes",
     "slug": "sgr-0-reset-clears-attributes",
-    "tags": [
-      "ecma-48"
-    ],
+    "tags": ["ecma-48"],
     "body": "Tests whether SGR 0 (<code>ESC [ 0 m</code>) correctly clears all text attributes — bold, faint, italic, underline, blink, inverse, hidden, strikethrough, overline, and colors. This is the most basic reset and should leave the terminal in its default text rendering state.",
     "probe": "Apply bold+italic+inverse via <code>\\x1b[1;3;7m</code>X then send <code>\\x1b[0m</code>Y, verify the second cell has all attributes cleared.",
     "baseline": "core",
@@ -1593,10 +1278,7 @@
     "name": "Full reset (RIS)",
     "slug": "ris-full-reset",
     "url": "https://vt100.net/docs/vt510-rm/RIS.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "RIS (Reset to Initial State) performs a complete terminal reset. The sequence is <code>ESC c</code>. This resets all modes, clears the screen, resets scroll regions, restores default character sets, clears tab stops, and resets cursor position and attributes. Equivalent to power-cycling the terminal. The <code>reset</code> command in most shells sends RIS.",
     "probe": "Write text, send <code>\\x1bc</code> (RIS), verify cursor reset to (0,0).",
     "baseline": "core",
@@ -1606,10 +1288,7 @@
     "name": "Soft reset (DECSTR)",
     "slug": "decstr-soft-reset",
     "url": "https://vt100.net/docs/vt510-rm/DECSTR.html",
-    "tags": [
-      "dec-private-modes",
-      "vt510"
-    ],
+    "tags": ["dec-private-modes", "vt510"],
     "body": "DECSTR (Soft Terminal Reset) resets terminal modes and attributes without clearing the screen. The sequence is <code>ESC [ ! p</code>. Unlike RIS (full reset), DECSTR does not clear the display, scrollback, or cursor position. It resets modes (auto-wrap, origin, insert), SGR attributes, character sets, and scroll regions.",
     "probe": "Enable app cursor mode (<code>\\x1b[?1h</code>), write text, send <code>\\x1b[!p</code> (DECSTR), verify <code>applicationCursor</code> mode is off.",
     "baseline": "core",
@@ -1626,9 +1305,7 @@
     "name": "DEC Special Graphics",
     "slug": "dec-special-graphics",
     "url": "https://vt100.net/docs/vt510-rm/SCS.html",
-    "tags": [
-      "vt100"
-    ],
+    "tags": ["vt100"],
     "body": "The DEC Special Graphics character set provides box-drawing characters. Activate with <code>ESC ( 0</code> (designate G0 as Special Graphics), deactivate with <code>ESC ( B</code> (restore ASCII). When active, ASCII characters like <code>j k l m q x</code> render as box-drawing glyphs (corners, horizontal/vertical lines).\n\nUsed by legacy TUI applications (dialog, mc, ncurses programs) to draw borders and frames. Modern applications typically use Unicode box-drawing characters (U+2500 block) instead, but DEC Special Graphics remains relevant for environments where UTF-8 is not available.",
     "probe": "Send <code>\\x1b(0</code> to designate DEC Special Graphics, write \"q\", send <code>\\x1b(B</code> to restore ASCII. Verify the cell does not contain literal \"q\" (should be box-drawing U+2500).",
     "baseline": "core"
@@ -1636,9 +1313,7 @@
   "charsets.utf8": {
     "name": "UTF-8 mode",
     "slug": "utf8-mode",
-    "tags": [
-      "unicode"
-    ],
+    "tags": ["unicode"],
     "body": "Tests whether the terminal correctly handles UTF-8 encoded text. Virtually all modern terminals default to UTF-8 mode. UTF-8 encodes Unicode code points as 1-4 byte sequences, allowing the full range of Unicode characters (emoji, CJK, mathematical symbols, etc.) to be displayed in the terminal.",
     "probe": "Write é (e-acute, 2-byte UTF-8) and 世 (CJK, 3-byte UTF-8), verify each renders as the correct Unicode character.",
     "baseline": "core",
@@ -1648,9 +1323,7 @@
     "name": "G0/G1 character set switching",
     "slug": "g0-g1-charset-switching",
     "url": "https://vt100.net/docs/vt510-rm/SCS.html",
-    "tags": [
-      "vt100"
-    ],
+    "tags": ["vt100"],
     "baseline": "core",
     "body": "SI (Shift In, 0x0F) and SO (Shift Out, 0x0E) switch between G0 and G1 character sets. The G0 and G1 sets can be independently designated using <code>ESC ( X</code> (G0) and <code>ESC ) X</code> (G1), where X selects the character set (B=ASCII, 0=DEC Special Graphics). This mechanism allows applications to quickly toggle between text and line-drawing characters without re-designating the character set each time.",
     "probe": "Send <code>\\x1b(0</code> to designate G0 as DEC Special Graphics, write 'l', verify the cell renders as a box-drawing character (not literal 'l'). Restore with <code>\\x1b(B</code>."
@@ -1659,9 +1332,7 @@
     "name": "DEC line drawing character set",
     "slug": "dec-line-drawing-chars",
     "url": "https://vt100.net/docs/vt510-rm/SCS.html",
-    "tags": [
-      "vt100"
-    ],
+    "tags": ["vt100"],
     "baseline": "core",
     "body": "The DEC Special Graphics character set (activated via <code>ESC ( 0</code>) maps ASCII characters to box-drawing glyphs. Key mappings: j=\\u2518 (bottom-right corner), k=\\u2510 (top-right corner), l=\\u250C (top-left corner), m=\\u2514 (bottom-left corner), q=\\u2500 (horizontal line), x=\\u2502 (vertical line). These six characters form the basis for drawing boxes and borders in non-Unicode environments. Legacy applications like dialog, mc, and ncurses-based programs rely on this mapping.",
     "probe": "Send <code>\\x1b(0jklmqx\\x1b(B</code>, verify all six characters rendered as box-drawing glyphs (none are the literal ASCII characters j, k, l, m, q, x)."
@@ -1670,10 +1341,7 @@
     "name": "Primary device attributes (DA1)",
     "slug": "da1-primary-device-attributes",
     "url": "https://vt100.net/docs/vt510-rm/DA1.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "DA1 (Primary Device Attributes) lets applications identify the terminal type and its capabilities. The query is <code>ESC [ c</code> or <code>ESC [ 0 c</code>. The terminal responds with <code>ESC [ ? attributes c</code> where attributes is a semicolon-separated list of capability codes.\n\nDA1 is one of the first sequences an application sends to discover what the terminal supports. The response identifies the terminal class (VT100, VT220, etc.) and optional capabilities. Modern terminals typically identify as VT220 or higher with various capability flags. Shell integration scripts and TUI frameworks use DA1 to enable or disable features based on terminal capabilities.",
     "probe": "Send <code>\\x1b[c</code> (DA1), verify response contains <code>?</code> and ends with <code>c</code> (e.g., <code>\\x1b[?62;...c</code>).",
     "baseline": "modern",
@@ -1683,10 +1351,7 @@
     "name": "Device status report (DSR 5)",
     "slug": "dsr-5-device-status-report",
     "url": "https://vt100.net/docs/vt510-rm/DSR.html",
-    "tags": [
-      "ecma-48",
-      "vt100"
-    ],
+    "tags": ["ecma-48", "vt100"],
     "body": "DSR 5 queries the terminal's operational status. The query is <code>ESC [ 5 n</code>. The terminal responds with <code>ESC [ 0 n</code> to indicate it is functioning normally. This is a basic health check that also serves as a synchronization point — applications can send DSR 5 and wait for the response to ensure all previous output has been processed.",
     "probe": "Send <code>\\x1b[5n</code> (DSR 5), verify response contains <code>0n</code> (device OK).",
     "baseline": "modern",
@@ -1696,9 +1361,7 @@
     "name": "Secondary Device Attributes (DA2)",
     "slug": "da2-secondary-device-attributes",
     "url": "https://vt100.net/docs/vt510-rm/DA2.html",
-    "tags": [
-      "vt220"
-    ],
+    "tags": ["vt220"],
     "baseline": "modern",
     "body": "DA2 (CSI > c) returns the terminal's type, firmware version, and ROM cartridge registration number. Modern terminals use DA2 to identify themselves — e.g., xterm returns CSI > 41 ; version ; 0 c. This is commonly used for terminal detection.",
     "probe": "Send CSI > c, check for a CSI > Pp ; Pv ; Pc c response via onResponse callback.",
@@ -1708,9 +1371,7 @@
     "name": "Tertiary Device Attributes (DA3)",
     "slug": "da3-tertiary-device-attributes",
     "url": "https://vt100.net/docs/vt510-rm/DA3.html",
-    "tags": [
-      "vt510"
-    ],
+    "tags": ["vt510"],
     "baseline": "rich",
     "body": "DA3 (CSI = c) returns the terminal's unit ID as a DCS response. Less commonly supported than DA1/DA2, primarily by xterm and terminals that aim for high VT compatibility.",
     "probe": "Send CSI = c, check for a DCS ! | response.",
@@ -1719,9 +1380,7 @@
   "device.decrqss": {
     "name": "Request Setting (DECRQSS)",
     "slug": "decrqss",
-    "tags": [
-      "vt510"
-    ],
+    "tags": ["vt510"],
     "baseline": "rich",
     "body": "DECRQSS (DCS $ q Pt ST) queries the current value of a terminal setting. For example, querying DECSCL returns the current conformance level. Useful for terminals that want to verify their configuration programmatically.",
     "probe": "Send DCS $ q \" p ST to query DECSCL, check for a DCS response.",
@@ -1731,9 +1390,7 @@
   "device.xtgettcap": {
     "name": "Query Terminfo (XTGETTCAP)",
     "slug": "xtgettcap",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTGETTCAP (DCS + q Pt ST) queries terminfo capabilities via DCS escape sequences. The terminal responds with the capability value, allowing applications to query terminal features without parsing terminfo databases. Used by notcurses and foot.",
     "probe": "Send DCS + q 544e ST (hex-encoded query for TN capability), check for a DCS response.",
@@ -1744,9 +1401,7 @@
     "name": "Mode Report (DECRPM)",
     "slug": "decrpm",
     "url": "https://vt100.net/docs/vt510-rm/DECRPM.html",
-    "tags": [
-      "vt510"
-    ],
+    "tags": ["vt510"],
     "baseline": "modern",
     "body": "DECRPM (CSI ? Pd $ p) queries whether the terminal recognizes and has enabled a specific DEC private mode. The response CSI ? Pd ; Ps $ y reports the mode state: 1=set, 2=reset, 0=not recognized. Essential for feature detection.",
     "probe": "Send CSI ? 25 $ p (query DECTCEM), verify response contains mode value.",
@@ -1756,9 +1411,7 @@
     "name": "Terminal Version (XTVERSION)",
     "slug": "xtversion",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": [
-      "xterm-extensions"
-    ],
+    "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "XTVERSION (CSI > 0 q) requests the terminal's name and version string. The response is DCS > | name(version) ST. This allows applications to identify the exact terminal and version at runtime, enabling precise feature detection beyond what TERM or DA responses provide. Originally an xterm extension, now supported by many modern terminals including Ghostty, WezTerm, foot, and kitty.",
     "probe": "Send CSI > 0 q, verify the terminal responds with a DCS > | version string."
@@ -1767,9 +1420,7 @@
     "name": "Feature Reporting (TERM_FEATURES)",
     "slug": "term-features",
     "url": "https://gitlab.com/gnachman/iterm2/-/wikis/TERM_FEATURES",
-    "tags": [
-      "iterm2"
-    ],
+    "tags": ["iterm2"],
     "baseline": "rich",
     "body": "TERM_FEATURES is an environment variable proposed by iTerm2 for terminals to advertise their capabilities as a semicolon-delimited list of capability strings. Unlike escape-sequence-based detection, this approach allows applications to check capabilities without TTY I/O, making it suitable for non-interactive contexts. Adoption remains limited as most terminals prefer escape-sequence-based feature reporting.",
     "probe": "Check whether the TERM_FEATURES environment variable is set in the terminal session."
@@ -1777,10 +1428,7 @@
   "extensions.osc1337-cellsize": {
     "name": "iTerm2 Cell Size Reporting (OSC 1337)",
     "slug": "osc1337-cellsize",
-    "tags": [
-      "osc",
-      "iterm2"
-    ],
+    "tags": ["osc", "iterm2"],
     "baseline": "rich",
     "body": "OSC 1337 ; ReportCellSize queries the terminal for the dimensions of a single character cell in pixels. The response is OSC 1337 ; ReportCellSize=height;width ST. This is essential for pixel-accurate image rendering protocols (sixel, iTerm2 inline images, kitty graphics) where applications need to know the exact pixel dimensions of cells to scale images correctly.",
     "probe": "Send <code>OSC 1337 ; ReportCellSize BEL</code> and verify the terminal responds with cell dimensions.",
@@ -1789,10 +1437,7 @@
   "extensions.osc1337-capabilities": {
     "name": "iTerm2 Capability Reporting (OSC 1337)",
     "slug": "osc1337-capabilities",
-    "tags": [
-      "osc",
-      "iterm2"
-    ],
+    "tags": ["osc", "iterm2"],
     "baseline": "rich",
     "body": "OSC 1337 ; RequestCapabilities queries the terminal to report all its supported capabilities at once. The response is OSC 1337 ; Capabilities=... ST with a structured list of supported features. This provides a single-query alternative to probing individual features, though adoption is currently limited to iTerm2.",
     "probe": "Send <code>OSC 1337 ; ReportCellSize BEL</code> and check for a response indicating iTerm2 protocol support.",
@@ -1802,11 +1447,54 @@
     "name": "Sixel support in DA1",
     "slug": "sixel-da1",
     "url": "https://vt100.net/docs/vt510-rm/DA1.html",
-    "tags": [
-      "sixel"
-    ],
+    "tags": ["sixel"],
     "body": "DA1 (Primary Device Attributes) response includes attribute 4, indicating sixel graphics support. This is the standard way for applications to detect sixel capability — send CSI c, check if the response contains ;4; in the attribute list. More reliable than attempting to render a sixel image and checking if the cursor moved.",
     "probe": "Check if the DA1 response (<code>CSI ? Ps ; Ps ; ... c</code>) includes attribute 4, indicating sixel graphics support.",
+    "baseline": "rich"
+  },
+  "extensions.osc9-progress": {
+    "name": "OSC 9;4 progress bar",
+    "slug": "osc9-progress-bar",
+    "url": "https://conemu.github.io/en/AnsiEscapeCodes.html#ConEmu_specific_OSC",
+    "tags": ["conemu"],
+    "body": "OSC 9;4 is a ConEmu-originated protocol for reporting task progress to the terminal. The sequence <code>ESC ] 9 ; 4 ; st ; pr BEL</code> sets progress state (st: 0=remove, 1=normal, 2=error, 3=indeterminate, 4=paused) and percentage (pr: 0-100). Terminals render this as a native progress indicator — typically in the tab bar, title bar, or taskbar.\n\nOriginally a ConEmu extension, it has been widely adopted: Ghostty (1.2+), iTerm2 (3.6.6+), Windows Terminal, Konsole, mintty, and WezTerm all support it. This makes it one of the most cross-terminal ways to display progress. CLI tools like curl, wget, and build systems can emit these sequences to provide native progress feedback.",
+    "probe": "Send <code>OSC 9;4;1;50 BEL</code> (set 50% progress), verify the sequence is consumed (cursor doesn't advance). Clear with <code>OSC 9;4;0 BEL</code>.",
+    "baseline": "rich"
+  },
+  "extensions.osc66-text-sizing": {
+    "name": "OSC 66 text sizing",
+    "slug": "osc66-text-sizing",
+    "url": "https://sw.kovidgoyal.net/kitty/text-sizing-protocol/",
+    "tags": ["kitty"],
+    "body": "OSC 66 is the Kitty text sizing protocol, allowing applications to render text at different sizes (scale 1-7x) and explicitly specify character cell widths. The sequence <code>ESC ] 66 ; params BEL</code> controls text sizing with <code>s=N</code> for scale factor and <code>w=N</code> for explicit cell width.\n\nThis protocol addresses the fundamental character width ambiguity problem — applications can tell the terminal exactly how wide a character should be, rather than relying on potentially inconsistent wcwidth() calculations. Supported by kitty and foot, with Ghostty parsing (but not yet rendering) the sequences.",
+    "probe": "Query text sizing state with <code>OSC 66;? BEL</code> and check for response. Fallback: send <code>OSC 66;s=2 BEL</code> and verify the sequence is consumed.",
+    "baseline": "rich"
+  },
+  "extensions.osc5522-clipboard": {
+    "name": "OSC 5522 advanced clipboard",
+    "slug": "osc5522-clipboard",
+    "url": "https://sw.kovidgoyal.net/kitty/clipboard/",
+    "tags": ["kitty"],
+    "body": "OSC 5522 is the Kitty advanced clipboard protocol, extending OSC 52 with MIME type support, rich content handling, and authorization tokens. When mode 5522 is enabled, bracketed paste is replaced with MIME-aware paste events that include content type metadata.\n\nUnlike OSC 52 which only handles plain text base64 data, OSC 5522 supports multiple MIME types (text/plain, text/html, image/png, etc.) in a single clipboard operation, with pre-authorization tokens for secure paste handling. Currently supported by kitty, with Ghostty parsing but not yet fully implementing the protocol.",
+    "probe": "Query clipboard capabilities with <code>OSC 5522;? BEL</code> and check for response.",
+    "baseline": "rich"
+  },
+  "modes.color-scheme-reporting": {
+    "name": "Mode 2031 color scheme reporting",
+    "slug": "mode-2031-color-scheme",
+    "url": "https://contour-terminal.org/vt-extensions/color-palette-update-notifications/",
+    "tags": ["xterm-ext"],
+    "body": "Private mode 2031 enables unsolicited notifications when the terminal's color scheme changes between dark and light. When enabled, the terminal sends <code>CSI ? 997 ; Ps n</code> (DECDSR) whenever the scheme changes, where Ps=1 for dark and Ps=2 for light.\n\nApplications can also synchronously query the current scheme via <code>CSI ? 997 n</code> (DECDSR 997). This solves a longstanding problem for TUI applications that need to adapt their color palette to the terminal's dark/light mode. Supported by iTerm2 (3.6.6+), tmux 3.6, Contour, foot, and kitty.",
+    "probe": "Check DECRPM for mode 2031. Fallback: query current scheme via <code>DECDSR 997</code> and check for response.",
+    "baseline": "modern"
+  },
+  "input.modify-other-keys-3": {
+    "name": "modifyOtherKeys mode 3",
+    "slug": "modify-other-keys-3",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["xterm-ext"],
+    "body": "xterm's modifyOtherKeys mode 3 (patch 398, April 2025) makes ALL keyboard input — including unmodified keys — send escape sequences. Mode 2 only affects modified keys (Ctrl+X, Alt+X), while mode 3 extends this to every keypress. The sequence is <code>CSI > 4 ; 3 m</code>.\n\nMode 3 also extends modifier encoding to cursor-keys, function-keys, keypad-keys, modifier-keys, and special-keys, with subparameters in XTMODKEYS for selective modifier masking. This provides applications with unambiguous key identification similar to the kitty keyboard protocol, but using xterm's native encoding.",
+    "probe": "Send <code>CSI > 4 ; 3 m</code> to enable modifyOtherKeys mode 3, verify terminal is responsive, then disable with <code>CSI > 4 ; 0 m</code>.",
     "baseline": "rich"
   }
 }

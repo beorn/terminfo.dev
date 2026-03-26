@@ -268,4 +268,31 @@ export const modesProbes: ProbeDefinition[] = [
       }
     },
   ),
+
+  // Mode 2031 — color scheme reporting (dark/light mode notifications)
+  // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty
+  probe(
+    "modes.color-scheme-reporting",
+    (ctx) => {
+      // Enable mode 2031, check via getMode
+      ctx.feed("\x1b[?2031h")
+      const enabled = ctx.getMode("colorSchemeReporting")
+      ctx.feed("\x1b[?2031l")
+      return { pass: enabled === true }
+    },
+    async (ctx) => {
+      // Try DECRPM first
+      const result = await ctx.queryMode(2031)
+      if (result !== null && result !== "unknown") {
+        return { pass: true, note: `DECRPM: mode ${result}`, response: result }
+      }
+      // Fallback: try DECDSR 997 (synchronous color scheme query)
+      const match = await ctx.queryWithSentinel("\x1b[?997n", /\x1b\[\?997;(\d+)n/)
+      if (match) {
+        const scheme = match[1] === "1" ? "dark" : match[1] === "2" ? "light" : `unknown(${match[1]})`
+        return { pass: true, note: scheme, response: match[1] }
+      }
+      return { pass: false, note: "No DECRPM or DECDSR 997 response" }
+    },
+  ),
 ]

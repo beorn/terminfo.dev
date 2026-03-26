@@ -885,6 +885,106 @@
     "note": "Not in VT100/VT220 — ASCII only, no Unicode width"
   },
 
+  "ghostty-native:modes.color-scheme-reporting": {
+    "note": "Mode 2031 not exposed in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:extensions.osc5522-clipboard": {
+    "note": "OSC 5522 not exposed in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:input.modify-other-keys-3": {
+    "note": "modifyOtherKeys mode 3 not exposed in headless mode",
+    "result": "partial"
+  },
+
+  "xtermjs:modes.color-scheme-reporting": {
+    "note": "Mode 2031 not implemented in xterm.js"
+  },
+  "xtermjs:extensions.osc5522-clipboard": {
+    "note": "OSC 5522 not implemented in xterm.js"
+  },
+  "xtermjs:input.modify-other-keys-3": {
+    "note": "modifyOtherKeys mode 3 not implemented in xterm.js"
+  },
+
+  "wezterm:modes.color-scheme-reporting": {
+    "note": "Mode 2031 not exposed in headless mode",
+    "result": "partial"
+  },
+  "wezterm:extensions.osc5522-clipboard": {
+    "note": "OSC 5522 not implemented in wezterm"
+  },
+  "wezterm:input.modify-other-keys-3": {
+    "note": "modifyOtherKeys mode 3 not exposed in headless mode",
+    "result": "partial"
+  },
+
+  "kitty:modes.color-scheme-reporting": {
+    "note": "Mode 2031 not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:extensions.osc5522-clipboard": {
+    "note": "OSC 5522 not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:input.modify-other-keys-3": {
+    "note": "modifyOtherKeys mode 3 not exposed via Python batch bridge",
+    "result": "partial"
+  },
+
+  "alacritty:modes.color-scheme-reporting": {
+    "note": "Mode 2031 not implemented in alacritty"
+  },
+  "alacritty:extensions.osc5522-clipboard": {
+    "note": "OSC 5522 not implemented in alacritty"
+  },
+  "alacritty:input.modify-other-keys-3": {
+    "note": "modifyOtherKeys mode 3 not exposed in headless mode",
+    "result": "partial"
+  },
+
+  "vt100:modes.color-scheme-reporting": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc5522-clipboard": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:input.modify-other-keys-3": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+
+  "vterm:modes.color-scheme-reporting": {
+    "note": "Mode 2031 not implemented"
+  },
+  "vterm:extensions.osc5522-clipboard": {
+    "note": "OSC 5522 not implemented"
+  },
+  "vterm:extensions.osc66-text-sizing": {
+    "note": "OSC 66 text sizing not implemented"
+  },
+
+  "ghostty-native:extensions.osc66-text-sizing": {
+    "note": "OSC 66 parsed but not exposed in headless mode",
+    "result": "partial"
+  },
+  "xtermjs:extensions.osc66-text-sizing": {
+    "note": "OSC 66 text sizing not implemented in xterm.js"
+  },
+  "wezterm:extensions.osc66-text-sizing": {
+    "note": "OSC 66 text sizing not implemented in wezterm"
+  },
+  "kitty:extensions.osc66-text-sizing": {
+    "note": "OSC 66 not exposed via Python batch bridge — kitty supports it natively",
+    "result": "partial"
+  },
+  "alacritty:extensions.osc66-text-sizing": {
+    "note": "OSC 66 text sizing not implemented in alacritty"
+  },
+  "vt100:extensions.osc66-text-sizing": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+
   "ghostty-native:extensions.osc52-clipboard": {
     "note": "OSC 52 clipboard not exposed in headless mode",
     "result": "partial"
