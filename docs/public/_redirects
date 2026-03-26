@@ -1,0 +1,3 @@
+# Redirect old /terminal/ URLs to /terminals/ (renamed 2026-03-26)
+/terminal     /terminals     301
+/terminal/*   /terminals/:splat   301
