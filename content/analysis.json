@@ -1,7 +1,7 @@
 {
-  "$generated": "2026-03-26T07:34:37.875Z",
+  "$generated": "2026-03-26T07:52:53.799Z",
   "terminal/ghostty": {
-    "analysis": "<p><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> scores <strong>95%</strong> (140/148) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#2</strong> of 8 tested terminals. Missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/device/device-tertiary-da\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/extensions-osc1337-cellsize\" class=\"hover-link\">Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/extensions-osc1337-capabilities\" class=\"hover-link\">Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>, <a href=\"/device/device-term-features\" class=\"hover-link\">TERM_FEATURES env var</a>.</p>",
+    "analysis": "<p><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> scores <strong>95%</strong> (140/148) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#2</strong> of 8 tested terminals. Missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>, <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a>.</p>",
     "date": "2026-03-26",
     "probeCount": 148,
     "changes": null
@@ -13,7 +13,7 @@
     "changes": null
   },
   "terminal/iterm2": {
-    "analysis": "<p><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> scores <strong>97%</strong> (144/148) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#1</strong> of 8 tested terminals. Uniquely supports: <a href=\"/device/device-tertiary-da\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/extensions/extensions-osc1337-cellsize\" class=\"hover-link\">Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>. Missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/extensions-osc1337-capabilities\" class=\"hover-link\">Capability Reporting (OSC 1337)</a>, <a href=\"/device/device-term-features\" class=\"hover-link\">TERM_FEATURES env var</a>.</p>",
+    "analysis": "<p><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> scores <strong>97%</strong> (144/148) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#1</strong> of 8 tested terminals. Uniquely supports: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>. Missing: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a>.</p>",
     "date": "2026-03-26",
     "probeCount": 148,
     "changes": null
@@ -78,67 +78,67 @@
     "changes": null
   },
   "baseline/modern": {
-    "analysis": "<p><strong>4</strong> of 8 tested terminals achieve 100% Modern TUI compliance. Lagging: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> (94%), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (96%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (96%). Most commonly missing: <a href=\"/device/device-decrpm\" class=\"hover-link\">Mode Reporting (DECRPM)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/extensions/osc-7-current-directory\" class=\"hover-link\">Current directory (OSC 7)</a>.</p>",
+    "analysis": "<p><strong>4</strong> of 8 tested terminals achieve 100% Modern TUI compliance. Lagging: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> (94%), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (96%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (96%). Most commonly missing: <a href=\"/device/decrpm\" class=\"hover-link\">Mode Report (DECRPM)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/extensions/osc-7-current-directory\" class=\"hover-link\">Current directory (OSC 7)</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "baseline/rich": {
-    "analysis": "<p><strong>0</strong> of 8 tested terminals achieve 100% Rich TUI compliance. Lagging: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> (25%), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (55%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (55%). Most commonly missing: <a href=\"/extensions/extensions-osc1337-capabilities\" class=\"hover-link\">Capability Reporting (OSC 1337)</a>, <a href=\"/device/device-tertiary-da\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>.</p>",
+    "analysis": "<p><strong>0</strong> of 8 tested terminals achieve 100% Rich TUI compliance. Lagging: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a> (25%), <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (55%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (55%). Most commonly missing: <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "baseline/unicode": {
-    "analysis": "<p><strong>2</strong> of 8 tested terminals achieve 100% <a href=\"/unicode\" class=\"hover-link\">Unicode</a> compliance. Lagging: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (63%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (63%), <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> (63%). Most commonly missing: <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/unicode/unicode-grapheme-cursor\" class=\"hover-link\">Grapheme Cluster Cursor Movement</a>.</p>",
+    "analysis": "<p><strong>2</strong> of 8 tested terminals achieve 100% <a href=\"/unicode\" class=\"hover-link\">Unicode</a> compliance. Lagging: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a> (63%), <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a> (63%), <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> (63%). Most commonly missing: <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/unicode/grapheme-cursor\" class=\"hover-link\">Grapheme Cluster Cursor Movement</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "compare/ghostty-vs-kitty": {
-    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 95% (140/148) vs <strong><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a></strong> at 89% (132/148). <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> leads by 6 percentage points. Only in <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: <a href=\"/device/device-decrpm\" class=\"hover-link\">Mode Reporting (DECRPM)</a>, <a href=\"/device/device-decrqss\" class=\"hover-link\">DECRQSS (Request Setting)</a>, <a href=\"/device/device-xtgettcap\" class=\"hover-link\">XTGETTCAP (Query Terminfo)</a>, <a href=\"/device/device-xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a> and 4 more. Only in <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 95% (140/148) vs <strong><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a></strong> at 89% (132/148). <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> leads by 6 percentage points. Only in <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: <a href=\"/device/decrpm\" class=\"hover-link\">Mode Report (DECRPM)</a>, <a href=\"/device/decrqss\" class=\"hover-link\">Request Setting (DECRQSS)</a>, <a href=\"/device/xtgettcap\" class=\"hover-link\">Query Terminfo (XTGETTCAP)</a>, <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a> and 4 more. Only in <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "compare/ghostty-vs-iterm2": {
-    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 95% (140/148) vs <strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> at 97% (144/148). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 2 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/device/device-tertiary-da\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/extensions/extensions-osc1337-cellsize\" class=\"hover-link\">Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 95% (140/148) vs <strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> at 97% (144/148). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 2 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "compare/ghostty-vs-warp": {
-    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 95% (140/148) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 91% (135/148). <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> leads by 4 percentage points. Only in <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: <a href=\"/device/device-decrpm\" class=\"hover-link\">Mode Reporting (DECRPM)</a>, <a href=\"/device/device-decrqss\" class=\"hover-link\">DECRQSS (Request Setting)</a>, <a href=\"/device/device-xtgettcap\" class=\"hover-link\">XTGETTCAP (Query Terminfo)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a> and 1 more. Only in <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 95% (140/148) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 91% (135/148). <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> leads by 4 percentage points. Only in <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: <a href=\"/device/decrpm\" class=\"hover-link\">Mode Report (DECRPM)</a>, <a href=\"/device/decrqss\" class=\"hover-link\">Request Setting (DECRQSS)</a>, <a href=\"/device/xtgettcap\" class=\"hover-link\">Query Terminfo (XTGETTCAP)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a> and 1 more. Only in <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "compare/ghostty-vs-terminal-app": {
-    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 95% (140/148) vs <strong><a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> at 89% (132/148). <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> leads by 6 percentage points. Only in <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: <a href=\"/device/device-decrpm\" class=\"hover-link\">Mode Reporting (DECRPM)</a>, <a href=\"/device/device-decrqss\" class=\"hover-link\">DECRQSS (Request Setting)</a>, <a href=\"/device/device-xtgettcap\" class=\"hover-link\">XTGETTCAP (Query Terminfo)</a>, <a href=\"/device/device-xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a> and 4 more. Only in <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a></strong> scores 95% (140/148) vs <strong><a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> at 89% (132/148). <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a> leads by 6 percentage points. Only in <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: <a href=\"/device/decrpm\" class=\"hover-link\">Mode Report (DECRPM)</a>, <a href=\"/device/decrqss\" class=\"hover-link\">Request Setting (DECRQSS)</a>, <a href=\"/device/xtgettcap\" class=\"hover-link\">Query Terminfo (XTGETTCAP)</a>, <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a> and 4 more. Only in <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "compare/iterm2-vs-kitty": {
-    "analysis": "<p><strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 97% (144/148) vs <strong><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a></strong> at 89% (132/148). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 8 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/device/device-tertiary-da\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/device/device-decrpm\" class=\"hover-link\">Mode Reporting (DECRPM)</a>, <a href=\"/device/device-decrqss\" class=\"hover-link\">DECRQSS (Request Setting)</a>, <a href=\"/device/device-xtgettcap\" class=\"hover-link\">XTGETTCAP (Query Terminfo)</a>, <a href=\"/device/device-xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a> and 8 more. Only in <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 97% (144/148) vs <strong><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a></strong> at 89% (132/148). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 8 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/device/decrpm\" class=\"hover-link\">Mode Report (DECRPM)</a>, <a href=\"/device/decrqss\" class=\"hover-link\">Request Setting (DECRQSS)</a>, <a href=\"/device/xtgettcap\" class=\"hover-link\">Query Terminfo (XTGETTCAP)</a>, <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a> and 8 more. Only in <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "compare/kitty-vs-warp": {
-    "analysis": "<p><strong><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a></strong> scores 89% (132/148) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 91% (135/148). <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> leads by 2 percentage points. Only in <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>. Only in <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/device/device-xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/extensions/kitty-keyboard-protocol\" class=\"hover-link\" title=\"Kitty Keyboard Protocol\">Kitty keyboard protocol</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a></strong> scores 89% (132/148) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 91% (135/148). <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> leads by 2 percentage points. Only in <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>. Only in <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/extensions/kitty-keyboard-protocol\" class=\"hover-link\" title=\"Kitty Keyboard Protocol\">Kitty keyboard protocol</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "compare/iterm2-vs-terminal-app": {
-    "analysis": "<p><strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 97% (144/148) vs <strong><a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> at 89% (132/148). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 8 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/device/device-tertiary-da\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/device/device-decrpm\" class=\"hover-link\">Mode Reporting (DECRPM)</a>, <a href=\"/device/device-decrqss\" class=\"hover-link\">DECRQSS (Request Setting)</a>, <a href=\"/device/device-xtgettcap\" class=\"hover-link\">XTGETTCAP (Query Terminfo)</a>, <a href=\"/device/device-xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a> and 8 more. Only in <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 97% (144/148) vs <strong><a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> at 89% (132/148). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 8 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/device/decrpm\" class=\"hover-link\">Mode Report (DECRPM)</a>, <a href=\"/device/decrqss\" class=\"hover-link\">Request Setting (DECRQSS)</a>, <a href=\"/device/xtgettcap\" class=\"hover-link\">Query Terminfo (XTGETTCAP)</a>, <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a> and 8 more. Only in <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "compare/iterm2-vs-warp": {
-    "analysis": "<p><strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 97% (144/148) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 91% (135/148). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 6 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/device/device-tertiary-da\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/device/device-decrpm\" class=\"hover-link\">Mode Reporting (DECRPM)</a>, <a href=\"/device/device-decrqss\" class=\"hover-link\">DECRQSS (Request Setting)</a>, <a href=\"/device/device-xtgettcap\" class=\"hover-link\">XTGETTCAP (Query Terminfo)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a> and 5 more. Only in <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 97% (144/148) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 91% (135/148). <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a> leads by 6 percentage points. Only in <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/device/decrpm\" class=\"hover-link\">Mode Report (DECRPM)</a>, <a href=\"/device/decrqss\" class=\"hover-link\">Request Setting (DECRQSS)</a>, <a href=\"/device/xtgettcap\" class=\"hover-link\">Query Terminfo (XTGETTCAP)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a> and 5 more. Only in <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "compare/cursor-vs-vs-code": {
-    "analysis": "<p><strong><a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a></strong> scores 91% (135/148) vs <strong><a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a></strong> at 93% (137/148). <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> leads by 2 percentage points. Only in <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a>: <a href=\"/device/device-xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/extensions/kitty-keyboard-protocol\" class=\"hover-link\" title=\"Kitty Keyboard Protocol\">Kitty keyboard protocol</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a></strong> scores 91% (135/148) vs <strong><a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a></strong> at 93% (137/148). <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a> leads by 2 percentage points. Only in <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a>: <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/extensions/kitty-keyboard-protocol\" class=\"hover-link\" title=\"Kitty Keyboard Protocol\">Kitty keyboard protocol</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "compare/terminal-app-vs-warp": {
-    "analysis": "<p><strong><a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> scores 89% (132/148) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 91% (135/148). <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> leads by 2 percentage points. Only in <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>. Only in <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/device/device-xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/extensions/kitty-keyboard-protocol\" class=\"hover-link\" title=\"Kitty Keyboard Protocol\">Kitty keyboard protocol</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> scores 89% (132/148) vs <strong><a href=\"/terminal/warp\" class=\"hover-link\">Warp</a></strong> at 91% (135/148). <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> leads by 2 percentage points. Only in <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>. Only in <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/extensions/kitty-keyboard-protocol\" class=\"hover-link\" title=\"Kitty Keyboard Protocol\">Kitty keyboard protocol</a>.</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -168,7 +168,7 @@
     "changes": null
   },
   "modes": {
-    "analysis": "<p>The <strong><a href=\"/modes\" class=\"hover-link\">Modes</a></strong> category covers 15 features. Top performers (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a>. Common gaps: <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a> (2 terminals fail), <a href=\"/modes/modes-left-right-margin-69\" class=\"hover-link\">Left/Right Margins (DECLRMM, Mode 69)</a> (1 terminal fails).</p>",
+    "analysis": "<p>The <strong><a href=\"/modes\" class=\"hover-link\">Modes</a></strong> category covers 15 features. Top performers (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a>. Common gaps: <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a> (2 terminals fail), <a href=\"/modes/left-right-margin-69\" class=\"hover-link\">Left/Right Margins (DECLRMM, Mode 69)</a> (1 terminal fails).</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -183,7 +183,7 @@
     "changes": null
   },
   "extensions": {
-    "analysis": "<p>The <strong><a href=\"/extensions\" class=\"hover-link\">Extensions</a></strong> category covers 19 features. Common gaps: <a href=\"/extensions/extensions-osc1337-capabilities\" class=\"hover-link\">Capability Reporting (OSC 1337)</a> (8 terminals fail), <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a> (7 terminals fail), <a href=\"/extensions/extensions-osc1337-cellsize\" class=\"hover-link\">Cell Size Reporting (OSC 1337)</a> (7 terminals fail).</p>",
+    "analysis": "<p>The <strong><a href=\"/extensions\" class=\"hover-link\">Extensions</a></strong> category covers 19 features. Common gaps: <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a> (8 terminals fail), <a href=\"/extensions/kitty-graphics-protocol\" class=\"hover-link\" title=\"Kitty Graphics Protocol\">Kitty graphics protocol</a> (7 terminals fail), <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a> (7 terminals fail).</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -193,12 +193,12 @@
     "changes": null
   },
   "device": {
-    "analysis": "<p>The <strong><a href=\"/device\" class=\"hover-link\">Device Status</a></strong> category covers 9 features. Common gaps: <a href=\"/device/device-tertiary-da\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a> (7 terminals fail), <a href=\"/device/device-term-features\" class=\"hover-link\">TERM_FEATURES env var</a> (7 terminals fail), <a href=\"/device/device-xtgettcap\" class=\"hover-link\">XTGETTCAP (Query Terminfo)</a> (6 terminals fail).</p>",
+    "analysis": "<p>The <strong><a href=\"/device\" class=\"hover-link\">Device Status</a></strong> category covers 9 features. Common gaps: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a> (7 terminals fail), <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a> (7 terminals fail), <a href=\"/device/xtgettcap\" class=\"hover-link\">Query Terminfo (XTGETTCAP)</a> (6 terminals fail).</p>",
     "date": "2026-03-26",
     "changes": null
   },
   "input": {
-    "analysis": "<p>The <strong><a href=\"/input\" class=\"hover-link\">Input Protocols</a></strong> category covers 6 features. Top performers (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> and 2 more. Common gaps: <a href=\"/input/input-modify-other-keys\" class=\"hover-link\" title=\"Xterm Modify Other Keys\">modifyOtherKeys</a> (1 terminal fails), <a href=\"/input/input-csi-u-encoding\" class=\"hover-link\">CSI u Key Encoding</a> (1 terminal fails), <a href=\"/input/input-pixel-mouse-1016\" class=\"hover-link\">Pixel Mouse Reporting (1016)</a> (1 terminal fails).</p>",
+    "analysis": "<p>The <strong><a href=\"/input\" class=\"hover-link\">Input Protocols</a></strong> category covers 6 features. Top performers (100%): <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>, <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a> and 2 more. Common gaps: <a href=\"/input/modify-other-keys\" class=\"hover-link\" title=\"Xterm Modify Other Keys\">modifyOtherKeys</a> (1 terminal fails), <a href=\"/input/csi-u-encoding\" class=\"hover-link\">CSI u Key Encoding</a> (1 terminal fails), <a href=\"/input/pixel-mouse-1016\" class=\"hover-link\">Pixel Mouse Reporting (1016)</a> (1 terminal fails).</p>",
     "date": "2026-03-26",
     "changes": null
   },
@@ -252,147 +252,147 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-1-bold": {
+  "sgr/1-bold": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-2-faint-dim": {
+  "sgr/2-faint-dim": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-3-italic": {
+  "sgr/3-italic": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-4-underline": {
+  "sgr/4-underline": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-21-double-underline": {
+  "sgr/21-double-underline": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-4-3-curly-underline": {
+  "sgr/4-3-curly-underline": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-4-4-dotted-underline": {
+  "sgr/4-4-dotted-underline": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-4-5-dashed-underline": {
+  "sgr/4-5-dashed-underline": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-58-underline-color": {
+  "sgr/58-underline-color": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-5-blink": {
+  "sgr/5-blink": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-7-inverse-video": {
+  "sgr/7-inverse-video": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-8-hidden": {
+  "sgr/8-hidden": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-9-strikethrough": {
+  "sgr/9-strikethrough": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-53-overline": {
+  "sgr/53-overline": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-30-37-standard-fg": {
+  "sgr/30-37-standard-fg": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-40-47-standard-bg": {
+  "sgr/40-47-standard-bg": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-90-97-bright-fg": {
+  "sgr/90-97-bright-fg": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-100-107-bright-bg": {
+  "sgr/100-107-bright-bg": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-39-default-fg": {
+  "sgr/39-default-fg": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-49-default-bg": {
+  "sgr/49-default-bg": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-38-5-256-color-fg": {
+  "sgr/38-5-256-color-fg": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-48-5-256-color-bg": {
+  "sgr/48-5-256-color-bg": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-38-2-truecolor-fg": {
+  "sgr/38-2-truecolor-fg": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-48-2-truecolor-bg": {
+  "sgr/48-2-truecolor-bg": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-22-reset-bold": {
+  "sgr/22-reset-bold": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-24-reset-underline": {
+  "sgr/24-reset-underline": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-27-reset-inverse": {
+  "sgr/27-reset-inverse": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-23-reset-italic": {
+  "sgr/23-reset-italic": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "sgr/sgr-0-reset": {
+  "sgr/0-reset": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -432,7 +432,7 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "cursor/cursor-home": {
+  "cursor/home": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -457,7 +457,7 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "cursor/cursor-reverse-wrap-45": {
+  "cursor/reverse-wrap-45": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -522,7 +522,7 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "erase/erase-selective-decsed": {
+  "erase/selective-decsed": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -562,32 +562,32 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "input/input-modify-other-keys": {
+  "input/modify-other-keys": {
     "analysis": "<p>Supported by <strong>7</strong> of <strong>8</strong> terminals (88%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "input/input-csi-u-encoding": {
+  "input/csi-u-encoding": {
     "analysis": "<p>Supported by <strong>7</strong> of <strong>8</strong> terminals (88%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "input/input-pixel-mouse-1016": {
+  "input/pixel-mouse-1016": {
     "analysis": "<p>Supported by <strong>7</strong> of <strong>8</strong> terminals (88%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "input/input-urxvt-mouse-1015": {
+  "input/urxvt-mouse-1015": {
     "analysis": "<p>Supported by <strong>7</strong> of <strong>8</strong> terminals (88%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "input/input-x10-mouse-9": {
+  "input/x10-mouse-9": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "input/input-button-event-mouse-1002": {
+  "input/button-event-mouse-1002": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -642,7 +642,7 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "modes/modes-left-right-margin-69": {
+  "modes/left-right-margin-69": {
     "analysis": "<p>Supported by <strong>7</strong> of <strong>8</strong> terminals (88%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -667,12 +667,12 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "scrollback/scrollback-accumulates": {
+  "scrollback/accumulates": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "scrollback/scrollback-total-lines": {
+  "scrollback/total-lines": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -772,17 +772,17 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "extensions/extensions-osc-633-vscode": {
+  "extensions/osc-633-vscode": {
     "analysis": "<p>Supported by <strong>7</strong> of <strong>8</strong> terminals (88%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "extensions/extensions-notifications-osc-9": {
+  "extensions/notifications-osc-9": {
     "analysis": "<p>Supported by <strong>7</strong> of <strong>8</strong> terminals (88%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "extensions/extensions-iterm2-images": {
+  "extensions/iterm2-images": {
     "analysis": "<p>Supported by <strong>7</strong> of <strong>8</strong> terminals (88%). Not supported by: <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -797,7 +797,7 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "text/text-wrap-at-width": {
+  "text/wrap-at-width": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -832,17 +832,17 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "unicode/unicode-east-asian-ambiguous": {
+  "unicode/east-asian-ambiguous": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "unicode/unicode-grapheme-cursor": {
+  "unicode/grapheme-cursor": {
     "analysis": "<p>Supported by <strong>3</strong> of <strong>8</strong> terminals (38%). Not supported by: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/vs-code\" class=\"hover-link\">VS Code</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "unicode/unicode-wrap-boundary": {
+  "unicode/wrap-boundary": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\">Unicode</a></strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -852,7 +852,7 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "unicode/unicode-tab-stops": {
+  "unicode/tab-stops": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -882,7 +882,7 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "text/text-reverse-index-scroll": {
+  "text/reverse-index-scroll": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
@@ -942,47 +942,47 @@
     "date": "2026-03-26",
     "changes": null
   },
-  "device/device-secondary-da": {
+  "device/da2-secondary-device-attributes": {
     "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "device/device-tertiary-da": {
+  "device/da3-tertiary-device-attributes": {
     "analysis": "<p>Supported by <strong>1</strong> of <strong>8</strong> terminals (13%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for DA3 responses.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "device/device-decrqss": {
-    "analysis": "<p>Supported by <strong>5</strong> of <strong>8</strong> terminals (63%). Not supported by: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/device-decrqss\" class=\"hover-link\" title=\"DEC Request Status String\">DECRQSS</a> responses.</p>",
+  "device/decrqss": {
+    "analysis": "<p>Supported by <strong>5</strong> of <strong>8</strong> terminals (63%). Not supported by: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/decrqss\" class=\"hover-link\" title=\"DEC Request Status String\">DECRQSS</a> responses.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "device/device-xtgettcap": {
-    "analysis": "<p>Supported by <strong>2</strong> of <strong>8</strong> terminals (25%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/device-xtgettcap\" class=\"hover-link\" title=\"Xterm Get Terminal Capability\">XTGETTCAP</a> responses.</p>",
+  "device/xtgettcap": {
+    "analysis": "<p>Supported by <strong>2</strong> of <strong>8</strong> terminals (25%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/xtgettcap\" class=\"hover-link\" title=\"Xterm Get Terminal Capability\">XTGETTCAP</a> responses.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "device/device-decrpm": {
-    "analysis": "<p>Supported by <strong>5</strong> of <strong>8</strong> terminals (63%). Not supported by: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/device-decrpm\" class=\"hover-link\" title=\"DEC Private Mode Report\">DECRPM</a> responses.</p>",
+  "device/decrpm": {
+    "analysis": "<p>Supported by <strong>5</strong> of <strong>8</strong> terminals (63%). Not supported by: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/warp\" class=\"hover-link\">Warp</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for <a href=\"/device/decrpm\" class=\"hover-link\" title=\"DEC Private Mode Report\">DECRPM</a> responses.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "device/device-xtversion": {
+  "device/xtversion": {
     "analysis": "<p>Supported by <strong>4</strong> of <strong>8</strong> terminals (50%). Not supported by: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>, <a href=\"/terminal/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminal/cursor\" class=\"hover-link\">Cursor</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: Headless mode has no output stream for XTVERSION responses.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "device/device-term-features": {
+  "device/term-features": {
     "analysis": "<p><strong>Not supported</strong> by any tested terminal. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "extensions/extensions-osc1337-cellsize": {
+  "extensions/osc1337-cellsize": {
     "analysis": "<p>Supported by <strong>1</strong> of <strong>8</strong> terminals (13%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>-specific protocol not supported; <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>-specific protocol not supported by kitty.</p>",
     "date": "2026-03-26",
     "changes": null
   },
-  "extensions/extensions-osc1337-capabilities": {
+  "extensions/osc1337-capabilities": {
     "analysis": "<p><strong>Not supported</strong> by any tested terminal. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminal/ghostty\" class=\"hover-link\">Ghostty</a>: <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>-specific protocol not supported; <a href=\"/terminal/kitty\" class=\"hover-link\">Kitty</a>: <a href=\"/terminal/iterm2\" class=\"hover-link\">iTerm2</a>-specific protocol not supported by kitty.</p>",
     "date": "2026-03-26",
     "changes": null

@@ -2,7 +2,7 @@
   "$comment": "Feature metadata for terminfo.dev probes. Keyed by probe dot-path ID.",
   "sgr.bold": {
     "name": "Bold (SGR 1)",
-    "slug": "sgr-1-bold",
+    "slug": "1-bold",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": [
       "ecma-48",
@@ -15,7 +15,7 @@
   },
   "sgr.faint": {
     "name": "Faint/dim (SGR 2)",
-    "slug": "sgr-2-faint-dim",
+    "slug": "2-faint-dim",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": [
       "ecma-48",
@@ -28,7 +28,7 @@
   },
   "sgr.italic": {
     "name": "Italic (SGR 3)",
-    "slug": "sgr-3-italic",
+    "slug": "3-italic",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": [
       "ecma-48"
@@ -40,7 +40,7 @@
   },
   "sgr.underline.single": {
     "name": "Underline (SGR 4)",
-    "slug": "sgr-4-underline",
+    "slug": "4-underline",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": [
       "ecma-48",
@@ -54,7 +54,7 @@
   },
   "sgr.underline.double": {
     "name": "Double underline (SGR 21)",
-    "slug": "sgr-21-double-underline",
+    "slug": "21-double-underline",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": [
       "ecma-48"
@@ -67,7 +67,7 @@
   },
   "sgr.underline.curly": {
     "name": "Curly underline (SGR 4:3)",
-    "slug": "sgr-4-3-curly-underline",
+    "slug": "4-3-curly-underline",
     "url": "https://sw.kovidgoyal.net/kitty/underlines/",
     "tags": [
       "kitty-extensions"
@@ -80,7 +80,7 @@
   },
   "sgr.underline.dotted": {
     "name": "Dotted underline (SGR 4:4)",
-    "slug": "sgr-4-4-dotted-underline",
+    "slug": "4-4-dotted-underline",
     "url": "https://sw.kovidgoyal.net/kitty/underlines/",
     "tags": [
       "kitty-extensions"
@@ -93,7 +93,7 @@
   },
   "sgr.underline.dashed": {
     "name": "Dashed underline (SGR 4:5)",
-    "slug": "sgr-4-5-dashed-underline",
+    "slug": "4-5-dashed-underline",
     "url": "https://sw.kovidgoyal.net/kitty/underlines/",
     "tags": [
       "kitty-extensions"
@@ -106,7 +106,7 @@
   },
   "sgr.underline.color": {
     "name": "Underline color (SGR 58)",
-    "slug": "sgr-58-underline-color",
+    "slug": "58-underline-color",
     "url": "https://sw.kovidgoyal.net/kitty/underlines/",
     "tags": [
       "kitty-extensions"
@@ -119,7 +119,7 @@
   },
   "sgr.blink": {
     "name": "Blink (SGR 5)",
-    "slug": "sgr-5-blink",
+    "slug": "5-blink",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": [
       "ecma-48",
@@ -132,7 +132,7 @@
   },
   "sgr.inverse": {
     "name": "Inverse video (SGR 7)",
-    "slug": "sgr-7-inverse-video",
+    "slug": "7-inverse-video",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": [
       "ecma-48",
@@ -145,7 +145,7 @@
   },
   "sgr.hidden": {
     "name": "Hidden/invisible (SGR 8)",
-    "slug": "sgr-8-hidden",
+    "slug": "8-hidden",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": [
       "ecma-48"
@@ -157,7 +157,7 @@
   },
   "sgr.strikethrough": {
     "name": "Strikethrough (SGR 9)",
-    "slug": "sgr-9-strikethrough",
+    "slug": "9-strikethrough",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": [
       "ecma-48"
@@ -169,7 +169,7 @@
   },
   "sgr.overline": {
     "name": "Overline (SGR 53)",
-    "slug": "sgr-53-overline",
+    "slug": "53-overline",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": [
       "ecma-48"
@@ -181,7 +181,7 @@
   },
   "sgr.fg.standard": {
     "name": "Standard fg colors (SGR 30-37)",
-    "slug": "sgr-30-37-standard-fg",
+    "slug": "30-37-standard-fg",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": [
       "ecma-48"
@@ -194,7 +194,7 @@
   },
   "sgr.bg.standard": {
     "name": "Standard bg colors (SGR 40-47)",
-    "slug": "sgr-40-47-standard-bg",
+    "slug": "40-47-standard-bg",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": [
       "ecma-48"
@@ -207,7 +207,7 @@
   },
   "sgr.fg.bright": {
     "name": "Bright fg colors (SGR 90-97)",
-    "slug": "sgr-90-97-bright-fg",
+    "slug": "90-97-bright-fg",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": [
       "xterm-extensions"
@@ -220,7 +220,7 @@
   },
   "sgr.bg.bright": {
     "name": "Bright bg colors (SGR 100-107)",
-    "slug": "sgr-100-107-bright-bg",
+    "slug": "100-107-bright-bg",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": [
       "xterm-extensions"
@@ -233,7 +233,7 @@
   },
   "sgr.fg.default": {
     "name": "Default fg color (SGR 39)",
-    "slug": "sgr-39-default-fg",
+    "slug": "39-default-fg",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": [
       "ecma-48"
@@ -246,7 +246,7 @@
   },
   "sgr.bg.default": {
     "name": "Default bg color (SGR 49)",
-    "slug": "sgr-49-default-bg",
+    "slug": "49-default-bg",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": [
       "ecma-48"
@@ -259,7 +259,7 @@
   },
   "sgr.fg.256": {
     "name": "256-color fg (SGR 38;5)",
-    "slug": "sgr-38-5-256-color-fg",
+    "slug": "38-5-256-color-fg",
     "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit",
     "tags": [
       "xterm-extensions"
@@ -272,7 +272,7 @@
   },
   "sgr.bg.256": {
     "name": "256-color bg (SGR 48;5)",
-    "slug": "sgr-48-5-256-color-bg",
+    "slug": "48-5-256-color-bg",
     "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit",
     "tags": [
       "xterm-extensions"
@@ -285,7 +285,7 @@
   },
   "sgr.fg.truecolor": {
     "name": "24-bit fg (SGR 38;2)",
-    "slug": "sgr-38-2-truecolor-fg",
+    "slug": "38-2-truecolor-fg",
     "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#24-bit",
     "tags": [
       "xterm-extensions"
@@ -298,7 +298,7 @@
   },
   "sgr.bg.truecolor": {
     "name": "24-bit bg (SGR 48;2)",
-    "slug": "sgr-48-2-truecolor-bg",
+    "slug": "48-2-truecolor-bg",
     "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#24-bit",
     "tags": [
       "xterm-extensions"
@@ -311,7 +311,7 @@
   },
   "sgr.selective-reset.bold": {
     "name": "Reset bold/dim (SGR 22)",
-    "slug": "sgr-22-reset-bold",
+    "slug": "22-reset-bold",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": [
       "ecma-48"
@@ -323,7 +323,7 @@
   },
   "sgr.selective-reset.underline": {
     "name": "Reset underline (SGR 24)",
-    "slug": "sgr-24-reset-underline",
+    "slug": "24-reset-underline",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": [
       "ecma-48"
@@ -335,7 +335,7 @@
   },
   "sgr.selective-reset.inverse": {
     "name": "Reset inverse (SGR 27)",
-    "slug": "sgr-27-reset-inverse",
+    "slug": "27-reset-inverse",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": [
       "ecma-48"
@@ -347,7 +347,7 @@
   },
   "sgr.selective-reset.italic": {
     "name": "Reset italic (SGR 23)",
-    "slug": "sgr-23-reset-italic",
+    "slug": "23-reset-italic",
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": [
       "ecma-48"
@@ -359,7 +359,7 @@
   },
   "sgr.reset": {
     "name": "Reset all (SGR 0)",
-    "slug": "sgr-0-reset",
+    "slug": "0-reset",
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": [
       "ecma-48",
@@ -468,7 +468,7 @@
   },
   "cursor.move.home": {
     "name": "Cursor home",
-    "slug": "cursor-home",
+    "slug": "home",
     "url": "https://vt100.net/docs/vt510-rm/CUP.html",
     "tags": [
       "ecma-48",
@@ -532,7 +532,7 @@
   },
   "cursor.reverse-wrap": {
     "name": "Reverse Wrap (Mode 45)",
-    "slug": "cursor-reverse-wrap-45",
+    "slug": "reverse-wrap-45",
     "tags": [
       "xterm-extensions"
     ],
@@ -700,7 +700,7 @@
   },
   "erase.selective": {
     "name": "Selective Erase (DECSED)",
-    "slug": "erase-selective-decsed",
+    "slug": "selective-decsed",
     "tags": [
       "vt220"
     ],
@@ -799,7 +799,7 @@
   },
   "input.modify-other-keys": {
     "name": "modifyOtherKeys",
-    "slug": "input-modify-other-keys",
+    "slug": "modify-other-keys",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": [
       "xterm-extensions"
@@ -810,7 +810,7 @@
   },
   "input.csi-u": {
     "name": "CSI u Key Encoding",
-    "slug": "input-csi-u-encoding",
+    "slug": "csi-u-encoding",
     "url": "http://www.leonerd.org.uk/hacks/fixterms/",
     "tags": [
       "xterm-extensions"
@@ -821,7 +821,7 @@
   },
   "input.pixel-mouse": {
     "name": "Pixel Mouse Reporting (1016)",
-    "slug": "input-pixel-mouse-1016",
+    "slug": "pixel-mouse-1016",
     "tags": [
       "xterm-extensions"
     ],
@@ -832,7 +832,7 @@
   },
   "input.urxvt-mouse": {
     "name": "urxvt Mouse Reporting (1015)",
-    "slug": "input-urxvt-mouse-1015",
+    "slug": "urxvt-mouse-1015",
     "tags": [
       "xterm-extensions"
     ],
@@ -843,7 +843,7 @@
   },
   "input.x10-mouse": {
     "name": "X10 Mouse Tracking (9)",
-    "slug": "input-x10-mouse-9",
+    "slug": "x10-mouse-9",
     "tags": [
       "dec-private-modes"
     ],
@@ -854,7 +854,7 @@
   },
   "input.button-event-mouse": {
     "name": "Button-Event Mouse (1002)",
-    "slug": "input-button-event-mouse-1002",
+    "slug": "button-event-mouse-1002",
     "tags": [
       "xterm-extensions"
     ],
@@ -996,7 +996,7 @@
   },
   "modes.left-right-margin": {
     "name": "Left/Right Margins (DECLRMM, Mode 69)",
-    "slug": "modes-left-right-margin-69",
+    "slug": "left-right-margin-69",
     "tags": [
       "vt510"
     ],
@@ -1058,7 +1058,7 @@
   },
   "scrollback.accumulate": {
     "name": "Scrollback accumulates",
-    "slug": "scrollback-accumulates",
+    "slug": "accumulates",
     "tags": [
       "xterm-extensions"
     ],
@@ -1069,7 +1069,7 @@
   },
   "scrollback.total-lines": {
     "name": "Total line count",
-    "slug": "scrollback-total-lines",
+    "slug": "total-lines",
     "tags": [
       "xterm-extensions"
     ],
@@ -1314,8 +1314,8 @@
     "sequence": "ESC ] 133 ; A BEL"
   },
   "extensions.osc-633-vscode": {
-    "name": "OSC 633 VS Code Integration",
-    "slug": "extensions-osc-633-vscode",
+    "name": "VS Code Shell Integration (OSC 633)",
+    "slug": "osc-633-vscode",
     "tags": [
       "osc"
     ],
@@ -1327,7 +1327,7 @@
   },
   "extensions.notifications": {
     "name": "Desktop Notifications (OSC 9/777)",
-    "slug": "extensions-notifications-osc-9",
+    "slug": "notifications-osc-9",
     "tags": [
       "osc"
     ],
@@ -1336,8 +1336,8 @@
     "probe": "Check <code>capabilities.extensions</code> includes <code>osc9</code>. Verifies the backend declares support for OSC 9 desktop notification sequences."
   },
   "extensions.iterm2-images": {
-    "name": "iTerm2 Inline Images",
-    "slug": "extensions-iterm2-images",
+    "name": "iTerm2 Inline Images (OSC 1337)",
+    "slug": "iterm2-images",
     "tags": [
       "osc"
     ],
@@ -1367,7 +1367,7 @@
   },
   "text.wrap": {
     "name": "Text wraps at width",
-    "slug": "text-wrap-at-width",
+    "slug": "wrap-at-width",
     "body": "Tests whether text that exceeds the terminal width automatically wraps to the next line. This is controlled by DECAWM (auto-wrap mode), which is enabled by default on virtually all terminals.",
     "probe": "Write 85 characters, verify text wrapped and a character appears on row 1.",
     "baseline": "core"
@@ -1445,7 +1445,7 @@
   },
   "unicode.east-asian-ambiguous": {
     "name": "East Asian Ambiguous Width",
-    "slug": "unicode-east-asian-ambiguous",
+    "slug": "east-asian-ambiguous",
     "url": "https://www.unicode.org/reports/tr11/",
     "tags": [
       "unicode"
@@ -1456,7 +1456,7 @@
   },
   "unicode.grapheme-cursor": {
     "name": "Grapheme Cluster Cursor Movement",
-    "slug": "unicode-grapheme-cursor",
+    "slug": "grapheme-cursor",
     "tags": [
       "unicode"
     ],
@@ -1467,7 +1467,7 @@
   },
   "unicode.wrap-boundary": {
     "name": "Wide Char at Line Wrap",
-    "slug": "unicode-wrap-boundary",
+    "slug": "wrap-boundary",
     "tags": [
       "unicode"
     ],
@@ -1490,7 +1490,7 @@
   },
   "unicode.tab-stops": {
     "name": "Tab Stops (HT)",
-    "slug": "unicode-tab-stops",
+    "slug": "tab-stops",
     "url": "https://vt100.net/docs/vt510-rm/HT.html",
     "tags": [
       "ecma-48",
@@ -1562,7 +1562,7 @@
   },
   "text.reverse-index-scroll": {
     "name": "Reverse Index at Scroll Top",
-    "slug": "text-reverse-index-scroll",
+    "slug": "reverse-index-scroll",
     "tags": [
       "vt100"
     ],
@@ -1717,8 +1717,8 @@
     "sequence": "ESC [ = c"
   },
   "device.decrqss": {
-    "name": "DECRQSS (Request Setting)",
-    "slug": "device-decrqss",
+    "name": "Request Setting (DECRQSS)",
+    "slug": "decrqss",
     "tags": [
       "vt510"
     ],
@@ -1729,8 +1729,8 @@
     "sequence": "ESC P $ q setting ESC \\\\"
   },
   "device.xtgettcap": {
-    "name": "XTGETTCAP (Query Terminfo)",
-    "slug": "device-xtgettcap",
+    "name": "Query Terminfo (XTGETTCAP)",
+    "slug": "xtgettcap",
     "tags": [
       "xterm-extensions"
     ],
@@ -1741,8 +1741,8 @@
     "sequence": "ESC P + q hex-name ESC \\\\"
   },
   "device.decrpm": {
-    "name": "Mode Reporting (DECRPM)",
-    "slug": "device-decrpm",
+    "name": "Mode Report (DECRPM)",
+    "slug": "decrpm",
     "url": "https://vt100.net/docs/vt510-rm/DECRPM.html",
     "tags": [
       "vt510"
@@ -1754,7 +1754,7 @@
   },
   "device.xtversion": {
     "name": "Terminal Version (XTVERSION)",
-    "slug": "device-xtversion",
+    "slug": "xtversion",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": [
       "xterm-extensions"
@@ -1764,8 +1764,8 @@
     "probe": "Send CSI > 0 q, verify the terminal responds with a DCS > | version string."
   },
   "device.term-features": {
-    "name": "TERM_FEATURES env var",
-    "slug": "device-term-features",
+    "name": "Feature Reporting (TERM_FEATURES)",
+    "slug": "term-features",
     "url": "https://gitlab.com/gnachman/iterm2/-/wikis/TERM_FEATURES",
     "tags": [
       "iterm2"
@@ -1775,8 +1775,8 @@
     "probe": "Check whether the TERM_FEATURES environment variable is set in the terminal session."
   },
   "extensions.osc1337-cellsize": {
-    "name": "Cell Size Reporting (OSC 1337)",
-    "slug": "extensions-osc1337-cellsize",
+    "name": "iTerm2 Cell Size Reporting (OSC 1337)",
+    "slug": "osc1337-cellsize",
     "tags": [
       "osc",
       "iterm2"
@@ -1787,8 +1787,8 @@
     "url": "https://iterm2.com/documentation-escape-codes.html"
   },
   "extensions.osc1337-capabilities": {
-    "name": "Capability Reporting (OSC 1337)",
-    "slug": "extensions-osc1337-capabilities",
+    "name": "iTerm2 Capability Reporting (OSC 1337)",
+    "slug": "osc1337-capabilities",
     "tags": [
       "osc",
       "iterm2"
