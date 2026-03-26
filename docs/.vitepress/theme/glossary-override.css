@@ -4,7 +4,7 @@
   display: inline !important;
   color: inherit !important;
   text-decoration: underline dotted !important;
-  text-decoration-color: var(--vp-c-divider) !important;
+  text-decoration-color: var(--vp-c-text-3) !important;
   text-underline-offset: 3px !important;
   padding-bottom: 0 !important;
   cursor: help;

@@ -252,7 +252,9 @@ export const modesProbes: ProbeDefinition[] = [
     "modes.left-right-margin",
     (ctx) => {
       ctx.feed("\x1b[?69h")
-      return { pass: true }
+      const pass = ctx.getMode("leftRightMargin") === true
+      ctx.feed("\x1b[?69l")
+      return { pass }
     },
     async (ctx) => {
       ctx.write("\x1b[?69h") // enable DECLRMM

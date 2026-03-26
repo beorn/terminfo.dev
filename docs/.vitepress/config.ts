@@ -387,7 +387,13 @@ function loadGlossaryMap(): Record<string, string> {
     }
   } catch {}
 
-  return map
+  // Sort keys longest-first so regex alternation prefers longer matches
+  // (e.g., "Kitty Extensions" matches before "Kitty")
+  const sorted: Record<string, string> = {}
+  for (const key of Object.keys(map).sort((a, b) => b.length - a.length)) {
+    sorted[key] = map[key]
+  }
+  return sorted
 }
 
 const glossaryMap = loadGlossaryMap()
@@ -402,7 +408,7 @@ export default defineConfig({
     config: (md) => {
       md.use(markdownGlossaryPlugin, {
         glossary: glossaryMap,
-        firstOccurrenceOnly: true,
+        firstOccurrenceOnly: false,
       })
     },
   },

@@ -41,7 +41,9 @@ export const inputProbes: ProbeDefinition[] = [
     "input.pixel-mouse",
     (ctx) => {
       ctx.feed("\x1b[?1016h")
-      return { pass: true }
+      const pass = ctx.getMode("pixelMouse") === true
+      ctx.feed("\x1b[?1016l")
+      return { pass }
     },
     async (ctx) => {
       ctx.write("\x1b[?1016h") // enable pixel mouse

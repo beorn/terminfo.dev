@@ -265,7 +265,12 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 1337 ReportCellSize — query cell dimensions in pixels
   probe(
     "extensions.osc1337-cellsize",
-    null, // not testable in headless
+    (ctx) => {
+      const response = ctx.feedCapture("\x1b]1337;ReportCellSize\x07")
+      const match = response.match(/\x1b\]1337;ReportCellSize=(\d+(?:\.\d+)?);(\d+(?:\.\d+)?)/)
+      if (!match) return { pass: false, note: "No ReportCellSize response" }
+      return { pass: true, note: `${match[1]}x${match[2]} pixels` }
+    },
     async (ctx) => {
       const match = await ctx.queryWithSentinel(
         "\x1b]1337;ReportCellSize\x07",
@@ -279,7 +284,12 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 1337 RequestCapabilities — query terminal capabilities
   probe(
     "extensions.osc1337-capabilities",
-    null, // not testable in headless
+    (ctx) => {
+      const response = ctx.feedCapture("\x1b]1337;RequestCapabilities\x07")
+      const match = response.match(/\x1b\]1337;Capabilities=([^\x07\x1b]*)/)
+      if (!match) return { pass: false, note: "No Capabilities response" }
+      return { pass: true, response: match[1] }
+    },
     async (ctx) => {
       const match = await ctx.queryWithSentinel(
         "\x1b]1337;RequestCapabilities\x07",

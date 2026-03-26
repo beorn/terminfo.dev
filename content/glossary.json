@@ -201,12 +201,12 @@
   },
   "mouse tracking": {
     "expansion": "Mouse Tracking",
-    "description": "Terminal mode that reports mouse clicks, movement, and scroll wheel events to the application. Enables clickable TUI interfaces. Multiple protocols exist (X10, SGR, urxvt).",
+    "description": "Terminal reports mouse clicks, movement, and scroll wheel events to the application.",
     "link": "/modes"
   },
   "synchronized output": {
     "expansion": "Synchronized Output (Mode 2026)",
-    "description": "Buffers all terminal output between start/end markers and paints it as one frame. Eliminates the visible flicker when clearing and redrawing the screen.",
+    "description": "Buffer all output between start/end markers and paint as one frame. Eliminates flicker.",
     "link": "/modes"
   },
   "text reflow": {
@@ -378,5 +378,35 @@
     "expansion": "Erase Character",
     "description": "Erase N characters at cursor position without moving the cursor.",
     "link": "/erase"
+  },
+  "Kitty keyboard protocol": {
+    "expansion": "Kitty Keyboard Protocol",
+    "description": "Unambiguous key reporting with modifiers and release events. Solves Ctrl+I/Tab ambiguity. Adopted by Ghostty, WezTerm, foot.",
+    "link": "/kitty-extensions"
+  },
+  "Kitty graphics protocol": {
+    "expansion": "Kitty Graphics Protocol",
+    "description": "Inline image display via chunked base64 transfer. More capable than Sixel but less widely supported.",
+    "link": "/kitty-extensions"
+  },
+  "bracketed paste mode": {
+    "expansion": "Bracketed Paste Mode",
+    "description": "Terminal wraps pasted text in markers so the shell knows it is pasted, not typed. Prevents accidental command execution.",
+    "link": "/modes"
+  },
+  "alternate screen buffer": {
+    "expansion": "Alternate Screen Buffer",
+    "description": "A separate screen for full-screen apps. When the app exits, previous content reappears.",
+    "link": "/modes/modes-alt-screen-enter"
+  },
+  "focus reporting": {
+    "expansion": "Focus Reporting",
+    "description": "Terminal notifies the app when the window gains or loses focus. Enables apps to pause/resume rendering.",
+    "link": "/modes"
+  },
+  "scroll region": {
+    "expansion": "Scroll Region (DECSTBM)",
+    "description": "Define a range of lines that scroll independently. Used by TUIs for status bars, headers.",
+    "link": "/scrollback"
   }
 }
