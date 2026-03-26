@@ -8,7 +8,7 @@ based on automated testing rather than self-reported specs.
 
 The site is named terminfo.dev, but it works differently from the traditional terminfo database.
 
-**terminfo** (maintained by Thomas Dickey alongside ncurses) is a compiled capability database: it maps terminal names to supported features. Applications query it via `$TERM` to discover what the terminal can do. This system works well for established features — but it has fundamental limitations for modern terminal capabilities:
+**[terminfo](https://invisible-island.net/ncurses/terminfo.src.html)** (maintained by [Thomas Dickey](https://invisible-island.net/) alongside ncurses) is a compiled capability database: it maps terminal names to supported features. Applications query it via `$TERM` to discover what the terminal can do. This system works well for established features — but it has fundamental limitations for modern terminal capabilities:
 
 - **No vocabulary for modern features.** terminfo has no capability entries for Kitty keyboard protocol, OSC 8 hyperlinks, semantic prompts (OSC 133), synchronized output, or Sixel/Kitty graphics. These features are invisible to terminfo-based applications.
 - **Static, not observed.** terminfo entries describe what a terminal _should_ support, not what it _actually does_. Bugs, version differences, and configuration changes aren't captured.
@@ -18,11 +18,11 @@ terminfo.dev takes a different approach: **probe the terminal directly** and rep
 
 ## Three Data Sources
 
-**Terminal Applications** — tested on real terminals via the `npx terminfo.dev` community CLI or automated app launch probes. Each test sends escape sequences to the actual terminal and verifies behavior via cursor position reports, device attribute queries, and rendered width measurements. These results reflect what users actually experience. Currently 7 terminal apps tested: Ghostty, iTerm2, Kitty, Terminal.app, Warp, VS Code, and Cursor.
+**[Terminal Applications](/)** — tested on real terminals via the `npx terminfo.dev` community CLI or automated app launch probes. Each test sends escape sequences to the actual terminal and verifies behavior via cursor position reports, device attribute queries, and rendered width measurements. These results reflect what users actually experience. Currently 7 terminal apps tested: Ghostty, iTerm2, Kitty, Terminal.app, Warp, VS Code, and Cursor.
 
-**Headless Backends** — tested via [Termless](https://termless.dev) against headless terminal emulator libraries. These test parser correctness — whether the library correctly parses and stores the escape sequence. A headless pass means "the parser accepts this" not "this renders correctly." Some features (like blink, cursor shape) may parse correctly but are not exposed through the library's API. Currently 7 headless backends tested (some with multiple versions).
+**[Headless Backends](/backends)** — tested via [Termless](https://termless.dev) against headless terminal emulator libraries. These test parser correctness — whether the library correctly parses and stores the escape sequence. A headless pass means "the parser accepts this" not "this renders correctly." Some features (like blink, cursor shape) may parse correctly but are not exposed through the library's API. Currently 7 headless backends tested (some with multiple versions).
 
-**Multiplexer Pass-Through** — tested by running probes through terminal multiplexers (tmux, GNU Screen) to measure which features each multiplexer correctly relays vs. strips or mishandles. Currently tmux and GNU Screen tested.
+**[Multiplexer Pass-Through](/multiplexers)** — tested by running probes through terminal multiplexers (tmux, GNU Screen) to measure which features each multiplexer correctly relays vs. strips or mishandles. Currently tmux and GNU Screen tested.
 
 The site shows these as separate sections: real terminal results first (the primary data source), headless backend results second (useful for parser implementors and library authors), and multiplexer results third (useful for users who run tmux or screen).
 

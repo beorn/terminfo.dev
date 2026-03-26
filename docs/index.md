@@ -425,7 +425,7 @@ function backendTooltip(name, version) {
 
 </div>
 
-<div v-if="muxBackends.length > 0">
+<div v-show="muxBackends.length > 0">
 
 ## Multiplexers {#multiplexers}
 
