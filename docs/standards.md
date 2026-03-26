@@ -13,8 +13,8 @@ import { data } from './data/probes.data'
 
 // Count features per standard tag
 const standardOrder = [
-  'ecma-48', 'vt100', 'vt220', 'vt510', 'dec-private-modes',
-  'xterm-extensions', 'osc', 'kitty-extensions', 'sixel', 'unicode'
+  'ecma-48', 'vt100', 'vt220', 'sixel', 'vt510', 'dec-private-modes',
+  'unicode', 'xterm-extensions', 'osc', 'kitty-extensions'
 ]
 
 const standardsMeta = {
