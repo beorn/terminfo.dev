@@ -71,18 +71,6 @@
   "xtermjs:extensions.osc1337-capabilities": {
     "note": "iTerm2-specific protocol not supported"
   },
-  "xtermjs:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not supported in headless mode",
-    "result": "partial"
-  },
-  "xtermjs:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not supported in headless mode",
-    "result": "partial"
-  },
-  "xtermjs:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not supported in headless mode",
-    "result": "partial"
-  },
   "xtermjs:extensions.osc-633-vscode": {
     "note": "VS Code shell integration (OSC 633) not supported"
   },
@@ -193,18 +181,6 @@
   },
   "ghostty-native:device.xtversion": {
     "note": "Headless mode has no output stream for XTVERSION responses",
-    "result": "partial"
-  },
-  "ghostty-native:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not supported in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not supported in headless mode",
-    "result": "partial"
-  },
-  "ghostty-native:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not supported in headless mode",
     "result": "partial"
   },
   "ghostty-native:input.urxvt-mouse": {
@@ -356,18 +332,6 @@
     "note": "SGR pixel mouse mode not exposed via alacritty_terminal API",
     "result": "partial"
   },
-  "alacritty:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not supported in headless mode",
-    "result": "partial"
-  },
-  "alacritty:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not supported in headless mode",
-    "result": "partial"
-  },
-  "alacritty:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not supported in headless mode",
-    "result": "partial"
-  },
   "alacritty:extensions.osc-633-vscode": {
     "note": "VS Code shell integration (OSC 633) not supported"
   },
@@ -404,9 +368,6 @@
   "kitty:input.modify-other-keys": {
     "note": "modifyOtherKeys not exposed via Python batch bridge",
     "result": "partial"
-  },
-  "kitty:extensions.semantic-prompts": {
-    "note": "Not implemented in kitty"
   },
   "kitty:extensions.sixel": {
     "note": "Declined by maintainer — kitty uses its own graphics protocol instead of sixel"
@@ -487,12 +448,6 @@
     "note": "SGR pixel mouse mode not exposed via Python batch bridge",
     "result": "partial"
   },
-  "kitty:input.urxvt-mouse": {
-    "note": "urxvt mouse mode (?1015) not implemented"
-  },
-  "kitty:input.x10-mouse": {
-    "note": "X10 mouse mode (?9) not implemented"
-  },
   "kitty:input.button-event-mouse": {
     "note": "Button-event mouse tracking not exposed via headless API",
     "result": "partial"
@@ -535,12 +490,6 @@
   "vt100:extensions.sixel": {
     "note": "Not implemented — pure TypeScript emulator"
   },
-  "vt100:sgr.blink": {
-    "note": "Not implemented — pure TypeScript emulator"
-  },
-  "vt100:sgr.hidden": {
-    "note": "Not implemented — pure TypeScript emulator"
-  },
   "vt100:sgr.underline.color": {
     "note": "Not implemented — pure TypeScript emulator"
   },
@@ -558,15 +507,6 @@
   },
   "vt100:editing.repeat-char": {
     "note": "REP not implemented — pure TypeScript emulator"
-  },
-  "vt100:modes.insert-replace": {
-    "note": "IRM not implemented — pure TypeScript emulator"
-  },
-  "vt100:modes.application-keypad": {
-    "note": "Not implemented — pure TypeScript emulator"
-  },
-  "vt100:reset.soft": {
-    "note": "DECSTR not implemented — pure TypeScript emulator"
   },
   "vt100:modes.left-right-margin": {
     "note": "DECLRMM not implemented — pure TypeScript emulator"
@@ -600,18 +540,6 @@
   },
   "vt100:extensions.osc1337-capabilities": {
     "note": "iTerm2-specific protocol not implemented — pure TypeScript emulator"
-  },
-  "vt100:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not supported in headless mode",
-    "result": "partial"
-  },
-  "vt100:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not supported in headless mode",
-    "result": "partial"
-  },
-  "vt100:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not supported in headless mode",
-    "result": "partial"
   },
   "vt100:extensions.osc-633-vscode": {
     "note": "VS Code shell integration (OSC 633) not supported"
@@ -702,18 +630,6 @@
     "note": "DECSTR resets modes but headless probe reads stale state",
     "result": "partial"
   },
-  "wezterm:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not supported in headless mode",
-    "result": "partial"
-  },
-  "wezterm:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not supported in headless mode",
-    "result": "partial"
-  },
-  "wezterm:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not supported in headless mode",
-    "result": "partial"
-  },
   "wezterm:input.urxvt-mouse": {
     "note": "urxvt mouse mode (?1015) not implemented"
   },
@@ -733,18 +649,6 @@
   },
   "vterm:modes.left-right-margin": {
     "note": "DECLRMM not implemented"
-  },
-  "vterm:input.pixel-mouse": {
-    "note": "SGR pixel mouse mode (?1016) not implemented"
-  },
-  "vterm:input.urxvt-mouse": {
-    "note": "urxvt mouse mode (?1015) not implemented"
-  },
-  "vterm:input.x10-mouse": {
-    "note": "X10 mouse mode (?9) not implemented"
-  },
-  "vterm:erase.selective": {
-    "note": "DECSED (selective erase) not implemented"
   },
   "wezterm:unicode.wrap-boundary": {
     "note": "Wide char at end of line not handled correctly in headless mode",
@@ -875,12 +779,6 @@
   "screen:extensions.kitty-keyboard": {
     "note": "Screen does not support kitty keyboard protocol"
   },
-  "screen:extensions.osc10-fg-color": {
-    "note": "Screen does not pass through OSC 10 color queries"
-  },
-  "screen:extensions.osc11-bg-color": {
-    "note": "Screen does not pass through OSC 11 color queries"
-  },
   "screen:extensions.osc1337-capabilities": {
     "note": "iTerm2-specific protocol not supported by Screen"
   },
@@ -913,29 +811,6 @@
   },
   "screen:unicode.tab-stops": {
     "note": "Screen's tab stop handling differs from direct terminal"
-  },
-  "ghostty-native:extensions.sixel-da1": {
-    "note": "DA1 response doesn't include attribute 4 in headless mode",
-    "result": "partial"
-  },
-  "wezterm:extensions.sixel-da1": {
-    "note": "DA1 response doesn't include attribute 4 in headless mode",
-    "result": "partial"
-  },
-  "kitty:extensions.sixel-da1": {
-    "note": "DA1 response not available in headless mode",
-    "result": "partial"
-  },
-  "alacritty:extensions.sixel-da1": {
-    "note": "DA1 response not available in headless mode",
-    "result": "partial"
-  },
-  "xtermjs:extensions.sixel-da1": {
-    "note": "DA1 response not available in xterm.js headless mode",
-    "result": "partial"
-  },
-  "vt100:extensions.sixel-da1": {
-    "note": "VT100 DA1 response doesn't include sixel attribute"
   },
   "vt100:sgr.faint": {
     "note": "Not in VT100/VT220 — use vterm.js for modern SGR"
