@@ -501,7 +501,8 @@
     ],
     "baseline": "rich",
     "body": "Reverse wrap mode (mode 45) allows backspace at column 0 to wrap to the end of the previous line. Without this mode, backspace at column 0 is a no-op. Useful for command-line editing across wrapped lines.",
-    "probe": "Enable auto-wrap + reverse wrap, fill row 0 to trigger wrap to row 1, backspace — verify cursor reverse-wraps to end of row 0 via <code>getCursor()</code>."
+    "probe": "Enable auto-wrap + reverse wrap, fill row 0 to trigger wrap to row 1, backspace — verify cursor reverse-wraps to end of row 0 via <code>getCursor()</code>.",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_"
   },
   "cursor.cup-boundaries": {
     "name": "CUP at screen boundaries",
@@ -660,7 +661,8 @@
     ],
     "baseline": "rich",
     "body": "DECSED (CSI ? Ps J) erases only unprotected characters, leaving characters with the protected attribute (DECSCA, SGR 1 m) intact. Used for form-based applications where static labels should survive screen clears.",
-    "probe": "Write \"ABCDE\", move cursor home, send DECSED (<code>CSI ? 2 J</code>), verify <code>getCell(0,0)</code> is empty. Confirms selective erase display is recognized."
+    "probe": "Write \"ABCDE\", move cursor home, send DECSED (<code>CSI ? 2 J</code>), verify <code>getCell(0,0)</code> is empty. Confirms selective erase display is recognized.",
+    "url": "https://vt100.net/docs/vt510-rm/DECSED.html"
   },
   "erase.el-with-attrs": {
     "name": "EL erases with bg color",
@@ -775,7 +777,8 @@
     ],
     "baseline": "rich",
     "body": "SGR-Pixels mouse mode (mode 1016) reports mouse coordinates in pixels rather than cells. This enables sub-cell precision for applications that need exact pointer positioning, such as terminal-based drawing tools or image viewers.",
-    "probe": "Enable SGR pixel mouse (<code>CSI ? 1016 h</code>), check <code>getMode(\"pixelMouse\")</code> returns true."
+    "probe": "Enable SGR pixel mouse (<code>CSI ? 1016 h</code>), check <code>getMode(\"pixelMouse\")</code> returns true.",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.urxvt-mouse": {
     "name": "urxvt Mouse Reporting (1015)",
@@ -785,7 +788,8 @@
     ],
     "baseline": "rich",
     "body": "urxvt-style mouse reporting (mode 1015) uses decimal encoding for coordinates, extending reporting beyond the 223-column limit of traditional X10 encoding. Less common than SGR mouse (1006) but still supported by some terminals.",
-    "probe": "Enable urxvt mouse mode (<code>CSI ? 1015 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true. Verifies the backend recognizes this specific mouse encoding."
+    "probe": "Enable urxvt mouse mode (<code>CSI ? 1015 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true. Verifies the backend recognizes this specific mouse encoding.",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.x10-mouse": {
     "name": "X10 Mouse Tracking (9)",
@@ -795,7 +799,8 @@
     ],
     "baseline": "modern",
     "body": "X10 compatibility mouse tracking (mode 9) reports only button press events, not releases or motion. This is the oldest mouse tracking mode, limited to coordinates up to 223 and press-only events.",
-    "probe": "Enable X10 mouse mode (<code>CSI ? 9 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true."
+    "probe": "Enable X10 mouse mode (<code>CSI ? 9 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true.",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.button-event-mouse": {
     "name": "Button-Event Mouse (1002)",
@@ -805,7 +810,8 @@
     ],
     "baseline": "modern",
     "body": "Button-event tracking (mode 1002) reports mouse button press, release, and motion while a button is held. More detailed than basic tracking (1000) but less verbose than all-motion tracking (1003).",
-    "probe": "Enable button-event mouse tracking (<code>CSI ? 1002 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true."
+    "probe": "Enable button-event mouse tracking (<code>CSI ? 1002 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true.",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "modes.alt-screen.enter": {
     "name": "Enter alt screen (DECSET 1049)",
@@ -936,7 +942,8 @@
     ],
     "baseline": "rich",
     "body": "DECLRMM (mode 69) enables left and right scroll margins, similar to top/bottom margins set by DECSTBM. When enabled, DECSLRM sets the left and right margins. Scrolling and editing operations are confined to the margin area.",
-    "probe": "Enable DECLRMM (<code>CSI ? 69 h</code>), check <code>getMode(\"leftRightMargin\")</code> returns true. Confirms the backend tracks left/right margin mode."
+    "probe": "Enable DECLRMM (<code>CSI ? 69 h</code>), check <code>getMode(\"leftRightMargin\")</code> returns true. Confirms the backend tracks left/right margin mode.",
+    "url": "https://vt100.net/docs/vt510-rm/DECLRMM.html"
   },
   "modes.insert-replace": {
     "name": "Insert/replace mode (IRM)",
@@ -993,7 +1000,8 @@
     ],
     "body": "Tests whether lines scrolled off the top of the visible screen are preserved in the scrollback buffer. This is fundamental terminal behavior — without scrollback accumulation, users cannot scroll up to see previous output. Virtually all modern terminals maintain a scrollback buffer, though the maximum size varies.",
     "probe": "Write 30 lines (exceeding the 24-row screen), verify total line count exceeds 24.",
-    "baseline": "core"
+    "baseline": "core",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html"
   },
   "scrollback.total-lines": {
     "name": "Total line count",
@@ -1003,7 +1011,8 @@
     ],
     "body": "Tests whether the terminal can report the total number of lines in the buffer (visible + scrollback). This is used by testing frameworks and terminal introspection tools to verify scrollback behavior.",
     "probe": "Write 30 lines, verify total line count is at least 30.",
-    "baseline": "core"
+    "baseline": "core",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html"
   },
   "scrollback.scroll-up": {
     "name": "Scroll up (SU)",
@@ -1255,7 +1264,8 @@
     ],
     "baseline": "rich",
     "body": "<p><strong>iTerm2 inline images</strong> use the proprietary <strong>OSC 1337</strong> protocol to display images directly in terminal output. The image data is base64-encoded and transmitted inline with the escape sequence. iTerm2 supports PNG, JPEG, GIF, and other formats.</p>\n<p>This protocol predates the Kitty graphics protocol and is simpler but less capable — it lacks features like image placement, animation control, and chunked transfer. Several other terminals (WezTerm, mintty) have adopted the iTerm2 protocol alongside or instead of Kitty graphics. The protocol is documented in iTerm2's documentation but has no formal specification.</p>",
-    "probe": "Check <code>capabilities.extensions</code> includes <code>iterm2Images</code>. Verifies the backend declares support for iTerm2 inline image protocol (OSC 1337 File=)."
+    "probe": "Check <code>capabilities.extensions</code> includes <code>iterm2Images</code>. Verifies the backend declares support for iTerm2 inline image protocol (OSC 1337 File=).",
+    "url": "https://iterm2.com/documentation-images.html"
   },
   "extensions.truecolor": {
     "name": "24-bit truecolor",
@@ -1291,7 +1301,8 @@
     "group": "wide",
     "body": "Tests whether CJK (Chinese, Japanese, Korean) ideographs correctly occupy two terminal columns. The Unicode Standard Annex #11 defines East Asian Width properties. Terminals must account for this in cursor positioning — after rendering a CJK character, the cursor advances by 2 columns, not 1. Incorrect width handling breaks TUI layouts and cursor alignment.",
     "probe": "Write U+4E2D (CJK character), verify the cell has <code>wide=true</code> (occupies 2 columns).",
-    "baseline": "core"
+    "baseline": "core",
+    "url": "https://unicode.org/reports/tr11/"
   },
   "text.wide.emoji": {
     "name": "Emoji wide chars (2 cols)",
@@ -1302,7 +1313,8 @@
     "group": "wide",
     "body": "Tests whether emoji characters correctly occupy two terminal columns. Emoji width handling is more complex than CJK — it involves variation selectors (VS15 for text, VS16 for emoji presentation), zero-width joiners (ZWJ sequences like family emoji), and skin tone modifiers. Terminals frequently disagree on emoji widths, especially for newer Unicode additions.",
     "probe": "Write U+1F389 (party popper emoji), verify the cell has <code>wide=true</code> (occupies 2 columns).",
-    "baseline": "unicode"
+    "baseline": "unicode",
+    "url": "https://unicode.org/reports/tr51/"
   },
   "text.wide.emoji-zwj": {
     "name": "Emoji ZWJ sequences (2 cols)",
@@ -1313,7 +1325,8 @@
     "group": "wide",
     "body": "Zero Width Joiner (ZWJ) sequences combine multiple emoji into a single glyph. For example, 👨‍👩‍👧‍👦 (family) is four person emoji joined with ZWJ characters. A terminal that handles ZWJ correctly renders this as a single 2-column wide glyph, not as four separate emoji.",
     "probe": "Write a ZWJ sequence (e.g., family emoji), verify it renders as a single 2-column glyph rather than separate emoji.",
-    "baseline": "unicode"
+    "baseline": "unicode",
+    "url": "https://unicode.org/reports/tr51/#ZWJ_Sequences"
   },
   "text.wide.emoji-flags": {
     "name": "Regional indicator flags (2 cols)",
@@ -1324,7 +1337,8 @@
     "group": "wide",
     "body": "Regional Indicator symbols are paired to form flag emoji. For example, 🇺🇸 (US flag) is the sequence U+1F1FA U+1F1F8. A terminal that handles these correctly renders the pair as a single 2-column wide flag glyph.",
     "probe": "Write a regional indicator pair (e.g., U+1F1FA U+1F1F8 for US flag), verify it renders as a single 2-column glyph.",
-    "baseline": "unicode"
+    "baseline": "unicode",
+    "url": "https://unicode.org/reports/tr51/#Flags"
   },
   "text.wide.emoji-vs16": {
     "name": "Variation selector 16 (emoji presentation)",
@@ -1335,7 +1349,8 @@
     "group": "wide",
     "body": "Variation Selector 16 (VS-16, U+FE0F) forces emoji presentation for characters that have both text and emoji forms. For example, ☺ (U+263A) is 1 column in text presentation, but ☺️ (U+263A + VS-16) should be 2 columns in emoji presentation.",
     "probe": "Write a character with Variation Selector 16 (e.g., U+263A + U+FE0F), verify it occupies 2 columns in emoji presentation.",
-    "baseline": "unicode"
+    "baseline": "unicode",
+    "url": "https://unicode.org/reports/tr51/#Presentation_Style"
   },
   "text.combining": {
     "name": "Combining characters (0 cols)",
@@ -1345,7 +1360,8 @@
     ],
     "body": "Combining characters (like accents, diacritical marks) attach to the preceding base character and should occupy zero additional columns. For example, é can be written as e + U+0301 (combining acute accent) — the cursor should advance by 1 column, not 2.",
     "probe": "Write a base character followed by a combining accent (e.g., e + U+0301), verify the combined character occupies 1 column, not 2.",
-    "baseline": "unicode"
+    "baseline": "unicode",
+    "url": "https://unicode.org/reports/tr29/"
   },
   "unicode.east-asian-ambiguous": {
     "name": "East Asian Ambiguous Width",
@@ -1366,7 +1382,8 @@
     ],
     "baseline": "unicode",
     "body": "Cursor movement (CUF/CUB) should respect grapheme cluster boundaries. Moving the cursor back over a ZWJ emoji sequence should skip the entire sequence, not individual codepoints. Many terminals still move by codepoint rather than grapheme cluster.",
-    "probe": "Write an emoji ZWJ sequence, move cursor back by 1, verify cursor position."
+    "probe": "Write an emoji ZWJ sequence, move cursor back by 1, verify cursor position.",
+    "url": "https://unicode.org/reports/tr29/#Grapheme_Cluster_Boundaries"
   },
   "unicode.wrap-boundary": {
     "name": "Wide Char at Line Wrap",
@@ -1376,7 +1393,8 @@
     ],
     "baseline": "unicode",
     "body": "When a wide character (CJK or emoji) would begin in the last column of the line, it should wrap to the next line rather than being split across the boundary. The last column should be left blank.",
-    "probe": "Fill line to last column, write a wide character, verify it appears on the next line."
+    "probe": "Fill line to last column, write a wide character, verify it appears on the next line.",
+    "url": "https://unicode.org/reports/tr11/"
   },
   "text.tab": {
     "name": "Tab stops",
@@ -1470,7 +1488,8 @@
     ],
     "baseline": "core",
     "body": "RI (ESC M) at the top of the scroll region scrolls the entire region down, inserting a blank line at the top. This is the inverse of a newline at the bottom of the scroll region. Used for smooth scrolling and status line implementations.",
-    "probe": "Set scroll region, write MARKER at top, reverse index — verify MARKER shifted from row 0 to row 1 via <code>getCell(1,0)</code>."
+    "probe": "Set scroll region, write MARKER at top, reverse index — verify MARKER shifted from row 0 to row 1 via <code>getCell(1,0)</code>.",
+    "url": "https://vt100.net/docs/vt510-rm/RI.html"
   },
   "text.overwrite": {
     "name": "Overwrite at cursor",
@@ -1487,7 +1506,8 @@
     ],
     "body": "Tests whether SGR 0 (<code>ESC [ 0 m</code>) correctly clears all text attributes — bold, faint, italic, underline, blink, inverse, hidden, strikethrough, overline, and colors. This is the most basic reset and should leave the terminal in its default text rendering state.",
     "probe": "Apply bold+italic+inverse via <code>\\x1b[1;3;7m</code>X then send <code>\\x1b[0m</code>Y, verify the second cell has all attributes cleared.",
-    "baseline": "core"
+    "baseline": "core",
+    "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/"
   },
   "reset.ris": {
     "name": "Full reset (RIS)",
@@ -1539,7 +1559,8 @@
     ],
     "body": "Tests whether the terminal correctly handles UTF-8 encoded text. Virtually all modern terminals default to UTF-8 mode. UTF-8 encodes Unicode code points as 1-4 byte sequences, allowing the full range of Unicode characters (emoji, CJK, mathematical symbols, etc.) to be displayed in the terminal.",
     "probe": "Write é (e-acute, 2-byte UTF-8) and 世 (CJK, 3-byte UTF-8), verify each renders as the correct Unicode character.",
-    "baseline": "core"
+    "baseline": "core",
+    "url": "https://unicode.org/faq/utf_bom.html"
   },
   "charsets.g0-g1-switching": {
     "name": "G0/G1 character set switching",
@@ -1617,7 +1638,8 @@
     ],
     "baseline": "rich",
     "body": "DECRQSS (DCS $ q Pt ST) queries the current value of a terminal setting. For example, querying DECSCL returns the current conformance level. Useful for terminals that want to verify their configuration programmatically.",
-    "probe": "Send DCS $ q \" p ST to query DECSCL, check for a DCS response."
+    "probe": "Send DCS $ q \" p ST to query DECSCL, check for a DCS response.",
+    "url": "https://vt100.net/docs/vt510-rm/DECRQSS.html"
   },
   "device.xtgettcap": {
     "name": "XTGETTCAP (Query Terminfo)",
@@ -1627,7 +1649,8 @@
     ],
     "baseline": "rich",
     "body": "XTGETTCAP (DCS + q Pt ST) queries terminfo capabilities via DCS escape sequences. The terminal responds with the capability value, allowing applications to query terminal features without parsing terminfo databases. Used by notcurses and foot.",
-    "probe": "Send DCS + q 544e ST (hex-encoded query for TN capability), check for a DCS response."
+    "probe": "Send DCS + q 544e ST (hex-encoded query for TN capability), check for a DCS response.",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands"
   },
   "device.decrpm": {
     "name": "Mode Reporting (DECRPM)",
@@ -1671,7 +1694,8 @@
     ],
     "baseline": "rich",
     "body": "OSC 1337 ; ReportCellSize queries the terminal for the dimensions of a single character cell in pixels. The response is OSC 1337 ; ReportCellSize=height;width ST. This is essential for pixel-accurate image rendering protocols (sixel, iTerm2 inline images, kitty graphics) where applications need to know the exact pixel dimensions of cells to scale images correctly.",
-    "probe": "Query cell size with <code>OSC 1337 ; ReportCellSize BEL</code>, verify response matches <code>OSC 1337 ; ReportCellSize=H;W</code> pattern via feedCapture."
+    "probe": "Query cell size with <code>OSC 1337 ; ReportCellSize BEL</code>, verify response matches <code>OSC 1337 ; ReportCellSize=H;W</code> pattern via feedCapture.",
+    "url": "https://iterm2.com/documentation-escape-codes.html"
   },
   "extensions.osc1337-capabilities": {
     "name": "Capability Reporting (OSC 1337)",
@@ -1682,7 +1706,8 @@
     ],
     "baseline": "rich",
     "body": "OSC 1337 ; RequestCapabilities queries the terminal to report all its supported capabilities at once. The response is OSC 1337 ; Capabilities=... ST with a structured list of supported features. This provides a single-query alternative to probing individual features, though adoption is currently limited to iTerm2.",
-    "probe": "Query capabilities with <code>OSC 1337 ; RequestCapabilities BEL</code>, verify response matches <code>OSC 1337 ; Capabilities=...</code> pattern via feedCapture."
+    "probe": "Query capabilities with <code>OSC 1337 ; RequestCapabilities BEL</code>, verify response matches <code>OSC 1337 ; Capabilities=...</code> pattern via feedCapture.",
+    "url": "https://iterm2.com/documentation-escape-codes.html"
   },
   "extensions.sixel-da1": {
     "name": "Sixel support in DA1",

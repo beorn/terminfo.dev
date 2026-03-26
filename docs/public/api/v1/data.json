@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-26T07:37:09.669Z",
+  "generated": "2026-03-26T07:38:48.913Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
@@ -36,6 +36,7 @@
       "name": "UTF-8 mode",
       "category": "charsets",
       "slug": "utf8-mode",
+      "url": "https://unicode.org/faq/utf_bom.html",
       "tags": [
         "unicode"
       ],
@@ -197,6 +198,7 @@
       "name": "Reverse Wrap (Mode 45)",
       "category": "cursor",
       "slug": "cursor-reverse-wrap-45",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
       "tags": [
         "xterm-extensions"
       ],
@@ -238,6 +240,7 @@
       "name": "DECRQSS (Request Setting)",
       "category": "device",
       "slug": "device-decrqss",
+      "url": "https://vt100.net/docs/vt510-rm/DECRQSS.html",
       "tags": [
         "vt510"
       ],
@@ -299,6 +302,7 @@
       "name": "XTGETTCAP (Query Terminfo)",
       "category": "device",
       "slug": "device-xtgettcap",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands",
       "tags": [
         "xterm-extensions"
       ],
@@ -480,6 +484,7 @@
       "name": "Selective Erase (DECSED)",
       "category": "erase",
       "slug": "erase-selective-decsed",
+      "url": "https://vt100.net/docs/vt510-rm/DECSED.html",
       "tags": [
         "vt220"
       ],
@@ -489,6 +494,7 @@
       "name": "iTerm2 Inline Images",
       "category": "extensions",
       "slug": "extensions-iterm2-images",
+      "url": "https://iterm2.com/documentation-images.html",
       "tags": [
         "osc"
       ],
@@ -570,6 +576,7 @@
       "name": "Capability Reporting (OSC 1337)",
       "category": "extensions",
       "slug": "extensions-osc1337-capabilities",
+      "url": "https://iterm2.com/documentation-escape-codes.html",
       "tags": [
         "osc",
         "iterm2"
@@ -580,6 +587,7 @@
       "name": "Cell Size Reporting (OSC 1337)",
       "category": "extensions",
       "slug": "extensions-osc1337-cellsize",
+      "url": "https://iterm2.com/documentation-escape-codes.html",
       "tags": [
         "osc",
         "iterm2"
@@ -683,6 +691,7 @@
       "name": "Button-Event Mouse (1002)",
       "category": "input",
       "slug": "input-button-event-mouse-1002",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
       "tags": [
         "xterm-extensions"
       ],
@@ -712,6 +721,7 @@
       "name": "Pixel Mouse Reporting (1016)",
       "category": "input",
       "slug": "input-pixel-mouse-1016",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
       "tags": [
         "xterm-extensions"
       ],
@@ -721,6 +731,7 @@
       "name": "urxvt Mouse Reporting (1015)",
       "category": "input",
       "slug": "input-urxvt-mouse-1015",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
       "tags": [
         "xterm-extensions"
       ],
@@ -730,6 +741,7 @@
       "name": "X10 Mouse Tracking (9)",
       "category": "input",
       "slug": "input-x10-mouse-9",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
       "tags": [
         "dec-private-modes"
       ],
@@ -826,6 +838,7 @@
       "name": "Left/Right Margins (DECLRMM, Mode 69)",
       "category": "modes",
       "slug": "modes-left-right-margin-69",
+      "url": "https://vt100.net/docs/vt510-rm/DECLRMM.html",
       "tags": [
         "vt510"
       ],
@@ -917,6 +930,7 @@
       "name": "SGR reset clears attributes",
       "category": "reset",
       "slug": "sgr-0-reset-clears-attributes",
+      "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
       "tags": [
         "ecma-48"
       ],
@@ -937,6 +951,7 @@
       "name": "Scrollback accumulates",
       "category": "scrollback",
       "slug": "scrollback-accumulates",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
       "tags": [
         "xterm-extensions"
       ],
@@ -1022,6 +1037,7 @@
       "name": "Total line count",
       "category": "scrollback",
       "slug": "scrollback-total-lines",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
       "tags": [
         "xterm-extensions"
       ],
@@ -1344,6 +1360,7 @@
       "name": "Combining characters (0 cols)",
       "category": "text",
       "slug": "combining-characters",
+      "url": "https://unicode.org/reports/tr29/",
       "tags": [
         "unicode"
       ],
@@ -1403,6 +1420,7 @@
       "name": "Reverse Index at Scroll Top",
       "category": "text",
       "slug": "text-reverse-index-scroll",
+      "url": "https://vt100.net/docs/vt510-rm/RI.html",
       "tags": [
         "vt100"
       ],
@@ -1423,6 +1441,7 @@
       "name": "CJK wide chars (2 cols)",
       "category": "text",
       "slug": "cjk-wide-chars",
+      "url": "https://unicode.org/reports/tr11/",
       "tags": [
         "unicode"
       ],
@@ -1432,6 +1451,7 @@
       "name": "Emoji wide chars (2 cols)",
       "category": "text",
       "slug": "emoji-wide-chars",
+      "url": "https://unicode.org/reports/tr51/",
       "tags": [
         "unicode"
       ],
@@ -1441,6 +1461,7 @@
       "name": "Regional indicator flags (2 cols)",
       "category": "text",
       "slug": "emoji-regional-indicator-flags",
+      "url": "https://unicode.org/reports/tr51/#Flags",
       "tags": [
         "unicode"
       ],
@@ -1450,6 +1471,7 @@
       "name": "Variation selector 16 (emoji presentation)",
       "category": "text",
       "slug": "variation-selector-16-emoji",
+      "url": "https://unicode.org/reports/tr51/#Presentation_Style",
       "tags": [
         "unicode"
       ],
@@ -1459,6 +1481,7 @@
       "name": "Emoji ZWJ sequences (2 cols)",
       "category": "text",
       "slug": "emoji-zwj-sequences",
+      "url": "https://unicode.org/reports/tr51/#ZWJ_Sequences",
       "tags": [
         "unicode"
       ],
@@ -1484,6 +1507,7 @@
       "name": "Grapheme Cluster Cursor Movement",
       "category": "unicode",
       "slug": "unicode-grapheme-cursor",
+      "url": "https://unicode.org/reports/tr29/#Grapheme_Cluster_Boundaries",
       "tags": [
         "unicode"
       ],
@@ -1504,6 +1528,7 @@
       "name": "Wide Char at Line Wrap",
       "category": "unicode",
       "slug": "unicode-wrap-boundary",
+      "url": "https://unicode.org/reports/tr11/",
       "tags": [
         "unicode"
       ],
