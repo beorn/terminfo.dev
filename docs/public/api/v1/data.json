@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-26T04:34:55.654Z",
+  "generated": "2026-03-26T05:15:20.426Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
@@ -274,6 +274,16 @@
         "vt100"
       ],
       "baseline": "modern"
+    },
+    "device.term-features": {
+      "name": "TERM_FEATURES env var",
+      "category": "device",
+      "slug": "device-term-features",
+      "url": "https://gitlab.com/gnachman/iterm2/-/wikis/TERM_FEATURES",
+      "tags": [
+        "iterm2"
+      ],
+      "baseline": "rich"
     },
     "device.tertiary-da": {
       "name": "Tertiary Device Attributes (DA3)",
@@ -1504,7 +1514,7 @@
       ],
       "url": "https://code.visualstudio.com",
       "score": {
-        "total": 147,
+        "total": 148,
         "pass": 137,
         "pct": 93
       }
@@ -1517,9 +1527,9 @@
         "macos"
       ],
       "score": {
-        "total": 147,
+        "total": 148,
         "pass": 135,
-        "pct": 92
+        "pct": 91
       }
     },
     "ghostty": {
@@ -1531,7 +1541,7 @@
       ],
       "url": "https://ghostty.org",
       "score": {
-        "total": 147,
+        "total": 148,
         "pass": 140,
         "pct": 95
       }
@@ -1545,9 +1555,9 @@
       ],
       "url": "https://iterm2.com",
       "score": {
-        "total": 147,
+        "total": 148,
         "pass": 144,
-        "pct": 98
+        "pct": 97
       }
     },
     "kitty": {
@@ -1559,9 +1569,9 @@
       ],
       "url": "https://sw.kovidgoyal.net/kitty/",
       "score": {
-        "total": 147,
+        "total": 148,
         "pass": 132,
-        "pct": 90
+        "pct": 89
       }
     },
     "terminal-app": {
@@ -1573,9 +1583,9 @@
       ],
       "url": "https://support.apple.com/guide/terminal",
       "score": {
-        "total": 147,
+        "total": 148,
         "pass": 132,
-        "pct": 90
+        "pct": 89
       }
     },
     "warp": {
@@ -1587,9 +1597,9 @@
       ],
       "url": "https://www.warp.dev",
       "score": {
-        "total": 147,
+        "total": 148,
         "pass": 135,
-        "pct": 92
+        "pct": 91
       }
     },
     "alacritty": {
@@ -1598,9 +1608,9 @@
       "type": "headless",
       "url": "https://alacritty.org",
       "score": {
-        "total": 145,
+        "total": 148,
         "pass": 123,
-        "pct": 85
+        "pct": 83
       }
     },
     "vt100": {
@@ -1608,9 +1618,9 @@
       "version": "0.2.1",
       "type": "headless",
       "score": {
-        "total": 145,
+        "total": 148,
         "pass": 117,
-        "pct": 81
+        "pct": 79
       }
     },
     "vterm": {
@@ -1618,9 +1628,9 @@
       "version": "0.2.0",
       "type": "headless",
       "score": {
-        "total": 145,
+        "total": 148,
         "pass": 141,
-        "pct": 97
+        "pct": 95
       }
     },
     "wezterm": {
@@ -1629,9 +1639,9 @@
       "type": "headless",
       "url": "https://wezfurlong.org/wezterm",
       "score": {
-        "total": 145,
+        "total": 148,
         "pass": 121,
-        "pct": 83
+        "pct": 82
       }
     }
   },
@@ -1783,7 +1793,8 @@
       "scrollback.total-lines": "yes",
       "scrollback.alt-screen": "yes",
       "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes"
+      "modes.mouse-all": "yes",
+      "device.term-features": "no"
     },
     "cursor": {
       "cursor.position-report": "yes",
@@ -1932,7 +1943,8 @@
       "scrollback.total-lines": "yes",
       "scrollback.alt-screen": "yes",
       "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes"
+      "modes.mouse-all": "yes",
+      "device.term-features": "no"
     },
     "ghostty": {
       "cursor.position-report": "yes",
@@ -2081,7 +2093,8 @@
       "scrollback.total-lines": "yes",
       "scrollback.alt-screen": "yes",
       "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes"
+      "modes.mouse-all": "yes",
+      "device.term-features": "no"
     },
     "iterm2": {
       "cursor.position-report": "yes",
@@ -2230,7 +2243,8 @@
       "scrollback.total-lines": "yes",
       "scrollback.alt-screen": "yes",
       "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes"
+      "modes.mouse-all": "yes",
+      "device.term-features": "no"
     },
     "kitty": {
       "cursor.position-report": "yes",
@@ -2379,7 +2393,8 @@
       "scrollback.total-lines": "yes",
       "scrollback.alt-screen": "yes",
       "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes"
+      "modes.mouse-all": "yes",
+      "device.term-features": "no"
     },
     "terminal-app": {
       "cursor.position-report": "yes",
@@ -2528,7 +2543,8 @@
       "scrollback.total-lines": "yes",
       "scrollback.alt-screen": "yes",
       "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes"
+      "modes.mouse-all": "yes",
+      "device.term-features": "no"
     },
     "warp": {
       "cursor.position-report": "yes",
@@ -2677,7 +2693,8 @@
       "scrollback.total-lines": "yes",
       "scrollback.alt-screen": "yes",
       "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes"
+      "modes.mouse-all": "yes",
+      "device.term-features": "no"
     },
     "alacritty": {
       "erase.line.right": "yes",
@@ -2824,7 +2841,10 @@
       "scrollback.set-region": "yes",
       "scrollback.alt-screen": "yes",
       "scrollback.decstbm": "yes",
-      "scrollback.decstbm-reset": "yes"
+      "scrollback.decstbm-reset": "yes",
+      "device.term-features": "no",
+      "extensions.osc1337-capabilities": "no",
+      "extensions.osc1337-cellsize": "no"
     },
     "vt100": {
       "erase.line.right": "yes",
@@ -2971,7 +2991,10 @@
       "scrollback.set-region": "yes",
       "scrollback.alt-screen": "yes",
       "scrollback.decstbm": "yes",
-      "scrollback.decstbm-reset": "yes"
+      "scrollback.decstbm-reset": "yes",
+      "device.term-features": "no",
+      "extensions.osc1337-capabilities": "no",
+      "extensions.osc1337-cellsize": "no"
     },
     "vterm": {
       "charsets.dec-special": "yes",
@@ -3118,7 +3141,10 @@
       "unicode.east-asian-ambiguous": "yes",
       "unicode.grapheme-cursor": "yes",
       "unicode.wrap-boundary": "yes",
-      "unicode.tab-stops": "yes"
+      "unicode.tab-stops": "yes",
+      "device.term-features": "no",
+      "extensions.osc1337-capabilities": "no",
+      "extensions.osc1337-cellsize": "no"
     },
     "wezterm": {
       "erase.line.right": "yes",
@@ -3265,7 +3291,10 @@
       "scrollback.set-region": "yes",
       "scrollback.alt-screen": "yes",
       "scrollback.decstbm": "yes",
-      "scrollback.decstbm-reset": "yes"
+      "scrollback.decstbm-reset": "yes",
+      "device.term-features": "no",
+      "extensions.osc1337-capabilities": "no",
+      "extensions.osc1337-cellsize": "no"
     }
   },
   "notes": {

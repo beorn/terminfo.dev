@@ -148,6 +148,9 @@
     "unicode.east-asian-ambiguous": true,
     "unicode.grapheme-cursor": true,
     "unicode.wrap-boundary": true,
-    "unicode.tab-stops": true
+    "unicode.tab-stops": true,
+    "device.term-features": false,
+    "extensions.osc1337-capabilities": false,
+    "extensions.osc1337-cellsize": false
   }
 }

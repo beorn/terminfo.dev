@@ -148,7 +148,10 @@
     "scrollback.set-region": true,
     "scrollback.alt-screen": true,
     "scrollback.decstbm": true,
-    "scrollback.decstbm-reset": true
+    "scrollback.decstbm-reset": true,
+    "device.term-features": false,
+    "extensions.osc1337-capabilities": false,
+    "extensions.osc1337-cellsize": false
   },
   "notes": {
     "cursor.position-report": "not supported",

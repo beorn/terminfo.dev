@@ -6,13 +6,13 @@
   <clipPath id="r"><rect width="185" height="20" rx="3" fill="#fff"/></clipPath>
   <g clip-path="url(#r)">
     <rect width="89" height="20" fill="#555"/>
-    <rect x="89" width="96" height="20" fill="#4c1"/>
+    <rect x="89" width="96" height="20" fill="#dfb317"/>
     <rect width="185" height="20" fill="url(#s)"/>
   </g>
   <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
     <text x="44.5" y="15" fill="#010101" fill-opacity=".3">Terminal.app</text>
     <text x="44.5" y="14">Terminal.app</text>
-    <text x="137" y="15" fill="#010101" fill-opacity=".3">90% (132/147)</text>
-    <text x="137" y="14">90% (132/147)</text>
+    <text x="137" y="15" fill="#010101" fill-opacity=".3">89% (132/148)</text>
+    <text x="137" y="14">89% (132/148)</text>
   </g>
 </svg>

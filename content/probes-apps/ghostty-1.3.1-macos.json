@@ -152,7 +152,8 @@
     "scrollback.total-lines": true,
     "scrollback.alt-screen": true,
     "modes.alt-screen.exit": true,
-    "modes.mouse-all": true
+    "modes.mouse-all": true,
+    "device.term-features": false
   },
   "notes": {
     "cursor.cup-scroll-region": "got 1;1, expected 5;1",

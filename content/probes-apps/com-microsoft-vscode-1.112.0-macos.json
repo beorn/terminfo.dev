@@ -152,7 +152,8 @@
     "scrollback.total-lines": true,
     "scrollback.alt-screen": true,
     "modes.alt-screen.exit": true,
-    "modes.mouse-all": true
+    "modes.mouse-all": true,
+    "device.term-features": false
   },
   "notes": {
     "device.tertiary-da": "No DA3 response",
