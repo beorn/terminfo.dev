@@ -13,11 +13,14 @@ import { join } from "node:path"
 import type MarkdownIt from "markdown-it"
 import type Token from "markdown-it/lib/token.mjs"
 
+const GENERIC_PAGES = new Set(["/glossary", "/features", "/standards", "/about"])
+
 interface Entity {
   term: string
   pattern: RegExp
   href: string
   tooltip: string
+  tooltipOnly: boolean // true = render as <span> with tooltip, not clickable <a>
 }
 
 function escapeAttr(s: string): string {
@@ -39,11 +42,13 @@ function buildEntityList(contentDir: string): Entity[] {
     >
     for (const [key, entry] of Object.entries(raw)) {
       if (!entry.link) continue
+      const isGeneric = GENERIC_PAGES.has(entry.link)
       entities.push({
         term: key,
         pattern: new RegExp(`\\b${escapeRegex(key)}\\b`, "g"),
-        href: entry.link,
+        href: isGeneric ? "" : entry.link,
         tooltip: `${entry.expansion} — ${entry.description}`,
+        tooltipOnly: isGeneric,
       })
     }
   } catch {}
@@ -61,6 +66,7 @@ function buildEntityList(contentDir: string): Entity[] {
         pattern: new RegExp(`\\b${escapeRegex(t.label)}\\b`, "g"),
         href: `/terminal/${t.slug}`,
         tooltip: t.description || `${t.label} terminal emulator`,
+        tooltipOnly: false,
       })
     }
   } catch {}
@@ -78,6 +84,7 @@ function buildEntityList(contentDir: string): Entity[] {
         pattern: new RegExp(`\\b${escapeRegex(f.label)}\\b`, "g"),
         href: `/framework/${id}`,
         tooltip: f.description || `${f.label} TUI framework`,
+        tooltipOnly: false,
       })
     }
   } catch {}
@@ -95,6 +102,7 @@ function buildEntityList(contentDir: string): Entity[] {
         pattern: new RegExp(`\\b${escapeRegex(s.label)}\\b`, "g"),
         href: `/${id}`,
         tooltip: s.description?.slice(0, 150) || s.label,
+        tooltipOnly: false,
       })
     }
   } catch {}
@@ -112,6 +120,7 @@ function buildEntityList(contentDir: string): Entity[] {
         pattern: new RegExp(`\\b${escapeRegex(c.label)}\\b`, "g"),
         href: `/${id}`,
         tooltip: c.description?.slice(0, 150) || c.label,
+        tooltipOnly: false,
       })
     }
   } catch {}
@@ -129,6 +138,7 @@ function buildEntityList(contentDir: string): Entity[] {
         pattern: new RegExp(`\\b${escapeRegex(b.label)}\\b`, "g"),
         href: `/baseline/${id}`,
         tooltip: b.tagline || `${b.label} baseline`,
+        tooltipOnly: false,
       })
     }
   } catch {}
@@ -184,7 +194,10 @@ function replaceEntities(text: string, entities: Entity[]): string {
   for (const { start, end, entity } of matches) {
     const original = result.slice(start, end)
     const tooltip = entity.tooltip ? ` data-tooltip="${escapeAttr(entity.tooltip)}"` : ""
-    result = result.slice(0, start) + `<a href="${entity.href}" class="hover-link"${tooltip}>${original}</a>` + result.slice(end)
+    const replacement = entity.href
+      ? `<a href="${entity.href}" class="hover-link"${tooltip}>${original}</a>`
+      : `<span class="glossary-hint"${tooltip}>${original}</span>`
+    result = result.slice(0, start) + replacement + result.slice(end)
   }
   return result
 }
@@ -265,7 +278,10 @@ function replaceInHtml(html: string, entities: Entity[]): string {
         const absEnd = absStart + m[0].length
         let overlap = false
         for (let p = absStart; p < absEnd; p++) {
-          if (occupied.has(p)) { overlap = true; break }
+          if (occupied.has(p)) {
+            overlap = true
+            break
+          }
         }
         if (overlap) continue
         for (let p = absStart; p < absEnd; p++) occupied.add(p)
@@ -281,7 +297,10 @@ function replaceInHtml(html: string, entities: Entity[]): string {
   for (const { start, end, entity } of matches) {
     const original = result.slice(start, end)
     const tooltip = entity.tooltip ? ` data-tooltip="${escapeAttr(entity.tooltip)}"` : ""
-    result = result.slice(0, start) + `<a href="${entity.href}" class="hover-link"${tooltip}>${original}</a>` + result.slice(end)
+    const replacement = entity.href
+      ? `<a href="${entity.href}" class="hover-link"${tooltip}>${original}</a>`
+      : `<span class="glossary-hint"${tooltip}>${original}</span>`
+    result = result.slice(0, start) + replacement + result.slice(end)
   }
   return result
 }

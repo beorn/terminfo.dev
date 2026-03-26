@@ -205,9 +205,17 @@ export const textProbes: ProbeDefinition[] = [
     "text.reverse-index-scroll",
     (ctx) => {
       ctx.feed("\x1b[1;5r") // Set scroll region to lines 1-5
-      ctx.feed("\x1b[H") // Move to top
-      ctx.feed("\x1bM") // Reverse index
-      return { pass: true }
+      ctx.feed("\x1b[H") // Move to top (row 0)
+      ctx.feed("MARKER")
+      ctx.feed("\x1b[H") // Back to top
+      ctx.feed("\x1bM") // Reverse index at top — should scroll region down
+      // MARKER should have moved from row 0 to row 1
+      const cell = ctx.getCell(1, 0)
+      ctx.feed("\x1b[r") // reset scroll region
+      return {
+        pass: cell.char === "M",
+        note: cell.char === "M" ? undefined : `row 1 char='${cell.char}', expected 'M' (MARKER shifted down)`,
+      }
     },
     async (ctx) => {
       ctx.write("\x1b[3;10r") // scroll region rows 3-10

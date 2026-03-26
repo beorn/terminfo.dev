@@ -169,8 +169,14 @@ export const eraseProbes: ProbeDefinition[] = [
   probe(
     "erase.selective",
     (ctx) => {
-      ctx.feed("ABCDE\x1b[?2J")
-      return { pass: true }
+      ctx.feed("ABCDE")
+      ctx.feed("\x1b[H") // back to top-left
+      ctx.feed("\x1b[?2J") // DECSED — selective erase display
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "" || cell.char === " ",
+        note: cell.char === "" || cell.char === " " ? undefined : `cell='${cell.char}', expected empty`,
+      }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")

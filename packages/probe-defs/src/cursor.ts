@@ -145,8 +145,18 @@ export const cursorProbes: ProbeDefinition[] = [
   probe(
     "cursor.reverse-wrap",
     (ctx) => {
-      ctx.feed("\x1b[?45h")
-      return { pass: true }
+      ctx.feed("\x1b[?7h") // enable auto-wrap
+      ctx.feed("\x1b[?45h") // enable reverse wrap
+      // Write to end of first row, wrap to second row, then backspace
+      const cols = 80
+      ctx.feed("A".repeat(cols)) // fills row 0, wraps to row 1
+      ctx.feed("\x08") // backspace — should reverse-wrap to end of row 0
+      const cursor = ctx.getCursor()
+      ctx.feed("\x1b[?45l")
+      return {
+        pass: cursor.y === 0 && cursor.x === cols - 1,
+        note: cursor.y === 0 ? undefined : `cursor at ${cursor.x},${cursor.y}, expected ${cols - 1},0`,
+      }
     },
     async (ctx) => {
       ctx.write("\x1b[?45h") // enable reverse wrap

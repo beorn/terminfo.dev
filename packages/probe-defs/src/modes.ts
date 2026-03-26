@@ -206,8 +206,9 @@ export const modesProbes: ProbeDefinition[] = [
     1006,
     (ctx) => {
       ctx.feed("\x1b[?1006h")
+      const pass = ctx.getMode("sgrMouse") === true
       ctx.feed("\x1b[?1006l")
-      return { pass: true }
+      return { pass }
     },
     responsiveAfterEnable,
   ),
@@ -220,8 +221,9 @@ export const modesProbes: ProbeDefinition[] = [
     1003,
     (ctx) => {
       ctx.feed("\x1b[?1003h")
+      const pass = ctx.getMode("mouseTracking") === true
       ctx.feed("\x1b[?1003l")
-      return { pass: true }
+      return { pass }
     },
     responsiveAfterEnable,
   ),

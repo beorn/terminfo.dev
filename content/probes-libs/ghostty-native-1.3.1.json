@@ -1,7 +1,7 @@
 {
   "backend": "ghostty-native",
   "version": "1.3.1",
-  "generated": "2026-03-26T07:11:54.095Z",
+  "generated": "2026-03-26T07:20:44.920Z",
   "probeHash": "34eda06e1595",
   "results": {
     "sgr.bold": true,
@@ -93,8 +93,8 @@
     "modes.synchronized-output": true,
     "modes.origin": true,
     "modes.insert-replace": true,
-    "modes.mouse-sgr": true,
-    "modes.mouse-all": true,
+    "modes.mouse-sgr": false,
+    "modes.mouse-all": false,
     "modes.application-keypad": true,
     "modes.left-right-margin": false,
     "device.primary-da": false,
@@ -157,6 +157,8 @@
     "sgr.underline.color": "not supported",
     "cursor.position-report": "not supported",
     "text.wide.emoji-vs16": "not supported",
+    "modes.mouse-sgr": "not supported",
+    "modes.mouse-all": "not supported",
     "modes.left-right-margin": "not supported",
     "device.primary-da": "not supported",
     "device.status-report": "not supported",

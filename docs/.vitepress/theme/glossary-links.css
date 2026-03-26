@@ -14,7 +14,15 @@
   font-weight: inherit !important;
   font-size: inherit !important;
   line-height: inherit !important;
-  transition: text-decoration-color 0.15s ease, color 0.15s ease;
+  transition:
+    text-decoration-color 0.15s ease,
+    color 0.15s ease;
+}
+
+/* Glossary-only hints: tooltip on hover, no underline, not clickable */
+.vp-doc .glossary-hint {
+  position: relative;
+  cursor: help;
 }
 
 .vp-doc a.hover-link:hover {

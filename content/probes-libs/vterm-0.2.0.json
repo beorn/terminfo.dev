@@ -1,7 +1,7 @@
 {
   "backend": "vterm",
   "version": "0.2.0",
-  "generated": "2026-03-26T07:11:54.095Z",
+  "generated": "2026-03-26T07:20:44.920Z",
   "probeHash": "34eda06e1595",
   "results": {
     "sgr.bold": true,
@@ -74,7 +74,7 @@
     "erase.screen.all": true,
     "erase.screen.scrollback": true,
     "erase.character": true,
-    "erase.selective": true,
+    "erase.selective": false,
     "erase.el-with-attrs": true,
     "erase.ed-scroll-region": true,
     "editing.insert-chars": true,
@@ -152,6 +152,7 @@
     "unicode.tab-stops": true
   },
   "notes": {
+    "erase.selective": "not supported",
     "modes.left-right-margin": "not supported",
     "input.pixel-mouse": "not supported",
     "input.urxvt-mouse": "not supported",

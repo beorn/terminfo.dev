@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generated": "2026-03-26T07:15:47.380Z",
+  "generated": "2026-03-26T07:21:09.653Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
@@ -1614,8 +1614,8 @@
       "url": "https://alacritty.org",
       "score": {
         "total": 146,
-        "pass": 110,
-        "pct": 75
+        "pass": 107,
+        "pct": 73
       }
     },
     "vt100": {
@@ -1624,8 +1624,8 @@
       "type": "headless",
       "score": {
         "total": 146,
-        "pass": 103,
-        "pct": 71
+        "pass": 101,
+        "pct": 69
       }
     },
     "vterm": {
@@ -1634,8 +1634,8 @@
       "type": "headless",
       "score": {
         "total": 146,
-        "pass": 141,
-        "pct": 97
+        "pass": 140,
+        "pct": 96
       }
     },
     "wezterm": {
@@ -1645,8 +1645,8 @@
       "url": "https://wezfurlong.org/wezterm",
       "score": {
         "total": 146,
-        "pass": 108,
-        "pct": 74
+        "pass": 106,
+        "pct": 73
       }
     }
   },
@@ -2743,7 +2743,7 @@
       "cursor.next-line": "yes",
       "cursor.position-report": "partial",
       "cursor.save-restore": "yes",
-      "cursor.reverse-wrap": "yes",
+      "cursor.reverse-wrap": "no",
       "cursor.cup-boundaries": "yes",
       "cursor.cuu-past-top": "yes",
       "cursor.cud-past-bottom": "yes",
@@ -2772,7 +2772,7 @@
       "erase.screen.all": "no",
       "erase.screen.scrollback": "yes",
       "erase.character": "yes",
-      "erase.selective": "yes",
+      "erase.selective": "no",
       "erase.el-with-attrs": "yes",
       "erase.ed-scroll-region": "yes",
       "editing.insert-chars": "yes",
@@ -2791,7 +2791,7 @@
       "modes.synchronized-output": "yes",
       "modes.origin": "yes",
       "modes.insert-replace": "yes",
-      "modes.mouse-sgr": "yes",
+      "modes.mouse-sgr": "no",
       "modes.mouse-all": "yes",
       "modes.application-keypad": "yes",
       "modes.left-right-margin": "partial",
@@ -2920,7 +2920,7 @@
       "erase.screen.all": "yes",
       "erase.screen.scrollback": "yes",
       "erase.character": "yes",
-      "erase.selective": "yes",
+      "erase.selective": "no",
       "erase.el-with-attrs": "no",
       "erase.ed-scroll-region": "yes",
       "editing.insert-chars": "yes",
@@ -2939,7 +2939,7 @@
       "modes.synchronized-output": "yes",
       "modes.origin": "yes",
       "modes.insert-replace": "no",
-      "modes.mouse-sgr": "yes",
+      "modes.mouse-sgr": "no",
       "modes.mouse-all": "yes",
       "modes.application-keypad": "no",
       "modes.left-right-margin": "no",
@@ -3068,7 +3068,7 @@
       "erase.screen.all": "yes",
       "erase.screen.scrollback": "yes",
       "erase.character": "yes",
-      "erase.selective": "yes",
+      "erase.selective": "no",
       "erase.el-with-attrs": "yes",
       "erase.ed-scroll-region": "yes",
       "editing.insert-chars": "yes",
@@ -3216,7 +3216,7 @@
       "erase.screen.all": "yes",
       "erase.screen.scrollback": "yes",
       "erase.character": "yes",
-      "erase.selective": "yes",
+      "erase.selective": "no",
       "erase.el-with-attrs": "no",
       "erase.ed-scroll-region": "yes",
       "editing.insert-chars": "yes",
@@ -3235,7 +3235,7 @@
       "modes.synchronized-output": "yes",
       "modes.origin": "yes",
       "modes.insert-replace": "yes",
-      "modes.mouse-sgr": "yes",
+      "modes.mouse-sgr": "no",
       "modes.mouse-all": "yes",
       "modes.application-keypad": "partial",
       "modes.left-right-margin": "partial",
@@ -3516,10 +3516,13 @@
       "sgr.underline.color": "Not exposed via alacritty_terminal API",
       "sgr.fg.standard": "Backend returns palette index instead of resolved RGB",
       "cursor.position-report": "Headless mode has no output stream for DSR responses",
+      "cursor.reverse-wrap": "not supported",
       "text.wide.emoji-flags": "Emoji flag sequences not rendered as wide characters",
       "text.wide.emoji-vs16": "VS16 emoji variation selectors not handled",
       "erase.screen.all": "Alacritty's ED 2 doesn't clear scrollback content from buffer",
+      "erase.selective": "not supported",
       "modes.reverse-video": "Not exposed via alacritty_terminal API",
+      "modes.mouse-sgr": "not supported",
       "modes.left-right-margin": "DECLRMM not exposed via alacritty_terminal API",
       "device.primary-da": "Headless mode has no output stream for DA1 responses",
       "device.status-report": "Headless mode has no output stream for DSR responses",
@@ -3557,9 +3560,11 @@
       "text.combining": "Combining characters not implemented — pure TypeScript emulator",
       "text.wide.emoji-flags": "Emoji flag sequences not rendered as wide characters",
       "text.wide.emoji-vs16": "VS16 emoji variation selectors not handled",
+      "erase.selective": "not supported",
       "erase.el-with-attrs": "EL doesn't preserve SGR background — pure TypeScript emulator",
       "editing.repeat-char": "REP not implemented — pure TypeScript emulator",
       "modes.insert-replace": "IRM not implemented — pure TypeScript emulator",
+      "modes.mouse-sgr": "not supported",
       "modes.application-keypad": "Not implemented — pure TypeScript emulator",
       "modes.left-right-margin": "DECLRMM not implemented — pure TypeScript emulator",
       "device.primary-da": "No output stream — pure TypeScript emulator",
@@ -3593,6 +3598,7 @@
       "reset.soft": "DECSTR not implemented — pure TypeScript emulator"
     },
     "vterm": {
+      "erase.selective": "not supported",
       "modes.left-right-margin": "DECLRMM not implemented",
       "input.pixel-mouse": "SGR pixel mouse mode (?1016) not implemented",
       "input.urxvt-mouse": "urxvt mouse mode (?1015) not implemented",
@@ -3612,7 +3618,9 @@
       "cursor.position-report": "Headless mode has no output stream for DSR responses",
       "cursor.cup-boundaries": "CUP boundary behavior differs in wezterm-term headless mode",
       "text.wide.emoji-vs16": "VS16 emoji variation selectors not handled",
+      "erase.selective": "not supported",
       "erase.el-with-attrs": "EL doesn't preserve SGR background in headless mode",
+      "modes.mouse-sgr": "not supported",
       "modes.application-keypad": "Not exposed via wezterm-term API",
       "modes.left-right-margin": "DECLRMM not exposed via wezterm-term API",
       "device.primary-da": "Headless mode has no output stream for DA1 responses",
