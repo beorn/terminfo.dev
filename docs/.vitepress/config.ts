@@ -370,8 +370,20 @@ export default defineConfig({
   cleanUrls: true,
   head: [
     ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
-    ["meta", { name: "twitter:card", content: "summary" }],
+    ["meta", { name: "twitter:card", content: "summary_large_image" }],
     ["meta", { name: "twitter:site", content: "@AskTerminfo" }],
+    ["meta", { property: "og:image", content: "https://terminfo.dev/og-image.png" }],
+    [
+      "script",
+      { type: "application/ld+json" },
+      JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        name: "Terminfo.dev",
+        url: "https://terminfo.dev",
+        description: "Can your terminal do that? Feature support tables for terminal emulators.",
+      }),
+    ],
     [
       "script",
       {
@@ -396,65 +408,100 @@ export default defineConfig({
   transformPageData(pageData) {
     const rel = pageData.relativePath
 
+    // Canonical URL (cleanUrls: true — no .html extension)
+    const cleanPath = rel.replace(/index\.md$/, "").replace(/\.md$/, "")
+    const canonicalUrl = `https://terminfo.dev/${cleanPath}`
+    pageData.frontmatter.head ??= []
+    pageData.frontmatter.head.push(["link", { rel: "canonical", href: canonicalUrl }])
+
+    // JSON-LD BreadcrumbList
+    const segments = cleanPath.split("/").filter(Boolean)
+    if (segments.length > 0) {
+      const breadcrumbItems = [
+        { "@type": "ListItem", position: 1, name: "Home", item: "https://terminfo.dev/" },
+      ]
+      for (let i = 0; i < segments.length; i++) {
+        const path = segments.slice(0, i + 1).join("/")
+        const name = segments[i]
+          .replace(/-/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+        breadcrumbItems.push({
+          "@type": "ListItem",
+          position: i + 2,
+          name: pageData.title && i === segments.length - 1 ? pageData.title : name,
+          item: `https://terminfo.dev/${path}`,
+        })
+      }
+      pageData.frontmatter.head.push([
+        "script",
+        { type: "application/ld+json" },
+        JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: breadcrumbItems,
+        }),
+      ])
+    }
+
     // SEO for Fundamentals pages
     if (rel === "fundamentals.md") {
       pageData.title = "How Terminals Work: Architecture, Control Characters, Detection"
       pageData.description =
         "The architecture behind every terminal session — control characters, PTY, kernel TTY discipline, raw mode, and runtime feature detection. Foundational concepts for understanding terminal emulators."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
     if (rel === "fundamentals/control-characters.md") {
       pageData.title = "C0 Control Characters: ASCII Control Codes in Terminals"
       pageData.description =
         "All 33 ASCII control characters (0x00–0x1F, 0x7F) and their terminal behavior. ESC, BS, TAB, LF, CR, BEL — the bytes that predate escape sequences."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
     if (rel === "fundamentals/tty-architecture.md") {
       pageData.title = "TTY Architecture: PTY, Line Discipline, Shell, and Terminal"
       pageData.description =
         "How pseudo-terminals connect terminal emulators to shells. The kernel TTY line discipline, PTY master/slave pairs, and why SSH and tmux work."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
     if (rel === "fundamentals/stty.md") {
       pageData.title = "stty & Terminal Modes: Raw Mode, Canonical Mode, Signals"
       pageData.description =
         "Raw mode vs canonical mode, echo, signal characters, input/output processing flags. How stty controls the kernel TTY line discipline and why TUI apps bypass it."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
     if (rel === "fundamentals/term-detection.md") {
       pageData.title = "Terminal Detection: $TERM, DA1, DECRPM, Runtime Probing"
       pageData.description =
         "How applications discover terminal capabilities — $TERM (unreliable), $COLORTERM, DA1, DECRPM mode reports, XTVERSION, and runtime behavioral probing."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
     if (rel === "fundamentals/security.md") {
       pageData.title = "Terminal Security: Clipboard, Paste Injection, Escape Attacks"
       pageData.description =
         "Terminal attack surfaces — OSC 52 clipboard exfiltration, OSC 8 hyperlink spoofing, paste injection without bracketed paste, escape sequence injection in logs, and title bar spoofing."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
 
@@ -463,60 +510,60 @@ export default defineConfig({
       pageData.title = "Terminal Standards: From VT100 to Kitty"
       pageData.description =
         "50 years of terminal protocols — ECMA-48, VT100, VT220, VT510, xterm, Kitty, OSC, Sixel, and Unicode. History, specs, and feature coverage for each standard."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
     if (rel === "features.md") {
       pageData.title = "Terminal Features: How Escape Sequences Work"
       pageData.description =
         "Terminal escape sequences — SGR styling, cursor control, modes, extensions, Unicode. Every feature tested on every major terminal emulator."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
     if (rel === "multiplexers.md") {
       pageData.title = "Terminal Multiplexers: tmux, GNU Screen, and the Pass-Through Problem"
       pageData.description =
         "How tmux and GNU Screen intercept escape sequences between your terminal and shell. Which features survive, which get dropped, and how to test multiplexer compatibility."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
     if (rel === "backends.md") {
       pageData.title = "Parser Backends: Standalone Libraries and App Parser Engines"
       pageData.description =
         "Terminal parser backends tested without a GUI — standalone libraries (xterm.js, vterm.js, vt100.js) and app parser engines (Alacritty, Ghostty, Kitty, WezTerm). Escape sequence correctness, independent of rendering."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
     if (rel === "terminals.md") {
       pageData.title = "Terminal Emulators: App Terminals, Parser Backends, and Multiplexers"
       pageData.description =
         "Every terminal emulator tested by terminfo.dev — app terminals (Ghostty, Kitty, iTerm2), parser backends (xterm.js, vterm.js), multiplexers (tmux, Screen), and historical terminals (VT100, VT220, xterm)."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
     if (rel === "glossary.md") {
       pageData.title = "Terminal Glossary: Acronyms and Technical Terms"
       pageData.description =
         "Quick reference for terminal acronyms — CSI, SGR, OSC, DEC, ECMA-48, and 30+ more. Each term explained with links to detailed feature pages."
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
       return
     }
 
@@ -527,10 +574,10 @@ export default defineConfig({
     if (rel.startsWith("compare/")) {
       pageData.title = `${params.termALabel} vs ${params.termBLabel} — Terminal Feature Comparison`
       pageData.description = `Compare ${params.termALabel} (${params.termAPct}%) vs ${params.termBLabel} (${params.termBPct}%) terminal feature support. ${params.differ} features differ.`
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
     } else if (rel.startsWith("terminals/")) {
       if (params.historical === "true") {
         pageData.title = `${params.backendName} (${params.year}) — Historical Terminal`
@@ -539,32 +586,32 @@ export default defineConfig({
         pageData.title = `${params.backendName} — Terminal Feature Support`
         pageData.description = `${params.backendName} terminal emulator feature support: ${params.pct}% (${params.yes}/${params.total} features). ${params.backendDescription}`
       }
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
     } else if (params.featureName) {
       // Feature pages: /sgr/sgr-bold (have featureName param)
       pageData.title = `${params.featureName} — Terminal Support`
       pageData.description = `Which terminal emulators support ${params.featureName}? Support matrix showing ${params.yesCount} of ${params.totalCount} backends.`
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
     } else if (rel.startsWith("framework/")) {
       pageData.title = `${params.label} — TUI Framework Terminal Compatibility`
       pageData.description = `${params.label}: ${params.description} Requires the ${params.baselineLabel} baseline (${params.featureCount} features).`
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
     } else if (rel.startsWith("baseline/")) {
       pageData.title = `${params.label} Baseline — Terminal Feature Support`
       pageData.description = `${params.label} Baseline: ${params.tagline}. ${params.featureCount} features — ${params.description?.slice(0, 120)}...`
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
     } else if (params.categoryName) {
       // Category + tag pages: /sgr, /ecma-48 (have categoryName param)
       const type = params.pageType === "tag" ? "Standard" : "Category"
@@ -572,10 +619,10 @@ export default defineConfig({
       pageData.description =
         stripHtml(params.categoryDescription) ||
         `${params.categoryName}: ${params.featureCount} terminal features compared across backends.`
-      pageData.frontmatter.head = [
+      pageData.frontmatter.head.push(
         ["meta", { property: "og:title", content: pageData.title }],
         ["meta", { property: "og:description", content: pageData.description }],
-      ]
+      )
     }
   },
 

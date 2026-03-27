@@ -1,0 +1,35 @@
+# Terminfo.dev
+
+> Can your terminal do that? Feature support tables for terminal emulators.
+
+Terminfo.dev is a comprehensive compatibility database for terminal emulators. It tests 130+ terminal features (escape sequences, modes, extensions) across 19+ terminals using automated headless probing.
+
+## Key Pages
+
+- [Home / Feature Matrix](https://terminfo.dev/): Full support matrix of all features across all terminals.
+- [Features](https://terminfo.dev/features): Terminal escape sequences by category — SGR, cursor, modes, extensions, Unicode.
+- [Terminals](https://terminfo.dev/terminals): All tested terminal emulators — app terminals, parser backends, multiplexers, historical.
+- [Standards](https://terminfo.dev/standards): Terminal standards from ECMA-48 and VT100 to Kitty and Sixel.
+- [Fundamentals](https://terminfo.dev/fundamentals): How terminals work — control characters, TTY architecture, terminal modes, detection, security.
+- [Baselines](https://terminfo.dev/baseline/core): Feature baselines — Core, Modern, Rich, Unicode tiers.
+- [API](https://terminfo.dev/api): JSON API for programmatic access to feature support data.
+- [Glossary](https://terminfo.dev/glossary): Terminal acronyms and technical terms.
+- [About](https://terminfo.dev/about): Project background and methodology.
+
+## Feature Categories
+
+- [SGR (Select Graphic Rendition)](https://terminfo.dev/sgr): Text styling — bold, italic, underline, colors, hyperlinks.
+- [Cursor](https://terminfo.dev/cursor): Cursor movement, positioning, visibility, shape.
+- [Modes](https://terminfo.dev/modes): Terminal modes — alternate screen, bracketed paste, mouse tracking.
+- [Text](https://terminfo.dev/text): Text handling — wrapping, scrolling, margins.
+- [Extensions](https://terminfo.dev/extensions): Modern extensions — Kitty graphics, Sixel, OSC sequences.
+
+## Popular Terminals
+
+- [Ghostty](https://terminfo.dev/terminals/ghostty)
+- [Kitty](https://terminfo.dev/terminals/kitty)
+- [iTerm2](https://terminfo.dev/terminals/iterm2)
+- [WezTerm](https://terminfo.dev/terminals/wezterm)
+- [Alacritty](https://terminfo.dev/terminals/alacritty)
+- [Terminal.app](https://terminfo.dev/terminals/terminal-app)
+- [VS Code](https://terminfo.dev/terminals/vs-code)
