@@ -18,6 +18,7 @@
  */
 
 import { Command } from "commander"
+import { colorizeHelp } from "@silvery/commander"
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -406,4 +407,5 @@ program
     console.log(`  OS:        ${terminal.os} ${terminal.osVersion}`)
   })
 
+colorizeHelp(program)
 program.parse()

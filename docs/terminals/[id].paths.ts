@@ -111,7 +111,10 @@ export default {
 
     // Load terminals.json for historical terminals and terminal type classification
     const terminalsPath = join(__dirname, "..", "..", "content", "terminals.json")
-    const terminalsData = JSON.parse(readFileSync(terminalsPath, "utf-8")) as Record<string, HistoricalTerminal & { intermediary?: boolean; headlessBackends?: string[] }>
+    const terminalsData = JSON.parse(readFileSync(terminalsPath, "utf-8")) as Record<
+      string,
+      HistoricalTerminal & { intermediary?: boolean; headlessBackends?: string[] }
+    >
 
     // Classify terminal type from terminals.json metadata
     function getTerminalType(backendName: string): string {

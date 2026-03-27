@@ -33,6 +33,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@silvery/commander": "^0.1.0",
     "commander": "^14.0.0"
   },
   "engines": {

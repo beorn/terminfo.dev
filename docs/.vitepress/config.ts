@@ -370,7 +370,14 @@ export default defineConfig({
   cleanUrls: true,
   head: [
     ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
-    ["script", { defer: "", src: "https://static.cloudflareinsights.com/beacon.min.js", "data-cf-beacon": '{"token": "f0f336a13fd042c992dbd2c182759cdb"}' }],
+    [
+      "script",
+      {
+        defer: "",
+        src: "https://static.cloudflareinsights.com/beacon.min.js",
+        "data-cf-beacon": '{"token": "f0f336a13fd042c992dbd2c182759cdb"}',
+      },
+    ],
   ],
 
   markdown: {

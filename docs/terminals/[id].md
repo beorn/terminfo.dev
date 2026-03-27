@@ -94,6 +94,7 @@ const breadcrumbParent = (() => {
 # {{ p.terminalName }}
 
 <span :class="['terminal-type-badge', typeBadge.cls]">{{ typeBadge.label }}</span>
+
 <p v-if="typeBadge.note" class="badge-note">{{ typeBadge.note }}</p>
 
 <p v-if="p.terminalDescription" class="terminal-desc">{{ p.terminalDescription }}</p>
