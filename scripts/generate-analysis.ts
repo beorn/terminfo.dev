@@ -420,7 +420,7 @@ function buildBaselineFeatureMap(features: Record<string, FeatureMeta>): Record<
   for (const [id, feat] of Object.entries(features)) {
     if (feat.baseline) {
       if (!map[feat.baseline]) map[feat.baseline] = []
-      map[feat.baseline].push(id)
+      map[feat.baseline]!.push(id)
     }
   }
   return map
@@ -432,7 +432,7 @@ function rankTerminals(stats: Map<string, TerminalStats>): Map<string, number> {
   const sorted = [...stats.entries()].sort((a, b) => b[1].pct - a[1].pct || b[1].yes - a[1].yes)
   const ranks = new Map<string, number>()
   for (let i = 0; i < sorted.length; i++) {
-    ranks.set(sorted[i][0], i + 1)
+    ranks.set(sorted[i]![0], i + 1)
   }
   return ranks
 }
@@ -748,7 +748,7 @@ function generateStandardAnalysis(
   }
 
   if (stdScores.length > 0) {
-    const worst = stdScores[stdScores.length - 1]
+    const worst = stdScores[stdScores.length - 1]!
     if (worst.pct < 100) {
       parts.push(`Lowest: ${worst.name} at ${worst.pct}% (${worst.yes}/${worst.total})`)
     }
@@ -934,15 +934,15 @@ function validateNumbersInAnalysis(key: string, analysis: string, stats: Termina
   // Extract percentage from analysis
   const pctMatch = analysis.match(/scores <strong>(\d+)%<\/strong>/)
   if (pctMatch) {
-    const pctInText = Number.parseInt(pctMatch[1], 10)
+    const pctInText = Number.parseInt(pctMatch[1]!, 10)
     assert(pctInText === stats.pct, `${key}: Percentage in text (${pctInText}%) doesn't match computed (${stats.pct}%)`)
   }
 
   // Extract yes/total counts
   const countMatch = analysis.match(/\((\d+)\/(\d+)\)/)
   if (countMatch) {
-    const yesInText = Number.parseInt(countMatch[1], 10)
-    const totalInText = Number.parseInt(countMatch[2], 10)
+    const yesInText = Number.parseInt(countMatch[1]!, 10)
+    const totalInText = Number.parseInt(countMatch[2]!, 10)
     assert(yesInText === stats.yes, `${key}: Pass count in text (${yesInText}) doesn't match computed (${stats.yes})`)
     assert(
       totalInText === stats.total,
@@ -992,8 +992,8 @@ function generateStandardsIndexAnalysis(
   stdAdoption.sort((a, b) => b.avgPct - a.avgPct)
 
   if (stdAdoption.length >= 2) {
-    const best = stdAdoption[0]
-    const worst = stdAdoption[stdAdoption.length - 1]
+    const best = stdAdoption[0]!
+    const worst = stdAdoption[stdAdoption.length - 1]!
     parts.push(
       `Highest average adoption: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
     )
@@ -1065,8 +1065,8 @@ function generateFeaturesIndexAnalysis(
   catAdoption.sort((a, b) => b.avgPct - a.avgPct)
 
   if (catAdoption.length >= 2) {
-    const best = catAdoption[0]
-    const worst = catAdoption[catAdoption.length - 1]
+    const best = catAdoption[0]!
+    const worst = catAdoption[catAdoption.length - 1]!
     parts.push(
       `Best-supported category: <strong>${best.label}</strong> (${best.avgPct}% average). Most challenging: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
     )

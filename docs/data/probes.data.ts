@@ -21,7 +21,7 @@ export interface BackendInfo {
   name: string
   version: string
   engine: string
-  type?: "app" | "headless"
+  type?: "app" | "headless" | "mux"
   platforms?: string[]
 }
 

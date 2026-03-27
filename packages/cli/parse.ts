@@ -14,6 +14,9 @@ export interface probesData {
   categories: Map<string, string[]>
 }
 
+/** @deprecated Use probesData */
+export type CensusData = probesData
+
 /** Shape of a per-backend result JSON file. */
 export interface PerBackendFile {
   backend: string

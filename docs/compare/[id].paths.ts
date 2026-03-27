@@ -31,6 +31,8 @@ export default {
         slug: string
         category: string
         name: string
+        tags: string[]
+        url: string
       }>
     }> = []
 

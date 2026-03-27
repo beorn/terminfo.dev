@@ -20,7 +20,7 @@ export type GlossaryData = Record<string, GlossaryEntry>
 
 export default {
   load(): GlossaryData {
-    return JSON.parse(readFileSync(glossaryPath, "utf-8"))
+    return JSON.parse(readFileSync(glossaryPath, "utf-8")) as GlossaryData
   },
 }
 
