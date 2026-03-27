@@ -23,8 +23,7 @@
  * ```
  */
 
-import { Command } from "commander"
-import { colorizeHelp } from "@silvery/commander"
+import { Command } from "@silvery/commander"
 
 const program = new Command().name("terminfo").description("Terminal feature testing for terminfo.dev")
 
@@ -173,5 +172,4 @@ program
     await handleDetect(opts)
   })
 
-colorizeHelp(program)
 await program.parseAsync()
