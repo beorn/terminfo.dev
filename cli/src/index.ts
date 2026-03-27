@@ -17,8 +17,7 @@
  * ```
  */
 
-import { Command } from "commander"
-import { colorizeHelp } from "@silvery/commander"
+import { Command, uint } from "@silvery/commander"
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -229,7 +228,7 @@ const probeServer = probe
   .command("server [daemon]")
   .description("Start a daemon or probe running daemons")
   .option("--start", "Start daemon in this terminal")
-  .option("-p, --port <port>", "Port for --start", parseInt)
+  .option("-p, --port <port>", "Port for --start", uint)
   .option("--all", "Probe all running daemons")
 
 probeServer.action(async (daemon: string | undefined, opts) => {
@@ -407,5 +406,4 @@ program
     console.log(`  OS:        ${terminal.os} ${terminal.osVersion}`)
   })
 
-colorizeHelp(program)
 program.parse()
