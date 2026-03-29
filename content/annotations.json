@@ -1161,5 +1161,29 @@
   },
   "vt100:extensions.osc52-read": {
     "note": "Not implemented \u2014 pure TypeScript emulator"
+  },
+  "kitty:extensions.kitty-keyboard": {
+    "note": "Kitty invented this protocol \u2014 probe query fails inside Kitty app launch but protocol is fully supported",
+    "result": "yes"
+  },
+  "kitty:extensions.kitty-keyboard.disambiguate": {
+    "note": "Fully supported \u2014 Kitty invented the progressive enhancement flags",
+    "result": "yes"
+  },
+  "kitty:extensions.kitty-keyboard.report-events": {
+    "note": "Fully supported \u2014 Kitty invented the progressive enhancement flags",
+    "result": "yes"
+  },
+  "kitty:extensions.kitty-keyboard.report-alternate": {
+    "note": "Fully supported \u2014 Kitty invented the progressive enhancement flags",
+    "result": "yes"
+  },
+  "kitty:extensions.kitty-keyboard.report-all-keys": {
+    "note": "Fully supported \u2014 Kitty invented the progressive enhancement flags",
+    "result": "yes"
+  },
+  "kitty:extensions.kitty-keyboard.report-text": {
+    "note": "Fully supported \u2014 Kitty invented the progressive enhancement flags",
+    "result": "yes"
   }
 }
