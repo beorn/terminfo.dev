@@ -32,6 +32,78 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
   ),
 
+  // Kitty keyboard: individual progressive enhancement flags
+  // Flag 1: DISAMBIGUATE — CSI u encoding for ambiguous keys
+  probe(
+    "extensions.kitty-keyboard.disambiguate",
+    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
+    async (ctx) => {
+      // Push flag 1, query current flags, verify bit 1 is set
+      ctx.write("\x1b[>1u") // push with DISAMBIGUATE
+      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      ctx.write("\x1b[<u") // pop
+      if (!match) return { pass: false, note: "No kitty keyboard response" }
+      const flags = parseInt(match[1]!, 10)
+      return { pass: (flags & 1) !== 0, response: `flags=${flags}` }
+    },
+  ),
+
+  // Flag 2: REPORT_EVENTS — key release and repeat events
+  probe(
+    "extensions.kitty-keyboard.report-events",
+    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
+    async (ctx) => {
+      ctx.write("\x1b[>3u") // push DISAMBIGUATE|REPORT_EVENTS (1+2=3)
+      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      ctx.write("\x1b[<u")
+      if (!match) return { pass: false, note: "No kitty keyboard response" }
+      const flags = parseInt(match[1]!, 10)
+      return { pass: (flags & 2) !== 0, response: `flags=${flags}` }
+    },
+  ),
+
+  // Flag 4: REPORT_ALTERNATE — report shifted key + base key
+  probe(
+    "extensions.kitty-keyboard.report-alternate",
+    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
+    async (ctx) => {
+      ctx.write("\x1b[>5u") // push DISAMBIGUATE|REPORT_ALTERNATE (1+4=5)
+      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      ctx.write("\x1b[<u")
+      if (!match) return { pass: false, note: "No kitty keyboard response" }
+      const flags = parseInt(match[1]!, 10)
+      return { pass: (flags & 4) !== 0, response: `flags=${flags}` }
+    },
+  ),
+
+  // Flag 8: REPORT_ALL_KEYS — all keys as escape sequences (including plain letters)
+  probe(
+    "extensions.kitty-keyboard.report-all-keys",
+    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
+    async (ctx) => {
+      ctx.write("\x1b[>9u") // push DISAMBIGUATE|REPORT_ALL_KEYS (1+8=9)
+      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      ctx.write("\x1b[<u")
+      if (!match) return { pass: false, note: "No kitty keyboard response" }
+      const flags = parseInt(match[1]!, 10)
+      return { pass: (flags & 8) !== 0, response: `flags=${flags}` }
+    },
+  ),
+
+  // Flag 16: REPORT_TEXT — associated text codepoints
+  probe(
+    "extensions.kitty-keyboard.report-text",
+    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
+    async (ctx) => {
+      ctx.write("\x1b[>17u") // push DISAMBIGUATE|REPORT_TEXT (1+16=17)
+      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      ctx.write("\x1b[<u")
+      if (!match) return { pass: false, note: "No kitty keyboard response" }
+      const flags = parseInt(match[1]!, 10)
+      return { pass: (flags & 16) !== 0, response: `flags=${flags}` }
+    },
+  ),
+
   // Kitty graphics protocol
   probe(
     "extensions.kitty-graphics",
@@ -44,6 +116,79 @@ export const extensionsProbes: ProbeDefinition[] = [
       )
       if (match) return { pass: true, response: match[1] }
       return { pass: false, note: "No kitty graphics acknowledgment" }
+    },
+  ),
+
+  // Kitty graphics: sub-capability probes
+  // Transmit + display (a=T for transmit-and-display test)
+  probe(
+    "extensions.kitty-graphics.transmit",
+    (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
+    async (ctx) => {
+      // Transmit a 1x1 PNG, check for acknowledgment
+      const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      const match = await ctx.queryWithSentinel(
+        `\x1b_Ga=t,f=100,s=1,v=1,t=d,i=999;${payload}\x1b\\`,
+        /\x1b_G([^\x1b]*)\x1b\\/,
+      )
+      // Clean up: delete the image
+      ctx.write(`\x1b_Ga=d,d=i,i=999\x1b\\`)
+      if (!match) return { pass: false, note: "No kitty graphics transmit response" }
+      return { pass: !match[1]?.includes("ENOENT"), response: match[1] }
+    },
+  ),
+
+  // Display (a=p — place a previously transmitted image)
+  probe(
+    "extensions.kitty-graphics.display",
+    (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
+    async (ctx) => {
+      // Transmit then display
+      const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=998,q=2;${payload}\x1b\\`)
+      const match = await ctx.queryWithSentinel(
+        `\x1b_Ga=p,i=998,q=2\x1b\\`,
+        /\x1b_G([^\x1b]*)\x1b\\/,
+      )
+      ctx.write(`\x1b_Ga=d,d=i,i=998\x1b\\`)
+      if (!match) return { pass: false, note: "No kitty graphics display response" }
+      return { pass: true, response: match[1] }
+    },
+  ),
+
+  // Animation frames (a=f)
+  probe(
+    "extensions.kitty-graphics.animation",
+    (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
+    async (ctx) => {
+      // Transmit base frame, then try adding animation frame
+      const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=997,q=2;${payload}\x1b\\`)
+      const match = await ctx.queryWithSentinel(
+        `\x1b_Ga=f,i=997,q=2;${payload}\x1b\\`,
+        /\x1b_G([^\x1b]*)\x1b\\/,
+      )
+      ctx.write(`\x1b_Ga=d,d=i,i=997\x1b\\`)
+      if (!match) return { pass: false, note: "No animation frame response" }
+      const ok = !match[1]?.includes("EINVAL")
+      return { pass: ok, response: match[1] }
+    },
+  ),
+
+  // Unicode placeholders (U=1)
+  probe(
+    "extensions.kitty-graphics.unicode-placeholders",
+    (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
+    async (ctx) => {
+      const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      const match = await ctx.queryWithSentinel(
+        `\x1b_Ga=T,f=100,s=1,v=1,t=d,U=1,i=996,q=2;${payload}\x1b\\`,
+        /\x1b_G([^\x1b]*)\x1b\\/,
+      )
+      ctx.write(`\x1b_Ga=d,d=i,i=996\x1b\\`)
+      if (!match) return { pass: false, note: "No response with U=1" }
+      const ok = !match[1]?.includes("EINVAL")
+      return { pass: ok, response: match[1] }
     },
   ),
 
@@ -165,6 +310,37 @@ export const extensionsProbes: ProbeDefinition[] = [
       const pos = await ctx.queryCursorPosition()
       if (!pos) return { pass: false, note: "No response after OSC 52" }
       return { pass: true }
+    },
+  ),
+
+  // OSC 52 write — set clipboard (most terminals support this)
+  probe(
+    "extensions.osc52-write",
+    null, // headless can't distinguish write-only support
+    async (ctx) => {
+      const testData = btoa("terminfo-write-test")
+      ctx.write(`\x1b]52;c;${testData}\x07`)
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No response after OSC 52 write" }
+      return { pass: true }
+    },
+  ),
+
+  // OSC 52 read — query clipboard back (fewer terminals support this)
+  probe(
+    "extensions.osc52-read",
+    (ctx) => {
+      const testData = btoa("terminfo-read-test")
+      ctx.feed(`\x1b]52;c;${testData}\x07`)
+      const response = ctx.feedCapture("\x1b]52;c;?\x07")
+      return { pass: response.includes("52;c;"), note: response.includes("52;c;") ? undefined : "No OSC 52 query response" }
+    },
+    async (ctx) => {
+      const testData = btoa("terminfo-read-test")
+      ctx.write(`\x1b]52;c;${testData}\x07`)
+      const match = await ctx.queryWithSentinel("\x1b]52;c;?\x07", /\x1b\]52;c;([^\x07\x1b]+)[\x07\x1b]/)
+      if (!match) return { pass: false, note: "No OSC 52 read response" }
+      return { pass: true, response: match[1]?.substring(0, 20) }
     },
   ),
 

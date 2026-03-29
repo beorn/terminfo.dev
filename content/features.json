@@ -1496,5 +1496,107 @@
     "body": "xterm's modifyOtherKeys mode 3 (patch 398, April 2025) makes ALL keyboard input — including unmodified keys — send escape sequences. Mode 2 only affects modified keys (Ctrl+X, Alt+X), while mode 3 extends this to every keypress. The sequence is <code>CSI > 4 ; 3 m</code>.\n\nMode 3 also extends modifier encoding to cursor-keys, function-keys, keypad-keys, modifier-keys, and special-keys, with subparameters in XTMODKEYS for selective modifier masking. This provides applications with unambiguous key identification similar to the kitty keyboard protocol, but using xterm's native encoding.",
     "probe": "Send <code>CSI > 4 ; 3 m</code> to enable modifyOtherKeys mode 3, verify terminal is responsive, then disable with <code>CSI > 4 ; 0 m</code>.",
     "baseline": "rich"
+  },
+
+  "extensions.kitty-keyboard.disambiguate": {
+    "name": "Kitty keyboard: DISAMBIGUATE (flag 1)",
+    "slug": "kitty-keyboard-disambiguate",
+    "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
+    "tags": ["kitty"],
+    "body": "Flag 1 of the Kitty keyboard protocol's progressive enhancement. When set, the terminal uses CSI u encoding for keys that would otherwise be ambiguous — e.g., Escape vs Alt, Tab vs Ctrl+I, Enter vs Ctrl+M. This is the minimum flag most applications need. Without it, decades-old terminal ambiguities persist. All terminals claiming kitty keyboard support must implement this flag.",
+    "probe": "Push keyboard mode with flag 1 (<code>CSI > 1 u</code>), query flags (<code>CSI ? u</code>), verify bit 1 is set in response, then pop (<code>CSI < u</code>).",
+    "baseline": "rich"
+  },
+  "extensions.kitty-keyboard.report-events": {
+    "name": "Kitty keyboard: REPORT_EVENTS (flag 2)",
+    "slug": "kitty-keyboard-report-events",
+    "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
+    "tags": ["kitty"],
+    "body": "Flag 2 enables key release and repeat event reporting. Without this flag, terminals only report key press events. With it, the terminal sends event-type sub-parameters: 1=press, 2=repeat, 3=release. Essential for games, keyboard-driven UIs that need to track held keys, and applications that distinguish tap from hold.",
+    "probe": "Push keyboard mode with flags 1+2 (<code>CSI > 3 u</code>), query flags, verify bit 2 is set.",
+    "baseline": "rich"
+  },
+  "extensions.kitty-keyboard.report-alternate": {
+    "name": "Kitty keyboard: REPORT_ALTERNATE (flag 4)",
+    "slug": "kitty-keyboard-report-alternate",
+    "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
+    "tags": ["kitty"],
+    "body": "Flag 4 reports alternate key representations. When set, the terminal includes a shifted_key sub-parameter showing what key the user intended (e.g., Shift+1 reports both '1' and '!'). Without this flag, applications receive only the base key and must guess the shifted result based on keyboard layout — which varies by locale.",
+    "probe": "Push keyboard mode with flags 1+4 (<code>CSI > 5 u</code>), query flags, verify bit 4 is set.",
+    "baseline": "rich"
+  },
+  "extensions.kitty-keyboard.report-all-keys": {
+    "name": "Kitty keyboard: REPORT_ALL_KEYS (flag 8)",
+    "slug": "kitty-keyboard-report-all-keys",
+    "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
+    "tags": ["kitty"],
+    "body": "Flag 8 makes ALL keypresses generate escape sequences, including unmodified printable characters that would normally be sent as plain text. This gives applications complete, unambiguous key identification but changes fundamental terminal behavior — plain typing no longer produces direct output. Applications must explicitly handle every key. Known gotcha: enabling this flag can break mouse hover/tracking in some implementations if not handled carefully.",
+    "probe": "Push keyboard mode with flags 1+8 (<code>CSI > 9 u</code>), query flags, verify bit 8 is set.",
+    "baseline": "rich"
+  },
+  "extensions.kitty-keyboard.report-text": {
+    "name": "Kitty keyboard: REPORT_TEXT (flag 16)",
+    "slug": "kitty-keyboard-report-text",
+    "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
+    "tags": ["kitty"],
+    "body": "Flag 16 adds associated text codepoints to key events. When a key press would produce text (after input method processing, dead keys, compose sequences), the terminal includes the resulting text as an additional parameter. This is critical for international input — compose sequences, CJK input methods, and dead key combinations produce text that can't be derived from the key code alone.",
+    "probe": "Push keyboard mode with flags 1+16 (<code>CSI > 17 u</code>), query flags, verify bit 16 is set.",
+    "baseline": "rich"
+  },
+
+  "extensions.kitty-graphics.transmit": {
+    "name": "Kitty graphics: transmit",
+    "slug": "kitty-graphics-transmit",
+    "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#transmitting-data",
+    "tags": ["kitty"],
+    "body": "The transmit action (<code>a=t</code>) sends image data to the terminal for storage without displaying it. The terminal assigns an image ID and acknowledges receipt. This is the foundation of the kitty graphics protocol — images are transmitted once and can be displayed multiple times at different positions.",
+    "probe": "Transmit a 1x1 PNG with <code>a=t</code> and a unique image ID. Check for acknowledgment response (APC G ... ST).",
+    "baseline": "rich"
+  },
+  "extensions.kitty-graphics.display": {
+    "name": "Kitty graphics: display",
+    "slug": "kitty-graphics-display",
+    "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#displaying-images",
+    "tags": ["kitty"],
+    "body": "The display/placement action (<code>a=p</code>) places a previously transmitted image at a screen position. Supports specifying rows/columns, z-index, and cropping. This separation of transmit and display enables efficient re-use — transmit once, place many times.",
+    "probe": "Transmit a test image, then place it with <code>a=p</code>. Check for acknowledgment.",
+    "baseline": "rich"
+  },
+  "extensions.kitty-graphics.animation": {
+    "name": "Kitty graphics: animation",
+    "slug": "kitty-graphics-animation",
+    "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#animation",
+    "tags": ["kitty"],
+    "body": "The animation frame action (<code>a=f</code>) adds animation frames to a previously transmitted image. Supports frame composition modes (overwrite, blend), per-frame timing, and looping. Not all terminals that support kitty graphics support animation.",
+    "probe": "Transmit a base image, then add an animation frame with <code>a=f</code>. Check response for success (not EINVAL).",
+    "baseline": "rich"
+  },
+  "extensions.kitty-graphics.unicode-placeholders": {
+    "name": "Kitty graphics: Unicode placeholders",
+    "slug": "kitty-graphics-unicode-placeholders",
+    "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders",
+    "tags": ["kitty"],
+    "body": "Unicode placeholders (<code>U=1</code>) allow images to be placed using special Unicode characters in the text grid rather than absolute positioning. The terminal replaces placeholder characters with image content. This enables images to participate in text reflow, scrolling, and selection — unlike absolutely-positioned images which are fixed to screen coordinates.",
+    "probe": "Transmit a test image with <code>U=1</code> (Unicode placeholder mode). Check response for success.",
+    "baseline": "rich"
+  },
+
+  "extensions.osc52-write": {
+    "name": "OSC 52 clipboard write",
+    "slug": "osc52-clipboard-write",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["xterm-ext"],
+    "body": "OSC 52 clipboard write sets the system clipboard content. The sequence <code>ESC ] 52 ; c ; base64-data BEL</code> sets the clipboard to the decoded base64 content. Most modern terminals support clipboard write, though some require explicit opt-in for security (e.g., iTerm2 prompts the user). Write-only support is more common than read support — many terminals allow setting the clipboard but block reading it back to prevent clipboard snooping by malicious programs.",
+    "probe": "Send <code>OSC 52;c;base64-data BEL</code> and verify the terminal remains responsive.",
+    "baseline": "modern"
+  },
+  "extensions.osc52-read": {
+    "name": "OSC 52 clipboard read",
+    "slug": "osc52-clipboard-read",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["xterm-ext"],
+    "body": "OSC 52 clipboard read queries the current clipboard content. The sequence <code>ESC ] 52 ; c ; ? BEL</code> requests the terminal to respond with the clipboard data base64-encoded. Fewer terminals support read than write — clipboard read is a security-sensitive operation since a malicious program could silently exfiltrate clipboard contents (passwords, tokens). Terminals that support it often require explicit user opt-in.",
+    "probe": "Set clipboard via OSC 52, then query with <code>OSC 52;c;? BEL</code>. Check for response containing the data.",
+    "baseline": "rich"
   }
 }
