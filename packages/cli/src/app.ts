@@ -391,4 +391,29 @@ export async function handleApp(terminal: string | undefined, opts: { all?: bool
     const status = result.skipped ? "cached" : result.success ? "OK" : `FAIL: ${result.error}`
     console.log(`  ${app.name.padEnd(16)} ${status}`)
   }
+
+  // Final cleanup — kill orphaned daemon processes and clean stale registrations
+  cleanupDaemons()
+}
+
+/** Kill any remaining daemon processes and remove stale registration files */
+function cleanupDaemons(): void {
+  try {
+    const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
+    for (const file of files) {
+      try {
+        const data = JSON.parse(readFileSync(join(DAEMON_DIR, file), "utf-8")) as any
+        if (data.pid) {
+          try {
+            process.kill(data.pid, "SIGTERM")
+          } catch {} // process already dead
+        }
+      } catch {}
+    }
+    // Clean up the serve script
+    try {
+      const { unlinkSync: unlink } = require("node:fs")
+      unlink("/tmp/terminfo-serve.sh")
+    } catch {}
+  } catch {}
 }

@@ -148,6 +148,29 @@ async function waitForDaemon(timeoutMs: number = 30_000): Promise<{ port: number
   return null
 }
 
+/** Kill daemon processes registered in ~/.terminfo-dev/daemons/ */
+async function killDaemonProcesses(): Promise<void> {
+  try {
+    mkdirSync(DAEMON_DIR, { recursive: true })
+    const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
+    for (const file of files) {
+      try {
+        const data = JSON.parse(readFileSync(join(DAEMON_DIR, file), "utf-8")) as any
+        if (data.pid) {
+          try {
+            process.kill(data.pid, "SIGTERM")
+          } catch {}
+        }
+        // Also kill the serve script wrapper if it's still running
+        try {
+          execSync(`pkill -f "terminfo-mux-serve.sh" 2>/dev/null || true`, { timeout: 3000 })
+        } catch {}
+        unlinkSync(join(DAEMON_DIR, file))
+      } catch {}
+    }
+  } catch {}
+}
+
 /** Remove stale daemon files (daemons that are no longer running) */
 async function cleanStaleDaemons(): Promise<void> {
   try {
@@ -270,7 +293,10 @@ async function runMux(
   console.log(`  Probing on port ${daemon.port}...`)
   const result = await probeDaemon(daemon.port, mux.id, version)
 
+  // Thorough cleanup: kill session, daemon processes, and stale registrations
   mux.kill(SESSION_NAME)
+  await killDaemonProcesses()
+  await cleanStaleDaemons()
 
   if (!result) {
     return { success: false, error: "Probe failed" }
@@ -338,6 +364,12 @@ export async function handleMux(muxName: string | undefined, opts: { all?: boole
     const status = result.skipped ? "cached" : result.success ? "OK" : `FAIL: ${result.error}`
     console.log(`  ${mux.name.padEnd(16)} ${status}`)
   }
+
+  // Final cleanup — ensure no orphaned processes or sessions
+  for (const mux of MUXES) {
+    mux.kill(SESSION_NAME)
+  }
+  await killDaemonProcesses()
 
   console.log(`\nResults saved to content/probes-mux/`)
 }
