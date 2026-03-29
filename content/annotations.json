@@ -1096,10 +1096,6 @@
   "xtermjs:extensions.kitty-graphics.unicode-placeholders": {
     "note": "Kitty graphics protocol not implemented in xterm.js"
   },
-  "xtermjs:extensions.osc52-read": {
-    "note": "OSC 52 clipboard read not available in headless mode",
-    "result": "partial"
-  },
   "wezterm:extensions.kitty-graphics.transmit": {
     "note": "Kitty graphics not implemented in wezterm-term crate"
   },
@@ -1165,26 +1161,5 @@
   },
   "vt100:extensions.osc52-read": {
     "note": "Not implemented \u2014 pure TypeScript emulator"
-  },
-  "xtermjs:extensions.osc52-clipboard": {
-    "note": "OSC 52 clipboard not available in headless mode",
-    "result": "partial"
-  },
-  "xtermjs:extensions.osc10-fg-color": {
-    "note": "OSC 10 color query not available in headless mode",
-    "result": "partial"
-  },
-  "xtermjs:extensions.osc11-bg-color": {
-    "note": "OSC 11 color query not available in headless mode",
-    "result": "partial"
-  },
-  "kitty:extensions.semantic-prompts": {
-    "note": "OSC 133 semantic prompts not supported by kitty"
-  },
-  "kitty:extensions.osc-633-vscode": {
-    "note": "VS Code shell integration (OSC 633) not supported by kitty"
-  },
-  "kitty:extensions.iterm2-images": {
-    "note": "iTerm2 inline images not supported \u2014 kitty uses its own graphics protocol"
   }
 }

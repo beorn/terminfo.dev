@@ -1,13 +1,15 @@
 {
   "version": 1,
-  "generated": "2026-03-26T19:34:44.857Z",
+  "generated": "2026-03-29T06:02:02.484Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
       "category": "charsets",
       "slug": "dec-line-drawing-chars",
       "url": "https://vt100.net/docs/vt510-rm/SCS.html",
-      "tags": ["vt100"],
+      "tags": [
+        "vt100"
+      ],
       "baseline": "core"
     },
     "charsets.dec-special": {
@@ -15,7 +17,9 @@
       "category": "charsets",
       "slug": "dec-special-graphics",
       "url": "https://vt100.net/docs/vt510-rm/SCS.html",
-      "tags": ["vt100"],
+      "tags": [
+        "vt100"
+      ],
       "baseline": "core"
     },
     "charsets.g0-g1-switching": {
@@ -23,7 +27,9 @@
       "category": "charsets",
       "slug": "g0-g1-charset-switching",
       "url": "https://vt100.net/docs/vt510-rm/SCS.html",
-      "tags": ["vt100"],
+      "tags": [
+        "vt100"
+      ],
       "baseline": "core"
     },
     "charsets.utf8": {
@@ -31,7 +37,9 @@
       "category": "charsets",
       "slug": "utf8-mode",
       "url": "https://unicode.org/faq/utf_bom.html",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "core"
     },
     "cursor.cud-past-bottom": {
@@ -39,7 +47,10 @@
       "category": "cursor",
       "slug": "cud-past-bottom",
       "url": "https://vt100.net/docs/vt510-rm/CUD.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.cup-boundaries": {
@@ -47,7 +58,10 @@
       "category": "cursor",
       "slug": "cup-screen-boundaries",
       "url": "https://vt100.net/docs/vt510-rm/CUP.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.cup-scroll-region": {
@@ -55,7 +69,10 @@
       "category": "cursor",
       "slug": "cup-decom-scroll-region",
       "url": "https://vt100.net/docs/vt510-rm/DECOM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.cuu-past-top": {
@@ -63,7 +80,10 @@
       "category": "cursor",
       "slug": "cuu-past-top",
       "url": "https://vt100.net/docs/vt510-rm/CUU.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.hide": {
@@ -71,7 +91,10 @@
       "category": "cursor",
       "slug": "dectcem-hide-cursor",
       "url": "https://vt100.net/docs/vt510-rm/DECTCEM.html",
-      "tags": ["dec-private-modes", "vt510"],
+      "tags": [
+        "dec-private-modes",
+        "vt510"
+      ],
       "baseline": "core"
     },
     "cursor.horizontal-absolute": {
@@ -79,7 +102,9 @@
       "category": "cursor",
       "slug": "cha-cursor-horizontal-absolute",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "cursor.move.absolute": {
@@ -87,7 +112,10 @@
       "category": "cursor",
       "slug": "cup-cursor-position",
       "url": "https://vt100.net/docs/vt510-rm/CUP.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.move.back": {
@@ -95,7 +123,10 @@
       "category": "cursor",
       "slug": "cub-cursor-back",
       "url": "https://vt100.net/docs/vt510-rm/CUB.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.move.down": {
@@ -103,7 +134,10 @@
       "category": "cursor",
       "slug": "cud-cursor-down",
       "url": "https://vt100.net/docs/vt510-rm/CUD.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.move.forward": {
@@ -111,7 +145,10 @@
       "category": "cursor",
       "slug": "cuf-cursor-forward",
       "url": "https://vt100.net/docs/vt510-rm/CUF.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.move.home": {
@@ -119,7 +156,10 @@
       "category": "cursor",
       "slug": "home",
       "url": "https://vt100.net/docs/vt510-rm/CUP.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.move.up": {
@@ -127,7 +167,10 @@
       "category": "cursor",
       "slug": "cuu-cursor-up",
       "url": "https://vt100.net/docs/vt510-rm/CUU.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.next-line": {
@@ -135,7 +178,9 @@
       "category": "cursor",
       "slug": "cnl-cursor-next-line",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "cursor.position-report": {
@@ -143,7 +188,10 @@
       "category": "cursor",
       "slug": "dsr-6-cursor-position-report",
       "url": "https://vt100.net/docs/vt510-rm/DSR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "cursor.reverse-wrap": {
@@ -151,7 +199,9 @@
       "category": "cursor",
       "slug": "reverse-wrap-45",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "cursor.save-restore": {
@@ -159,7 +209,10 @@
       "category": "cursor",
       "slug": "decsc-save-restore-cursor",
       "url": "https://vt100.net/docs/vt510-rm/DECSC.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.shape": {
@@ -167,7 +220,10 @@
       "category": "cursor",
       "slug": "decscusr-cursor-shape",
       "url": "https://vt100.net/docs/vt510-rm/DECSCUSR.html",
-      "tags": ["dec-private-modes", "vt510"],
+      "tags": [
+        "dec-private-modes",
+        "vt510"
+      ],
       "baseline": "modern"
     },
     "device.decrpm": {
@@ -175,7 +231,9 @@
       "category": "device",
       "slug": "decrpm",
       "url": "https://vt100.net/docs/vt510-rm/DECRPM.html",
-      "tags": ["vt510"],
+      "tags": [
+        "vt510"
+      ],
       "baseline": "modern"
     },
     "device.decrqss": {
@@ -183,7 +241,9 @@
       "category": "device",
       "slug": "decrqss",
       "url": "https://vt100.net/docs/vt510-rm/DECRQSS.html",
-      "tags": ["vt510"],
+      "tags": [
+        "vt510"
+      ],
       "baseline": "rich"
     },
     "device.primary-da": {
@@ -191,7 +251,10 @@
       "category": "device",
       "slug": "da1-primary-device-attributes",
       "url": "https://vt100.net/docs/vt510-rm/DA1.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "device.secondary-da": {
@@ -199,7 +262,9 @@
       "category": "device",
       "slug": "da2-secondary-device-attributes",
       "url": "https://vt100.net/docs/vt510-rm/DA2.html",
-      "tags": ["vt220"],
+      "tags": [
+        "vt220"
+      ],
       "baseline": "modern"
     },
     "device.status-report": {
@@ -207,7 +272,10 @@
       "category": "device",
       "slug": "dsr-5-device-status-report",
       "url": "https://vt100.net/docs/vt510-rm/DSR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "device.term-features": {
@@ -215,7 +283,9 @@
       "category": "device",
       "slug": "term-features",
       "url": "https://gitlab.com/gnachman/iterm2/-/wikis/TERM_FEATURES",
-      "tags": ["iterm2"],
+      "tags": [
+        "iterm2"
+      ],
       "baseline": "rich"
     },
     "device.tertiary-da": {
@@ -223,7 +293,9 @@
       "category": "device",
       "slug": "da3-tertiary-device-attributes",
       "url": "https://vt100.net/docs/vt510-rm/DA3.html",
-      "tags": ["vt510"],
+      "tags": [
+        "vt510"
+      ],
       "baseline": "rich"
     },
     "device.xtgettcap": {
@@ -231,7 +303,9 @@
       "category": "device",
       "slug": "xtgettcap",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "device.xtversion": {
@@ -239,7 +313,9 @@
       "category": "device",
       "slug": "xtversion",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "editing.delete-chars": {
@@ -247,7 +323,10 @@
       "category": "editing",
       "slug": "dch-delete-characters",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48", "vt220"],
+      "tags": [
+        "ecma-48",
+        "vt220"
+      ],
       "baseline": "modern"
     },
     "editing.delete-lines": {
@@ -255,7 +334,10 @@
       "category": "editing",
       "slug": "dl-delete-lines",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "editing.insert-chars": {
@@ -263,7 +345,10 @@
       "category": "editing",
       "slug": "ich-insert-characters",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48", "vt220"],
+      "tags": [
+        "ecma-48",
+        "vt220"
+      ],
       "baseline": "modern"
     },
     "editing.insert-lines": {
@@ -271,7 +356,10 @@
       "category": "editing",
       "slug": "il-insert-lines",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "editing.repeat-char": {
@@ -279,7 +367,9 @@
       "category": "editing",
       "slug": "rep-repeat-character",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "erase.character": {
@@ -287,7 +377,9 @@
       "category": "erase",
       "slug": "ech-erase-character",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "erase.ed-scroll-region": {
@@ -295,7 +387,10 @@
       "category": "erase",
       "slug": "ed-scroll-region-boundary",
       "url": "https://vt100.net/docs/vt510-rm/ED.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.el-with-attrs": {
@@ -303,7 +398,10 @@
       "category": "erase",
       "slug": "el-erase-with-bg-color",
       "url": "https://vt100.net/docs/vt510-rm/EL.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.line.all": {
@@ -311,7 +409,10 @@
       "category": "erase",
       "slug": "el-2-erase-line",
       "url": "https://vt100.net/docs/vt510-rm/EL.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.line.left": {
@@ -319,7 +420,10 @@
       "category": "erase",
       "slug": "el-1-erase-to-bol",
       "url": "https://vt100.net/docs/vt510-rm/EL.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.line.right": {
@@ -327,7 +431,10 @@
       "category": "erase",
       "slug": "el-0-erase-to-eol",
       "url": "https://vt100.net/docs/vt510-rm/EL.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.screen.above": {
@@ -335,7 +442,10 @@
       "category": "erase",
       "slug": "ed-1-erase-above",
       "url": "https://vt100.net/docs/vt510-rm/ED.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.screen.all": {
@@ -343,7 +453,10 @@
       "category": "erase",
       "slug": "ed-2-erase-screen",
       "url": "https://vt100.net/docs/vt510-rm/ED.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.screen.below": {
@@ -351,7 +464,10 @@
       "category": "erase",
       "slug": "ed-0-erase-below",
       "url": "https://vt100.net/docs/vt510-rm/ED.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.screen.scrollback": {
@@ -359,7 +475,9 @@
       "category": "erase",
       "slug": "ed-3-erase-scrollback",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "erase.selective": {
@@ -367,7 +485,9 @@
       "category": "erase",
       "slug": "selective-decsed",
       "url": "https://vt100.net/docs/vt510-rm/DECSED.html",
-      "tags": ["vt220"],
+      "tags": [
+        "vt220"
+      ],
       "baseline": "rich"
     },
     "extensions.iterm2-images": {
@@ -375,7 +495,9 @@
       "category": "extensions",
       "slug": "iterm2-images",
       "url": "https://iterm2.com/documentation-images.html",
-      "tags": ["osc"],
+      "tags": [
+        "osc"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-graphics": {
@@ -383,7 +505,49 @@
       "category": "extensions",
       "slug": "kitty-graphics-protocol",
       "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.kitty-graphics.animation": {
+      "name": "Kitty graphics: animation",
+      "category": "extensions",
+      "slug": "kitty-graphics-animation",
+      "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#animation",
+      "tags": [
+        "kitty"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.kitty-graphics.display": {
+      "name": "Kitty graphics: display",
+      "category": "extensions",
+      "slug": "kitty-graphics-display",
+      "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#displaying-images",
+      "tags": [
+        "kitty"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.kitty-graphics.transmit": {
+      "name": "Kitty graphics: transmit",
+      "category": "extensions",
+      "slug": "kitty-graphics-transmit",
+      "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#transmitting-data",
+      "tags": [
+        "kitty"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.kitty-graphics.unicode-placeholders": {
+      "name": "Kitty graphics: Unicode placeholders",
+      "category": "extensions",
+      "slug": "kitty-graphics-unicode-placeholders",
+      "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders",
+      "tags": [
+        "kitty"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-keyboard": {
@@ -391,14 +555,68 @@
       "category": "extensions",
       "slug": "kitty-keyboard-protocol",
       "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.kitty-keyboard.disambiguate": {
+      "name": "Kitty keyboard: DISAMBIGUATE (flag 1)",
+      "category": "extensions",
+      "slug": "kitty-keyboard-disambiguate",
+      "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
+      "tags": [
+        "kitty"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.kitty-keyboard.report-all-keys": {
+      "name": "Kitty keyboard: REPORT_ALL_KEYS (flag 8)",
+      "category": "extensions",
+      "slug": "kitty-keyboard-report-all-keys",
+      "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
+      "tags": [
+        "kitty"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.kitty-keyboard.report-alternate": {
+      "name": "Kitty keyboard: REPORT_ALTERNATE (flag 4)",
+      "category": "extensions",
+      "slug": "kitty-keyboard-report-alternate",
+      "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
+      "tags": [
+        "kitty"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.kitty-keyboard.report-events": {
+      "name": "Kitty keyboard: REPORT_EVENTS (flag 2)",
+      "category": "extensions",
+      "slug": "kitty-keyboard-report-events",
+      "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
+      "tags": [
+        "kitty"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.kitty-keyboard.report-text": {
+      "name": "Kitty keyboard: REPORT_TEXT (flag 16)",
+      "category": "extensions",
+      "slug": "kitty-keyboard-report-text",
+      "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
+      "tags": [
+        "kitty"
+      ],
       "baseline": "rich"
     },
     "extensions.notifications": {
       "name": "Desktop Notifications (OSC 9/777)",
       "category": "extensions",
       "slug": "notifications-osc-9",
-      "tags": ["osc"],
+      "tags": [
+        "osc"
+      ],
       "baseline": "rich"
     },
     "extensions.osc-633-vscode": {
@@ -406,7 +624,9 @@
       "category": "extensions",
       "slug": "osc-633-vscode",
       "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
-      "tags": ["osc"],
+      "tags": [
+        "osc"
+      ],
       "baseline": "rich"
     },
     "extensions.osc0-icon-title": {
@@ -414,7 +634,10 @@
       "category": "extensions",
       "slug": "osc-0-icon-title",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "extensions.osc10-fg-color": {
@@ -422,7 +645,10 @@
       "category": "extensions",
       "slug": "osc-10-fg-color-query",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "extensions.osc11-bg-color": {
@@ -430,7 +656,10 @@
       "category": "extensions",
       "slug": "osc-11-bg-color-query",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "extensions.osc1337-capabilities": {
@@ -438,7 +667,10 @@
       "category": "extensions",
       "slug": "osc1337-capabilities",
       "url": "https://iterm2.com/documentation-escape-codes.html",
-      "tags": ["osc", "iterm2"],
+      "tags": [
+        "osc",
+        "iterm2"
+      ],
       "baseline": "rich"
     },
     "extensions.osc1337-cellsize": {
@@ -446,7 +678,10 @@
       "category": "extensions",
       "slug": "osc1337-cellsize",
       "url": "https://iterm2.com/documentation-escape-codes.html",
-      "tags": ["osc", "iterm2"],
+      "tags": [
+        "osc",
+        "iterm2"
+      ],
       "baseline": "rich"
     },
     "extensions.osc2-title": {
@@ -454,7 +689,10 @@
       "category": "extensions",
       "slug": "osc-2-window-title",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "extensions.osc52-clipboard": {
@@ -462,7 +700,30 @@
       "category": "extensions",
       "slug": "osc-52-clipboard",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
+      "baseline": "modern"
+    },
+    "extensions.osc52-read": {
+      "name": "OSC 52 clipboard read",
+      "category": "extensions",
+      "slug": "osc52-clipboard-read",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "xterm-ext"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.osc52-write": {
+      "name": "OSC 52 clipboard write",
+      "category": "extensions",
+      "slug": "osc52-clipboard-write",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "xterm-ext"
+      ],
       "baseline": "modern"
     },
     "extensions.osc5522-clipboard": {
@@ -470,7 +731,9 @@
       "category": "extensions",
       "slug": "osc5522-clipboard",
       "url": "https://sw.kovidgoyal.net/kitty/clipboard/",
-      "tags": ["kitty"],
+      "tags": [
+        "kitty"
+      ],
       "baseline": "rich"
     },
     "extensions.osc66-text-sizing": {
@@ -478,7 +741,9 @@
       "category": "extensions",
       "slug": "osc66-text-sizing",
       "url": "https://sw.kovidgoyal.net/kitty/text-sizing-protocol/",
-      "tags": ["kitty"],
+      "tags": [
+        "kitty"
+      ],
       "baseline": "rich"
     },
     "extensions.osc7-cwd": {
@@ -486,7 +751,9 @@
       "category": "extensions",
       "slug": "osc-7-current-directory",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc"],
+      "tags": [
+        "osc"
+      ],
       "baseline": "modern"
     },
     "extensions.osc8": {
@@ -494,7 +761,10 @@
       "category": "extensions",
       "slug": "osc-8-hyperlinks",
       "url": "https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.osc9-progress": {
@@ -502,7 +772,9 @@
       "category": "extensions",
       "slug": "osc9-progress-bar",
       "url": "https://conemu.github.io/en/AnsiEscapeCodes.html#ConEmu_specific_OSC",
-      "tags": ["conemu"],
+      "tags": [
+        "conemu"
+      ],
       "baseline": "rich"
     },
     "extensions.reflow": {
@@ -510,7 +782,9 @@
       "category": "extensions",
       "slug": "text-reflow",
       "url": "https://github.com/xtermjs/xterm.js/wiki/Reflow",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.semantic-prompts": {
@@ -518,7 +792,9 @@
       "category": "extensions",
       "slug": "osc-133-semantic-prompts",
       "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
-      "tags": ["osc"],
+      "tags": [
+        "osc"
+      ],
       "baseline": "rich"
     },
     "extensions.sixel": {
@@ -526,7 +802,9 @@
       "category": "extensions",
       "slug": "sixel-graphics",
       "url": "https://en.wikipedia.org/wiki/Sixel",
-      "tags": ["sixel"],
+      "tags": [
+        "sixel"
+      ],
       "baseline": "rich"
     },
     "extensions.sixel-da1": {
@@ -534,7 +812,9 @@
       "category": "extensions",
       "slug": "sixel-da1",
       "url": "https://vt100.net/docs/vt510-rm/DA1.html",
-      "tags": ["sixel"],
+      "tags": [
+        "sixel"
+      ],
       "baseline": "rich"
     },
     "extensions.truecolor": {
@@ -542,7 +822,9 @@
       "category": "extensions",
       "slug": "24-bit-truecolor",
       "url": "https://github.com/termstandard/colors",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "input.button-event-mouse": {
@@ -550,7 +832,9 @@
       "category": "input",
       "slug": "button-event-mouse-1002",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "input.csi-u": {
@@ -558,7 +842,9 @@
       "category": "input",
       "slug": "csi-u-encoding",
       "url": "http://www.leonerd.org.uk/hacks/fixterms/",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "input.modify-other-keys": {
@@ -566,7 +852,9 @@
       "category": "input",
       "slug": "modify-other-keys",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "input.modify-other-keys-3": {
@@ -574,7 +862,9 @@
       "category": "input",
       "slug": "modify-other-keys-3",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-ext"],
+      "tags": [
+        "xterm-ext"
+      ],
       "baseline": "rich"
     },
     "input.pixel-mouse": {
@@ -582,7 +872,9 @@
       "category": "input",
       "slug": "pixel-mouse-1016",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "input.urxvt-mouse": {
@@ -590,7 +882,9 @@
       "category": "input",
       "slug": "urxvt-mouse-1015",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "input.x10-mouse": {
@@ -598,7 +892,9 @@
       "category": "input",
       "slug": "x10-mouse-9",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-      "tags": ["dec-private-modes"],
+      "tags": [
+        "dec-private-modes"
+      ],
       "baseline": "modern"
     },
     "modes.alt-screen.enter": {
@@ -606,7 +902,10 @@
       "category": "modes",
       "slug": "decset-1049-alt-screen-enter",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "modes.alt-screen.exit": {
@@ -614,7 +913,10 @@
       "category": "modes",
       "slug": "decrst-1049-alt-screen-exit",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "modes.application-cursor": {
@@ -622,7 +924,10 @@
       "category": "modes",
       "slug": "decckm-app-cursor-keys",
       "url": "https://vt100.net/docs/vt510-rm/DECCKM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "modes.application-keypad": {
@@ -630,7 +935,10 @@
       "category": "modes",
       "slug": "deckpam-application-keypad",
       "url": "https://vt100.net/docs/vt510-rm/DECKPAM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "modes.auto-wrap": {
@@ -638,7 +946,10 @@
       "category": "modes",
       "slug": "decawm-auto-wrap",
       "url": "https://vt100.net/docs/vt510-rm/DECAWM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "modes.bracketed-paste": {
@@ -646,7 +957,10 @@
       "category": "modes",
       "slug": "decset-2004-bracketed-paste",
       "url": "https://cirw.in/blog/bracketed-paste",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.color-scheme-reporting": {
@@ -654,7 +968,9 @@
       "category": "modes",
       "slug": "mode-2031-color-scheme",
       "url": "https://contour-terminal.org/vt-extensions/color-palette-update-notifications/",
-      "tags": ["xterm-ext"],
+      "tags": [
+        "xterm-ext"
+      ],
       "baseline": "modern"
     },
     "modes.focus-tracking": {
@@ -662,7 +978,10 @@
       "category": "modes",
       "slug": "decset-1004-focus-tracking",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-FocusIn_FocusOut",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.insert-replace": {
@@ -670,7 +989,9 @@
       "category": "modes",
       "slug": "irm-insert-replace-mode",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "modes.left-right-margin": {
@@ -678,7 +999,9 @@
       "category": "modes",
       "slug": "left-right-margin-69",
       "url": "https://vt100.net/docs/vt510-rm/DECLRMM.html",
-      "tags": ["vt510"],
+      "tags": [
+        "vt510"
+      ],
       "baseline": "rich"
     },
     "modes.mouse-all": {
@@ -686,7 +1009,10 @@
       "category": "modes",
       "slug": "decset-1003-all-motion-mouse",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.mouse-sgr": {
@@ -694,7 +1020,10 @@
       "category": "modes",
       "slug": "decset-1006-sgr-mouse",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.mouse-tracking": {
@@ -702,7 +1031,10 @@
       "category": "modes",
       "slug": "decset-1000-mouse-tracking",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.origin": {
@@ -710,7 +1042,10 @@
       "category": "modes",
       "slug": "decom-origin-mode",
       "url": "https://vt100.net/docs/vt510-rm/DECOM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "modes.reverse-video": {
@@ -718,7 +1053,10 @@
       "category": "modes",
       "slug": "decscnm-reverse-video",
       "url": "https://vt100.net/docs/vt510-rm/DECSCNM.html",
-      "tags": ["dec-private-modes", "vt510"],
+      "tags": [
+        "dec-private-modes",
+        "vt510"
+      ],
       "baseline": "core"
     },
     "modes.synchronized-output": {
@@ -726,7 +1064,9 @@
       "category": "modes",
       "slug": "decset-2026-synchronized-output",
       "url": "https://gitlab.freedesktop.org/terminal-wg/specifications/-/merge_requests/2",
-      "tags": ["dec-private-modes"],
+      "tags": [
+        "dec-private-modes"
+      ],
       "baseline": "modern"
     },
     "reset.method": {
@@ -740,7 +1080,10 @@
       "category": "reset",
       "slug": "ris-full-reset",
       "url": "https://vt100.net/docs/vt510-rm/RIS.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "reset.sgr": {
@@ -748,7 +1091,9 @@
       "category": "reset",
       "slug": "sgr-0-reset-clears-attributes",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "reset.soft": {
@@ -756,7 +1101,10 @@
       "category": "reset",
       "slug": "decstr-soft-reset",
       "url": "https://vt100.net/docs/vt510-rm/DECSTR.html",
-      "tags": ["dec-private-modes", "vt510"],
+      "tags": [
+        "dec-private-modes",
+        "vt510"
+      ],
       "baseline": "core"
     },
     "scrollback.accumulate": {
@@ -764,7 +1112,9 @@
       "category": "scrollback",
       "slug": "accumulates",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "scrollback.alt-screen": {
@@ -772,7 +1122,9 @@
       "category": "scrollback",
       "slug": "alt-screen-separate-scrollback",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "scrollback.decstbm": {
@@ -780,7 +1132,10 @@
       "category": "scrollback",
       "slug": "decstbm-constrained-scrolling",
       "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "scrollback.decstbm-reset": {
@@ -788,7 +1143,10 @@
       "category": "scrollback",
       "slug": "decstbm-reset-full-screen",
       "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "scrollback.reverse-index": {
@@ -796,7 +1154,10 @@
       "category": "scrollback",
       "slug": "ri-reverse-index",
       "url": "https://vt100.net/docs/vt510-rm/RI.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "scrollback.scroll-down": {
@@ -804,7 +1165,10 @@
       "category": "scrollback",
       "slug": "sd-scroll-down",
       "url": "https://vt100.net/docs/vt510-rm/SD.html",
-      "tags": ["ecma-48", "vt510"],
+      "tags": [
+        "ecma-48",
+        "vt510"
+      ],
       "baseline": "core"
     },
     "scrollback.scroll-up": {
@@ -812,7 +1176,10 @@
       "category": "scrollback",
       "slug": "su-scroll-up",
       "url": "https://vt100.net/docs/vt510-rm/SU.html",
-      "tags": ["ecma-48", "vt510"],
+      "tags": [
+        "ecma-48",
+        "vt510"
+      ],
       "baseline": "core"
     },
     "scrollback.set-region": {
@@ -820,7 +1187,10 @@
       "category": "scrollback",
       "slug": "decstbm-scroll-region",
       "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "scrollback.total-lines": {
@@ -828,7 +1198,9 @@
       "category": "scrollback",
       "slug": "total-lines",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "sgr.bg.256": {
@@ -836,7 +1208,9 @@
       "category": "sgr",
       "slug": "48-5-256-color-bg",
       "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.bg.bright": {
@@ -844,7 +1218,9 @@
       "category": "sgr",
       "slug": "100-107-bright-bg",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.bg.default": {
@@ -852,7 +1228,9 @@
       "category": "sgr",
       "slug": "49-default-bg",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.bg.standard": {
@@ -860,7 +1238,9 @@
       "category": "sgr",
       "slug": "40-47-standard-bg",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.bg.truecolor": {
@@ -868,7 +1248,9 @@
       "category": "sgr",
       "slug": "48-2-truecolor-bg",
       "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#24-bit",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.blink": {
@@ -876,7 +1258,10 @@
       "category": "sgr",
       "slug": "5-blink",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "sgr.bold": {
@@ -884,7 +1269,10 @@
       "category": "sgr",
       "slug": "1-bold",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "sgr.faint": {
@@ -892,7 +1280,10 @@
       "category": "sgr",
       "slug": "2-faint-dim",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "sgr.fg.256": {
@@ -900,7 +1291,9 @@
       "category": "sgr",
       "slug": "38-5-256-color-fg",
       "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.fg.bright": {
@@ -908,7 +1301,9 @@
       "category": "sgr",
       "slug": "90-97-bright-fg",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.fg.default": {
@@ -916,7 +1311,9 @@
       "category": "sgr",
       "slug": "39-default-fg",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.fg.standard": {
@@ -924,7 +1321,9 @@
       "category": "sgr",
       "slug": "30-37-standard-fg",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.fg.truecolor": {
@@ -932,7 +1331,9 @@
       "category": "sgr",
       "slug": "38-2-truecolor-fg",
       "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#24-bit",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.hidden": {
@@ -940,7 +1341,9 @@
       "category": "sgr",
       "slug": "8-hidden",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.inverse": {
@@ -948,7 +1351,10 @@
       "category": "sgr",
       "slug": "7-inverse-video",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "sgr.italic": {
@@ -956,7 +1362,9 @@
       "category": "sgr",
       "slug": "3-italic",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.overline": {
@@ -964,7 +1372,9 @@
       "category": "sgr",
       "slug": "53-overline",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "sgr.reset": {
@@ -972,7 +1382,10 @@
       "category": "sgr",
       "slug": "0-reset",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "sgr.selective-reset.bold": {
@@ -980,7 +1393,9 @@
       "category": "sgr",
       "slug": "22-reset-bold",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.selective-reset.inverse": {
@@ -988,7 +1403,9 @@
       "category": "sgr",
       "slug": "27-reset-inverse",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.selective-reset.italic": {
@@ -996,7 +1413,9 @@
       "category": "sgr",
       "slug": "23-reset-italic",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.selective-reset.underline": {
@@ -1004,7 +1423,9 @@
       "category": "sgr",
       "slug": "24-reset-underline",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.strikethrough": {
@@ -1012,7 +1433,9 @@
       "category": "sgr",
       "slug": "9-strikethrough",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.underline.color": {
@@ -1020,7 +1443,9 @@
       "category": "sgr",
       "slug": "58-underline-color",
       "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.underline.curly": {
@@ -1028,7 +1453,9 @@
       "category": "sgr",
       "slug": "4-3-curly-underline",
       "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.underline.dashed": {
@@ -1036,7 +1463,9 @@
       "category": "sgr",
       "slug": "4-5-dashed-underline",
       "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.underline.dotted": {
@@ -1044,7 +1473,9 @@
       "category": "sgr",
       "slug": "4-4-dotted-underline",
       "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.underline.double": {
@@ -1052,7 +1483,9 @@
       "category": "sgr",
       "slug": "21-double-underline",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "sgr.underline.single": {
@@ -1060,7 +1493,10 @@
       "category": "sgr",
       "slug": "4-underline",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.backspace": {
@@ -1068,7 +1504,10 @@
       "category": "text",
       "slug": "bs-backspace",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.basic": {
@@ -1082,7 +1521,9 @@
       "category": "text",
       "slug": "combining-characters",
       "url": "https://unicode.org/reports/tr29/",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "text.cr": {
@@ -1090,7 +1531,10 @@
       "category": "text",
       "slug": "cr-carriage-return",
       "url": "https://vt100.net/docs/vt510-rm/CR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.index": {
@@ -1098,7 +1542,10 @@
       "category": "text",
       "slug": "ind-index",
       "url": "https://vt100.net/docs/vt510-rm/IND.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.newline": {
@@ -1106,7 +1553,10 @@
       "category": "text",
       "slug": "lf-line-feed",
       "url": "https://vt100.net/docs/vt510-rm/LF.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.next-line": {
@@ -1114,7 +1564,10 @@
       "category": "text",
       "slug": "nel-next-line",
       "url": "https://vt100.net/docs/vt510-rm/NEL.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.overwrite": {
@@ -1128,7 +1581,9 @@
       "category": "text",
       "slug": "reverse-index-scroll",
       "url": "https://vt100.net/docs/vt510-rm/RI.html",
-      "tags": ["vt100"],
+      "tags": [
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.tab": {
@@ -1136,7 +1591,10 @@
       "category": "text",
       "slug": "ht-tab-stops",
       "url": "https://vt100.net/docs/vt510-rm/HT.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.wide.cjk": {
@@ -1144,7 +1602,9 @@
       "category": "text",
       "slug": "cjk-wide-chars",
       "url": "https://unicode.org/reports/tr11/",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "core"
     },
     "text.wide.emoji": {
@@ -1152,7 +1612,9 @@
       "category": "text",
       "slug": "emoji-wide-chars",
       "url": "https://unicode.org/reports/tr51/",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "text.wide.emoji-flags": {
@@ -1160,7 +1622,9 @@
       "category": "text",
       "slug": "emoji-regional-indicator-flags",
       "url": "https://unicode.org/reports/tr51/#Flags",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "text.wide.emoji-vs16": {
@@ -1168,7 +1632,9 @@
       "category": "text",
       "slug": "variation-selector-16-emoji",
       "url": "https://unicode.org/reports/tr51/#Presentation_Style",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "text.wide.emoji-zwj": {
@@ -1176,7 +1642,9 @@
       "category": "text",
       "slug": "emoji-zwj-sequences",
       "url": "https://unicode.org/reports/tr51/#ZWJ_Sequences",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "text.wrap": {
@@ -1190,7 +1658,9 @@
       "category": "unicode",
       "slug": "east-asian-ambiguous",
       "url": "https://www.unicode.org/reports/tr11/",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "unicode.grapheme-cursor": {
@@ -1198,7 +1668,9 @@
       "category": "unicode",
       "slug": "grapheme-cursor",
       "url": "https://unicode.org/reports/tr29/#Grapheme_Cluster_Boundaries",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "unicode.tab-stops": {
@@ -1206,7 +1678,10 @@
       "category": "unicode",
       "slug": "tab-stops",
       "url": "https://vt100.net/docs/vt510-rm/HT.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "unicode.wrap-boundary": {
@@ -1214,7 +1689,9 @@
       "category": "unicode",
       "slug": "wrap-boundary",
       "url": "https://unicode.org/reports/tr11/",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     }
   },
@@ -1223,7 +1700,9 @@
       "name": "cmux",
       "version": "",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "score": {
         "total": 153,
         "pass": 143,
@@ -1234,7 +1713,9 @@
       "name": "VS Code",
       "version": "1.112.0",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://code.visualstudio.com",
       "score": {
         "total": 148,
@@ -1246,7 +1727,9 @@
       "name": "Cursor",
       "version": "2.6.21",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "score": {
         "total": 148,
         "pass": 135,
@@ -1257,43 +1740,51 @@
       "name": "Ghostty",
       "version": "1.3.1",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://ghostty.org",
       "score": {
-        "total": 148,
-        "pass": 140,
-        "pct": 95
+        "total": 164,
+        "pass": 150,
+        "pct": 91
       }
     },
     "iterm2": {
       "name": "iTerm2",
       "version": "3.6.9",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://iterm2.com",
       "score": {
-        "total": 148,
-        "pass": 144,
-        "pct": 97
+        "total": 164,
+        "pass": 155,
+        "pct": 95
       }
     },
     "kitty": {
       "name": "Kitty",
       "version": "0.46.2",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://sw.kovidgoyal.net/kitty/",
       "score": {
-        "total": 148,
-        "pass": 132,
-        "pct": 89
+        "total": 164,
+        "pass": 136,
+        "pct": 83
       }
     },
     "terminal-app": {
       "name": "Terminal.app",
       "version": "2.15",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://support.apple.com/guide/terminal",
       "score": {
         "total": 148,
@@ -1305,7 +1796,9 @@
       "name": "Warp",
       "version": "0.2026.03.18.08.24.03",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://www.warp.dev",
       "score": {
         "total": 148,
@@ -1319,9 +1812,9 @@
       "type": "headless",
       "url": "https://alacritty.org",
       "score": {
-        "total": 151,
-        "pass": 107,
-        "pct": 71
+        "total": 161,
+        "pass": 112,
+        "pct": 70
       }
     },
     "vt100": {
@@ -1329,9 +1822,9 @@
       "version": "0.2.1",
       "type": "headless",
       "score": {
-        "total": 151,
+        "total": 161,
         "pass": 85,
-        "pct": 56
+        "pct": 53
       }
     },
     "vterm": {
@@ -1339,8 +1832,8 @@
       "version": "0.2.0",
       "type": "headless",
       "score": {
-        "total": 151,
-        "pass": 146,
+        "total": 161,
+        "pass": 156,
         "pct": 97
       }
     },
@@ -1350,9 +1843,9 @@
       "type": "headless",
       "url": "https://wezfurlong.org/wezterm",
       "score": {
-        "total": 151,
-        "pass": 106,
-        "pct": 70
+        "total": 161,
+        "pass": 111,
+        "pct": 69
       }
     }
   },
@@ -1813,86 +2306,6 @@
       "device.term-features": "no"
     },
     "ghostty": {
-      "cursor.position-report": "yes",
-      "cursor.shape": "yes",
-      "cursor.save-restore": "yes",
-      "cursor.hide": "yes",
-      "cursor.move.absolute": "yes",
-      "cursor.move.up": "yes",
-      "cursor.move.down": "yes",
-      "cursor.move.forward": "yes",
-      "cursor.move.back": "yes",
-      "cursor.move.home": "yes",
-      "cursor.horizontal-absolute": "yes",
-      "cursor.next-line": "yes",
-      "cursor.reverse-wrap": "yes",
-      "cursor.cup-boundaries": "yes",
-      "cursor.cuu-past-top": "yes",
-      "cursor.cud-past-bottom": "yes",
-      "cursor.cup-scroll-region": "no",
-      "device.primary-da": "yes",
-      "device.secondary-da": "yes",
-      "device.tertiary-da": "no",
-      "device.status-report": "yes",
-      "device.decrpm": "yes",
-      "device.decrqss": "yes",
-      "device.xtgettcap": "yes",
-      "device.xtversion": "yes",
-      "text.basic": "yes",
-      "text.wrap": "yes",
-      "text.cr": "yes",
-      "text.newline": "yes",
-      "text.overwrite": "yes",
-      "text.index": "yes",
-      "text.next-line": "yes",
-      "text.wide.cjk": "yes",
-      "text.wide.emoji": "yes",
-      "text.wide.emoji-zwj": "yes",
-      "text.wide.emoji-flags": "yes",
-      "text.wide.emoji-vs16": "yes",
-      "text.combining": "yes",
-      "text.tab": "yes",
-      "text.backspace": "yes",
-      "text.reverse-index-scroll": "yes",
-      "erase.line.right": "yes",
-      "erase.line.left": "yes",
-      "erase.line.all": "yes",
-      "erase.screen.all": "yes",
-      "erase.screen.below": "yes",
-      "erase.screen.above": "yes",
-      "erase.screen.scrollback": "yes",
-      "erase.character": "yes",
-      "erase.selective": "yes",
-      "erase.el-with-attrs": "yes",
-      "erase.ed-scroll-region": "yes",
-      "editing.insert-chars": "yes",
-      "editing.delete-chars": "yes",
-      "editing.insert-lines": "yes",
-      "editing.delete-lines": "yes",
-      "editing.repeat-char": "yes",
-      "modes.alt-screen.enter": "yes",
-      "modes.auto-wrap": "yes",
-      "modes.bracketed-paste": "yes",
-      "modes.insert-replace": "yes",
-      "modes.application-keypad": "yes",
-      "modes.left-right-margin": "yes",
-      "modes.mouse-tracking": "yes",
-      "modes.mouse-sgr": "yes",
-      "modes.focus-tracking": "yes",
-      "modes.application-cursor": "yes",
-      "modes.origin": "yes",
-      "modes.reverse-video": "yes",
-      "modes.synchronized-output": "yes",
-      "scrollback.set-region": "yes",
-      "scrollback.scroll-up": "yes",
-      "scrollback.scroll-down": "yes",
-      "scrollback.reverse-index": "yes",
-      "scrollback.decstbm": "yes",
-      "scrollback.decstbm-reset": "yes",
-      "reset.ris": "yes",
-      "reset.sgr": "yes",
-      "reset.soft": "yes",
-      "reset.method": "yes",
       "sgr.bold": "yes",
       "sgr.faint": "yes",
       "sgr.italic": "yes",
@@ -1906,6 +2319,7 @@
       "sgr.hidden": "yes",
       "sgr.strikethrough": "yes",
       "sgr.overline": "yes",
+      "sgr.underline.color": "yes",
       "sgr.fg.standard": "yes",
       "sgr.bg.standard": "yes",
       "sgr.fg.bright": "yes",
@@ -1916,100 +2330,216 @@
       "sgr.bg.256": "yes",
       "sgr.fg.truecolor": "yes",
       "sgr.bg.truecolor": "yes",
-      "sgr.underline.color": "yes",
-      "sgr.reset": "yes",
       "sgr.selective-reset.bold": "yes",
       "sgr.selective-reset.underline": "yes",
       "sgr.selective-reset.italic": "yes",
       "sgr.selective-reset.inverse": "yes",
-      "charsets.dec-special": "yes",
-      "charsets.utf8": "yes",
-      "charsets.g0-g1-switching": "yes",
-      "charsets.dec-line-drawing": "yes",
+      "sgr.reset": "yes",
+      "cursor.move.absolute": "yes",
+      "cursor.move.home": "yes",
+      "cursor.move.forward": "yes",
+      "cursor.move.back": "yes",
+      "cursor.move.down": "yes",
+      "cursor.move.up": "yes",
+      "cursor.hide": "yes",
+      "cursor.shape": "yes",
+      "cursor.horizontal-absolute": "yes",
+      "cursor.next-line": "yes",
+      "cursor.position-report": "yes",
+      "cursor.save-restore": "yes",
+      "cursor.reverse-wrap": "yes",
+      "cursor.cup-boundaries": "no",
+      "cursor.cuu-past-top": "yes",
+      "cursor.cud-past-bottom": "yes",
+      "cursor.cup-scroll-region": "no",
+      "text.basic": "yes",
+      "text.newline": "yes",
+      "text.wrap": "yes",
+      "text.tab": "yes",
+      "text.wide.emoji": "yes",
+      "text.wide.cjk": "yes",
+      "text.overwrite": "yes",
+      "text.cr": "yes",
+      "text.backspace": "yes",
+      "text.index": "yes",
+      "text.next-line": "yes",
+      "text.reverse-index-scroll": "yes",
+      "text.combining": "yes",
+      "text.wide.emoji-flags": "yes",
+      "text.wide.emoji-vs16": "yes",
+      "text.wide.emoji-zwj": "yes",
+      "erase.line.right": "yes",
+      "erase.line.left": "yes",
+      "erase.line.all": "yes",
+      "erase.screen.below": "yes",
+      "erase.screen.above": "yes",
+      "erase.screen.all": "yes",
+      "erase.screen.scrollback": "yes",
+      "erase.character": "yes",
+      "erase.selective": "yes",
+      "erase.el-with-attrs": "yes",
+      "erase.ed-scroll-region": "yes",
+      "editing.insert-chars": "yes",
+      "editing.delete-chars": "yes",
+      "editing.insert-lines": "yes",
+      "editing.delete-lines": "yes",
+      "editing.repeat-char": "yes",
+      "modes.alt-screen.enter": "yes",
+      "modes.alt-screen.exit": "yes",
+      "modes.bracketed-paste": "yes",
+      "modes.application-cursor": "yes",
+      "modes.auto-wrap": "yes",
+      "modes.mouse-tracking": "yes",
+      "modes.focus-tracking": "yes",
+      "modes.reverse-video": "yes",
+      "modes.synchronized-output": "yes",
+      "modes.origin": "yes",
+      "modes.insert-replace": "yes",
+      "modes.mouse-sgr": "yes",
+      "modes.mouse-all": "yes",
+      "modes.application-keypad": "yes",
+      "modes.left-right-margin": "yes",
+      "modes.color-scheme-reporting": "yes",
+      "device.primary-da": "yes",
+      "device.status-report": "yes",
+      "device.secondary-da": "yes",
+      "device.tertiary-da": "no",
+      "device.decrqss": "yes",
+      "device.xtgettcap": "yes",
+      "device.decrpm": "yes",
+      "device.xtversion": "yes",
+      "device.term-features": "no",
+      "extensions.truecolor": "yes",
       "extensions.kitty-keyboard": "yes",
-      "extensions.sixel-da1": "no",
+      "extensions.kitty-keyboard.disambiguate": "yes",
+      "extensions.kitty-keyboard.report-events": "yes",
+      "extensions.kitty-keyboard.report-alternate": "yes",
+      "extensions.kitty-keyboard.report-all-keys": "yes",
+      "extensions.kitty-keyboard.report-text": "yes",
+      "extensions.kitty-graphics": "no",
+      "extensions.kitty-graphics.transmit": "yes",
+      "extensions.kitty-graphics.display": "no",
+      "extensions.kitty-graphics.animation": "no",
+      "extensions.kitty-graphics.unicode-placeholders": "no",
       "extensions.sixel": "no",
+      "extensions.osc8": "yes",
+      "extensions.reflow": "yes",
+      "extensions.semantic-prompts": "yes",
+      "extensions.osc2-title": "yes",
+      "extensions.osc0-icon-title": "yes",
       "extensions.osc52-clipboard": "yes",
-      "extensions.osc7-cwd": "yes",
+      "extensions.osc52-write": "yes",
+      "extensions.osc52-read": "no",
       "extensions.osc10-fg-color": "yes",
       "extensions.osc11-bg-color": "yes",
-      "extensions.osc2-title": "yes",
-      "extensions.truecolor": "yes",
-      "extensions.osc8": "yes",
-      "extensions.osc0-icon-title": "yes",
-      "extensions.semantic-prompts": "yes",
+      "extensions.osc7-cwd": "yes",
       "extensions.osc-633-vscode": "yes",
       "extensions.notifications": "yes",
       "extensions.iterm2-images": "yes",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
+      "extensions.osc9-progress": "yes",
+      "extensions.osc66-text-sizing": "yes",
+      "extensions.osc5522-clipboard": "no",
+      "extensions.sixel-da1": "no",
       "input.modify-other-keys": "yes",
       "input.csi-u": "yes",
       "input.pixel-mouse": "yes",
       "input.urxvt-mouse": "yes",
       "input.x10-mouse": "yes",
+      "input.modify-other-keys-3": "yes",
       "input.button-event-mouse": "yes",
-      "unicode.east-asian-ambiguous": "yes",
-      "unicode.wrap-boundary": "yes",
-      "unicode.tab-stops": "yes",
-      "unicode.grapheme-cursor": "yes",
-      "extensions.kitty-graphics": "no",
-      "extensions.reflow": "yes",
+      "reset.sgr": "yes",
+      "reset.ris": "yes",
+      "reset.soft": "yes",
+      "reset.method": "yes",
       "scrollback.accumulate": "yes",
       "scrollback.total-lines": "yes",
+      "scrollback.scroll-up": "yes",
+      "scrollback.reverse-index": "yes",
+      "scrollback.scroll-down": "yes",
+      "scrollback.set-region": "yes",
       "scrollback.alt-screen": "yes",
-      "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes",
-      "device.term-features": "no"
+      "scrollback.decstbm": "yes",
+      "scrollback.decstbm-reset": "yes",
+      "charsets.dec-special": "yes",
+      "charsets.utf8": "yes",
+      "charsets.g0-g1-switching": "yes",
+      "charsets.dec-line-drawing": "yes",
+      "unicode.east-asian-ambiguous": "yes",
+      "unicode.grapheme-cursor": "yes",
+      "unicode.wrap-boundary": "yes",
+      "unicode.tab-stops": "yes"
     },
     "iterm2": {
-      "cursor.position-report": "yes",
-      "cursor.shape": "yes",
-      "cursor.save-restore": "yes",
-      "cursor.hide": "yes",
+      "sgr.bold": "yes",
+      "sgr.faint": "yes",
+      "sgr.italic": "yes",
+      "sgr.underline.single": "yes",
+      "sgr.underline.double": "yes",
+      "sgr.underline.curly": "yes",
+      "sgr.underline.dotted": "yes",
+      "sgr.underline.dashed": "yes",
+      "sgr.blink": "yes",
+      "sgr.inverse": "yes",
+      "sgr.hidden": "yes",
+      "sgr.strikethrough": "yes",
+      "sgr.overline": "yes",
+      "sgr.underline.color": "yes",
+      "sgr.fg.standard": "yes",
+      "sgr.bg.standard": "yes",
+      "sgr.fg.bright": "yes",
+      "sgr.bg.bright": "yes",
+      "sgr.fg.default": "yes",
+      "sgr.bg.default": "yes",
+      "sgr.fg.256": "yes",
+      "sgr.bg.256": "yes",
+      "sgr.fg.truecolor": "yes",
+      "sgr.bg.truecolor": "yes",
+      "sgr.selective-reset.bold": "yes",
+      "sgr.selective-reset.underline": "yes",
+      "sgr.selective-reset.italic": "yes",
+      "sgr.selective-reset.inverse": "yes",
+      "sgr.reset": "yes",
       "cursor.move.absolute": "yes",
-      "cursor.move.up": "yes",
-      "cursor.move.down": "yes",
+      "cursor.move.home": "yes",
       "cursor.move.forward": "yes",
       "cursor.move.back": "yes",
-      "cursor.move.home": "yes",
+      "cursor.move.down": "yes",
+      "cursor.move.up": "yes",
+      "cursor.hide": "yes",
+      "cursor.shape": "yes",
       "cursor.horizontal-absolute": "yes",
       "cursor.next-line": "yes",
+      "cursor.position-report": "yes",
+      "cursor.save-restore": "yes",
       "cursor.reverse-wrap": "yes",
-      "cursor.cup-boundaries": "yes",
+      "cursor.cup-boundaries": "no",
       "cursor.cuu-past-top": "yes",
       "cursor.cud-past-bottom": "yes",
       "cursor.cup-scroll-region": "no",
-      "device.primary-da": "yes",
-      "device.secondary-da": "yes",
-      "device.tertiary-da": "yes",
-      "device.status-report": "yes",
-      "device.decrpm": "yes",
-      "device.decrqss": "yes",
-      "device.xtgettcap": "yes",
-      "device.xtversion": "yes",
       "text.basic": "yes",
-      "text.wrap": "yes",
-      "text.cr": "yes",
       "text.newline": "yes",
+      "text.wrap": "yes",
+      "text.tab": "yes",
+      "text.wide.emoji": "yes",
+      "text.wide.cjk": "yes",
       "text.overwrite": "yes",
+      "text.cr": "yes",
+      "text.backspace": "yes",
       "text.index": "yes",
       "text.next-line": "yes",
-      "text.wide.cjk": "yes",
-      "text.wide.emoji": "yes",
-      "text.wide.emoji-zwj": "yes",
+      "text.reverse-index-scroll": "yes",
+      "text.combining": "yes",
       "text.wide.emoji-flags": "yes",
       "text.wide.emoji-vs16": "yes",
-      "text.combining": "yes",
-      "text.tab": "yes",
-      "text.backspace": "yes",
-      "text.reverse-index-scroll": "yes",
+      "text.wide.emoji-zwj": "yes",
       "erase.line.right": "yes",
       "erase.line.left": "yes",
       "erase.line.all": "yes",
-      "erase.screen.all": "yes",
       "erase.screen.below": "yes",
       "erase.screen.above": "yes",
+      "erase.screen.all": "yes",
       "erase.screen.scrollback": "yes",
       "erase.character": "yes",
       "erase.selective": "yes",
@@ -2021,246 +2551,257 @@
       "editing.delete-lines": "yes",
       "editing.repeat-char": "yes",
       "modes.alt-screen.enter": "yes",
-      "modes.auto-wrap": "yes",
-      "modes.bracketed-paste": "yes",
-      "modes.insert-replace": "yes",
-      "modes.application-keypad": "yes",
-      "modes.left-right-margin": "yes",
-      "modes.mouse-tracking": "yes",
-      "modes.mouse-sgr": "yes",
-      "modes.focus-tracking": "yes",
-      "modes.application-cursor": "yes",
-      "modes.origin": "yes",
-      "modes.reverse-video": "yes",
-      "modes.synchronized-output": "yes",
-      "scrollback.set-region": "yes",
-      "scrollback.scroll-up": "yes",
-      "scrollback.scroll-down": "yes",
-      "scrollback.reverse-index": "yes",
-      "scrollback.decstbm": "yes",
-      "scrollback.decstbm-reset": "yes",
-      "reset.ris": "yes",
-      "reset.sgr": "yes",
-      "reset.soft": "yes",
-      "reset.method": "yes",
-      "sgr.bold": "yes",
-      "sgr.faint": "yes",
-      "sgr.italic": "yes",
-      "sgr.underline.single": "yes",
-      "sgr.underline.double": "yes",
-      "sgr.underline.curly": "yes",
-      "sgr.underline.dotted": "yes",
-      "sgr.underline.dashed": "yes",
-      "sgr.blink": "yes",
-      "sgr.inverse": "yes",
-      "sgr.hidden": "yes",
-      "sgr.strikethrough": "yes",
-      "sgr.overline": "yes",
-      "sgr.fg.standard": "yes",
-      "sgr.bg.standard": "yes",
-      "sgr.fg.bright": "yes",
-      "sgr.bg.bright": "yes",
-      "sgr.fg.default": "yes",
-      "sgr.bg.default": "yes",
-      "sgr.fg.256": "yes",
-      "sgr.bg.256": "yes",
-      "sgr.fg.truecolor": "yes",
-      "sgr.bg.truecolor": "yes",
-      "sgr.underline.color": "yes",
-      "sgr.reset": "yes",
-      "sgr.selective-reset.bold": "yes",
-      "sgr.selective-reset.underline": "yes",
-      "sgr.selective-reset.italic": "yes",
-      "sgr.selective-reset.inverse": "yes",
-      "charsets.dec-special": "yes",
-      "charsets.utf8": "yes",
-      "charsets.g0-g1-switching": "yes",
-      "charsets.dec-line-drawing": "yes",
-      "extensions.kitty-keyboard": "yes",
-      "extensions.sixel-da1": "yes",
-      "extensions.sixel": "no",
-      "extensions.osc52-clipboard": "yes",
-      "extensions.osc7-cwd": "yes",
-      "extensions.osc10-fg-color": "yes",
-      "extensions.osc11-bg-color": "yes",
-      "extensions.osc2-title": "yes",
-      "extensions.truecolor": "yes",
-      "extensions.osc8": "yes",
-      "extensions.osc0-icon-title": "yes",
-      "extensions.semantic-prompts": "yes",
-      "extensions.osc-633-vscode": "yes",
-      "extensions.notifications": "yes",
-      "extensions.iterm2-images": "yes",
-      "extensions.osc1337-cellsize": "yes",
-      "extensions.osc1337-capabilities": "no",
-      "input.modify-other-keys": "yes",
-      "input.csi-u": "yes",
-      "input.pixel-mouse": "yes",
-      "input.urxvt-mouse": "yes",
-      "input.x10-mouse": "yes",
-      "input.button-event-mouse": "yes",
-      "unicode.east-asian-ambiguous": "yes",
-      "unicode.wrap-boundary": "yes",
-      "unicode.tab-stops": "yes",
-      "unicode.grapheme-cursor": "yes",
-      "extensions.kitty-graphics": "yes",
-      "extensions.reflow": "yes",
-      "scrollback.accumulate": "yes",
-      "scrollback.total-lines": "yes",
-      "scrollback.alt-screen": "yes",
       "modes.alt-screen.exit": "yes",
-      "modes.mouse-all": "yes",
-      "device.term-features": "no"
-    },
-    "kitty": {
-      "cursor.position-report": "yes",
-      "cursor.shape": "yes",
-      "cursor.save-restore": "yes",
-      "cursor.hide": "yes",
-      "cursor.move.absolute": "yes",
-      "cursor.move.up": "yes",
-      "cursor.move.down": "yes",
-      "cursor.move.forward": "yes",
-      "cursor.move.back": "yes",
-      "cursor.move.home": "yes",
-      "cursor.horizontal-absolute": "yes",
-      "cursor.next-line": "yes",
-      "cursor.reverse-wrap": "yes",
-      "cursor.cup-boundaries": "yes",
-      "cursor.cuu-past-top": "yes",
-      "cursor.cud-past-bottom": "yes",
-      "cursor.cup-scroll-region": "no",
-      "device.primary-da": "yes",
-      "device.secondary-da": "yes",
-      "device.tertiary-da": "no",
-      "device.status-report": "yes",
-      "device.decrpm": "no",
-      "device.decrqss": "no",
-      "device.xtgettcap": "no",
-      "device.xtversion": "no",
-      "text.basic": "yes",
-      "text.wrap": "yes",
-      "text.cr": "yes",
-      "text.newline": "yes",
-      "text.overwrite": "yes",
-      "text.index": "yes",
-      "text.next-line": "yes",
-      "text.wide.cjk": "yes",
-      "text.wide.emoji": "yes",
-      "text.wide.emoji-zwj": "no",
-      "text.wide.emoji-flags": "yes",
-      "text.wide.emoji-vs16": "no",
-      "text.combining": "yes",
-      "text.tab": "yes",
-      "text.backspace": "yes",
-      "text.reverse-index-scroll": "yes",
-      "erase.line.right": "yes",
-      "erase.line.left": "yes",
-      "erase.line.all": "yes",
-      "erase.screen.all": "yes",
-      "erase.screen.below": "yes",
-      "erase.screen.above": "yes",
-      "erase.screen.scrollback": "yes",
-      "erase.character": "yes",
-      "erase.selective": "yes",
-      "erase.el-with-attrs": "yes",
-      "erase.ed-scroll-region": "yes",
-      "editing.insert-chars": "yes",
-      "editing.delete-chars": "yes",
-      "editing.insert-lines": "yes",
-      "editing.delete-lines": "yes",
-      "editing.repeat-char": "yes",
-      "modes.alt-screen.enter": "yes",
-      "modes.auto-wrap": "yes",
       "modes.bracketed-paste": "yes",
-      "modes.insert-replace": "yes",
-      "modes.application-keypad": "yes",
-      "modes.left-right-margin": "yes",
-      "modes.mouse-tracking": "yes",
-      "modes.mouse-sgr": "yes",
-      "modes.focus-tracking": "yes",
       "modes.application-cursor": "yes",
-      "modes.origin": "no",
+      "modes.auto-wrap": "yes",
+      "modes.mouse-tracking": "yes",
+      "modes.focus-tracking": "yes",
       "modes.reverse-video": "yes",
       "modes.synchronized-output": "yes",
-      "scrollback.set-region": "yes",
-      "scrollback.scroll-up": "yes",
-      "scrollback.scroll-down": "yes",
-      "scrollback.reverse-index": "yes",
-      "scrollback.decstbm": "yes",
-      "scrollback.decstbm-reset": "yes",
-      "reset.ris": "yes",
-      "reset.sgr": "yes",
-      "reset.soft": "yes",
-      "reset.method": "yes",
-      "sgr.bold": "yes",
-      "sgr.faint": "yes",
-      "sgr.italic": "yes",
-      "sgr.underline.single": "yes",
-      "sgr.underline.double": "yes",
-      "sgr.underline.curly": "yes",
-      "sgr.underline.dotted": "yes",
-      "sgr.underline.dashed": "yes",
-      "sgr.blink": "yes",
-      "sgr.inverse": "yes",
-      "sgr.hidden": "yes",
-      "sgr.strikethrough": "yes",
-      "sgr.overline": "yes",
-      "sgr.fg.standard": "yes",
-      "sgr.bg.standard": "yes",
-      "sgr.fg.bright": "yes",
-      "sgr.bg.bright": "yes",
-      "sgr.fg.default": "yes",
-      "sgr.bg.default": "yes",
-      "sgr.fg.256": "yes",
-      "sgr.bg.256": "yes",
-      "sgr.fg.truecolor": "yes",
-      "sgr.bg.truecolor": "yes",
-      "sgr.underline.color": "yes",
-      "sgr.reset": "yes",
-      "sgr.selective-reset.bold": "yes",
-      "sgr.selective-reset.underline": "yes",
-      "sgr.selective-reset.italic": "yes",
-      "sgr.selective-reset.inverse": "yes",
-      "charsets.dec-special": "yes",
-      "charsets.utf8": "yes",
-      "charsets.g0-g1-switching": "yes",
-      "charsets.dec-line-drawing": "yes",
-      "extensions.kitty-keyboard": "no",
-      "extensions.sixel-da1": "no",
-      "extensions.sixel": "yes",
+      "modes.origin": "yes",
+      "modes.insert-replace": "yes",
+      "modes.mouse-sgr": "yes",
+      "modes.mouse-all": "yes",
+      "modes.application-keypad": "yes",
+      "modes.left-right-margin": "yes",
+      "modes.color-scheme-reporting": "yes",
+      "device.primary-da": "yes",
+      "device.status-report": "yes",
+      "device.secondary-da": "yes",
+      "device.tertiary-da": "yes",
+      "device.decrqss": "yes",
+      "device.xtgettcap": "yes",
+      "device.decrpm": "yes",
+      "device.xtversion": "yes",
+      "device.term-features": "yes",
+      "extensions.truecolor": "yes",
+      "extensions.kitty-keyboard": "yes",
+      "extensions.kitty-keyboard.disambiguate": "yes",
+      "extensions.kitty-keyboard.report-events": "yes",
+      "extensions.kitty-keyboard.report-alternate": "yes",
+      "extensions.kitty-keyboard.report-all-keys": "yes",
+      "extensions.kitty-keyboard.report-text": "yes",
+      "extensions.kitty-graphics": "yes",
+      "extensions.kitty-graphics.transmit": "yes",
+      "extensions.kitty-graphics.display": "no",
+      "extensions.kitty-graphics.animation": "no",
+      "extensions.kitty-graphics.unicode-placeholders": "no",
+      "extensions.sixel": "no",
+      "extensions.osc8": "yes",
+      "extensions.reflow": "yes",
+      "extensions.semantic-prompts": "yes",
+      "extensions.osc2-title": "yes",
+      "extensions.osc0-icon-title": "yes",
       "extensions.osc52-clipboard": "yes",
-      "extensions.osc7-cwd": "yes",
+      "extensions.osc52-write": "yes",
+      "extensions.osc52-read": "yes",
       "extensions.osc10-fg-color": "yes",
       "extensions.osc11-bg-color": "yes",
-      "extensions.osc2-title": "yes",
-      "extensions.truecolor": "yes",
-      "extensions.osc8": "yes",
-      "extensions.osc0-icon-title": "yes",
-      "extensions.semantic-prompts": "yes",
+      "extensions.osc7-cwd": "yes",
       "extensions.osc-633-vscode": "yes",
       "extensions.notifications": "yes",
       "extensions.iterm2-images": "yes",
       "extensions.osc1337-cellsize": "no",
       "extensions.osc1337-capabilities": "no",
+      "extensions.osc9-progress": "yes",
+      "extensions.osc66-text-sizing": "yes",
+      "extensions.osc5522-clipboard": "no",
+      "extensions.sixel-da1": "yes",
       "input.modify-other-keys": "yes",
       "input.csi-u": "yes",
       "input.pixel-mouse": "yes",
       "input.urxvt-mouse": "yes",
       "input.x10-mouse": "yes",
+      "input.modify-other-keys-3": "yes",
       "input.button-event-mouse": "yes",
-      "unicode.east-asian-ambiguous": "yes",
-      "unicode.wrap-boundary": "yes",
-      "unicode.tab-stops": "yes",
-      "unicode.grapheme-cursor": "no",
-      "extensions.kitty-graphics": "no",
-      "extensions.reflow": "yes",
+      "reset.sgr": "yes",
+      "reset.ris": "yes",
+      "reset.soft": "yes",
+      "reset.method": "yes",
       "scrollback.accumulate": "yes",
       "scrollback.total-lines": "yes",
+      "scrollback.scroll-up": "yes",
+      "scrollback.reverse-index": "yes",
+      "scrollback.scroll-down": "yes",
+      "scrollback.set-region": "yes",
       "scrollback.alt-screen": "yes",
+      "scrollback.decstbm": "yes",
+      "scrollback.decstbm-reset": "yes",
+      "charsets.dec-special": "yes",
+      "charsets.utf8": "yes",
+      "charsets.g0-g1-switching": "yes",
+      "charsets.dec-line-drawing": "yes",
+      "unicode.east-asian-ambiguous": "yes",
+      "unicode.grapheme-cursor": "yes",
+      "unicode.wrap-boundary": "yes",
+      "unicode.tab-stops": "yes"
+    },
+    "kitty": {
+      "sgr.bold": "yes",
+      "sgr.faint": "yes",
+      "sgr.italic": "yes",
+      "sgr.underline.single": "yes",
+      "sgr.underline.double": "yes",
+      "sgr.underline.curly": "yes",
+      "sgr.underline.dotted": "yes",
+      "sgr.underline.dashed": "yes",
+      "sgr.blink": "yes",
+      "sgr.inverse": "yes",
+      "sgr.hidden": "yes",
+      "sgr.strikethrough": "yes",
+      "sgr.overline": "yes",
+      "sgr.underline.color": "yes",
+      "sgr.fg.standard": "yes",
+      "sgr.bg.standard": "yes",
+      "sgr.fg.bright": "yes",
+      "sgr.bg.bright": "yes",
+      "sgr.fg.default": "yes",
+      "sgr.bg.default": "yes",
+      "sgr.fg.256": "yes",
+      "sgr.bg.256": "yes",
+      "sgr.fg.truecolor": "yes",
+      "sgr.bg.truecolor": "yes",
+      "sgr.selective-reset.bold": "yes",
+      "sgr.selective-reset.underline": "yes",
+      "sgr.selective-reset.italic": "yes",
+      "sgr.selective-reset.inverse": "yes",
+      "sgr.reset": "yes",
+      "cursor.move.absolute": "yes",
+      "cursor.move.home": "yes",
+      "cursor.move.forward": "yes",
+      "cursor.move.back": "yes",
+      "cursor.move.down": "yes",
+      "cursor.move.up": "yes",
+      "cursor.hide": "yes",
+      "cursor.shape": "yes",
+      "cursor.horizontal-absolute": "yes",
+      "cursor.next-line": "yes",
+      "cursor.position-report": "yes",
+      "cursor.save-restore": "yes",
+      "cursor.reverse-wrap": "yes",
+      "cursor.cup-boundaries": "yes",
+      "cursor.cuu-past-top": "yes",
+      "cursor.cud-past-bottom": "yes",
+      "cursor.cup-scroll-region": "no",
+      "text.basic": "yes",
+      "text.newline": "yes",
+      "text.wrap": "yes",
+      "text.tab": "yes",
+      "text.wide.emoji": "yes",
+      "text.wide.cjk": "yes",
+      "text.overwrite": "yes",
+      "text.cr": "yes",
+      "text.backspace": "yes",
+      "text.index": "yes",
+      "text.next-line": "yes",
+      "text.reverse-index-scroll": "yes",
+      "text.combining": "yes",
+      "text.wide.emoji-flags": "yes",
+      "text.wide.emoji-vs16": "no",
+      "text.wide.emoji-zwj": "no",
+      "erase.line.right": "yes",
+      "erase.line.left": "yes",
+      "erase.line.all": "yes",
+      "erase.screen.below": "yes",
+      "erase.screen.above": "yes",
+      "erase.screen.all": "yes",
+      "erase.screen.scrollback": "yes",
+      "erase.character": "yes",
+      "erase.selective": "yes",
+      "erase.el-with-attrs": "yes",
+      "erase.ed-scroll-region": "yes",
+      "editing.insert-chars": "yes",
+      "editing.delete-chars": "yes",
+      "editing.insert-lines": "yes",
+      "editing.delete-lines": "yes",
+      "editing.repeat-char": "yes",
+      "modes.alt-screen.enter": "yes",
       "modes.alt-screen.exit": "yes",
+      "modes.bracketed-paste": "yes",
+      "modes.application-cursor": "yes",
+      "modes.auto-wrap": "yes",
+      "modes.mouse-tracking": "yes",
+      "modes.focus-tracking": "yes",
+      "modes.reverse-video": "yes",
+      "modes.synchronized-output": "yes",
+      "modes.origin": "no",
+      "modes.insert-replace": "yes",
+      "modes.mouse-sgr": "yes",
       "modes.mouse-all": "yes",
-      "device.term-features": "no"
+      "modes.application-keypad": "yes",
+      "modes.left-right-margin": "yes",
+      "modes.color-scheme-reporting": "no",
+      "device.primary-da": "yes",
+      "device.status-report": "yes",
+      "device.secondary-da": "yes",
+      "device.tertiary-da": "no",
+      "device.decrqss": "no",
+      "device.xtgettcap": "no",
+      "device.decrpm": "no",
+      "device.xtversion": "no",
+      "device.term-features": "no",
+      "extensions.truecolor": "yes",
+      "extensions.kitty-keyboard": "no",
+      "extensions.kitty-keyboard.disambiguate": "no",
+      "extensions.kitty-keyboard.report-events": "no",
+      "extensions.kitty-keyboard.report-alternate": "no",
+      "extensions.kitty-keyboard.report-all-keys": "no",
+      "extensions.kitty-keyboard.report-text": "no",
+      "extensions.kitty-graphics": "no",
+      "extensions.kitty-graphics.transmit": "no",
+      "extensions.kitty-graphics.display": "no",
+      "extensions.kitty-graphics.animation": "no",
+      "extensions.kitty-graphics.unicode-placeholders": "no",
+      "extensions.sixel": "yes",
+      "extensions.osc8": "yes",
+      "extensions.reflow": "yes",
+      "extensions.semantic-prompts": "yes",
+      "extensions.osc2-title": "yes",
+      "extensions.osc0-icon-title": "yes",
+      "extensions.osc52-clipboard": "yes",
+      "extensions.osc52-write": "yes",
+      "extensions.osc52-read": "no",
+      "extensions.osc10-fg-color": "yes",
+      "extensions.osc11-bg-color": "yes",
+      "extensions.osc7-cwd": "yes",
+      "extensions.osc-633-vscode": "yes",
+      "extensions.notifications": "yes",
+      "extensions.iterm2-images": "yes",
+      "extensions.osc1337-cellsize": "no",
+      "extensions.osc1337-capabilities": "no",
+      "extensions.osc9-progress": "yes",
+      "extensions.osc66-text-sizing": "yes",
+      "extensions.osc5522-clipboard": "no",
+      "extensions.sixel-da1": "no",
+      "input.modify-other-keys": "yes",
+      "input.csi-u": "yes",
+      "input.pixel-mouse": "yes",
+      "input.urxvt-mouse": "yes",
+      "input.x10-mouse": "yes",
+      "input.modify-other-keys-3": "yes",
+      "input.button-event-mouse": "yes",
+      "reset.sgr": "yes",
+      "reset.ris": "yes",
+      "reset.soft": "yes",
+      "reset.method": "yes",
+      "scrollback.accumulate": "yes",
+      "scrollback.total-lines": "yes",
+      "scrollback.scroll-up": "yes",
+      "scrollback.reverse-index": "yes",
+      "scrollback.scroll-down": "yes",
+      "scrollback.set-region": "yes",
+      "scrollback.alt-screen": "yes",
+      "scrollback.decstbm": "yes",
+      "scrollback.decstbm-reset": "yes",
+      "charsets.dec-special": "yes",
+      "charsets.utf8": "yes",
+      "charsets.g0-g1-switching": "yes",
+      "charsets.dec-line-drawing": "yes",
+      "unicode.east-asian-ambiguous": "yes",
+      "unicode.grapheme-cursor": "no",
+      "unicode.wrap-boundary": "yes",
+      "unicode.tab-stops": "yes"
     },
     "terminal-app": {
       "cursor.position-report": "yes",
@@ -2667,7 +3208,16 @@
       "device.xtversion": "partial",
       "extensions.truecolor": "yes",
       "extensions.kitty-keyboard": "yes",
+      "extensions.kitty-keyboard.disambiguate": "yes",
+      "extensions.kitty-keyboard.report-events": "yes",
+      "extensions.kitty-keyboard.report-alternate": "yes",
+      "extensions.kitty-keyboard.report-all-keys": "yes",
+      "extensions.kitty-keyboard.report-text": "yes",
       "extensions.kitty-graphics": "no",
+      "extensions.kitty-graphics.transmit": "no",
+      "extensions.kitty-graphics.display": "no",
+      "extensions.kitty-graphics.animation": "no",
+      "extensions.kitty-graphics.unicode-placeholders": "no",
       "extensions.sixel": "no",
       "extensions.osc8": "yes",
       "extensions.reflow": "yes",
@@ -2675,6 +3225,7 @@
       "extensions.osc2-title": "yes",
       "extensions.osc0-icon-title": "yes",
       "extensions.osc52-clipboard": "partial",
+      "extensions.osc52-read": "partial",
       "extensions.osc10-fg-color": "partial",
       "extensions.osc11-bg-color": "partial",
       "extensions.osc7-cwd": "partial",
@@ -2820,7 +3371,16 @@
       "device.xtversion": "no",
       "extensions.truecolor": "no",
       "extensions.kitty-keyboard": "no",
+      "extensions.kitty-keyboard.disambiguate": "no",
+      "extensions.kitty-keyboard.report-events": "no",
+      "extensions.kitty-keyboard.report-alternate": "no",
+      "extensions.kitty-keyboard.report-all-keys": "no",
+      "extensions.kitty-keyboard.report-text": "no",
       "extensions.kitty-graphics": "no",
+      "extensions.kitty-graphics.transmit": "no",
+      "extensions.kitty-graphics.display": "no",
+      "extensions.kitty-graphics.animation": "no",
+      "extensions.kitty-graphics.unicode-placeholders": "no",
       "extensions.sixel": "no",
       "extensions.osc8": "no",
       "extensions.reflow": "no",
@@ -2828,6 +3388,7 @@
       "extensions.osc2-title": "yes",
       "extensions.osc0-icon-title": "yes",
       "extensions.osc52-clipboard": "no",
+      "extensions.osc52-read": "no",
       "extensions.osc10-fg-color": "no",
       "extensions.osc11-bg-color": "no",
       "extensions.osc7-cwd": "no",
@@ -2973,7 +3534,16 @@
       "device.xtversion": "yes",
       "extensions.truecolor": "yes",
       "extensions.kitty-keyboard": "yes",
+      "extensions.kitty-keyboard.disambiguate": "yes",
+      "extensions.kitty-keyboard.report-events": "yes",
+      "extensions.kitty-keyboard.report-alternate": "yes",
+      "extensions.kitty-keyboard.report-all-keys": "yes",
+      "extensions.kitty-keyboard.report-text": "yes",
       "extensions.kitty-graphics": "yes",
+      "extensions.kitty-graphics.transmit": "yes",
+      "extensions.kitty-graphics.display": "yes",
+      "extensions.kitty-graphics.animation": "yes",
+      "extensions.kitty-graphics.unicode-placeholders": "yes",
       "extensions.sixel": "yes",
       "extensions.osc8": "yes",
       "extensions.reflow": "yes",
@@ -2981,6 +3551,7 @@
       "extensions.osc2-title": "yes",
       "extensions.osc0-icon-title": "yes",
       "extensions.osc52-clipboard": "yes",
+      "extensions.osc52-read": "yes",
       "extensions.osc10-fg-color": "yes",
       "extensions.osc11-bg-color": "yes",
       "extensions.osc7-cwd": "yes",
@@ -3126,7 +3697,16 @@
       "device.xtversion": "partial",
       "extensions.truecolor": "yes",
       "extensions.kitty-keyboard": "yes",
+      "extensions.kitty-keyboard.disambiguate": "yes",
+      "extensions.kitty-keyboard.report-events": "yes",
+      "extensions.kitty-keyboard.report-alternate": "yes",
+      "extensions.kitty-keyboard.report-all-keys": "yes",
+      "extensions.kitty-keyboard.report-text": "yes",
       "extensions.kitty-graphics": "no",
+      "extensions.kitty-graphics.transmit": "no",
+      "extensions.kitty-graphics.display": "no",
+      "extensions.kitty-graphics.animation": "no",
+      "extensions.kitty-graphics.unicode-placeholders": "no",
       "extensions.sixel": "yes",
       "extensions.osc8": "yes",
       "extensions.reflow": "yes",
@@ -3134,6 +3714,7 @@
       "extensions.osc2-title": "yes",
       "extensions.osc0-icon-title": "yes",
       "extensions.osc52-clipboard": "partial",
+      "extensions.osc52-read": "partial",
       "extensions.osc10-fg-color": "partial",
       "extensions.osc11-bg-color": "partial",
       "extensions.osc7-cwd": "partial",
@@ -3281,78 +3862,116 @@
       "modes.mouse-all": "DECRPM: mode reset"
     },
     "ghostty": {
+      "cursor.cup-boundaries": "got 119;270, expected within screen bounds",
+      "cursor.cud-past-bottom": "cursor at row 119",
       "cursor.cup-scroll-region": "got 1;1, expected 5;1",
-      "device.tertiary-da": "No DA3 response",
-      "device.decrpm": "DECAWM is set",
       "modes.alt-screen.enter": "DECRPM: mode reset",
-      "modes.auto-wrap": "DECRPM: mode set",
       "modes.bracketed-paste": "DECRPM: mode reset",
-      "modes.mouse-tracking": "DECRPM: mode reset",
-      "modes.mouse-sgr": "DECRPM: mode reset",
-      "modes.focus-tracking": "DECRPM: mode reset",
       "modes.application-cursor": "DECRPM: mode reset",
-      "modes.origin": "DECRPM: mode reset",
+      "modes.auto-wrap": "DECRPM: mode set",
+      "modes.mouse-tracking": "DECRPM: mode reset",
+      "modes.focus-tracking": "DECRPM: mode reset",
       "modes.reverse-video": "DECRPM: mode reset",
       "modes.synchronized-output": "DECRPM: mode reset",
-      "reset.method": "cursor at 5;5 after DECSTR",
-      "extensions.sixel-da1": "DA1 response missing ;4 (sixel)",
-      "extensions.sixel": "Sixel image didn't move cursor",
-      "extensions.osc1337-cellsize": "No OSC 1337 ReportCellSize response",
-      "extensions.osc1337-capabilities": "No OSC 1337 capabilities response",
-      "unicode.east-asian-ambiguous": "width=1 (ambiguous chars vary by terminal/locale)",
+      "modes.origin": "DECRPM: mode reset",
+      "modes.mouse-sgr": "DECRPM: mode reset",
+      "modes.mouse-all": "DECRPM: mode reset",
+      "modes.color-scheme-reporting": "DECRPM: mode reset",
+      "device.tertiary-da": "No DA3 response",
+      "device.decrpm": "DECAWM is set",
+      "device.term-features": "TERM_FEATURES env var not set",
       "extensions.kitty-graphics": "No kitty graphics acknowledgment",
+      "extensions.kitty-graphics.display": "No kitty graphics display response",
+      "extensions.kitty-graphics.animation": "No animation frame response",
+      "extensions.kitty-graphics.unicode-placeholders": "No response with U=1",
+      "extensions.sixel": "Sixel image didn't move cursor",
+      "extensions.osc52-read": "No OSC 52 read response",
+      "extensions.osc1337-cellsize": "No ReportCellSize response",
+      "extensions.osc1337-capabilities": "No Capabilities response",
+      "extensions.osc66-text-sizing": "Consumed (no query)",
+      "extensions.osc5522-clipboard": "No OSC 5522 response",
+      "extensions.sixel-da1": "DA1 attrs: 62;22;52 (no sixel)",
+      "reset.method": "cursor at 5;5 after DECSTR",
       "scrollback.total-lines": "Content written to scrollback",
-      "modes.mouse-all": "DECRPM: mode reset"
+      "scrollback.decstbm-reset": "cursor at row 119 (expected near bottom after DECSTBM reset)",
+      "unicode.east-asian-ambiguous": "width=1 (ambiguous chars vary by terminal/locale)"
     },
     "iterm2": {
+      "cursor.cup-boundaries": "got 25;80, expected within screen bounds",
+      "cursor.cud-past-bottom": "cursor at row 25",
       "cursor.cup-scroll-region": "got 1;1, expected 5;1",
-      "device.decrpm": "DECAWM is set",
       "modes.alt-screen.enter": "DECRPM: mode reset",
-      "modes.auto-wrap": "DECRPM: mode set",
       "modes.bracketed-paste": "DECRPM: mode reset",
-      "modes.mouse-tracking": "DECRPM: mode reset",
-      "modes.mouse-sgr": "DECRPM: mode reset",
-      "modes.focus-tracking": "DECRPM: mode reset",
       "modes.application-cursor": "DECRPM: mode reset",
-      "modes.origin": "DECRPM: mode reset",
+      "modes.auto-wrap": "DECRPM: mode set",
+      "modes.mouse-tracking": "DECRPM: mode reset",
+      "modes.focus-tracking": "DECRPM: mode reset",
       "modes.reverse-video": "DECRPM: mode reset",
       "modes.synchronized-output": "DECRPM: mode reset",
-      "reset.method": "cursor at 5;5 after DECSTR",
+      "modes.origin": "DECRPM: mode reset",
+      "modes.mouse-sgr": "DECRPM: mode reset",
+      "modes.mouse-all": "DECRPM: mode reset",
+      "modes.color-scheme-reporting": "DECRPM: mode reset",
+      "device.decrpm": "DECAWM is set",
+      "extensions.kitty-graphics.display": "No kitty graphics display response",
+      "extensions.kitty-graphics.animation": "No animation frame response",
+      "extensions.kitty-graphics.unicode-placeholders": "No response with U=1",
       "extensions.sixel": "Sixel image didn't move cursor",
-      "extensions.osc1337-capabilities": "No OSC 1337 capabilities response",
-      "unicode.east-asian-ambiguous": "width=1 (ambiguous chars vary by terminal/locale)",
+      "extensions.osc1337-cellsize": "No ReportCellSize response",
+      "extensions.osc1337-capabilities": "No Capabilities response",
+      "extensions.osc66-text-sizing": "Consumed (no query)",
+      "extensions.osc5522-clipboard": "No OSC 5522 response",
+      "extensions.sixel-da1": "DA1 attrs: 64;1;2;4;6;17;18;21;22;52",
+      "reset.method": "cursor at 5;5 after DECSTR",
       "scrollback.total-lines": "Content written to scrollback",
-      "modes.mouse-all": "DECRPM: mode reset"
+      "scrollback.decstbm-reset": "cursor at row 25 (expected near bottom after DECSTBM reset)",
+      "unicode.east-asian-ambiguous": "width=1 (ambiguous chars vary by terminal/locale)"
     },
     "kitty": {
+      "cursor.cud-past-bottom": "cursor at row 24",
       "cursor.cup-scroll-region": "got 1;1, expected 5;1",
-      "device.tertiary-da": "No DA3 response",
-      "device.decrpm": "No DECRPM response",
-      "device.decrqss": "No DECRQSS response",
-      "device.xtgettcap": "No XTGETTCAP response",
-      "device.xtversion": "No XTVERSION response",
-      "text.wide.emoji-zwj": "width=11, expected 2",
       "text.wide.emoji-vs16": "width=1, expected 2",
+      "text.wide.emoji-zwj": "width=11, expected 2",
       "modes.alt-screen.enter": "Behavioral: entered and responded",
-      "modes.auto-wrap": "Behavioral: wrap confirmed",
       "modes.bracketed-paste": "Behavioral: terminal responsive after enable",
-      "modes.mouse-tracking": "Behavioral: responsive after enable",
-      "modes.mouse-sgr": "Behavioral: responsive after enable",
-      "modes.focus-tracking": "Behavioral: responsive after enable",
       "modes.application-cursor": "Behavioral: responsive after enable",
-      "modes.origin": "Behavioral: cursor at row 1 (origin mapped)",
+      "modes.auto-wrap": "Behavioral: wrap confirmed",
+      "modes.mouse-tracking": "Behavioral: responsive after enable",
+      "modes.focus-tracking": "Behavioral: responsive after enable",
       "modes.reverse-video": "Behavioral: responsive after enable",
       "modes.synchronized-output": "Behavioral: responsive after enable",
-      "reset.method": "cursor at 5;5 after DECSTR",
+      "modes.origin": "Behavioral: cursor at row 1 (origin mapped)",
+      "modes.mouse-sgr": "Behavioral: responsive after enable",
+      "modes.mouse-all": "Behavioral: responsive after enable",
+      "modes.color-scheme-reporting": "No DECRPM or DECDSR 997 response",
+      "device.tertiary-da": "No DA3 response",
+      "device.decrqss": "No DECRQSS response",
+      "device.xtgettcap": "No XTGETTCAP response",
+      "device.decrpm": "No DECRPM response",
+      "device.xtversion": "No XTVERSION response",
+      "device.term-features": "TERM_FEATURES env var not set",
       "extensions.kitty-keyboard": "No kitty keyboard response",
-      "extensions.sixel-da1": "DA1 response missing ;4 (sixel)",
-      "extensions.osc1337-cellsize": "No OSC 1337 ReportCellSize response",
-      "extensions.osc1337-capabilities": "No OSC 1337 capabilities response",
-      "unicode.east-asian-ambiguous": "width=1 (ambiguous chars vary by terminal/locale)",
-      "unicode.grapheme-cursor": "width=8, expected 2",
+      "extensions.kitty-keyboard.disambiguate": "No kitty keyboard response",
+      "extensions.kitty-keyboard.report-events": "No kitty keyboard response",
+      "extensions.kitty-keyboard.report-alternate": "No kitty keyboard response",
+      "extensions.kitty-keyboard.report-all-keys": "No kitty keyboard response",
+      "extensions.kitty-keyboard.report-text": "No kitty keyboard response",
       "extensions.kitty-graphics": "No kitty graphics acknowledgment",
+      "extensions.kitty-graphics.transmit": "No kitty graphics transmit response",
+      "extensions.kitty-graphics.display": "No kitty graphics display response",
+      "extensions.kitty-graphics.animation": "No animation frame response",
+      "extensions.kitty-graphics.unicode-placeholders": "No response with U=1",
+      "extensions.osc52-read": "No OSC 52 read response",
+      "extensions.osc1337-cellsize": "No ReportCellSize response",
+      "extensions.osc1337-capabilities": "No Capabilities response",
+      "extensions.osc66-text-sizing": "Consumed (no query)",
+      "extensions.osc5522-clipboard": "No OSC 5522 response",
+      "extensions.sixel-da1": "DA1 attrs: 1;2 (no sixel)",
+      "reset.method": "cursor at 5;5 after DECSTR",
       "scrollback.total-lines": "Content written to scrollback",
-      "modes.mouse-all": "Behavioral: responsive after enable"
+      "scrollback.decstbm-reset": "cursor at row 24 (expected near bottom after DECSTBM reset)",
+      "unicode.east-asian-ambiguous": "width=1 (ambiguous chars vary by terminal/locale)",
+      "unicode.grapheme-cursor": "width=8, expected 2"
     },
     "terminal-app": {
       "cursor.cup-scroll-region": "got 1;1, expected 5;1",
@@ -3446,9 +4065,14 @@
       "device.decrpm": "Headless mode has no output stream for DECRPM responses",
       "device.xtversion": "Headless mode has no output stream for XTVERSION responses",
       "extensions.kitty-graphics": "Not implemented in alacritty",
+      "extensions.kitty-graphics.transmit": "Kitty graphics not implemented in alacritty",
+      "extensions.kitty-graphics.display": "Kitty graphics not implemented in alacritty",
+      "extensions.kitty-graphics.animation": "Kitty graphics not implemented in alacritty",
+      "extensions.kitty-graphics.unicode-placeholders": "Kitty graphics not implemented in alacritty",
       "extensions.sixel": "Not implemented in alacritty",
       "extensions.semantic-prompts": "Not implemented in alacritty",
       "extensions.osc52-clipboard": "OSC 52 clipboard not exposed in headless mode",
+      "extensions.osc52-read": "OSC 52 clipboard read not exposed in headless mode",
       "extensions.osc10-fg-color": "OSC 10 color query not exposed in headless mode",
       "extensions.osc11-bg-color": "OSC 11 color query not exposed in headless mode",
       "extensions.osc7-cwd": "OSC 7 CWD reporting not exposed via alacritty_terminal API",
@@ -3508,12 +4132,22 @@
       "device.xtversion": "No output stream — pure TypeScript emulator",
       "extensions.truecolor": "Not in VT100/VT220 — only 8 standard colors supported",
       "extensions.kitty-keyboard": "Not implemented — pure TypeScript emulator",
+      "extensions.kitty-keyboard.disambiguate": "Not implemented — pure TypeScript emulator",
+      "extensions.kitty-keyboard.report-events": "Not implemented — pure TypeScript emulator",
+      "extensions.kitty-keyboard.report-alternate": "Not implemented — pure TypeScript emulator",
+      "extensions.kitty-keyboard.report-all-keys": "Not implemented — pure TypeScript emulator",
+      "extensions.kitty-keyboard.report-text": "Not implemented — pure TypeScript emulator",
       "extensions.kitty-graphics": "Not implemented — pure TypeScript emulator",
+      "extensions.kitty-graphics.transmit": "Not implemented — pure TypeScript emulator",
+      "extensions.kitty-graphics.display": "Not implemented — pure TypeScript emulator",
+      "extensions.kitty-graphics.animation": "Not implemented — pure TypeScript emulator",
+      "extensions.kitty-graphics.unicode-placeholders": "Not implemented — pure TypeScript emulator",
       "extensions.sixel": "Not implemented — pure TypeScript emulator",
       "extensions.osc8": "Not implemented — pure TypeScript emulator",
       "extensions.reflow": "Not implemented — pure TypeScript emulator",
       "extensions.semantic-prompts": "Not implemented — pure TypeScript emulator",
       "extensions.osc52-clipboard": "Not implemented — pure TypeScript emulator",
+      "extensions.osc52-read": "Not implemented — pure TypeScript emulator",
       "extensions.osc10-fg-color": "Not implemented — pure TypeScript emulator",
       "extensions.osc11-bg-color": "Not implemented — pure TypeScript emulator",
       "extensions.osc7-cwd": "Not implemented — pure TypeScript emulator",
@@ -3573,7 +4207,12 @@
       "device.decrpm": "Headless mode has no output stream for DECRPM responses",
       "device.xtversion": "Headless mode has no output stream for XTVERSION responses",
       "extensions.kitty-graphics": "Not implemented in wezterm-term crate",
+      "extensions.kitty-graphics.transmit": "Kitty graphics not implemented in wezterm-term crate",
+      "extensions.kitty-graphics.display": "Kitty graphics not implemented in wezterm-term crate",
+      "extensions.kitty-graphics.animation": "Kitty graphics not implemented in wezterm-term crate",
+      "extensions.kitty-graphics.unicode-placeholders": "Kitty graphics not implemented in wezterm-term crate",
       "extensions.osc52-clipboard": "OSC 52 clipboard not exposed in headless mode",
+      "extensions.osc52-read": "OSC 52 clipboard read not exposed in headless mode",
       "extensions.osc10-fg-color": "OSC 10 color query not exposed in headless mode",
       "extensions.osc11-bg-color": "OSC 11 color query not exposed in headless mode",
       "extensions.osc7-cwd": "OSC 7 CWD reporting not exposed via wezterm-term API",
