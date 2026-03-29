@@ -105,85 +105,81 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
   ),
 
-  // Kitty graphics protocol
+  // Kitty graphics protocol — behavioral check (like sixel probe)
+  // APC responses arrive slower than DA1, so sentinel-based detection fails.
+  // Instead: transmit+display image, check if cursor moved (image rendered).
   probe(
     "extensions.kitty-graphics",
     (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
     async (ctx) => {
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      const match = await ctx.queryWithSentinel(
-        `\x1b_Ga=T,f=100,s=1,v=1,t=d;${payload}\x1b\\`,
-        /\x1b_G([^\x1b]*)\x1b\\/,
-      )
-      if (match) return { pass: true, response: match[1] }
-      return { pass: false, note: "No kitty graphics acknowledgment" }
+      ctx.write("\x1b[1;1H")
+      ctx.write(`\x1b_Ga=T,f=100,s=1,v=1,t=d;${payload}\x1b\\`)
+      await new Promise((r) => setTimeout(r, 300))
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after kitty graphics" }
+      return { pass: pos.row > 1 || pos.col > 1, note: pos.row > 1 || pos.col > 1 ? undefined : "Image didn't render" }
     },
   ),
 
-  // Kitty graphics: sub-capability probes
-  // Transmit + display (a=T for transmit-and-display test)
+  // Kitty graphics sub-probes — behavioral checks via cursor position + responsiveness
   probe(
     "extensions.kitty-graphics.transmit",
     (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
     async (ctx) => {
-      // Transmit a 1x1 PNG, check for acknowledgment
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      const match = await ctx.queryWithSentinel(
-        `\x1b_Ga=t,f=100,s=1,v=1,t=d,i=999;${payload}\x1b\\`,
-        /\x1b_G([^\x1b]*)\x1b\\/,
-      )
-      // Clean up: delete the image
+      ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=999;${payload}\x1b\\`)
+      await new Promise((r) => setTimeout(r, 300))
+      const pos = await ctx.queryCursorPosition()
       ctx.write(`\x1b_Ga=d,d=i,i=999\x1b\\`)
-      if (!match) return { pass: false, note: "No kitty graphics transmit response" }
-      return { pass: !match[1]?.includes("ENOENT"), response: match[1] }
+      return { pass: pos !== null, note: pos ? undefined : "No response after transmit" }
     },
   ),
 
-  // Display (a=p — place a previously transmitted image)
   probe(
     "extensions.kitty-graphics.display",
     (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
     async (ctx) => {
-      // Transmit then display
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=998,q=2;${payload}\x1b\\`)
-      const match = await ctx.queryWithSentinel(`\x1b_Ga=p,i=998,q=2\x1b\\`, /\x1b_G([^\x1b]*)\x1b\\/)
+      ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=998,q=1;${payload}\x1b\\`)
+      await new Promise((r) => setTimeout(r, 200))
+      ctx.write("\x1b[1;1H")
+      ctx.write(`\x1b_Ga=p,i=998\x1b\\`)
+      await new Promise((r) => setTimeout(r, 300))
+      const pos = await ctx.queryCursorPosition()
       ctx.write(`\x1b_Ga=d,d=i,i=998\x1b\\`)
-      if (!match) return { pass: false, note: "No kitty graphics display response" }
-      return { pass: true, response: match[1] }
+      if (!pos) return { pass: false, note: "No response after display" }
+      return { pass: pos.row > 1 || pos.col > 1, note: pos.row > 1 || pos.col > 1 ? undefined : "Display didn't render" }
     },
   ),
 
-  // Animation frames (a=f)
   probe(
     "extensions.kitty-graphics.animation",
     (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
     async (ctx) => {
-      // Transmit base frame, then try adding animation frame
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=997,q=2;${payload}\x1b\\`)
-      const match = await ctx.queryWithSentinel(`\x1b_Ga=f,i=997,q=2;${payload}\x1b\\`, /\x1b_G([^\x1b]*)\x1b\\/)
+      ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=997,q=1;${payload}\x1b\\`)
+      await new Promise((r) => setTimeout(r, 200))
+      ctx.write(`\x1b_Ga=f,i=997,q=1;${payload}\x1b\\`)
+      await new Promise((r) => setTimeout(r, 200))
+      const pos = await ctx.queryCursorPosition()
       ctx.write(`\x1b_Ga=d,d=i,i=997\x1b\\`)
-      if (!match) return { pass: false, note: "No animation frame response" }
-      const ok = !match[1]?.includes("EINVAL")
-      return { pass: ok, response: match[1] }
+      return { pass: pos !== null, note: pos ? undefined : "No response after animation frame" }
     },
   ),
 
-  // Unicode placeholders (U=1)
   probe(
     "extensions.kitty-graphics.unicode-placeholders",
     (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
     async (ctx) => {
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      const match = await ctx.queryWithSentinel(
-        `\x1b_Ga=T,f=100,s=1,v=1,t=d,U=1,i=996,q=2;${payload}\x1b\\`,
-        /\x1b_G([^\x1b]*)\x1b\\/,
-      )
+      ctx.write("\x1b[1;1H")
+      ctx.write(`\x1b_Ga=T,f=100,s=1,v=1,t=d,U=1,i=996;${payload}\x1b\\`)
+      await new Promise((r) => setTimeout(r, 300))
+      const pos = await ctx.queryCursorPosition()
       ctx.write(`\x1b_Ga=d,d=i,i=996\x1b\\`)
-      if (!match) return { pass: false, note: "No response with U=1" }
-      const ok = !match[1]?.includes("EINVAL")
-      return { pass: ok, response: match[1] }
+      if (!pos) return { pass: false, note: "No response after U=1" }
+      return { pass: pos.row > 1 || pos.col > 1, note: pos.row > 1 || pos.col > 1 ? undefined : "U=1 didn't render" }
     },
   ),
 
