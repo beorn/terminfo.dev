@@ -26,21 +26,26 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-keyboard",
     (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
     async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      // Push mode 1 + query atomically — some terminals only respond to
+      // CSI ? u after a mode has been pushed (no response when stack is empty)
+      const match = await ctx.queryWithSentinel("\x1b[>1u\x1b[?u", /\x1b\[\?(\d+)u/)
+      ctx.write("\x1b[<u") // pop
       if (!match) return { pass: false, note: "No kitty keyboard response" }
       return { pass: true, response: `flags=${match[1]}` }
     },
   ),
 
   // Kitty keyboard: individual progressive enhancement flags
+  // Each probe pushes+queries in a single write to avoid race conditions,
+  // then pops after response is received.
+
   // Flag 1: DISAMBIGUATE — CSI u encoding for ambiguous keys
   probe(
     "extensions.kitty-keyboard.disambiguate",
     (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
     async (ctx) => {
-      // Push flag 1, query current flags, verify bit 1 is set
-      ctx.write("\x1b[>1u") // push with DISAMBIGUATE
-      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      // Combine push + query in single sequence so terminal processes atomically
+      const match = await ctx.queryWithSentinel("\x1b[>1u\x1b[?u", /\x1b\[\?(\d+)u/)
       ctx.write("\x1b[<u") // pop
       if (!match) return { pass: false, note: "No kitty keyboard response" }
       const flags = parseInt(match[1]!, 10)
@@ -53,8 +58,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-keyboard.report-events",
     (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
     async (ctx) => {
-      ctx.write("\x1b[>3u") // push DISAMBIGUATE|REPORT_EVENTS (1+2=3)
-      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      const match = await ctx.queryWithSentinel("\x1b[>3u\x1b[?u", /\x1b\[\?(\d+)u/)
       ctx.write("\x1b[<u")
       if (!match) return { pass: false, note: "No kitty keyboard response" }
       const flags = parseInt(match[1]!, 10)
@@ -67,8 +71,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-keyboard.report-alternate",
     (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
     async (ctx) => {
-      ctx.write("\x1b[>5u") // push DISAMBIGUATE|REPORT_ALTERNATE (1+4=5)
-      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      const match = await ctx.queryWithSentinel("\x1b[>5u\x1b[?u", /\x1b\[\?(\d+)u/)
       ctx.write("\x1b[<u")
       if (!match) return { pass: false, note: "No kitty keyboard response" }
       const flags = parseInt(match[1]!, 10)
@@ -81,8 +84,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-keyboard.report-all-keys",
     (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
     async (ctx) => {
-      ctx.write("\x1b[>9u") // push DISAMBIGUATE|REPORT_ALL_KEYS (1+8=9)
-      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      const match = await ctx.queryWithSentinel("\x1b[>9u\x1b[?u", /\x1b\[\?(\d+)u/)
       ctx.write("\x1b[<u")
       if (!match) return { pass: false, note: "No kitty keyboard response" }
       const flags = parseInt(match[1]!, 10)
@@ -95,8 +97,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.kitty-keyboard.report-text",
     (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
     async (ctx) => {
-      ctx.write("\x1b[>17u") // push DISAMBIGUATE|REPORT_TEXT (1+16=17)
-      const match = await ctx.queryWithSentinel("\x1b[?u", /\x1b\[\?(\d+)u/)
+      const match = await ctx.queryWithSentinel("\x1b[>17u\x1b[?u", /\x1b\[\?(\d+)u/)
       ctx.write("\x1b[<u")
       if (!match) return { pass: false, note: "No kitty keyboard response" }
       const flags = parseInt(match[1]!, 10)
@@ -146,10 +147,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       // Transmit then display
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
       ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=998,q=2;${payload}\x1b\\`)
-      const match = await ctx.queryWithSentinel(
-        `\x1b_Ga=p,i=998,q=2\x1b\\`,
-        /\x1b_G([^\x1b]*)\x1b\\/,
-      )
+      const match = await ctx.queryWithSentinel(`\x1b_Ga=p,i=998,q=2\x1b\\`, /\x1b_G([^\x1b]*)\x1b\\/)
       ctx.write(`\x1b_Ga=d,d=i,i=998\x1b\\`)
       if (!match) return { pass: false, note: "No kitty graphics display response" }
       return { pass: true, response: match[1] }
@@ -164,10 +162,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       // Transmit base frame, then try adding animation frame
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
       ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=997,q=2;${payload}\x1b\\`)
-      const match = await ctx.queryWithSentinel(
-        `\x1b_Ga=f,i=997,q=2;${payload}\x1b\\`,
-        /\x1b_G([^\x1b]*)\x1b\\/,
-      )
+      const match = await ctx.queryWithSentinel(`\x1b_Ga=f,i=997,q=2;${payload}\x1b\\`, /\x1b_G([^\x1b]*)\x1b\\/)
       ctx.write(`\x1b_Ga=d,d=i,i=997\x1b\\`)
       if (!match) return { pass: false, note: "No animation frame response" }
       const ok = !match[1]?.includes("EINVAL")
@@ -333,7 +328,10 @@ export const extensionsProbes: ProbeDefinition[] = [
       const testData = btoa("terminfo-read-test")
       ctx.feed(`\x1b]52;c;${testData}\x07`)
       const response = ctx.feedCapture("\x1b]52;c;?\x07")
-      return { pass: response.includes("52;c;"), note: response.includes("52;c;") ? undefined : "No OSC 52 query response" }
+      return {
+        pass: response.includes("52;c;"),
+        note: response.includes("52;c;") ? undefined : "No OSC 52 query response",
+      }
     },
     async (ctx) => {
       const testData = btoa("terminfo-read-test")
