@@ -47,6 +47,10 @@ function termTooltip(r) {
   <span class="sep">›</span>
   <a :href="'/' + p.featureCategory">{{ p.categoryLabel }}</a>
   <span class="sep">›</span>
+  <template v-if="p.parentFeatureId">
+    <a :href="'/' + p.featureCategory + '/' + p.parentFeatureSlug">{{ p.parentFeatureName }}</a>
+    <span class="sep">›</span>
+  </template>
   <span>{{ p.featureName }}</span>
 </nav>
 

@@ -91,6 +91,25 @@ export default {
         }
       }
 
+      // Detect parent feature (e.g., extensions.kitty-keyboard for extensions.kitty-keyboard.disambiguate)
+      const parts = f.id.split(".")
+      let parentFeatureId = ""
+      let parentFeatureName = ""
+      let parentFeatureSlug = ""
+      if (parts.length >= 3) {
+        // Try progressively shorter prefixes to find the parent
+        for (let i = parts.length - 1; i >= 2; i--) {
+          const candidate = parts.slice(0, i).join(".")
+          const parentDesc = data.featureDescriptions[candidate]
+          if (parentDesc) {
+            parentFeatureId = candidate
+            parentFeatureName = parentDesc.name ?? candidate
+            parentFeatureSlug = featureSlug(candidate)
+            break
+          }
+        }
+      }
+
       const a = allAnalysis[`${f.category}/${slug}`]
 
       return {
@@ -112,8 +131,18 @@ export default {
           analysis: a?.analysis ?? "",
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
+          parentFeatureId,
+          parentFeatureName,
+          parentFeatureSlug,
           subFeatures: JSON.stringify(subFeatures),
-          backendNames: JSON.stringify(data.backends.map((b) => ({ name: b.name, label: data.meta[b.name]?.label ?? b.name, slug: terminalSlug(b.name, data.meta), type: b.type ?? "headless" }))),
+          backendNames: JSON.stringify(
+            data.backends.map((b) => ({
+              name: b.name,
+              label: data.meta[b.name]?.label ?? b.name,
+              slug: terminalSlug(b.name, data.meta),
+              type: b.type ?? "headless",
+            })),
+          ),
         },
       }
     })
