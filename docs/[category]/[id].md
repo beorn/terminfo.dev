@@ -11,8 +11,12 @@ const p = params.value
 
 const backendResults = JSON.parse(p.backendResults)
 const featureTags = JSON.parse(p.featureTags || '[]')
+const subFeatures = JSON.parse(p.subFeatures || '[]')
+const backendNames = JSON.parse(p.backendNames || '[]')
 const appResults = backendResults.filter(r => r.type === 'app')
 const headlessResults = backendResults.filter(r => r.type === 'headless')
+const appBackends = backendNames.filter(b => b.type === 'app')
+const headlessBackends = backendNames.filter(b => b.type === 'headless')
 
 function icon(result) {
   if (result === 'yes') return '✓'
@@ -126,6 +130,29 @@ function termTooltip(r) {
         {{ r.note }}
         <a v-if="r.url" :href="r.url" target="_blank" rel="noopener" class="upstream-link"> ↗ upstream</a>
       </td>
+    </tr>
+  </tbody>
+</table>
+
+</div>
+
+<div v-if="subFeatures.length > 0" class="sub-features-section">
+
+## Sub-features
+
+<p class="sub-features-note">This feature has {{ subFeatures.length }} individually testable sub-features.</p>
+
+<table class="support-table sub-features-table">
+  <thead>
+    <tr>
+      <th>Sub-feature</th>
+      <th v-for="b in appBackends" :key="b.name" class="backend-col">{{ b.label }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr v-for="sf in subFeatures" :key="sf.id">
+      <td><a :href="'/' + p.featureCategory + '/' + sf.slug">{{ sf.name }}</a></td>
+      <td v-for="b in appBackends" :key="b.name" :class="cls(sf.results[b.name] || 'unknown')" class="result-cell">{{ icon(sf.results[b.name] || 'unknown') }}</td>
     </tr>
   </tbody>
 </table>
@@ -313,5 +340,28 @@ function termTooltip(r) {
 
 .back-link a:hover {
   text-decoration: underline;
+}
+
+.sub-features-note {
+  color: var(--vp-c-text-2);
+  font-size: 0.9em;
+  margin-top: -0.5em;
+}
+
+.sub-features-table .backend-col {
+  font-size: 0.8em;
+  text-align: center;
+  white-space: nowrap;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sub-features-table .result-cell {
+  text-align: center;
+  width: 40px;
+  min-width: 40px;
+  padding: 4px 6px;
+  font-size: 0.9em;
 }
 </style>

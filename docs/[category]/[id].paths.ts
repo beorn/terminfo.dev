@@ -67,6 +67,30 @@ export default {
         label: getTagLabel(t),
       }))
 
+      // Detect sub-features by prefix (e.g., extensions.kitty-keyboard.* for extensions.kitty-keyboard)
+      const subFeatures: Array<{
+        id: string
+        name: string
+        slug: string
+        results: Record<string, string> // backend name -> result
+      }> = []
+      const prefix = f.id + "."
+      for (const sf of data.features) {
+        if (sf.id.startsWith(prefix) && sf.id.split(".").length === f.id.split(".").length + 1) {
+          const sfDesc = data.featureDescriptions[sf.id]
+          const sfResults: Record<string, string> = {}
+          for (const b of data.backends) {
+            sfResults[b.name] = data.results[b.name]?.[sf.id] ?? "unknown"
+          }
+          subFeatures.push({
+            id: sf.id,
+            name: sfDesc?.name ?? sf.name,
+            slug: featureSlug(sf.id),
+            results: sfResults,
+          })
+        }
+      }
+
       const a = allAnalysis[`${f.category}/${slug}`]
 
       return {
@@ -88,6 +112,8 @@ export default {
           analysis: a?.analysis ?? "",
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
+          subFeatures: JSON.stringify(subFeatures),
+          backendNames: JSON.stringify(data.backends.map((b) => ({ name: b.name, label: data.meta[b.name]?.label ?? b.name, slug: terminalSlug(b.name, data.meta), type: b.type ?? "headless" }))),
         },
       }
     })
