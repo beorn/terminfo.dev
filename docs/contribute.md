@@ -22,7 +22,7 @@ curl -sL terminfo.dev/test | sh
 ```
 
 ::: tip What does this do?
-The script runs a series of feature tests on your terminal — sending the same escape sequences that every TUI app sends — and reports which ones your terminal supports. It does **not** install anything, modify any files, or send data anywhere without asking. You can [read the full source code](https://terminfo.dev/test) before running it — it's a plain shell script.
+The script runs a series of feature tests on your terminal — sending the same escape sequences that every TUI app sends — and reports which ones your terminal supports. It does **not** install anything, modify any files, or send data anywhere without asking. You can [read the full source code](/test-source) before running it — it's a plain shell script.
 :::
 
 ## How Feature Tests Work
@@ -92,7 +92,7 @@ It does **not**:
 
 **Source code:**
 
-- Shell script: [terminfo.dev/test](https://terminfo.dev/test) (what `curl | sh` runs — read it directly)
+- Shell script: [terminfo.dev/test](/test-source) (what `curl | sh` runs — read it directly)
 - npm package: [terminfo.dev on npm](https://www.npmjs.com/package/terminfo.dev) (what `npx` runs)
 
 ## JSON Output

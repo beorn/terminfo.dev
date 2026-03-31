@@ -1,0 +1,194 @@
+---
+title: Test Script Source Code
+---
+
+# Test Script Source Code
+
+This is the script that runs when you execute `curl -sL terminfo.dev/test | sh`. It's a pure POSIX shell script — no dependencies, no installs, no network requests until you choose to submit.
+
+**Run it:** `curl -sL terminfo.dev/test | sh`
+
+**What it does:** Sends standard terminal escape sequences (the same ones every TUI app sends) and checks how your terminal responds. [Learn more about how testing works](/contribute).
+
+```sh
+#!/bin/sh
+# terminfo.dev probe — test your terminal's feature support
+# Usage: curl -sL terminfo.dev/probe | sh
+#
+# Sends escape sequences to the terminal, reads responses, outputs JSON.
+# Progress to stderr, JSON to stdout. Requires a real terminal (/dev/tty).
+
+if ! (stty -g </dev/tty >/dev/null) 2>/dev/null; then
+  echo "Error: no terminal. Run in an interactive terminal." >&2
+  echo "Usage: curl -sL terminfo.dev/probe | sh" >&2
+  exit 1
+fi
+
+# Detect terminal from env vars
+if [ -n "$GHOSTTY_RESOURCES_DIR" ]; then TN="ghostty"
+elif [ -n "$KITTY_WINDOW_ID" ] || [ -n "$KITTY_PID" ]; then TN="kitty"
+elif [ -n "$WEZTERM_EXECUTABLE" ]; then TN="wezterm"
+elif [ "$TERM_PROGRAM" = "iTerm.app" ]; then TN="iterm2"
+elif [ "$TERM_PROGRAM" = "Apple_Terminal" ]; then TN="terminal-app"
+elif [ "$TERM_PROGRAM" = "vscode" ]; then TN="vscode"
+elif [ "$TERM_PROGRAM" = "WarpTerminal" ]; then TN="warp"
+elif [ "$TERM_PROGRAM" = "Alacritty" ]; then TN="alacritty"
+elif [ -n "$GNOME_TERMINAL_SCREEN" ]; then TN="gnome-terminal"
+elif [ -n "$KONSOLE_VERSION" ]; then TN="konsole"
+elif [ -n "$WT_SESSION" ]; then TN="windows-terminal"
+elif [ -n "$TERM_PROGRAM" ]; then TN=$(printf '%s' "$TERM_PROGRAM" | tr '[:upper:]' '[:lower:]')
+else TN="unknown"
+fi
+TV="${TERM_PROGRAM_VERSION:-unknown}"
+case "$(uname -s)" in Darwin) PL="macos";; Linux) PL="linux";; MINGW*|MSYS*|CYGWIN*) PL="windows";;
+  *) PL="$(uname -s | tr '[:upper:]' '[:lower:]')";; esac
+
+# Save/restore terminal state
+ORIG_STTY=$(stty -g </dev/tty 2>/dev/null) || ORIG_STTY=""
+cleanup() {
+  [ -n "$ORIG_STTY" ] && stty "$ORIG_STTY" </dev/tty 2>/dev/null || stty sane </dev/tty 2>/dev/null || true
+  printf '\033[?1049l\033[?25h\033[0m' >/dev/tty 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+raw() { stty raw -echo min 0 time "${1:-3}" </dev/tty 2>/dev/null || true; }
+
+# I/O: write to tty, read from tty (result in R), drain pending input
+wr() { printf '%s' "$@" >/dev/tty; }
+rd() { R=$(dd bs="${1:-256}" count=1 </dev/tty 2>/dev/null) || R=""; }
+drain() { raw 1; dd bs=256 count=1 </dev/tty >/dev/null 2>&1 || true; raw 3; }
+
+# Query with DA1 sentinel: send $1+DA1, read until DA1 or timeout.
+# Sets QR=response, QS=1 if pre-DA1 data found (feature supported)
+qsentinel() {
+  QR=""; QS=0; drain
+  wr "$1" "$(printf '\033[c')"
+  raw 3; _b=""; _n=10
+  while [ "$_n" -gt 0 ]; do
+    rd 256; [ -z "$R" ] && break; _b="${_b}${R}"
+    case "$_b" in *'[?'*c*) break;; esac; _n=$((_n - 1))
+  done
+  QR="$_b"; [ -z "$_b" ] && return
+  _ec=$(printf '%s' "$_b" | tr -cd '\033' | wc -c | tr -d ' ')
+  if [ "$_ec" -gt 1 ]; then QS=1
+  elif [ "$_ec" -eq 1 ]; then case "$_b" in *'[?'*c) QS=0;; *) QS=1;; esac; fi
+}
+
+# Simple query: send $1, read response (for DA1/DSR that need no sentinel)
+qsimple() {
+  QR=""; QS=0; drain; wr "$1"; raw 5; rd 256
+  [ -n "$R" ] && { _b="$R"; raw 1; rd 256; QR="${_b}${R}"; QS=1; } || { QR=""; QS=0; }
+}
+
+# Cursor position report: ESC[6n → ESC[row;colR. Sets CR=row, CC=col
+qcpr() {
+  CR=0; CC=0; drain; wr "$(printf '\033[6n')"; raw 5
+  _b=""; _n=5
+  while [ "$_n" -gt 0 ]; do
+    rd 32; [ -z "$R" ] && break; _b="${_b}${R}"
+    case "$_b" in *R) break;; esac; _n=$((_n - 1))
+  done
+  _p=$(printf '%s' "$_b" | sed 's/.*\[//;s/R.*//')
+  case "$_p" in *";"*) CR=$(printf '%s' "$_p" | cut -d';' -f1); CC=$(printf '%s' "$_p" | cut -d';' -f2);; esac
+}
+
+# DECRPM mode query: ESC[?N$p → ESC[?N;S$y. Sets MR=set/reset/unknown/""
+qmode() {
+  MR=""; qsentinel "$(printf '\033[?%d$p' "$1")"
+  case "$QR" in *'$y'*) _s=$(printf '%s' "$QR" | sed 's/.*;//;s/\$.*//')
+    case "$_s" in 1) MR="set";; 2) MR="reset";; 0) MR="unknown";; esac;; esac
+}
+
+# JSON accumulator
+J=""; JN=0; JP=0
+emit() {
+  [ "$JN" -gt 0 ] && J="${J},"; J="${J}
+    \"${1}\": ${2}"
+  JN=$((JN + 1)); [ "$2" = "true" ] && JP=$((JP + 1))
+}
+
+# ── Run probes ────────────────────────────────────────────────────────
+printf 'terminfo.dev probe — testing %s %s on %s\n' "$TN" "$TV" "$PL" >&2
+raw 3; wr "$(printf '\033[?1049h\033[H\033[2J')"
+
+printf '  device...\n' >&2
+qsimple "$(printf '\033[c')";  case "$QR" in *'[?'*c*) emit "device.primary-da" "true";; *) emit "device.primary-da" "false";; esac
+qsimple "$(printf '\033[5n')"; case "$QR" in *"0n"*) emit "device.status-report" "true";; *) emit "device.status-report" "false";; esac
+qsentinel "$(printf '\033[>c')";          [ "$QS" = 1 ] && emit "device.secondary-da" "true" || emit "device.secondary-da" "false"
+qsentinel "$(printf '\033[=c')";          [ "$QS" = 1 ] && emit "device.tertiary-da" "true"  || emit "device.tertiary-da" "false"
+qsentinel "$(printf '\033P$q\"p\033\\')";  [ "$QS" = 1 ] && emit "device.decrqss" "true"      || emit "device.decrqss" "false"
+qsentinel "$(printf '\033P+q544e\033\\')"; [ "$QS" = 1 ] && emit "device.xtgettcap" "true"    || emit "device.xtgettcap" "false"
+qmode 7; [ -n "$MR" ] && [ "$MR" != "unknown" ] && emit "device.decrpm" "true" || emit "device.decrpm" "false"
+qsentinel "$(printf '\033[>0q')";         [ "$QS" = 1 ] && emit "device.xtversion" "true"    || emit "device.xtversion" "false"
+
+printf '  cursor...\n' >&2
+qcpr; [ "$CR" -gt 0 ] 2>/dev/null && emit "cursor.position-report" "true" || emit "cursor.position-report" "false"
+wr "$(printf '\033[3;5H')"; qcpr
+[ "$CR" = "3" ] && [ "$CC" = "5" ] 2>/dev/null && emit "cursor.move.absolute" "true" || emit "cursor.move.absolute" "false"
+wr "$(printf '\033[H')"; qcpr
+[ "$CR" = "1" ] && [ "$CC" = "1" ] 2>/dev/null && emit "cursor.move.home" "true" || emit "cursor.move.home" "false"
+wr "$(printf '\033[5;10H\0337\033[1;1H\0338')"; qcpr
+[ "$CR" = "5" ] && [ "$CC" = "10" ] 2>/dev/null && emit "cursor.save-restore" "true" || emit "cursor.save-restore" "false"
+
+printf '  sgr...\n' >&2
+for _t in "1:sgr.bold" "3:sgr.italic" "4:sgr.underline.single" "9:sgr.strikethrough" "7:sgr.inverse"; do
+  _c=$(printf '%s' "$_t" | cut -d: -f1); _id=$(printf '%s' "$_t" | cut -d: -f2)
+  wr "$(printf '\033[1;1H\033[2K\033[%smX\033[0m' "$_c")"; qcpr
+  [ "$CC" = "2" ] 2>/dev/null && emit "$_id" "true" || emit "$_id" "false"
+done
+case "$COLORTERM" in truecolor|24bit) emit "extensions.truecolor" "true";;
+  *) wr "$(printf '\033[1;1H\033[2K\033[38;2;255;0;128mX\033[0m')"; qcpr
+     [ "$CC" = "2" ] 2>/dev/null && emit "extensions.truecolor" "true" || emit "extensions.truecolor" "false";; esac
+
+printf '  modes...\n' >&2
+qmode 1049
+if [ -n "$MR" ] && [ "$MR" != "unknown" ]; then emit "modes.alt-screen.enter" "true"; emit "modes.alt-screen.exit" "true"
+else wr "$(printf '\033[?1049h\033[1;1HTEST')"; qcpr; wr "$(printf '\033[?1049l')"
+  [ "$CR" -gt 0 ] 2>/dev/null && { emit "modes.alt-screen.enter" "true"; emit "modes.alt-screen.exit" "true"; } \
+    || { emit "modes.alt-screen.enter" "false"; emit "modes.alt-screen.exit" "false"; }; fi
+qmode 2004
+if [ -n "$MR" ] && [ "$MR" != "unknown" ]; then emit "modes.bracketed-paste" "true"
+else wr "$(printf '\033[?2004h')"; qcpr; wr "$(printf '\033[?2004l')"
+  [ "$CR" -gt 0 ] 2>/dev/null && emit "modes.bracketed-paste" "true" || emit "modes.bracketed-paste" "false"; fi
+for _t in "2026:modes.synchronized-output" "1004:modes.focus-tracking" "1000:modes.mouse-tracking" "1006:modes.mouse-sgr"; do
+  _m=$(printf '%s' "$_t" | cut -d: -f1); _id=$(printf '%s' "$_t" | cut -d: -f2); qmode "$_m"
+  [ -n "$MR" ] && [ "$MR" != "unknown" ] && emit "$_id" "true" || emit "$_id" "false"; done
+qmode 2031
+if [ -n "$MR" ] && [ "$MR" != "unknown" ]; then emit "modes.color-scheme-reporting" "true"
+else qsentinel "$(printf '\033[?997n')"
+  [ "$QS" = 1 ] && emit "modes.color-scheme-reporting" "true" || emit "modes.color-scheme-reporting" "false"; fi
+
+printf '  extensions...\n' >&2
+qsentinel "$(printf '\033[>1u\033[?u')"; wr "$(printf '\033[<u')"
+[ "$QS" = 1 ] && emit "extensions.kitty-keyboard" "true" || emit "extensions.kitty-keyboard" "false"
+qsentinel "$(printf '\033]10;?\007')"; [ "$QS" = 1 ] && emit "extensions.osc10-fg-color" "true" || emit "extensions.osc10-fg-color" "false"
+qsentinel "$(printf '\033]11;?\007')"; [ "$QS" = 1 ] && emit "extensions.osc11-bg-color" "true" || emit "extensions.osc11-bg-color" "false"
+_b64=$(printf 'terminfo-test' | base64 2>/dev/null || echo "dGVybWluZm8tdGVzdA==")
+wr "$(printf '\033]52;c;%s\007' "$_b64")"; qcpr
+[ "$CR" -gt 0 ] 2>/dev/null && emit "extensions.osc52-clipboard" "true" || emit "extensions.osc52-clipboard" "false"
+wr "$(printf '\033]52;c;%s\007' "$_b64")"
+qsentinel "$(printf '\033]52;c;?\007')"; [ "$QS" = 1 ] && emit "extensions.osc52-read" "true" || emit "extensions.osc52-read" "false"
+qsentinel "$(printf '\033]1337;ReportCellSize\007')"
+case "$QR" in *"ReportCellSize="*) emit "extensions.osc1337-cellsize" "true";; *) emit "extensions.osc1337-cellsize" "false";; esac
+qsentinel "$(printf '\033]1337;RequestCapabilities\007')"
+case "$QR" in *"Capabilities="*) emit "extensions.osc1337-capabilities" "true";; *) emit "extensions.osc1337-capabilities" "false";; esac
+qsimple "$(printf '\033[c')"
+case "$QR" in *";4;"*|*";4c"*) emit "extensions.sixel-da1" "true";; *) emit "extensions.sixel-da1" "false";; esac
+
+wr "$(printf '\033[?1049l')"; cleanup
+
+# Output
+_gen=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "unknown")
+_pct=0; [ "$JN" -gt 0 ] && _pct=$(( (JP * 100) / JN ))
+printf '  done: %d/%d passed (%d%%)\n\n' "$JP" "$JN" "$_pct" >&2
+cat <<EOF
+{
+  "terminal": "$TN",
+  "terminalVersion": "$TV",
+  "os": "$PL",
+  "source": "curl-probe",
+  "generated": "$_gen",
+  "results": {$J
+  }
+}
+EOF
+```
