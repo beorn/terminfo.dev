@@ -510,7 +510,33 @@ function loadPerBackendResults(): ProbeData {
   const featureSet = new Map<string, FeatureResult>()
   const featureDescs = loadFeatureDescriptions()
 
+  // Group files by backend name, keep only the best version per backend
+  // "Best" = most probes (freshest data), then latest version as tiebreaker
+  const backendVersions: Record<string, { file: string; version: string; probeCount: number }[]> = {}
   for (const file of files) {
+    try {
+      const raw = JSON.parse(readFileSync(join(probesLibsDir, file), "utf-8")) as any
+      if (!raw.backend) continue
+      const name = raw.backend as string
+      if (!backendVersions[name]) backendVersions[name] = []
+      const probeCount = Object.keys(raw.results ?? {}).length
+      backendVersions[name].push({ file, version: raw.version ?? "", probeCount })
+    } catch {
+      // Skip unparseable files
+    }
+  }
+
+  // Pick the best version per backend: most probes first, then latest version
+  const latestFiles: string[] = []
+  for (const versions of Object.values(backendVersions)) {
+    versions.sort((a, b) => {
+      if (a.probeCount !== b.probeCount) return b.probeCount - a.probeCount // most probes first
+      return b.version.localeCompare(a.version, undefined, { numeric: true }) // latest version
+    })
+    latestFiles.push(versions[0]!.file)
+  }
+
+  for (const file of latestFiles) {
     try {
       const raw = JSON.parse(readFileSync(join(probesLibsDir, file), "utf-8")) as any
       if (!raw.backend) continue
