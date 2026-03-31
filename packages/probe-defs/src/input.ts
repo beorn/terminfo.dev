@@ -1,6 +1,35 @@
 import type { ProbeDefinition } from "./types.ts"
 import { probe } from "./helpers.ts"
 
+/** Mouse input probe — enable mode, check getMode (termless) or cursor response (term), disable. */
+function mouseInputProbe(
+  id: string,
+  modeCode: number,
+  modeName: string,
+  label: string,
+): ProbeDefinition {
+  const enableSeq = `\x1b[?${modeCode}h`
+  const disableSeq = `\x1b[?${modeCode}l`
+  return probe(
+    id,
+    (ctx) => {
+      ctx.feed(enableSeq)
+      const pass = ctx.getMode(modeName) === true
+      ctx.feed(disableSeq)
+      return { pass }
+    },
+    async (ctx) => {
+      ctx.write(enableSeq)
+      const pos = await ctx.queryCursorPosition()
+      ctx.write(disableSeq)
+      return {
+        pass: pos !== null,
+        note: pos ? undefined : `No cursor response after enabling ${label}`,
+      }
+    },
+  )
+}
+
 export const inputProbes: ProbeDefinition[] = [
   probe(
     "input.modify-other-keys",
@@ -30,64 +59,9 @@ export const inputProbes: ProbeDefinition[] = [
     },
   ),
 
-  probe(
-    "input.pixel-mouse",
-    (ctx) => {
-      ctx.feed("\x1b[?1016h")
-      const pass = ctx.getMode("pixelMouse") === true
-      ctx.feed("\x1b[?1016l")
-      return { pass }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?1016h") // enable pixel mouse
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?1016l") // disable
-      return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after enabling pixel mouse",
-      }
-    },
-  ),
-
-  probe(
-    "input.urxvt-mouse",
-    (ctx) => {
-      ctx.feed("\x1b[?1015h")
-      // Check if the backend recognizes this mode
-      const pass = ctx.getMode("mouseTracking") === true
-      ctx.feed("\x1b[?1015l")
-      return { pass }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?1015h") // enable urxvt mouse
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?1015l") // disable
-      return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after enabling urxvt mouse",
-      }
-    },
-  ),
-
-  probe(
-    "input.x10-mouse",
-    (ctx) => {
-      ctx.feed("\x1b[?9h")
-      // Check if the backend recognizes X10 mouse mode
-      const pass = ctx.getMode("mouseTracking") === true
-      ctx.feed("\x1b[?9l")
-      return { pass }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?9h") // enable X10 mouse
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?9l") // disable
-      return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after enabling X10 mouse",
-      }
-    },
-  ),
+  mouseInputProbe("input.pixel-mouse", 1016, "pixelMouse", "pixel mouse"),
+  mouseInputProbe("input.urxvt-mouse", 1015, "mouseTracking", "urxvt mouse"),
+  mouseInputProbe("input.x10-mouse", 9, "mouseTracking", "X10 mouse"),
 
   // modifyOtherKeys mode 3 — all keys send escape sequences (xterm patch 398)
   probe(
@@ -110,22 +84,5 @@ export const inputProbes: ProbeDefinition[] = [
     },
   ),
 
-  probe(
-    "input.button-event-mouse",
-    (ctx) => {
-      ctx.feed("\x1b[?1002h")
-      const pass = ctx.getMode("mouseTracking") === true
-      ctx.feed("\x1b[?1002l")
-      return { pass }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?1002h") // enable button-event mouse
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?1002l") // disable
-      return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after enabling button-event mouse",
-      }
-    },
-  ),
+  mouseInputProbe("input.button-event-mouse", 1002, "mouseTracking", "button-event mouse"),
 ]

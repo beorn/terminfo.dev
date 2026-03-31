@@ -1,5 +1,40 @@
 import type { ProbeDefinition } from "./types.ts"
-import { capabilityProbe, probe } from "./helpers.ts"
+import { probe } from "./helpers.ts"
+
+/** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
+function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
+  const querySeq = `\x1b]${oscCode};?\x07`
+  const termlessPattern = new RegExp(`\\x1b\\]${oscCode};`)
+  const termPattern = new RegExp(`\\x1b\\]${oscCode};([^\\x07\\x1b]+)[\\x07\\x1b]`)
+  return probe(
+    id,
+    (ctx) => {
+      const response = ctx.feedCapture(querySeq)
+      const pass = termlessPattern.test(response)
+      return { pass, note: pass ? undefined : `No OSC ${oscCode} response` }
+    },
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel(querySeq, termPattern)
+      if (!match) return { pass: false, note: `No OSC ${oscCode} response` }
+      return { pass: true, response: match[1] }
+    },
+  )
+}
+
+/** Kitty keyboard flag probe — push flags, query, check specific bit. */
+function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: number): ProbeDefinition {
+  return probe(
+    id,
+    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel(`\x1b[>${pushValue}u\x1b[?u`, /\x1b\[\?(\d+)u/)
+      ctx.write("\x1b[<u") // pop
+      if (!match) return { pass: false, note: "No kitty keyboard response" }
+      const flags = parseInt(match[1]!, 10)
+      return { pass: (flags & flagBit) !== 0, response: `flags=${flags}` }
+    },
+  )
+}
 
 export const extensionsProbes: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
@@ -38,72 +73,11 @@ export const extensionsProbes: ProbeDefinition[] = [
   // Kitty keyboard: individual progressive enhancement flags
   // Each probe pushes+queries in a single write to avoid race conditions,
   // then pops after response is received.
-
-  // Flag 1: DISAMBIGUATE — CSI u encoding for ambiguous keys
-  probe(
-    "extensions.kitty-keyboard.disambiguate",
-    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
-    async (ctx) => {
-      // Combine push + query in single sequence so terminal processes atomically
-      const match = await ctx.queryWithSentinel("\x1b[>1u\x1b[?u", /\x1b\[\?(\d+)u/)
-      ctx.write("\x1b[<u") // pop
-      if (!match) return { pass: false, note: "No kitty keyboard response" }
-      const flags = parseInt(match[1]!, 10)
-      return { pass: (flags & 1) !== 0, response: `flags=${flags}` }
-    },
-  ),
-
-  // Flag 2: REPORT_EVENTS — key release and repeat events
-  probe(
-    "extensions.kitty-keyboard.report-events",
-    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[>3u\x1b[?u", /\x1b\[\?(\d+)u/)
-      ctx.write("\x1b[<u")
-      if (!match) return { pass: false, note: "No kitty keyboard response" }
-      const flags = parseInt(match[1]!, 10)
-      return { pass: (flags & 2) !== 0, response: `flags=${flags}` }
-    },
-  ),
-
-  // Flag 4: REPORT_ALTERNATE — report shifted key + base key
-  probe(
-    "extensions.kitty-keyboard.report-alternate",
-    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[>5u\x1b[?u", /\x1b\[\?(\d+)u/)
-      ctx.write("\x1b[<u")
-      if (!match) return { pass: false, note: "No kitty keyboard response" }
-      const flags = parseInt(match[1]!, 10)
-      return { pass: (flags & 4) !== 0, response: `flags=${flags}` }
-    },
-  ),
-
-  // Flag 8: REPORT_ALL_KEYS — all keys as escape sequences (including plain letters)
-  probe(
-    "extensions.kitty-keyboard.report-all-keys",
-    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[>9u\x1b[?u", /\x1b\[\?(\d+)u/)
-      ctx.write("\x1b[<u")
-      if (!match) return { pass: false, note: "No kitty keyboard response" }
-      const flags = parseInt(match[1]!, 10)
-      return { pass: (flags & 8) !== 0, response: `flags=${flags}` }
-    },
-  ),
-
-  // Flag 16: REPORT_TEXT — associated text codepoints
-  probe(
-    "extensions.kitty-keyboard.report-text",
-    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[>17u\x1b[?u", /\x1b\[\?(\d+)u/)
-      ctx.write("\x1b[<u")
-      if (!match) return { pass: false, note: "No kitty keyboard response" }
-      const flags = parseInt(match[1]!, 10)
-      return { pass: (flags & 16) !== 0, response: `flags=${flags}` }
-    },
-  ),
+  kittyKeyboardFlagProbe("extensions.kitty-keyboard.disambiguate", 1, 1), // Flag 1: DISAMBIGUATE
+  kittyKeyboardFlagProbe("extensions.kitty-keyboard.report-events", 3, 2), // Flag 2: REPORT_EVENTS
+  kittyKeyboardFlagProbe("extensions.kitty-keyboard.report-alternate", 5, 4), // Flag 4: REPORT_ALTERNATE
+  kittyKeyboardFlagProbe("extensions.kitty-keyboard.report-all-keys", 9, 8), // Flag 8: REPORT_ALL_KEYS
+  kittyKeyboardFlagProbe("extensions.kitty-keyboard.report-text", 17, 16), // Flag 16: REPORT_TEXT
 
   // Kitty graphics protocol — behavioral check (like sixel probe)
   // APC responses arrive slower than DA1, so sentinel-based detection fails.
@@ -342,34 +316,10 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 10 — foreground color query
-  probe(
-    "extensions.osc10-fg-color",
-    (ctx) => {
-      const response = ctx.feedCapture("\x1b]10;?\x07")
-      const pass = /\x1b\]10;/.test(response)
-      return { pass, note: pass ? undefined : "No OSC 10 response" }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b]10;?\x07", /\x1b\]10;([^\x07\x1b]+)[\x07\x1b]/)
-      if (!match) return { pass: false, note: "No OSC 10 response" }
-      return { pass: true, response: match[1] }
-    },
-  ),
+  oscColorQueryProbe("extensions.osc10-fg-color", 10),
 
   // OSC 11 — background color query
-  probe(
-    "extensions.osc11-bg-color",
-    (ctx) => {
-      const response = ctx.feedCapture("\x1b]11;?\x07")
-      const pass = /\x1b\]11;/.test(response)
-      return { pass, note: pass ? undefined : "No OSC 11 response" }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b]11;?\x07", /\x1b\]11;([^\x07\x1b]+)[\x07\x1b]/)
-      if (!match) return { pass: false, note: "No OSC 11 response" }
-      return { pass: true, response: match[1] }
-    },
-  ),
+  oscColorQueryProbe("extensions.osc11-bg-color", 11),
 
   // OSC 7 — current working directory
   probe(
