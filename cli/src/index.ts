@@ -10,10 +10,10 @@
  * npx terminfo.dev                     # show help
  * npx terminfo.dev test                # test this terminal
  * npx terminfo.dev test --json         # machine output
+ * npx terminfo.dev test --listen       # start daemon for remote testing
+ * npx terminfo.dev test --all          # test all running daemons
  * npx terminfo.dev submit              # test + submit to terminfo.dev
  * npx terminfo.dev detect              # what terminal am I in?
- * npx terminfo.dev server --start      # start daemon for remote testing
- * npx terminfo.dev server --all        # test all running daemons
  * ```
  */
 
@@ -183,10 +183,10 @@ program.action(() => {
   console.log(`Commands:`)
   console.log(`  \x1b[1mtest\x1b[0m                  Test this terminal's feature support`)
   console.log(`  \x1b[1mtest --json\x1b[0m           Machine-readable output`)
+  console.log(`  \x1b[1mtest --listen\x1b[0m         Start daemon for remote testing`)
+  console.log(`  \x1b[1mtest --all\x1b[0m            Test all running daemons`)
   console.log(`  \x1b[1msubmit\x1b[0m                Test + submit results to terminfo.dev`)
   console.log(`  \x1b[1mdetect\x1b[0m                Detect current terminal`)
-  console.log(`  \x1b[1mserver --start\x1b[0m        Start daemon for remote testing`)
-  console.log(`  \x1b[1mserver --all\x1b[0m          Test all running daemons`)
   console.log(``)
   console.log(`Options:`)
   console.log(`  \x1b[1m--help\x1b[0m     Show this help`)
@@ -196,137 +196,97 @@ program.action(() => {
 // ── test ──
 
 program
-  .command("test")
+  .command("test [daemon]")
   .description("Test this terminal's feature support")
   .option("--json", "Output results as JSON")
-  .action(async (opts) => {
-    const data = await runProbes()
-    if (opts.json) {
-      console.log(formatResultsJson(data))
-      return
-    }
-    printResults(data)
-    console.log(`\n\x1b[2mSubmit results: \x1b[0m\x1b[1mterminfo submit\x1b[0m`)
-  })
-
-// ── probe (hidden alias for test, kept for backwards compat) ──
-
-const probe = program.command("probe").description("Run terminal tests (alias: test)").hideHelp()
-
-probe
-  .command("here")
-  .description("Test this terminal inline")
-  .option("--json", "Output results as JSON")
-  .action(async (opts) => {
-    const data = await runProbes()
-    if (opts.json) {
-      console.log(formatResultsJson(data))
-      return
-    }
-    printResults(data)
-    console.log(`\n\x1b[2mSubmit results: \x1b[0m\x1b[1mterminfo submit\x1b[0m`)
-  })
-
-// ── server ──
-
-const server = program
-  .command("server [daemon]")
-  .description("Start a test daemon or test all running daemons")
-  .option("--start", "Start daemon in this terminal")
-  .option("-p, --port <port>", "Port for --start", uint)
+  .option("--listen", "Start daemon for remote testing")
+  .option("-p, --port <port>", "Port for --listen", uint)
   .option("--all", "Test all running daemons")
-
-server.action(async (daemon: string | undefined, opts) => {
-  if (opts.start) {
-    const { startDaemon } = await import("./serve.ts")
-    await startDaemon(opts.port ?? 0)
-    return
-  }
-
-  const { listDaemons } = await import("./serve.ts")
-  const daemons = listDaemons()
-
-  if (!opts.all && !daemon) {
-    if (daemons.length === 0) {
-      console.log(`\nNo daemons running.\n`)
-      console.log(`Start one: \x1b[1mterminfo server --start\x1b[0m`)
+  .action(async (daemon: string | undefined, opts) => {
+    // --listen: start daemon mode
+    if (opts.listen) {
+      const { startDaemon } = await import("./serve.ts")
+      await startDaemon(opts.port ?? 0)
       return
     }
 
-    console.log(`\n\x1b[1m${daemons.length} daemon(s) running:\x1b[0m\n`)
-    for (const d of daemons) {
-      const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
-      console.log(`  ${label.padEnd(25)} port ${d.port}  (pid ${d.pid})`)
-    }
-    console.log(`\nTest all: \x1b[1mterminfo server --all\x1b[0m`)
-    return
-  }
+    // --all or specific daemon: test remote daemons
+    if (opts.all || daemon) {
+      const { listDaemons } = await import("./serve.ts")
+      const daemons = listDaemons()
 
-  let targets = daemons
-  if (daemon) {
-    targets = daemons.filter(
-      (d) =>
-        d.terminal.toLowerCase() === daemon.toLowerCase() || d.terminal.toLowerCase().includes(daemon.toLowerCase()),
-    )
-    if (targets.length === 0) {
-      console.error(`No daemon found matching "${daemon}".`)
-      if (daemons.length > 0) {
-        console.error(`Running: ${daemons.map((d) => d.terminal).join(", ")}`)
-      } else {
-        console.error(`No daemons running. Start one: terminfo server --start`)
+      let targets = daemons
+      if (daemon) {
+        targets = daemons.filter(
+          (d) =>
+            d.terminal.toLowerCase() === daemon.toLowerCase() ||
+            d.terminal.toLowerCase().includes(daemon.toLowerCase()),
+        )
+        if (targets.length === 0) {
+          console.error(`No daemon found matching "${daemon}".`)
+          if (daemons.length > 0) {
+            console.error(`Running: ${daemons.map((d) => d.terminal).join(", ")}`)
+          } else {
+            console.error(`No daemons running. Start one: terminfo test --listen`)
+          }
+          process.exit(1)
+        }
       }
-      process.exit(1)
-    }
-  }
 
-  if (targets.length === 0) {
-    console.log(`\x1b[33mNo daemons found.\x1b[0m`)
-    console.log(`Start a daemon in each terminal: \x1b[1mterminfo server --start\x1b[0m`)
-    return
-  }
-
-  console.log(`\x1b[1mterminfo.dev\x1b[0m — testing ${targets.length} terminal(s)\n`)
-
-  for (const d of targets) {
-    const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
-    process.stdout.write(`  ${label.padEnd(25)} `)
-
-    try {
-      const res = await fetch(`http://127.0.0.1:${d.port}/probe`, { signal: AbortSignal.timeout(120000) })
-      if (!res.ok) {
-        console.log(`\x1b[31m- HTTP ${res.status}\x1b[0m`)
-        continue
+      if (targets.length === 0) {
+        console.log(`\x1b[33mNo daemons found.\x1b[0m`)
+        console.log(`Start a daemon in each terminal: \x1b[1mterminfo test --listen\x1b[0m`)
+        return
       }
-      const data = (await res.json()) as any
-      const passed = Object.values(data.results).filter((v: any) => v).length
-      const total = Object.keys(data.results).length
-      const pct = Math.round((passed / total) * 100)
-      const color = pct >= 98 ? "\x1b[32m" : pct >= 90 ? "\x1b[33m" : "\x1b[31m"
-      console.log(`${color}${passed}/${total} (${pct}%)\x1b[0m`)
 
-      const { mkdirSync, writeFileSync } = await import("node:fs")
-      const dir = "content/probes-apps"
-      mkdirSync(dir, { recursive: true })
-      const name = data.terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
-      const ver = (data.terminalVersion || "unknown").replace(/[^a-z0-9.-]/g, "-")
-      writeFileSync(`${dir}/${name}-${ver}-${data.os}.json`, JSON.stringify(data, null, 2))
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (msg.includes("ECONNREFUSED")) {
-        console.log(`\x1b[31m- not running (stale daemon file)\x1b[0m`)
-      } else {
-        console.log(`\x1b[31m- ${msg}\x1b[0m`)
+      console.log(`\x1b[1mterminfo.dev\x1b[0m — testing ${targets.length} terminal(s)\n`)
+
+      for (const d of targets) {
+        const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
+        process.stdout.write(`  ${label.padEnd(25)} `)
+
+        try {
+          const res = await fetch(`http://127.0.0.1:${d.port}/probe`, { signal: AbortSignal.timeout(120000) })
+          if (!res.ok) {
+            console.log(`\x1b[31m- HTTP ${res.status}\x1b[0m`)
+            continue
+          }
+          const data = (await res.json()) as any
+          const passed = Object.values(data.results).filter((v: any) => v).length
+          const total = Object.keys(data.results).length
+          const pct = Math.round((passed / total) * 100)
+          const color = pct >= 98 ? "\x1b[32m" : pct >= 90 ? "\x1b[33m" : "\x1b[31m"
+          console.log(`${color}${passed}/${total} (${pct}%)\x1b[0m`)
+
+          const { mkdirSync, writeFileSync } = await import("node:fs")
+          const dir = "content/probes-apps"
+          mkdirSync(dir, { recursive: true })
+          const name = data.terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
+          const ver = (data.terminalVersion || "unknown").replace(/[^a-z0-9.-]/g, "-")
+          writeFileSync(`${dir}/${name}-${ver}-${data.os}.json`, JSON.stringify(data, null, 2))
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          if (msg.includes("ECONNREFUSED")) {
+            console.log(`\x1b[31m- not running (stale daemon file)\x1b[0m`)
+          } else {
+            console.log(`\x1b[31m- ${msg}\x1b[0m`)
+          }
+        }
       }
+
+      console.log(`\nResults saved to content/probes-apps/`)
+      return
     }
-  }
 
-  console.log(`\nResults saved to content/probes-apps/`)
-})
-
-// Also register server under probe for backwards compat
-probe.command("server [daemon]").description("Alias for: terminfo server").hideHelp()
-  .option("--start", "Start daemon").option("-p, --port <port>", "Port", uint).option("--all", "Test all")
-  .action(async (daemon: string | undefined, opts) => { await server.parseAsync(["server", ...(daemon ? [daemon] : []), ...(opts.start ? ["--start"] : []), ...(opts.all ? ["--all"] : []), ...(opts.port ? ["-p", String(opts.port)] : [])], { from: "user" }) })
+    // Default: test this terminal inline
+    const data = await runProbes()
+    if (opts.json) {
+      console.log(formatResultsJson(data))
+      return
+    }
+    printResults(data)
+    console.log(`\n\x1b[2mSubmit results: \x1b[0m\x1b[1mterminfo submit\x1b[0m`)
+  })
 
 // ── submit ──
 
