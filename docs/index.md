@@ -1047,7 +1047,7 @@ strips, or mishandles.
   display: none;
 }
 
-/* Bar segment tooltips appear below */
+/* Bar segment tooltips appear below with opaque background */
 .bar-yes[data-tooltip]:hover::after,
 .bar-partial[data-tooltip]:hover::after,
 .bar-fail[data-tooltip]:hover::after {
@@ -1057,5 +1057,8 @@ strips, or mishandles.
   left: 0;
   transform: none;
   max-width: 80vw;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 </style>

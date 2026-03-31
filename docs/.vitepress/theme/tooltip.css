@@ -19,7 +19,7 @@
   white-space: normal;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  background: var(--vp-c-bg-soft);
+  background: var(--vp-c-bg);
   color: var(--vp-c-text-1);
   padding: 8px 12px;
   border-radius: 6px;
