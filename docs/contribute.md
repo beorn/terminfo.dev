@@ -22,14 +22,14 @@ curl -sL terminfo.dev/probe | sh
 ```
 
 ::: tip What does this do?
-The probe script sends standard terminal escape sequences (the same ones every TUI app sends) and checks how your terminal responds. It does **not** install anything, modify any files, or send data anywhere without asking. You can [read the full source code](https://terminfo.dev/probe) before running it — it's a plain shell script.
+The script runs a series of feature checks on your terminal — sending the same escape sequences that every TUI app sends — and reports which ones your terminal supports. It does **not** install anything, modify any files, or send data anywhere without asking. You can [read the full source code](https://terminfo.dev/probe) before running it — it's a plain shell script.
 :::
 
-## How Probing Works
+## How Feature Checks Work
 
 Terminal apps communicate with your terminal using **escape sequences** — invisible control codes like `ESC[1m` (bold) or `ESC[6n` (ask cursor position). Every time you use vim, htop, or any TUI program, your terminal processes thousands of these.
 
-The probe script does exactly the same thing:
+The script does exactly the same thing:
 
 1. **Sends a sequence** — e.g., `ESC[38;2;255;0;0m` (set text color to red)
 2. **Asks the terminal** — "where is the cursor now?" (`ESC[6n`)
@@ -38,24 +38,24 @@ The probe script does exactly the same thing:
 
 Nothing is written to disk. No network requests are made (until you choose to submit). The script outputs a JSON scorecard to your terminal showing what your terminal supports.
 
-**Example of what a probe looks like:**
+**Example output:**
 
 ```
-Testing: SGR bold (ESC[1m)... ✓
-Testing: Truecolor (ESC[38;2;R;G;Bm)... ✓
-Testing: Kitty keyboard (ESC[?u)... ✗ (no response)
-Testing: Sixel graphics... ✗ (not supported)
+Checking: SGR bold (ESC[1m)... ✓
+Checking: Truecolor (ESC[38;2;R;G;Bm)... ✓
+Checking: Kitty keyboard (ESC[?u)... ✗ (no response)
+Checking: Sixel graphics... ✗ (not supported)
 ```
 
 ## Step by Step
 
-### 1. Test your terminal
+### 1. Run the checks
 
 ```bash
 npx terminfo.dev probe here
 ```
 
-You'll see a live scorecard showing which features your terminal supports — green for pass, red for fail. Currently tests 161 features across SGR text styling, cursor control, mouse tracking, clipboard, and Unicode.
+You'll see a live scorecard showing which features your terminal supports — green for pass, red for fail. Currently checks 161 features across SGR text styling, cursor control, mouse tracking, clipboard, and Unicode.
 
 ### 2. Review results
 
@@ -73,11 +73,11 @@ This shows the terminal name, version, and platform that will be attached to you
 npx terminfo.dev submit
 ```
 
-This creates a pull request on GitHub with your terminal's probe results. You can review the PR before it's merged. Once merged, your terminal appears on the site.
+This creates a pull request on GitHub with your terminal's results. You can review the PR before it's merged. Once merged, your terminal appears on the site.
 
 ## What's Safe to Run?
 
-The probe script is open source and does only three things:
+The script is open source and does only three things:
 
 1. Reads environment variables to detect your terminal (`$TERM_PROGRAM`, `$GHOSTTY_RESOURCES_DIR`, etc.)
 2. Sends escape sequences and reads responses (the same ones every TUI app sends)
@@ -88,11 +88,11 @@ It does **not**:
 - Write any files to disk
 - Install any software
 - Send data over the network (until you explicitly run `submit`)
-- Modify your terminal settings (everything is restored after probing)
+- Modify your terminal settings (everything is restored after checking)
 
 **Source code:**
 
-- Shell probe script: [terminfo.dev/probe](https://terminfo.dev/probe) (what `curl | sh` runs — read it directly)
+- Shell script: [terminfo.dev/probe](https://terminfo.dev/probe) (what `curl | sh` runs — read it directly)
 - npm package: [terminfo.dev on npm](https://www.npmjs.com/package/terminfo.dev) (what `npx` runs)
 
 ## JSON Output

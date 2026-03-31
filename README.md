@@ -14,11 +14,11 @@ npx terminfo.dev detect            # what terminal am I running in?
 
 Or without Node.js: `curl -sL terminfo.dev/probe | sh`
 
-### What does probing do?
+### What does this do?
 
-The probe sends standard terminal escape sequences (the same ones vim, htop, and every TUI app send) and checks how your terminal responds. For example, it sends `ESC[38;2;255;0;0m` (truecolor red) and then asks "where is the cursor?" — if the terminal responds, the feature is supported.
+It runs feature checks by sending standard terminal escape sequences (the same ones vim, htop, and every TUI app send) and checking how your terminal responds. For example, it sends `ESC[38;2;255;0;0m` (truecolor red) and asks "where is the cursor?" — if the terminal responds, the feature is supported.
 
-It does **not** write files, install software, or send data over the network. Results are printed as JSON to your terminal. You can read the [probe script source](https://terminfo.dev/probe) before running it.
+It does **not** write files, install software, or send data over the network. Results are printed as JSON to your terminal. You can read the [script source](https://terminfo.dev/probe) before running it.
 
 See the full [contributor guide](https://terminfo.dev/contribute).
 
