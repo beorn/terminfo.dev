@@ -229,7 +229,7 @@ function backendTooltip(name, version) {
 </script>
 
 <div class="problem-summary">
-  <p>Building a terminal app? You need to know which features your users' terminals actually support — colors, keyboard protocols, clipboard, graphics. The traditional <code>terminfo</code> database doesn't cover modern features, and most terminals just report as "xterm-256color" regardless. <strong>terminfo.dev tests terminals directly</strong> and shows you what really works. <a href="/about">Learn more</a></p>
+  <p>Building a terminal app? You need to know which features your users' terminals actually support — colors, keyboard protocols, clipboard, graphics. The traditional <code>terminfo</code> database doesn't cover modern features, and most terminals just report as "xterm-256color" regardless. <strong>terminfo.dev tests terminals directly</strong> using <a href="https://termless.dev">Termless</a> and <a href="https://github.com/beorn/vterm">vterm.js</a> (161/161 features, 100% coverage) and shows you what really works. <a href="/about">Learn more</a></p>
 </div>
 
 <div v-if="data.backends.length === 0" class="no-data">
