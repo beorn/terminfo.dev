@@ -1,9 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { probe } from "./helpers.ts"
-
-function isBlank(char: string): boolean {
-  return char === "" || char === " "
-}
+import { probe, isBlank } from "./helpers.ts"
 
 export const eraseProbes: ProbeDefinition[] = [
   probe(
@@ -174,8 +170,8 @@ export const eraseProbes: ProbeDefinition[] = [
       ctx.feed("\x1b[?2J") // DECSED — selective erase display
       const cell = ctx.getCell(0, 0)
       return {
-        pass: cell.char === "" || cell.char === " ",
-        note: cell.char === "" || cell.char === " " ? undefined : `cell='${cell.char}', expected empty`,
+        pass: isBlank(cell.char),
+        note: isBlank(cell.char) ? undefined : `cell='${cell.char}', expected empty`,
       }
     },
     async (ctx) => {

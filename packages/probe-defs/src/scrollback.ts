@@ -1,5 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { probe } from "./helpers.ts"
+import { probe, isBlank } from "./helpers.ts"
 
 export const scrollbackProbes: ProbeDefinition[] = [
   probe(
@@ -66,8 +66,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("A\r\nB\r\nC")
       ctx.feed("\x1b[H\x1bM")
-      const c = ctx.getCell(0, 0).char
-      return { pass: c === "" || c === " " }
+      return { pass: isBlank(ctx.getCell(0, 0).char) }
     },
     async (ctx) => {
       ctx.write("\x1b[1;5H") // row 1, col 5
@@ -86,8 +85,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("LINE1\r\nLINE2\r\nLINE3")
       ctx.feed("\x1b[T")
-      const c = ctx.getCell(0, 0).char
-      return { pass: c === "" || c === " " }
+      return { pass: isBlank(ctx.getCell(0, 0).char) }
     },
     async (ctx) => {
       ctx.write("\x1b[5;5H") // Move to row 5, col 5

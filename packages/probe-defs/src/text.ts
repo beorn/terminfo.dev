@@ -1,5 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { probe, widthProbe } from "./helpers.ts"
+import { probe } from "./helpers.ts"
 
 export const textProbes: ProbeDefinition[] = [
   probe(

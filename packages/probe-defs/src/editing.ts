@@ -1,9 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { probe } from "./helpers.ts"
-
-function isBlank(char: string): boolean {
-  return char === "" || char === " "
-}
+import { probe, isBlank } from "./helpers.ts"
 
 export const editingProbes: ProbeDefinition[] = [
   probe(

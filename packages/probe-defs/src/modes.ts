@@ -1,5 +1,5 @@
 import type { ProbeDefinition, TermContext } from "./types.ts"
-import { probe, modeProbe, behavioralModeProbe } from "./helpers.ts"
+import { probe, behavioralModeProbe } from "./helpers.ts"
 
 async function responsiveAfterEnable(ctx: TermContext): Promise<import("./types.ts").ProbeResult> {
   const pos = await ctx.queryCursorPosition()

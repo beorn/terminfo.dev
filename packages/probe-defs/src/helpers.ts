@@ -211,6 +211,11 @@ export function widthProbe(id: string, text: string, expectedWidth: number): Pro
   }
 }
 
+/** Check if a cell character is blank (empty or space). */
+export function isBlank(char: string): boolean {
+  return char === "" || char === " "
+}
+
 /**
  * Simple probe — for probes that need custom logic on both sides.
  */

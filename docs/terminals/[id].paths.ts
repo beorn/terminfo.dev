@@ -124,9 +124,7 @@ function loadVersionsForBackend(
   }
 
   // Sort newest first (numeric version sort)
-  return [...byVersion.values()].sort((a, b) =>
-    b.version.localeCompare(a.version, undefined, { numeric: true }),
-  )
+  return [...byVersion.values()].sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))
 }
 
 export default {

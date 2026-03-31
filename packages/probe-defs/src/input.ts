@@ -2,12 +2,7 @@ import type { ProbeDefinition } from "./types.ts"
 import { probe } from "./helpers.ts"
 
 /** Mouse input probe — enable mode, check getMode (termless) or cursor response (term), disable. */
-function mouseInputProbe(
-  id: string,
-  modeCode: number,
-  modeName: string,
-  label: string,
-): ProbeDefinition {
+function mouseInputProbe(id: string, modeCode: number, modeName: string, label: string): ProbeDefinition {
   const enableSeq = `\x1b[?${modeCode}h`
   const disableSeq = `\x1b[?${modeCode}l`
   return probe(
