@@ -10,7 +10,7 @@
  * npx terminfo.dev                     # show help
  * npx terminfo.dev test                # test this terminal
  * npx terminfo.dev test --json         # machine output
- * npx terminfo.dev test --listen       # start daemon for remote testing
+ * npx terminfo.dev test --serve       # start daemon for remote testing
  * npx terminfo.dev test --all          # test all running daemons
  * npx terminfo.dev submit              # test + submit to terminfo.dev
  * npx terminfo.dev detect              # what terminal am I in?
@@ -183,7 +183,7 @@ program.action(() => {
   console.log(`Commands:`)
   console.log(`  \x1b[1mtest\x1b[0m                  Test this terminal's feature support`)
   console.log(`  \x1b[1mtest --json\x1b[0m           Machine-readable output`)
-  console.log(`  \x1b[1mtest --listen\x1b[0m         Start daemon for remote testing`)
+  console.log(`  \x1b[1mtest --serve\x1b[0m         Start daemon for remote testing`)
   console.log(`  \x1b[1mtest --all\x1b[0m            Test all running daemons`)
   console.log(`  \x1b[1msubmit\x1b[0m                Test + submit results to terminfo.dev`)
   console.log(`  \x1b[1mdetect\x1b[0m                Detect current terminal`)
@@ -199,11 +199,11 @@ program
   .command("test [daemon]")
   .description("Test this terminal's feature support")
   .option("--json", "Output results as JSON")
-  .option("--listen", "Start daemon for remote testing")
-  .option("-p, --port <port>", "Port for --listen", uint)
+  .option("--serve", "Start daemon for remote testing")
+  .option("-p, --port <port>", "Port for --serve", uint)
   .option("--all", "Test all running daemons")
   .action(async (daemon: string | undefined, opts) => {
-    // --listen: start daemon mode
+    // --serve: start daemon mode
     if (opts.listen) {
       const { startDaemon } = await import("./serve.ts")
       await startDaemon(opts.port ?? 0)
@@ -227,7 +227,7 @@ program
           if (daemons.length > 0) {
             console.error(`Running: ${daemons.map((d) => d.terminal).join(", ")}`)
           } else {
-            console.error(`No daemons running. Start one: terminfo test --listen`)
+            console.error(`No daemons running. Start one: terminfo test --serve`)
           }
           process.exit(1)
         }
@@ -235,7 +235,7 @@ program
 
       if (targets.length === 0) {
         console.log(`\x1b[33mNo daemons found.\x1b[0m`)
-        console.log(`Start a daemon in each terminal: \x1b[1mterminfo test --listen\x1b[0m`)
+        console.log(`Start a daemon in each terminal: \x1b[1mterminfo test --serve\x1b[0m`)
         return
       }
 

@@ -185,16 +185,17 @@ bun terminfo submit                       # Probe + submit to terminfo.dev
 
 #### npm CLI (`npx terminfo.dev`)
 
-Same command tree but limited to inline/daemon probes:
-
 ```bash
 npx terminfo.dev                          # Show help
-npx terminfo.dev probe here               # Probe this terminal
-npx terminfo.dev probe server --start     # Start daemon
-npx terminfo.dev probe server --all       # Probe all daemons
-npx terminfo.dev submit                   # Probe + submit
+npx terminfo.dev test                     # Test this terminal
+npx terminfo.dev test --json              # Machine output
+npx terminfo.dev test --serve             # Start daemon for remote testing
+npx terminfo.dev test --all              # Test all serving terminals
+npx terminfo.dev submit                   # Test + submit to terminfo.dev
 npx terminfo.dev detect                   # Detect terminal
 ```
+
+Also available via curl: `curl -sL terminfo.dev/test | sh`
 
 #### Convenience scripts
 
@@ -324,15 +325,15 @@ bun run build
 
 **Every termless callback MUST verify actual terminal state.** Never `return { pass: true }` without checking something. Use one of these verification strategies:
 
-| Strategy | When to use | Example |
-|----------|------------|---------|
-| `ctx.getCell()` | SGR attributes, text output | Check cell has `bold === true` |
-| `ctx.getCursor()` | Cursor movement, position | Check cursor at expected row/col |
-| `ctx.getMode()` | DEC private modes | Check `getMode("mouseTracking")` after enable |
-| `ctx.feedCapture()` | Query-response protocols | Check response matches expected pattern |
-| `ctx.capabilities.*` | Declared capabilities | Check `capabilities.kittyKeyboard` |
-| `ctx.getTitle()` | OSC title sequences | Check title changed |
-| `null` | Last resort only | When NO verification is possible (rare) |
+| Strategy             | When to use                 | Example                                       |
+| -------------------- | --------------------------- | --------------------------------------------- |
+| `ctx.getCell()`      | SGR attributes, text output | Check cell has `bold === true`                |
+| `ctx.getCursor()`    | Cursor movement, position   | Check cursor at expected row/col              |
+| `ctx.getMode()`      | DEC private modes           | Check `getMode("mouseTracking")` after enable |
+| `ctx.feedCapture()`  | Query-response protocols    | Check response matches expected pattern       |
+| `ctx.capabilities.*` | Declared capabilities       | Check `capabilities.kittyKeyboard`            |
+| `ctx.getTitle()`     | OSC title sequences         | Check title changed                           |
+| `null`               | Last resort only            | When NO verification is possible (rare)       |
 
 If a termless callback returns `{ pass: true }` unconditionally, it's a false positive — every backend will pass regardless of whether it implements the feature.
 
