@@ -1,8 +1,12 @@
 # About Terminfo.dev
 
-**Terminfo.dev** is the "caniuse.com for terminal emulators" — a feature support
-matrix showing which terminal capabilities are supported by each terminal backend,
-based on automated testing rather than self-reported specs.
+## The Problem
+
+If you build an app that runs in a terminal — a CLI tool, a text editor, a dashboard — you need to know what your users' terminals can actually do. Can they display colors? Do they support clickable links? Will emoji render correctly?
+
+Today, there's no reliable way to answer these questions. The traditional `terminfo` database is decades old and has no entries for modern features like keyboard protocols, graphics, or hyperlinks. Most terminals just report themselves as "xterm-256color" regardless of what they actually support.
+
+**terminfo.dev fills this gap.** It's a feature compatibility database — like [caniuse.com](https://caniuse.com) but for terminal emulators instead of web browsers. Every result comes from automated testing: we send real escape sequences to real terminals and record what happens.
 
 ## Why not terminfo?
 
