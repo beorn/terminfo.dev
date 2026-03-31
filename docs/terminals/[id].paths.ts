@@ -1,10 +1,14 @@
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
 import { linkifyContent } from "../data/linkify-content"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const contentDir = join(__dirname, "..", "..", "content")
+const probesAppsDir = join(contentDir, "probes-apps")
+const probesMuxDir = join(contentDir, "probes-mux")
+const probesLibsDir = join(contentDir, "probes-libs")
 
 interface HistoricalTerminal {
   label: string
@@ -19,6 +23,110 @@ interface HistoricalTerminal {
   cpu?: string
   significance?: string
   repo?: string
+}
+
+interface VersionInfo {
+  version: string
+  total: number
+  yes: number
+  pct: number
+}
+
+/**
+ * Scan probe result directories for all version files matching a backend.
+ * Applies annotation overrides for consistency with the main score.
+ * Returns version info sorted newest-first (by version string, numeric sort).
+ */
+function loadVersionsForBackend(
+  backendName: string,
+  backendType?: string,
+  annotations?: Record<string, { note: string; result?: string }>,
+): VersionInfo[] {
+  const versions: VersionInfo[] = []
+
+  // Collect annotation result overrides for this backend
+  const resultOverrides: Record<string, string> = {}
+  if (annotations) {
+    for (const [key, ann] of Object.entries(annotations)) {
+      if (!ann.result) continue
+      const [backend, ...fp] = key.split(":")
+      if (backend === backendName) {
+        resultOverrides[fp.join(":")] = ann.result
+      }
+    }
+  }
+
+  /** Count "yes" results after applying annotation overrides */
+  function countYes(rawResults: Record<string, any>, isBoolean: boolean): { total: number; yes: number } {
+    const entries = Object.entries(rawResults)
+    let yes = 0
+    for (const [id, val] of entries) {
+      const override = resultOverrides[id]
+      if (override) {
+        if (override === "yes") yes++
+      } else if (isBoolean) {
+        if (val === true) yes++
+      } else {
+        if (val === "yes") yes++
+      }
+    }
+    return { total: entries.length, yes }
+  }
+
+  if (backendType === "headless" || !backendType) {
+    // Scan probes-libs/ for files with this backend name
+    try {
+      for (const file of readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "unified.json")) {
+        try {
+          const raw = JSON.parse(readFileSync(join(probesLibsDir, file), "utf-8")) as any
+          if (raw.backend !== backendName) continue
+          const { total, yes } = countYes(raw.results ?? {}, true)
+          versions.push({
+            version: raw.version ?? "",
+            total,
+            yes,
+            pct: total > 0 ? Math.round((yes / total) * 100) : 0,
+          })
+        } catch {}
+      }
+    } catch {}
+  }
+
+  if (backendType === "app" || backendType === "mux" || !backendType) {
+    // Scan probes-apps/ and probes-mux/ for files with this terminal name
+    const dirs = backendType === "mux" ? [probesMuxDir] : [probesAppsDir, probesMuxDir]
+    for (const dir of dirs) {
+      try {
+        for (const file of readdirSync(dir).filter((f) => f.endsWith(".json"))) {
+          try {
+            const raw = JSON.parse(readFileSync(join(dir, file), "utf-8")) as any
+            if (raw.terminal !== backendName) continue
+            const { total, yes } = countYes(raw.results ?? {}, true)
+            versions.push({
+              version: raw.terminalVersion ?? "",
+              total,
+              yes,
+              pct: total > 0 ? Math.round((yes / total) * 100) : 0,
+            })
+          } catch {}
+        }
+      } catch {}
+    }
+  }
+
+  // Deduplicate by version (keep the entry with most probes)
+  const byVersion = new Map<string, VersionInfo>()
+  for (const v of versions) {
+    const existing = byVersion.get(v.version)
+    if (!existing || v.total > existing.total) {
+      byVersion.set(v.version, v)
+    }
+  }
+
+  // Sort newest first (numeric version sort)
+  return [...byVersion.values()].sort((a, b) =>
+    b.version.localeCompare(a.version, undefined, { numeric: true }),
+  )
 }
 
 export default {
@@ -75,6 +183,9 @@ export default {
 
       const a = allAnalysis["terminals/" + slug]
 
+      // Load all version results for this backend
+      const versions = loadVersionsForBackend(b.name, b.type, data.annotations)
+
       return {
         params: {
           id: slug,
@@ -101,6 +212,7 @@ export default {
           partial: String(stats.partial),
           pct: String(stats.pct),
           categories: JSON.stringify(categories),
+          versions: JSON.stringify(versions),
           analysis: a?.analysis ?? "",
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",

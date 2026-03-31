@@ -10,6 +10,7 @@ const { params } = useData()
 const p = params.value
 
 const categories = p.categories ? JSON.parse(p.categories) : []
+const versions = p.versions ? JSON.parse(p.versions) : []
 
 function icon(result) {
   if (result === 'yes') return '✓'
@@ -146,6 +147,32 @@ const breadcrumbParent = (() => {
   </div>
   <div class="analysis-body" v-html="p.analysis"></div>
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
+</div>
+
+<div v-if="versions.length > 1" class="version-history">
+  <h2 id="version-history">Version History</h2>
+  <table class="version-table">
+    <thead>
+      <tr>
+        <th>Version</th>
+        <th>Support</th>
+        <th class="version-pct-header">Score</th>
+        <th class="version-counts-header">Features</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr v-for="v in versions" :key="v.version" :class="{ 'version-current': v.version === p.version }">
+        <td class="version-name">{{ v.version }}</td>
+        <td class="version-bar-cell">
+          <div class="version-bar">
+            <div class="version-bar-fill" :style="{ width: (v.yes / v.total * 100) + '%' }"></div>
+          </div>
+        </td>
+        <td class="version-pct">{{ v.pct }}%</td>
+        <td class="version-counts">{{ v.yes }} / {{ v.total }}</td>
+      </tr>
+    </tbody>
+  </table>
 </div>
 
 <div v-for="cat in categories" :key="cat.name" class="category-section">
@@ -426,5 +453,77 @@ const breadcrumbParent = (() => {
   margin-top: 0;
   margin-bottom: 0.5em;
   font-style: italic;
+}
+
+.version-history {
+  margin-top: 2em;
+}
+
+.version-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  margin: 1em 0;
+}
+
+.version-table th,
+.version-table td {
+  padding: 8px 12px;
+  border: 1px solid var(--vp-c-divider);
+  text-align: left;
+}
+
+.version-table th {
+  background: var(--vp-c-bg-soft);
+  font-weight: 600;
+}
+
+.version-name {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.95em;
+  white-space: nowrap;
+}
+
+.version-current .version-name {
+  font-weight: 700;
+}
+
+.version-bar-cell {
+  width: 40%;
+}
+
+.version-bar {
+  width: 100%;
+  height: 12px;
+  background: var(--vp-c-bg-soft);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.version-bar-fill {
+  height: 100%;
+  background: #10b981;
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+
+.version-pct {
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.version-pct-header {
+  text-align: right;
+}
+
+.version-counts {
+  color: var(--vp-c-text-3);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.version-counts-header {
+  text-align: right;
 }
 </style>
