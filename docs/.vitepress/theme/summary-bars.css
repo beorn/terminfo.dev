@@ -1,0 +1,83 @@
+/* Shared summary bar styles — used by home page, baseline pages, terminal pages */
+
+.summary-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.summary-name {
+  width: 120px;
+  font-weight: 600;
+  font-size: 0.9em;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.summary-version {
+  width: 60px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.8em;
+  color: var(--vp-c-text-3);
+  flex-shrink: 0;
+}
+
+.summary-bar {
+  flex: 1;
+  height: 22px;
+  background: var(--vp-c-bg-soft);
+  border-radius: 4px;
+  display: flex;
+  cursor: pointer;
+}
+
+.bar-yes {
+  height: 100%;
+  background: #10b981;
+  transition: width 0.3s ease;
+}
+
+.bar-partial {
+  height: 100%;
+  background: #f59e0b;
+  transition: width 0.3s ease;
+}
+
+.bar-fail {
+  height: 100%;
+  background: transparent;
+  transition: width 0.3s ease;
+}
+
+.summary-pct {
+  width: 40px;
+  font-weight: 600;
+  font-size: 0.9em;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.summary-counts {
+  width: 70px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.8em;
+  color: var(--vp-c-text-3);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Bar segment tooltips appear below with opaque background */
+.bar-yes[data-tooltip]:hover::after,
+.bar-partial[data-tooltip]:hover::after,
+.bar-fail[data-tooltip]:hover::after {
+  bottom: auto;
+  top: 100%;
+  margin-top: 4px;
+  left: 0;
+  transform: none;
+  max-width: 80vw;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}

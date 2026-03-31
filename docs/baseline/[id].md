@@ -66,8 +66,17 @@ function barTooltip(s, segment) {
       items.push(note ? '  ~ ' + f.name + ': ' + note : '  ~ ' + f.name)
     }
   }
+  if (segment === 'fail') {
+    for (const f of features) {
+      const result = f.results[s.name]?.result
+      if (result === 'no' || result === 'unknown' || !result) {
+        const note = f.results[s.name]?.note
+        items.push(note ? '  ✗ ' + f.name + ': ' + note : '  ✗ ' + f.name)
+      }
+    }
+  }
   if (items.length === 0) return ''
-  const label = segment === 'yes' ? 'Supported' : 'Partial'
+  const label = segment === 'yes' ? 'Supported' : segment === 'partial' ? 'Partial' : 'Not supported'
   return label + ' (' + items.length + '):\n' + items.join('\n')
 }
 
@@ -125,6 +134,7 @@ function platformIcons(b) {
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
       <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
+      <div class="bar-fail" :style="{ width: ((s.total - s.yes - s.partial) / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'fail')"></div>
     </div>
     <span class="summary-pct">{{ s.pct }}%</span>
     <span class="summary-counts">{{ s.yes }} / {{ s.total }}</span>
@@ -142,6 +152,7 @@ function platformIcons(b) {
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
       <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
+      <div class="bar-fail" :style="{ width: ((s.total - s.yes - s.partial) / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'fail')"></div>
     </div>
     <span class="summary-pct">{{ s.pct }}%</span>
     <span class="summary-counts">{{ s.yes }} / {{ s.total }}</span>
