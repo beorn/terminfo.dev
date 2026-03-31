@@ -22,7 +22,7 @@ curl -sL terminfo.dev/probe | sh
 ```
 
 ::: tip What does this do?
-The probe script sends standard terminal escape sequences (the same ones every TUI app sends) and checks how your terminal responds. It does **not** install anything, modify any files, or send data anywhere without asking. You can [read the full source code](/probe) before running it — it's a plain shell script.
+The probe script sends standard terminal escape sequences (the same ones every TUI app sends) and checks how your terminal responds. It does **not** install anything, modify any files, or send data anywhere without asking. You can [read the full source code](https://terminfo.dev/probe) before running it — it's a plain shell script.
 :::
 
 ## How Probing Works
@@ -92,7 +92,7 @@ It does **not**:
 
 **Source code:**
 
-- Shell probe script: [terminfo.dev/probe](/probe) (what `curl | sh` runs — read it directly)
+- Shell probe script: [terminfo.dev/probe](https://terminfo.dev/probe) (what `curl | sh` runs — read it directly)
 - npm package: [terminfo.dev on npm](https://www.npmjs.com/package/terminfo.dev) (what `npx` runs)
 
 ## JSON Output
