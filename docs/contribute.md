@@ -21,23 +21,45 @@ npx terminfo.dev submit
 curl -sL terminfo.dev/probe | sh
 ```
 
-Both run all probes against your current terminal, detect which terminal you're using, and submit the results.
+::: tip What does this do?
+The probe script sends standard terminal escape sequences (the same ones every TUI app sends) and checks how your terminal responds. It does **not** install anything, modify any files, or send data anywhere without asking. You can [read the full source code](https://github.com/beorn/terminfo.dev/blob/main/docs/public/probe) before running it.
+:::
+
+## How Probing Works
+
+Terminal apps communicate with your terminal using **escape sequences** — invisible control codes like `ESC[1m` (bold) or `ESC[6n` (ask cursor position). Every time you use vim, htop, or any TUI program, your terminal processes thousands of these.
+
+The probe script does exactly the same thing:
+
+1. **Sends a sequence** — e.g., `ESC[38;2;255;0;0m` (set text color to red)
+2. **Asks the terminal** — "where is the cursor now?" (`ESC[6n`)
+3. **Reads the response** — if the terminal responds, it understood the sequence
+4. **Records pass/fail** — the sequence was either handled or ignored
+
+Nothing is written to disk. No network requests are made (until you choose to submit). The script outputs a JSON scorecard to your terminal showing what your terminal supports.
+
+**Example of what a probe looks like:**
+
+```
+Testing: SGR bold (ESC[1m)... ✓
+Testing: Truecolor (ESC[38;2;R;G;Bm)... ✓
+Testing: Kitty keyboard (ESC[?u)... ✗ (no response)
+Testing: Sixel graphics... ✗ (not supported)
+```
 
 ## Step by Step
 
 ### 1. Test your terminal
 
-Run the probes in your terminal:
-
 ```bash
 npx terminfo.dev probe here
 ```
 
-You'll see a live scorecard showing which features your terminal supports. Results are color-coded: green for pass, red for fail.
+You'll see a live scorecard showing which features your terminal supports — green for pass, red for fail. Currently tests 161 features across SGR text styling, cursor control, mouse tracking, clipboard, and Unicode.
 
-### 2. Check detection
+### 2. Review results
 
-Verify your terminal was detected correctly:
+Check what was detected:
 
 ```bash
 npx terminfo.dev detect
@@ -47,23 +69,29 @@ This shows the terminal name, version, and platform that will be attached to you
 
 ### 3. Submit
 
-Submit your results to terminfo.dev:
-
 ```bash
 npx terminfo.dev submit
 ```
 
-This creates a pull request on GitHub with your terminal's probe results. Once merged, your terminal appears on the site.
+This creates a pull request on GitHub with your terminal's probe results. You can review the PR before it's merged. Once merged, your terminal appears on the site.
 
-## What Gets Tested
+## What's Safe to Run?
 
-The CLI runs the same probes used on the site — currently testing 161 features across categories like SGR text styling, cursor control, mouse tracking, clipboard, and Unicode handling. Each probe sends escape sequences to your terminal and checks the response.
+The probe script is open source and does only three things:
 
-## Requirements
+1. Reads environment variables to detect your terminal (`$TERM_PROGRAM`, `$GHOSTTY_RESOURCES_DIR`, etc.)
+2. Sends escape sequences and reads responses (the same ones every TUI app sends)
+3. Prints JSON results to stdout
 
-- **Node.js 18+** or **Bun** (for `npx`)
-- A terminal you want to test (run the command inside it)
-- GitHub account (for submitting via PR)
+It does **not**:
+- Write any files to disk
+- Install any software
+- Send data over the network (until you explicitly run `submit`)
+- Modify your terminal settings (everything is restored after probing)
+
+**Source code:**
+- Shell probe script: [docs/public/probe](https://github.com/beorn/terminfo.dev/blob/main/docs/public/probe)
+- Node.js probe definitions: [packages/probe-defs/src/](https://github.com/beorn/terminfo.dev/tree/main/packages/probe-defs/src)
 
 ## JSON Output
 
