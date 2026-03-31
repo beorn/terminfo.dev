@@ -236,7 +236,7 @@ function backendTooltip(name, version) {
 
 ## Terminal Applications {#terminal-applications}
 
-<p class="section-subtitle">Tested on real terminal applications. Don't see your terminal? <a href="https://www.npmjs.com/package/terminfo.dev">Contribute results</a> with <code>npx terminfo.dev submit</code></p>
+<p class="section-subtitle">Tested on real terminal applications. Don't see your terminal? <a href="/contribute">Contribute results</a> with <code>npx terminfo.dev submit</code></p>
 
 <div class="platform-filter">
   <select v-model="platformFilter">

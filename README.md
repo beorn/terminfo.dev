@@ -4,15 +4,35 @@
 
 Live at **[terminfo.dev](https://terminfo.dev)**
 
+## Test Your Terminal
+
+```bash
+npx terminfo.dev probe here        # see your terminal's feature support
+npx terminfo.dev submit            # submit results to terminfo.dev
+npx terminfo.dev detect            # what terminal am I running in?
+```
+
+See the full [contributor guide](https://terminfo.dev/contribute).
+
 ## What It Is
 
 terminfo.dev is the "caniuse.com for terminal emulators." It shows which terminals support which features (SGR styling, cursor modes, Kitty keyboard, sixel graphics, OSC 8 hyperlinks, etc.) based on automated probe results from [termless](https://termless.dev).
 
+Currently testing **161 features** across **19 terminals and backends**.
+
 ## How It Works
 
-1. **Probes** (`probes/*.probe.ts`) feed ANSI escape sequences to terminal emulator backends
+1. **Probes** (`packages/probe-defs/`) define tests with dual callbacks — headless (sync) and TTY (async)
 2. **Results** are collected as pass/fail per feature per backend
 3. **The site** (`docs/`) renders an interactive matrix at build time via VitePress
+
+## Links
+
+- **Site**: [terminfo.dev](https://terminfo.dev)
+- **API**: [terminfo.dev/api](https://terminfo.dev/api) — JSON data + SVG badges
+- **Contribute**: [terminfo.dev/contribute](https://terminfo.dev/contribute)
+- **Termless**: [termless.dev](https://termless.dev) — headless terminal testing
+- **Silvery**: [silvery.dev](https://silvery.dev) — React TUI framework
 
 ## Development
 
