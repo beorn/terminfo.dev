@@ -228,6 +228,10 @@ function backendTooltip(name, version) {
 }
 </script>
 
+<div class="problem-summary">
+  <p>Building a terminal app? You need to know which features your users' terminals actually support — colors, keyboard protocols, clipboard, graphics. The traditional <code>terminfo</code> database doesn't cover modern features, and most terminals just report as "xterm-256color" regardless. <strong>terminfo.dev tests terminals directly</strong> and shows you what really works. <a href="/about">Learn more</a></p>
+</div>
+
 <div v-if="data.backends.length === 0" class="no-data">
   <p>No probe data available yet.</p>
 </div>
@@ -1060,5 +1064,20 @@ strips, or mishandles.
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-divider);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.problem-summary {
+  max-width: 720px;
+  margin: 0 auto 2em;
+  padding: 16px 20px;
+  background: var(--vp-c-bg-soft);
+  border-radius: 8px;
+  font-size: 0.95em;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+}
+
+.problem-summary p {
+  margin: 0;
 }
 </style>
