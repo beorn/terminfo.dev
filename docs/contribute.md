@@ -12,20 +12,20 @@ Don't see your terminal on terminfo.dev? Test it and submit results in under a m
 **With Node.js/Bun:**
 
 ```bash
-npx terminfo.dev submit
+npx terminfo.dev test
 ```
 
 **Without Node.js (just curl):**
 
 ```bash
-curl -sL terminfo.dev/probe | sh
+curl -sL terminfo.dev/test | sh
 ```
 
 ::: tip What does this do?
-The script runs a series of feature checks on your terminal — sending the same escape sequences that every TUI app sends — and reports which ones your terminal supports. It does **not** install anything, modify any files, or send data anywhere without asking. You can [read the full source code](https://terminfo.dev/probe) before running it — it's a plain shell script.
+The script runs a series of feature tests on your terminal — sending the same escape sequences that every TUI app sends — and reports which ones your terminal supports. It does **not** install anything, modify any files, or send data anywhere without asking. You can [read the full source code](https://terminfo.dev/test) before running it — it's a plain shell script.
 :::
 
-## How Feature Checks Work
+## How Feature Tests Work
 
 Terminal apps communicate with your terminal using **escape sequences** — invisible control codes like `ESC[1m` (bold) or `ESC[6n` (ask cursor position). Every time you use vim, htop, or any TUI program, your terminal processes thousands of these.
 
@@ -41,25 +41,25 @@ Nothing is written to disk. No network requests are made (until you choose to su
 **Example output:**
 
 ```
-Checking: SGR bold (ESC[1m)... ✓
-Checking: Truecolor (ESC[38;2;R;G;Bm)... ✓
-Checking: Kitty keyboard (ESC[?u)... ✗ (no response)
-Checking: Sixel graphics... ✗ (not supported)
+Testing: SGR bold (ESC[1m)... ✓
+Testing: Truecolor (ESC[38;2;R;G;Bm)... ✓
+Testing: Kitty keyboard (ESC[?u)... ✗ (no response)
+Testing: Sixel graphics... ✗ (not supported)
 ```
 
 ## Step by Step
 
-### 1. Run the checks
+### 1. Run the tests
 
 ```bash
-npx terminfo.dev probe here
+npx terminfo.dev test
 ```
 
-You'll see a live scorecard showing which features your terminal supports — green for pass, red for fail. Currently checks 161 features across SGR text styling, cursor control, mouse tracking, clipboard, and Unicode.
+You'll see a live scorecard showing which features your terminal supports — green for pass, red for fail. Currently tests 161 features across SGR text styling, cursor control, mouse tracking, clipboard, and Unicode.
 
 ### 2. Review results
 
-Check what was detected:
+Verify your terminal was detected correctly:
 
 ```bash
 npx terminfo.dev detect
@@ -88,11 +88,11 @@ It does **not**:
 - Write any files to disk
 - Install any software
 - Send data over the network (until you explicitly run `submit`)
-- Modify your terminal settings (everything is restored after checking)
+- Modify your terminal settings (everything is restored after testing)
 
 **Source code:**
 
-- Shell script: [terminfo.dev/probe](https://terminfo.dev/probe) (what `curl | sh` runs — read it directly)
+- Shell script: [terminfo.dev/test](https://terminfo.dev/test) (what `curl | sh` runs — read it directly)
 - npm package: [terminfo.dev on npm](https://www.npmjs.com/package/terminfo.dev) (what `npx` runs)
 
 ## JSON Output
@@ -100,7 +100,7 @@ It does **not**:
 For CI or custom integrations:
 
 ```bash
-npx terminfo.dev probe here --json > my-terminal.json
+npx terminfo.dev test --json > my-terminal.json
 ```
 
 ## Already Tested Terminals

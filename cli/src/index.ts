@@ -8,12 +8,12 @@
  * @example
  * ```bash
  * npx terminfo.dev                     # show help
- * npx terminfo.dev probe here          # probe this terminal
- * npx terminfo.dev probe here --json   # machine output
- * npx terminfo.dev probe server --start     # start daemon
- * npx terminfo.dev probe server --all       # probe all daemons
- * npx terminfo.dev submit              # probe + submit to terminfo.dev
+ * npx terminfo.dev test                # test this terminal
+ * npx terminfo.dev test --json         # machine output
+ * npx terminfo.dev submit              # test + submit to terminfo.dev
  * npx terminfo.dev detect              # what terminal am I in?
+ * npx terminfo.dev probe server --start     # start daemon
+ * npx terminfo.dev probe server --all       # test all daemons
  * ```
  */
 
@@ -161,12 +161,12 @@ program.action(() => {
   console.log(`submitted to the community database at terminfo.dev.\x1b[0m`)
   console.log(``)
   console.log(`Commands:`)
-  console.log(`  \x1b[1mprobe here\x1b[0m            Probe this terminal inline`)
-  console.log(`  \x1b[1mprobe here --json\x1b[0m     Machine-readable output`)
-  console.log(`  \x1b[1mprobe server --start\x1b[0m  Start daemon for remote testing`)
-  console.log(`  \x1b[1mprobe server --all\x1b[0m    Probe all running daemons`)
-  console.log(`  \x1b[1msubmit\x1b[0m                Probe + submit to terminfo.dev`)
+  console.log(`  \x1b[1mtest\x1b[0m                  Test this terminal's feature support`)
+  console.log(`  \x1b[1mtest --json\x1b[0m           Machine-readable output`)
+  console.log(`  \x1b[1msubmit\x1b[0m                Test + submit results to terminfo.dev`)
   console.log(`  \x1b[1mdetect\x1b[0m                Detect current terminal`)
+  console.log(`  \x1b[1mprobe server --start\x1b[0m  Start daemon for remote testing`)
+  console.log(`  \x1b[1mprobe server --all\x1b[0m    Test all running daemons`)
   console.log(``)
   console.log(`Options:`)
   console.log(`  \x1b[1m--help\x1b[0m     Show this help`)
@@ -385,6 +385,40 @@ program
     if (url) {
       console.log(`\x1b[32m+\x1b[0m Issue created: ${link(url, url)}`)
     }
+  })
+
+// ── test (user-friendly alias for probe here) ──
+
+program
+  .command("test")
+  .description("Test this terminal's feature support")
+  .option("--json", "Output results as JSON")
+  .action(async (opts) => {
+    const data = await runProbes()
+
+    if (opts.json) {
+      console.log(
+        JSON.stringify(
+          {
+            terminal: data.terminal.name,
+            terminalVersion: data.terminal.version,
+            os: data.terminal.os,
+            osVersion: data.terminal.osVersion,
+            source: "community",
+            generated: new Date().toISOString(),
+            results: data.results,
+            notes: data.notes,
+            responses: data.responses,
+          },
+          null,
+          2,
+        ),
+      )
+      return
+    }
+
+    printResults(data)
+    console.log(`\n\x1b[2mSubmit results: \x1b[0m\x1b[1mterminfo submit\x1b[0m`)
   })
 
 // ── detect ──
