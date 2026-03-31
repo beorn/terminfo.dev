@@ -149,7 +149,10 @@ export const extensionsProbes: ProbeDefinition[] = [
       const pos = await ctx.queryCursorPosition()
       ctx.write(`\x1b_Ga=d,d=i,i=998\x1b\\`)
       if (!pos) return { pass: false, note: "No response after display" }
-      return { pass: pos.row > 1 || pos.col > 1, note: pos.row > 1 || pos.col > 1 ? undefined : "Display didn't render" }
+      return {
+        pass: pos.row > 1 || pos.col > 1,
+        note: pos.row > 1 || pos.col > 1 ? undefined : "Display didn't render",
+      }
     },
   ),
 

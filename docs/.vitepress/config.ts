@@ -417,14 +417,10 @@ export default defineConfig({
     // JSON-LD BreadcrumbList
     const segments = cleanPath.split("/").filter(Boolean)
     if (segments.length > 0) {
-      const breadcrumbItems = [
-        { "@type": "ListItem", position: 1, name: "Home", item: "https://terminfo.dev/" },
-      ]
+      const breadcrumbItems = [{ "@type": "ListItem", position: 1, name: "Home", item: "https://terminfo.dev/" }]
       for (let i = 0; i < segments.length; i++) {
         const path = segments.slice(0, i + 1).join("/")
-        const name = segments[i]
-          .replace(/-/g, " ")
-          .replace(/\b\w/g, (c) => c.toUpperCase())
+        const name = segments[i].replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
         breadcrumbItems.push({
           "@type": "ListItem",
           position: i + 2,

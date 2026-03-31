@@ -1096,6 +1096,22 @@
   "xtermjs:extensions.kitty-graphics.unicode-placeholders": {
     "note": "Kitty graphics protocol not implemented in xterm.js"
   },
+  "xtermjs:extensions.osc52-clipboard": {
+    "note": "OSC 52 clipboard not supported in xterm.js headless mode",
+    "result": "partial"
+  },
+  "xtermjs:extensions.osc52-read": {
+    "note": "OSC 52 read not supported in xterm.js headless mode",
+    "result": "partial"
+  },
+  "xtermjs:extensions.osc10-fg-color": {
+    "note": "OSC 10 color query not supported in xterm.js headless mode",
+    "result": "partial"
+  },
+  "xtermjs:extensions.osc11-bg-color": {
+    "note": "OSC 11 color query not supported in xterm.js headless mode",
+    "result": "partial"
+  },
   "wezterm:extensions.kitty-graphics.transmit": {
     "note": "Kitty graphics not implemented in wezterm-term crate"
   },
@@ -1115,6 +1131,17 @@
   "kitty:extensions.osc52-read": {
     "note": "OSC 52 clipboard read not exposed via Python batch bridge",
     "result": "partial"
+  },
+  "kitty:extensions.semantic-prompts": {
+    "note": "OSC 133 not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:extensions.osc-633-vscode": {
+    "note": "OSC 633 not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:extensions.iterm2-images": {
+    "note": "iTerm2 inline images not supported by kitty"
   },
   "alacritty:extensions.kitty-graphics.transmit": {
     "note": "Kitty graphics not implemented in alacritty"
