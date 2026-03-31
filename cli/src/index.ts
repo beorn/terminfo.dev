@@ -2,7 +2,7 @@
 /**
  * terminfo.dev CLI — can your terminal do that?
  *
- * npm-published CLI for end users. Supports inline probing, daemon mode,
+ * npm-published CLI for end users. Supports inline testing, daemon mode,
  * submission, and terminal detection.
  *
  * @example
@@ -12,8 +12,8 @@
  * npx terminfo.dev test --json         # machine output
  * npx terminfo.dev submit              # test + submit to terminfo.dev
  * npx terminfo.dev detect              # what terminal am I in?
- * npx terminfo.dev probe server --start     # start daemon
- * npx terminfo.dev probe server --all       # test all daemons
+ * npx terminfo.dev server --start      # start daemon for remote testing
+ * npx terminfo.dev server --all        # test all running daemons
  * ```
  */
 
@@ -39,11 +39,13 @@ function loadFeatureSlugs(): Record<string, string> {
       const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, any>
       delete raw.$comment
       const slugs: Record<string, string> = {}
-      for (const [id, entry] of Object.entries(raw)) {
-        slugs[id] = entry.slug ?? id.replaceAll(".", "-")
+      for (const [id, meta] of Object.entries(raw)) {
+        slugs[id] = (meta as any).slug ?? id.replace(/\./g, "/")
       }
       return slugs
-    } catch {}
+    } catch {
+      // try next
+    }
   }
   return {}
 }
@@ -102,7 +104,7 @@ function printHeader(terminal: ReturnType<typeof detectTerminal>) {
   console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m${terminal.version ? ` ${terminal.version}` : ""}`)
   console.log(`  Platform:  ${terminal.os} ${terminal.osVersion}`)
   console.log(
-    `  Probes:    ${ALL_PROBES.length} features across ${new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size} categories`,
+    `  Features:  ${ALL_PROBES.length} across ${new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size} categories`,
   )
   console.log(`  Website:   ${link("https://terminfo.dev", "https://terminfo.dev")}`)
 }
@@ -130,17 +132,35 @@ function printResults(data: ProbeResults) {
   for (const [cat, probes] of categories) {
     const catPassed = probes.filter((p) => p.pass).length
     const color = catPassed === probes.length ? "\x1b[32m" : catPassed > 0 ? "\x1b[33m" : "\x1b[31m"
-    const catLink = link(`https://terminfo.dev/${cat}`, cat)
-    console.log(`${color}${catLink}\x1b[0m (${catPassed}/${probes.length})`)
+    console.log(`${color}\x1b[1m${cat}\x1b[0m${color} ${catPassed}/${probes.length}\x1b[0m`)
+
     for (const p of probes) {
-      const icon = p.pass ? "\x1b[32m+\x1b[0m" : "\x1b[31m-\x1b[0m"
-      const note = p.note ? ` \x1b[2m— ${p.note}\x1b[0m` : ""
-      const slug = slugs[p.id] ?? p.id.replaceAll(".", "-")
-      const fCat = p.id.split(".")[0]!
+      const icon = p.pass ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m"
+      const note = p.note && !p.pass ? ` \x1b[2m(${p.note})\x1b[0m` : ""
+      const slug = slugs[p.id]
+      const fCat = p.id.split(".")[0]
       const featureLink = link(`https://terminfo.dev/${fCat}/${slug}`, p.name)
       console.log(`  ${icon} ${featureLink}${note}`)
     }
   }
+}
+
+function formatResultsJson(data: ProbeResults) {
+  return JSON.stringify(
+    {
+      terminal: data.terminal.name,
+      terminalVersion: data.terminal.version,
+      os: data.terminal.os,
+      osVersion: data.terminal.osVersion,
+      source: "community",
+      generated: new Date().toISOString(),
+      results: data.results,
+      notes: data.notes,
+      responses: data.responses,
+    },
+    null,
+    2,
+  )
 }
 
 // ── CLI ──
@@ -165,73 +185,58 @@ program.action(() => {
   console.log(`  \x1b[1mtest --json\x1b[0m           Machine-readable output`)
   console.log(`  \x1b[1msubmit\x1b[0m                Test + submit results to terminfo.dev`)
   console.log(`  \x1b[1mdetect\x1b[0m                Detect current terminal`)
-  console.log(`  \x1b[1mprobe server --start\x1b[0m  Start daemon for remote testing`)
-  console.log(`  \x1b[1mprobe server --all\x1b[0m    Test all running daemons`)
+  console.log(`  \x1b[1mserver --start\x1b[0m        Start daemon for remote testing`)
+  console.log(`  \x1b[1mserver --all\x1b[0m          Test all running daemons`)
   console.log(``)
   console.log(`Options:`)
   console.log(`  \x1b[1m--help\x1b[0m     Show this help`)
   console.log(`  \x1b[1m--version\x1b[0m  Show version`)
 })
 
-// ── probe ──
+// ── test ──
 
-const probe = program
-  .command("probe")
-  .description("Run terminal probes")
-  .action(() => {
-    console.log(`\x1b[1mterminfo probe\x1b[0m — probe mechanisms\n`)
-    console.log(`  \x1b[1mhere\x1b[0m        Probe this terminal inline`)
-    console.log(`              \x1b[2m$ terminfo probe here\x1b[0m`)
-    console.log(`              \x1b[2m$ terminfo probe here --json\x1b[0m\n`)
-    console.log(`  \x1b[1mserver\x1b[0m      Start a daemon or probe running daemons`)
-    console.log(`              \x1b[2m$ terminfo probe server --start\x1b[0m`)
-    console.log(`              \x1b[2m$ terminfo probe server --all\x1b[0m`)
-  })
-
-// ── probe here ──
-
-probe
-  .command("here")
-  .description("Probe this terminal inline")
+program
+  .command("test")
+  .description("Test this terminal's feature support")
   .option("--json", "Output results as JSON")
   .action(async (opts) => {
     const data = await runProbes()
-
     if (opts.json) {
-      console.log(
-        JSON.stringify(
-          {
-            terminal: data.terminal.name,
-            terminalVersion: data.terminal.version,
-            os: data.terminal.os,
-            osVersion: data.terminal.osVersion,
-            source: "community",
-            generated: new Date().toISOString(),
-            results: data.results,
-            notes: data.notes,
-            responses: data.responses,
-          },
-          null,
-          2,
-        ),
-      )
+      console.log(formatResultsJson(data))
       return
     }
-
     printResults(data)
     console.log(`\n\x1b[2mSubmit results: \x1b[0m\x1b[1mterminfo submit\x1b[0m`)
   })
 
-// ── probe server ──
+// ── probe (hidden alias for test, kept for backwards compat) ──
 
-const probeServer = probe
+const probe = program.command("probe").description("Run terminal tests (alias: test)").hideHelp()
+
+probe
+  .command("here")
+  .description("Test this terminal inline")
+  .option("--json", "Output results as JSON")
+  .action(async (opts) => {
+    const data = await runProbes()
+    if (opts.json) {
+      console.log(formatResultsJson(data))
+      return
+    }
+    printResults(data)
+    console.log(`\n\x1b[2mSubmit results: \x1b[0m\x1b[1mterminfo submit\x1b[0m`)
+  })
+
+// ── server ──
+
+const server = program
   .command("server [daemon]")
-  .description("Start a daemon or probe running daemons")
+  .description("Start a test daemon or test all running daemons")
   .option("--start", "Start daemon in this terminal")
   .option("-p, --port <port>", "Port for --start", uint)
-  .option("--all", "Probe all running daemons")
+  .option("--all", "Test all running daemons")
 
-probeServer.action(async (daemon: string | undefined, opts) => {
+server.action(async (daemon: string | undefined, opts) => {
   if (opts.start) {
     const { startDaemon } = await import("./serve.ts")
     await startDaemon(opts.port ?? 0)
@@ -242,10 +247,9 @@ probeServer.action(async (daemon: string | undefined, opts) => {
   const daemons = listDaemons()
 
   if (!opts.all && !daemon) {
-    // Bare: list running daemons
     if (daemons.length === 0) {
       console.log(`\nNo daemons running.\n`)
-      console.log(`Start one: \x1b[1mterminfo probe server --start\x1b[0m`)
+      console.log(`Start one: \x1b[1mterminfo server --start\x1b[0m`)
       return
     }
 
@@ -254,11 +258,10 @@ probeServer.action(async (daemon: string | undefined, opts) => {
       const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
       console.log(`  ${label.padEnd(25)} port ${d.port}  (pid ${d.pid})`)
     }
-    console.log(`\nProbe all: \x1b[1mterminfo probe server --all\x1b[0m`)
+    console.log(`\nTest all: \x1b[1mterminfo server --all\x1b[0m`)
     return
   }
 
-  // Filter daemons if a specific name was given
   let targets = daemons
   if (daemon) {
     targets = daemons.filter(
@@ -270,7 +273,7 @@ probeServer.action(async (daemon: string | undefined, opts) => {
       if (daemons.length > 0) {
         console.error(`Running: ${daemons.map((d) => d.terminal).join(", ")}`)
       } else {
-        console.error(`No daemons running. Start one: terminfo probe server --start`)
+        console.error(`No daemons running. Start one: terminfo server --start`)
       }
       process.exit(1)
     }
@@ -278,7 +281,7 @@ probeServer.action(async (daemon: string | undefined, opts) => {
 
   if (targets.length === 0) {
     console.log(`\x1b[33mNo daemons found.\x1b[0m`)
-    console.log(`Start a daemon in each terminal: \x1b[1mterminfo probe server --start\x1b[0m`)
+    console.log(`Start a daemon in each terminal: \x1b[1mterminfo server --start\x1b[0m`)
     return
   }
 
@@ -301,7 +304,6 @@ probeServer.action(async (daemon: string | undefined, opts) => {
       const color = pct >= 98 ? "\x1b[32m" : pct >= 90 ? "\x1b[33m" : "\x1b[31m"
       console.log(`${color}${passed}/${total} (${pct}%)\x1b[0m`)
 
-      // Save results
       const { mkdirSync, writeFileSync } = await import("node:fs")
       const dir = "content/probes-apps"
       mkdirSync(dir, { recursive: true })
@@ -321,15 +323,19 @@ probeServer.action(async (daemon: string | undefined, opts) => {
   console.log(`\nResults saved to content/probes-apps/`)
 })
 
+// Also register server under probe for backwards compat
+probe.command("server [daemon]").description("Alias for: terminfo server").hideHelp()
+  .option("--start", "Start daemon").option("-p, --port <port>", "Port", uint).option("--all", "Test all")
+  .action(async (daemon: string | undefined, opts) => { await server.parseAsync(["server", ...(daemon ? [daemon] : []), ...(opts.start ? ["--start"] : []), ...(opts.all ? ["--all"] : []), ...(opts.port ? ["-p", String(opts.port)] : [])], { from: "user" }) })
+
 // ── submit ──
 
 program
   .command("submit")
-  .description("Run all probes and submit results to terminfo.dev via GitHub issue")
+  .description("Test all features and submit results to terminfo.dev via GitHub issue")
   .option("--terminal-name <name>", "Override detected terminal name")
   .option("--terminal-version <version>", "Override detected terminal version")
   .action(async (opts) => {
-    // Confirm details BEFORE probes (stdin is still clean)
     const terminal = detectTerminal()
     let name = opts.terminalName ?? terminal.name
     let version = opts.terminalVersion ?? terminal.version
@@ -337,7 +343,6 @@ program
     printHeader(terminal)
     console.log(``)
 
-    // Let user confirm/edit terminal info before running probes
     const { createInterface } = await import("node:readline")
 
     async function ask(question: string, defaultValue: string): Promise<string> {
@@ -359,13 +364,12 @@ program
 
     const rl2 = createInterface({ input: process.stdin, output: process.stdout })
     await new Promise<void>((resolve) => {
-      rl2.question(`  Press Enter to run probes (Ctrl+C to cancel) `, () => {
+      rl2.question(`  Press Enter to run tests (Ctrl+C to cancel) `, () => {
         rl2.close()
         resolve()
       })
     })
 
-    // Now run probes (stdin goes to raw mode, no conflict)
     const data = await runProbes()
     printResults(data)
 
@@ -385,40 +389,6 @@ program
     if (url) {
       console.log(`\x1b[32m+\x1b[0m Issue created: ${link(url, url)}`)
     }
-  })
-
-// ── test (user-friendly alias for probe here) ──
-
-program
-  .command("test")
-  .description("Test this terminal's feature support")
-  .option("--json", "Output results as JSON")
-  .action(async (opts) => {
-    const data = await runProbes()
-
-    if (opts.json) {
-      console.log(
-        JSON.stringify(
-          {
-            terminal: data.terminal.name,
-            terminalVersion: data.terminal.version,
-            os: data.terminal.os,
-            osVersion: data.terminal.osVersion,
-            source: "community",
-            generated: new Date().toISOString(),
-            results: data.results,
-            notes: data.notes,
-            responses: data.responses,
-          },
-          null,
-          2,
-        ),
-      )
-      return
-    }
-
-    printResults(data)
-    console.log(`\n\x1b[2mSubmit results: \x1b[0m\x1b[1mterminfo submit\x1b[0m`)
   })
 
 // ── detect ──
