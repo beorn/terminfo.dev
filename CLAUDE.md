@@ -320,6 +320,22 @@ bun run build
 4. Add annotations for any unexpected failures
 5. Rebuild: `bun run build`
 
+### Probe Quality Rules
+
+**Every termless callback MUST verify actual terminal state.** Never `return { pass: true }` without checking something. Use one of these verification strategies:
+
+| Strategy | When to use | Example |
+|----------|------------|---------|
+| `ctx.getCell()` | SGR attributes, text output | Check cell has `bold === true` |
+| `ctx.getCursor()` | Cursor movement, position | Check cursor at expected row/col |
+| `ctx.getMode()` | DEC private modes | Check `getMode("mouseTracking")` after enable |
+| `ctx.feedCapture()` | Query-response protocols | Check response matches expected pattern |
+| `ctx.capabilities.*` | Declared capabilities | Check `capabilities.kittyKeyboard` |
+| `ctx.getTitle()` | OSC title sequences | Check title changed |
+| `null` | Last resort only | When NO verification is possible (rare) |
+
+If a termless callback returns `{ pass: true }` unconditionally, it's a false positive — every backend will pass regardless of whether it implements the feature.
+
 ## Content Enrichment
 
 Content files support optional enrichment fields (pages render them when present):
