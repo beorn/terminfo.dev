@@ -316,7 +316,6 @@ program
     const shouldSubmit = await askYesNo(submitLabel)
 
     if (shouldSubmit) {
-      console.log("\n  Submitting to terminfo.dev...")
       const url = await submitResults({
         terminal: data.terminal.name,
         terminalVersion: data.terminal.version,
@@ -369,7 +368,6 @@ program
     const slugs = loadFeatureSlugs()
     await printView(<TestResults data={data} slugs={slugs} />)
 
-    console.log("\n  Submitting to terminfo.dev...")
     const url = await submitResults({
       terminal: name,
       terminalVersion: version,
