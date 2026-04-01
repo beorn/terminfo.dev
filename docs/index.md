@@ -229,7 +229,7 @@ function backendTooltip(name, version) {
 </script>
 
 <div class="problem-summary">
-  <p>See exactly which features each terminal supports — tested automatically with <a href="https://termless.dev">Termless</a> and <a href="/contribute">community contributions</a>.</p>
+  <p>See exactly which features each terminal supports — tested <a href="https://termless.dev">automatically with Termless</a> and <a href="/contribute">community contributions</a>.</p>
 </div>
 
 <div v-if="data.backends.length === 0" class="no-data">
