@@ -210,43 +210,19 @@ async function showSubmitPrompt(isNew: boolean, terminalLabel: string): Promise<
 
   console.log("")
 
-  // Use silvery run() + SelectList for interactive choice
-  const { run, useExit } = await import("silvery/runtime")
-  const { SelectList } = await import("silvery/ui")
-  const React = await import("react")
+  const { createInterface } = await import("node:readline")
 
-  const submitLabel = isNew ? "Submit to terminfo.dev" : "Submit updated results"
-  const items = [
-    { label: submitLabel, value: "submit" },
-    { label: "Skip", value: "skip" },
-  ]
+  const submitLabel = isNew ? "Submit to terminfo.dev? [Y/n]" : "Submit updated results? [y/N]"
+  const defaultYes = isNew
 
   return new Promise<boolean>((resolve) => {
-    let resolved = false
-
-    function Prompt() {
-      const exit = useExit()
-
-      return React.createElement(SelectList, {
-        items,
-        onSelect: (option: { value: string }) => {
-          resolved = true
-          resolve(option.value === "submit")
-          exit()
-        },
-      })
-    }
-
-    run(React.createElement(Prompt), { mode: "inline", mouse: false, exitOnCtrlC: true })
-      .then((handle) => {
-        // If user presses Ctrl+C, treat as skip
-        handle.waitUntilExit().then(() => {
-          if (!resolved) resolve(false)
-        })
-      })
-      .catch(() => {
-        if (!resolved) resolve(false)
-      })
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    rl.question(`  ${submitLabel} `, (answer) => {
+      rl.close()
+      const ans = answer.trim().toLowerCase()
+      if (ans === "") resolve(defaultYes)
+      else resolve(ans === "y" || ans === "yes")
+    })
   })
 }
 
