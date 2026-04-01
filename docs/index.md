@@ -229,7 +229,7 @@ function backendTooltip(name, version) {
 </script>
 
 <div class="problem-summary">
-  <p>Real terminal feature data — from automatic backend tests (<a href="https://termless.dev">Termless</a>) and terminal tests (<a href="/contribute">user-contributed</a>).</p>
+  <p>Does your terminal support truecolor, modern keyboard protocols, or image rendering? Real data from automated tests (<a href="https://termless.dev">Termless</a>) and <a href="/contribute">user contributions</a>.</p>
 </div>
 
 <div v-if="data.backends.length === 0" class="no-data">
