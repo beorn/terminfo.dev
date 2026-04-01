@@ -229,7 +229,7 @@ function backendTooltip(name, version) {
 </script>
 
 <div class="problem-summary">
-  <p>Building a terminal app? You need to know which features your users' terminals actually support — colors, keyboard protocols, clipboard, graphics. The traditional <code>terminfo</code> database doesn't cover modern features, and most terminals just report as "xterm-256color" regardless. <strong>terminfo.dev tests terminals directly</strong> using <a href="https://termless.dev">Termless</a> and shows you what really works. <a href="/about">Learn more</a></p>
+  <p>Building a terminal app? See exactly which features each terminal supports — tested automatically with <a href="https://termless.dev">Termless</a>, not self-reported.</p>
 </div>
 
 <div v-if="data.backends.length === 0" class="no-data">
@@ -240,7 +240,7 @@ function backendTooltip(name, version) {
 
 ## Terminal Applications {#terminal-applications}
 
-<p class="section-subtitle">Tested on real terminal applications. Don't see your terminal? <a href="/contribute">Contribute results</a> with <code>npx terminfo.dev submit</code></p>
+<p class="section-subtitle">Tested on real terminal applications. Don't see yours? Run <code>npx terminfo.dev</code> to <a href="/contribute">add it</a>.</p>
 
 <div class="platform-filter">
   <select v-model="platformFilter">
