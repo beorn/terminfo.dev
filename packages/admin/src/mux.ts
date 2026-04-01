@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
 const RESULTS_DIR = join(ROOT, "content", "probes-mux")
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
-const CLI_ENTRY = join(ROOT, "cli", "src", "index.ts")
+const CLI_ENTRY = join(ROOT, "packages", "admin", "src", "index.ts")
 
 // ── Multiplexer definitions ──
 
@@ -316,8 +316,8 @@ export async function handleMux(muxName: string | undefined, opts: { all?: boole
       const version = installed ? mux.version() : ""
       console.log(`  ${installed ? "+" : "-"} ${mux.name.padEnd(16)} ${version}`)
     }
-    console.log(`\nProbe all:  \x1b[1mterminfo probe mux --all\x1b[0m`)
-    console.log(`Probe one:  \x1b[1mterminfo probe mux tmux\x1b[0m`)
+    console.log("\nProbe all:  terminfo probe mux --all")
+    console.log("Probe one:  terminfo probe mux tmux")
     console.log(`\nApproach: launches mux → starts serve daemon inside → probes via HTTP → kills session`)
     return
   }
@@ -327,15 +327,13 @@ export async function handleMux(muxName: string | undefined, opts: { all?: boole
     const name = muxName.toLowerCase()
     muxesToRun = MUXES.filter((m) => m.id === name || m.name.toLowerCase() === name)
     if (muxesToRun.length === 0) {
-      console.error(`Unknown multiplexer. Available: ${MUXES.map((m) => m.id).join(", ")}`)
-      process.exit(1)
+      throw new Error(`Unknown multiplexer. Available: ${MUXES.map((m) => m.id).join(", ")}`)
     }
   }
 
   muxesToRun = muxesToRun.filter((m) => !!whichBinary(m.binary))
   if (muxesToRun.length === 0) {
-    console.error("No multiplexers available to test.")
-    process.exit(1)
+    throw new Error("No multiplexers available to test.")
   }
 
   console.log(`\nProbing through ${muxesToRun.length} multiplexer(s)\n`)

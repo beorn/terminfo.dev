@@ -27,7 +27,9 @@ import { Command } from "@silvery/commander"
 
 const program = new Command().name("terminfo").description("Terminal feature testing for terminfo.dev")
 
-program.addHelpText("after", `
+program.addHelpText(
+  "after",
+  `
 Examples:
   $ terminfo probe termless --all     Run all headless probes
   $ terminfo probe server --start     Start daemon in this terminal
@@ -37,13 +39,16 @@ Examples:
   $ terminfo submit                   Probe + upload to terminfo.dev
   $ terminfo status                   Config, cache, backends
   $ terminfo detect                   What terminal am I in?
-`)
+`,
+)
 
 // ── probe ──
 
 const probe = program.command("probe").description("Run terminal probes (termless, server, app, mux, here)")
 
-probe.addHelpText("after", `
+probe.addHelpText(
+  "after",
+  `
 Examples:
   $ terminfo probe termless --all        Probe all headless backends
   $ terminfo probe termless xtermjs      Probe specific backend
@@ -52,7 +57,8 @@ Examples:
   $ terminfo probe app ghostty           Probe specific terminal app
   $ terminfo probe mux tmux              Probe through tmux
   $ terminfo probe here                  Probe this terminal inline
-`)
+`,
+)
 
 // ── probe termless ──
 

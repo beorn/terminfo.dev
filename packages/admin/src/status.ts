@@ -91,7 +91,7 @@ export async function handleStatus(): Promise<void> {
   const libData = loadSavedResults(LIBS_DIR)
   const appData = loadSavedResults(APPS_DIR)
 
-  console.log(`\n\x1b[1mterminfo.dev\x1b[0m status\n`)
+  console.log("\nterminfo.dev status\n")
   console.log(`  Probe hash:       ${hash}`)
   console.log(`  Probe files:      ${probeFiles.length} (${probeFiles.join(", ")})`)
 
@@ -104,7 +104,7 @@ export async function handleStatus(): Promise<void> {
     console.log(`  App terminals:    ${appData.backendNames.length} (${appData.backendNames.join(", ")})`)
   }
 
-  console.log(`\n  Termless backends:`)
+  console.log("\n  Termless backends:")
   for (const name of [...installed, ...available]) {
     const e = entry(name)
     const ready = isReady(name)
@@ -112,20 +112,20 @@ export async function handleStatus(): Promise<void> {
     console.log(`    ${ready ? "+" : "-"} ${`${name} (${e?.type ?? "?"})`.padEnd(26)} ${upstream}`)
   }
 
-  console.log(`\n  Results:`)
+  console.log("\n  Results:")
   console.log(`    Libs:  ${libFiles.length} files in ${shortPath(LIBS_DIR)}/`)
   console.log(`    Apps:  ${appFiles.length} files in ${shortPath(APPS_DIR)}/`)
   console.log(`    Cache: ${isCacheValid(LIBS_DIR, hash) ? "valid" : "stale (re-run needed)"}`)
 
   if (catalog) {
-    console.log(`\n  Versions (from versions.json):`)
+    console.log("\n  Versions (from versions.json):")
     for (const [name, config] of Object.entries(catalog.backends)) {
       console.log(`    ${name.padEnd(16)} ${config.versions.join(", ")}`)
     }
   }
 
   if (libData) {
-    console.log(`\n  Categories:`)
+    console.log("\n  Categories:")
     for (const [cat, ids] of libData.categories) {
       console.log(`    ${cat.padEnd(16)} ${ids.length} features`)
     }
@@ -133,10 +133,10 @@ export async function handleStatus(): Promise<void> {
 
   // List running daemons
   try {
-    const { listDaemons } = await import("../terminfo.dev/src/serve.ts")
+    const { listDaemons } = await import("../../terminfo.dev/src/serve.ts")
     const daemons = listDaemons()
     if (daemons.length > 0) {
-      console.log(`\n  Running daemons:`)
+      console.log("\n  Running daemons:")
       for (const d of daemons) {
         const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
         console.log(`    ${label.padEnd(25)} port ${d.port}`)

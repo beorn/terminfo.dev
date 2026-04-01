@@ -40,31 +40,23 @@ function parseSelector(arg: string): BackendSelector[] {
     const m = manifest()
     const match = Object.entries(m.backends).find(([_, e]) => e.upstream === name)
     if (!match) {
-      console.error(`No backend found for upstream: ${name}`)
-      process.exit(1)
+      throw new Error(`No backend found for upstream: ${name}`)
     }
     name = match[0]
   }
 
   const all = allBackendNames()
   if (!all.includes(name)) {
-    console.error(`Unknown backend: ${name}\nAvailable: ${all.join(", ")}`)
-    process.exit(1)
+    throw new Error(`Unknown backend: ${name}\nAvailable: ${all.join(", ")}`)
   }
 
   if (version === "*") {
-    try {
-      const catalog = loadVersionsCatalog()
-      const config = catalog.backends[name]
-      if (!config) {
-        console.error(`No version history for ${name} in versions.json`)
-        process.exit(1)
-      }
-      return config.versions.map((v) => ({ backend: name, version: v }))
-    } catch {
-      console.error(`Could not load versions.json`)
-      process.exit(1)
+    const catalog = loadVersionsCatalog()
+    const config = catalog.backends[name]
+    if (!config) {
+      throw new Error(`No version history for ${name} in versions.json`)
     }
+    return config.versions.map((v) => ({ backend: name, version: v }))
   }
 
   return [{ backend: name, version }]
@@ -267,15 +259,13 @@ export async function runTermlessProbes(selectors: string[], opts: { force?: boo
       await proc.exited
 
       if (!stdout.trim()) {
-        console.error("Error: vitest produced no JSON output")
-        process.exit(1)
+        throw new Error("vitest produced no JSON output")
       }
 
       try {
         latestData = parseVitestJson(JSON.parse(stdout))
       } catch {
-        console.error("Error: failed to parse vitest JSON output")
-        process.exit(1)
+        throw new Error("failed to parse vitest JSON output")
       }
 
       if (latestSelectors.length > 0) {

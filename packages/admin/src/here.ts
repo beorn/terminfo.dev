@@ -2,7 +2,7 @@
  * Inline probe mechanism — probe this terminal directly via PTY I/O.
  *
  * Sends escape sequences to stdout, reads responses from stdin.
- * Delegates to cli/src/probes/ for the actual probe implementations.
+ * Delegates to packages/terminfo.dev/src/probes/ for the actual probe implementations.
  */
 
 import { readFileSync } from "node:fs"
@@ -36,9 +36,9 @@ function link(url: string, text: string): string {
 
 export async function handleHere(opts: { json?: boolean }): Promise<void> {
   // Dynamic imports — these modules need real TTY access
-  const { detectTerminal } = await import("../terminfo.dev/src/detect.ts")
-  const { ALL_PROBES } = await import("../terminfo.dev/src/probes/unified.ts")
-  const { withRawMode, drainStdin } = await import("../terminfo.dev/src/tty.ts")
+  const { detectTerminal } = await import("../../terminfo.dev/src/detect.ts")
+  const { ALL_PROBES } = await import("../../terminfo.dev/src/probes/unified.ts")
+  const { withRawMode, drainStdin } = await import("../../terminfo.dev/src/tty.ts")
 
   const terminal = detectTerminal()
   const results: Record<string, boolean> = {}
@@ -97,13 +97,13 @@ export async function handleHere(opts: { json?: boolean }): Promise<void> {
   const slugs = loadFeatureSlugs()
 
   const siteLink = link("https://terminfo.dev", "terminfo.dev")
-  console.log(`\x1b[1m${siteLink}\x1b[0m — can your terminal do that?\n`)
-  console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m${terminal.version ? ` ${terminal.version}` : ""}`)
+  console.log(`${siteLink} — can your terminal do that?\n`)
+  console.log(`  Terminal:  ${terminal.name}${terminal.version ? ` ${terminal.version}` : ""}`)
   console.log(`  Platform:  ${terminal.os} ${terminal.osVersion}`)
   console.log(
     `  Probes:    ${total} features across ${new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size} categories`,
   )
-  console.log(`  Score:     \x1b[1m${passed}/${total} (${pct}%)\x1b[0m\n`)
+  console.log(`  Score:     ${passed}/${total} (${pct}%)\n`)
 
   const categories = new Map<string, Array<{ id: string; name: string; pass: boolean; note?: string }>>()
   for (const probe of ALL_PROBES) {
@@ -119,12 +119,11 @@ export async function handleHere(opts: { json?: boolean }): Promise<void> {
 
   for (const [cat, probes] of categories) {
     const catPassed = probes.filter((p) => p.pass).length
-    const color = catPassed === probes.length ? "\x1b[32m" : catPassed > 0 ? "\x1b[33m" : "\x1b[31m"
     const catLink = link(`https://terminfo.dev/${cat}`, cat)
-    console.log(`${color}${catLink}\x1b[0m (${catPassed}/${probes.length})`)
+    console.log(`${catLink} (${catPassed}/${probes.length})`)
     for (const p of probes) {
-      const icon = p.pass ? "\x1b[32m+\x1b[0m" : "\x1b[31m-\x1b[0m"
-      const note = p.note ? ` \x1b[2m${p.note}\x1b[0m` : ""
+      const icon = p.pass ? "+" : "-"
+      const note = p.note ? ` (${p.note})` : ""
       const slug = slugs[p.id] ?? p.id.replaceAll(".", "-")
       const fCat = p.id.split(".")[0]!
       const featureLink = link(`https://terminfo.dev/${fCat}/${slug}`, p.name)
@@ -132,5 +131,5 @@ export async function handleHere(opts: { json?: boolean }): Promise<void> {
     }
   }
 
-  console.log(`\n\x1b[2mSubmit results: \x1b[0m\x1b[1mterminfo submit\x1b[0m`)
+  console.log("\nSubmit results: terminfo submit")
 }

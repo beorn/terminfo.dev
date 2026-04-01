@@ -8,7 +8,7 @@
  * the full 128-probe set from the serve daemon.
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs"
 import { execSync, spawn, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
 import { dirname, join } from "node:path"
@@ -19,7 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
 const RESULTS_DIR = join(ROOT, "content", "probes-apps")
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
-const CLI_ENTRY = join(ROOT, "cli", "src", "index.ts")
+const CLI_ENTRY = join(ROOT, "packages", "admin", "src", "index.ts")
 
 // ── App definitions ──
 
@@ -343,8 +343,8 @@ export async function handleApp(terminal: string | undefined, opts: { all?: bool
       const method = app.binaryPath ? "binary" : app.id === "warp" ? "manual" : "applescript"
       console.log(`  ${installed ? "+" : "-"} ${app.name.padEnd(16)} ${version.padEnd(10)} (${method})`)
     }
-    console.log(`\nProbe all:  \x1b[1mterminfo probe app --all\x1b[0m`)
-    console.log(`Probe one:  \x1b[1mterminfo probe app ghostty\x1b[0m`)
+    console.log("\nProbe all:  terminfo probe app --all")
+    console.log("Probe one:  terminfo probe app ghostty")
     console.log(`\nApproach: launches terminal → starts serve daemon → probes via HTTP → kills terminal`)
     return
   }
@@ -354,15 +354,13 @@ export async function handleApp(terminal: string | undefined, opts: { all?: bool
     const name = terminal.toLowerCase()
     appsToRun = APPS.filter((app) => app.id === name || app.name.toLowerCase() === name)
     if (appsToRun.length === 0) {
-      console.error(`Unknown terminal. Available: ${APPS.map((a) => a.id).join(", ")}`)
-      process.exit(1)
+      throw new Error(`Unknown terminal. Available: ${APPS.map((a) => a.id).join(", ")}`)
     }
   }
 
   appsToRun = appsToRun.filter((app) => existsSync(app.appPath))
   if (appsToRun.length === 0) {
-    console.error("No terminal apps available to test.")
-    process.exit(1)
+    throw new Error("No terminal apps available to test.")
   }
 
   console.log(`\nProbing ${appsToRun.length} terminal(s)\n`)
@@ -412,8 +410,7 @@ function cleanupDaemons(): void {
     }
     // Clean up the serve script
     try {
-      const { unlinkSync: unlink } = require("node:fs")
-      unlink("/tmp/terminfo-serve.sh")
+      unlinkSync("/tmp/terminfo-serve.sh")
     } catch {}
   } catch {}
 }

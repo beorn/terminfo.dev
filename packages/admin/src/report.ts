@@ -67,11 +67,12 @@ export async function handleReport(): Promise<void> {
   const appsData = loadResults(APPS_DIR)
 
   if (!libsData && !appsData) {
-    console.error("No saved results. Run probes first:")
-    console.error("  terminfo probe termless --all   # headless backends")
-    console.error("  terminfo probe app --all         # macOS apps")
-    console.error("  terminfo probe server --all      # running daemons")
-    process.exit(1)
+    throw new Error(
+      "No saved results. Run probes first:\n" +
+        "  terminfo probe termless --all   # headless backends\n" +
+        "  terminfo probe app --all         # macOS apps\n" +
+        "  terminfo probe server --all      # running daemons",
+    )
   }
 
   if (libsData) {
@@ -82,10 +83,11 @@ export async function handleReport(): Promise<void> {
   }
 
   if (appsData) {
-    console.log("\n--- Terminal Apps ---")
+    log.info?.("\n--- Terminal Apps ---")
     const colWidth = Math.max(6, ...appsData.backendNames.map((n) => n.length)) + 2
     const featureWidth = 30
 
+    // Table output for piping
     console.log(`  ${"Feature".padEnd(featureWidth)}${appsData.backendNames.map((n) => n.padStart(colWidth)).join("")}`)
     console.log(`  ${"-".repeat(featureWidth)}${appsData.backendNames.map(() => "-".repeat(colWidth)).join("")}`)
 

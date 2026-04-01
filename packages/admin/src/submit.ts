@@ -5,10 +5,10 @@
  */
 
 export async function handleSubmit(opts: { terminalName?: string; terminalVersion?: string }): Promise<void> {
-  const { detectTerminal } = await import("../terminfo.dev/src/detect.ts")
-  const { ALL_PROBES } = await import("../terminfo.dev/src/probes/unified.ts")
-  const { withRawMode, drainStdin } = await import("../terminfo.dev/src/tty.ts")
-  const { submitResults } = await import("../terminfo.dev/src/submit.ts")
+  const { detectTerminal } = await import("../../terminfo.dev/src/detect.ts")
+  const { ALL_PROBES } = await import("../../terminfo.dev/src/probes/unified.ts")
+  const { withRawMode, drainStdin } = await import("../../terminfo.dev/src/tty.ts")
+  const { submitResults } = await import("../../terminfo.dev/src/submit.ts")
 
   // Confirm details BEFORE probes (stdin is still clean)
   const terminal = detectTerminal()
@@ -21,14 +21,14 @@ export async function handleSubmit(opts: { terminalName?: string; terminalVersio
   }
 
   const siteLink = link("https://terminfo.dev", "terminfo.dev")
-  console.log(`\x1b[1m${siteLink}\x1b[0m — can your terminal do that?\n`)
-  console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m${terminal.version ? ` ${terminal.version}` : ""}`)
+  console.log(`${siteLink} — can your terminal do that?\n`)
+  console.log(`  Terminal:  ${terminal.name}${terminal.version ? ` ${terminal.version}` : ""}`)
   console.log(`  Platform:  ${terminal.os} ${terminal.osVersion}`)
   console.log(
     `  Probes:    ${ALL_PROBES.length} features across ${new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size} categories`,
   )
   console.log(`  Website:   ${link("https://terminfo.dev", "https://terminfo.dev")}`)
-  console.log(``)
+  console.log("")
 
   // Let user confirm/edit terminal info before running probes
   const { createInterface } = await import("node:readline")
@@ -36,7 +36,7 @@ export async function handleSubmit(opts: { terminalName?: string; terminalVersio
   async function ask(question: string, defaultValue: string): Promise<string> {
     const rl = createInterface({ input: process.stdin, output: process.stdout })
     return new Promise((resolve) => {
-      rl.question(`  ${question} [\x1b[1m${defaultValue}\x1b[0m]: `, (answer) => {
+      rl.question(`  ${question} [${defaultValue}]: `, (answer) => {
         rl.close()
         resolve(answer.trim() || defaultValue)
       })
@@ -48,7 +48,7 @@ export async function handleSubmit(opts: { terminalName?: string; terminalVersio
   if (version === "unknown") version = ""
 
   console.log(``)
-  console.log(`  Submitting as \x1b[1m${name}${version ? ` ${version}` : ""}\x1b[0m on ${terminal.os}`)
+  console.log(`  Submitting as ${name}${version ? ` ${version}` : ""} on ${terminal.os}`)
 
   const rl2 = createInterface({ input: process.stdin, output: process.stdout })
   await new Promise<void>((resolve) => {
@@ -87,7 +87,7 @@ export async function handleSubmit(opts: { terminalName?: string; terminalVersio
 
   const total = ALL_PROBES.length
   const pct = Math.round((passed / total) * 100)
-  console.log(`\n  Score: \x1b[1m${passed}/${total} (${pct}%)\x1b[0m`)
+  console.log(`\n  Score: ${passed}/${total} (${pct}%)`)
 
   console.log(`\nSubmitting results to terminfo.dev...`)
   const url = await submitResults({
@@ -103,6 +103,6 @@ export async function handleSubmit(opts: { terminalName?: string; terminalVersio
     probeCount: ALL_PROBES.length,
   })
   if (url) {
-    console.log(`\x1b[32m+\x1b[0m Issue created: ${link(url, url)}`)
+    console.log(`+ Issue created: ${link(url, url)}`)
   }
 }
