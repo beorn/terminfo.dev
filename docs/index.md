@@ -229,7 +229,7 @@ function backendTooltip(name, version) {
 </script>
 
 <div class="problem-summary">
-  <p>Building a terminal app? See exactly which features each terminal supports — tested automatically with <a href="https://termless.dev">Termless</a>, not self-reported.</p>
+  <p>See exactly which features each terminal supports — tested automatically with <a href="https://termless.dev">Termless</a> and <a href="/contribute">community contributions</a>.</p>
 </div>
 
 <div v-if="data.backends.length === 0" class="no-data">
@@ -1068,7 +1068,7 @@ strips, or mishandles.
 
 .problem-summary {
   max-width: 720px;
-  margin: 1em auto;
+  margin: -24px auto 32px;
   padding: 16px 20px;
   background: var(--vp-c-bg-soft);
   border-radius: 8px;
