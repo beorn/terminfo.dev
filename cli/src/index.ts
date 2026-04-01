@@ -163,6 +163,20 @@ function formatResultsJson(data: ProbeResults) {
   )
 }
 
+/** Check if this terminal+version+OS combo is already in the terminfo.dev census */
+async function checkIfNewTerminal(name: string, version: string, os: string): Promise<boolean> {
+  try {
+    const slug = name.toLowerCase().replace(/[^a-z0-9-]/g, "-")
+    const ver = (version || "unknown").replace(/[^a-z0-9.-]/g, "-")
+    const filename = `${slug}-${ver}-${os}.json`
+    const url = `https://raw.githubusercontent.com/beorn/terminfo.dev/main/content/probes-apps/${filename}`
+    const res = await fetch(url, { signal: AbortSignal.timeout(3000) })
+    return res.status === 404
+  } catch {
+    return false // network error — don't show banner
+  }
+}
+
 // ── CLI ──
 
 const program = new Command()
@@ -285,9 +299,18 @@ program
       return
     }
     printResults(data)
+
+    // Check if this terminal is already in the census
+    const isNew = await checkIfNewTerminal(data.terminal.name, data.terminal.version, data.terminal.os)
+
     console.log(``)
-    console.log(`  \x1b[2mHelp other developers — submit your results to terminfo.dev:\x1b[0m`)
-    console.log(`  \x1b[1mnpx terminfo.dev submit\x1b[0m`)
+    if (isNew) {
+      console.log(`  \x1b[33;1m★ New terminal!\x1b[0m \x1b[1m${data.terminal.name}${data.terminal.version ? ` ${data.terminal.version}` : ""}\x1b[0m isn't on terminfo.dev yet.`)
+      console.log(`  Help other developers by submitting your results:`)
+      console.log(`  \x1b[1mnpx terminfo.dev submit\x1b[0m`)
+    } else {
+      console.log(`  \x1b[2mSubmit updated results: \x1b[0m\x1b[1mnpx terminfo.dev submit\x1b[0m`)
+    }
   })
 
 // ── submit ──
