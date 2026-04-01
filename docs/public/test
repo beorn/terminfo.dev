@@ -179,9 +179,56 @@ cat <<EOF
 }
 EOF
 
-# Show submit instructions
-printf '\n  To submit these results to terminfo.dev:\n' >&2
-printf '    Option 1: npx terminfo.dev submit\n' >&2
-printf '    Option 2: Copy the JSON above and paste at:\n' >&2
-printf '              https://github.com/beorn/terminfo.dev/issues/new?title=%s+on+%s&body=<paste+JSON>\n' "$TN" "$PL" >&2
-printf '\n' >&2
+# ── Submit ──
+
+# URL-encode minimal: spaces, quotes, braces, newlines
+_urlencode() {
+  printf '%s' "$1" | sed 's/ /%20/g;s/"/%22/g;s/{/%7B/g;s/}/%7D/g;s/\[/%5B/g;s/\]/%5D/g;s/#/%23/g;s/,/%2C/g;s/:/%3A/g' | tr '\n' ' '
+}
+
+# Build the JSON as a single line for URL embedding
+_json=$(cat <<EJSON
+{"terminal":"$TN","terminalVersion":"$TV","os":"$PL","source":"curl-probe","generated":"$_gen","results":{$J}}
+EJSON
+)
+_json_oneline=$(printf '%s' "$_json" | tr -d '\n' | sed 's/  */ /g')
+
+_title="$TN results on $PL"
+_body=$(printf '## Terminal Probe Results\n\nTerminal: **%s %s** on %s\nPassed: %d/%d (%d%%)\n\n```json\n%s\n```' "$TN" "$TV" "$PL" "$JP" "$JN" "$_pct" "$_json_oneline")
+
+_url="https://github.com/beorn/terminfo.dev/issues/new?title=$(_urlencode "$_title")&body=$(_urlencode "$_body")&labels=probe-results"
+
+# Detect browser opener
+_open=""
+case "$(uname -s)" in
+  Darwin*)  _open="open" ;;
+  Linux*)   command -v xdg-open >/dev/null 2>&1 && _open="xdg-open" ;;
+  MINGW*|MSYS*|CYGWIN*) _open="start" ;;
+esac
+
+# Auto-submit prompt
+printf '  Submit results to terminfo.dev? [Y/n] ' >&2
+if [ -t 0 ]; then
+  # stdin is a terminal — but we used /dev/tty for probing, so read from there
+  read -r _ans </dev/tty 2>/dev/null || _ans="y"
+else
+  _ans="y"
+fi
+
+case "$_ans" in
+  [nN]*)
+    printf '  Skipped. To submit later, copy the JSON above and visit:\n' >&2
+    printf '  https://terminfo.dev/submit\n\n' >&2
+    ;;
+  *)
+    if [ -n "$_open" ]; then
+      printf '  Opening browser...\n' >&2
+      $_open "$_url" 2>/dev/null
+      printf '  A GitHub issue has been pre-filled. Review and click "Submit new issue".\n\n' >&2
+    else
+      # No browser opener — print clickable OSC 8 link
+      printf '  \033]8;;%s\033\\Click here to submit\033]8;;\033\\ (or copy this URL):\n' "$_url" >&2
+      printf '  %s\n\n' "$_url" >&2
+    fi
+    ;;
+esac

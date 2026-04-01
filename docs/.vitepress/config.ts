@@ -334,6 +334,7 @@ function buildSidebar() {
     },
     { text: "API", link: "/api" },
     { text: "Glossary", link: "/glossary" },
+    { text: "Contribute", link: "/contribute" },
     { text: "About", link: "/about" },
   ]
 
