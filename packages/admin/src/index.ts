@@ -27,47 +27,32 @@ import { Command } from "@silvery/commander"
 
 const program = new Command().name("terminfo").description("Terminal feature testing for terminfo.dev")
 
-// ── Default action: show nice help ──
-
-program.action(() => {
-  console.log(`\x1b[1mterminfo.dev\x1b[0m — can your terminal do that?\n`)
-  console.log(`  Test terminal feature support across headless backends,`)
-  console.log(`  real terminal apps, and running daemons.\n`)
-  console.log(`Commands:`)
-  console.log(`  \x1b[1mprobe\x1b[0m       Run terminal probes (4 mechanisms)`)
-  console.log(`  \x1b[1mreport\x1b[0m      Show saved probe results`)
-  console.log(`  \x1b[1msubmit\x1b[0m      Probe + upload results to terminfo.dev`)
-  console.log(`  \x1b[1mstatus\x1b[0m      Show config, cache, backends`)
-  console.log(`  \x1b[1mdetect\x1b[0m      Detect current terminal\n`)
-  console.log(`Run \x1b[1mterminfo <command> --help\x1b[0m for details.`)
-})
+program.addHelpText("after", `
+Examples:
+  $ terminfo probe termless --all     Run all headless probes
+  $ terminfo probe server --start     Start daemon in this terminal
+  $ terminfo probe app --all          Probe all installed terminals
+  $ terminfo probe here               Probe this terminal inline
+  $ terminfo report                   Show saved results
+  $ terminfo submit                   Probe + upload to terminfo.dev
+  $ terminfo status                   Config, cache, backends
+  $ terminfo detect                   What terminal am I in?
+`)
 
 // ── probe ──
 
-const probe = program
-  .command("probe")
-  .description("Run terminal probes")
-  .action(() => {
-    console.log(`\x1b[1mterminfo probe\x1b[0m — 4 probe mechanisms\n`)
-    console.log(`  \x1b[1mtermless\x1b[0m    Headless library probes via Termless backends`)
-    console.log(`              Fast, automated, CI-friendly. Tests backend parsers.`)
-    console.log(`              \x1b[2m$ terminfo probe termless --all\x1b[0m\n`)
-    console.log(`  \x1b[1mserver\x1b[0m      Probe running daemon servers`)
-    console.log(`              Start a daemon in each terminal, then probe remotely.`)
-    console.log(`              Works with any terminal: Warp, SSH, Linux, etc.`)
-    console.log(`              \x1b[2m$ terminfo probe server --start\x1b[0m`)
-    console.log(`              \x1b[2m$ terminfo probe server --all\x1b[0m\n`)
-    console.log(`  \x1b[1mapp\x1b[0m         Launch and probe macOS terminal apps`)
-    console.log(`              Uses AppleScript to open terminals and run harness.`)
-    console.log(`              Requires Accessibility permission.`)
-    console.log(`              \x1b[2m$ terminfo probe app --all\x1b[0m\n`)
-    console.log(`  \x1b[1mmux\x1b[0m         Probe through terminal multiplexers`)
-    console.log(`              Tests feature pass-through of tmux, screen, etc.`)
-    console.log(`              \x1b[2m$ terminfo probe mux --all\x1b[0m\n`)
-    console.log(`  \x1b[1mhere\x1b[0m        Probe this terminal inline`)
-    console.log(`              Sends escape sequences to stdout, reads responses.`)
-    console.log(`              \x1b[2m$ terminfo probe here\x1b[0m`)
-  })
+const probe = program.command("probe").description("Run terminal probes (termless, server, app, mux, here)")
+
+probe.addHelpText("after", `
+Examples:
+  $ terminfo probe termless --all        Probe all headless backends
+  $ terminfo probe termless xtermjs      Probe specific backend
+  $ terminfo probe server --start        Start daemon in this terminal
+  $ terminfo probe server --all          Probe all running daemons
+  $ terminfo probe app ghostty           Probe specific terminal app
+  $ terminfo probe mux tmux              Probe through tmux
+  $ terminfo probe here                  Probe this terminal inline
+`)
 
 // ── probe termless ──
 
