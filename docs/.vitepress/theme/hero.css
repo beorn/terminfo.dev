@@ -7,10 +7,16 @@
   flex-basis: 100%;
   display: flex;
   justify-content: flex-start;
-  margin-top: 0;
+  margin-top: -4px;
 }
 
-/* Reduce hero bottom padding */
-.VPHero .container {
-  padding-bottom: 32px !important;
+/* Reduce hero bottom spacing */
+.VPHero {
+  padding-bottom: 0 !important;
+  margin-bottom: -32px;
+}
+
+/* Tighten gap between hero and first content section */
+.vp-doc.container > .content {
+  padding-top: 0;
 }
