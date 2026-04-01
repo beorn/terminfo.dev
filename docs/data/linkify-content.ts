@@ -1,47 +1,33 @@
 /**
- * Build-time content linkification — wraps known entity names in HTML links.
- * Used by [id].paths.ts to linkify descriptions before passing to Vue templates.
+ * Build-time content linkification for terminfo.dev — wraps known entity names
+ * in HTML links. Used by [id].paths.ts to linkify descriptions before passing
+ * to Vue templates.
  *
- * Reads from content/*.json to build entity list. Reuses the same data
- * that the glossary plugin uses, but works on strings at build time
- * (not markdown at parse time).
+ * Loads entities from content/*.json and delegates to @bearly/vitepress-enrich.
  */
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { createLinkifier } from "@bearly/vitepress-enrich"
+import type { GlossaryEntity } from "@bearly/vitepress-enrich"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
 
-interface Entity {
-  pattern: RegExp
-  href: string
-  title?: string
-}
+let _linkify: ((text: string) => string) | null = null
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-}
+function loadEntities(): GlossaryEntity[] {
+  const entities: GlossaryEntity[] = []
 
-function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-}
-
-let _entities: Entity[] | null = null
-
-function loadEntities(): Entity[] {
-  if (_entities) return _entities
-  const entities: Entity[] = []
-
-  // Glossary terms (CSI, SGR, ECMA-48, CUP, etc. — no length filter, all curated)
+  // Glossary terms
   try {
     const raw = JSON.parse(readFileSync(join(contentDir, "glossary.json"), "utf-8")) as Record<string, any>
     for (const [key, entry] of Object.entries(raw)) {
       if (!entry.link) continue
       entities.push({
-        pattern: new RegExp(`\\b${escapeRegex(key)}\\b`, "g"),
+        term: key,
         href: entry.link,
-        title: `${entry.expansion} — ${entry.description}`,
+        tooltip: `${entry.expansion} — ${entry.description}`,
       })
     }
   } catch {}
@@ -52,9 +38,9 @@ function loadEntities(): Entity[] {
     for (const [, t] of Object.entries(raw)) {
       if (!t.label || !t.slug || t.label.length < 4) continue
       entities.push({
-        pattern: new RegExp(`\\b${escapeRegex(t.label)}\\b`, "g"),
+        term: t.label,
         href: `/terminals/${t.slug}`,
-        title: t.description,
+        tooltip: t.description,
       })
     }
   } catch {}
@@ -65,7 +51,7 @@ function loadEntities(): Entity[] {
     for (const [id, f] of Object.entries(raw)) {
       if (!f.label || f.label.length < 4) continue
       entities.push({
-        pattern: new RegExp(`\\b${escapeRegex(f.label)}\\b`, "g"),
+        term: f.label,
         href: `/framework/${id}`,
       })
     }
@@ -77,7 +63,7 @@ function loadEntities(): Entity[] {
     for (const [id, s] of Object.entries(raw)) {
       if (!s.label || s.label.length < 4) continue
       entities.push({
-        pattern: new RegExp(`\\b${escapeRegex(s.label)}\\b`, "g"),
+        term: s.label,
         href: `/${id}`,
       })
     }
@@ -89,88 +75,22 @@ function loadEntities(): Entity[] {
     for (const [id, b] of Object.entries(raw)) {
       if (!b.label || b.label.length < 4) continue
       entities.push({
-        pattern: new RegExp(`\\b${escapeRegex(b.label)}\\b`, "g"),
+        term: b.label,
         href: `/baseline/${id}`,
       })
     }
   } catch {}
 
-  // Sort longest patterns first
-  entities.sort((a, b) => b.pattern.source.length - a.pattern.source.length)
-  _entities = entities
   return entities
 }
 
 /**
  * Linkify plain text content — wraps known entity names in <a> tags.
  * Safe for use with v-html. Skips text already inside HTML tags.
- *
- * Uses a two-pass approach to avoid replacing inside generated attributes:
- * 1. Find all matches on the original text (collect offsets)
- * 2. Apply replacements in reverse order (so offsets stay valid)
  */
 export function linkifyContent(text: string): string {
-  if (!text) return text
-  const entities = loadEntities()
-
-  // First: identify text regions (outside HTML tags and <a>...</a> blocks)
-  const textRegions: Array<{ start: number; end: number }> = []
-  let i = 0
-  while (i < text.length) {
-    if (text[i] === "<") {
-      const tagEnd = text.indexOf(">", i)
-      if (tagEnd === -1) break
-      const tag = text.slice(i, tagEnd + 1)
-      if (tag.startsWith("<a ") || tag === "<a>") {
-        const closeA = text.indexOf("</a>", tagEnd)
-        i = closeA !== -1 ? closeA + 4 : tagEnd + 1
-      } else {
-        i = tagEnd + 1
-      }
-    } else {
-      const nextTag = text.indexOf("<", i)
-      const end = nextTag === -1 ? text.length : nextTag
-      if (end > i) textRegions.push({ start: i, end })
-      i = end
-    }
+  if (!_linkify) {
+    _linkify = createLinkifier(loadEntities())
   }
-
-  // Second: collect all matches across text regions
-  const matches: Array<{ start: number; end: number; href: string; title?: string }> = []
-  const occupied = new Set<number>()
-
-  for (const { pattern, href, title } of entities) {
-    for (const region of textRegions) {
-      const segment = text.slice(region.start, region.end)
-      pattern.lastIndex = 0
-      let m: RegExpExecArray | null
-      while ((m = pattern.exec(segment)) !== null) {
-        const absStart = region.start + m.index
-        const absEnd = absStart + m[0].length
-        // Check no overlap with previous matches
-        let overlap = false
-        for (let p = absStart; p < absEnd; p++) {
-          if (occupied.has(p)) {
-            overlap = true
-            break
-          }
-        }
-        if (overlap) continue
-        for (let p = absStart; p < absEnd; p++) occupied.add(p)
-        matches.push({ start: absStart, end: absEnd, href, title })
-      }
-    }
-  }
-
-  // Third: apply in reverse order so offsets stay valid
-  matches.sort((a, b) => b.start - a.start)
-  let result = text
-  for (const { start, end, href, title } of matches) {
-    const original = result.slice(start, end)
-    const tooltip = title ? ` data-tooltip="${escapeAttr(title)}"` : ""
-    result =
-      result.slice(0, start) + `<a href="${href}" class="hover-link"${tooltip}>${original}</a>` + result.slice(end)
-  }
-
-  return result
+  return _linkify(text)
 }

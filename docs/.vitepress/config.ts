@@ -676,8 +676,9 @@ export default defineConfig({
     sidebar,
 
     footer: {
-      message: 'Powered by <a href="https://termless.dev">Termless</a> · Built with <a href="https://silvery.dev">Silvery</a> · <a href="https://beorn.codes/flexily">Flexily</a>',
-      copyright: 'Built by <a href="https://beorn.codes">Bjørn Stabell</a>'
+      message:
+        'Powered by <a href="https://termless.dev">Termless</a> · Built with <a href="https://silvery.dev">Silvery</a> · <a href="https://beorn.codes/flexily">Flexily</a>',
+      copyright: 'Built by <a href="https://beorn.codes">Bjørn Stabell</a>',
     },
   },
 
