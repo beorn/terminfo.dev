@@ -9,16 +9,30 @@ Don't see your terminal on terminfo.dev? Test it and submit results in under a m
 
 ## Quick Start
 
-**With Node.js/Bun:**
+**With Node.js/Bun** (easiest — tests + submits in one step):
 
 ```bash
-npx terminfo.dev test
+npx terminfo.dev submit
 ```
 
-**Without Node.js (just curl):**
+**Without Node.js — macOS/Linux:**
 
 ```bash
 curl -sL terminfo.dev/test | sh
+```
+
+**Windows** (PowerShell — Git Bash, WSL, or Windows Terminal):
+
+```bash
+# Option 1: If you have Node.js
+npx terminfo.dev submit
+
+# Option 2: If you have Git Bash or WSL
+curl -sL terminfo.dev/test | sh
+
+# Option 3: Manual — paste results as a GitHub issue
+# Run in your terminal, copy the JSON output, then open:
+# https://github.com/beorn/terminfo.dev/issues/new?title=Terminal+results
 ```
 
 ::: tip What does this do?
@@ -94,6 +108,16 @@ It does **not**:
 
 - Shell script: [terminfo.dev/test](/test-source) (what `curl | sh` runs — read it directly)
 - npm package: [terminfo.dev on npm](https://www.npmjs.com/package/terminfo.dev) (what `npx` runs)
+
+## Submitting Without npx
+
+If you can't use `npx`, you can submit results manually:
+
+1. Run the test script (`curl -sL terminfo.dev/test | sh`)
+2. Copy the JSON output
+3. [Open a GitHub issue](https://github.com/beorn/terminfo.dev/issues/new?title=Terminal+results) and paste the JSON
+
+We'll process it and add your terminal to the database.
 
 ## JSON Output
 

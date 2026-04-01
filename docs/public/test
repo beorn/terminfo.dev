@@ -178,3 +178,10 @@ cat <<EOF
   }
 }
 EOF
+
+# Show submit instructions
+printf '\n  To submit these results to terminfo.dev:\n' >&2
+printf '    Option 1: npx terminfo.dev submit\n' >&2
+printf '    Option 2: Copy the JSON above and paste at:\n' >&2
+printf '              https://github.com/beorn/terminfo.dev/issues/new?title=%s+on+%s&body=<paste+JSON>\n' "$TN" "$PL" >&2
+printf '\n' >&2
