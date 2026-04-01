@@ -169,17 +169,34 @@ function formatResultsJson(data: ProbeResults) {
   )
 }
 
-/** Check if this terminal+version+OS combo is already in the terminfo.dev census */
-async function checkIfNewTerminal(name: string, version: string, os: string): Promise<boolean> {
+/** Check terminal status: "new" (not in census), "changed" (results differ), "unchanged" */
+async function checkTerminalStatus(
+  name: string,
+  version: string,
+  os: string,
+  results: Record<string, boolean>,
+): Promise<"new" | "changed" | "unchanged"> {
   try {
     const slug = name.toLowerCase().replace(/[^a-z0-9-]/g, "-")
     const ver = (version || "unknown").replace(/[^a-z0-9.-]/g, "-")
     const filename = `${slug}-${ver}-${os}.json`
     const url = `https://raw.githubusercontent.com/beorn/terminfo.dev/main/content/probes-apps/${filename}`
     const res = await fetch(url, { signal: AbortSignal.timeout(3000) })
-    return res.status === 404
+    if (res.status === 404) return "new"
+
+    const existing = (await res.json()) as { results?: Record<string, boolean> }
+    if (!existing.results) return "changed"
+
+    // Compare results — any difference means "changed"
+    for (const [key, val] of Object.entries(results)) {
+      if (existing.results[key] !== val) return "changed"
+    }
+    for (const key of Object.keys(existing.results)) {
+      if (!(key in results)) return "changed"
+    }
+    return "unchanged"
   } catch {
-    return false // network error — don't show banner
+    return "new" // network error — assume new (safe default, encourages submission)
   }
 }
 
@@ -205,7 +222,7 @@ async function showSubmitPrompt(isNew: boolean, terminalLabel: string): Promise<
     console.log(`  ${s.bold.yellow("★ New terminal!")} ${s.bold(terminalLabel)} isn't on terminfo.dev yet.`)
     console.log(`  ${s.dim("Help other developers by sharing your results:")}`)
   } else {
-    console.log(`  ${s.dim("Your results can be submitted to terminfo.dev:")}`)
+    console.log(`  ${s.yellow("Results differ")} from what's on terminfo.dev — your update would help keep data accurate.`)
   }
 
   console.log("")
@@ -350,10 +367,16 @@ program
     printResults(data)
 
     // Check if this terminal is already in the census
-    const isNew = await checkIfNewTerminal(data.terminal.name, data.terminal.version, data.terminal.os)
+    const status = await checkTerminalStatus(data.terminal.name, data.terminal.version, data.terminal.os, data.results)
 
     const terminalLabel = `${data.terminal.name}${data.terminal.version ? ` ${data.terminal.version}` : ""}`
-    const shouldSubmit = await showSubmitPrompt(isNew, terminalLabel)
+
+    if (status === "unchanged") {
+      console.log(`\n  ${s.dim(`${terminalLabel} is already on terminfo.dev with identical results.`)}`)
+      return
+    }
+
+    const shouldSubmit = await showSubmitPrompt(status === "new", terminalLabel)
 
     if (shouldSubmit) {
       console.log(`\n  Submitting to terminfo.dev...`)
