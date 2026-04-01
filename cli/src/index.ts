@@ -229,8 +229,8 @@ async function showSubmitPrompt(isNew: boolean, terminalLabel: string): Promise<
 
   const { createInterface } = await import("node:readline")
 
-  const submitLabel = isNew ? "Submit to terminfo.dev? [Y/n]" : "Submit updated results? [y/N]"
-  const defaultYes = isNew
+  const submitLabel = isNew ? "Submit to terminfo.dev? [Y/n]" : "Submit updated results? [Y/n]"
+  const defaultYes = true
 
   return new Promise<boolean>((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout })
