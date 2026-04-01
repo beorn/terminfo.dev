@@ -22,6 +22,7 @@ import { Command, uint } from "@silvery/commander"
 import { renderString } from "silvery"
 import { hyperlink } from "@silvery/ansi"
 import { isTTY } from "silvery/ui/cli"
+import { createLogger } from "loggily"
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -35,6 +36,7 @@ import { TestResults, PostTestStatus, SubmitNudge, SubmitResult } from "./views/
 import type { ProbeResults } from "./types.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const log = createLogger("terminfo")
 
 /** Load feature slugs from features.json for OSC 8 hyperlinks */
 function loadFeatureSlugs(): Record<string, string> {
@@ -226,23 +228,23 @@ program
             d.terminal.toLowerCase().includes(daemon.toLowerCase()),
         )
         if (targets.length === 0) {
-          console.error(`No daemon found matching "${daemon}".`)
+          log.error?.(`No daemon found matching "${daemon}".`)
           if (daemons.length > 0) {
-            console.error(`Running: ${daemons.map((d) => d.terminal).join(", ")}`)
+            log.error?.(`Running: ${daemons.map((d) => d.terminal).join(", ")}`)
           } else {
-            console.error(`No daemons running. Start one: terminfo test --serve`)
+            log.error?.(`No daemons running. Start one: terminfo test --serve`)
           }
           throw new Error(`No daemon found matching "${daemon}"`)
         }
       }
 
       if (targets.length === 0) {
-        console.log("No daemons found.")
-        console.log("Start a daemon in each terminal: terminfo test --serve")
+        log.info?.("No daemons found.")
+        log.info?.("Start a daemon in each terminal: terminfo test --serve")
         return
       }
 
-      console.log(`terminfo.dev — testing ${targets.length} terminal(s)\n`)
+      log.info?.(`terminfo.dev — testing ${targets.length} terminal(s)`)
 
       for (const d of targets) {
         const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
@@ -251,14 +253,14 @@ program
         try {
           const res = await fetch(`http://127.0.0.1:${d.port}/probe`, { signal: AbortSignal.timeout(120000) })
           if (!res.ok) {
-            console.log(`- HTTP ${res.status}`)
+            log.warn?.(`HTTP ${res.status}`)
             continue
           }
           const data = (await res.json()) as any
           const passed = Object.values(data.results).filter((v: any) => v).length
           const total = Object.keys(data.results).length
           const pct = Math.round((passed / total) * 100)
-          console.log(`${passed}/${total} (${pct}%)`)
+          log.info?.(`${passed}/${total} (${pct}%)`)
 
           const { mkdirSync, writeFileSync } = await import("node:fs")
           const dir = "content/probes-apps"
@@ -269,14 +271,14 @@ program
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           if (msg.includes("ECONNREFUSED")) {
-            console.log("- not running (stale daemon file)")
+            log.warn?.("not running (stale daemon file)")
           } else {
-            console.log(`- ${msg}`)
+            log.error?.(msg)
           }
         }
       }
 
-      console.log(`\nResults saved to content/probes-apps/`)
+      log.info?.("Results saved to content/probes-apps/")
       return
     }
 
@@ -307,13 +309,12 @@ program
     }
 
     await printView(<PostTestStatus status={status} terminalLabel={terminalLabel} />)
-    console.log("")
 
     const submitLabel = status === "new" ? "Submit to terminfo.dev? [Y/n]" : "Submit updated results? [Y/n]"
     const shouldSubmit = await askYesNo(submitLabel)
 
     if (shouldSubmit) {
-      console.log(`\n  Submitting to terminfo.dev...`)
+      log.info?.("Submitting to terminfo.dev...")
       const url = await submitResults({
         terminal: data.terminal.name,
         terminalVersion: data.terminal.version,
@@ -346,29 +347,27 @@ program
 
     const categoryCount = new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size
     await printView(<HelpView terminal={terminal} featureCount={ALL_PROBES.length} categoryCount={categoryCount} />)
-    console.log("")
 
     name = await askText("Terminal name", name)
     version = await askText("Terminal version", version || "unknown")
     if (version === "unknown") version = ""
 
     if (!version) {
-      console.log(`\n  No version detected. We need the version to accept submissions.`)
-      console.log(`  Try: ${name} --version or check your terminal's About menu.`)
+      log.warn?.(`No version detected. Try: ${name} --version or check your terminal's About menu.`)
       version = await askText("Terminal version", "")
       if (!version) {
-        console.log(`\n  Cannot submit without a version. Exiting.`)
+        log.error?.("Cannot submit without a version.")
         throw new Error("Cannot submit without a terminal version")
       }
     }
 
-    console.log(`\n  Testing ${name} ${version} on ${terminal.os}...\n`)
+    log.info?.(`Testing ${name} ${version} on ${terminal.os}...`)
 
     const data = await runProbes()
     const slugs = loadFeatureSlugs()
     await printView(<TestResults data={data} slugs={slugs} />)
 
-    console.log(`\n  Submitting to terminfo.dev...`)
+    log.info?.("Submitting to terminfo.dev...")
     const url = await submitResults({
       terminal: name,
       terminalVersion: version,
