@@ -285,7 +285,7 @@ program
       return
     }
     printResults(data)
-    console.log(`\n\x1b[2mSubmit results: \x1b[0m\x1b[1mterminfo submit\x1b[0m`)
+    console.log(`\n  Submit to terminfo.dev: \x1b[1mnpx terminfo.dev submit\x1b[0m`)
   })
 
 // ── submit ──
@@ -319,21 +319,22 @@ program
     version = await ask("Terminal version", version || "unknown")
     if (version === "unknown") version = ""
 
-    console.log(``)
-    console.log(`  Submitting as \x1b[1m${name}${version ? ` ${version}` : ""}\x1b[0m on ${terminal.os}`)
+    if (!version) {
+      console.log(`\n  \x1b[33m⚠ No version detected.\x1b[0m We need the version to accept submissions.`)
+      console.log(`  Try: \x1b[1m${name} --version\x1b[0m or check your terminal's About menu.`)
+      version = await ask("Terminal version", "")
+      if (!version) {
+        console.log(`\n  \x1b[31mCannot submit without a version. Exiting.\x1b[0m`)
+        process.exit(1)
+      }
+    }
 
-    const rl2 = createInterface({ input: process.stdin, output: process.stdout })
-    await new Promise<void>((resolve) => {
-      rl2.question(`  Press Enter to run tests (Ctrl+C to cancel) `, () => {
-        rl2.close()
-        resolve()
-      })
-    })
+    console.log(`\n  Testing \x1b[1m${name} ${version}\x1b[0m on ${terminal.os}...\n`)
 
     const data = await runProbes()
     printResults(data)
 
-    console.log(`\nSubmitting results to terminfo.dev...`)
+    console.log(`\n  Submitting to terminfo.dev...`)
     const url = await submitResults({
       terminal: name,
       terminalVersion: version,

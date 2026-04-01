@@ -74,11 +74,29 @@ ${JSON.stringify(data, null, 2)}
 *Submitted via \`npx terminfo.dev submit\`*`
 
   if (!hasGhCli()) {
-    const filename = `terminfo-${data.terminal}-${data.os}-${Date.now()}.json`
-    writeFileSync(filename, JSON.stringify(data, null, 2))
-    console.log(`\n  \x1b[33mgh CLI not found. Results saved to ${filename}\x1b[0m`)
-    console.log(`  To submit: https://github.com/${REPO}/issues/new`)
-    return null
+    // No gh CLI — open browser with pre-filled issue
+    const issueUrl = `https://github.com/${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}&labels=probe-results`
+
+    console.log(`\n  \x1b[33mgh CLI not found — opening browser instead\x1b[0m`)
+
+    try {
+      const { execFileSync: exec } = await import("node:child_process")
+      const { platform } = await import("node:os")
+      const os = platform()
+      if (os === "darwin") exec("open", [issueUrl])
+      else if (os === "win32") exec("cmd", ["/c", "start", issueUrl])
+      else exec("xdg-open", [issueUrl])
+      console.log(`  Browser opened — review and click "Submit new issue"`)
+      return null
+    } catch {
+      // Browser open failed — save file as last resort
+      const filename = `terminfo-${data.terminal}-${data.os}-${Date.now()}.json`
+      writeFileSync(filename, JSON.stringify(data, null, 2))
+      console.log(`  \x1b[33mCouldn't open browser. Results saved to ${filename}\x1b[0m`)
+      console.log(`  To submit manually: https://github.com/${REPO}/issues/new`)
+      console.log(`  Paste the contents of ${filename} in the issue body.`)
+      return null
+    }
   }
 
   const bodyFile = join(tmpdir(), `terminfo-submit-${Date.now()}.md`)
