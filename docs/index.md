@@ -1068,7 +1068,7 @@ strips, or mishandles.
 
 .problem-summary {
   max-width: 720px;
-  margin: 0 auto 2em;
+  margin: 1em auto;
   padding: 16px 20px;
   background: var(--vp-c-bg-soft);
   border-radius: 8px;
