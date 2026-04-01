@@ -111,7 +111,7 @@ export default {
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),
           scores: JSON.stringify(scores),
-          analysis: a?.analysis ?? "",
+          analysis: linkifyContent(a?.analysis ?? ""),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
         },

@@ -134,7 +134,7 @@ export default {
             onlyB: String(onlyB),
             differ: String(differ),
             categories: JSON.stringify(catResults),
-            analysis: an?.analysis ?? "",
+            analysis: linkifyContent(an?.analysis ?? ""),
             analysisDate: an?.date ?? "",
             analysisChanges: an?.changes ?? "",
           },

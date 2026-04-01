@@ -96,7 +96,7 @@ export default {
           body: fw.body,
           featureCount: String(baselineFeatureIds.length),
           scores: JSON.stringify(scores),
-          analysis: a?.analysis ?? "",
+          analysis: linkifyContent(a?.analysis ?? ""),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
         },

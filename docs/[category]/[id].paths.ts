@@ -128,7 +128,7 @@ export default {
           backendResults: JSON.stringify(backendResults),
           yesCount: String(yesCount),
           totalCount: String(totalCount),
-          analysis: a?.analysis ?? "",
+          analysis: linkifyContent(a?.analysis ?? ""),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
           parentFeatureId,
