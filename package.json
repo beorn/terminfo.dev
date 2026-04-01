@@ -23,7 +23,7 @@
     "silvery": "^0.4.1"
   },
   "devDependencies": {
-    "@bearly/vitepress-enrich": "^0.1.0",
+    "@bearly/vitepress-enrich": "^0.2.0",
     "vitepress": "^1.6.4",
     "vitest": "^4.1.1"
   },
