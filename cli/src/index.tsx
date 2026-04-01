@@ -17,8 +17,10 @@
  * ```
  */
 
+import React from "react"
 import { Command, uint } from "@silvery/commander"
-import { createStyle } from "@silvery/ansi"
+import { renderString } from "silvery"
+import { hyperlink } from "@silvery/ansi"
 import { isTTY } from "silvery/ui/cli"
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
@@ -27,11 +29,12 @@ import { detectTerminal } from "./detect.ts"
 import { ALL_PROBES } from "./probes/unified.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
 import { submitResults } from "./submit.ts"
+import { HelpView } from "./views/HelpView.tsx"
+import { DetectView } from "./views/DetectView.tsx"
+import { TestResults, PostTestStatus, SubmitNudge, SubmitResult } from "./views/TestResults.tsx"
+import type { ProbeResults } from "./types.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-
-// Shared style instance — handles NO_COLOR, FORCE_COLOR, and terminal detection
-const s = createStyle()
 
 /** Load feature slugs from features.json for OSC 8 hyperlinks */
 function loadFeatureSlugs(): Record<string, string> {
@@ -53,20 +56,6 @@ function loadFeatureSlugs(): Record<string, string> {
     }
   }
   return {}
-}
-
-/** OSC 8 hyperlink */
-function link(url: string, text: string): string {
-  return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`
-}
-
-interface ProbeResults {
-  terminal: ReturnType<typeof detectTerminal>
-  results: Record<string, boolean>
-  notes: Record<string, string>
-  responses: Record<string, string>
-  passed: number
-  total: number
 }
 
 async function runProbes(): Promise<ProbeResults> {
@@ -99,56 +88,9 @@ async function runProbes(): Promise<ProbeResults> {
   // Restore terminal state completely
   process.stdout.write("\x1b8") // restore cursor (DECRC)
   process.stdout.write("\x1bc") // RIS — full terminal reset
-  // RIS moves cursor to 1,1 — that's fine, we're about to print results
 
-  return { terminal, results, notes, responses, passed, total: ALL_PROBES.length }
-}
-
-function printHeader(terminal: ReturnType<typeof detectTerminal>) {
-  const siteLink = link("https://terminfo.dev", "terminfo.dev")
-  console.log(`${s.bold(siteLink)} — can your terminal do that?\n`)
-  console.log(`  Terminal:  ${s.bold(`${terminal.name}${terminal.version ? ` ${terminal.version}` : ""}`)}`)
-  console.log(`  Platform:  ${terminal.os} ${terminal.osVersion}`)
-  console.log(
-    `  Features:  ${ALL_PROBES.length} across ${new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size} categories`,
-  )
-  console.log(`  Website:   ${link("https://terminfo.dev", "https://terminfo.dev")}`)
-}
-
-function printResults(data: ProbeResults) {
-  const { passed, total } = data
-  const pct = Math.round((passed / total) * 100)
-  const slugs = loadFeatureSlugs()
-
-  printHeader(data.terminal)
-  console.log(`  Score:     ${s.bold(`${passed}/${total} (${pct}%)`)}\n`)
-
-  const categories = new Map<string, Array<{ id: string; name: string; pass: boolean; note?: string }>>()
-  for (const probe of ALL_PROBES) {
-    const cat = probe.id.split(".")[0]!
-    if (!categories.has(cat)) categories.set(cat, [])
-    categories.get(cat)!.push({
-      id: probe.id,
-      name: probe.name,
-      pass: data.results[probe.id] ?? false,
-      note: data.notes[probe.id],
-    })
-  }
-
-  for (const [cat, probes] of categories) {
-    const catPassed = probes.filter((p) => p.pass).length
-    const colorFn = catPassed === probes.length ? s.green : catPassed > 0 ? s.yellow : s.red
-    console.log(`${colorFn(s.bold(cat))} ${colorFn(`${catPassed}/${probes.length}`)}`)
-
-    for (const p of probes) {
-      const icon = p.pass ? s.green("✓") : s.red("✗")
-      const note = p.note && !p.pass ? ` ${s.dim(`(${p.note})`)}` : ""
-      const slug = slugs[p.id]
-      const fCat = p.id.split(".")[0]
-      const featureLink = link(`https://terminfo.dev/${fCat}/${slug}`, p.name)
-      console.log(`  ${icon} ${featureLink}${note}`)
-    }
-  }
+  const probes = ALL_PROBES.map((p) => ({ id: p.id, name: p.name }))
+  return { terminal, results, notes, responses, passed, total, probes }
 }
 
 function formatResultsJson(data: ProbeResults) {
@@ -187,7 +129,6 @@ async function checkTerminalStatus(
     const existing = (await res.json()) as { results?: Record<string, boolean> }
     if (!existing.results) return "changed"
 
-    // Compare results — any difference means "changed"
     for (const [key, val] of Object.entries(results)) {
       if (existing.results[key] !== val) return "changed"
     }
@@ -196,51 +137,48 @@ async function checkTerminalStatus(
     }
     return "unchanged"
   } catch {
-    return "new" // network error — assume new (safe default, encourages submission)
+    return "new" // network error — assume new
   }
 }
 
 /**
- * Show interactive post-test prompt using silvery SelectList.
- * Returns true if user chose to submit, false otherwise.
+ * Prompt user for Y/n via readline.
+ * Returns true if user chose yes, false otherwise.
  */
-async function showSubmitPrompt(isNew: boolean, terminalLabel: string): Promise<boolean> {
-  // Non-interactive: just print the nudge text
-  if (!isTTY()) {
-    if (isNew) {
-      console.log(`\n  ${s.bold.yellow("★ New terminal!")} ${s.bold(terminalLabel)} isn't on terminfo.dev yet.`)
-      console.log(`  Submit your results: ${s.bold("npx terminfo.dev submit")}`)
-    } else {
-      console.log(`\n  ${s.dim("Submit updated results:")} ${s.bold("npx terminfo.dev submit")}`)
-    }
-    return false
-  }
-
-  console.log("")
-
-  if (isNew) {
-    console.log(`  ${s.bold.yellow("★ New terminal!")} ${s.bold(terminalLabel)} isn't on terminfo.dev yet.`)
-    console.log(`  ${s.dim("Help other developers by sharing your results:")}`)
-  } else {
-    console.log(`  ${s.yellow("Results differ")} from what's on terminfo.dev — your update would help keep data accurate.`)
-  }
-
-  console.log("")
-
+async function askYesNo(question: string): Promise<boolean> {
   const { createInterface } = await import("node:readline")
-
-  const submitLabel = isNew ? "Submit to terminfo.dev? [Y/n]" : "Submit updated results? [Y/n]"
-  const defaultYes = true
-
   return new Promise<boolean>((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(`  ${submitLabel} `, (answer) => {
+    rl.question(`  ${question} `, (answer) => {
       rl.close()
       const ans = answer.trim().toLowerCase()
-      if (ans === "") resolve(defaultYes)
+      if (ans === "")
+        resolve(true) // default yes
       else resolve(ans === "y" || ans === "yes")
     })
   })
+}
+
+/**
+ * Prompt user for text input via readline.
+ */
+async function askText(question: string, defaultValue: string): Promise<string> {
+  const { createInterface } = await import("node:readline")
+  return new Promise<string>((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout })
+    const prompt = defaultValue ? `  ${question} [${defaultValue}]: ` : `  ${question}: `
+    rl.question(prompt, (answer) => {
+      rl.close()
+      resolve(answer.trim() || defaultValue)
+    })
+  })
+}
+
+/** Render a React view to stdout using silvery's renderString. */
+async function printView(element: React.ReactElement): Promise<void> {
+  const width = process.stdout.columns || 80
+  const output = await renderString(element, { width })
+  console.log(output)
 }
 
 // ── CLI ──
@@ -252,25 +190,10 @@ const program = new Command()
 
 // ── Default action: show terminal info + help ──
 
-program.action(() => {
+program.action(async () => {
   const terminal = detectTerminal()
-  printHeader(terminal)
-  console.log(``)
-  console.log(`${s.dim("Test your terminal against " + ALL_PROBES.length + " features from the ECMA-48,")}`)
-  console.log(`${s.dim("VT100/VT510, xterm, and Kitty specifications. Results can be")}`)
-  console.log(`${s.dim("submitted to the community database at terminfo.dev.")}`)
-  console.log(``)
-  console.log(`Commands:`)
-  console.log(`  ${s.bold("test")}                  Test this terminal's feature support`)
-  console.log(`  ${s.bold("test --json")}           Machine-readable output`)
-  console.log(`  ${s.bold("test --serve")}         Start daemon for remote testing`)
-  console.log(`  ${s.bold("test --all")}            Test all running daemons`)
-  console.log(`  ${s.bold("submit")}                Test + submit results to terminfo.dev`)
-  console.log(`  ${s.bold("detect")}                Detect current terminal`)
-  console.log(``)
-  console.log(`Options:`)
-  console.log(`  ${s.bold("--help")}     Show this help`)
-  console.log(`  ${s.bold("--version")}  Show version`)
+  const categoryCount = new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size
+  await printView(<HelpView terminal={terminal} featureCount={ALL_PROBES.length} categoryCount={categoryCount} />)
 })
 
 // ── test ──
@@ -309,17 +232,17 @@ program
           } else {
             console.error(`No daemons running. Start one: terminfo test --serve`)
           }
-          process.exit(1)
+          throw new Error(`No daemon found matching "${daemon}"`)
         }
       }
 
       if (targets.length === 0) {
-        console.log(s.yellow("No daemons found."))
-        console.log(`Start a daemon in each terminal: ${s.bold("terminfo test --serve")}`)
+        console.log("No daemons found.")
+        console.log("Start a daemon in each terminal: terminfo test --serve")
         return
       }
 
-      console.log(`${s.bold("terminfo.dev")} — testing ${targets.length} terminal(s)\n`)
+      console.log(`terminfo.dev — testing ${targets.length} terminal(s)\n`)
 
       for (const d of targets) {
         const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
@@ -328,15 +251,14 @@ program
         try {
           const res = await fetch(`http://127.0.0.1:${d.port}/probe`, { signal: AbortSignal.timeout(120000) })
           if (!res.ok) {
-            console.log(s.red(`- HTTP ${res.status}`))
+            console.log(`- HTTP ${res.status}`)
             continue
           }
           const data = (await res.json()) as any
           const passed = Object.values(data.results).filter((v: any) => v).length
           const total = Object.keys(data.results).length
           const pct = Math.round((passed / total) * 100)
-          const colorFn = pct >= 98 ? s.green : pct >= 90 ? s.yellow : s.red
-          console.log(colorFn(`${passed}/${total} (${pct}%)`))
+          console.log(`${passed}/${total} (${pct}%)`)
 
           const { mkdirSync, writeFileSync } = await import("node:fs")
           const dir = "content/probes-apps"
@@ -347,9 +269,9 @@ program
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           if (msg.includes("ECONNREFUSED")) {
-            console.log(s.red("- not running (stale daemon file)"))
+            console.log("- not running (stale daemon file)")
           } else {
-            console.log(s.red(`- ${msg}`))
+            console.log(`- ${msg}`)
           }
         }
       }
@@ -364,7 +286,9 @@ program
       console.log(formatResultsJson(data))
       return
     }
-    printResults(data)
+
+    const slugs = loadFeatureSlugs()
+    await printView(<TestResults data={data} slugs={slugs} />)
 
     // Check if this terminal is already in the census
     const status = await checkTerminalStatus(data.terminal.name, data.terminal.version, data.terminal.os, data.results)
@@ -372,11 +296,21 @@ program
     const terminalLabel = `${data.terminal.name}${data.terminal.version ? ` ${data.terminal.version}` : ""}`
 
     if (status === "unchanged") {
-      console.log(`\n  ${s.dim(`${terminalLabel} is already on terminfo.dev with identical results.`)}`)
+      await printView(<PostTestStatus status="unchanged" terminalLabel={terminalLabel} />)
       return
     }
 
-    const shouldSubmit = await showSubmitPrompt(status === "new", terminalLabel)
+    // Show submit prompt
+    if (!isTTY()) {
+      await printView(<SubmitNudge isNew={status === "new"} terminalLabel={terminalLabel} />)
+      return
+    }
+
+    await printView(<PostTestStatus status={status} terminalLabel={terminalLabel} />)
+    console.log("")
+
+    const submitLabel = status === "new" ? "Submit to terminfo.dev? [Y/n]" : "Submit updated results? [Y/n]"
+    const shouldSubmit = await askYesNo(submitLabel)
 
     if (shouldSubmit) {
       console.log(`\n  Submitting to terminfo.dev...`)
@@ -393,10 +327,7 @@ program
         probeCount: ALL_PROBES.length,
       })
       if (url) {
-        console.log(`${s.green("+")} Issue created: ${link(url, url)}`)
-        if (!data.terminal.version) {
-          console.log(`  ${s.yellow("⚠")} Please edit the issue to add your terminal version.`)
-        }
+        await printView(<SubmitResult url={url} hasVersion={!!data.terminal.version} />)
       }
     }
   })
@@ -413,39 +344,29 @@ program
     let name = opts.terminalName ?? terminal.name
     let version = opts.terminalVersion ?? terminal.version
 
-    printHeader(terminal)
-    console.log(``)
+    const categoryCount = new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size
+    await printView(<HelpView terminal={terminal} featureCount={ALL_PROBES.length} categoryCount={categoryCount} />)
+    console.log("")
 
-    const { createInterface } = await import("node:readline")
-
-    async function ask(question: string, defaultValue: string): Promise<string> {
-      const rl = createInterface({ input: process.stdin, output: process.stdout })
-      return new Promise((resolve) => {
-        rl.question(`  ${question} [${s.bold(defaultValue)}]: `, (answer) => {
-          rl.close()
-          resolve(answer.trim() || defaultValue)
-        })
-      })
-    }
-
-    name = await ask("Terminal name", name)
-    version = await ask("Terminal version", version || "unknown")
+    name = await askText("Terminal name", name)
+    version = await askText("Terminal version", version || "unknown")
     if (version === "unknown") version = ""
 
     if (!version) {
-      console.log(`\n  ${s.yellow("⚠ No version detected.")} We need the version to accept submissions.`)
-      console.log(`  Try: ${s.bold(`${name} --version`)} or check your terminal's About menu.`)
-      version = await ask("Terminal version", "")
+      console.log(`\n  No version detected. We need the version to accept submissions.`)
+      console.log(`  Try: ${name} --version or check your terminal's About menu.`)
+      version = await askText("Terminal version", "")
       if (!version) {
-        console.log(`\n  ${s.red("Cannot submit without a version. Exiting.")}`)
-        process.exit(1)
+        console.log(`\n  Cannot submit without a version. Exiting.`)
+        throw new Error("Cannot submit without a terminal version")
       }
     }
 
-    console.log(`\n  Testing ${s.bold(`${name} ${version}`)} on ${terminal.os}...\n`)
+    console.log(`\n  Testing ${name} ${version} on ${terminal.os}...\n`)
 
     const data = await runProbes()
-    printResults(data)
+    const slugs = loadFeatureSlugs()
+    await printView(<TestResults data={data} slugs={slugs} />)
 
     console.log(`\n  Submitting to terminfo.dev...`)
     const url = await submitResults({
@@ -461,7 +382,7 @@ program
       probeCount: ALL_PROBES.length,
     })
     if (url) {
-      console.log(`${s.green("+")} Issue created: ${link(url, url)}`)
+      await printView(<SubmitResult url={url} hasVersion={!!version} />)
     }
   })
 
@@ -471,7 +392,7 @@ program
   .command("detect")
   .description("Detect current terminal")
   .option("--json", "Output as JSON")
-  .action((opts) => {
+  .action(async (opts) => {
     const terminal = detectTerminal()
 
     if (opts.json) {
@@ -479,9 +400,7 @@ program
       return
     }
 
-    console.log(`\n${s.bold("terminfo detect")}\n`)
-    console.log(`  Terminal:  ${s.bold(`${terminal.name}${terminal.version ? ` ${terminal.version}` : ""}`)}`)
-    console.log(`  OS:        ${terminal.os} ${terminal.osVersion}`)
+    await printView(<DetectView terminal={terminal} />)
   })
 
 program.parse()
