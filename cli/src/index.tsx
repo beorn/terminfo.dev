@@ -30,7 +30,6 @@ import { detectTerminal } from "./detect.ts"
 import { ALL_PROBES } from "./probes/unified.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
 import { submitResults } from "./submit.ts"
-import { HelpView } from "./views/HelpView.tsx"
 import { DetectView } from "./views/DetectView.tsx"
 import { TestResults, PostTestStatus, SubmitNudge, SubmitResult } from "./views/TestResults.tsx"
 import type { ProbeResults } from "./types.ts"
@@ -187,16 +186,16 @@ async function printView(element: React.ReactElement): Promise<void> {
 
 const program = new Command()
   .name("terminfo")
-  .description("Can your terminal do that? — test terminal feature support and contribute to terminfo.dev")
+  .description(`Can your terminal do that? — test ${ALL_PROBES.length} terminal features and contribute to terminfo.dev`)
   .version("4.0.0")
 
-// ── Default action: show terminal info + help ──
-
-program.action(async () => {
-  const terminal = detectTerminal()
-  const categoryCount = new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size
-  await printView(<HelpView terminal={terminal} featureCount={ALL_PROBES.length} categoryCount={categoryCount} />)
-})
+program.addHelpText("after", `
+Examples:
+  $ npx terminfo.dev test          Test this terminal
+  $ npx terminfo.dev test --json   Machine-readable output
+  $ npx terminfo.dev submit        Test + submit to terminfo.dev
+  $ npx terminfo.dev detect        What terminal am I in?
+`)
 
 // ── test ──
 

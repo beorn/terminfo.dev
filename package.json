@@ -4,7 +4,8 @@
   "license": "CC-BY-4.0",
   "type": "module",
   "scripts": {
-    "terminfo": "bun packages/cli/src/index.ts",
+    "terminfo": "bun cli/src/index.tsx",
+    "admin": "bun packages/cli/src/index.ts",
     "probe": "bun packages/cli/src/index.ts probe",
     "probe:termless": "bun packages/cli/src/index.ts probe termless --all",
     "probe:apps": "bun packages/cli/src/index.ts probe app --all",
