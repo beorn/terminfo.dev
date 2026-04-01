@@ -106,7 +106,7 @@ It does **not**:
 
 **Source code:**
 
-- Shell script: [terminfo.dev/test](/test-source) (what `curl | sh` runs — read it directly)
+- Shell script: [terminfo.dev/test](https://github.com/beorn/terminfo.dev/blob/main/docs/public/test) (what `curl | sh` runs — read it on GitHub)
 - npm package: [terminfo.dev on npm](https://www.npmjs.com/package/terminfo.dev) (what `npx` runs)
 
 ## Submitting Without npx

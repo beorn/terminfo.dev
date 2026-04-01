@@ -1,6 +1,7 @@
 {
   "name": "terminfo.dev",
   "private": true,
+  "license": "CC-BY-4.0",
   "type": "module",
   "scripts": {
     "terminfo": "bun packages/cli/src/index.ts",
