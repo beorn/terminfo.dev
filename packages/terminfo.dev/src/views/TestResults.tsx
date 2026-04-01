@@ -177,7 +177,8 @@ export function SubmitResult({ url, hasVersion }: { url: string; hasVersion: boo
         <Text><Text color="$success">✓</Text> Submitted: {hyperlink(url, url)}</Text>
       ) : (
         <Box flexDirection="column">
-          <Text><Text color="$success">✓</Text> Success! Please add your <Text bold>terminal app version</Text> on the page below and submit:</Text>
+          <Text><Text color="$success">✓</Text> Success, but <Text bold>missing terminal app version</Text>!</Text>
+          <Text>  Please add the <Text bold>terminal app version</Text> to the page below:</Text>
           <Text> </Text>
           <Text>  {hyperlink(url, url)}</Text>
           <Text> </Text>
