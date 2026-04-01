@@ -1,13 +1,14 @@
 #!/bin/sh
-# terminfo.dev probe — test your terminal's feature support
-# Usage: curl -sL terminfo.dev/probe | sh
+# terminfo.dev — test your terminal's feature support
+# Usage: curl -sL terminfo.dev/test | sh
+# Source: https://github.com/beorn/terminfo.dev/blob/main/docs/public/test
 #
 # Sends escape sequences to the terminal, reads responses, outputs JSON.
 # Progress to stderr, JSON to stdout. Requires a real terminal (/dev/tty).
 
 if ! (stty -g </dev/tty >/dev/null) 2>/dev/null; then
   echo "Error: no terminal. Run in an interactive terminal." >&2
-  echo "Usage: curl -sL terminfo.dev/probe | sh" >&2
+  echo "Usage: curl -sL terminfo.dev/test | sh" >&2
   exit 1
 fi
 
