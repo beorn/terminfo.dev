@@ -33,8 +33,10 @@
     "access": "public"
   },
   "dependencies": {
+    "@silvery/ansi": "^0.3.0",
     "@silvery/commander": "^0.6.0",
-    "commander": "^14.0.0"
+    "commander": "^14.0.0",
+    "silvery": "^0.14.0"
   },
   "engines": {
     "node": ">=23.6.0"

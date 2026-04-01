@@ -18,6 +18,8 @@
  */
 
 import { Command, uint } from "@silvery/commander"
+import { createStyle } from "@silvery/ansi"
+import { isTTY } from "silvery/ui/cli"
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -27,6 +29,9 @@ import { withRawMode, drainStdin } from "./tty.ts"
 import { submitResults } from "./submit.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// Shared style instance — handles NO_COLOR, FORCE_COLOR, and terminal detection
+const s = createStyle()
 
 /** Load feature slugs from features.json for OSC 8 hyperlinks */
 function loadFeatureSlugs(): Record<string, string> {
@@ -70,6 +75,7 @@ async function runProbes(): Promise<ProbeResults> {
   const notes: Record<string, string> = {}
   const responses: Record<string, string> = {}
   let passed = 0
+  const total = ALL_PROBES.length
 
   // Save cursor + scroll position, run probes, restore
   process.stdout.write("\x1b7") // save cursor (DECSC)
@@ -100,8 +106,8 @@ async function runProbes(): Promise<ProbeResults> {
 
 function printHeader(terminal: ReturnType<typeof detectTerminal>) {
   const siteLink = link("https://terminfo.dev", "terminfo.dev")
-  console.log(`\x1b[1m${siteLink}\x1b[0m — can your terminal do that?\n`)
-  console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m${terminal.version ? ` ${terminal.version}` : ""}`)
+  console.log(`${s.bold(siteLink)} — can your terminal do that?\n`)
+  console.log(`  Terminal:  ${s.bold(`${terminal.name}${terminal.version ? ` ${terminal.version}` : ""}`)}`)
   console.log(`  Platform:  ${terminal.os} ${terminal.osVersion}`)
   console.log(
     `  Features:  ${ALL_PROBES.length} across ${new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size} categories`,
@@ -115,7 +121,7 @@ function printResults(data: ProbeResults) {
   const slugs = loadFeatureSlugs()
 
   printHeader(data.terminal)
-  console.log(`  Score:     \x1b[1m${passed}/${total} (${pct}%)\x1b[0m\n`)
+  console.log(`  Score:     ${s.bold(`${passed}/${total} (${pct}%)`)}\n`)
 
   const categories = new Map<string, Array<{ id: string; name: string; pass: boolean; note?: string }>>()
   for (const probe of ALL_PROBES) {
@@ -131,12 +137,12 @@ function printResults(data: ProbeResults) {
 
   for (const [cat, probes] of categories) {
     const catPassed = probes.filter((p) => p.pass).length
-    const color = catPassed === probes.length ? "\x1b[32m" : catPassed > 0 ? "\x1b[33m" : "\x1b[31m"
-    console.log(`${color}\x1b[1m${cat}\x1b[0m${color} ${catPassed}/${probes.length}\x1b[0m`)
+    const colorFn = catPassed === probes.length ? s.green : catPassed > 0 ? s.yellow : s.red
+    console.log(`${colorFn(s.bold(cat))} ${colorFn(`${catPassed}/${probes.length}`)}`)
 
     for (const p of probes) {
-      const icon = p.pass ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m"
-      const note = p.note && !p.pass ? ` \x1b[2m(${p.note})\x1b[0m` : ""
+      const icon = p.pass ? s.green("✓") : s.red("✗")
+      const note = p.note && !p.pass ? ` ${s.dim(`(${p.note})`)}` : ""
       const slug = slugs[p.id]
       const fCat = p.id.split(".")[0]
       const featureLink = link(`https://terminfo.dev/${fCat}/${slug}`, p.name)
@@ -177,6 +183,73 @@ async function checkIfNewTerminal(name: string, version: string, os: string): Pr
   }
 }
 
+/**
+ * Show interactive post-test prompt using silvery SelectList.
+ * Returns true if user chose to submit, false otherwise.
+ */
+async function showSubmitPrompt(isNew: boolean, terminalLabel: string): Promise<boolean> {
+  // Non-interactive: just print the nudge text
+  if (!isTTY()) {
+    if (isNew) {
+      console.log(`\n  ${s.bold.yellow("★ New terminal!")} ${s.bold(terminalLabel)} isn't on terminfo.dev yet.`)
+      console.log(`  Submit your results: ${s.bold("npx terminfo.dev submit")}`)
+    } else {
+      console.log(`\n  ${s.dim("Submit updated results:")} ${s.bold("npx terminfo.dev submit")}`)
+    }
+    return false
+  }
+
+  console.log("")
+
+  if (isNew) {
+    console.log(`  ${s.bold.yellow("★ New terminal!")} ${s.bold(terminalLabel)} isn't on terminfo.dev yet.`)
+    console.log(`  ${s.dim("Help other developers by sharing your results:")}`)
+  } else {
+    console.log(`  ${s.dim("Your results can be submitted to terminfo.dev:")}`)
+  }
+
+  console.log("")
+
+  // Use silvery run() + SelectList for interactive choice
+  const { run, useExit } = await import("silvery/runtime")
+  const { SelectList } = await import("silvery/ui")
+  const React = await import("react")
+
+  const submitLabel = isNew ? "Submit to terminfo.dev" : "Submit updated results"
+  const items = [
+    { label: submitLabel, value: "submit" },
+    { label: "Skip", value: "skip" },
+  ]
+
+  return new Promise<boolean>((resolve) => {
+    let resolved = false
+
+    function Prompt() {
+      const exit = useExit()
+
+      return React.createElement(SelectList, {
+        items,
+        onSelect: (option: { value: string }) => {
+          resolved = true
+          resolve(option.value === "submit")
+          exit()
+        },
+      })
+    }
+
+    run(React.createElement(Prompt), { mode: "inline", mouse: false, exitOnCtrlC: true })
+      .then((handle) => {
+        // If user presses Ctrl+C, treat as skip
+        handle.waitUntilExit().then(() => {
+          if (!resolved) resolve(false)
+        })
+      })
+      .catch(() => {
+        if (!resolved) resolve(false)
+      })
+  })
+}
+
 // ── CLI ──
 
 const program = new Command()
@@ -190,21 +263,21 @@ program.action(() => {
   const terminal = detectTerminal()
   printHeader(terminal)
   console.log(``)
-  console.log(`\x1b[2mTest your terminal against ${ALL_PROBES.length} features from the ECMA-48,`)
-  console.log(`VT100/VT510, xterm, and Kitty specifications. Results can be`)
-  console.log(`submitted to the community database at terminfo.dev.\x1b[0m`)
+  console.log(`${s.dim("Test your terminal against " + ALL_PROBES.length + " features from the ECMA-48,")}`)
+  console.log(`${s.dim("VT100/VT510, xterm, and Kitty specifications. Results can be")}`)
+  console.log(`${s.dim("submitted to the community database at terminfo.dev.")}`)
   console.log(``)
   console.log(`Commands:`)
-  console.log(`  \x1b[1mtest\x1b[0m                  Test this terminal's feature support`)
-  console.log(`  \x1b[1mtest --json\x1b[0m           Machine-readable output`)
-  console.log(`  \x1b[1mtest --serve\x1b[0m         Start daemon for remote testing`)
-  console.log(`  \x1b[1mtest --all\x1b[0m            Test all running daemons`)
-  console.log(`  \x1b[1msubmit\x1b[0m                Test + submit results to terminfo.dev`)
-  console.log(`  \x1b[1mdetect\x1b[0m                Detect current terminal`)
+  console.log(`  ${s.bold("test")}                  Test this terminal's feature support`)
+  console.log(`  ${s.bold("test --json")}           Machine-readable output`)
+  console.log(`  ${s.bold("test --serve")}         Start daemon for remote testing`)
+  console.log(`  ${s.bold("test --all")}            Test all running daemons`)
+  console.log(`  ${s.bold("submit")}                Test + submit results to terminfo.dev`)
+  console.log(`  ${s.bold("detect")}                Detect current terminal`)
   console.log(``)
   console.log(`Options:`)
-  console.log(`  \x1b[1m--help\x1b[0m     Show this help`)
-  console.log(`  \x1b[1m--version\x1b[0m  Show version`)
+  console.log(`  ${s.bold("--help")}     Show this help`)
+  console.log(`  ${s.bold("--version")}  Show version`)
 })
 
 // ── test ──
@@ -248,12 +321,12 @@ program
       }
 
       if (targets.length === 0) {
-        console.log(`\x1b[33mNo daemons found.\x1b[0m`)
-        console.log(`Start a daemon in each terminal: \x1b[1mterminfo test --serve\x1b[0m`)
+        console.log(s.yellow("No daemons found."))
+        console.log(`Start a daemon in each terminal: ${s.bold("terminfo test --serve")}`)
         return
       }
 
-      console.log(`\x1b[1mterminfo.dev\x1b[0m — testing ${targets.length} terminal(s)\n`)
+      console.log(`${s.bold("terminfo.dev")} — testing ${targets.length} terminal(s)\n`)
 
       for (const d of targets) {
         const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
@@ -262,15 +335,15 @@ program
         try {
           const res = await fetch(`http://127.0.0.1:${d.port}/probe`, { signal: AbortSignal.timeout(120000) })
           if (!res.ok) {
-            console.log(`\x1b[31m- HTTP ${res.status}\x1b[0m`)
+            console.log(s.red(`- HTTP ${res.status}`))
             continue
           }
           const data = (await res.json()) as any
           const passed = Object.values(data.results).filter((v: any) => v).length
           const total = Object.keys(data.results).length
           const pct = Math.round((passed / total) * 100)
-          const color = pct >= 98 ? "\x1b[32m" : pct >= 90 ? "\x1b[33m" : "\x1b[31m"
-          console.log(`${color}${passed}/${total} (${pct}%)\x1b[0m`)
+          const colorFn = pct >= 98 ? s.green : pct >= 90 ? s.yellow : s.red
+          console.log(colorFn(`${passed}/${total} (${pct}%)`))
 
           const { mkdirSync, writeFileSync } = await import("node:fs")
           const dir = "content/probes-apps"
@@ -281,9 +354,9 @@ program
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           if (msg.includes("ECONNREFUSED")) {
-            console.log(`\x1b[31m- not running (stale daemon file)\x1b[0m`)
+            console.log(s.red("- not running (stale daemon file)"))
           } else {
-            console.log(`\x1b[31m- ${msg}\x1b[0m`)
+            console.log(s.red(`- ${msg}`))
           }
         }
       }
@@ -303,13 +376,26 @@ program
     // Check if this terminal is already in the census
     const isNew = await checkIfNewTerminal(data.terminal.name, data.terminal.version, data.terminal.os)
 
-    console.log(``)
-    if (isNew) {
-      console.log(`  \x1b[33;1m★ New terminal!\x1b[0m \x1b[1m${data.terminal.name}${data.terminal.version ? ` ${data.terminal.version}` : ""}\x1b[0m isn't on terminfo.dev yet.`)
-      console.log(`  Help other developers by submitting your results:`)
-      console.log(`  \x1b[1mnpx terminfo.dev submit\x1b[0m`)
-    } else {
-      console.log(`  \x1b[2mSubmit updated results: \x1b[0m\x1b[1mnpx terminfo.dev submit\x1b[0m`)
+    const terminalLabel = `${data.terminal.name}${data.terminal.version ? ` ${data.terminal.version}` : ""}`
+    const shouldSubmit = await showSubmitPrompt(isNew, terminalLabel)
+
+    if (shouldSubmit) {
+      console.log(`\n  Submitting to terminfo.dev...`)
+      const url = await submitResults({
+        terminal: data.terminal.name,
+        terminalVersion: data.terminal.version,
+        os: data.terminal.os,
+        osVersion: data.terminal.osVersion,
+        results: data.results,
+        notes: data.notes,
+        responses: data.responses,
+        generated: new Date().toISOString(),
+        cliVersion: "4.0.0",
+        probeCount: ALL_PROBES.length,
+      })
+      if (url) {
+        console.log(`${s.green("+")} Issue created: ${link(url, url)}`)
+      }
     }
   })
 
@@ -333,7 +419,7 @@ program
     async function ask(question: string, defaultValue: string): Promise<string> {
       const rl = createInterface({ input: process.stdin, output: process.stdout })
       return new Promise((resolve) => {
-        rl.question(`  ${question} [\x1b[1m${defaultValue}\x1b[0m]: `, (answer) => {
+        rl.question(`  ${question} [${s.bold(defaultValue)}]: `, (answer) => {
           rl.close()
           resolve(answer.trim() || defaultValue)
         })
@@ -345,16 +431,16 @@ program
     if (version === "unknown") version = ""
 
     if (!version) {
-      console.log(`\n  \x1b[33m⚠ No version detected.\x1b[0m We need the version to accept submissions.`)
-      console.log(`  Try: \x1b[1m${name} --version\x1b[0m or check your terminal's About menu.`)
+      console.log(`\n  ${s.yellow("⚠ No version detected.")} We need the version to accept submissions.`)
+      console.log(`  Try: ${s.bold(`${name} --version`)} or check your terminal's About menu.`)
       version = await ask("Terminal version", "")
       if (!version) {
-        console.log(`\n  \x1b[31mCannot submit without a version. Exiting.\x1b[0m`)
+        console.log(`\n  ${s.red("Cannot submit without a version. Exiting.")}`)
         process.exit(1)
       }
     }
 
-    console.log(`\n  Testing \x1b[1m${name} ${version}\x1b[0m on ${terminal.os}...\n`)
+    console.log(`\n  Testing ${s.bold(`${name} ${version}`)} on ${terminal.os}...\n`)
 
     const data = await runProbes()
     printResults(data)
@@ -373,7 +459,7 @@ program
       probeCount: ALL_PROBES.length,
     })
     if (url) {
-      console.log(`\x1b[32m+\x1b[0m Issue created: ${link(url, url)}`)
+      console.log(`${s.green("+")} Issue created: ${link(url, url)}`)
     }
   })
 
@@ -391,8 +477,8 @@ program
       return
     }
 
-    console.log(`\n\x1b[1mterminfo detect\x1b[0m\n`)
-    console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m${terminal.version ? ` ${terminal.version}` : ""}`)
+    console.log(`\n${s.bold("terminfo detect")}\n`)
+    console.log(`  Terminal:  ${s.bold(`${terminal.name}${terminal.version ? ` ${terminal.version}` : ""}`)}`)
     console.log(`  OS:        ${terminal.os} ${terminal.osVersion}`)
   })
 

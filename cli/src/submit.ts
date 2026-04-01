@@ -2,10 +2,13 @@
  * Submit results to terminfo.dev via GitHub issue.
  */
 
+import { createStyle } from "@silvery/ansi"
 import { writeFileSync, unlinkSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { execFileSync } from "node:child_process"
+
+const s = createStyle()
 
 const REPO = "beorn/terminfo.dev"
 
@@ -28,17 +31,17 @@ export async function submitResults(data: SubmitData): Promise<string | null> {
   const pct = Math.round((passed / total) * 100)
   const ver = data.terminalVersion ? ` ${data.terminalVersion}` : ""
 
-  console.log(`\n  Submitting: \x1b[1m${data.terminal}${ver}\x1b[0m on ${data.os} — ${pct}% (${passed}/${total})`)
+  console.log(`\n  Submitting: ${s.bold(`${data.terminal}${ver}`)} on ${data.os} — ${pct}% (${passed}/${total})`)
 
   if (!data.terminalVersion) {
-    console.log(`  \x1b[33m⚠ No version detected — use --terminal-version to specify\x1b[0m`)
+    console.log(`  ${s.yellow("⚠ No version detected — use --terminal-version to specify")}`)
   }
 
   // Check for duplicates
   if (hasGhCli()) {
     const existing = checkDuplicate(data.terminal, data.terminalVersion, data.os)
     if (existing) {
-      console.log(`  \x1b[33m⚠ Similar submission exists: ${existing}\x1b[0m`)
+      console.log(`  ${s.yellow(`⚠ Similar submission exists: ${existing}`)}`)
       console.log(`  Submitting anyway (different probe version may have new results)`)
     }
   }
@@ -77,7 +80,7 @@ ${JSON.stringify(data, null, 2)}
     // No gh CLI — open browser with pre-filled issue
     const issueUrl = `https://github.com/${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}&labels=probe-results`
 
-    console.log(`\n  \x1b[33mgh CLI not found — opening browser instead\x1b[0m`)
+    console.log(`\n  ${s.yellow("gh CLI not found — opening browser instead")}`)
 
     try {
       const { execFileSync: exec } = await import("node:child_process")
@@ -92,7 +95,7 @@ ${JSON.stringify(data, null, 2)}
       // Browser open failed — save file as last resort
       const filename = `terminfo-${data.terminal}-${data.os}-${Date.now()}.json`
       writeFileSync(filename, JSON.stringify(data, null, 2))
-      console.log(`  \x1b[33mCouldn't open browser. Results saved to ${filename}\x1b[0m`)
+      console.log(`  ${s.yellow(`Couldn't open browser. Results saved to ${filename}`)}`)
       console.log(`  To submit manually: https://github.com/${REPO}/issues/new`)
       console.log(`  Paste the contents of ${filename} in the issue body.`)
       return null
@@ -108,7 +111,7 @@ ${JSON.stringify(data, null, 2)}
     })
     return result.trim()
   } catch (err) {
-    console.error(`  \x1b[31mFailed to create issue\x1b[0m`)
+    console.error(`  ${s.red("Failed to create issue")}`)
     console.error(`  ${err instanceof Error ? err.message : String(err)}`)
     return null
   } finally {

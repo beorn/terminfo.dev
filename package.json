@@ -17,6 +17,7 @@
     "preview": "vitepress preview docs"
   },
   "dependencies": {
+    "@silvery/ansi": "^0.3.0",
     "@silvery/commander": "^0.6.0",
     "@termless/core": "^0.4.0",
     "commander": "^13.1.0",

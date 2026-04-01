@@ -14,12 +14,15 @@
  * so clients can find all running daemons automatically.
  */
 
+import { createStyle } from "@silvery/ansi"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { detectTerminal } from "./detect.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
+
+const s = createStyle()
 
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
 
@@ -100,7 +103,7 @@ export async function startDaemon(port = 0): Promise<void> {
 
     if (url.pathname === "/probe") {
       const probes = await loadProbes()
-      console.log(`\x1b[2m[${new Date().toISOString()}] Running ${probes.length} probes...\x1b[0m`)
+      console.log(s.dim(`[${new Date().toISOString()}] Running ${probes.length} probes...`))
 
       const results: Record<string, boolean> = {}
       const notes: Record<string, string> = {}
@@ -128,7 +131,7 @@ export async function startDaemon(port = 0): Promise<void> {
 
       const passed = Object.values(results).filter((v) => v).length
       const total = Object.keys(results).length
-      console.log(`\x1b[32m+\x1b[0m ${passed}/${total} (${Math.round((passed / total) * 100)}%)`)
+      console.log(`${s.green("+")} ${passed}/${total} (${Math.round((passed / total) * 100)}%)`)
 
       res.end(
         JSON.stringify({
@@ -224,7 +227,7 @@ export async function startDaemon(port = 0): Promise<void> {
         })
         process.stdout.write("\x1bc")
 
-        console.log(`\x1b[2m[${new Date().toISOString()}] Executed ${commands.length} commands\x1b[0m`)
+        console.log(s.dim(`[${new Date().toISOString()}] Executed ${commands.length} commands`))
         res.end(JSON.stringify({ terminal: terminal.name, results }))
       } catch (err) {
         res.statusCode = 400
@@ -265,12 +268,12 @@ export async function startDaemon(port = 0): Promise<void> {
 
     const filepath = register(info)
 
-    console.log(`\x1b[33m! Security warning: this opens an HTTP server on localhost:${actualPort}`)
-    console.log(`  Any local process can trigger terminal escape sequences via this server.`)
-    console.log(`  Only run this on trusted machines. Stop with Ctrl+C when done.\x1b[0m\n`)
-    console.log(`\x1b[1mterminfo.dev\x1b[0m daemon running\n`)
-    console.log(`  Terminal:  \x1b[1m${terminal.name}\x1b[0m ${terminal.version}`)
-    console.log(`  Port:      \x1b[1m${actualPort}\x1b[0m`)
+    console.log(s.yellow(`! Security warning: this opens an HTTP server on localhost:${actualPort}`))
+    console.log(s.yellow(`  Any local process can trigger terminal escape sequences via this server.`))
+    console.log(s.yellow(`  Only run this on trusted machines. Stop with Ctrl+C when done.\n`))
+    console.log(`${s.bold("terminfo.dev")} daemon running\n`)
+    console.log(`  Terminal:  ${s.bold(terminal.name)} ${terminal.version}`)
+    console.log(`  Port:      ${s.bold(String(actualPort))}`)
     console.log(`  Probes:    dynamic (loaded on each request)`)
     console.log(``)
     console.log(`  Test:   curl http://localhost:${actualPort}/probe`)
