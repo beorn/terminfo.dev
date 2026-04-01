@@ -27,7 +27,17 @@ elif [ -n "$WT_SESSION" ]; then TN="windows-terminal"
 elif [ -n "$TERM_PROGRAM" ]; then TN=$(printf '%s' "$TERM_PROGRAM" | tr '[:upper:]' '[:lower:]')
 else TN="unknown"
 fi
-TV="${TERM_PROGRAM_VERSION:-unknown}"
+# Detect version — try TERM_PROGRAM_VERSION first, then terminal-specific methods
+TV="${TERM_PROGRAM_VERSION:-}"
+if [ -z "$TV" ]; then
+  case "$TN" in
+    kitty) TV=$(kitty --version 2>/dev/null | head -1 | sed 's/kitty //' | awk '{print $1}') ;;
+    wezterm) TV=$(wezterm --version 2>/dev/null | head -1 | sed 's/wezterm //' | awk '{print $1}') ;;
+    alacritty) TV=$(alacritty --version 2>/dev/null | head -1 | sed 's/alacritty //' | awk '{print $1}') ;;
+    konsole) TV="$KONSOLE_VERSION" ;;
+  esac
+fi
+TV="${TV:-unknown}"
 case "$(uname -s)" in Darwin) PL="macos";; Linux) PL="linux";; MINGW*|MSYS*|CYGWIN*) PL="windows";;
   *) PL="$(uname -s | tr '[:upper:]' '[:lower:]')";; esac
 
@@ -182,6 +192,11 @@ EOF
 
 # ── Submit ──
 
+if [ "$TV" = "unknown" ]; then
+  printf '  ⚠ Version not detected. Before submitting, add your version:\n' >&2
+  printf '    %s --version\n' "$TN" >&2
+  printf '    Then edit "terminalVersion" in the JSON above.\n\n' >&2
+fi
 printf '  To submit: copy the JSON above and paste at:\n' >&2
 printf '  \033]8;;https://terminfo.dev/submit\033\\https://terminfo.dev/submit\033]8;;\033\\\n' >&2
 printf '  Or: npx terminfo.dev submit\n\n' >&2
