@@ -178,7 +178,7 @@ export function SubmitResult({ url, hasVersion }: { url: string; hasVersion: boo
       </Text>
       {!hasVersion && (
         <Text>
-          <Text color="$warning">⚠</Text> Please edit the issue to add your terminal version.
+          <Text color="$warning">⚠</Text> Please click the link above and add your terminal version to the issue.
         </Text>
       )}
     </Box>
