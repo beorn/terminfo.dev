@@ -1,0 +1,11 @@
+/* Force the 4th hero action (Test Your Terminal) onto its own line */
+.VPHero .actions {
+  flex-wrap: wrap;
+}
+
+.VPHero .actions .action:nth-child(4) {
+  flex-basis: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}

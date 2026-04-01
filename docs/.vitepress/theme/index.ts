@@ -5,6 +5,7 @@ import "./analysis.css"
 import "./glossary-links.css"
 import "./breadcrumb.css"
 import "./summary-bars.css"
+import "./hero.css"
 
 export default {
   extends: DefaultTheme,
