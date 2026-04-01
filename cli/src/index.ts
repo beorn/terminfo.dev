@@ -285,7 +285,9 @@ program
       return
     }
     printResults(data)
-    console.log(`\n  Submit to terminfo.dev: \x1b[1mnpx terminfo.dev submit\x1b[0m`)
+    console.log(``)
+    console.log(`  \x1b[2mHelp other developers — submit your results to terminfo.dev:\x1b[0m`)
+    console.log(`  \x1b[1mnpx terminfo.dev submit\x1b[0m`)
   })
 
 // ── submit ──
