@@ -5,7 +5,7 @@ hero:
   text: "Can your terminal do that?"
   tagline: "Feature support tables for terminal emulators — powered by <a href='#how-this-works'>Termless</a>, Playwright for terminals"
   actions:
-    - theme: alt
+    - theme: brand
       text: Terminal Applications
       link: "#terminal-applications"
     - theme: alt
@@ -14,9 +14,6 @@ hero:
     - theme: alt
       text: Multiplexers
       link: "#multiplexers"
-    - theme: brand
-      text: Test Your Terminal
-      link: /contribute
 ---
 
 <script setup>

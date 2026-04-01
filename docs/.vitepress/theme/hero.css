@@ -1,22 +1,5 @@
-/* Force the 4th hero action (Test Your Terminal) onto its own line, left-aligned */
-.VPHero .actions {
-  flex-wrap: wrap;
-}
-
-.VPHero .actions .action:nth-child(4) {
-  flex-basis: 100%;
-  display: flex;
-  justify-content: flex-start;
-  margin-top: -4px;
-}
-
 /* Reduce hero bottom spacing */
 .VPHero {
   padding-bottom: 0 !important;
   margin-bottom: -32px;
-}
-
-/* Tighten gap between hero and first content section */
-.vp-doc.container > .content {
-  padding-top: 0;
 }

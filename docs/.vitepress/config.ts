@@ -334,7 +334,7 @@ function buildSidebar() {
     },
     { text: "API", link: "/api" },
     { text: "Glossary", link: "/glossary" },
-    { text: "Contribute", link: "/contribute" },
+    { text: "Test Your Terminal", link: "/contribute" },
     { text: "About", link: "/about" },
   ]
 

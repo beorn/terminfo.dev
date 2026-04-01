@@ -1,19 +1,17 @@
 ---
-title: Contribute Results
-description: Test your terminal and add it to the terminfo.dev database
+title: Test Your Terminal
+description: Find out exactly what your terminal supports — 133 feature tests in under a minute
 ---
 
-# Contribute Results
+# Test Your Terminal
 
-Don't see your terminal on terminfo.dev? Test it and submit results in under a minute.
-
-## Quick Start
+Find out exactly what your terminal supports — 133 features tested in under a minute.
 
 ```bash
-npx terminfo.dev submit
+npx terminfo.dev
 ```
 
-That's it. Tests 133 features and submits the results.
+This shows your detected terminal and available commands. Run `test` to see your scorecard, or `submit` to test and contribute results to the database.
 
 ::: details Don't have Node.js?
 
@@ -35,44 +33,23 @@ curl https://get.volta.sh | bash
 volta install node
 ```
 
-Then run:
-
-```bash
-npx terminfo.dev submit
-```
-
-`npx` comes with Node.js — no separate install needed.
+Then run `npx terminfo.dev submit`. `npx` comes with Node.js.
 
 :::
-
-## What It Does
-
-1. **Detects your terminal** — name, version, OS
-2. **Tests 133 features** — escape sequences, colors, mouse, keyboard, clipboard, Unicode
-3. **Shows a live scorecard** — green for pass, red for fail
-4. **Submits to terminfo.dev** — creates a GitHub issue with your results
-
-Nothing is installed permanently. Nothing is written to disk. Terminal state is fully restored after testing.
 
 ## Other Commands
 
 ```bash
-# Just test (no submit)
-npx terminfo.dev test
-
-# Machine-readable output
-npx terminfo.dev test --json
-
-# Check what terminal was detected
-npx terminfo.dev detect
+npx terminfo.dev test --json    # Machine-readable output
+npx terminfo.dev detect         # Check what terminal was detected
 ```
 
 ## Source Code
 
-Everything is open source:
+Everything is open source ([CC BY 4.0](https://github.com/beorn/terminfo.dev)):
 
 - [CLI source](https://github.com/beorn/terminfo.dev/tree/main/cli) — what `npx` runs
-- [Probe definitions](https://github.com/beorn/terminfo.dev/tree/main/packages/probes) — the actual feature tests
+- [Probe definitions](https://github.com/beorn/terminfo.dev/tree/main/packages/probes) — the feature tests
 - [npm package](https://www.npmjs.com/package/terminfo.dev) — `terminfo.dev` on npm
 
 ## Already Tested
