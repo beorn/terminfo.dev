@@ -240,7 +240,7 @@ function backendTooltip(name, version) {
 
 ## Terminal Applications {#terminal-applications}
 
-<p class="section-subtitle">Tested on real terminal applications. Don't see yours? Run <code>npx terminfo.dev</code> to <a href="/contribute">add it</a>.</p>
+<p class="section-subtitle">Tested on real terminal applications. Run <code>npx terminfo.dev</code> to <a href="/contribute">test yours</a>.</p>
 
 <div class="platform-filter">
   <select v-model="platformFilter">
