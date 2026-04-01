@@ -1,1 +1,10 @@
-/* No custom hero overrides — use VitePress defaults */
+/* Make links in hero tagline visually clickable */
+.VPHero .tagline a {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--vp-c-text-3);
+}
+
+.VPHero .tagline a:hover {
+  text-decoration-color: var(--vp-c-brand-1);
+}
