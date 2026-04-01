@@ -1,4 +1,4 @@
-/* Force the 4th hero action (Test Your Terminal) onto its own line */
+/* Force the 4th hero action (Test Your Terminal) onto its own line, left-aligned */
 .VPHero .actions {
   flex-wrap: wrap;
 }
@@ -6,6 +6,11 @@
 .VPHero .actions .action:nth-child(4) {
   flex-basis: 100%;
   display: flex;
-  justify-content: center;
-  margin-top: 4px;
+  justify-content: flex-start;
+  margin-top: 0;
+}
+
+/* Reduce hero bottom padding */
+.VPHero .container {
+  padding-bottom: 32px !important;
 }

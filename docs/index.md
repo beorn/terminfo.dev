@@ -15,7 +15,7 @@ hero:
       text: Multiplexers
       link: "#multiplexers"
     - theme: brand
-      text: "\U0001F50D Test Your Terminal"
+      text: Test Your Terminal
       link: /contribute
 ---
 
