@@ -394,6 +394,9 @@ program
       })
       if (url) {
         console.log(`${s.green("+")} Issue created: ${link(url, url)}`)
+        if (!data.terminal.version) {
+          console.log(`  ${s.yellow("⚠")} Please edit the issue to add your terminal version.`)
+        }
       }
     }
   })
