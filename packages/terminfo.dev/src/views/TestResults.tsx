@@ -173,13 +173,13 @@ export function SubmitNudge({ isNew, terminalLabel }: { isNew: boolean; terminal
 export function SubmitResult({ url, hasVersion }: { url: string; hasVersion: boolean }) {
   return (
     <Box flexDirection="column" paddingLeft={2}>
-      <Text>
-        <Text color="$success">+</Text> Issue created: {hyperlink(url, url)}
-      </Text>
-      {!hasVersion && (
-        <Text>
-          <Text color="$warning">⚠</Text> Please click the link above and add your terminal version to the issue.
-        </Text>
+      {hasVersion ? (
+        <Text><Text color="$success">✓</Text> Submitted: {hyperlink(url, url)}</Text>
+      ) : (
+        <Box flexDirection="column">
+          <Text><Text color="$success">✓</Text> Success! Please add the terminal version on the page below and submit:</Text>
+          <Text>  {hyperlink(url, url)}</Text>
+        </Box>
       )}
     </Box>
   )
