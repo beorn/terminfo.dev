@@ -186,16 +186,21 @@ async function printView(element: React.ReactElement): Promise<void> {
 
 const program = new Command()
   .name("terminfo")
-  .description(`Can your terminal do that? — test ${ALL_PROBES.length} terminal features and contribute to terminfo.dev`)
+  .description(
+    `Can your terminal do that? — test ${ALL_PROBES.length} terminal features and contribute to terminfo.dev`,
+  )
   .version("4.0.0")
 
-program.addHelpText("after", `
+program.addHelpText(
+  "after",
+  `
 Examples:
   $ npx terminfo.dev test          Test this terminal
   $ npx terminfo.dev test --json   Machine-readable output
   $ npx terminfo.dev submit        Test + submit to terminfo.dev
   $ npx terminfo.dev detect        What terminal am I in?
-`)
+`,
+)
 
 // ── test ──
 

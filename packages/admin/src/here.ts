@@ -36,9 +36,9 @@ function link(url: string, text: string): string {
 
 export async function handleHere(opts: { json?: boolean }): Promise<void> {
   // Dynamic imports — these modules need real TTY access
-  const { detectTerminal } = await import("../../../cli/src/detect.ts")
-  const { ALL_PROBES } = await import("../../../cli/src/probes/unified.ts")
-  const { withRawMode, drainStdin } = await import("../../../cli/src/tty.ts")
+  const { detectTerminal } = await import("../terminfo.dev/src/detect.ts")
+  const { ALL_PROBES } = await import("../terminfo.dev/src/probes/unified.ts")
+  const { withRawMode, drainStdin } = await import("../terminfo.dev/src/tty.ts")
 
   const terminal = detectTerminal()
   const results: Record<string, boolean> = {}

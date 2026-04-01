@@ -45,7 +45,7 @@ packages/                       ← source code (internal tools)
     types.ts                      shared types
   api/                            API + badge generation (future)
 
-cli/                            ← npm-publishable CLI (npx terminfo.dev)
+packages/terminfo.dev/              ← npm-publishable CLI (npx terminfo.dev)
   src/
     index.ts                      entry point: probe {here,server}, submit, detect
     serve.ts                      daemon: HTTP server for in-terminal probing
@@ -241,10 +241,10 @@ will exit with an error listing unannotated failures. Add explanations to
 ```
 5 probe methods:
   packages/probes/*.probe.ts       ← termless: bun terminfo probe termless (Vitest + Termless)
-  packages/cli/app-runner.ts       ← app:      bun terminfo probe app (AppleScript)
-  cli/src/serve.ts                 ← server:   bun terminfo probe server (HTTP daemon)
-  packages/cli/src/mux.ts          ← mux:      bun terminfo probe mux (multiplexer pass-through)
-  cli/src/probes/                  ← here:     bun terminfo probe here (inline TTY)
+  packages/admin/app-runner.ts       ← app:      bun terminfo probe app (AppleScript)
+  packages/terminfo.dev/src/serve.ts                 ← server:   bun terminfo probe server (HTTP daemon)
+  packages/admin/src/mux.ts          ← mux:      bun terminfo probe mux (multiplexer pass-through)
+  packages/terminfo.dev/src/probes/                  ← here:     bun terminfo probe here (inline TTY)
 
   ↓ results saved to
 

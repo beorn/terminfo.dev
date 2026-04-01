@@ -5,10 +5,10 @@
  */
 
 export async function handleSubmit(opts: { terminalName?: string; terminalVersion?: string }): Promise<void> {
-  const { detectTerminal } = await import("../../../cli/src/detect.ts")
-  const { ALL_PROBES } = await import("../../../cli/src/probes/unified.ts")
-  const { withRawMode, drainStdin } = await import("../../../cli/src/tty.ts")
-  const { submitResults } = await import("../../../cli/src/submit.ts")
+  const { detectTerminal } = await import("../terminfo.dev/src/detect.ts")
+  const { ALL_PROBES } = await import("../terminfo.dev/src/probes/unified.ts")
+  const { withRawMode, drainStdin } = await import("../terminfo.dev/src/tty.ts")
+  const { submitResults } = await import("../terminfo.dev/src/submit.ts")
 
   // Confirm details BEFORE probes (stdin is still clean)
   const terminal = detectTerminal()

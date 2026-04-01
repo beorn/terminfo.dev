@@ -6,8 +6,8 @@
  * and exports the same `Probe[]` interface the CLI expects.
  */
 
-import { ALL_PROBES as PROBE_DEFS } from "../../../packages/probe-defs/src/index.ts"
-import type { TermContext } from "../../../packages/probe-defs/src/types.ts"
+import { ALL_PROBES as PROBE_DEFS } from "../../../probe-defs/src/index.ts"
+import type { TermContext } from "../../../probe-defs/src/types.ts"
 import { query, queryWithSentinel, queryCursorPosition, measureRenderedWidth, queryMode } from "../tty.ts"
 
 export interface ProbeResult {
