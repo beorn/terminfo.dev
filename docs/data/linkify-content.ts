@@ -9,7 +9,14 @@ import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { createLinkifier } from "vitepress-enrich"
-import type { GlossaryEntity } from "vitepress-enrich"
+
+/** Local type matching vitepress-enrich's GlossaryEntity (type-only export lost in dist build). */
+interface GlossaryEntity {
+  term: string
+  href?: string
+  tooltip?: string
+  external?: boolean
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -130,6 +137,7 @@ function stripSelfLinks(html: string, excludeHrefs: Set<string>): string {
  */
 export function linkifyContentExcluding(text: string, excludeHrefs: Set<string>): string {
   const stripped = stripSelfLinks(text, excludeHrefs)
-  const linkify = createLinkifier(loadEntities(), { excludeHrefs })
+  const filtered = loadEntities().filter((e) => !e.href || !excludeHrefs.has(e.href))
+  const linkify = createLinkifier(filtered)
   return linkify(stripped)
 }
