@@ -628,6 +628,9 @@ export default defineConfig({
   },
 
   themeConfig: {
+    search: {
+      provider: "local",
+    },
     logo: "/logo.svg",
     nav: [
       { text: "Matrix", link: "/" },
