@@ -350,6 +350,7 @@ function buildSidebar() {
     categoryLabels,
     sortedTags,
     tagLabels,
+    baselineItems,
   }
 }
 
@@ -363,6 +364,7 @@ const {
   categoryLabels,
   sortedTags,
   tagLabels,
+  baselineItems,
 } = buildSidebar()
 
 export default defineConfig({
