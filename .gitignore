@@ -4,4 +4,5 @@ docs/.vitepress/dist/
 .DS_Store
 .playwright-cli/
 *.png
+!docs/public/og-image.png
 .gstack/

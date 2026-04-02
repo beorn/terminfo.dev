@@ -371,9 +371,11 @@ export default defineConfig({
   cleanUrls: true,
   head: [
     ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
+    ["meta", { property: "og:type", content: "website" }],
+    ["meta", { property: "og:site_name", content: "Terminfo.dev" }],
+    ["meta", { property: "og:image", content: "https://terminfo.dev/og-image.png" }],
     ["meta", { name: "twitter:card", content: "summary_large_image" }],
     ["meta", { name: "twitter:site", content: "@AskTerminfo" }],
-    ["meta", { property: "og:image", content: "https://terminfo.dev/og-image.svg" }],
     [
       "script",
       { type: "application/ld+json" },
@@ -415,7 +417,134 @@ export default defineConfig({
     pageData.frontmatter.head ??= []
     pageData.frontmatter.head.push(["link", { rel: "canonical", href: canonicalUrl }])
 
-    // JSON-LD BreadcrumbList
+    // --- Step 1: Set page title and description BEFORE breadcrumbs ---
+    // (Breadcrumbs use pageData.title, so it must be resolved first)
+
+    // Homepage
+    if (rel === "index.md") {
+      pageData.title = "Terminfo.dev — Can Your Terminal Do That?"
+      pageData.description =
+        "Feature support tables for terminal emulators. 133 features tested across 11 terminals — like caniuse.com for terminal escape sequences. Powered by Termless."
+    }
+
+    // About page
+    if (rel === "about.md") {
+      pageData.title = "About Terminfo.dev — Terminal Feature Testing Methodology"
+      pageData.description =
+        "How terminfo.dev tests terminal emulators. Three data sources: real app probes, headless parser testing via Termless, and multiplexer pass-through tests. Why traditional terminfo falls short."
+    }
+
+    // API page
+    if (rel === "api.md") {
+      pageData.title = "API — Machine-Readable Terminal Compatibility Data"
+      pageData.description =
+        "JSON API and SVG badges for terminal feature support. The terminal equivalent of MDN Browser Compat Data — embeddable badges for terminal README files."
+    }
+
+    // Fundamentals pages
+    if (rel === "fundamentals.md") {
+      pageData.title = "How Terminals Work: Architecture, Control Characters, Detection"
+      pageData.description =
+        "The architecture behind every terminal session — control characters, PTY, kernel TTY discipline, raw mode, and runtime feature detection. Foundational concepts for understanding terminal emulators."
+    }
+    if (rel === "fundamentals/control-characters.md") {
+      pageData.title = "C0 Control Characters: ASCII Control Codes in Terminals"
+      pageData.description =
+        "All 33 ASCII control characters (0x00\u20130x1F, 0x7F) and their terminal behavior. ESC, BS, TAB, LF, CR, BEL \u2014 the bytes that predate escape sequences."
+    }
+    if (rel === "fundamentals/tty-architecture.md") {
+      pageData.title = "TTY Architecture: PTY, Line Discipline, Shell, and Terminal"
+      pageData.description =
+        "How pseudo-terminals connect terminal emulators to shells. The kernel TTY line discipline, PTY master/slave pairs, and why SSH and tmux work."
+    }
+    if (rel === "fundamentals/stty.md") {
+      pageData.title = "stty & Terminal Modes: Raw Mode, Canonical Mode, Signals"
+      pageData.description =
+        "Raw mode vs canonical mode, echo, signal characters, input/output processing flags. How stty controls the kernel TTY line discipline and why TUI apps bypass it."
+    }
+    if (rel === "fundamentals/term-detection.md") {
+      pageData.title = "Terminal Detection: $TERM, DA1, DECRPM, Runtime Probing"
+      pageData.description =
+        "How applications discover terminal capabilities \u2014 $TERM (unreliable), $COLORTERM, DA1, DECRPM mode reports, XTVERSION, and runtime behavioral probing."
+    }
+    if (rel === "fundamentals/security.md") {
+      pageData.title = "Terminal Security: Clipboard, Paste Injection, Escape Attacks"
+      pageData.description =
+        "Terminal attack surfaces \u2014 OSC 52 clipboard exfiltration, OSC 8 hyperlink spoofing, paste injection without bracketed paste, escape sequence injection in logs, and title bar spoofing."
+    }
+
+    // Static index pages
+    if (rel === "standards.md") {
+      pageData.title = "Terminal Standards: From VT100 to Kitty"
+      pageData.description =
+        "50 years of terminal protocols \u2014 ECMA-48, VT100, VT220, VT510, xterm, Kitty, OSC, Sixel, and Unicode. History, specs, and feature coverage for each standard."
+    }
+    if (rel === "features.md") {
+      pageData.title = "Terminal Features: How Escape Sequences Work"
+      pageData.description =
+        "Terminal escape sequences \u2014 SGR styling, cursor control, modes, extensions, Unicode. Every feature tested on every major terminal emulator."
+    }
+    if (rel === "multiplexers.md") {
+      pageData.title = "Terminal Multiplexers: tmux, GNU Screen, and the Pass-Through Problem"
+      pageData.description =
+        "How tmux and GNU Screen intercept escape sequences between your terminal and shell. Which features survive, which get dropped, and how to test multiplexer compatibility."
+    }
+    if (rel === "backends.md") {
+      pageData.title = "Parser Backends: Standalone Libraries and App Parser Engines"
+      pageData.description =
+        "Terminal parser backends tested without a GUI \u2014 standalone libraries (xterm.js, vterm.js, vt100.js) and app parser engines (Alacritty, Ghostty, Kitty, WezTerm). Escape sequence correctness, independent of rendering."
+    }
+    if (rel === "terminals.md") {
+      pageData.title = "Terminal Emulators: App Terminals, Parser Backends, and Multiplexers"
+      pageData.description =
+        "Every terminal emulator tested by terminfo.dev \u2014 app terminals (Ghostty, Kitty, iTerm2), parser backends (xterm.js, vterm.js), multiplexers (tmux, Screen), and historical terminals (VT100, VT220, xterm)."
+    }
+    if (rel === "glossary.md") {
+      pageData.title = "Terminal Glossary: Acronyms and Technical Terms"
+      pageData.description =
+        "Quick reference for terminal acronyms \u2014 CSI, SGR, OSC, DEC, ECMA-48, and 30+ more. Each term explained with links to detailed feature pages."
+    }
+
+    // Dynamic route pages (titles from params)
+    const params = pageData.params as Record<string, string> | undefined
+    if (params) {
+      if (rel.startsWith("compare/")) {
+        pageData.title = `${params.termALabel} vs ${params.termBLabel} \u2014 Terminal Feature Comparison`
+        pageData.description = `Compare ${params.termALabel} (${params.termAPct}%) vs ${params.termBLabel} (${params.termBPct}%) terminal feature support. ${params.differ} features differ.`
+      } else if (rel.startsWith("terminals/")) {
+        if (params.historical === "true") {
+          pageData.title = `${params.backendName} (${params.year}) \u2014 Historical Terminal`
+          pageData.description = `${params.backendName}: ${params.significance ?? params.backendDescription ?? "Historical terminal"}`
+        } else {
+          pageData.title = `${params.backendName} \u2014 Terminal Feature Support`
+          pageData.description = `${params.backendName} terminal emulator feature support: ${params.pct}% (${params.yes}/${params.total} features). ${params.backendDescription}`
+        }
+      } else if (params.featureName) {
+        pageData.title = `${params.featureName} \u2014 Terminal Support`
+        pageData.description = `Which terminal emulators support ${params.featureName}? Support matrix showing ${params.yesCount} of ${params.totalCount} backends.`
+      } else if (rel.startsWith("framework/")) {
+        pageData.title = `${params.label} \u2014 TUI Framework Terminal Compatibility`
+        pageData.description = `${params.label}: ${params.description} Requires the ${params.baselineLabel} baseline (${params.featureCount} features).`
+      } else if (rel.startsWith("baseline/")) {
+        pageData.title = `${params.label} Baseline \u2014 Terminal Feature Support`
+        pageData.description = `${params.label} Baseline: ${params.tagline}. ${params.featureCount} features \u2014 ${params.description?.slice(0, 120)}...`
+      } else if (params.categoryName) {
+        const type = params.pageType === "tag" ? "Standard" : "Category"
+        pageData.title = `${params.categoryName} \u2014 Terminal Feature ${type}`
+        pageData.description =
+          stripHtml(params.categoryDescription) ||
+          `${params.categoryName}: ${params.featureCount} terminal features compared across backends.`
+      }
+    }
+
+    // --- Step 2: OG meta tags (after title/description are resolved) ---
+    pageData.frontmatter.head.push(
+      ["meta", { property: "og:title", content: pageData.title || "Terminfo.dev" }],
+      ["meta", { property: "og:description", content: pageData.description || "Feature support tables for terminal emulators." }],
+      ["meta", { property: "og:url", content: canonicalUrl }],
+    )
+
+    // --- Step 3: JSON-LD BreadcrumbList (after title is resolved) ---
     const segments = cleanPath.split("/").filter(Boolean)
     if (segments.length > 0) {
       const breadcrumbItems = [{ "@type": "ListItem", position: 1, name: "Home", item: "https://terminfo.dev/" }]
@@ -440,186 +569,53 @@ export default defineConfig({
       ])
     }
 
-    // SEO for Fundamentals pages
-    if (rel === "fundamentals.md") {
-      pageData.title = "How Terminals Work: Architecture, Control Characters, Detection"
-      pageData.description =
-        "The architecture behind every terminal session — control characters, PTY, kernel TTY discipline, raw mode, and runtime feature detection. Foundational concepts for understanding terminal emulators."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-    if (rel === "fundamentals/control-characters.md") {
-      pageData.title = "C0 Control Characters: ASCII Control Codes in Terminals"
-      pageData.description =
-        "All 33 ASCII control characters (0x00–0x1F, 0x7F) and their terminal behavior. ESC, BS, TAB, LF, CR, BEL — the bytes that predate escape sequences."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-    if (rel === "fundamentals/tty-architecture.md") {
-      pageData.title = "TTY Architecture: PTY, Line Discipline, Shell, and Terminal"
-      pageData.description =
-        "How pseudo-terminals connect terminal emulators to shells. The kernel TTY line discipline, PTY master/slave pairs, and why SSH and tmux work."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-    if (rel === "fundamentals/stty.md") {
-      pageData.title = "stty & Terminal Modes: Raw Mode, Canonical Mode, Signals"
-      pageData.description =
-        "Raw mode vs canonical mode, echo, signal characters, input/output processing flags. How stty controls the kernel TTY line discipline and why TUI apps bypass it."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-    if (rel === "fundamentals/term-detection.md") {
-      pageData.title = "Terminal Detection: $TERM, DA1, DECRPM, Runtime Probing"
-      pageData.description =
-        "How applications discover terminal capabilities — $TERM (unreliable), $COLORTERM, DA1, DECRPM mode reports, XTVERSION, and runtime behavioral probing."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-    if (rel === "fundamentals/security.md") {
-      pageData.title = "Terminal Security: Clipboard, Paste Injection, Escape Attacks"
-      pageData.description =
-        "Terminal attack surfaces — OSC 52 clipboard exfiltration, OSC 8 hyperlink spoofing, paste injection without bracketed paste, escape sequence injection in logs, and title bar spoofing."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-
-    // SEO for static index pages
-    if (rel === "standards.md") {
-      pageData.title = "Terminal Standards: From VT100 to Kitty"
-      pageData.description =
-        "50 years of terminal protocols — ECMA-48, VT100, VT220, VT510, xterm, Kitty, OSC, Sixel, and Unicode. History, specs, and feature coverage for each standard."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-    if (rel === "features.md") {
-      pageData.title = "Terminal Features: How Escape Sequences Work"
-      pageData.description =
-        "Terminal escape sequences — SGR styling, cursor control, modes, extensions, Unicode. Every feature tested on every major terminal emulator."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-    if (rel === "multiplexers.md") {
-      pageData.title = "Terminal Multiplexers: tmux, GNU Screen, and the Pass-Through Problem"
-      pageData.description =
-        "How tmux and GNU Screen intercept escape sequences between your terminal and shell. Which features survive, which get dropped, and how to test multiplexer compatibility."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-    if (rel === "backends.md") {
-      pageData.title = "Parser Backends: Standalone Libraries and App Parser Engines"
-      pageData.description =
-        "Terminal parser backends tested without a GUI — standalone libraries (xterm.js, vterm.js, vt100.js) and app parser engines (Alacritty, Ghostty, Kitty, WezTerm). Escape sequence correctness, independent of rendering."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-    if (rel === "terminals.md") {
-      pageData.title = "Terminal Emulators: App Terminals, Parser Backends, and Multiplexers"
-      pageData.description =
-        "Every terminal emulator tested by terminfo.dev — app terminals (Ghostty, Kitty, iTerm2), parser backends (xterm.js, vterm.js), multiplexers (tmux, Screen), and historical terminals (VT100, VT220, xterm)."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-    if (rel === "glossary.md") {
-      pageData.title = "Terminal Glossary: Acronyms and Technical Terms"
-      pageData.description =
-        "Quick reference for terminal acronyms — CSI, SGR, OSC, DEC, ECMA-48, and 30+ more. Each term explained with links to detailed feature pages."
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-      return
-    }
-
-    // Set SEO titles and descriptions for dynamic route pages
-    const params = pageData.params as Record<string, string> | undefined
-    if (!params) return
-
-    if (rel.startsWith("compare/")) {
-      pageData.title = `${params.termALabel} vs ${params.termBLabel} — Terminal Feature Comparison`
-      pageData.description = `Compare ${params.termALabel} (${params.termAPct}%) vs ${params.termBLabel} (${params.termBPct}%) terminal feature support. ${params.differ} features differ.`
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-    } else if (rel.startsWith("terminals/")) {
-      if (params.historical === "true") {
-        pageData.title = `${params.backendName} (${params.year}) — Historical Terminal`
-        pageData.description = `${params.backendName}: ${params.significance ?? params.backendDescription ?? "Historical terminal"}`
-      } else {
-        pageData.title = `${params.backendName} — Terminal Feature Support`
-        pageData.description = `${params.backendName} terminal emulator feature support: ${params.pct}% (${params.yes}/${params.total} features). ${params.backendDescription}`
+    // --- Step 4: TechArticle schema for content pages ---
+    if (segments.length > 0) {
+      const article: Record<string, unknown> = {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        headline: pageData.title || "Terminfo.dev",
+        description: pageData.description || "",
+        url: canonicalUrl,
+        author: {
+          "@type": "Person",
+          name: "Bj\u00f8rn Stabell",
+          url: "https://beorn.codes",
+        },
+        publisher: {
+          "@type": "Organization",
+          name: "Terminfo.dev",
+          url: "https://terminfo.dev",
+        },
       }
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-    } else if (params.featureName) {
-      // Feature pages: /sgr/sgr-bold (have featureName param)
-      pageData.title = `${params.featureName} — Terminal Support`
-      pageData.description = `Which terminal emulators support ${params.featureName}? Support matrix showing ${params.yesCount} of ${params.totalCount} backends.`
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-    } else if (rel.startsWith("framework/")) {
-      pageData.title = `${params.label} — TUI Framework Terminal Compatibility`
-      pageData.description = `${params.label}: ${params.description} Requires the ${params.baselineLabel} baseline (${params.featureCount} features).`
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-    } else if (rel.startsWith("baseline/")) {
-      pageData.title = `${params.label} Baseline — Terminal Feature Support`
-      pageData.description = `${params.label} Baseline: ${params.tagline}. ${params.featureCount} features — ${params.description?.slice(0, 120)}...`
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
-    } else if (params.categoryName) {
-      // Category + tag pages: /sgr, /ecma-48 (have categoryName param)
-      const type = params.pageType === "tag" ? "Standard" : "Category"
-      pageData.title = `${params.categoryName} — Terminal Feature ${type}`
-      pageData.description =
-        stripHtml(params.categoryDescription) ||
-        `${params.categoryName}: ${params.featureCount} terminal features compared across backends.`
-      pageData.frontmatter.head.push(
-        ["meta", { property: "og:title", content: pageData.title }],
-        ["meta", { property: "og:description", content: pageData.description }],
-      )
+      if (pageData.lastUpdated) {
+        const isoDate = new Date(pageData.lastUpdated).toISOString()
+        article.dateModified = isoDate
+        article.datePublished = isoDate
+      }
+      pageData.frontmatter.head.push(["script", { type: "application/ld+json" }, JSON.stringify(article)])
+    }
+
+    // --- Step 5: Dataset schema on homepage ---
+    if (rel === "index.md") {
+      pageData.frontmatter.head.push([
+        "script",
+        { type: "application/ld+json" },
+        JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Dataset",
+          name: "Terminal Feature Database",
+          description:
+            "Comprehensive database of terminal emulator feature support across 11 terminals and 133 features. Automated testing via Termless.",
+          url: "https://terminfo.dev",
+          creator: {
+            "@type": "Person",
+            name: "Bj\u00f8rn Stabell",
+            url: "https://beorn.codes",
+          },
+          license: "https://opensource.org/licenses/MIT",
+        }),
+      ])
     }
   },
 
