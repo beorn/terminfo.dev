@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type MarkdownIt from "markdown-it"
-import { glossaryPlugin } from "@bearly/vitepress-enrich"
+import { glossaryPlugin, loadEcosystemGlossary } from "@bearly/vitepress-enrich"
 import type { GlossaryEntity } from "@bearly/vitepress-enrich"
 
 const GENERIC_PAGES = new Set(["/glossary", "/features", "/standards", "/about"])
@@ -118,6 +118,9 @@ function loadEntities(contentDir: string): GlossaryEntity[] {
  * and uses @bearly/vitepress-enrich for the auto-linking engine.
  */
 export function glossaryLinksPlugin(md: MarkdownIt, contentDir: string): void {
-  const entities = loadEntities(contentDir)
+  const entities = [
+    ...loadEntities(contentDir),
+    ...loadEcosystemGlossary({ exclude: ["terminfo.dev"] }),
+  ]
   glossaryPlugin(md, { entities })
 }
