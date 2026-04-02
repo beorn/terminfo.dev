@@ -190,10 +190,10 @@ const program = new Command()
   .version("4.0.0")
 
 program.addHelpSection("Examples:", [
-  ["npx terminfo.dev test", "Test this terminal"],
-  ["npx terminfo.dev test --json", "Machine-readable output"],
-  ["npx terminfo.dev submit", "Test + submit to terminfo.dev"],
-  ["npx terminfo.dev detect", "What terminal am I in?"],
+  ["$ npx terminfo.dev test", "Test this terminal"],
+  ["$ npx terminfo.dev test --json", "Machine-readable output"],
+  ["$ npx terminfo.dev submit", "Test + submit to terminfo.dev"],
+  ["$ npx terminfo.dev detect", "What terminal am I in?"],
 ])
 
 // ── test ──

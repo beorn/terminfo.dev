@@ -28,14 +28,14 @@ import { Command } from "@silvery/commander"
 const program = new Command().name("terminfo").description("Terminal feature testing for terminfo.dev")
 
 program.addHelpSection("Examples:", [
-  ["terminfo probe termless --all", "Run all headless probes"],
-  ["terminfo probe server --start", "Start daemon in this terminal"],
-  ["terminfo probe app --all", "Probe all installed terminals"],
-  ["terminfo probe here", "Probe this terminal inline"],
-  ["terminfo report", "Show saved results"],
-  ["terminfo submit", "Probe + upload to terminfo.dev"],
-  ["terminfo status", "Config, cache, backends"],
-  ["terminfo detect", "What terminal am I in?"],
+  ["$ terminfo probe termless --all", "Run all headless probes"],
+  ["$ terminfo probe server --start", "Start daemon in this terminal"],
+  ["$ terminfo probe app --all", "Probe all installed terminals"],
+  ["$ terminfo probe here", "Probe this terminal inline"],
+  ["$ terminfo report", "Show saved results"],
+  ["$ terminfo submit", "Probe + upload to terminfo.dev"],
+  ["$ terminfo status", "Config, cache, backends"],
+  ["$ terminfo detect", "What terminal am I in?"],
 ])
 
 // ── probe ──
@@ -43,13 +43,13 @@ program.addHelpSection("Examples:", [
 const probe = program.command("probe").description("Run terminal probes (termless, server, app, mux, here)")
 
 probe.addHelpSection("Examples:", [
-  ["terminfo probe termless --all", "Probe all headless backends"],
-  ["terminfo probe termless xtermjs", "Probe specific backend"],
-  ["terminfo probe server --start", "Start daemon in this terminal"],
-  ["terminfo probe server --all", "Probe all running daemons"],
-  ["terminfo probe app ghostty", "Probe specific terminal app"],
-  ["terminfo probe mux tmux", "Probe through tmux"],
-  ["terminfo probe here", "Probe this terminal inline"],
+  ["$ terminfo probe termless --all", "Probe all headless backends"],
+  ["$ terminfo probe termless xtermjs", "Probe specific backend"],
+  ["$ terminfo probe server --start", "Start daemon in this terminal"],
+  ["$ terminfo probe server --all", "Probe all running daemons"],
+  ["$ terminfo probe app ghostty", "Probe specific terminal app"],
+  ["$ terminfo probe mux tmux", "Probe through tmux"],
+  ["$ terminfo probe here", "Probe this terminal inline"],
 ])
 
 // ── probe termless ──
