@@ -578,5 +578,294 @@
     "expansion": "GNU Screen Terminal Multiplexer",
     "description": "The original terminal multiplexer (1987). Session persistence and detach/reattach for remote work.",
     "link": "/terminals/gnu-screen"
+  },
+  "UTF-8": {
+    "expansion": "Unicode Transformation Format — 8-bit",
+    "description": "Variable-length encoding (1-4 bytes) that maps every Unicode code point to a byte sequence. Backward-compatible with ASCII. The universal encoding for modern terminals, designed by Rob Pike and Ken Thompson in 1992.",
+    "link": "/unicode"
+  },
+  "UTF-16": {
+    "expansion": "Unicode Transformation Format — 16-bit",
+    "description": "Variable-length encoding using 2 or 4 bytes per code point. Used internally by JavaScript and Windows. Not used in terminal I/O — terminals use UTF-8 exclusively.",
+    "link": "/unicode"
+  },
+  "UTF-32": {
+    "expansion": "Unicode Transformation Format — 32-bit",
+    "description": "Fixed-width encoding using 4 bytes per code point. Simple indexing but wasteful. Used internally by some text processing libraries but never for terminal wire format.",
+    "link": "/unicode"
+  },
+  "UCS-2": {
+    "expansion": "Universal Character Set — 2-byte",
+    "description": "Fixed 2-byte encoding covering the Basic Multilingual Plane (U+0000-U+FFFF). Predecessor to UTF-16. Cannot represent emoji or supplementary characters.",
+    "link": "/unicode"
+  },
+  "ASCII": {
+    "expansion": "American Standard Code for Information Interchange",
+    "description": "7-bit character encoding (128 characters) published in 1963. The first 32 codes are control characters (C0), the rest are printable. UTF-8 is a superset — all ASCII text is valid UTF-8.",
+    "link": "/fundamentals/control-characters"
+  },
+  "ISO 8859-1": {
+    "expansion": "ISO 8859-1 (Latin-1)",
+    "description": "8-bit extension of ASCII adding 96 Western European characters (accented letters, symbols). Was the default encoding before UTF-8 took over. The first 256 Unicode code points match Latin-1 exactly.",
+    "link": "/unicode"
+  },
+  "code point": {
+    "expansion": "Unicode Code Point",
+    "description": "A number assigned to a character in the Unicode standard, written as U+XXXX (e.g. U+0041 is 'A'). Unicode defines over 149,000 code points. A single visible character (grapheme cluster) may consist of multiple code points.",
+    "link": "/unicode"
+  },
+  "grapheme": {
+    "expansion": "Grapheme",
+    "description": "The smallest unit of a writing system that a user perceives as a single character. In Unicode, a grapheme cluster may span multiple code points — an accented letter, a flag emoji, or a family emoji are each one grapheme.",
+    "link": "/unicode"
+  },
+  "BOM": {
+    "expansion": "Byte Order Mark",
+    "description": "The Unicode character U+FEFF placed at the start of a file to signal encoding and byte order. Useful for UTF-16/UTF-32 but unnecessary and discouraged for UTF-8. Can cause problems when piped to terminals.",
+    "link": "/unicode"
+  },
+  "control character": {
+    "expansion": "Control Character",
+    "description": "Non-printable characters in the 0x00-0x1F (C0) and 0x80-0x9F (C1) ranges. Includes ESC (0x1B), BEL (0x07), BS (0x08), TAB (0x09), LF (0x0A), and CR (0x0D). Terminals interpret these as commands rather than displayable text.",
+    "link": "/fundamentals/control-characters"
+  },
+  "LF": {
+    "expansion": "Line Feed",
+    "description": "ASCII character 0x0A. Moves the cursor down one line. In terminals, the line discipline typically translates LF to CR+LF on output (the onlcr setting). Unix convention uses LF alone as the line ending.",
+    "link": "/fundamentals/control-characters"
+  },
+  "CR": {
+    "expansion": "Carriage Return",
+    "description": "ASCII character 0x0D. Moves the cursor to the beginning of the current line without advancing to the next line. Named after the typewriter carriage that physically returned to the left margin.",
+    "link": "/fundamentals/control-characters"
+  },
+  "CRLF": {
+    "expansion": "Carriage Return + Line Feed",
+    "description": "The two-byte sequence CR (0x0D) followed by LF (0x0A). The standard line ending for terminal protocols and Windows text files. Terminals expect CRLF — the line discipline converts bare LF to CRLF on output.",
+    "link": "/fundamentals/control-characters"
+  },
+  "BS": {
+    "expansion": "Backspace",
+    "description": "ASCII character 0x08. Moves the cursor one column left without erasing. In canonical mode the line discipline handles destructive backspace (BS + Space + BS). In raw mode the application must handle it.",
+    "link": "/fundamentals/control-characters"
+  },
+  "TAB": {
+    "expansion": "Horizontal Tab",
+    "description": "ASCII character 0x09. Advances the cursor to the next tab stop (default every 8 columns). Tab stops can be set and cleared with the HTS and TBC sequences.",
+    "link": "/fundamentals/control-characters"
+  },
+  "ESC": {
+    "expansion": "Escape",
+    "description": "ASCII character 0x1B. The byte that begins all escape sequences. Followed by [ for CSI, ] for OSC, P for DCS, or other characters for simpler sequences. Named because it 'escapes' from normal text interpretation.",
+    "link": "/ecma-48"
+  },
+  "DEL": {
+    "expansion": "Delete",
+    "description": "ASCII character 0x7F. Originally punched all 7 holes in paper tape to 'delete' a character. In modern terminals, often sent by the Backspace key. Not part of the C0 range despite being a control character.",
+    "link": "/fundamentals/control-characters"
+  },
+  "stty": {
+    "expansion": "Set Terminal Type",
+    "description": "Unix command to configure the TTY line discipline: echo, canonical mode, signal characters (Ctrl+C, Ctrl+Z), baud rate, and newline translation. TUI apps use stty (or tcsetattr) to enter raw mode.",
+    "link": "/fundamentals/stty"
+  },
+  "echo": {
+    "expansion": "Terminal Echo",
+    "description": "The line discipline's automatic display of typed characters. In canonical mode, the kernel echoes input. In raw mode, echo is disabled and the application decides what to display. Controlled via stty echo/stty -echo.",
+    "link": "/fundamentals/stty"
+  },
+  "baud rate": {
+    "expansion": "Baud Rate",
+    "description": "The data transmission speed of a serial connection, measured in symbols per second. Physical terminals ran at 300-19200 baud. Modern pseudo-terminals ignore baud rate but the field still exists in the termios struct.",
+    "link": "/fundamentals/tty-architecture"
+  },
+  "terminal multiplexer": {
+    "expansion": "Terminal Multiplexer",
+    "description": "Software that lets you run multiple terminal sessions inside one connection, with session persistence across disconnects. tmux and GNU Screen are terminal multiplexers. They must parse and re-emit escape sequences, which can cause feature loss.",
+    "link": "/multiplexers"
+  },
+  "cursor": {
+    "expansion": "Text Cursor",
+    "description": "The blinking indicator showing where the next character will appear. Terminals support block, underline, and bar shapes (DECSCUSR), can show/hide it (DECTCEM), and report its position (DSR 6). TUI apps rely on precise cursor control.",
+    "link": "/cursor"
+  },
+  "cell": {
+    "expansion": "Terminal Cell",
+    "description": "One character position in the terminal grid. Each cell holds a character, foreground/background colors, and attributes (bold, italic, etc.). Wide characters occupy two cells. The terminal screen is a grid of rows x columns of cells."
+  },
+  "glyph": {
+    "expansion": "Glyph",
+    "description": "The visual representation of a character as rendered by a font. A single code point may have multiple glyphs (ligatures, contextual forms), and multiple code points may produce one glyph (grapheme clusters)."
+  },
+  "ligature": {
+    "expansion": "Ligature",
+    "description": "Two or more characters rendered as a single combined glyph. Programming ligatures (-> becomes an arrow, != becomes not-equal) are popular in coding fonts like Fira Code and JetBrains Mono. Not all terminals support ligature rendering."
+  },
+  "monospace": {
+    "expansion": "Monospace Font",
+    "description": "A font where every character occupies the same horizontal width. Essential for terminal rendering since the character grid assumes uniform cell widths. Wide (CJK/emoji) characters occupy exactly two cells."
+  },
+  "font fallback": {
+    "expansion": "Font Fallback",
+    "description": "When a character is missing from the primary font, the terminal searches a chain of fallback fonts for a glyph. Critical for emoji and CJK rendering. Poor fallback causes tofu (missing glyph rectangles)."
+  },
+  "ECMA-35": {
+    "expansion": "European Computer Manufacturers Association standard 35",
+    "description": "Standard for coded character set structure and extension techniques. Defines the G0-G3 character set designation and invocation mechanism used by VT terminals. Largely obsolete — replaced by UTF-8.",
+    "link": "/standards"
+  },
+  "ISO 6429": {
+    "expansion": "ISO 6429",
+    "description": "The ISO version of ECMA-48 — the foundational terminal control sequence standard. Published alongside ANSI X3.64 (now withdrawn). When someone says 'ANSI escape codes' they mean ISO 6429 / ECMA-48 sequences.",
+    "link": "/ecma-48"
+  },
+  "POSIX": {
+    "expansion": "Portable Operating System Interface",
+    "description": "IEEE standard defining the Unix API, including terminal I/O (termios), job control, and process groups. The termios API (tcgetattr/tcsetattr) is how programs configure raw mode, echo, and signal handling.",
+    "link": "/fundamentals/tty-architecture"
+  },
+  "DA2": {
+    "expansion": "Secondary Device Attributes",
+    "description": "Query for the terminal type, firmware version, and hardware options. Sent as CSI > c. Unlike DA1 (capability flags), DA2 identifies the specific terminal product and version.",
+    "link": "/device/da1-primary-device-attributes"
+  },
+  "DECRQM": {
+    "expansion": "DEC Request Mode",
+    "description": "Query whether a specific DEC private mode is currently set, reset, or unrecognized. The terminal responds with DECRPM. Essential for feature detection without side effects.",
+    "link": "/device/decrpm"
+  },
+  "SGR mouse": {
+    "expansion": "SGR Mouse Tracking (Mode 1006)",
+    "description": "Extended mouse reporting format using CSI < sequences with semicolon-delimited parameters. Supports coordinates beyond column 223 (the limit of X10 encoding). The modern standard for mouse tracking in terminals.",
+    "link": "/modes"
+  },
+  "iTerm2 inline images": {
+    "expansion": "iTerm2 Inline Image Protocol",
+    "description": "Protocol for displaying images inline in terminal output using base64-encoded data in OSC 1337 sequences. Adopted by several terminals beyond iTerm2 including WezTerm and mintty.",
+    "link": "/extensions/osc1337-capabilities"
+  },
+  "focus events": {
+    "expansion": "Focus Reporting (Mode 1004)",
+    "description": "Terminal sends escape sequences when the window gains or loses keyboard focus. Lets TUI apps pause rendering when not visible and refresh when refocused.",
+    "link": "/modes"
+  },
+  "DECRC": {
+    "expansion": "DEC Restore Cursor",
+    "description": "Restore cursor position and attributes previously saved with DECSC. Together DECSC/DECRC are used by TUI apps to preserve cursor state across screen updates.",
+    "link": "/cursor/decsc-save-restore-cursor"
+  },
+  "SPA": {
+    "expansion": "Start of Protected Area",
+    "description": "ECMA-48 sequence marking the beginning of a protected area that cannot be erased by selective erase operations. Rarely used in modern terminals.",
+    "link": "/ecma-48"
+  },
+  "SM": {
+    "expansion": "Set Mode",
+    "description": "CSI Pm h — enable an ECMA-48 standard mode (insert mode, auto-wrap). Distinct from DECSET (CSI ? Pm h) which controls DEC private modes.",
+    "link": "/modes"
+  },
+  "RM": {
+    "expansion": "Reset Mode",
+    "description": "CSI Pm l — disable an ECMA-48 standard mode. The counterpart to SM. Distinct from DECRST (CSI ? Pm l) for DEC private modes.",
+    "link": "/modes"
+  },
+  "IRM": {
+    "expansion": "Insert/Replace Mode",
+    "description": "ECMA-48 mode 4. When set (SM 4), typed characters push existing text right instead of overwriting. When reset (RM 4), characters overwrite. Most terminals default to replace mode.",
+    "link": "/modes"
+  },
+  "HTS": {
+    "expansion": "Horizontal Tab Set",
+    "description": "Set a tab stop at the current cursor column. Used with TBC (tab clear) to customize tab stop positions beyond the default every-8-columns.",
+    "link": "/ecma-48"
+  },
+  "TBC": {
+    "expansion": "Tab Clear",
+    "description": "Clear tab stops. TBC 0 clears the stop at the current column; TBC 3 clears all tab stops.",
+    "link": "/ecma-48"
+  },
+  "DECALN": {
+    "expansion": "DEC Screen Alignment Test",
+    "description": "Fill the entire screen with the letter 'E'. Originally used to test CRT screen alignment. Now useful for debugging — it instantly shows the screen dimensions and clears all content.",
+    "link": "/reset"
+  },
+  "REP": {
+    "expansion": "Repeat Preceding Character",
+    "description": "CSI Pn b — repeat the last printed character N times. A bandwidth optimization that avoids sending the same character repeatedly. Supported by most modern terminals.",
+    "link": "/editing"
+  },
+  "VPA": {
+    "expansion": "Vertical Line Position Absolute",
+    "description": "CSI Pn d — move cursor to row N on the current column. The vertical counterpart to CHA (horizontal absolute).",
+    "link": "/cursor"
+  },
+  "CPL": {
+    "expansion": "Cursor Previous Line",
+    "description": "Move cursor to the beginning of the line N rows up. The counterpart to CNL (Cursor Next Line).",
+    "link": "/cursor"
+  },
+  "DECSCA": {
+    "expansion": "DEC Select Character Attributes",
+    "description": "Mark characters as protected or unprotected. Protected characters are not affected by selective erase operations (DECSED, DECSEL). Rarely used.",
+    "link": "/ecma-48"
+  },
+  "Unicode": {
+    "expansion": "Unicode Standard",
+    "description": "Universal character encoding standard covering over 149,000 characters from all modern writing systems plus emoji, symbols, and historic scripts. Terminal correctness requires handling width (wcwidth), grapheme clusters, and combining characters.",
+    "link": "/unicode"
+  },
+  "combining character": {
+    "expansion": "Combining Character",
+    "description": "A Unicode character that attaches to the preceding base character without advancing the cursor. Diacritical marks (accents, umlauts) and some emoji modifiers are combining characters. Terminals must render them in the same cell as the base character.",
+    "link": "/unicode"
+  },
+  "tofu": {
+    "expansion": "Tofu (Missing Glyph)",
+    "description": "The small rectangle displayed when a font lacks a glyph for a character. Named for its resemblance to a block of tofu. Common with emoji and rare scripts when font fallback fails."
+  },
+  "charset designation": {
+    "expansion": "Character Set Designation (G0-G3)",
+    "description": "The ECMA-35/VT mechanism for switching between character sets using escape sequences. G0-G3 are four slots that can be loaded with different charsets (ASCII, DEC Special Graphics, etc.). Largely obsolete — replaced by UTF-8.",
+    "link": "/charsets"
+  },
+  "DEC Special Graphics": {
+    "expansion": "DEC Special Graphics Character Set",
+    "description": "A character set that maps ASCII printable characters to line-drawing symbols (box corners, horizontal/vertical lines, etc.). Activated via ESC ( 0. Used by ncurses for borders. Predates Unicode box-drawing characters.",
+    "link": "/charsets"
+  },
+  "DECSCNM": {
+    "expansion": "DEC Screen Mode (Reverse Video)",
+    "description": "DEC private mode ?5 — swap foreground and background colors for the entire screen. Used for light-on-dark vs dark-on-light display.",
+    "link": "/dec-private-modes"
+  },
+  "DECCOLM": {
+    "expansion": "DEC Column Mode",
+    "description": "DEC private mode ?3 — switch between 80 and 132 column mode. Originally for wide printouts on DEC terminals. Modern terminals typically resize the window instead.",
+    "link": "/dec-private-modes"
+  },
+  "DECOM": {
+    "expansion": "DEC Origin Mode",
+    "description": "DEC private mode ?6 — when set, cursor positions are relative to the scroll region instead of the full screen. Affects CUP and other absolute positioning commands.",
+    "link": "/dec-private-modes"
+  },
+  "XTVERSION": {
+    "expansion": "Xterm Version Query",
+    "description": "Query the terminal for its name and version string. Sent as CSI > 0 q (or DCS in some terminals). Response format varies by terminal. Useful for terminal detection.",
+    "link": "/device/da1-primary-device-attributes"
+  },
+  "XTWINOPS": {
+    "expansion": "Xterm Window Operations",
+    "description": "CSI t sequences for window manipulation — resize, move, minimize, report size in pixels or characters. Some operations are disabled by default for security.",
+    "link": "/xterm-extensions"
+  },
+  "soft reset": {
+    "expansion": "Soft Terminal Reset (DECSTR)",
+    "description": "CSI ! p — partial terminal reset. Resets modes, character sets, and cursor state without clearing the screen or scrollback. Less disruptive than RIS (full reset).",
+    "link": "/reset"
+  },
+  "primary DA": {
+    "expansion": "Primary Device Attributes (DA1)",
+    "description": "The most fundamental terminal query — CSI c. The terminal responds with capability flags indicating what features it supports. Also used for terminal detection since different terminals report different values.",
+    "link": "/device/da1-primary-device-attributes"
   }
 }
