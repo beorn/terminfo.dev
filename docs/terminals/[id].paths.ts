@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
-import { linkifyContent } from "../data/linkify-content"
+import { linkifyContent, linkifyContentExcluding } from "../data/linkify-content"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -197,7 +197,10 @@ export default {
           // Terminal app info (separate from backend)
           terminalName: (meta as any).label ?? terminal.name ?? b.name,
           terminalDescription: (meta as any).description ?? terminal.description ?? "",
-          terminalBody: (meta as any).body ?? terminal.body ?? "",
+          terminalBody: linkifyContentExcluding(
+            (meta as any).body ?? terminal.body ?? "",
+            new Set([`/terminals/${slug}`]),
+          ),
           terminalUrl: meta.url ?? terminal.url ?? "",
           terminalRepo: (meta as any).repo ?? terminal.repo ?? "",
           terminalAuthor: terminal.author ?? "",
@@ -211,7 +214,7 @@ export default {
           pct: String(stats.pct),
           categories: JSON.stringify(categories),
           versions: JSON.stringify(versions),
-          analysis: linkifyContent(a?.analysis ?? ""),
+          analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${slug}`])),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
           historical: "false",
@@ -248,8 +251,9 @@ export default {
 
     const existingSlugs = new Set(pages.map((p) => p.params.id))
 
+    // Add pages for ALL terminals in terminals.json that don't have probe results
+    // This covers: historical terminals, unprobed terminals (like cmux), and metadata-only entries
     for (const [termId, term] of Object.entries(terminalsData)) {
-      if (!term.historical) continue
       if (existingSlugs.has(term.slug)) continue
 
       const a = allAnalysis["terminals/" + term.slug]
@@ -266,7 +270,7 @@ export default {
           backendCaveat: "",
           terminalName: term.label,
           terminalDescription: term.description ?? "",
-          terminalBody: term.body ?? "",
+          terminalBody: linkifyContentExcluding(term.body ?? "", new Set([`/terminals/${term.slug}`])),
           terminalUrl: term.url ?? "",
           terminalRepo: term.repo ?? "",
           terminalAuthor: "",
@@ -279,11 +283,11 @@ export default {
           partial: "",
           pct: "",
           categories: "",
-          analysis: linkifyContent(a?.analysis ?? ""),
+          analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${term.slug}`])),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
-          historical: "true",
-          terminalType: "historical",
+          historical: term.historical ? "true" : "false",
+          terminalType: term.historical ? "historical" : (term as any).intermediary ? "mux" : "app",
           year: String(term.year ?? ""),
           manufacturer: term.manufacturer ?? "",
           significance: term.significance ?? "",
