@@ -540,7 +540,13 @@ export default defineConfig({
     // --- Step 2: OG meta tags (after title/description are resolved) ---
     pageData.frontmatter.head.push(
       ["meta", { property: "og:title", content: pageData.title || "Terminfo.dev" }],
-      ["meta", { property: "og:description", content: pageData.description || "Feature support tables for terminal emulators." }],
+      [
+        "meta",
+        {
+          property: "og:description",
+          content: pageData.description || "Feature support tables for terminal emulators.",
+        },
+      ],
       ["meta", { property: "og:url", content: canonicalUrl }],
     )
 
@@ -631,6 +637,7 @@ export default defineConfig({
             text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
             link: `/${cat}`,
           })),
+          { text: "Baselines", items: baselineItems },
         ],
       },
       {
