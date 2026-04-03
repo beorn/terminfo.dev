@@ -1,5 +1,5 @@
 import { loadProbes, terminalSlug, loadAnalysis } from "../data/load-probes"
-import { linkifyContent } from "../data/linkify-content"
+import { linkifyContentExcluding } from "../data/linkify-content"
 import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -93,10 +93,10 @@ export default {
           baselineEmoji: bl?.emoji ?? "",
           baselineColor: bl?.color ?? "",
           baselineTagline: bl?.tagline ?? "",
-          body: fw.body,
+          body: linkifyContentExcluding(fw.body ?? "", new Set([`/framework/${id}`])),
           featureCount: String(baselineFeatureIds.length),
           scores: JSON.stringify(scores),
-          analysis: linkifyContent(a?.analysis ?? ""),
+          analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/framework/${id}`])),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
         },

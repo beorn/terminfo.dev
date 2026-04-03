@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+// @ts-expect-error — vitepress-enrich has no type declarations
 import { createLinkifier } from "vitepress-enrich"
 
 /** Local type matching vitepress-enrich's GlossaryEntity (type-only export lost in dist build). */
@@ -115,7 +116,7 @@ export function linkifyContent(text: string): string {
   if (!_defaultLinkify) {
     _defaultLinkify = createLinkifier(loadEntities())
   }
-  return _defaultLinkify(text)
+  return _defaultLinkify!(text)
 }
 
 /**

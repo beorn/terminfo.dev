@@ -16,7 +16,7 @@ import {
   tagBodies,
   loadAnalysis,
 } from "./data/load-probes"
-import { linkifyContent } from "./data/linkify-content"
+import { linkifyContentExcluding } from "./data/linkify-content"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -92,19 +92,21 @@ export default {
       const catHistTermKey = tagToHistoricalTerminal[cat]
       const catHistBody = catHistTermKey ? (terminals[catHistTermKey]?.body ?? "") : ""
 
+      const selfHrefs = new Set([`/${cat}`])
+
       return {
         params: {
           id: cat,
           pageType: "category",
           categoryName: catLabel(cat),
-          categoryDescription: linkifyContent(categoryDescriptions[cat] ?? ""),
-          body: linkifyContent(catBody),
-          historicalBody: linkifyContent(catHistBody),
+          categoryDescription: linkifyContentExcluding(categoryDescriptions[cat] ?? "", selfHrefs),
+          body: linkifyContentExcluding(catBody, selfHrefs),
+          historicalBody: linkifyContentExcluding(catHistBody, selfHrefs),
           specUrl: tagUrls[cat] ?? "",
           featureCount: String(features.length),
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),
-          analysis: linkifyContent(a?.analysis ?? ""),
+          analysis: linkifyContentExcluding(a?.analysis ?? "", selfHrefs),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
         },
@@ -143,19 +145,21 @@ export default {
       const histTermKey = tagToHistoricalTerminal[tag]
       const histBody = histTermKey ? (terminals[histTermKey]?.body ?? "") : ""
 
+      const selfHrefs = new Set([`/${tag}`])
+
       return {
         params: {
           id: tag,
           pageType: "tag",
           categoryName: tagLabel(tag),
-          categoryDescription: linkifyContent(tagDescriptions[tag] ?? ""),
+          categoryDescription: linkifyContentExcluding(tagDescriptions[tag] ?? "", selfHrefs),
           specUrl: tagUrls[tag] ?? "",
-          body: linkifyContent(tagBodies[tag] ?? ""),
-          historicalBody: linkifyContent(histBody),
+          body: linkifyContentExcluding(tagBodies[tag] ?? "", selfHrefs),
+          historicalBody: linkifyContentExcluding(histBody, selfHrefs),
           featureCount: String(featureIds.length),
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),
-          analysis: linkifyContent(a?.analysis ?? ""),
+          analysis: linkifyContentExcluding(a?.analysis ?? "", selfHrefs),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
         },

@@ -174,13 +174,20 @@ export function SubmitResult({ url, hasVersion }: { url: string; hasVersion: boo
   return (
     <Box flexDirection="column" paddingLeft={2}>
       {hasVersion ? (
-        <Text><Text color="$success">✓</Text> Submitted: {hyperlink(url, url)}</Text>
+        <Text>
+          <Text color="$success">✓</Text> Submitted: {hyperlink(url, url)}
+        </Text>
       ) : (
         <Box flexDirection="column">
-          <Text><Text color="$success">✓</Text> Success, but <Text bold>missing terminal app version</Text>!</Text>
-          <Text>  Please add the <Text bold>terminal app version</Text> to the page below:</Text>
+          <Text>
+            <Text color="$success">✓</Text> Success, but <Text bold>missing terminal app version</Text>!
+          </Text>
+          <Text>
+            {" "}
+            Please add the <Text bold>terminal app version</Text> to the page below:
+          </Text>
           <Text> </Text>
-          <Text>  {hyperlink(url, url)}</Text>
+          <Text> {hyperlink(url, url)}</Text>
           <Text> </Text>
         </Box>
       )}

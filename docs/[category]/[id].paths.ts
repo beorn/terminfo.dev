@@ -7,7 +7,7 @@ import {
   catLabel,
   loadAnalysis,
 } from "../data/load-probes"
-import { linkifyContent } from "../data/linkify-content"
+import { linkifyContentExcluding } from "../data/linkify-content"
 
 export default {
   paths() {
@@ -111,6 +111,7 @@ export default {
       }
 
       const a = allAnalysis[`${f.category}/${slug}`]
+      const selfHrefs = new Set([`/${f.category}/${slug}`])
 
       return {
         params: {
@@ -121,14 +122,14 @@ export default {
           featureCategory: f.category,
           categoryLabel: catLabel(f.category),
           specUrl: desc?.url ?? f.spec ?? "",
-          featureBody: linkifyContent(meta?.body ?? ""),
-          probeMethod: linkifyContent(meta?.probe ?? ""),
+          featureBody: linkifyContentExcluding(meta?.body ?? "", selfHrefs),
+          probeMethod: linkifyContentExcluding(meta?.probe ?? "", selfHrefs),
           sequence: (meta as any)?.sequence ?? "",
           featureTags: JSON.stringify(tags),
           backendResults: JSON.stringify(backendResults),
           yesCount: String(yesCount),
           totalCount: String(totalCount),
-          analysis: linkifyContent(a?.analysis ?? ""),
+          analysis: linkifyContentExcluding(a?.analysis ?? "", selfHrefs),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
           parentFeatureId,

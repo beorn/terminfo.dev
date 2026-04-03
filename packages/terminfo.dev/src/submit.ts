@@ -47,7 +47,9 @@ export async function submitResults(data: SubmitData): Promise<string | null> {
     console.error(`  Failed to create issue: ${err instanceof Error ? err.message : String(err)}`)
     return null
   } finally {
-    try { unlinkSync(bodyFile) } catch {}
+    try {
+      unlinkSync(bodyFile)
+    } catch {}
   }
 }
 

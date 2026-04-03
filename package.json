@@ -26,8 +26,8 @@
     "silvery": "^0.4.1"
   },
   "devDependencies": {
-    "vitepress-enrich": "^0.4.0",
     "vitepress": "^1.6.4",
+    "vitepress-enrich": "^0.4.0",
     "vitest": "^4.1.1"
   },
   "engines": {

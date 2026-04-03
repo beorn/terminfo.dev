@@ -1,5 +1,5 @@
 import { loadProbes, featureSlug, terminalSlug, loadFeaturesMeta, loadAnalysis } from "../data/load-probes"
-import { linkifyContent } from "../data/linkify-content"
+import { linkifyContentExcluding } from "../data/linkify-content"
 import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -111,7 +111,7 @@ export default {
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),
           scores: JSON.stringify(scores),
-          analysis: linkifyContent(a?.analysis ?? ""),
+          analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/baseline/${id}`])),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
         },

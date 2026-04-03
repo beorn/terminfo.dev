@@ -83,7 +83,7 @@ export async function handleReport(): Promise<void> {
   }
 
   if (appsData) {
-    log.info?.("\n--- Terminal Apps ---")
+    console.log("\n--- Terminal Apps ---")
     const colWidth = Math.max(6, ...appsData.backendNames.map((n) => n.length)) + 2
     const featureWidth = 30
 

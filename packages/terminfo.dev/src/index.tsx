@@ -30,6 +30,7 @@ import { ALL_PROBES } from "./probes/unified.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
 import { submitResults } from "./submit.ts"
 import { DetectView } from "./views/DetectView.tsx"
+import { HelpView } from "./views/HelpView.tsx"
 import { TestResults, PostTestStatus, SubmitNudge, SubmitResult } from "./views/TestResults.tsx"
 import type { ProbeResults } from "./types.ts"
 

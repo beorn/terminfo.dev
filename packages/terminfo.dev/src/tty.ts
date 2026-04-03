@@ -12,7 +12,11 @@
 export function readResponse(pattern: RegExp, timeoutMs: number): Promise<string[] | null> {
   return new Promise((resolve) => {
     let buf = ""
-    let timer: ReturnType<typeof setTimeout>
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      process.stdin.off("data", onData)
+    }
 
     const onData = (chunk: Buffer) => {
       buf += chunk.toString()
@@ -23,12 +27,7 @@ export function readResponse(pattern: RegExp, timeoutMs: number): Promise<string
       }
     }
 
-    const cleanup = () => {
-      clearTimeout(timer)
-      process.stdin.off("data", onData)
-    }
-
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       cleanup()
       resolve(null)
     }, timeoutMs)

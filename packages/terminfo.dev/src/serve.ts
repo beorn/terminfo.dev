@@ -82,173 +82,175 @@ export function listDaemons(): DaemonInfo[] {
 export async function startDaemon(port = 0): Promise<void> {
   const terminal = detectTerminal()
 
-  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    res.setHeader("Content-Type", "application/json")
-    res.setHeader("Access-Control-Allow-Origin", "*")
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    void (async () => {
+      res.setHeader("Content-Type", "application/json")
+      res.setHeader("Access-Control-Allow-Origin", "*")
 
-    const url = new URL(req.url ?? "/", `http://localhost`)
+      const url = new URL(req.url ?? "/", `http://localhost`)
 
-    if (url.pathname === "/info") {
-      res.end(
-        JSON.stringify({
-          terminal: terminal.name,
-          terminalVersion: terminal.version,
-          os: terminal.os,
-          osVersion: terminal.osVersion,
-          probes: "dynamic",
-        }),
-      )
-      return
-    }
-
-    if (url.pathname === "/probe") {
-      const probes = await loadProbes()
-      console.log(s.dim(`[${new Date().toISOString()}] Running ${probes.length} probes...`))
-
-      const results: Record<string, boolean> = {}
-      const notes: Record<string, string> = {}
-      const responses: Record<string, string> = {}
-
-      await withRawMode(async () => {
-        for (const probe of probes) {
-          process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-          try {
-            const result = await probe.run()
-            results[probe.id] = result.pass
-            if (result.note) notes[probe.id] = result.note
-            if (result.response) responses[probe.id] = result.response
-          } catch (err) {
-            results[probe.id] = false
-            notes[probe.id] = `error: ${err instanceof Error ? err.message : String(err)}`
-          }
-        }
-        process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-        await drainStdin(1000)
-      })
-
-      // Reset terminal after probes
-      process.stdout.write("\x1bc")
-
-      const passed = Object.values(results).filter((v) => v).length
-      const total = Object.keys(results).length
-      console.log(`${s.green("+")} ${passed}/${total} (${Math.round((passed / total) * 100)}%)`)
-
-      res.end(
-        JSON.stringify({
-          terminal: terminal.name,
-          terminalVersion: terminal.version,
-          os: terminal.os,
-          osVersion: terminal.osVersion,
-          source: "daemon",
-          generated: new Date().toISOString(),
-          results,
-          notes,
-          responses,
-        }),
-      )
-      return
-    }
-
-    if (url.pathname === "/probe/single") {
-      const probeId = url.searchParams.get("id")
-      if (!probeId) {
-        res.statusCode = 400
-        res.end(JSON.stringify({ error: "Missing ?id= parameter" }))
-        return
-      }
-      const probes = await loadProbes()
-      const probe = probes.find((p) => p.id === probeId)
-      if (!probe) {
-        res.statusCode = 404
-        res.end(JSON.stringify({ error: `Unknown probe: ${probeId}` }))
+      if (url.pathname === "/info") {
+        res.end(
+          JSON.stringify({
+            terminal: terminal.name,
+            terminalVersion: terminal.version,
+            os: terminal.os,
+            osVersion: terminal.osVersion,
+            probes: "dynamic",
+          }),
+        )
         return
       }
 
-      await withRawMode(async () => {
-        process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-        try {
-          const result = await probe.run()
-          process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-          await drainStdin(500)
-          res.end(JSON.stringify({ id: probeId, ...result }))
-        } catch (err) {
-          process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-          await drainStdin(500)
-          res.end(JSON.stringify({ id: probeId, pass: false, note: String(err) }))
-        }
-      })
-      process.stdout.write("\x1bc")
-      return
-    }
+      if (url.pathname === "/probe") {
+        const probes = await loadProbes()
+        console.log(s.dim(`[${new Date().toISOString()}] Running ${probes.length} probes...`))
 
-    if (url.pathname === "/query" && req.method === "POST") {
-      // Execute raw escape sequence commands in this terminal
-      // POST body: { commands: [{ write: "\\x1b[6n", read: "\\x1b\\[(\\d+);(\\d+)R", timeout?: 1000 }, ...] }
-      const body = await readBody(req)
-      try {
-        const { commands } = JSON.parse(body) as {
-          commands: Array<{ write?: string; read?: string; timeout?: number; measure?: string }>
-        }
-        if (!Array.isArray(commands)) {
-          res.statusCode = 400
-          res.end(JSON.stringify({ error: "commands must be an array" }))
-          return
-        }
-
-        const results: Array<{ response?: string | null; width?: number | null; error?: string }> = []
+        const results: Record<string, boolean> = {}
+        const notes: Record<string, string> = {}
+        const responses: Record<string, string> = {}
 
         await withRawMode(async () => {
-          process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-          for (const cmd of commands) {
+          for (const probe of probes) {
+            process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
             try {
-              if (cmd.measure) {
-                // Measure rendered width of a string
-                const { measureRenderedWidth } = await import("./tty.ts")
-                const width = await measureRenderedWidth(cmd.measure)
-                results.push({ width })
-              } else if (cmd.write && cmd.read) {
-                // Write sequence, read response
-                const { query } = await import("./tty.ts")
-                const match = await query(unescapeSequence(cmd.write), new RegExp(cmd.read), cmd.timeout ?? 1000)
-                results.push({ response: match ? match[0] : null })
-              } else if (cmd.write) {
-                // Just write, no response expected
-                process.stdout.write(unescapeSequence(cmd.write))
-                results.push({ response: "ok" })
-              } else {
-                results.push({ error: "command needs write, read, or measure" })
-              }
+              const result = await probe.run()
+              results[probe.id] = result.pass
+              if (result.note) notes[probe.id] = result.note
+              if (result.response) responses[probe.id] = result.response
             } catch (err) {
-              results.push({ error: err instanceof Error ? err.message : String(err) })
+              results[probe.id] = false
+              notes[probe.id] = `error: ${err instanceof Error ? err.message : String(err)}`
             }
           }
           process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-          await drainStdin(500)
+          await drainStdin(1000)
         })
+
+        // Reset terminal after probes
         process.stdout.write("\x1bc")
 
-        console.log(s.dim(`[${new Date().toISOString()}] Executed ${commands.length} commands`))
-        res.end(JSON.stringify({ terminal: terminal.name, results }))
-      } catch (err) {
-        res.statusCode = 400
-        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }))
-      }
-      return
-    }
+        const passed = Object.values(results).filter((v) => v).length
+        const total = Object.keys(results).length
+        console.log(`${s.green("+")} ${passed}/${total} (${Math.round((passed / total) * 100)}%)`)
 
-    // Default: show help
-    res.end(
-      JSON.stringify({
-        endpoints: {
-          "/info": "Terminal info",
-          "/probe": "Run all probes (dynamically loaded)",
-          "/probe/single?id=sgr.bold": "Run single probe",
-          "/query": "POST — execute raw escape sequence commands",
-        },
-        terminal: terminal.name,
-        version: terminal.version,
-      }),
-    )
+        res.end(
+          JSON.stringify({
+            terminal: terminal.name,
+            terminalVersion: terminal.version,
+            os: terminal.os,
+            osVersion: terminal.osVersion,
+            source: "daemon",
+            generated: new Date().toISOString(),
+            results,
+            notes,
+            responses,
+          }),
+        )
+        return
+      }
+
+      if (url.pathname === "/probe/single") {
+        const probeId = url.searchParams.get("id")
+        if (!probeId) {
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: "Missing ?id= parameter" }))
+          return
+        }
+        const probes = await loadProbes()
+        const probe = probes.find((p) => p.id === probeId)
+        if (!probe) {
+          res.statusCode = 404
+          res.end(JSON.stringify({ error: `Unknown probe: ${probeId}` }))
+          return
+        }
+
+        await withRawMode(async () => {
+          process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
+          try {
+            const result = await probe.run()
+            process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
+            await drainStdin(500)
+            res.end(JSON.stringify({ id: probeId, ...result }))
+          } catch (err) {
+            process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
+            await drainStdin(500)
+            res.end(JSON.stringify({ id: probeId, pass: false, note: String(err) }))
+          }
+        })
+        process.stdout.write("\x1bc")
+        return
+      }
+
+      if (url.pathname === "/query" && req.method === "POST") {
+        // Execute raw escape sequence commands in this terminal
+        // POST body: { commands: [{ write: "\\x1b[6n", read: "\\x1b\\[(\\d+);(\\d+)R", timeout?: 1000 }, ...] }
+        const body = await readBody(req)
+        try {
+          const { commands } = JSON.parse(body) as {
+            commands: Array<{ write?: string; read?: string; timeout?: number; measure?: string }>
+          }
+          if (!Array.isArray(commands)) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: "commands must be an array" }))
+            return
+          }
+
+          const results: Array<{ response?: string | null; width?: number | null; error?: string }> = []
+
+          await withRawMode(async () => {
+            process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
+            for (const cmd of commands) {
+              try {
+                if (cmd.measure) {
+                  // Measure rendered width of a string
+                  const { measureRenderedWidth } = await import("./tty.ts")
+                  const width = await measureRenderedWidth(cmd.measure)
+                  results.push({ width })
+                } else if (cmd.write && cmd.read) {
+                  // Write sequence, read response
+                  const { query } = await import("./tty.ts")
+                  const match = await query(unescapeSequence(cmd.write), new RegExp(cmd.read), cmd.timeout ?? 1000)
+                  results.push({ response: match ? match[0] : null })
+                } else if (cmd.write) {
+                  // Just write, no response expected
+                  process.stdout.write(unescapeSequence(cmd.write))
+                  results.push({ response: "ok" })
+                } else {
+                  results.push({ error: "command needs write, read, or measure" })
+                }
+              } catch (err) {
+                results.push({ error: err instanceof Error ? err.message : String(err) })
+              }
+            }
+            process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
+            await drainStdin(500)
+          })
+          process.stdout.write("\x1bc")
+
+          console.log(s.dim(`[${new Date().toISOString()}] Executed ${commands.length} commands`))
+          res.end(JSON.stringify({ terminal: terminal.name, results }))
+        } catch (err) {
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }))
+        }
+        return
+      }
+
+      // Default: show help
+      res.end(
+        JSON.stringify({
+          endpoints: {
+            "/info": "Terminal info",
+            "/probe": "Run all probes (dynamically loaded)",
+            "/probe/single?id=sgr.bold": "Run single probe",
+            "/query": "POST — execute raw escape sequence commands",
+          },
+          terminal: terminal.name,
+          version: terminal.version,
+        }),
+      )
+    })()
   })
 
   server.listen(port, "127.0.0.1", () => {
