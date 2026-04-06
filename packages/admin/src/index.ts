@@ -55,50 +55,54 @@ probe.addHelpSection("Examples:", [
 // ── probe termless ──
 
 probe
-  .command("termless [selectors...]")
+  .command("termless")
+  .argument("[selectors...]", "Backend selectors to probe")
   .description("Headless library probes via Termless backends")
   .option("--all", "Probe all backends")
   .option("-f, --force", "Re-run even if cached")
-  .action(async (selectors: string[], opts: { all?: boolean; force?: boolean }) => {
+  .action(async (opts: { selectors: string[]; all?: boolean; force?: boolean }) => {
     const { runTermlessProbes } = await import("./termless.ts")
-    await runTermlessProbes(opts.all ? [] : selectors, opts)
+    await runTermlessProbes(opts.all ? [] : opts.selectors, opts)
   })
 
 // ── probe server ──
 
 probe
-  .command("server [daemon]")
+  .command("server")
+  .argument("[daemon]", "Daemon name to probe")
   .description("Probe running daemon servers")
   .option("--start", "Start daemon in this terminal")
   .option("-p, --port <port>", "Port for --start", parseInt)
   .option("--all", "Probe all running daemons")
-  .action(async (daemon: string | undefined, opts: { start?: boolean; port?: number; all?: boolean }) => {
+  .action(async (opts: { daemon?: string; start?: boolean; port?: number; all?: boolean }) => {
     const { handleServer } = await import("./server.ts")
-    await handleServer(daemon, opts)
+    await handleServer(opts.daemon, opts)
   })
 
 // ── probe app ──
 
 probe
-  .command("app [terminal]")
+  .command("app")
+  .argument("[terminal]", "Terminal app to probe")
   .description("Launch and probe macOS terminal apps")
   .option("--all", "Probe all installed terminals")
   .option("-f, --force", "Re-run even if cached")
-  .action(async (terminal: string | undefined, opts: { all?: boolean; force?: boolean }) => {
+  .action(async (opts: { terminal?: string; all?: boolean; force?: boolean }) => {
     const { handleApp } = await import("./app.ts")
-    await handleApp(terminal, opts)
+    await handleApp(opts.terminal, opts)
   })
 
 // ── probe mux ──
 
 probe
-  .command("mux [multiplexer]")
+  .command("mux")
+  .argument("[multiplexer]", "Multiplexer to probe (tmux, screen)")
   .description("Probe through terminal multiplexers (tmux, screen)")
   .option("--all", "Probe through all installed multiplexers")
   .option("-f, --force", "Re-run even if cached")
-  .action(async (multiplexer: string | undefined, opts: { all?: boolean; force?: boolean }) => {
+  .action(async (opts: { multiplexer?: string; all?: boolean; force?: boolean }) => {
     const { handleMux } = await import("./mux.ts")
-    await handleMux(multiplexer, opts)
+    await handleMux(opts.multiplexer, opts)
   })
 
 // ── probe here ──

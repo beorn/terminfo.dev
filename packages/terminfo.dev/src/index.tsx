@@ -221,13 +221,14 @@ program.addHelpSection("Examples:", [
 // ── test ──
 
 program
-  .command("test [daemon]")
+  .command("test")
+  .argument("[daemon]", "Daemon name to test")
   .description("Test this terminal's feature support")
   .option("--json", "Output results as JSON")
   .option("--serve", "Start daemon for remote testing")
   .option("-p, --port <port>", "Port for --serve", uint)
   .option("--all", "Test all running daemons")
-  .action(async (daemon: string | undefined, opts) => {
+  .action(async (opts: { daemon?: string; json?: boolean; serve?: boolean; port?: number; all?: boolean }) => {
     // --serve: start daemon mode
     if (opts.serve) {
       const { startDaemon } = await import("./serve.ts")
@@ -236,25 +237,25 @@ program
     }
 
     // --all or specific daemon: test remote daemons
-    if (opts.all || daemon) {
+    if (opts.all || opts.daemon) {
       const { listDaemons } = await import("./serve.ts")
       const daemons = listDaemons()
 
       let targets = daemons
-      if (daemon) {
+      if (opts.daemon) {
         targets = daemons.filter(
           (d) =>
-            d.terminal.toLowerCase() === daemon.toLowerCase() ||
-            d.terminal.toLowerCase().includes(daemon.toLowerCase()),
+            d.terminal.toLowerCase() === opts.daemon!.toLowerCase() ||
+            d.terminal.toLowerCase().includes(opts.daemon!.toLowerCase()),
         )
         if (targets.length === 0) {
-          console.error(`No daemon found matching "${daemon}".`)
+          console.error(`No daemon found matching "${opts.daemon}".`)
           if (daemons.length > 0) {
             console.error(`Running: ${daemons.map((d) => d.terminal).join(", ")}`)
           } else {
             console.error(`No daemons running. Start one: terminfo test --serve`)
           }
-          throw new Error(`No daemon found matching "${daemon}"`)
+          throw new Error(`No daemon found matching "${opts.daemon}"`)
         }
       }
 
