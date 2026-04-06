@@ -41,6 +41,12 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
         continue-on-error: true
 
+      - name: Build site
+        run: bun run build
+
+      - name: Check for broken internal links
+        run: bun scripts/check-404s.ts
+
       - name: Create or update issue
         if: steps.validate.outcome == 'failure' || contains(steps.validate.outputs.output, 'WARN')
         uses: actions/github-script@v7
