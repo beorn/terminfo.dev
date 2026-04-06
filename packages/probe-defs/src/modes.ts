@@ -269,6 +269,160 @@ export const modesProbes: ProbeDefinition[] = [
     },
   ),
 
+  // ?47 — legacy alt screen (no cursor save)
+  probe(
+    "modes.altscreen-47",
+    (ctx) => {
+      ctx.feed("\x1b[?47h")
+      const entered = ctx.getMode("altScreen") === true
+      ctx.feed("\x1b[?47l")
+      const exited = ctx.getMode("altScreen") === false
+      return { pass: entered && exited, note: !entered ? "altScreen not set" : !exited ? "altScreen not cleared" : undefined }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[?47h") // enter legacy alt screen
+      const inAlt = await ctx.queryCursorPosition()
+      ctx.write("\x1b[?47l") // exit
+      const out = await ctx.queryCursorPosition()
+      if (!inAlt || !out) return { pass: false, note: "No cursor response around ?47" }
+      return { pass: true, note: "Behavioral: ?47 enter/exit accepted" }
+    },
+  ),
+
+  // ?1047 — alt screen, clear on enter
+  probe(
+    "modes.altscreen-1047",
+    (ctx) => {
+      ctx.feed("\x1b[?1047h")
+      const entered = ctx.getMode("altScreen") === true
+      ctx.feed("\x1b[?1047l")
+      const exited = ctx.getMode("altScreen") === false
+      return { pass: entered && exited, note: !entered ? "altScreen not set" : !exited ? "altScreen not cleared" : undefined }
+    },
+    async (ctx) => {
+      const decrpmResult = await ctx.queryMode(1047)
+      if (decrpmResult !== null && decrpmResult !== "unknown") {
+        return { pass: true, note: `DECRPM: mode ${decrpmResult}`, response: decrpmResult }
+      }
+      ctx.write("\x1b[?1047h")
+      const inAlt = await ctx.queryCursorPosition()
+      ctx.write("\x1b[?1047l")
+      if (!inAlt) return { pass: false, note: "No cursor response after enable" }
+      return { pass: true, note: "Behavioral: ?1047 accepted" }
+    },
+  ),
+
+  // ?1048 — save/restore cursor only (no alt screen)
+  probe(
+    "modes.altscreen-1048",
+    (ctx) => {
+      // Position cursor, save with 1048, move, restore, check we're back
+      ctx.feed("\x1b[5;10H") // row 5, col 10 (1-based) — termless 0-based: y=4, x=9
+      ctx.feed("\x1b[?1048h") // save
+      ctx.feed("\x1b[15;20H") // move to row 15, col 20
+      ctx.feed("\x1b[?1048l") // restore
+      const cursor = ctx.getCursor()
+      const pass = cursor.y === 4 && cursor.x === 9
+      return {
+        pass,
+        note: pass ? undefined : `cursor at ${cursor.y};${cursor.x}, expected 4;9 after restore`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[5;10H") // row 5, col 10
+      ctx.write("\x1b[?1048h") // save
+      ctx.write("\x1b[15;20H") // move
+      ctx.write("\x1b[?1048l") // restore
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after restore" }
+      return {
+        pass: pos.row === 5 && pos.col === 10,
+        note: pos.row === 5 && pos.col === 10 ? undefined : `got ${pos.row};${pos.col}, expected 5;10`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
+
+  // ?1007 — alt-scroll mouse wheel
+  probe(
+    "modes.alt-scroll-1007",
+    (ctx) => {
+      // Termless backends don't track this mode, but the parser should accept the sequence.
+      // Verify by feeding and checking the cursor stays responsive.
+      ctx.feed("\x1b[?1007h")
+      ctx.feed("X")
+      const ok = ctx.getCell(0, 0).char === "X"
+      ctx.feed("\x1b[?1007l")
+      return { pass: ok, note: ok ? "Sequence parsed (mode not tracked by termless)" : "Parser broke" }
+    },
+    async (ctx) => {
+      const decrpmResult = await ctx.queryMode(1007)
+      if (decrpmResult !== null && decrpmResult !== "unknown") {
+        return { pass: true, note: `DECRPM: mode ${decrpmResult}`, response: decrpmResult }
+      }
+      ctx.write("\x1b[?1007h")
+      const pos = await ctx.queryCursorPosition()
+      ctx.write("\x1b[?1007l")
+      return {
+        pass: pos !== null,
+        note: pos ? "Behavioral: ?1007 accepted" : "No cursor response after enable",
+      }
+    },
+  ),
+
+  // ?1005 — UTF-8 mouse encoding (legacy)
+  probe(
+    "modes.utf8-mouse-1005",
+    (ctx) => {
+      // Termless backends don't track utf8 mouse mode; verify the sequence is parsed.
+      ctx.feed("\x1b[?1005h")
+      ctx.feed("X")
+      const ok = ctx.getCell(0, 0).char === "X"
+      ctx.feed("\x1b[?1005l")
+      return { pass: ok, note: ok ? "Sequence parsed (mode not tracked by termless)" : "Parser broke" }
+    },
+    async (ctx) => {
+      const decrpmResult = await ctx.queryMode(1005)
+      if (decrpmResult !== null && decrpmResult !== "unknown") {
+        return { pass: true, note: `DECRPM: mode ${decrpmResult}`, response: decrpmResult }
+      }
+      ctx.write("\x1b[?1005h")
+      const pos = await ctx.queryCursorPosition()
+      ctx.write("\x1b[?1005l")
+      return {
+        pass: pos !== null,
+        note: pos ? "Behavioral: ?1005 accepted" : "No cursor response after enable",
+      }
+    },
+  ),
+
+  // ?3 — DECCOLM 80/132 column switch
+  probe(
+    "modes.deccolm",
+    (ctx) => {
+      // DECCOLM clears the screen as a side effect on real hardware. Most modern emulators
+      // ignore the column change but accept the sequence. Verify parser doesn't break.
+      ctx.feed("\x1b[?3h")
+      ctx.feed("X")
+      const ok = ctx.getText().includes("X")
+      ctx.feed("\x1b[?3l")
+      return { pass: ok, note: ok ? "Sequence parsed (column switch typically ignored)" : "Parser broke" }
+    },
+    async (ctx) => {
+      const decrpmResult = await ctx.queryMode(3)
+      if (decrpmResult !== null && decrpmResult !== "unknown") {
+        return { pass: true, note: `DECRPM: mode ${decrpmResult}`, response: decrpmResult }
+      }
+      ctx.write("\x1b[?3h")
+      const pos = await ctx.queryCursorPosition()
+      ctx.write("\x1b[?3l")
+      return {
+        pass: pos !== null,
+        note: pos ? "Behavioral: ?3 accepted" : "No cursor response after enable",
+      }
+    },
+  ),
+
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
   // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty
   probe(
@@ -293,6 +447,151 @@ export const modesProbes: ProbeDefinition[] = [
         return { pass: true, note: scheme, response: match[1] }
       }
       return { pass: false, note: "No DECRPM or DECDSR 997 response" }
+    },
+  ),
+
+  // XTPUSHSGR — push SGR stack (CSI # {)
+  // Sequence consumed without producing output. Verify terminal stays responsive afterward.
+  probe(
+    "modes.xtpushsgr",
+    (ctx) => {
+      // Capture any output during the push — should be empty.
+      const pushOut = ctx.feedCapture("\x1b[#{")
+      if (pushOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(pushOut)}` }
+      // Verify the terminal is still responsive by issuing a DA1 query.
+      const probeResponse = ctx.feedCapture("\x1b[c")
+      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
+      // Pop to leave clean state.
+      ctx.feed("\x1b[#}")
+      return {
+        pass: ok,
+        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after push",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[#{")
+      const pos = await ctx.queryCursorPosition()
+      ctx.write("\x1b[#}") // pop to clean up
+      if (!pos) return { pass: false, note: "No DSR response after XTPUSHSGR" }
+      return { pass: true, note: "Sequence consumed; terminal responsive" }
+    },
+  ),
+
+  // XTPOPSGR — pop SGR stack (CSI # })
+  // Push first so the pop is meaningful, then verify responsiveness.
+  probe(
+    "modes.xtpopsgr",
+    (ctx) => {
+      ctx.feed("\x1b[#{")
+      const popOut = ctx.feedCapture("\x1b[#}")
+      if (popOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(popOut)}` }
+      const probeResponse = ctx.feedCapture("\x1b[c")
+      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
+      return {
+        pass: ok,
+        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after pop",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[#{")
+      ctx.write("\x1b[#}")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No DSR response after XTPOPSGR" }
+      return { pass: true, note: "Sequence consumed; terminal responsive" }
+    },
+  ),
+
+  // XTSAVE — save DEC private modes (CSI ? Pm s). Use DECAWM (mode 7) — universally supported.
+  probe(
+    "modes.xtsave",
+    (ctx) => {
+      const saveOut = ctx.feedCapture("\x1b[?7s")
+      if (saveOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(saveOut)}` }
+      const probeResponse = ctx.feedCapture("\x1b[c")
+      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
+      // Restore to leave clean state.
+      ctx.feed("\x1b[?7r")
+      return {
+        pass: ok,
+        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after XTSAVE",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[?7s")
+      const pos = await ctx.queryCursorPosition()
+      ctx.write("\x1b[?7r") // restore to clean up
+      if (!pos) return { pass: false, note: "No DSR response after XTSAVE" }
+      return { pass: true, note: "Sequence consumed; terminal responsive" }
+    },
+  ),
+
+  // XTRESTORE — restore DEC private modes (CSI ? Pm r). Pair with a save first.
+  probe(
+    "modes.xtrestore",
+    (ctx) => {
+      ctx.feed("\x1b[?7s")
+      const restoreOut = ctx.feedCapture("\x1b[?7r")
+      if (restoreOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(restoreOut)}` }
+      const probeResponse = ctx.feedCapture("\x1b[c")
+      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
+      return {
+        pass: ok,
+        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after XTRESTORE",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[?7s")
+      ctx.write("\x1b[?7r")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No DSR response after XTRESTORE" }
+      return { pass: true, note: "Sequence consumed; terminal responsive" }
+    },
+  ),
+
+  // XTPUSHCOLORS — push color palette (CSI # P)
+  probe(
+    "modes.xtpushcolors",
+    (ctx) => {
+      const pushOut = ctx.feedCapture("\x1b[#P")
+      if (pushOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(pushOut)}` }
+      const probeResponse = ctx.feedCapture("\x1b[c")
+      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
+      // Pop to leave clean state.
+      ctx.feed("\x1b[#Q")
+      return {
+        pass: ok,
+        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after push",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[#P")
+      const pos = await ctx.queryCursorPosition()
+      ctx.write("\x1b[#Q") // pop to clean up
+      if (!pos) return { pass: false, note: "No DSR response after XTPUSHCOLORS" }
+      return { pass: true, note: "Sequence consumed; terminal responsive" }
+    },
+  ),
+
+  // XTPOPCOLORS — pop color palette (CSI # Q). Push first so the pop is meaningful.
+  probe(
+    "modes.xtpopcolors",
+    (ctx) => {
+      ctx.feed("\x1b[#P")
+      const popOut = ctx.feedCapture("\x1b[#Q")
+      if (popOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(popOut)}` }
+      const probeResponse = ctx.feedCapture("\x1b[c")
+      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
+      return {
+        pass: ok,
+        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after pop",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[#P")
+      ctx.write("\x1b[#Q")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No DSR response after XTPOPCOLORS" }
+      return { pass: true, note: "Sequence consumed; terminal responsive" }
     },
   ),
 ]

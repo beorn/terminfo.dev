@@ -119,6 +119,65 @@ export const cursorProbes: ProbeDefinition[] = [
     },
   ),
 
+  // CSI s / CSI u — ANSI save/restore cursor (distinct from DECSC/DECRC)
+  probe(
+    "cursor.ansi-save",
+    (ctx) => {
+      ctx.feed("\x1b[3;5H") // position at row 3, col 5 (1-based) → termless 0-based: y=2, x=4
+      ctx.feed("\x1b[s") // ANSI save (CSI s)
+      ctx.feed("\x1b[10;15H") // move elsewhere
+      ctx.feed("\x1b[u") // ANSI restore (CSI u)
+      const cursor = ctx.getCursor()
+      const pass = cursor.y === 2 && cursor.x === 4
+      return {
+        pass,
+        note: pass ? undefined : `cursor at ${cursor.y};${cursor.x}, expected 2;4 after CSI s/u`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[3;5H") // row 3, col 5
+      ctx.write("\x1b[s") // CSI s — save
+      ctx.write("\x1b[10;15H") // move
+      ctx.write("\x1b[u") // CSI u — restore
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after restore" }
+      return {
+        pass: pos.row === 3 && pos.col === 5,
+        note: pos.row === 3 && pos.col === 5 ? undefined : `got ${pos.row};${pos.col}, expected 3;5`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
+
+  probe(
+    "cursor.ansi-restore",
+    (ctx) => {
+      ctx.feed("\x1b[4;6H") // position at row 4, col 6 (1-based) → termless 0-based: y=3, x=5
+      ctx.feed("\x1b[s") // ANSI save
+      ctx.feed("\x1b[12;18H") // move elsewhere
+      ctx.feed("\x1b[u") // ANSI restore
+      const cursor = ctx.getCursor()
+      const pass = cursor.y === 3 && cursor.x === 5
+      return {
+        pass,
+        note: pass ? undefined : `cursor at ${cursor.y};${cursor.x}, expected 3;5 after CSI u`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[4;6H") // row 4, col 6
+      ctx.write("\x1b[s") // save
+      ctx.write("\x1b[12;18H") // move
+      ctx.write("\x1b[u") // CSI u — restore
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after restore" }
+      return {
+        pass: pos.row === 4 && pos.col === 6,
+        note: pos.row === 4 && pos.col === 6 ? undefined : `got ${pos.row};${pos.col}, expected 4;6`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
+
   // DECSC/DECRC — cursor save/restore
   probe(
     "cursor.save-restore",

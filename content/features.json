@@ -465,6 +465,26 @@
     "baseline": "core",
     "sequence": "ESC 7 / ESC 8"
   },
+  "cursor.ansi-save": {
+    "name": "ANSI save cursor (CSI s)",
+    "slug": "ansi-save-cursor",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["xterm-extensions"],
+    "body": "ANSI save cursor (<code>CSI s</code>, i.e. <code>ESC [ s</code>) saves the current cursor position. This is the SCO/ANSI variant of cursor save and is distinct from DECSC (<code>ESC 7</code>): the ANSI form only saves the cursor position (row, column), while DECSC additionally saves character attributes, the active character set, and origin mode.\n\nThe sequence collides with DECSLRM (Set Left/Right Margins, also <code>CSI Pl ; Pr s</code>) — when DECLRMM (mode 69) is enabled, terminals interpret <code>CSI s</code> with parameters as DECSLRM and the parameter-less form as save cursor. Modern xterm-derived terminals all implement this disambiguation, but some legacy terminals may treat <code>CSI s</code> only as DECSLRM.",
+    "probe": "Position cursor at (3,5), send <code>\\x1b[s</code> (CSI s), move to (10,10), send <code>\\x1b[u</code> (CSI u) to restore, verify cursor is back at (3,5).",
+    "baseline": "modern",
+    "sequence": "CSI s"
+  },
+  "cursor.ansi-restore": {
+    "name": "ANSI restore cursor (CSI u)",
+    "slug": "ansi-restore-cursor",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["xterm-extensions"],
+    "body": "ANSI restore cursor (<code>CSI u</code>, i.e. <code>ESC [ u</code>) restores the cursor position previously saved with ANSI save cursor (<code>CSI s</code>). This is the SCO/ANSI variant of cursor restore and is distinct from DECRC (<code>ESC 8</code>): the ANSI form only restores cursor position, while DECRC also restores character attributes, character set, and origin mode.\n\nNote that <code>CSI u</code> is also used by the Kitty keyboard protocol as a key event reporting sequence (with parameters and a different context). When sent as input from terminal to application it's a key report; when sent as output from application to terminal it's a cursor restore. Most xterm-derived terminals implement both meanings unambiguously based on direction.",
+    "probe": "Position cursor at (3,5), send <code>\\x1b[s</code> to save, move to (10,10), send <code>\\x1b[u</code> (CSI u) to restore, verify cursor returned to (3,5).",
+    "baseline": "modern",
+    "sequence": "CSI u"
+  },
   "cursor.reverse-wrap": {
     "name": "Reverse Wrap (Mode 45)",
     "slug": "reverse-wrap-45",
@@ -704,6 +724,138 @@
     "baseline": "modern",
     "sequence": "ESC [ N b"
   },
+  "editing.sl": {
+    "name": "SL — shift left (CSI Ps SP @)",
+    "slug": "sl-shift-left",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["xterm-extensions"],
+    "body": "SL (Shift Left) horizontally scrolls the display contents left by N columns within the current scroll region. The sequence is <code>ESC [ Ps SP @</code> — note the literal space character before <code>@</code>, which distinguishes SL from ICH (<code>ESC [ Ps @</code>). Default Ps=1.\n\nColumns shifted off the left edge are discarded; blank columns are inserted at the right edge. SL is the horizontal counterpart of SU (Scroll Up) and is rarely used in modern TUI applications — most full-screen apps redraw their content rather than rely on terminal-side horizontal scrolling. Some xterm-derived terminals implement it for compatibility with applications that drive horizontal panning displays. Originally specified in ECMA-48 alongside SU/SD but not implemented by all terminals.",
+    "probe": "Write \"ABCDEFGH\" on row 1, send <code>\\x1b[2 @</code> (SL 2), verify the sequence is consumed without leaving literal characters on screen. Most headless backends don't implement column shifts, so verification is partial.",
+    "probeStatus": "partial",
+    "baseline": "rich",
+    "sequence": "CSI Ps SP @"
+  },
+  "editing.sr": {
+    "name": "SR — shift right (CSI Ps SP A)",
+    "slug": "sr-shift-right",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["xterm-extensions"],
+    "body": "SR (Shift Right) horizontally scrolls the display contents right by N columns within the current scroll region. The sequence is <code>ESC [ Ps SP A</code> — note the literal space character before <code>A</code>, which distinguishes SR from CUU (<code>ESC [ Ps A</code>). Default Ps=1.\n\nColumns shifted off the right edge are discarded; blank columns are inserted at the left edge. SR is the horizontal counterpart of SD (Scroll Down) and the inverse of SL (Shift Left). Like SL, it's rarely used in modern terminal applications and many emulators either don't implement it or treat it as a no-op. Specified in ECMA-48 alongside SU/SD/SL.",
+    "probe": "Write \"ABCDEFGH\" on row 1, send <code>\\x1b[2 A</code> (SR 2), verify the sequence is consumed without leaving literal characters on screen. Most headless backends don't implement column shifts, so verification is partial.",
+    "probeStatus": "partial",
+    "baseline": "rich",
+    "sequence": "CSI Ps SP A"
+  },
+  "editing.decic": {
+    "name": "DECIC — insert columns (CSI Ps ' })",
+    "slug": "decic-insert-columns",
+    "url": "https://vt100.net/docs/vt510-rm/DECIC.html",
+    "tags": ["xterm-extensions"],
+    "body": "DECIC (DEC Insert Column) inserts N blank columns at the cursor's column position, shifting all content to the right of the cursor further right. The sequence is <code>ESC [ Ps ' }</code> — note the apostrophe (intermediate) before <code>}</code>. Default Ps=1.\n\nColumns shifted past the right margin are discarded. DECIC is the horizontal/column counterpart of IL (Insert Lines): IL inserts blank rows by shifting content down, DECIC inserts blank columns by shifting content right. It only operates on cells within the current scroll region (top/bottom margins) and the current left/right margin region if DECLRMM (mode 69) is enabled. Originally a VT420 feature, supported by xterm and some other modern terminals but not universally implemented.",
+    "probe": "Write content on multiple rows, position cursor in the middle, send <code>\\x1b[2'}</code> (DECIC 2), verify the sequence is consumed without leaving literal characters on screen. Most headless backends don't implement column inserts, so verification is partial.",
+    "probeStatus": "partial",
+    "baseline": "rich",
+    "sequence": "CSI Ps ' }"
+  },
+  "editing.decdc": {
+    "name": "DECDC — delete columns (CSI Ps ' ~)",
+    "slug": "decdc-delete-columns",
+    "url": "https://vt100.net/docs/vt510-rm/DECDC.html",
+    "tags": ["xterm-extensions"],
+    "body": "DECDC (DEC Delete Column) deletes N columns at the cursor's column position, shifting all content to the right of the cursor further left. The sequence is <code>ESC [ Ps ' ~</code> — note the apostrophe (intermediate) before <code>~</code>. Default Ps=1.\n\nBlank columns are inserted at the right margin to fill the vacated space. DECDC is the horizontal counterpart of DL (Delete Lines) and the inverse of DECIC (Insert Column). It only operates within the current scroll region's vertical bounds, and within the left/right margin bounds when DECLRMM (mode 69) is enabled. Originally a VT420 feature, supported by xterm but rarely used in practice — most TUI applications redraw their content rather than use column-based editing.",
+    "probe": "Write content on multiple rows, position cursor in the middle, send <code>\\x1b[2'~</code> (DECDC 2), verify the sequence is consumed without leaving literal characters on screen. Most headless backends don't implement column deletes, so verification is partial.",
+    "probeStatus": "partial",
+    "baseline": "rich",
+    "sequence": "CSI Ps ' ~"
+  },
+  "editing.decfra": {
+    "name": "DECFRA — fill rectangular area",
+    "slug": "decfra-fill-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECFRA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECFRA (<code>CSI Pc ; Pt ; Pl ; Pb ; Pr $ x</code>) fills a rectangular area with character <code>Pc</code> from rows <code>Pt</code> through <code>Pb</code> and columns <code>Pl</code> through <code>Pr</code>. Introduced on the DEC VT420 in 1990 for form-fill applications and spreadsheets that needed to paint rectangular regions of the screen — drawing dividers, padding fields, or clearing a region with a fill character — without touching cells outside the rectangle. xterm and mintty implement DECFRA; nearly every other modern terminal skips it. The character must be in the printable ASCII range or DEC supplemental graphic range.",
+    "probe": "Send <code>\\x1b[88;1;1;3;5$x</code> (fill rows 1-3, cols 1-5 with 'X'), verify cells in the rectangle contain 'X'.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pc ; Pt ; Pl ; Pb ; Pr $ x"
+  },
+  "editing.decera": {
+    "name": "DECERA — erase rectangular area",
+    "slug": "decera-erase-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECERA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECERA (<code>CSI Pt ; Pl ; Pb ; Pr $ z</code>) erases a rectangular region from rows <code>Pt</code>-<code>Pb</code>, columns <code>Pl</code>-<code>Pr</code>, replacing each cell with a space and the current SGR background. Unlike a global ED, DECERA leaves protected characters (set via DECSCA) untouched, making it safe inside form-fill applications that have static labels alongside editable fields. Companion to DECFRA. Another VT420-era feature surviving mostly in xterm and mintty.",
+    "probe": "Write text across multiple rows, send <code>\\x1b[1;1;3;5$z</code> (erase rows 1-3, cols 1-5), verify cells in the rectangle are blank.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ z"
+  },
+  "editing.decsera": {
+    "name": "DECSERA — selective erase rectangular area",
+    "slug": "decsera-selective-erase-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECSERA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECSERA (<code>CSI Pt ; Pl ; Pb ; Pr $ {</code>) is the selective-erase variant of DECERA: it erases unprotected characters within the rectangle but leaves any cell marked with the DECSCA character protection attribute intact. This is the rectangular companion to DECSED (selective erase in display). On VT420-era hardware, form designers used DECSCA to protect field labels and DECSERA to clear input fields between records without disturbing the form structure.",
+    "probe": "Write text across multiple rows, send <code>\\x1b[1;1;3;5${</code> (selective erase rows 1-3, cols 1-5), verify the sequence is consumed without the literal characters appearing.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ {"
+  },
+  "editing.deccra": {
+    "name": "DECCRA — copy rectangular area",
+    "slug": "deccra-copy-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECCRA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECCRA (<code>CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v</code>) copies a rectangular area from one location to another. The source rectangle is <code>Pts</code>;<code>Pls</code>-<code>Pbs</code>;<code>Prs</code> on page <code>Pps</code>; the destination's top-left is <code>Ptd</code>;<code>Pld</code>. The most complex of the VT420 rectangle operations: cells are copied including their SGR attributes, source and destination may overlap (the result is as if the source were captured first), and the operation can cross page boundaries on terminals that implement multi-page memory. xterm implements all of this. Almost nothing else does.",
+    "probe": "Write text in a region, send <code>\\x1b[1;1;2;5;1;5;10$v</code> (copy rows 1-2 cols 1-5 to row 5 col 10), verify the sequence is consumed.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v"
+  },
+  "editing.deccara": {
+    "name": "DECCARA — change attrs in rectangle",
+    "slug": "deccara-change-attrs-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECCARA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECCARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ r</code>) changes the SGR attributes of every cell in a rectangular region without touching the characters themselves. The <code>Ps</code> parameters are SGR codes (1=bold, 4=underline, 7=inverse, etc.), accumulated and applied to the rectangle. Whether DECCARA operates on a true rectangle or on the stream of cells between the corners depends on DECSACE. Used by VT420-era forms to highlight an entire input field, error message, or table cell without rewriting its contents.",
+    "probe": "Write text, send <code>\\x1b[1;1;3;5;7$r</code> (apply inverse to rows 1-3 cols 1-5), verify the sequence is consumed.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ r"
+  },
+  "editing.decrara": {
+    "name": "DECRARA — reverse attrs in rectangle",
+    "slug": "decrara-reverse-attrs-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECRARA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECRARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ t</code>) toggles the listed SGR attributes within a rectangular region. Each cell flips the listed bits — bold cells become non-bold, non-bold cells become bold, and so on. Like DECCARA, it leaves the characters alone and obeys DECSACE to operate on a rectangle or a stream. VT420-era applications used DECRARA to flash highlight a field on validation errors or to invert a selected row in a list.",
+    "probe": "Write text, send <code>\\x1b[1;1;3;5;7$t</code> (toggle inverse on rows 1-3 cols 1-5), verify the sequence is consumed.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ t"
+  },
+  "editing.decsace": {
+    "name": "DECSACE — select attribute-change extent",
+    "slug": "decsace-select-attribute-change-extent",
+    "url": "https://vt100.net/docs/vt510-rm/DECSACE.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECSACE (<code>CSI Ps * x</code>) selects how DECCARA and DECRARA interpret their coordinates. <code>Ps</code>=1 (the default) treats the corners as endpoints of a stream of cells in scan order, so the operation affects the partial rows at the top and bottom plus every cell on the rows between. <code>Ps</code>=2 treats the coordinates as a true rectangle, affecting only the cells inside the box. Modern users almost always want the rectangle interpretation; the stream default is a relic of how DEC originally specified the operations.",
+    "probe": "Send <code>\\x1b[2*x</code> (select rectangle extent), verify the sequence is consumed.",
+    "probeStatus": "partial",
+    "sequence": "CSI Ps * x"
+  },
+  "editing.decrqcra": {
+    "name": "DECRQCRA — checksum rectangular area",
+    "slug": "decrqcra-checksum-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECRQCRA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECRQCRA (<code>CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y</code>) computes a 16-bit checksum of the cells in a rectangular region and reports it back to the host as a DCS response (<code>DCS Pid ! ~ checksum ST</code>). <code>Pid</code> is a request identifier echoed in the response; <code>Ppid</code> is the page number. The checksum hashes both characters and SGR attributes, which is why it's used by DEC's terminal conformance test suites — a test script can paint a known pattern, ask the terminal for the checksum, and compare against an expected value to confirm the terminal rendered the pattern correctly. xterm still implements this. Almost no application has ever used it outside of test suites.",
+    "probe": "Send <code>\\x1b[1;1;1;1;1;1*y</code> (checksum cell 1,1), verify the sequence is consumed without literal output.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y"
+  },
   "input.modify-other-keys": {
     "name": "modifyOtherKeys",
     "slug": "modify-other-keys",
@@ -908,6 +1060,72 @@
     "probe": "Write 80+ characters, verify text wraps to the next row.",
     "baseline": "core",
     "sequence": "ESC [ ? 7 h"
+  },
+  "modes.altscreen-47": {
+    "name": "Alt screen legacy (?47)",
+    "slug": "decset-47-alt-screen-legacy",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
+    "tags": ["xterm-extensions", "dec-private-modes"],
+    "group": "alt-screen",
+    "body": "DECSET 47 is the original alternate screen buffer mode. The sequence is <code>ESC [ ? 47 h</code> to enter and <code>ESC [ ? 47 l</code> to exit. Unlike the modern <code>?1049</code> mode, ?47 does not save or restore the cursor position, and switching back does not clear the alt screen on the next entry.\n\nThis legacy mode predates the unified <code>?1049</code> sequence (which combines DECSC + ?47 + clear). Modern applications should use <code>?1049</code> instead — ?47 is preserved for backwards compatibility with older xterm clients and historical TUI software. Most terminal emulators still implement it, though some treat it as an alias for <code>?1047</code>.",
+    "probe": "Send <code>\\x1b[?47h</code> (DECSET 47), verify <code>altScreen</code> mode is active, then exit with <code>\\x1b[?47l</code>.",
+    "baseline": "modern",
+    "sequence": "CSI ? 47 h/l"
+  },
+  "modes.altscreen-1047": {
+    "name": "Alt screen clear-on-enter (?1047)",
+    "slug": "decset-1047-alt-screen-clear",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
+    "tags": ["xterm-extensions", "dec-private-modes"],
+    "group": "alt-screen",
+    "body": "DECSET 1047 enters the alternate screen buffer and clears it on entry. The sequence is <code>ESC [ ? 1047 h</code> to enter, <code>ESC [ ? 1047 l</code> to exit (which also clears the alt screen before switching back). Unlike <code>?1049</code>, mode 1047 does not save or restore the cursor position — applications using ?1047 must combine it with explicit DECSC/DECRC (<code>ESC 7</code> / <code>ESC 8</code>) if they want cursor preservation.\n\nMode 1047 is one of the building blocks that mode 1049 composes (along with cursor save and clear). Most terminal emulators implement all three (?47, ?1047, ?1049) so legacy software keeps working alongside modern apps.",
+    "probe": "Send <code>\\x1b[?1047h</code>, verify <code>altScreen</code> mode is active.",
+    "baseline": "modern",
+    "sequence": "CSI ? 1047 h/l"
+  },
+  "modes.altscreen-1048": {
+    "name": "Save/restore cursor (?1048)",
+    "slug": "decset-1048-save-restore-cursor",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
+    "tags": ["xterm-extensions", "dec-private-modes"],
+    "group": "alt-screen",
+    "body": "DECSET 1048 saves the current cursor position and attributes; DECRST 1048 restores them. The sequences are <code>ESC [ ? 1048 h</code> (save) and <code>ESC [ ? 1048 l</code> (restore). Unlike <code>?1049</code>, this mode does not switch to the alternate screen — it only manipulates the cursor save/restore state.\n\nMode 1048 is one of the three ingredients that <code>?1049</code> combines (cursor save + ?1047 alt screen + clear). Applications that need to checkpoint the cursor without entering the alt screen can use ?1048 directly, or use the older DECSC/DECRC (<code>ESC 7</code> / <code>ESC 8</code>) which performs the same operation.",
+    "probe": "Position cursor, send <code>\\x1b[?1048h</code> (save), move elsewhere, send <code>\\x1b[?1048l</code> (restore), verify cursor returned to saved position.",
+    "baseline": "modern",
+    "sequence": "CSI ? 1048 h/l"
+  },
+  "modes.alt-scroll-1007": {
+    "name": "Alt-scroll mouse wheel (?1007)",
+    "slug": "decset-1007-alt-scroll",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["xterm-extensions"],
+    "body": "DECSET 1007 enables alternate scroll mode: when the alternate screen buffer is active, mouse wheel events are translated into cursor up/down key presses (or the equivalent application keypad sequences) instead of being reported as mouse events. The sequence is <code>ESC [ ? 1007 h</code> to enable, <code>ESC [ ? 1007 l</code> to disable.\n\nThis lets users scroll TUI applications that don't natively handle mouse events (like <code>less</code>, <code>man</code>, or <code>vim</code> in default mode) by simply using the mouse wheel — the terminal converts the wheel motion into the same arrow-key sequences a keyboard press would produce. When disabled, mouse wheel events in the alt screen are sent as proper mouse reports instead.",
+    "probe": "Send <code>\\x1b[?1007h</code> (DECSET 1007), verify the sequence is consumed without breaking subsequent terminal output. Headless backends rarely track this mode, so verification is partial.",
+    "probeStatus": "partial",
+    "baseline": "modern",
+    "sequence": "CSI ? 1007 h/l"
+  },
+  "modes.utf8-mouse-1005": {
+    "name": "UTF-8 mouse mode (?1005)",
+    "slug": "decset-1005-utf8-mouse",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
+    "tags": ["xterm-extensions"],
+    "body": "DECSET 1005 enables UTF-8 mouse encoding, an early extension that worked around the 223-column limit of legacy X10 mouse reporting by encoding coordinates as UTF-8 multibyte sequences. The sequence is <code>ESC [ ? 1005 h</code>. Mouse reports use the same format as X10 (<code>ESC [ M</code> + button + col + row) but each coordinate byte may be a multibyte UTF-8 character, supporting columns up to 2015.\n\nMode 1005 sits between the legacy X10 encoding (<code>?1000</code>) and the modern SGR encoding (<code>?1006</code>). It was a transitional standard and is rarely used today — applications and terminals have largely standardized on SGR mouse mode, which avoids the parsing ambiguities of UTF-8 (some bytes can collide with control characters or get corrupted by non-UTF-8-aware middleware). Still implemented by xterm and a few derivatives for backwards compatibility.",
+    "probe": "Send <code>\\x1b[?1005h</code> (DECSET 1005), verify the sequence is consumed without breaking subsequent terminal output. Headless backends rarely track this mode, so verification is partial.",
+    "probeStatus": "partial",
+    "baseline": "rich",
+    "sequence": "CSI ? 1005 h/l"
+  },
+  "modes.deccolm": {
+    "name": "DECCOLM 80/132 column switch (?3)",
+    "slug": "deccolm-80-132-column",
+    "url": "https://vt100.net/docs/vt510-rm/DECCOLM.html",
+    "tags": ["vt100", "dec-private-modes"],
+    "body": "DECCOLM (DEC Column Mode) switches the terminal between 80- and 132-column display widths. The sequences are <code>ESC [ ? 3 h</code> for 132 columns and <code>ESC [ ? 3 l</code> for 80 columns. On real VT100 hardware, this changed the dot clock and reprogrammed the CRT to display either 80 or 132 character cells per row, and clearing the screen as a side effect.\n\nDECCOLM is a historical VT100/VT220 feature from the era when terminals had fixed character cell sizes and switching column count required physically reprogramming the display. Modern terminal emulators with resizable windows have made it largely obsolete — most ignore DECCOLM unless explicitly enabled (DECSET 40 must be set first to allow column changes). Some emulators like xterm still implement it correctly for compatibility with applications that drive serial terminals or DEC hardware emulators.",
+    "probe": "Send <code>\\x1b[?3h</code> (DECCOLM 132), verify the sequence is consumed without breaking subsequent output. Most modern emulators ignore the column change, so verification is partial.",
+    "probeStatus": "partial",
+    "baseline": "legacy",
+    "sequence": "CSI ? 3 h/l"
   },
   "scrollback.accumulate": {
     "name": "Scrollback accumulates",
@@ -1633,6 +1851,80 @@
     "probe": "Manual verification required — no automated probe available.",
     "probeStatus": "manual"
   },
+  "device.xtwinops-14": {
+    "name": "Report window size in pixels (CSI 14 t)",
+    "slug": "xtwinops-14-window-size-pixels",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 14 queries the terminal window size in pixels. The query is <code>CSI 14 t</code>; the response is <code>CSI 4 ; height ; width t</code>. Combined with the cell size query (CSI 16 t) or the text area size in characters (CSI 18 t), applications can compute pixel-accurate dimensions for image protocols (sixel, iTerm2 inline images, kitty graphics) without guessing.\n\nXTWINOPS is the umbrella spec for window operations defined by xterm. The query subset (14, 16, 18, 20, 21) is broadly considered safe — it only reports state and cannot be used to reposition or resize windows. The mutation subset (1-9) is disabled by default in many terminals because it allows remote escape sequences to manipulate the user's window. terminfo.dev only tracks the query subset.",
+    "probe": "Send <code>\\x1b[14t</code>, verify response matches <code>CSI 4 ; H ; W t</code>.",
+    "sequence": "ESC [ 14 t"
+  },
+  "device.xtwinops-16": {
+    "name": "Report cell size in pixels (CSI 16 t)",
+    "slug": "xtwinops-16-cell-size-pixels",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 16 queries the dimensions of a single character cell in pixels. The query is <code>CSI 16 t</code>; the response is <code>CSI 6 ; height ; width t</code>. This is the canonical xterm-style equivalent of OSC 1337 ; ReportCellSize and is essential for any protocol that needs to render images at a precise cell-aligned size.\n\nUnlike OSC 1337 (an iTerm2 extension), CSI 16 t is part of the broader XTWINOPS spec and is supported by xterm, Ghostty, Kitty, WezTerm, foot, Contour, and many others. Applications should prefer this query when targeting modern terminals that follow xterm conventions.",
+    "probe": "Send <code>\\x1b[16t</code>, verify response matches <code>CSI 6 ; H ; W t</code>.",
+    "sequence": "ESC [ 16 t"
+  },
+  "device.xtwinops-18": {
+    "name": "Report text area size in chars (CSI 18 t)",
+    "slug": "xtwinops-18-text-area-chars",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "modern",
+    "body": "XTWINOPS subcode 18 queries the dimensions of the terminal text area in character cells. The query is <code>CSI 18 t</code>; the response is <code>CSI 8 ; rows ; cols t</code>. This is functionally equivalent to TIOCGWINSZ and the COLUMNS/LINES environment variables, but works in-band over the TTY without requiring ioctl access — useful for SSH sessions, multiplexers, and any context where the local environment may not match the visible terminal.\n\nThis is one of the most widely supported XTWINOPS subcodes because it answers a fundamental question (how big is the terminal?) without exposing pixel dimensions or window manipulation. Many shell scripts and TUI frameworks use it as a fallback when ioctl is unavailable.",
+    "probe": "Send <code>\\x1b[18t</code>, verify response matches <code>CSI 8 ; rows ; cols t</code>.",
+    "sequence": "ESC [ 18 t"
+  },
+  "device.xtwinops-20": {
+    "name": "Report icon label (CSI 20 t)",
+    "slug": "xtwinops-20-icon-label",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 20 queries the current icon label (the short title shown when the window is minimized to the taskbar/dock). The query is <code>CSI 20 t</code>; the response is <code>OSC L label ST</code>. Applications that previously set the icon label via OSC 1 can use this to read it back.\n\nIcon label is conceptually distinct from window title (queried via CSI 21 t / set via OSC 2). Many modern terminals collapse the two into a single string, in which case CSI 20 t and CSI 21 t return the same value. Some terminals refuse to report titles for security reasons (a hostile process running in your terminal could otherwise exfiltrate any title set by another process).",
+    "probe": "Send <code>\\x1b[20t</code>, verify the terminal sends an <code>OSC L</code> response. Headless emulators that don't store icon labels return <code>partial</code>.",
+    "probeStatus": "partial",
+    "sequence": "ESC [ 20 t"
+  },
+  "device.xtwinops-21": {
+    "name": "Report window title (CSI 21 t)",
+    "slug": "xtwinops-21-window-title",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 21 queries the current window title. The query is <code>CSI 21 t</code>; the response is <code>OSC l title ST</code>. Applications use this to save the current title before overwriting it (so they can restore it on exit) — historically the only reliable way before XTPUSH/POP TITLE (CSI 22/23 t) was added.\n\nMany modern terminals refuse to report window titles by default for security reasons. A hostile escape sequence injected into the terminal could otherwise read a title set by a different application and exfiltrate it. xterm controls this via the <code>allowWindowOps</code> resource. Applications that need title save/restore should prefer the title stack (CSI 22/23 t) which works without exposing the title to other processes.",
+    "probe": "Send <code>\\x1b[21t</code>, verify the terminal sends an <code>OSC l</code> response. Many real terminals refuse to report titles for security; headless emulators that don't store titles return <code>partial</code>.",
+    "probeStatus": "partial",
+    "sequence": "ESC [ 21 t"
+  },
+  "device.xtwinops-22": {
+    "name": "Push title/icon stack (CSI 22 ; 0 t)",
+    "slug": "xtwinops-22-push-title",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 22 pushes the current window title and icon label onto an internal stack. The sequence is <code>CSI 22 ; 0 t</code> (push both), <code>CSI 22 ; 1 t</code> (push icon only), or <code>CSI 22 ; 2 t</code> (push title only). XTWINOPS 23 pops the matching stack.\n\nThe title stack solves a longstanding ergonomics problem: applications that change the terminal title (vim, ssh, tmux) want to restore it on exit, but the only way to do that previously was to query the current title with CSI 21 t — which many terminals refuse for security reasons. Push/pop avoids exposing the title to the application: the terminal saves it internally and the application can restore it without ever seeing the value. Adopted by xterm, Ghostty, Kitty, WezTerm, foot, and others.",
+    "probe": "Send <code>\\x1b[22;0t</code>, verify the sequence is consumed without crashing. Headless emulators verify the stack push happened internally where possible.",
+    "probeStatus": "partial",
+    "sequence": "ESC [ 22 ; 0 t"
+  },
+  "device.xtwinops-23": {
+    "name": "Pop title/icon stack (CSI 23 ; 0 t)",
+    "slug": "xtwinops-23-pop-title",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 23 pops the most recent title and icon label from the internal stack pushed by CSI 22 t. The sequence is <code>CSI 23 ; 0 t</code> (pop both), <code>CSI 23 ; 1 t</code> (pop icon only), or <code>CSI 23 ; 2 t</code> (pop title only). Always paired with a matching CSI 22 t push earlier in the session.\n\nUsed by long-running TUI applications (vim, tmux, ssh) to restore the original window title on exit. Push/pop is preferred over query/restore (CSI 21 t followed by OSC 2) because it doesn't expose the saved title to user-space processes — many modern terminals refuse to report titles for security but happily maintain a private title stack.",
+    "probe": "Send <code>\\x1b[22;0t</code> followed by <code>\\x1b[23;0t</code>, verify both sequences are consumed and the terminal stays responsive.",
+    "probeStatus": "partial",
+    "sequence": "ESC [ 23 ; 0 t"
+  },
   "extensions.osc1337-cellsize": {
     "name": "iTerm2 Cell Size Reporting (OSC 1337)",
     "slug": "osc1337-cellsize",
@@ -1696,6 +1988,66 @@
     "body": "Private mode 2031 enables unsolicited notifications when the terminal's color scheme changes between dark and light. When enabled, the terminal sends <code>CSI ? 997 ; Ps n</code> (DECDSR) whenever the scheme changes, where Ps=1 for dark and Ps=2 for light.\n\nApplications can also synchronously query the current scheme via <code>CSI ? 997 n</code> (DECDSR 997). This solves a longstanding problem for TUI applications that need to adapt their color palette to the terminal's dark/light mode. Supported by iTerm2 (3.6.6+), tmux 3.6, Contour, foot, and kitty.",
     "probe": "Check DECRPM for mode 2031. Fallback: query current scheme via <code>DECDSR 997</code> and check for response.",
     "baseline": "modern"
+  },
+  "modes.xtpushsgr": {
+    "name": "XTPUSHSGR — push SGR stack (CSI # {)",
+    "slug": "xtpushsgr-push-sgr",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTPUSHSGR pushes the current SGR (Select Graphic Rendition) state onto an internal stack. The sequence is <code>CSI # {</code> (or <code>CSI Pt # {</code> with a parameter mask to push only specific attributes). XTPOPSGR (<code>CSI # }</code>) pops the most recent state.\n\nThis solves a recurring TUI problem: a function that wants to set its own SGR state, render some output, and restore the caller's state. Without push/pop, the function would need to query SGR via DECRQSS, save the result, and write it back — far more error-prone and slower. SGR push/pop also enables nested attribute scopes (e.g., bold inside an italic block) without losing state.\n\nIntroduced by xterm in patch #357 (2018), now adopted by Ghostty, foot, Contour, and other modern terminals. Often paired with XTPUSHCOLORS (<code>CSI # P</code>) for a complete \"push graphics state\" idiom.",
+    "probe": "Send <code>\\x1b[#{</code> (XTPUSHSGR), verify the sequence is consumed and the terminal stays responsive.",
+    "sequence": "ESC [ # {"
+  },
+  "modes.xtpopsgr": {
+    "name": "XTPOPSGR — pop SGR stack (CSI # })",
+    "slug": "xtpopsgr-pop-sgr",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTPOPSGR restores the SGR (Select Graphic Rendition) state most recently pushed by XTPUSHSGR (<code>CSI # {</code>). The sequence is <code>CSI # }</code>. Always paired with a matching push earlier in the same session — pops without a corresponding push are no-ops on most terminals.\n\nThis sequence is the second half of the SGR push/pop pattern that lets TUI code temporarily change attributes without permanently affecting the caller's state. Library authors can wrap subroutines in <code>CSI # {</code> ... <code>CSI # }</code> and trust that the caller's bold/color/underline state survives unchanged. Adopted by xterm, Ghostty, foot, Contour, and others.",
+    "probe": "Send <code>\\x1b[#{</code> followed by <code>\\x1b[#}</code>, verify the sequences are consumed and the terminal stays responsive.",
+    "sequence": "ESC [ # }"
+  },
+  "modes.xtsave": {
+    "name": "XTSAVE — save DEC private modes (CSI ? Pm s)",
+    "slug": "xtsave-save-dec-modes",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions", "dec-private-modes"],
+    "baseline": "rich",
+    "body": "XTSAVE saves one or more DEC private modes onto an internal stack. The sequence is <code>CSI ? Pm s</code> where <code>Pm</code> is a semicolon-separated list of mode numbers. XTRESTORE (<code>CSI ? Pm r</code>) restores the most recent saved values.\n\nThis is the canonical xterm pattern for temporarily changing modes. For example, a TUI that wants to enter mouse-tracking and bracketed-paste during its run can <code>CSI ? 1000 ; 2004 s</code> at startup, then <code>CSI ? 1000 ; 2004 r</code> on exit — the previous values are restored regardless of what the calling shell had configured. Without XTSAVE, applications must query DECRPM for each mode, store the result, and write it back manually.\n\nAdopted by xterm, Ghostty, Kitty, WezTerm, foot, and other modern terminals.",
+    "probe": "Send <code>\\x1b[?7s</code> (save DECAWM), verify the sequence is consumed and the terminal stays responsive.",
+    "sequence": "ESC [ ? Pm s"
+  },
+  "modes.xtrestore": {
+    "name": "XTRESTORE — restore DEC private modes (CSI ? Pm r)",
+    "slug": "xtrestore-restore-dec-modes",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions", "dec-private-modes"],
+    "baseline": "rich",
+    "body": "XTRESTORE restores the most recently saved values for one or more DEC private modes. The sequence is <code>CSI ? Pm r</code> where <code>Pm</code> is a semicolon-separated list of mode numbers. Always paired with a matching XTSAVE (<code>CSI ? Pm s</code>) earlier in the session.\n\nApplications use this to clean up mode changes on exit without needing to remember (or query) the original values. Note that <code>CSI Pt ; Pb r</code> without the <code>?</code> intermediate is DECSTBM (set top/bottom margin) — the question mark distinguishes the private-mode restore. Adopted by xterm, Ghostty, Kitty, WezTerm, foot, and other modern terminals.",
+    "probe": "Send <code>\\x1b[?7s</code> followed by <code>\\x1b[?7r</code>, verify the sequences are consumed and the terminal stays responsive.",
+    "sequence": "ESC [ ? Pm r"
+  },
+  "modes.xtpushcolors": {
+    "name": "Push color palette (CSI # P)",
+    "slug": "xtpushcolors-push-palette",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTPUSHCOLORS pushes the current color palette (the 256-color ANSI palette plus the default fg/bg) onto an internal stack. The sequence is <code>CSI # P</code> (or <code>CSI Pi # P</code> to push at a specific stack index). XTPOPCOLORS (<code>CSI # Q</code>) pops the most recent palette; XTREPORTCOLORS (<code>CSI # R</code>) reports the current stack depth.\n\nApplications use this when they want to install a custom palette (e.g., a specific set of OSC 4 colors for syntax highlighting) without permanently overriding the user's theme. Push the current palette, install the new one, do the work, pop on exit. Without XTPUSHCOLORS, applications need to query every palette slot via OSC 4 ; n ; ? (slow and not universally supported) or simply leave the user's terminal in a modified state.\n\nIntroduced by xterm in patch #357, paired with XTPUSHSGR. Adopted by Ghostty, foot, Contour, and other modern terminals.",
+    "probe": "Send <code>\\x1b[#P</code> (XTPUSHCOLORS), verify the sequence is consumed and the terminal stays responsive.",
+    "sequence": "ESC [ # P"
+  },
+  "modes.xtpopcolors": {
+    "name": "Pop color palette (CSI # Q)",
+    "slug": "xtpopcolors-pop-palette",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "XTPOPCOLORS restores the color palette most recently pushed by XTPUSHCOLORS (<code>CSI # P</code>). The sequence is <code>CSI # Q</code>. Always paired with a matching push earlier in the session — pops without a corresponding push are no-ops on most terminals.\n\nUsed by TUI applications that install a custom palette during their run and want to restore the user's theme on exit. The push/pop pattern avoids needing to query every palette slot via OSC 4 ; n ; ? and write each one back manually. Adopted by xterm (patch #357), Ghostty, foot, Contour, and other modern terminals.",
+    "probe": "Send <code>\\x1b[#P</code> followed by <code>\\x1b[#Q</code>, verify the sequences are consumed and the terminal stays responsive.",
+    "sequence": "ESC [ # Q"
   },
   "input.modify-other-keys-3": {
     "name": "modifyOtherKeys mode 3",
