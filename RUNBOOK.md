@@ -206,11 +206,35 @@ Same as Periodic Refresh step 9, plus:
 - [ ] Schedule next full rebuild (quarterly recommended)
 
 
+## Content Manifest
+
+The **content manifest** (`scripts/sitefile.ts`) is the single source of truth for what
+terminfo.dev should contain: upstream sources, tracked terminals, freshness SLAs, and explicit
+ignores. The **lockfile** (`scripts/sitefile.lock.json`) tracks the current state — when each
+source was last checked, when each terminal was last probed, and how many features were found.
+
+```bash
+bun sitefile                    # Regenerate lockfile from current probe data
+bun sitefile --check            # Check freshness against SLAs
+```
+
+The manifest declares:
+- **27 sources** — formal standards, vendor docs, proposals, release feeds
+- **14 terminals** — all active (non-historical) terminals with probe methods
+- **Freshness SLAs** — probe data: 30 days, analysis: 30 days, metadata: 90 days
+- **Explicit ignores** — items intentionally excluded (e.g., Tektronix 4014 mode)
+
+When starting a refresh cycle, run `bun sitefile --check` to see what's stale.
+When finishing a refresh cycle, run `bun sitefile` to update the lockfile.
+
+
 ## Quick Reference
 
 | Task | Command |
 |------|---------|
 | Validate content | `bun scripts/validate.ts` |
+| Regenerate manifest lockfile | `bun sitefile` |
+| Check freshness SLAs | `bun sitefile --check` |
 | Run all headless probes | `bun terminfo probe termless --all` |
 | Run all app probes | `bun terminfo probe app --all` |
 | Run mux probes | `bun terminfo probe mux --all` |
@@ -224,11 +248,15 @@ Same as Periodic Refresh step 9, plus:
 
 ## Content Sources
 
-These are the authoritative references for terminal features. Check them during audits.
+All upstream sources are declared in `scripts/sitefile.ts` with freshness intervals and
+feature family mappings. The table below is a quick reference; the manifest is authoritative.
 
 | Source | Type | URL |
 |--------|------|-----|
 | ECMA-48 | Formal standard | https://ecma-international.org/publications-and-standards/standards/ecma-48/ |
+| UAX #11 East Asian Width | Formal standard | https://unicode.org/reports/tr11/ |
+| VT100 User Guide | Hardware spec | https://vt100.net/docs/vt100-ug/ |
+| VT220 Reference Manual | Hardware spec | https://vt100.net/docs/vt220-rm/contents.html |
 | VT510 Reference Manual | Hardware spec | https://vt100.net/docs/vt510-rm/contents.html |
 | xterm ctlseqs | De facto standard | https://invisible-island.net/xterm/ctlseqs/ctlseqs.html |
 | Kitty protocols | Vendor extension | https://sw.kovidgoyal.net/kitty/protocol-extensions/ |
@@ -237,8 +265,13 @@ These are the authoritative references for terminal features. Check them during 
 | mintty control sequences | Vendor extension | https://github.com/mintty/mintty/wiki/CtrlSeqs |
 | foot ctlseqs | Vendor extension | https://codeberg.org/dnkl/foot/src/branch/master/doc/foot-ctlseqs.7.scd |
 | VTE source (osc parser) | Implementation ref | https://gitlab.gnome.org/GNOME/vte |
+| WezTerm docs | Vendor extension | https://wezfurlong.org/wezterm/ |
 | Ghostty source (osc.zig) | Implementation ref | https://github.com/ghostty-org/ghostty |
 | VS Code shell integration | Vendor extension | https://learn.microsoft.com/en-us/windows/terminal/tutorials/shell-integration |
 | rxvt-unicode docs | Vendor extension | https://pod.tst.eu/http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.pod |
 | FinalTerm semantic prompts | Proposal | https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md |
 | OSC 8 hyperlinks | Proposal | https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda |
+| CSI u / fixterms | Proposal | http://www.leonerd.org.uk/hacks/fixterms/ |
+| Mode 2026 sync output | Proposal | https://gist.github.com/christianparpart/d8a62cc1ab659194571ec44c5a4eba40 |
+| Mode 2031 color scheme | Proposal | https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/color-palette-update-notifications.md |
+| VS Code OSC 633 | Proposal | https://learn.microsoft.com/en-us/windows/terminal/tutorials/shell-integration |
