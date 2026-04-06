@@ -359,7 +359,16 @@ When finishing a refresh cycle, run `bun sitefile` to update the lockfile.
 
 | Task                         | Command                                    |
 | ---------------------------- | ------------------------------------------ |
-| Validate content             | `bun scripts/validate.ts`                  |
+| **Full refresh (all steps)** | `bun run update --full`                    |
+| Check what's stale           | `bun run update --status`                  |
+| Discover new features        | `bun run update --discover`                |
+| Re-probe headless backends   | `bun run update --probe`                   |
+| Validate + build             | `bun run update --validate`                |
+| Sync probeStatus from code   | `bun run sync-probe-status`                |
+| Check terminal releases      | `bun run watch-releases`                   |
+| Run explore queries          | `bun run explore`                          |
+| Triage radar findings        | `bun run radar stats`                      |
+| Validate content             | `bun validate`                             |
 | Regenerate manifest lockfile | `bun sitefile`                             |
 | Check freshness SLAs         | `bun sitefile --check`                     |
 | Run all headless probes      | `bun terminfo probe termless --all`        |

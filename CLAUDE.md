@@ -122,8 +122,18 @@ bun install                 # Install dependencies
 bun run dev                 # Local dev server (VitePress)
 bun run build               # Build static site (250+ pages)
 bun run preview             # Preview built site
-bun run validate            # Check tag consistency, missing fields
-bun sitefile --check        # Check freshness against SLAs
+
+# Periodic refresh (see /terminfo-update skill)
+bun run update --full       # Full refresh: discover → probe → validate → build
+bun run update --status     # Check what's stale
+bun run update --discover   # Run explore + show radar
+bun run update --probe      # Re-probe headless backends
+bun run update --validate   # Validate + build + check 404s
+bun run watch-releases      # Check tracked terminals for new versions
+bun run sync-probe-status   # Derive probeStatus from probe code
+
+# Individual tools
+bun run validate            # Check tag consistency, duplicates, missing fields
 bun run explore             # Run discovery queries (GPT-5.4 + web search → radar.jsonl)
 bun run radar stats         # Triage discovery findings
 bun run candidates list     # Review promoted candidates
