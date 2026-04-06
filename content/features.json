@@ -2339,6 +2339,94 @@
     "probe": "Check whether the TERM_FEATURES environment variable is set in the terminal session.",
     "probeStatus": "partial"
   },
+  "device.xtwinops-14": {
+    "name": "Report window size in pixels (CSI 14 t)",
+    "slug": "xtwinops-14-window-size-pixels",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 14 queries the terminal window size in pixels. The query is <code>CSI 14 t</code>; the response is <code>CSI 4 ; height ; width t</code>. Combined with the cell size query (CSI 16 t) or the text area size in characters (CSI 18 t), applications can compute pixel-accurate dimensions for image protocols (sixel, iTerm2 inline images, kitty graphics) without guessing.\n\nXTWINOPS is the umbrella spec for window operations defined by xterm. The query subset (14, 16, 18, 20, 21) is broadly considered safe — it only reports state and cannot be used to reposition or resize windows. The mutation subset (1-9) is disabled by default in many terminals because it allows remote escape sequences to manipulate the user's window. terminfo.dev only tracks the query subset.",
+    "probe": "Send <code>\\x1b[14t</code>, verify response matches <code>CSI 4 ; H ; W t</code>.",
+    "sequence": "ESC [ 14 t"
+  },
+  "device.xtwinops-16": {
+    "name": "Report cell size in pixels (CSI 16 t)",
+    "slug": "xtwinops-16-cell-size-pixels",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 16 queries the dimensions of a single character cell in pixels. The query is <code>CSI 16 t</code>; the response is <code>CSI 6 ; height ; width t</code>. This is the canonical xterm-style equivalent of OSC 1337 ; ReportCellSize and is essential for any protocol that needs to render images at a precise cell-aligned size.\n\nUnlike OSC 1337 (an iTerm2 extension), CSI 16 t is part of the broader XTWINOPS spec and is supported by xterm, Ghostty, Kitty, WezTerm, foot, Contour, and many others. Applications should prefer this query when targeting modern terminals that follow xterm conventions.",
+    "probe": "Send <code>\\x1b[16t</code>, verify response matches <code>CSI 6 ; H ; W t</code>.",
+    "sequence": "ESC [ 16 t"
+  },
+  "device.xtwinops-18": {
+    "name": "Report text area size in chars (CSI 18 t)",
+    "slug": "xtwinops-18-text-area-chars",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "modern",
+    "body": "XTWINOPS subcode 18 queries the dimensions of the terminal text area in character cells. The query is <code>CSI 18 t</code>; the response is <code>CSI 8 ; rows ; cols t</code>. This is functionally equivalent to TIOCGWINSZ and the COLUMNS/LINES environment variables, but works in-band over the TTY without requiring ioctl access — useful for SSH sessions, multiplexers, and any context where the local environment may not match the visible terminal.\n\nThis is one of the most widely supported XTWINOPS subcodes because it answers a fundamental question (how big is the terminal?) without exposing pixel dimensions or window manipulation. Many shell scripts and TUI frameworks use it as a fallback when ioctl is unavailable.",
+    "probe": "Send <code>\\x1b[18t</code>, verify response matches <code>CSI 8 ; rows ; cols t</code>.",
+    "sequence": "ESC [ 18 t"
+  },
+  "device.xtwinops-20": {
+    "name": "Report icon label (CSI 20 t)",
+    "slug": "xtwinops-20-icon-label",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 20 queries the current icon label (the short title shown when the window is minimized to the taskbar/dock). The query is <code>CSI 20 t</code>; the response is <code>OSC L label ST</code>. Applications that previously set the icon label via OSC 1 can use this to read it back.\n\nIcon label is conceptually distinct from window title (queried via CSI 21 t / set via OSC 2). Many modern terminals collapse the two into a single string, in which case CSI 20 t and CSI 21 t return the same value. Some terminals refuse to report titles for security reasons (a hostile process running in your terminal could otherwise exfiltrate any title set by another process).",
+    "probe": "Send <code>\\x1b[20t</code>, verify the terminal sends an <code>OSC L</code> response. Headless emulators that don't store icon labels return <code>partial</code>.",
+    "probeStatus": "partial",
+    "sequence": "ESC [ 20 t"
+  },
+  "device.xtwinops-21": {
+    "name": "Report window title (CSI 21 t)",
+    "slug": "xtwinops-21-window-title",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 21 queries the current window title. The query is <code>CSI 21 t</code>; the response is <code>OSC l title ST</code>. Applications use this to save the current title before overwriting it (so they can restore it on exit) — historically the only reliable way before XTPUSH/POP TITLE (CSI 22/23 t) was added.\n\nMany modern terminals refuse to report window titles by default for security reasons. A hostile escape sequence injected into the terminal could otherwise read a title set by a different application and exfiltrate it. xterm controls this via the <code>allowWindowOps</code> resource. Applications that need title save/restore should prefer the title stack (CSI 22/23 t) which works without exposing the title to other processes.",
+    "probe": "Send <code>\\x1b[21t</code>, verify the terminal sends an <code>OSC l</code> response. Many real terminals refuse to report titles for security; headless emulators that don't store titles return <code>partial</code>.",
+    "probeStatus": "partial",
+    "sequence": "ESC [ 21 t"
+  },
+  "device.xtwinops-22": {
+    "name": "Push title/icon stack (CSI 22 ; 0 t)",
+    "slug": "xtwinops-22-push-title",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 22 pushes the current window title and icon label onto an internal stack. The sequence is <code>CSI 22 ; 0 t</code> (push both), <code>CSI 22 ; 1 t</code> (push icon only), or <code>CSI 22 ; 2 t</code> (push title only). XTWINOPS 23 pops the matching stack.\n\nThe title stack solves a longstanding ergonomics problem: applications that change the terminal title (vim, ssh, tmux) want to restore it on exit, but the only way to do that previously was to query the current title with CSI 21 t — which many terminals refuse for security reasons. Push/pop avoids exposing the title to the application: the terminal saves it internally and the application can restore it without ever seeing the value. Adopted by xterm, Ghostty, Kitty, WezTerm, foot, and others.",
+    "probe": "Send <code>\\x1b[22;0t</code>, verify the sequence is consumed without crashing. Headless emulators verify the stack push happened internally where possible.",
+    "probeStatus": "partial",
+    "sequence": "ESC [ 22 ; 0 t"
+  },
+  "device.xtwinops-23": {
+    "name": "Pop title/icon stack (CSI 23 ; 0 t)",
+    "slug": "xtwinops-23-pop-title",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "body": "XTWINOPS subcode 23 pops the most recent title and icon label from the internal stack pushed by CSI 22 t. The sequence is <code>CSI 23 ; 0 t</code> (pop both), <code>CSI 23 ; 1 t</code> (pop icon only), or <code>CSI 23 ; 2 t</code> (pop title only). Always paired with a matching CSI 22 t push earlier in the session.\n\nUsed by long-running TUI applications (vim, tmux, ssh) to restore the original window title on exit. Push/pop is preferred over query/restore (CSI 21 t followed by OSC 2) because it doesn't expose the saved title to user-space processes — many modern terminals refuse to report titles for security but happily maintain a private title stack.",
+    "probe": "Send <code>\\x1b[22;0t</code> followed by <code>\\x1b[23;0t</code>, verify both sequences are consumed and the terminal stays responsive.",
+    "probeStatus": "partial",
+    "sequence": "ESC [ 23 ; 0 t"
+  },
   "device.env-term": {
     "name": "TERM env variable",
     "slug": "env-term",
@@ -2516,6 +2604,80 @@
     "body": "Private mode 2031 enables unsolicited notifications when the terminal's color scheme changes between dark and light. When enabled, the terminal sends <code>CSI ? 997 ; Ps n</code> (DECDSR) whenever the scheme changes, where Ps=1 for dark and Ps=2 for light.\n\nApplications can also synchronously query the current scheme via <code>CSI ? 997 n</code> (DECDSR 997). This solves a longstanding problem for TUI applications that need to adapt their color palette to the terminal's dark/light mode. Supported by iTerm2 (3.6.6+), tmux 3.6, Contour, foot, and kitty.",
     "probe": "Check DECRPM for mode 2031. Fallback: query current scheme via <code>DECDSR 997</code> and check for response.",
     "baseline": "modern"
+  },
+  "modes.xtpushsgr": {
+    "name": "XTPUSHSGR — push SGR stack (CSI # {)",
+    "slug": "xtpushsgr-push-sgr",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "body": "XTPUSHSGR pushes the current SGR (Select Graphic Rendition) state onto an internal stack. The sequence is <code>CSI # {</code> (or <code>CSI Pt # {</code> with a parameter mask to push only specific attributes). XTPOPSGR (<code>CSI # }</code>) pops the most recent state.\n\nThis solves a recurring TUI problem: a function that wants to set its own SGR state, render some output, and restore the caller's state. Without push/pop, the function would need to query SGR via DECRQSS, save the result, and write it back — far more error-prone and slower. SGR push/pop also enables nested attribute scopes (e.g., bold inside an italic block) without losing state.\n\nIntroduced by xterm in patch #357 (2018), now adopted by Ghostty, foot, Contour, and other modern terminals. Often paired with XTPUSHCOLORS (<code>CSI # P</code>) for a complete \"push graphics state\" idiom.",
+    "probe": "Send <code>\\x1b[#{</code> (XTPUSHSGR), verify the sequence is consumed and the terminal stays responsive.",
+    "sequence": "ESC [ # {"
+  },
+  "modes.xtpopsgr": {
+    "name": "XTPOPSGR — pop SGR stack (CSI # })",
+    "slug": "xtpopsgr-pop-sgr",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "body": "XTPOPSGR restores the SGR (Select Graphic Rendition) state most recently pushed by XTPUSHSGR (<code>CSI # {</code>). The sequence is <code>CSI # }</code>. Always paired with a matching push earlier in the same session — pops without a corresponding push are no-ops on most terminals.\n\nThis sequence is the second half of the SGR push/pop pattern that lets TUI code temporarily change attributes without permanently affecting the caller's state. Library authors can wrap subroutines in <code>CSI # {</code> ... <code>CSI # }</code> and trust that the caller's bold/color/underline state survives unchanged. Adopted by xterm, Ghostty, foot, Contour, and others.",
+    "probe": "Send <code>\\x1b[#{</code> followed by <code>\\x1b[#}</code>, verify the sequences are consumed and the terminal stays responsive.",
+    "sequence": "ESC [ # }"
+  },
+  "modes.xtsave": {
+    "name": "XTSAVE — save DEC private modes (CSI ? Pm s)",
+    "slug": "xtsave-save-dec-modes",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions",
+      "dec-private-modes"
+    ],
+    "baseline": "rich",
+    "body": "XTSAVE saves one or more DEC private modes onto an internal stack. The sequence is <code>CSI ? Pm s</code> where <code>Pm</code> is a semicolon-separated list of mode numbers. XTRESTORE (<code>CSI ? Pm r</code>) restores the most recent saved values.\n\nThis is the canonical xterm pattern for temporarily changing modes. For example, a TUI that wants to enter mouse-tracking and bracketed-paste during its run can <code>CSI ? 1000 ; 2004 s</code> at startup, then <code>CSI ? 1000 ; 2004 r</code> on exit — the previous values are restored regardless of what the calling shell had configured. Without XTSAVE, applications must query DECRPM for each mode, store the result, and write it back manually.\n\nAdopted by xterm, Ghostty, Kitty, WezTerm, foot, and other modern terminals.",
+    "probe": "Send <code>\\x1b[?7s</code> (save DECAWM), verify the sequence is consumed and the terminal stays responsive.",
+    "sequence": "ESC [ ? Pm s"
+  },
+  "modes.xtrestore": {
+    "name": "XTRESTORE — restore DEC private modes (CSI ? Pm r)",
+    "slug": "xtrestore-restore-dec-modes",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions",
+      "dec-private-modes"
+    ],
+    "baseline": "rich",
+    "body": "XTRESTORE restores the most recently saved values for one or more DEC private modes. The sequence is <code>CSI ? Pm r</code> where <code>Pm</code> is a semicolon-separated list of mode numbers. Always paired with a matching XTSAVE (<code>CSI ? Pm s</code>) earlier in the session.\n\nApplications use this to clean up mode changes on exit without needing to remember (or query) the original values. Note that <code>CSI Pt ; Pb r</code> without the <code>?</code> intermediate is DECSTBM (set top/bottom margin) — the question mark distinguishes the private-mode restore. Adopted by xterm, Ghostty, Kitty, WezTerm, foot, and other modern terminals.",
+    "probe": "Send <code>\\x1b[?7s</code> followed by <code>\\x1b[?7r</code>, verify the sequences are consumed and the terminal stays responsive.",
+    "sequence": "ESC [ ? Pm r"
+  },
+  "modes.xtpushcolors": {
+    "name": "Push color palette (CSI # P)",
+    "slug": "xtpushcolors-push-palette",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "body": "XTPUSHCOLORS pushes the current color palette (the 256-color ANSI palette plus the default fg/bg) onto an internal stack. The sequence is <code>CSI # P</code> (or <code>CSI Pi # P</code> to push at a specific stack index). XTPOPCOLORS (<code>CSI # Q</code>) pops the most recent palette; XTREPORTCOLORS (<code>CSI # R</code>) reports the current stack depth.\n\nApplications use this when they want to install a custom palette (e.g., a specific set of OSC 4 colors for syntax highlighting) without permanently overriding the user's theme. Push the current palette, install the new one, do the work, pop on exit. Without XTPUSHCOLORS, applications need to query every palette slot via OSC 4 ; n ; ? (slow and not universally supported) or simply leave the user's terminal in a modified state.\n\nIntroduced by xterm in patch #357, paired with XTPUSHSGR. Adopted by Ghostty, foot, Contour, and other modern terminals.",
+    "probe": "Send <code>\\x1b[#P</code> (XTPUSHCOLORS), verify the sequence is consumed and the terminal stays responsive.",
+    "sequence": "ESC [ # P"
+  },
+  "modes.xtpopcolors": {
+    "name": "Pop color palette (CSI # Q)",
+    "slug": "xtpopcolors-pop-palette",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "body": "XTPOPCOLORS restores the color palette most recently pushed by XTPUSHCOLORS (<code>CSI # P</code>). The sequence is <code>CSI # Q</code>. Always paired with a matching push earlier in the session — pops without a corresponding push are no-ops on most terminals.\n\nUsed by TUI applications that install a custom palette during their run and want to restore the user's theme on exit. The push/pop pattern avoids needing to query every palette slot via OSC 4 ; n ; ? and write each one back manually. Adopted by xterm (patch #357), Ghostty, foot, Contour, and other modern terminals.",
+    "probe": "Send <code>\\x1b[#P</code> followed by <code>\\x1b[#Q</code>, verify the sequences are consumed and the terminal stays responsive.",
+    "sequence": "ESC [ # Q"
   },
   "input.modify-other-keys-3": {
     "name": "modifyOtherKeys mode 3",

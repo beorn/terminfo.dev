@@ -64,6 +64,7 @@ function loadEntities(): GlossaryEntity[] {
       entities.push({
         term: f.label,
         href: `/framework/${id}`,
+        tooltip: f.description || `${f.label} TUI framework`,
       })
     }
   } catch {}
@@ -76,6 +77,7 @@ function loadEntities(): GlossaryEntity[] {
       entities.push({
         term: s.label,
         href: `/${id}`,
+        tooltip: s.description?.slice(0, 200) || s.label,
       })
     }
   } catch {}
@@ -88,6 +90,7 @@ function loadEntities(): GlossaryEntity[] {
       entities.push({
         term: b.label,
         href: `/baseline/${id}`,
+        tooltip: b.tagline || `${b.label} baseline`,
       })
     }
   } catch {}
@@ -100,6 +103,7 @@ function loadEntities(): GlossaryEntity[] {
       entities.push({
         term: c.label,
         href: `/${id}`,
+        tooltip: c.description?.slice(0, 200) || c.label,
       })
     }
   } catch {}

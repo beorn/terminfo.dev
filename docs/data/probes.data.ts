@@ -318,6 +318,19 @@ function loadAppResults(): ProbeData {
     }
   }
 
+  // Also include features from features.json that have no probe results yet
+  // (ensures new features get pages even before re-probing)
+  for (const [id, meta] of Object.entries(featureDescs)) {
+    if (id.startsWith("$") || featureSet.has(id)) continue
+    const cat = id.split(".")[0]!
+    featureSet.set(id, {
+      id,
+      name: meta?.name || id,
+      category: cat,
+      spec: meta?.url,
+    })
+  }
+
   // Sort by score (highest first)
   allBackends.sort((a, b) => {
     const aYes = Object.values(results[a.name] ?? {}).filter((v) => v === "yes").length

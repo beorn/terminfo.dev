@@ -1043,10 +1043,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return { pass, note: pass ? undefined : "No OSC 21 response" }
     },
     async (ctx) => {
-      const match = await ctx.queryWithSentinel(
-        "\x1b]21;foreground=?\x07",
-        /\x1b\]21;([^\x07\x1b]*)[\x07\x1b]/,
-      )
+      const match = await ctx.queryWithSentinel("\x1b]21;foreground=?\x07", /\x1b\]21;([^\x07\x1b]*)[\x07\x1b]/)
       if (match) return { pass: true, response: match[1] }
       // Fallback: write+verify cursor unchanged (sequence consumed)
       ctx.write("\x1b[1;1H\x1b[2K")

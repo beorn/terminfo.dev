@@ -289,10 +289,20 @@ function buildSidebar() {
         text: categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1),
         link: `/${cat}`,
         collapsed: true,
-        items: (categories.get(cat) ?? []).map((f) => ({
-          text: f.name,
-          link: `/${cat}/${f.slug}`,
-        })),
+        items: [...(categories.get(cat) ?? [])]
+          .sort((a, b) => {
+            // Sort by sequence number when present (OSC N, SGR N, CSI N)
+            const numA = a.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)
+            const numB = b.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)
+            if (numA && numB) return parseInt(numA[1], 10) - parseInt(numB[1], 10)
+            if (numA) return -1
+            if (numB) return 1
+            return a.name.localeCompare(b.name)
+          })
+          .map((f) => ({
+            text: f.name,
+            link: `/${cat}/${f.slug}`,
+          })),
       })),
     },
     {

@@ -58,6 +58,7 @@ function termTooltip(r) {
 
 <p class="feature-meta">
   Category: <a :href="'/' + p.featureCategory">{{ p.featureCategory }}</a>
+  <span v-if="p.baseline"> · Baseline: <a :href="'/baseline/' + p.baseline" class="baseline-badge" :class="'baseline-' + p.baseline">{{ p.baseline }}</a></span>
   <span v-if="featureTags.length"> · Tags: <template v-for="(tag, i) in featureTags" :key="tag.id"><a :href="'/' + tag.id">{{ tag.label }}</a><template v-if="i < featureTags.length - 1">, </template></template></span>
   <span v-if="p.specUrl"> · <a :href="p.specUrl" target="_blank" rel="noopener">Specification ↗</a></span>
 </p>
@@ -69,7 +70,13 @@ function termTooltip(r) {
 <div v-if="p.featureBody" class="feature-body" v-html="p.featureBody"></div>
 
 <div v-if="p.probeMethod" class="probe-method">
-  <strong>How this is tested:</strong> <span v-html="p.probeMethod"></span>
+  <strong>How this is tested</strong>
+  <span v-if="p.probeStatus === 'automated'" class="probe-badge probe-automated" title="Fully verified — same probe runs against both headless backends and real terminal apps">automated</span>
+  <span v-else-if="p.probeStatus === 'partial'" class="probe-badge probe-partial" title="Probe checks sequence acceptance, not visual correctness">partial</span>
+  <span v-else-if="p.probeStatus === 'manual'" class="probe-badge probe-manual" title="Not automated — support data is from manual testing or documentation">manual</span>
+  <span v-else-if="p.probeStatus === 'unprobed'" class="probe-badge probe-unprobed" title="Tracked but no verification yet — manual verification required">unprobed</span>
+  <br><span v-html="p.probeMethod"></span>
+  <p class="probe-note">The same probe runs against headless backends (via <a href="https://termless.dev">Termless</a>) and real terminal apps (via a daemon launched in each terminal). This lets us distinguish parser correctness from rendering correctness.</p>
 </div>
 
 <div v-if="p.analysis" class="analysis">
@@ -236,6 +243,78 @@ function termTooltip(r) {
   border-radius: 3px;
   background: var(--vp-c-bg-alt);
   color: var(--vp-c-text-1);
+}
+
+.probe-note {
+  margin: 0.75em 0 0 0;
+  font-size: 0.85em;
+  color: var(--vp-c-text-3);
+  font-style: italic;
+}
+
+.probe-badge {
+  display: inline-block;
+  margin-left: 0.5em;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.75em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.probe-automated {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.probe-partial {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.probe-manual {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.probe-unprobed {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+}
+
+.baseline-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.85em;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.baseline-core {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.baseline-modern {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.baseline-rich {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+}
+
+.baseline-legacy {
+  background: rgba(161, 98, 7, 0.2);
+  color: #a16207;
+}
+
+.baseline-unicode {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
 }
 
 .feature-score {

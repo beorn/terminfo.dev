@@ -124,6 +124,8 @@ export default {
           specUrl: desc?.url ?? f.spec ?? "",
           featureBody: linkifyContentExcluding(meta?.body ?? "", selfHrefs),
           probeMethod: linkifyContentExcluding(meta?.probe ?? "", selfHrefs),
+          baseline: (meta as any)?.baseline ?? "",
+          probeStatus: (meta as any)?.probeStatus ?? "automated",
           sequence: (meta as any)?.sequence ?? "",
           featureTags: JSON.stringify(tags),
           backendResults: JSON.stringify(backendResults),
