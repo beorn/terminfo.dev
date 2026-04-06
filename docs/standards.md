@@ -13,8 +13,9 @@ import { data } from './data/probes.data'
 
 // Count features per standard tag
 const standardOrder = [
-  'ecma-48', 'vt100', 'vt220', 'sixel', 'vt510', 'dec-private-modes',
-  'unicode', 'xterm-extensions', 'osc', 'kitty-extensions'
+  'ecma-48', 'vt100', 'vt220', 'vt510', 'dec-private-modes',
+  'xterm-extensions', 'osc', 'sixel', 'unicode',
+  'kitty-extensions', 'iterm2', 'conemu', 'vscode-extensions'
 ]
 
 const standardsMeta = {
@@ -77,6 +78,24 @@ const standardsMeta = {
     year: '1991+',
     specUrl: 'https://unicode.org/reports/tr11/',
     tagline: 'The width problem',
+  },
+  'iterm2': {
+    label: 'iTerm2 Extensions',
+    year: '2014+',
+    specUrl: 'https://iterm2.com/documentation-escape-codes.html',
+    tagline: 'macOS power features',
+  },
+  'conemu': {
+    label: 'ConEmu Extensions',
+    year: '2012+',
+    specUrl: 'https://conemu.github.io/en/AnsiEscapeCodes.html',
+    tagline: 'Windows console innovation',
+  },
+  'vscode-extensions': {
+    label: 'VS Code Extensions',
+    year: '2022+',
+    specUrl: 'https://learn.microsoft.com/en-us/windows/terminal/tutorials/shell-integration',
+    tagline: 'IDE meets terminal',
   },
 }
 
