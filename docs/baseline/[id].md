@@ -247,6 +247,7 @@ function platformIcons(b) {
 <style>
 .baseline-page {
   max-width: 100%;
+  overflow-x: auto;
 }
 
 .baseline-title-row {

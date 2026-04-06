@@ -46,6 +46,14 @@ td:first-child [data-tooltip]:hover::after {
   display: none;
 }
 
+/* Prevent VitePress headings from creating stacking contexts above tooltips */
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3,
+.vp-doc h4 {
+  z-index: auto !important;
+}
+
 /* Prevent containers from clipping tooltips */
 .vp-doc .vp-table,
 .category-desc,

@@ -661,7 +661,7 @@ function emptyData(): ProbeData {
 }
 
 function computeBaselines(data: ProbeData): void {
-  const baselineOrder = ["core", "modern", "rich", "unicode"]
+  const baselineOrder = ["core", "modern", "rich", "unicode", "legacy"]
   const baselines: Record<string, string[]> = {}
   for (const bl of baselineOrder) baselines[bl] = []
 

@@ -104,7 +104,7 @@ export default {
           emoji: bl.emoji,
           color: bl.color,
           tagline: bl.tagline,
-          description: bl.description,
+          description: linkifyContentExcluding(bl.description, new Set([`/baseline/${id}`])),
           forDevelopers: bl.forDevelopers,
           forTerminalAuthors: bl.forTerminalAuthors,
           featureCount: String(featureIds.length),

@@ -248,6 +248,7 @@ function termTooltip(r) {
 .probe-note {
   margin: 0.75em 0 0 0;
   font-size: 0.85em;
+  line-height: 1.6;
   color: var(--vp-c-text-3);
   font-style: italic;
 }
@@ -284,7 +285,7 @@ function termTooltip(r) {
 }
 
 .baseline-badge {
-  display: inline-block;
+  display: inline;
   padding: 1px 8px;
   border-radius: 10px;
   font-size: 0.85em;
