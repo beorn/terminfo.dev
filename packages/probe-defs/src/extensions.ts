@@ -656,6 +656,93 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
   ),
 
+  // OSC 17 — highlight background color query
+  oscColorQueryProbe("extensions.osc17-highlight-bg", 17),
+
+  // OSC 19 — highlight foreground color query
+  oscColorQueryProbe("extensions.osc19-highlight-fg", 19),
+
+  // OSC 22 — pointer shape
+  probe(
+    "extensions.osc22-pointer",
+    null, // Headless: no way to detect pointer shape changes
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]22;pointer\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 22" }
+      // If terminal consumed the OSC, cursor should still be at col 1
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 99 — Kitty desktop notifications
+  probe(
+    "extensions.osc99-kitty-notify",
+    null, // Headless: no way to detect notification support (silently consumed)
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]99;i=1:d=0:p=body;test\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 99" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 777 — rxvt-unicode notifications
+  probe(
+    "extensions.osc777-notify",
+    null, // Headless: no way to detect notification support (silently consumed)
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]777;notify;test;body\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 777" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 666 — VTE termprop
+  probe(
+    "extensions.osc666-termprop",
+    null, // Headless: no way to detect termprop support (silently consumed)
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]666;test-prop=value\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 666" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 3008 — systemd context
+  probe(
+    "extensions.osc3008-context",
+    null, // Headless: no way to detect context support (silently consumed)
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]3008;type=test\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 3008" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
   // Sixel support advertised in DA1 response (attribute 4)
   probe(
     "extensions.sixel-da1",
