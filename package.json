@@ -21,7 +21,8 @@
     "sitefile": "bun scripts/sitefile.ts",
     "explore": "bun scripts/explore.ts",
     "radar": "bun scripts/radar.ts",
-    "candidates": "bun scripts/candidates.ts"
+    "candidates": "bun scripts/candidates.ts",
+    "update": "bun scripts/update.ts"
   },
   "dependencies": {
     "@silvery/ansi": "^0.3.0",
