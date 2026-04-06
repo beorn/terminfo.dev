@@ -226,48 +226,68 @@ async function runDeepQuery(queryPrompt: string, queryId: string): Promise<strin
 }
 
 function extractFindings(rawOutput: string, queryId: string): Finding[] {
-  // The LLM output is free-form research prose. We parse citation URLs
-  // from markdown links and structure them into findings.
+  // The LLM output is free-form research prose with markdown headings and
+  // markdown/plain URLs. We extract findings at any heading level (##, ###, ####)
+  // that contains at least one URL in its section body.
   const now = new Date().toISOString().slice(0, 10)
   const findings: Finding[] = []
 
-  // Extract markdown-style links with optional dates
-  // We split the output into sections and treat each major heading as a potential finding
-  const sections = rawOutput.split(/\n(?=#{1,4} )/)
+  // Split at any heading level 2-4 (## or ### or ####)
+  // The "## " lookahead preserves the heading for each section
+  const sections = rawOutput.split(/\n(?=#{2,4}\s)/)
   for (const section of sections) {
-    const titleMatch = section.match(/^#{1,4} (.+)$/m)
+    const titleMatch = section.match(/^#{2,4}\s+(.+?)$/m)
     if (!titleMatch) continue
-    const title = titleMatch[1]!.trim()
+    const title = titleMatch[1]!.trim().replace(/[*_`]/g, "") // strip markdown
+    if (title.length < 5) continue
+    // Skip generic section headers that aren't findings
+    if (/^(?:overview|summary|key details|verifiable|relevant|baseline|conclusion|references|sources?|notes?|what changed)\b/i.test(title)) continue
 
-    // Extract URLs
-    const urls = [...section.matchAll(/https?:\/\/[^\s)\]]+/g)].map((m) => m[0])
+    // Extract URLs (strip trailing punctuation that commonly appears at end of markdown links)
+    const urls = [...section.matchAll(/https?:\/\/[^\s)\]<>"`,]+/g)]
+      .map((m) => m[0].replace(/[.,;:!?)]+$/, ""))
+      .filter((u) => !/^https?:\/\/(?:example\.com|localhost)/.test(u))
     if (urls.length === 0) continue
 
-    // Extract snippets (first 2 sentences after the heading)
-    const body = section.slice(titleMatch[0].length).trim()
-    const snippet = body.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ").slice(0, 300)
+    // Dedupe URLs
+    const uniqueUrls = [...new Set(urls)]
 
-    // Try to find a date in the section (YYYY-MM-DD, Month YYYY, etc.)
+    // Extract snippets (first 2-3 sentences from non-heading body)
+    const body = section
+      .slice(titleMatch[0].length)
+      .split("\n")
+      .filter((l) => !l.match(/^#{2,4}\s/))
+      .join(" ")
+      .trim()
+    const snippet = body
+      .split(/(?<=[.!?])\s+/)
+      .slice(0, 3)
+      .join(" ")
+      .slice(0, 400)
+      .replace(/\s+/g, " ")
+
+    // Try to find a date in the section (YYYY/MM/DD, YYYY-MM-DD, Month YYYY, etc.)
     const dateMatch = section.match(
-      /\b(20\d\d-\d\d-\d\d|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d\d|20\d\d)\b/,
+      /\b(20\d\d[-/]\d\d[-/]\d\d|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d\d|20\d\d)\b/,
     )
     const published = dateMatch ? normalizeDate(dateMatch[0]) : "unknown"
 
     // Heuristic classification
     let type: Finding["type"] = "ecosystem-signal"
-    if (/new\s+(?:version|release|patch)/i.test(title)) type = "new-version"
-    else if (/\bOSC\b|\bCSI\b|\bDCS\b|protocol|escape/i.test(title)) type = "new-protocol"
-    else if (/terminal\s+(?:emulator|app)/i.test(title)) type = "new-terminal"
-    else if (/deprecat|removed/i.test(title)) type = "deprecation"
-    else if (/xterm\s+patch/i.test(title)) type = "spec-change"
+    if (/\bpatch\s*#?\d+/i.test(title) || /xterm\s+patch/i.test(title)) type = "spec-change"
+    else if (/\b(?:version|release)\b/i.test(title)) type = "new-version"
+    else if (/\bOSC\b|\bCSI\b|\bDCS\b|\bSGR\b|protocol|escape|XT[A-Z]/i.test(title)) type = "new-protocol"
+    else if (/terminal\s+(?:emulator|app)|ghostty|kitty|wezterm|alacritty|foot|mintty|iterm/i.test(title))
+      type = "new-terminal"
+    else if (/deprecat|removed|obsolet/i.test(title)) type = "deprecation"
 
-    const firstCitation = urls[0]!
+    const firstCitation = uniqueUrls[0]!
     findings.push({
       id: hashFinding(title, firstCitation),
       type,
       title,
       description: snippet,
-      citations: urls.slice(0, 3).map((url) => ({
+      citations: uniqueUrls.slice(0, 5).map((url) => ({
         url,
         title: "",
         published,
