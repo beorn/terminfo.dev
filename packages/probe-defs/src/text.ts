@@ -247,6 +247,105 @@ export const textProbes: ProbeDefinition[] = [
     },
   ),
 
+  // HTS — set tab stop
+  probe(
+    "text.hts",
+    (ctx) => {
+      ctx.feed("\x1b[3g") // clear all tab stops
+      ctx.feed("\x1b[6G") // move to column 6 (1-based)
+      ctx.feed("\x1bH") // HTS — set tab stop at column 6
+      ctx.feed("\x1b[1G") // move back to column 1
+      ctx.feed("\t") // tab — should advance to column 6
+      return {
+        pass: ctx.getCursor().x === 5,
+        note: ctx.getCursor().x === 5 ? undefined : `cursor at col ${ctx.getCursor().x}, expected 5`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[3g") // clear all tab stops
+      ctx.write("\x1b[1;6H") // move to row 1, col 6
+      ctx.write("\x1bH") // HTS — set tab stop at column 6
+      ctx.write("\x1b[1;1H") // move back to col 1
+      ctx.write("\t") // tab
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.col === 6,
+        note: pos.col === 6 ? undefined : `cursor at col ${pos.col}, expected 6`,
+      }
+    },
+  ),
+
+  // TBC — clear tab stop
+  probe(
+    "text.tbc",
+    (ctx) => {
+      ctx.feed("\x1b[3g") // TBC 3 — clear all tab stops
+      ctx.feed("\t") // tab — should not advance since all stops are cleared
+      return {
+        pass: ctx.getCursor().x === 0,
+        note: ctx.getCursor().x === 0 ? undefined : `cursor at col ${ctx.getCursor().x}, expected 0`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H") // move to col 1
+      ctx.write("\x1b[3g") // TBC 3 — clear all tab stops
+      ctx.write("\t") // tab — should not advance
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+      }
+    },
+  ),
+
+  // CHT — cursor horizontal forward tab
+  probe(
+    "text.cht",
+    (ctx) => {
+      // With default 8-col tab stops, CHT 2 from col 0 → col 16
+      ctx.feed("\x1b[2I")
+      return {
+        pass: ctx.getCursor().x === 16,
+        note: ctx.getCursor().x === 16 ? undefined : `cursor at col ${ctx.getCursor().x}, expected 16`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H") // move to col 1
+      ctx.write("\x1b[2I") // CHT 2 — forward 2 tab stops
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.col === 17,
+        note: pos.col === 17 ? undefined : `cursor at col ${pos.col}, expected 17`,
+      }
+    },
+  ),
+
+  // CBT — cursor backward tab
+  probe(
+    "text.cbt",
+    (ctx) => {
+      ctx.feed("\x1b[21G") // move to column 21 (1-based), 0-based col 20
+      ctx.feed("\x1b[Z") // CBT 1 — back 1 tab stop → col 16 (0-based)
+      return {
+        pass: ctx.getCursor().x === 16,
+        note: ctx.getCursor().x === 16 ? undefined : `cursor at col ${ctx.getCursor().x}, expected 16`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;21H") // move to col 21 (1-based)
+      ctx.write("\x1b[Z") // CBT 1 — back 1 tab stop
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.col === 17,
+        note: pos.col === 17 ? undefined : `cursor at col ${pos.col}, expected 17`,
+      }
+    },
+  ),
+
   probe(
     "text.wide.emoji-flags",
     (ctx) => {

@@ -246,6 +246,91 @@ export const cursorProbes: ProbeDefinition[] = [
     },
   ),
 
+  // VPA — vertical position absolute
+  probe(
+    "cursor.vpa",
+    (ctx) => {
+      ctx.feed("\x1b[3;5H") // position at row 3, col 5 (1-based)
+      ctx.feed("\x1b[10d") // VPA row 10
+      const cursor = ctx.getCursor()
+      return {
+        pass: cursor.y === 9 && cursor.x === 4,
+        note:
+          cursor.y === 9 && cursor.x === 4
+            ? undefined
+            : `got ${cursor.y};${cursor.x}, expected 9;4`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[3;5H") // position at row 3, col 5
+      ctx.write("\x1b[10d") // VPA row 10
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.row === 10 && pos.col === 5,
+        note:
+          pos.row === 10 && pos.col === 5
+            ? undefined
+            : `got ${pos.row};${pos.col}, expected 10;5`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
+
+  // CPL — cursor preceding line
+  probe(
+    "cursor.cpl",
+    (ctx) => {
+      ctx.feed("\x1b[6;10H") // position at row 6, col 10 (1-based)
+      ctx.feed("\x1b[2F") // CPL 2 — move up 2 lines, column to 0
+      const cursor = ctx.getCursor()
+      return {
+        pass: cursor.y === 3 && cursor.x === 0,
+        note:
+          cursor.y === 3 && cursor.x === 0
+            ? undefined
+            : `got ${cursor.y};${cursor.x}, expected 3;0`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[6;10H") // position at row 6, col 10
+      ctx.write("\x1b[2F") // CPL 2
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.row === 4 && pos.col === 1,
+        note:
+          pos.row === 4 && pos.col === 1
+            ? undefined
+            : `got ${pos.row};${pos.col}, expected 4;1`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
+
+  // HPA — horizontal position absolute
+  probe(
+    "cursor.hpa",
+    (ctx) => {
+      ctx.feed("ABCDEFGH\x1b[5`") // HPA col 5
+      return { pass: ctx.getCursor().x === 4 }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[3;1H") // move to row 3
+      ctx.write("\x1b[15`") // HPA col 15
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.row === 3 && pos.col === 15,
+        note:
+          pos.row === 3 && pos.col === 15
+            ? undefined
+            : `got ${pos.row};${pos.col}, expected 3;15`,
+        response: `${pos.row};${pos.col}`,
+      }
+    },
+  ),
+
   // CUP with DECSTBM + DECOM — cursor should be relative to scroll region
   probe(
     "cursor.cup-scroll-region",

@@ -59,6 +59,32 @@ export const resetProbes: ProbeDefinition[] = [
     },
   ),
 
+  // DECALN — screen alignment test (fill screen with 'E')
+  probe(
+    "reset.decaln",
+    (ctx) => {
+      ctx.feed("\x1b#8") // DECALN — fill screen with 'E'
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "E",
+        note: cell.char === "E" ? undefined : `cell (0,0) char='${cell.char}', expected 'E'`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b#8") // DECALN
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after DECALN" }
+      // DECALN should reset cursor to home position (1,1)
+      return {
+        pass: pos.row === 1 && pos.col === 1,
+        note:
+          pos.row === 1 && pos.col === 1
+            ? undefined
+            : `cursor at ${pos.row};${pos.col}, expected 1;1`,
+      }
+    },
+  ),
+
   probe(
     "reset.method",
     (ctx) => {

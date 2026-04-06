@@ -1781,5 +1781,76 @@
     "probe": "Send <code>OSC 119 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
     "baseline": "rich",
     "sequence": "ESC ] 119 BEL"
+  },
+
+  "extensions.osc17-highlight-bg": {
+    "name": "Highlight background (OSC 17)",
+    "slug": "osc-17-highlight-bg",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 17 sets or queries the terminal's selection highlight background color. The query is <code>ESC ] 17 ; ? BEL</code> and the terminal responds with the color in X11 <code>rgb:RR/GG/BB</code> format, matching the OSC 10/11 response pattern. Setting uses <code>ESC ] 17 ; spec BEL</code> where spec is an X11 color name or <code>rgb:RR/GG/BB</code>. This allows applications to customize the selection appearance — useful for themes that need the selection highlight to contrast with custom foreground/background colors. Supported by xterm, iTerm2, foot, and other xterm-compatible terminals.",
+    "probe": "Query highlight background color with <code>OSC 17 ; ? BEL</code>, verify response matches <code>OSC 17 ; rgb:...</code> pattern via feedCapture.",
+    "baseline": "rich",
+    "sequence": "ESC ] 17 ; spec BEL"
+  },
+  "extensions.osc19-highlight-fg": {
+    "name": "Highlight foreground (OSC 19)",
+    "slug": "osc-19-highlight-fg",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 19 sets or queries the terminal's selection highlight foreground color. The query is <code>ESC ] 19 ; ? BEL</code> and the terminal responds with the color in X11 <code>rgb:RR/GG/BB</code> format. Setting uses <code>ESC ] 19 ; spec BEL</code>. This is the complement to OSC 17 (highlight background) — together they give applications full control over selection appearance. Fewer terminals support OSC 19 than OSC 17, as some terminals use a fixed or alpha-blended selection foreground. Supported by xterm and foot.",
+    "probe": "Query highlight foreground color with <code>OSC 19 ; ? BEL</code>, verify response matches <code>OSC 19 ; rgb:...</code> pattern via feedCapture.",
+    "baseline": "rich",
+    "sequence": "ESC ] 19 ; spec BEL"
+  },
+  "extensions.osc22-pointer": {
+    "name": "Pointer shape (OSC 22)",
+    "slug": "osc-22-pointer-shape",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 22 sets the mouse pointer cursor shape when hovering over the terminal window. The sequence <code>ESC ] 22 ; name BEL</code> sets the pointer to a named cursor shape (e.g., <code>pointer</code>, <code>crosshair</code>, <code>text</code>, <code>wait</code>, <code>help</code>). Applications use this to provide visual feedback — a text cursor over editable regions, a pointer over clickable elements, or a wait cursor during processing. Supported by xterm, foot, Ghostty, and WezTerm. Shape names follow the X11 cursor font or CSS cursor keyword conventions.",
+    "probe": "Send <code>OSC 22 ; pointer BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "baseline": "rich",
+    "sequence": "ESC ] 22 ; shape BEL"
+  },
+  "extensions.osc99-kitty-notify": {
+    "name": "Desktop notifications (OSC 99)",
+    "slug": "osc-99-kitty-notify",
+    "url": "https://sw.kovidgoyal.net/kitty/desktop-notifications/",
+    "tags": ["osc", "kitty-extensions"],
+    "body": "OSC 99 is Kitty's rich desktop notification protocol, extending simple notification sequences (OSC 9, OSC 777) with structured metadata. The sequence <code>ESC ] 99 ; params BEL</code> supports key-value parameters including notification identifiers, action buttons, custom icons, urgency levels, and sound control. Identifiers allow updating or closing existing notifications. The protocol defines a capability query so applications can discover which notification features the terminal supports. Currently supported by Kitty, with partial adoption by other terminals.",
+    "probe": "Send <code>OSC 99 ; i=1:d=0:p=body;test BEL</code> and verify the terminal consumes the notification sequence (cursor position unchanged).",
+    "baseline": "rich",
+    "sequence": "ESC ] 99 ; params BEL"
+  },
+  "extensions.osc777-notify": {
+    "name": "Notifications (OSC 777)",
+    "slug": "osc-777-notify",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc"],
+    "body": "OSC 777 is the rxvt-unicode (urxvt) notification extension, providing structured desktop notifications with separate title and body fields. The sequence <code>ESC ] 777 ; notify ; title ; body BEL</code> triggers a system notification. Unlike OSC 9 which sends a single message string, OSC 777 separates the title and body, giving notification managers more control over presentation. Originally from rxvt-unicode, it has been adopted by foot, Ghostty, WezTerm, and other modern terminals as a simple cross-terminal notification mechanism.",
+    "probe": "Send <code>OSC 777 ; notify ; test ; body BEL</code> and verify the terminal consumes the notification sequence (cursor position unchanged).",
+    "baseline": "rich",
+    "sequence": "ESC ] 777 ; notify ; title ; body BEL"
+  },
+  "extensions.osc666-termprop": {
+    "name": "VTE termprop (OSC 666)",
+    "slug": "osc-666-termprop",
+    "url": "https://gitlab.gnome.org/GNOME/vte",
+    "tags": ["osc"],
+    "body": "OSC 666 is the VTE terminal property protocol, allowing applications to set typed key-value metadata on the terminal session. The sequence <code>ESC ] 666 ; key=value BEL</code> sets a named property. Properties are typed (string, boolean, integer, color, UUID) and can be queried by the terminal emulator or desktop environment. Designed for integration between terminal applications and the GNOME desktop — properties can signal the shell type, current context, user identity, and session metadata. Defined by VTE (the GNOME terminal widget) and supported by GNOME Terminal, Prompt (GNOME's new terminal), and kgx.",
+    "probe": "Send <code>OSC 666 ; test-prop=value BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "baseline": "rich",
+    "sequence": "ESC ] 666 ; key=value BEL"
+  },
+  "extensions.osc3008-context": {
+    "name": "Systemd context (OSC 3008)",
+    "slug": "osc-3008-systemd-context",
+    "url": "https://uapi-group.org/specifications/specs/osc_context/",
+    "tags": ["osc"],
+    "body": "OSC 3008 is the systemd/UAPI group context signaling protocol for hierarchical session tracking. The sequence <code>ESC ] 3008 ; params BEL</code> communicates context changes — when a shell enters a container, SSH session, sudo context, or virtual machine. The terminal can display this context hierarchy (e.g., in the title bar or tab) so users always know where their commands execute. Parameters use a key-value format to convey the context type, label, and nesting depth. Defined by the UAPI group (systemd ecosystem), currently supported by VTE-based terminals (GNOME Terminal, Prompt, kgx).",
+    "probe": "Send <code>OSC 3008 ; type=test BEL</code> and verify the terminal consumes the context sequence (cursor position unchanged).",
+    "baseline": "rich",
+    "sequence": "ESC ] 3008 ; params BEL"
   }
 }
