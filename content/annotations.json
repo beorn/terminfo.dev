@@ -370,7 +370,7 @@
     "result": "partial"
   },
   "kitty:extensions.sixel": {
-    "note": "Declined by maintainer \u2014 kitty uses its own graphics protocol instead of sixel"
+    "note": "Declined by maintainer — kitty uses its own graphics protocol instead of sixel"
   },
   "kitty:modes.mouse-tracking": {
     "note": "Not exposed via Python batch bridge",
@@ -461,85 +461,85 @@
     "result": "partial"
   },
   "vt100:extensions.osc7-cwd": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.notifications": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.iterm2-images": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:input.modify-other-keys": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.kitty-graphics": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.kitty-keyboard": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.osc8": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.reflow": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.semantic-prompts": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.sixel": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:sgr.underline.color": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:cursor.shape": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:cursor.position-report": {
-    "note": "No output stream \u2014 pure TypeScript emulator"
+    "note": "No output stream — pure TypeScript emulator"
   },
   "vt100:device.primary-da": {
-    "note": "No output stream \u2014 pure TypeScript emulator"
+    "note": "No output stream — pure TypeScript emulator"
   },
   "vt100:device.status-report": {
-    "note": "No output stream \u2014 pure TypeScript emulator"
+    "note": "No output stream — pure TypeScript emulator"
   },
   "vt100:editing.repeat-char": {
-    "note": "REP not implemented \u2014 pure TypeScript emulator"
+    "note": "REP not implemented — pure TypeScript emulator"
   },
   "vt100:modes.left-right-margin": {
-    "note": "DECLRMM not implemented \u2014 pure TypeScript emulator"
+    "note": "DECLRMM not implemented — pure TypeScript emulator"
   },
   "vt100:cursor.cup-scroll-region": {
-    "note": "CUP with DECOM not implemented \u2014 pure TypeScript emulator"
+    "note": "CUP with DECOM not implemented — pure TypeScript emulator"
   },
   "vt100:text.combining": {
-    "note": "Combining characters not implemented \u2014 pure TypeScript emulator"
+    "note": "Combining characters not implemented — pure TypeScript emulator"
   },
   "vt100:device.secondary-da": {
-    "note": "No output stream \u2014 pure TypeScript emulator"
+    "note": "No output stream — pure TypeScript emulator"
   },
   "vt100:device.tertiary-da": {
-    "note": "No output stream \u2014 pure TypeScript emulator"
+    "note": "No output stream — pure TypeScript emulator"
   },
   "vt100:device.decrqss": {
-    "note": "No output stream \u2014 pure TypeScript emulator"
+    "note": "No output stream — pure TypeScript emulator"
   },
   "vt100:device.xtgettcap": {
-    "note": "No output stream \u2014 pure TypeScript emulator"
+    "note": "No output stream — pure TypeScript emulator"
   },
   "vt100:device.decrpm": {
-    "note": "No output stream \u2014 pure TypeScript emulator"
+    "note": "No output stream — pure TypeScript emulator"
   },
   "vt100:device.xtversion": {
-    "note": "No output stream \u2014 pure TypeScript emulator"
+    "note": "No output stream — pure TypeScript emulator"
   },
   "vt100:extensions.osc1337-cellsize": {
-    "note": "iTerm2-specific protocol not implemented \u2014 pure TypeScript emulator"
+    "note": "iTerm2-specific protocol not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.osc1337-capabilities": {
-    "note": "iTerm2-specific protocol not implemented \u2014 pure TypeScript emulator"
+    "note": "iTerm2-specific protocol not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.osc-633-vscode": {
     "note": "VS Code shell integration (OSC 633) not supported"
@@ -554,16 +554,16 @@
     "note": "X10 mouse mode (?9) not implemented"
   },
   "vt100:input.pixel-mouse": {
-    "note": "SGR pixel mouse mode not implemented \u2014 pure TypeScript emulator"
+    "note": "SGR pixel mouse mode not implemented — pure TypeScript emulator"
   },
   "vt100:erase.selective": {
-    "note": "DECSED not implemented \u2014 pure TypeScript emulator"
+    "note": "DECSED not implemented — pure TypeScript emulator"
   },
   "vt100:modes.mouse-sgr": {
-    "note": "SGR mouse encoding not implemented \u2014 pure TypeScript emulator"
+    "note": "SGR mouse encoding not implemented — pure TypeScript emulator"
   },
   "vt100:erase.el-with-attrs": {
-    "note": "EL doesn't preserve SGR background \u2014 pure TypeScript emulator"
+    "note": "EL doesn't preserve SGR background — pure TypeScript emulator"
   },
   "vt100:text.wide.emoji-flags": {
     "note": "Emoji flag sequences not rendered as wide characters"
@@ -720,7 +720,7 @@
     "note": "tmux reinterprets CUP coordinates within its own grid, boundary behavior differs"
   },
   "tmux:device.decrpm": {
-    "note": "tmux intercepts DECRPM \u2014 responds for its own modes, not the outer terminal"
+    "note": "tmux intercepts DECRPM — responds for its own modes, not the outer terminal"
   },
   "tmux:device.term-features": {
     "note": "tmux does not pass through XTGETTCAP terminal-features query"
@@ -750,7 +750,7 @@
     "note": "iTerm2-specific protocol not supported by tmux"
   },
   "tmux:modes.origin": {
-    "note": "tmux's DECOM handling differs from direct terminal \u2014 origin mode not fully passed through"
+    "note": "tmux's DECOM handling differs from direct terminal — origin mode not fully passed through"
   },
   "screen:device.decrpm": {
     "note": "Screen does not support DECRPM (mode reporting)"
@@ -792,13 +792,13 @@
     "note": "Screen does not support sixel graphics"
   },
   "screen:scrollback.alt-screen": {
-    "note": "Screen's alternate screen buffer handling differs \u2014 scrollback not fully preserved"
+    "note": "Screen's alternate screen buffer handling differs — scrollback not fully preserved"
   },
   "screen:text.tab": {
     "note": "Screen's tab handling may differ from direct terminal"
   },
   "screen:text.wide.emoji": {
-    "note": "Screen 4.x has limited Unicode width awareness \u2014 emoji rendered as narrow"
+    "note": "Screen 4.x has limited Unicode width awareness — emoji rendered as narrow"
   },
   "screen:text.wide.emoji-vs16": {
     "note": "Screen 4.x does not handle VS16 emoji variation selectors"
@@ -813,76 +813,76 @@
     "note": "Screen's tab stop handling differs from direct terminal"
   },
   "vt100:sgr.faint": {
-    "note": "Not in VT100/VT220 \u2014 use vterm.js for modern SGR"
+    "note": "Not in VT100/VT220 — use vterm.js for modern SGR"
   },
   "vt100:sgr.italic": {
-    "note": "Not in VT100/VT220 \u2014 use vterm.js for modern SGR"
+    "note": "Not in VT100/VT220 — use vterm.js for modern SGR"
   },
   "vt100:sgr.underline.double": {
-    "note": "Not in VT100/VT220 \u2014 only single underline supported"
+    "note": "Not in VT100/VT220 — only single underline supported"
   },
   "vt100:sgr.underline.curly": {
-    "note": "Not in VT100/VT220 \u2014 only single underline supported"
+    "note": "Not in VT100/VT220 — only single underline supported"
   },
   "vt100:sgr.underline.dotted": {
-    "note": "Not in VT100/VT220 \u2014 only single underline supported"
+    "note": "Not in VT100/VT220 — only single underline supported"
   },
   "vt100:sgr.underline.dashed": {
-    "note": "Not in VT100/VT220 \u2014 only single underline supported"
+    "note": "Not in VT100/VT220 — only single underline supported"
   },
   "vt100:sgr.strikethrough": {
-    "note": "Not in VT100/VT220 \u2014 use vterm.js for modern SGR"
+    "note": "Not in VT100/VT220 — use vterm.js for modern SGR"
   },
   "vt100:sgr.fg.bright": {
-    "note": "Not in VT100/VT220 \u2014 only 8 standard colors supported"
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
   },
   "vt100:sgr.bg.bright": {
-    "note": "Not in VT100/VT220 \u2014 only 8 standard colors supported"
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
   },
   "vt100:sgr.fg.256": {
-    "note": "Not in VT100/VT220 \u2014 only 8 standard colors supported"
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
   },
   "vt100:sgr.bg.256": {
-    "note": "Not in VT100/VT220 \u2014 only 8 standard colors supported"
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
   },
   "vt100:sgr.fg.truecolor": {
-    "note": "Not in VT100/VT220 \u2014 only 8 standard colors supported"
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
   },
   "vt100:sgr.bg.truecolor": {
-    "note": "Not in VT100/VT220 \u2014 only 8 standard colors supported"
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
   },
   "vt100:text.wide.emoji": {
-    "note": "Not in VT100/VT220 \u2014 ASCII only, no Unicode width"
+    "note": "Not in VT100/VT220 — ASCII only, no Unicode width"
   },
   "vt100:text.wide.cjk": {
-    "note": "Not in VT100/VT220 \u2014 ASCII only, no Unicode width"
+    "note": "Not in VT100/VT220 — ASCII only, no Unicode width"
   },
   "vt100:modes.alt-screen.enter": {
-    "note": "Not in VT100/VT220 \u2014 xterm extension"
+    "note": "Not in VT100/VT220 — xterm extension"
   },
   "vt100:modes.bracketed-paste": {
-    "note": "Not in VT100/VT220 \u2014 xterm extension"
+    "note": "Not in VT100/VT220 — xterm extension"
   },
   "vt100:modes.mouse-tracking": {
-    "note": "Not in VT100/VT220 \u2014 xterm extension"
+    "note": "Not in VT100/VT220 — xterm extension"
   },
   "vt100:modes.focus-tracking": {
-    "note": "Not in VT100/VT220 \u2014 xterm extension"
+    "note": "Not in VT100/VT220 — xterm extension"
   },
   "vt100:modes.mouse-all": {
-    "note": "Not in VT100/VT220 \u2014 xterm extension"
+    "note": "Not in VT100/VT220 — xterm extension"
   },
   "vt100:extensions.truecolor": {
-    "note": "Not in VT100/VT220 \u2014 only 8 standard colors supported"
+    "note": "Not in VT100/VT220 — only 8 standard colors supported"
   },
   "vt100:input.button-event-mouse": {
-    "note": "Not in VT100/VT220 \u2014 xterm extension"
+    "note": "Not in VT100/VT220 — xterm extension"
   },
   "vt100:scrollback.alt-screen": {
-    "note": "Not in VT100/VT220 \u2014 no alternate screen buffer"
+    "note": "Not in VT100/VT220 — no alternate screen buffer"
   },
   "vt100:unicode.wrap-boundary": {
-    "note": "Not in VT100/VT220 \u2014 ASCII only, no Unicode width"
+    "note": "Not in VT100/VT220 — ASCII only, no Unicode width"
   },
   "ghostty-native:modes.color-scheme-reporting": {
     "note": "Mode 2031 not exposed in headless mode",
@@ -939,13 +939,13 @@
     "result": "partial"
   },
   "vt100:modes.color-scheme-reporting": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.osc5522-clipboard": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:input.modify-other-keys-3": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vterm:modes.color-scheme-reporting": {
     "note": "Mode 2031 not implemented"
@@ -967,14 +967,14 @@
     "note": "OSC 66 text sizing not implemented in wezterm"
   },
   "kitty:extensions.osc66-text-sizing": {
-    "note": "OSC 66 not exposed via Python batch bridge \u2014 kitty supports it natively",
+    "note": "OSC 66 not exposed via Python batch bridge — kitty supports it natively",
     "result": "partial"
   },
   "alacritty:extensions.osc66-text-sizing": {
     "note": "OSC 66 text sizing not implemented in alacritty"
   },
   "vt100:extensions.osc66-text-sizing": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "ghostty-native:extensions.osc52-clipboard": {
     "note": "OSC 52 clipboard not exposed in headless mode",
@@ -1030,7 +1030,7 @@
     "note": "iTerm2-specific protocol not supported by kitty"
   },
   "kitty:extensions.sixel-da1": {
-    "note": "Sixel not supported by kitty \u2014 uses its own graphics protocol"
+    "note": "Sixel not supported by kitty — uses its own graphics protocol"
   },
   "kitty:input.urxvt-mouse": {
     "note": "urxvt mouse mode (?1015) not implemented in kitty"
@@ -1054,16 +1054,16 @@
     "note": "Sixel not implemented in alacritty"
   },
   "vt100:extensions.osc52-clipboard": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.osc10-fg-color": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.osc11-bg-color": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.sixel-da1": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "ghostty-native:extensions.osc52-read": {
     "note": "OSC 52 clipboard read not exposed in headless mode",
@@ -1160,33 +1160,297 @@
     "result": "partial"
   },
   "vt100:extensions.kitty-keyboard.disambiguate": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.kitty-keyboard.report-events": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.kitty-keyboard.report-alternate": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.kitty-keyboard.report-all-keys": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.kitty-keyboard.report-text": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.kitty-graphics.transmit": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.kitty-graphics.display": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.kitty-graphics.animation": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.kitty-graphics.unicode-placeholders": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
   },
   "vt100:extensions.osc52-read": {
-    "note": "Not implemented \u2014 pure TypeScript emulator"
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "ghostty-native:text.tbc": {
+    "note": "Tab stop clear (TBC) not exposed in headless mode"
+  },
+  "ghostty-native:extensions.osc4-palette": {
+    "note": "OSC 4 color query requires a real display — headless backends have no color palette to query"
+  },
+  "ghostty-native:extensions.osc5-special-color": {
+    "note": "OSC 5 special color query requires a real display — headless backends have no color palette to query"
+  },
+  "ghostty-native:extensions.osc12-cursor-color": {
+    "note": "OSC 12 cursor color query requires a real display — headless backends have no color palette to query"
+  },
+  "ghostty-native:extensions.osc104-reset-palette": {
+    "note": "OSC 104 color reset requires a real display — headless backends have no color palette to reset"
+  },
+  "ghostty-native:extensions.osc110-reset-fg": {
+    "note": "OSC 110 foreground reset requires a real display — headless backends have no color palette to reset"
+  },
+  "ghostty-native:extensions.osc111-reset-bg": {
+    "note": "OSC 111 background reset requires a real display — headless backends have no color palette to reset"
+  },
+  "ghostty-native:extensions.osc112-reset-cursor": {
+    "note": "OSC 112 cursor color reset requires a real display — headless backends have no color palette to reset"
+  },
+  "ghostty-native:extensions.osc17-highlight-bg": {
+    "note": "OSC 17 highlight background query requires a real display — headless backends have no color palette to query"
+  },
+  "ghostty-native:extensions.osc19-highlight-fg": {
+    "note": "OSC 19 highlight foreground query requires a real display — headless backends have no color palette to query"
+  },
+  "xtermjs:text.tbc": {
+    "note": "Tab stop clear (TBC) not implemented in xterm.js headless mode"
+  },
+  "xtermjs:extensions.osc4-palette": {
+    "note": "OSC 4 color query requires a real display — headless backends have no color palette to query"
+  },
+  "xtermjs:extensions.osc5-special-color": {
+    "note": "OSC 5 special color query requires a real display — headless backends have no color palette to query"
+  },
+  "xtermjs:extensions.osc12-cursor-color": {
+    "note": "OSC 12 cursor color query requires a real display — headless backends have no color palette to query"
+  },
+  "xtermjs:extensions.osc104-reset-palette": {
+    "note": "OSC 104 color reset requires a real display — headless backends have no color palette to reset"
+  },
+  "xtermjs:extensions.osc110-reset-fg": {
+    "note": "OSC 110 foreground reset requires a real display — headless backends have no color palette to reset"
+  },
+  "xtermjs:extensions.osc111-reset-bg": {
+    "note": "OSC 111 background reset requires a real display — headless backends have no color palette to reset"
+  },
+  "xtermjs:extensions.osc112-reset-cursor": {
+    "note": "OSC 112 cursor color reset requires a real display — headless backends have no color palette to reset"
+  },
+  "xtermjs:extensions.osc17-highlight-bg": {
+    "note": "OSC 17 highlight background query requires a real display — headless backends have no color palette to query"
+  },
+  "xtermjs:extensions.osc19-highlight-fg": {
+    "note": "OSC 19 highlight foreground query requires a real display — headless backends have no color palette to query"
+  },
+  "wezterm:text.tbc": {
+    "note": "Tab stop clear (TBC) not exposed via wezterm-term API"
+  },
+  "wezterm:extensions.osc4-palette": {
+    "note": "OSC 4 color query requires a real display — headless backends have no color palette to query"
+  },
+  "wezterm:extensions.osc5-special-color": {
+    "note": "OSC 5 special color query requires a real display — headless backends have no color palette to query"
+  },
+  "wezterm:extensions.osc12-cursor-color": {
+    "note": "OSC 12 cursor color query requires a real display — headless backends have no color palette to query"
+  },
+  "wezterm:extensions.osc104-reset-palette": {
+    "note": "OSC 104 color reset requires a real display — headless backends have no color palette to reset"
+  },
+  "wezterm:extensions.osc110-reset-fg": {
+    "note": "OSC 110 foreground reset requires a real display — headless backends have no color palette to reset"
+  },
+  "wezterm:extensions.osc111-reset-bg": {
+    "note": "OSC 111 background reset requires a real display — headless backends have no color palette to reset"
+  },
+  "wezterm:extensions.osc112-reset-cursor": {
+    "note": "OSC 112 cursor color reset requires a real display — headless backends have no color palette to reset"
+  },
+  "wezterm:extensions.osc17-highlight-bg": {
+    "note": "OSC 17 highlight background query requires a real display — headless backends have no color palette to query"
+  },
+  "wezterm:extensions.osc19-highlight-fg": {
+    "note": "OSC 19 highlight foreground query requires a real display — headless backends have no color palette to query"
+  },
+  "kitty:text.tbc": {
+    "note": "Tab stop clear (TBC) not exposed via Python batch bridge"
+  },
+  "kitty:extensions.osc4-palette": {
+    "note": "OSC 4 color query requires a real display — headless backends have no color palette to query"
+  },
+  "kitty:extensions.osc5-special-color": {
+    "note": "OSC 5 special color query requires a real display — headless backends have no color palette to query"
+  },
+  "kitty:extensions.osc12-cursor-color": {
+    "note": "OSC 12 cursor color query requires a real display — headless backends have no color palette to query"
+  },
+  "kitty:extensions.osc104-reset-palette": {
+    "note": "OSC 104 color reset requires a real display — headless backends have no color palette to reset"
+  },
+  "kitty:extensions.osc110-reset-fg": {
+    "note": "OSC 110 foreground reset requires a real display — headless backends have no color palette to reset"
+  },
+  "kitty:extensions.osc111-reset-bg": {
+    "note": "OSC 111 background reset requires a real display — headless backends have no color palette to reset"
+  },
+  "kitty:extensions.osc112-reset-cursor": {
+    "note": "OSC 112 cursor color reset requires a real display — headless backends have no color palette to reset"
+  },
+  "kitty:extensions.osc17-highlight-bg": {
+    "note": "OSC 17 highlight background query requires a real display — headless backends have no color palette to query"
+  },
+  "kitty:extensions.osc19-highlight-fg": {
+    "note": "OSC 19 highlight foreground query requires a real display — headless backends have no color palette to query"
+  },
+  "alacritty:text.tbc": {
+    "note": "Tab stop clear (TBC) not exposed via alacritty_terminal API"
+  },
+  "alacritty:extensions.osc4-palette": {
+    "note": "OSC 4 color query requires a real display — headless backends have no color palette to query"
+  },
+  "alacritty:extensions.osc5-special-color": {
+    "note": "OSC 5 special color query requires a real display — headless backends have no color palette to query"
+  },
+  "alacritty:extensions.osc12-cursor-color": {
+    "note": "OSC 12 cursor color query requires a real display — headless backends have no color palette to query"
+  },
+  "alacritty:extensions.osc104-reset-palette": {
+    "note": "OSC 104 color reset requires a real display — headless backends have no color palette to reset"
+  },
+  "alacritty:extensions.osc110-reset-fg": {
+    "note": "OSC 110 foreground reset requires a real display — headless backends have no color palette to reset"
+  },
+  "alacritty:extensions.osc111-reset-bg": {
+    "note": "OSC 111 background reset requires a real display — headless backends have no color palette to reset"
+  },
+  "alacritty:extensions.osc112-reset-cursor": {
+    "note": "OSC 112 cursor color reset requires a real display — headless backends have no color palette to reset"
+  },
+  "alacritty:extensions.osc17-highlight-bg": {
+    "note": "OSC 17 highlight background query requires a real display — headless backends have no color palette to query"
+  },
+  "alacritty:extensions.osc19-highlight-fg": {
+    "note": "OSC 19 highlight foreground query requires a real display — headless backends have no color palette to query"
+  },
+  "vt100:sgr.hidden": {
+    "note": "SGR 8 (hidden/invisible) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:sgr.fg.standard": {
+    "note": "Standard foreground colors (SGR 30–37) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:sgr.bg.standard": {
+    "note": "Standard background colors (SGR 40–47) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:cursor.hpa": {
+    "note": "HPA (horizontal position absolute) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:text.hts": {
+    "note": "Tab stop manipulation not implemented in vt100.js"
+  },
+  "vt100:text.tbc": {
+    "note": "Tab stop manipulation not implemented in vt100.js"
+  },
+  "vt100:text.cht": {
+    "note": "Tab stop manipulation not implemented in vt100.js"
+  },
+  "vt100:text.cbt": {
+    "note": "Tab stop manipulation not implemented in vt100.js"
+  },
+  "vt100:erase.character": {
+    "note": "ECH (erase character) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:editing.insert-chars": {
+    "note": "ICH (insert characters) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:editing.delete-chars": {
+    "note": "DCH (delete characters) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:editing.insert-lines": {
+    "note": "IL (insert lines) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:editing.delete-lines": {
+    "note": "DL (delete lines) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:modes.insert-replace": {
+    "note": "IRM (insert/replace mode) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:extensions.osc4-palette": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc5-special-color": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc12-cursor-color": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc104-reset-palette": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc110-reset-fg": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc111-reset-bg": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc112-reset-cursor": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc17-highlight-bg": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:extensions.osc19-highlight-fg": {
+    "note": "Not implemented — pure TypeScript emulator"
+  },
+  "vt100:reset.soft": {
+    "note": "DECSTR (soft reset) not implemented in vt100.js baseline emulator"
+  },
+  "vt100:reset.decaln": {
+    "note": "DECALN not implemented in vt100.js baseline emulator"
+  },
+  "vterm:cursor.hpa": {
+    "note": "HPA (horizontal position absolute) not implemented in vterm.js"
+  },
+  "vterm:text.hts": {
+    "note": "Tab stop manipulation not implemented in vterm.js"
+  },
+  "vterm:text.tbc": {
+    "note": "Tab stop manipulation not implemented in vterm.js"
+  },
+  "vterm:text.cht": {
+    "note": "Tab stop manipulation not implemented in vterm.js"
+  },
+  "vterm:text.cbt": {
+    "note": "Tab stop manipulation not implemented in vterm.js"
+  },
+  "vterm:extensions.osc4-palette": {
+    "note": "OSC 4 color query not implemented in vterm.js"
+  },
+  "vterm:extensions.osc5-special-color": {
+    "note": "OSC 5 special color query not implemented in vterm.js"
+  },
+  "vterm:extensions.osc12-cursor-color": {
+    "note": "OSC 12 cursor color query not implemented in vterm.js"
+  },
+  "vterm:extensions.osc104-reset-palette": {
+    "note": "OSC 104 color reset not implemented in vterm.js"
+  },
+  "vterm:extensions.osc112-reset-cursor": {
+    "note": "OSC 112 cursor color reset not implemented in vterm.js"
+  },
+  "vterm:extensions.osc17-highlight-bg": {
+    "note": "OSC 17 highlight background query not implemented in vterm.js"
+  },
+  "vterm:extensions.osc19-highlight-fg": {
+    "note": "OSC 19 highlight foreground query not implemented in vterm.js"
+  },
+  "vterm:reset.decaln": {
+    "note": "DECALN not implemented in vterm.js"
   }
 }

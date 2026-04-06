@@ -1,13 +1,15 @@
 {
   "version": 1,
-  "generated": "2026-04-06T04:26:09.478Z",
+  "generated": "2026-04-06T04:39:15.988Z",
   "features": {
     "charsets.dec-line-drawing": {
       "name": "DEC line drawing character set",
       "category": "charsets",
       "slug": "dec-line-drawing-chars",
       "url": "https://vt100.net/docs/vt510-rm/SCS.html",
-      "tags": ["vt100"],
+      "tags": [
+        "vt100"
+      ],
       "baseline": "core"
     },
     "charsets.dec-special": {
@@ -15,7 +17,9 @@
       "category": "charsets",
       "slug": "dec-special-graphics",
       "url": "https://vt100.net/docs/vt510-rm/SCS.html",
-      "tags": ["vt100"],
+      "tags": [
+        "vt100"
+      ],
       "baseline": "core"
     },
     "charsets.g0-g1-switching": {
@@ -23,7 +27,9 @@
       "category": "charsets",
       "slug": "g0-g1-charset-switching",
       "url": "https://vt100.net/docs/vt510-rm/SCS.html",
-      "tags": ["vt100"],
+      "tags": [
+        "vt100"
+      ],
       "baseline": "core"
     },
     "charsets.utf8": {
@@ -31,7 +37,19 @@
       "category": "charsets",
       "slug": "utf8-mode",
       "url": "https://unicode.org/faq/utf_bom.html",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
+      "baseline": "core"
+    },
+    "cursor.cpl": {
+      "name": "CPL cursor preceding line (CSI F)",
+      "category": "cursor",
+      "slug": "cpl-cursor-preceding-line",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "cursor.cud-past-bottom": {
@@ -39,7 +57,10 @@
       "category": "cursor",
       "slug": "cud-past-bottom",
       "url": "https://vt100.net/docs/vt510-rm/CUD.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.cup-boundaries": {
@@ -47,7 +68,10 @@
       "category": "cursor",
       "slug": "cup-screen-boundaries",
       "url": "https://vt100.net/docs/vt510-rm/CUP.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.cup-scroll-region": {
@@ -55,7 +79,10 @@
       "category": "cursor",
       "slug": "cup-decom-scroll-region",
       "url": "https://vt100.net/docs/vt510-rm/DECOM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.cuu-past-top": {
@@ -63,7 +90,10 @@
       "category": "cursor",
       "slug": "cuu-past-top",
       "url": "https://vt100.net/docs/vt510-rm/CUU.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.hide": {
@@ -71,7 +101,10 @@
       "category": "cursor",
       "slug": "dectcem-hide-cursor",
       "url": "https://vt100.net/docs/vt510-rm/DECTCEM.html",
-      "tags": ["dec-private-modes", "vt510"],
+      "tags": [
+        "dec-private-modes",
+        "vt510"
+      ],
       "baseline": "core"
     },
     "cursor.horizontal-absolute": {
@@ -79,15 +112,30 @@
       "category": "cursor",
       "slug": "cha-cursor-horizontal-absolute",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
+    },
+    "cursor.hpa": {
+      "name": "HPA horizontal position absolute (CSI `)",
+      "category": "cursor",
+      "slug": "hpa-horizontal-position-absolute",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+      "tags": [
+        "ecma-48"
+      ],
+      "baseline": "core"
     },
     "cursor.move.absolute": {
       "name": "Cursor position (CUP)",
       "category": "cursor",
       "slug": "cup-cursor-position",
       "url": "https://vt100.net/docs/vt510-rm/CUP.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.move.back": {
@@ -95,7 +143,10 @@
       "category": "cursor",
       "slug": "cub-cursor-back",
       "url": "https://vt100.net/docs/vt510-rm/CUB.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.move.down": {
@@ -103,7 +154,10 @@
       "category": "cursor",
       "slug": "cud-cursor-down",
       "url": "https://vt100.net/docs/vt510-rm/CUD.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.move.forward": {
@@ -111,7 +165,10 @@
       "category": "cursor",
       "slug": "cuf-cursor-forward",
       "url": "https://vt100.net/docs/vt510-rm/CUF.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.move.home": {
@@ -119,7 +176,10 @@
       "category": "cursor",
       "slug": "home",
       "url": "https://vt100.net/docs/vt510-rm/CUP.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.move.up": {
@@ -127,7 +187,10 @@
       "category": "cursor",
       "slug": "cuu-cursor-up",
       "url": "https://vt100.net/docs/vt510-rm/CUU.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.next-line": {
@@ -135,7 +198,9 @@
       "category": "cursor",
       "slug": "cnl-cursor-next-line",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "cursor.position-report": {
@@ -143,7 +208,10 @@
       "category": "cursor",
       "slug": "dsr-6-cursor-position-report",
       "url": "https://vt100.net/docs/vt510-rm/DSR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "cursor.reverse-wrap": {
@@ -151,7 +219,9 @@
       "category": "cursor",
       "slug": "reverse-wrap-45",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "cursor.save-restore": {
@@ -159,7 +229,10 @@
       "category": "cursor",
       "slug": "decsc-save-restore-cursor",
       "url": "https://vt100.net/docs/vt510-rm/DECSC.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "cursor.shape": {
@@ -167,15 +240,30 @@
       "category": "cursor",
       "slug": "decscusr-cursor-shape",
       "url": "https://vt100.net/docs/vt510-rm/DECSCUSR.html",
-      "tags": ["dec-private-modes", "vt510"],
+      "tags": [
+        "dec-private-modes",
+        "vt510"
+      ],
       "baseline": "modern"
+    },
+    "cursor.vpa": {
+      "name": "VPA vertical position absolute (CSI d)",
+      "category": "cursor",
+      "slug": "vpa-vertical-position-absolute",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+      "tags": [
+        "ecma-48"
+      ],
+      "baseline": "core"
     },
     "device.decrpm": {
       "name": "Mode Report (DECRPM)",
       "category": "device",
       "slug": "decrpm",
       "url": "https://vt100.net/docs/vt510-rm/DECRPM.html",
-      "tags": ["vt510"],
+      "tags": [
+        "vt510"
+      ],
       "baseline": "modern"
     },
     "device.decrqss": {
@@ -183,7 +271,9 @@
       "category": "device",
       "slug": "decrqss",
       "url": "https://vt100.net/docs/vt510-rm/DECRQSS.html",
-      "tags": ["vt510"],
+      "tags": [
+        "vt510"
+      ],
       "baseline": "rich"
     },
     "device.primary-da": {
@@ -191,7 +281,10 @@
       "category": "device",
       "slug": "da1-primary-device-attributes",
       "url": "https://vt100.net/docs/vt510-rm/DA1.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "device.secondary-da": {
@@ -199,7 +292,9 @@
       "category": "device",
       "slug": "da2-secondary-device-attributes",
       "url": "https://vt100.net/docs/vt510-rm/DA2.html",
-      "tags": ["vt220"],
+      "tags": [
+        "vt220"
+      ],
       "baseline": "modern"
     },
     "device.status-report": {
@@ -207,7 +302,10 @@
       "category": "device",
       "slug": "dsr-5-device-status-report",
       "url": "https://vt100.net/docs/vt510-rm/DSR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "device.term-features": {
@@ -215,7 +313,9 @@
       "category": "device",
       "slug": "term-features",
       "url": "https://gitlab.com/gnachman/iterm2/-/wikis/TERM_FEATURES",
-      "tags": ["iterm2"],
+      "tags": [
+        "iterm2"
+      ],
       "baseline": "rich"
     },
     "device.tertiary-da": {
@@ -223,7 +323,9 @@
       "category": "device",
       "slug": "da3-tertiary-device-attributes",
       "url": "https://vt100.net/docs/vt510-rm/DA3.html",
-      "tags": ["vt510"],
+      "tags": [
+        "vt510"
+      ],
       "baseline": "rich"
     },
     "device.xtgettcap": {
@@ -231,7 +333,9 @@
       "category": "device",
       "slug": "xtgettcap",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "device.xtversion": {
@@ -239,7 +343,9 @@
       "category": "device",
       "slug": "xtversion",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "editing.delete-chars": {
@@ -247,7 +353,10 @@
       "category": "editing",
       "slug": "dch-delete-characters",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48", "vt220"],
+      "tags": [
+        "ecma-48",
+        "vt220"
+      ],
       "baseline": "modern"
     },
     "editing.delete-lines": {
@@ -255,7 +364,10 @@
       "category": "editing",
       "slug": "dl-delete-lines",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "editing.insert-chars": {
@@ -263,7 +375,10 @@
       "category": "editing",
       "slug": "ich-insert-characters",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48", "vt220"],
+      "tags": [
+        "ecma-48",
+        "vt220"
+      ],
       "baseline": "modern"
     },
     "editing.insert-lines": {
@@ -271,7 +386,10 @@
       "category": "editing",
       "slug": "il-insert-lines",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "editing.repeat-char": {
@@ -279,7 +397,9 @@
       "category": "editing",
       "slug": "rep-repeat-character",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "erase.character": {
@@ -287,7 +407,9 @@
       "category": "erase",
       "slug": "ech-erase-character",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "erase.ed-scroll-region": {
@@ -295,7 +417,10 @@
       "category": "erase",
       "slug": "ed-scroll-region-boundary",
       "url": "https://vt100.net/docs/vt510-rm/ED.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.el-with-attrs": {
@@ -303,7 +428,10 @@
       "category": "erase",
       "slug": "el-erase-with-bg-color",
       "url": "https://vt100.net/docs/vt510-rm/EL.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.line.all": {
@@ -311,7 +439,10 @@
       "category": "erase",
       "slug": "el-2-erase-line",
       "url": "https://vt100.net/docs/vt510-rm/EL.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.line.left": {
@@ -319,7 +450,10 @@
       "category": "erase",
       "slug": "el-1-erase-to-bol",
       "url": "https://vt100.net/docs/vt510-rm/EL.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.line.right": {
@@ -327,7 +461,10 @@
       "category": "erase",
       "slug": "el-0-erase-to-eol",
       "url": "https://vt100.net/docs/vt510-rm/EL.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.screen.above": {
@@ -335,7 +472,10 @@
       "category": "erase",
       "slug": "ed-1-erase-above",
       "url": "https://vt100.net/docs/vt510-rm/ED.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.screen.all": {
@@ -343,7 +483,10 @@
       "category": "erase",
       "slug": "ed-2-erase-screen",
       "url": "https://vt100.net/docs/vt510-rm/ED.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.screen.below": {
@@ -351,7 +494,10 @@
       "category": "erase",
       "slug": "ed-0-erase-below",
       "url": "https://vt100.net/docs/vt510-rm/ED.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "erase.screen.scrollback": {
@@ -359,7 +505,9 @@
       "category": "erase",
       "slug": "ed-3-erase-scrollback",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "erase.selective": {
@@ -367,7 +515,9 @@
       "category": "erase",
       "slug": "selective-decsed",
       "url": "https://vt100.net/docs/vt510-rm/DECSED.html",
-      "tags": ["vt220"],
+      "tags": [
+        "vt220"
+      ],
       "baseline": "rich"
     },
     "extensions.iterm2-images": {
@@ -375,7 +525,9 @@
       "category": "extensions",
       "slug": "iterm2-images",
       "url": "https://iterm2.com/documentation-images.html",
-      "tags": ["osc"],
+      "tags": [
+        "osc"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-graphics": {
@@ -383,7 +535,9 @@
       "category": "extensions",
       "slug": "kitty-graphics-protocol",
       "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-graphics.animation": {
@@ -391,7 +545,9 @@
       "category": "extensions",
       "slug": "kitty-graphics-animation",
       "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#animation",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-graphics.display": {
@@ -399,7 +555,9 @@
       "category": "extensions",
       "slug": "kitty-graphics-display",
       "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#displaying-images",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-graphics.transmit": {
@@ -407,7 +565,9 @@
       "category": "extensions",
       "slug": "kitty-graphics-transmit",
       "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#transmitting-data",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-graphics.unicode-placeholders": {
@@ -415,7 +575,9 @@
       "category": "extensions",
       "slug": "kitty-graphics-unicode-placeholders",
       "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-keyboard": {
@@ -423,7 +585,9 @@
       "category": "extensions",
       "slug": "kitty-keyboard-protocol",
       "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-keyboard.disambiguate": {
@@ -431,7 +595,9 @@
       "category": "extensions",
       "slug": "kitty-keyboard-disambiguate",
       "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-keyboard.report-all-keys": {
@@ -439,7 +605,9 @@
       "category": "extensions",
       "slug": "kitty-keyboard-report-all-keys",
       "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-keyboard.report-alternate": {
@@ -447,7 +615,9 @@
       "category": "extensions",
       "slug": "kitty-keyboard-report-alternate",
       "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-keyboard.report-events": {
@@ -455,7 +625,9 @@
       "category": "extensions",
       "slug": "kitty-keyboard-report-events",
       "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.kitty-keyboard.report-text": {
@@ -463,14 +635,18 @@
       "category": "extensions",
       "slug": "kitty-keyboard-report-text",
       "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.notifications": {
       "name": "Desktop Notifications (OSC 9/777)",
       "category": "extensions",
       "slug": "notifications-osc-9",
-      "tags": ["osc"],
+      "tags": [
+        "osc"
+      ],
       "baseline": "rich"
     },
     "extensions.osc-633-vscode": {
@@ -478,7 +654,10 @@
       "category": "extensions",
       "slug": "osc-633-vscode",
       "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
-      "tags": ["osc", "vscode-extensions"],
+      "tags": [
+        "osc",
+        "vscode-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.osc0-icon-title": {
@@ -486,15 +665,43 @@
       "category": "extensions",
       "slug": "osc-0-icon-title",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
+    },
+    "extensions.osc1-icon": {
+      "name": "Icon name (OSC 1)",
+      "category": "extensions",
+      "slug": "osc-1-icon-name",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
+      "baseline": "core"
     },
     "extensions.osc10-fg-color": {
       "name": "Foreground color query (OSC 10)",
       "category": "extensions",
       "slug": "osc-10-fg-color-query",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
+      "baseline": "modern"
+    },
+    "extensions.osc104-reset-palette": {
+      "name": "Reset color palette (OSC 104)",
+      "category": "extensions",
+      "slug": "osc-104-reset-palette",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "extensions.osc11-bg-color": {
@@ -502,7 +709,54 @@
       "category": "extensions",
       "slug": "osc-11-bg-color-query",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
+      "baseline": "modern"
+    },
+    "extensions.osc110-reset-fg": {
+      "name": "Reset foreground color (OSC 110)",
+      "category": "extensions",
+      "slug": "osc-110-reset-fg",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
+      "baseline": "modern"
+    },
+    "extensions.osc111-reset-bg": {
+      "name": "Reset background color (OSC 111)",
+      "category": "extensions",
+      "slug": "osc-111-reset-bg",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
+      "baseline": "modern"
+    },
+    "extensions.osc112-reset-cursor": {
+      "name": "Reset cursor color (OSC 112)",
+      "category": "extensions",
+      "slug": "osc-112-reset-cursor",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
+      "baseline": "modern"
+    },
+    "extensions.osc12-cursor-color": {
+      "name": "Cursor color (OSC 12)",
+      "category": "extensions",
+      "slug": "osc-12-cursor-color",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "extensions.osc1337-capabilities": {
@@ -510,7 +764,10 @@
       "category": "extensions",
       "slug": "osc1337-capabilities",
       "url": "https://iterm2.com/documentation-escape-codes.html",
-      "tags": ["osc", "iterm2"],
+      "tags": [
+        "osc",
+        "iterm2"
+      ],
       "baseline": "rich"
     },
     "extensions.osc1337-cellsize": {
@@ -518,7 +775,32 @@
       "category": "extensions",
       "slug": "osc1337-cellsize",
       "url": "https://iterm2.com/documentation-escape-codes.html",
-      "tags": ["osc", "iterm2"],
+      "tags": [
+        "osc",
+        "iterm2"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.osc17-highlight-bg": {
+      "name": "Highlight background (OSC 17)",
+      "category": "extensions",
+      "slug": "osc-17-highlight-bg",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
+      "baseline": "rich"
+    },
+    "extensions.osc19-highlight-fg": {
+      "name": "Highlight foreground (OSC 19)",
+      "category": "extensions",
+      "slug": "osc-19-highlight-fg",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.osc2-title": {
@@ -526,15 +808,43 @@
       "category": "extensions",
       "slug": "osc-2-window-title",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
+    },
+    "extensions.osc4-palette": {
+      "name": "Color palette (OSC 4)",
+      "category": "extensions",
+      "slug": "osc-4-color-palette",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
+      "baseline": "modern"
+    },
+    "extensions.osc5-special-color": {
+      "name": "Special color (OSC 5)",
+      "category": "extensions",
+      "slug": "osc-5-special-color",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
+      "baseline": "rich"
     },
     "extensions.osc52-clipboard": {
       "name": "Clipboard access (OSC 52)",
       "category": "extensions",
       "slug": "osc-52-clipboard",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "extensions.osc52-read": {
@@ -542,7 +852,10 @@
       "category": "extensions",
       "slug": "osc52-clipboard-read",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.osc52-write": {
@@ -550,7 +863,10 @@
       "category": "extensions",
       "slug": "osc52-clipboard-write",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "extensions.osc5522-clipboard": {
@@ -558,7 +874,10 @@
       "category": "extensions",
       "slug": "osc5522-clipboard",
       "url": "https://sw.kovidgoyal.net/kitty/clipboard/",
-      "tags": ["osc", "kitty-extensions"],
+      "tags": [
+        "osc",
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.osc66-text-sizing": {
@@ -566,7 +885,10 @@
       "category": "extensions",
       "slug": "osc66-text-sizing",
       "url": "https://sw.kovidgoyal.net/kitty/text-sizing-protocol/",
-      "tags": ["osc", "kitty-extensions"],
+      "tags": [
+        "osc",
+        "kitty-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.osc7-cwd": {
@@ -574,7 +896,9 @@
       "category": "extensions",
       "slug": "osc-7-current-directory",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["osc"],
+      "tags": [
+        "osc"
+      ],
       "baseline": "modern"
     },
     "extensions.osc8": {
@@ -582,7 +906,10 @@
       "category": "extensions",
       "slug": "osc-8-hyperlinks",
       "url": "https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda",
-      "tags": ["osc", "xterm-extensions"],
+      "tags": [
+        "osc",
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.osc9-progress": {
@@ -590,7 +917,10 @@
       "category": "extensions",
       "slug": "osc9-progress-bar",
       "url": "https://conemu.github.io/en/AnsiEscapeCodes.html#ConEmu_specific_OSC",
-      "tags": ["osc", "conemu"],
+      "tags": [
+        "osc",
+        "conemu"
+      ],
       "baseline": "rich"
     },
     "extensions.reflow": {
@@ -598,7 +928,9 @@
       "category": "extensions",
       "slug": "text-reflow",
       "url": "https://github.com/xtermjs/xterm.js/wiki/Reflow",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "extensions.semantic-prompts": {
@@ -606,7 +938,9 @@
       "category": "extensions",
       "slug": "osc-133-semantic-prompts",
       "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
-      "tags": ["osc"],
+      "tags": [
+        "osc"
+      ],
       "baseline": "rich"
     },
     "extensions.sixel": {
@@ -614,7 +948,9 @@
       "category": "extensions",
       "slug": "sixel-graphics",
       "url": "https://en.wikipedia.org/wiki/Sixel",
-      "tags": ["sixel"],
+      "tags": [
+        "sixel"
+      ],
       "baseline": "rich"
     },
     "extensions.sixel-da1": {
@@ -622,7 +958,9 @@
       "category": "extensions",
       "slug": "sixel-da1",
       "url": "https://vt100.net/docs/vt510-rm/DA1.html",
-      "tags": ["sixel"],
+      "tags": [
+        "sixel"
+      ],
       "baseline": "rich"
     },
     "extensions.truecolor": {
@@ -630,7 +968,9 @@
       "category": "extensions",
       "slug": "24-bit-truecolor",
       "url": "https://github.com/termstandard/colors",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "input.button-event-mouse": {
@@ -638,7 +978,9 @@
       "category": "input",
       "slug": "button-event-mouse-1002",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "input.csi-u": {
@@ -646,7 +988,9 @@
       "category": "input",
       "slug": "csi-u-encoding",
       "url": "http://www.leonerd.org.uk/hacks/fixterms/",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "input.modify-other-keys": {
@@ -654,7 +998,9 @@
       "category": "input",
       "slug": "modify-other-keys",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "input.modify-other-keys-3": {
@@ -662,7 +1008,9 @@
       "category": "input",
       "slug": "modify-other-keys-3",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "input.pixel-mouse": {
@@ -670,7 +1018,9 @@
       "category": "input",
       "slug": "pixel-mouse-1016",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "input.urxvt-mouse": {
@@ -678,7 +1028,9 @@
       "category": "input",
       "slug": "urxvt-mouse-1015",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "rich"
     },
     "input.x10-mouse": {
@@ -686,7 +1038,9 @@
       "category": "input",
       "slug": "x10-mouse-9",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-      "tags": ["dec-private-modes"],
+      "tags": [
+        "dec-private-modes"
+      ],
       "baseline": "modern"
     },
     "modes.alt-screen.enter": {
@@ -694,7 +1048,10 @@
       "category": "modes",
       "slug": "decset-1049-alt-screen-enter",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "modes.alt-screen.exit": {
@@ -702,7 +1059,10 @@
       "category": "modes",
       "slug": "decrst-1049-alt-screen-exit",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "modes.application-cursor": {
@@ -710,7 +1070,10 @@
       "category": "modes",
       "slug": "decckm-app-cursor-keys",
       "url": "https://vt100.net/docs/vt510-rm/DECCKM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "modes.application-keypad": {
@@ -718,7 +1081,10 @@
       "category": "modes",
       "slug": "deckpam-application-keypad",
       "url": "https://vt100.net/docs/vt510-rm/DECKPAM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "modes.auto-wrap": {
@@ -726,7 +1092,10 @@
       "category": "modes",
       "slug": "decawm-auto-wrap",
       "url": "https://vt100.net/docs/vt510-rm/DECAWM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "modes.bracketed-paste": {
@@ -734,7 +1103,10 @@
       "category": "modes",
       "slug": "decset-2004-bracketed-paste",
       "url": "https://cirw.in/blog/bracketed-paste",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.color-scheme-reporting": {
@@ -742,7 +1114,9 @@
       "category": "modes",
       "slug": "mode-2031-color-scheme",
       "url": "https://contour-terminal.org/vt-extensions/color-palette-update-notifications/",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.focus-tracking": {
@@ -750,7 +1124,10 @@
       "category": "modes",
       "slug": "decset-1004-focus-tracking",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-FocusIn_FocusOut",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.insert-replace": {
@@ -758,7 +1135,9 @@
       "category": "modes",
       "slug": "irm-insert-replace-mode",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "modes.left-right-margin": {
@@ -766,7 +1145,9 @@
       "category": "modes",
       "slug": "left-right-margin-69",
       "url": "https://vt100.net/docs/vt510-rm/DECLRMM.html",
-      "tags": ["vt510"],
+      "tags": [
+        "vt510"
+      ],
       "baseline": "rich"
     },
     "modes.mouse-all": {
@@ -774,7 +1155,10 @@
       "category": "modes",
       "slug": "decset-1003-all-motion-mouse",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.mouse-sgr": {
@@ -782,7 +1166,10 @@
       "category": "modes",
       "slug": "decset-1006-sgr-mouse",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.mouse-tracking": {
@@ -790,7 +1177,10 @@
       "category": "modes",
       "slug": "decset-1000-mouse-tracking",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-      "tags": ["dec-private-modes", "xterm-extensions"],
+      "tags": [
+        "dec-private-modes",
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "modes.origin": {
@@ -798,7 +1188,10 @@
       "category": "modes",
       "slug": "decom-origin-mode",
       "url": "https://vt100.net/docs/vt510-rm/DECOM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "modes.reverse-video": {
@@ -806,7 +1199,10 @@
       "category": "modes",
       "slug": "decscnm-reverse-video",
       "url": "https://vt100.net/docs/vt510-rm/DECSCNM.html",
-      "tags": ["dec-private-modes", "vt510"],
+      "tags": [
+        "dec-private-modes",
+        "vt510"
+      ],
       "baseline": "core"
     },
     "modes.synchronized-output": {
@@ -814,7 +1210,19 @@
       "category": "modes",
       "slug": "decset-2026-synchronized-output",
       "url": "https://gitlab.freedesktop.org/terminal-wg/specifications/-/merge_requests/2",
-      "tags": ["dec-private-modes"],
+      "tags": [
+        "dec-private-modes"
+      ],
+      "baseline": "modern"
+    },
+    "reset.decaln": {
+      "name": "DECALN screen alignment (ESC # 8)",
+      "category": "reset",
+      "slug": "decaln-screen-alignment",
+      "url": "https://vt100.net/docs/vt510-rm/DECALN.html",
+      "tags": [
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "reset.method": {
@@ -828,7 +1236,10 @@
       "category": "reset",
       "slug": "ris-full-reset",
       "url": "https://vt100.net/docs/vt510-rm/RIS.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "reset.sgr": {
@@ -836,7 +1247,9 @@
       "category": "reset",
       "slug": "sgr-0-reset-clears-attributes",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "reset.soft": {
@@ -844,7 +1257,10 @@
       "category": "reset",
       "slug": "decstr-soft-reset",
       "url": "https://vt100.net/docs/vt510-rm/DECSTR.html",
-      "tags": ["dec-private-modes", "vt510"],
+      "tags": [
+        "dec-private-modes",
+        "vt510"
+      ],
       "baseline": "core"
     },
     "scrollback.accumulate": {
@@ -852,7 +1268,9 @@
       "category": "scrollback",
       "slug": "accumulates",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "scrollback.alt-screen": {
@@ -860,7 +1278,9 @@
       "category": "scrollback",
       "slug": "alt-screen-separate-scrollback",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "scrollback.decstbm": {
@@ -868,7 +1288,10 @@
       "category": "scrollback",
       "slug": "decstbm-constrained-scrolling",
       "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "scrollback.decstbm-reset": {
@@ -876,7 +1299,10 @@
       "category": "scrollback",
       "slug": "decstbm-reset-full-screen",
       "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "scrollback.reverse-index": {
@@ -884,7 +1310,10 @@
       "category": "scrollback",
       "slug": "ri-reverse-index",
       "url": "https://vt100.net/docs/vt510-rm/RI.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "scrollback.scroll-down": {
@@ -892,7 +1321,10 @@
       "category": "scrollback",
       "slug": "sd-scroll-down",
       "url": "https://vt100.net/docs/vt510-rm/SD.html",
-      "tags": ["ecma-48", "vt510"],
+      "tags": [
+        "ecma-48",
+        "vt510"
+      ],
       "baseline": "core"
     },
     "scrollback.scroll-up": {
@@ -900,7 +1332,10 @@
       "category": "scrollback",
       "slug": "su-scroll-up",
       "url": "https://vt100.net/docs/vt510-rm/SU.html",
-      "tags": ["ecma-48", "vt510"],
+      "tags": [
+        "ecma-48",
+        "vt510"
+      ],
       "baseline": "core"
     },
     "scrollback.set-region": {
@@ -908,7 +1343,10 @@
       "category": "scrollback",
       "slug": "decstbm-scroll-region",
       "url": "https://vt100.net/docs/vt510-rm/DECSTBM.html",
-      "tags": ["dec-private-modes", "vt100"],
+      "tags": [
+        "dec-private-modes",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "scrollback.total-lines": {
@@ -916,7 +1354,9 @@
       "category": "scrollback",
       "slug": "total-lines",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "core"
     },
     "sgr.bg.256": {
@@ -924,7 +1364,9 @@
       "category": "sgr",
       "slug": "48-5-256-color-bg",
       "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.bg.bright": {
@@ -932,7 +1374,9 @@
       "category": "sgr",
       "slug": "100-107-bright-bg",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.bg.default": {
@@ -940,7 +1384,9 @@
       "category": "sgr",
       "slug": "49-default-bg",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.bg.standard": {
@@ -948,7 +1394,9 @@
       "category": "sgr",
       "slug": "40-47-standard-bg",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.bg.truecolor": {
@@ -956,7 +1404,9 @@
       "category": "sgr",
       "slug": "48-2-truecolor-bg",
       "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#24-bit",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.blink": {
@@ -964,7 +1414,10 @@
       "category": "sgr",
       "slug": "5-blink",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "modern"
     },
     "sgr.bold": {
@@ -972,7 +1425,10 @@
       "category": "sgr",
       "slug": "1-bold",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "sgr.faint": {
@@ -980,7 +1436,10 @@
       "category": "sgr",
       "slug": "2-faint-dim",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "sgr.fg.256": {
@@ -988,7 +1447,9 @@
       "category": "sgr",
       "slug": "38-5-256-color-fg",
       "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.fg.bright": {
@@ -996,7 +1457,9 @@
       "category": "sgr",
       "slug": "90-97-bright-fg",
       "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.fg.default": {
@@ -1004,7 +1467,9 @@
       "category": "sgr",
       "slug": "39-default-fg",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.fg.standard": {
@@ -1012,7 +1477,9 @@
       "category": "sgr",
       "slug": "30-37-standard-fg",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.fg.truecolor": {
@@ -1020,7 +1487,9 @@
       "category": "sgr",
       "slug": "38-2-truecolor-fg",
       "url": "https://en.wikipedia.org/wiki/ANSI_escape_code#24-bit",
-      "tags": ["xterm-extensions"],
+      "tags": [
+        "xterm-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.hidden": {
@@ -1028,7 +1497,9 @@
       "category": "sgr",
       "slug": "8-hidden",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.inverse": {
@@ -1036,7 +1507,10 @@
       "category": "sgr",
       "slug": "7-inverse-video",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "sgr.italic": {
@@ -1044,7 +1518,9 @@
       "category": "sgr",
       "slug": "3-italic",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.overline": {
@@ -1052,7 +1528,9 @@
       "category": "sgr",
       "slug": "53-overline",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "sgr.reset": {
@@ -1060,7 +1538,10 @@
       "category": "sgr",
       "slug": "0-reset",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "sgr.selective-reset.bold": {
@@ -1068,7 +1549,9 @@
       "category": "sgr",
       "slug": "22-reset-bold",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.selective-reset.inverse": {
@@ -1076,7 +1559,9 @@
       "category": "sgr",
       "slug": "27-reset-inverse",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.selective-reset.italic": {
@@ -1084,7 +1569,9 @@
       "category": "sgr",
       "slug": "23-reset-italic",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.selective-reset.underline": {
@@ -1092,7 +1579,9 @@
       "category": "sgr",
       "slug": "24-reset-underline",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.strikethrough": {
@@ -1100,7 +1589,9 @@
       "category": "sgr",
       "slug": "9-strikethrough",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "sgr.underline.color": {
@@ -1108,7 +1599,9 @@
       "category": "sgr",
       "slug": "58-underline-color",
       "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.underline.curly": {
@@ -1116,7 +1609,9 @@
       "category": "sgr",
       "slug": "4-3-curly-underline",
       "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.underline.dashed": {
@@ -1124,7 +1619,9 @@
       "category": "sgr",
       "slug": "4-5-dashed-underline",
       "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.underline.dotted": {
@@ -1132,7 +1629,9 @@
       "category": "sgr",
       "slug": "4-4-dotted-underline",
       "url": "https://sw.kovidgoyal.net/kitty/underlines/",
-      "tags": ["kitty-extensions"],
+      "tags": [
+        "kitty-extensions"
+      ],
       "baseline": "modern"
     },
     "sgr.underline.double": {
@@ -1140,7 +1639,9 @@
       "category": "sgr",
       "slug": "21-double-underline",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48"],
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "modern"
     },
     "sgr.underline.single": {
@@ -1148,7 +1649,10 @@
       "category": "sgr",
       "slug": "4-underline",
       "url": "https://vt100.net/docs/vt510-rm/SGR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.backspace": {
@@ -1156,14 +1660,40 @@
       "category": "text",
       "slug": "bs-backspace",
       "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.basic": {
       "name": "Basic text rendering",
       "category": "text",
       "slug": "basic-text-rendering",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
+      "baseline": "core"
+    },
+    "text.cbt": {
+      "name": "CBT backward tab (CSI Z)",
+      "category": "text",
+      "slug": "cbt-backward-tab",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+      "tags": [
+        "ecma-48"
+      ],
+      "baseline": "core"
+    },
+    "text.cht": {
+      "name": "CHT forward tab (CSI I)",
+      "category": "text",
+      "slug": "cht-forward-tab",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+      "tags": [
+        "ecma-48"
+      ],
       "baseline": "core"
     },
     "text.combining": {
@@ -1171,7 +1701,9 @@
       "category": "text",
       "slug": "combining-characters",
       "url": "https://unicode.org/reports/tr29/",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "text.cr": {
@@ -1179,7 +1711,21 @@
       "category": "text",
       "slug": "cr-carriage-return",
       "url": "https://vt100.net/docs/vt510-rm/CR.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
+      "baseline": "core"
+    },
+    "text.hts": {
+      "name": "HTS set tab stop (ESC H)",
+      "category": "text",
+      "slug": "hts-set-tab-stop",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.index": {
@@ -1187,7 +1733,10 @@
       "category": "text",
       "slug": "ind-index",
       "url": "https://vt100.net/docs/vt510-rm/IND.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.newline": {
@@ -1195,7 +1744,10 @@
       "category": "text",
       "slug": "lf-line-feed",
       "url": "https://vt100.net/docs/vt510-rm/LF.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.next-line": {
@@ -1203,14 +1755,20 @@
       "category": "text",
       "slug": "nel-next-line",
       "url": "https://vt100.net/docs/vt510-rm/NEL.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.overwrite": {
       "name": "Overwrite at cursor",
       "category": "text",
       "slug": "overwrite-at-cursor",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.reverse-index-scroll": {
@@ -1218,7 +1776,9 @@
       "category": "text",
       "slug": "reverse-index-scroll",
       "url": "https://vt100.net/docs/vt510-rm/RI.html",
-      "tags": ["vt100"],
+      "tags": [
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.tab": {
@@ -1226,7 +1786,21 @@
       "category": "text",
       "slug": "ht-tab-stops",
       "url": "https://vt100.net/docs/vt510-rm/HT.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
+      "baseline": "core"
+    },
+    "text.tbc": {
+      "name": "TBC clear tab stop (CSI g)",
+      "category": "text",
+      "slug": "tbc-clear-tab-stop",
+      "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "text.wide.cjk": {
@@ -1234,7 +1808,9 @@
       "category": "text",
       "slug": "cjk-wide-chars",
       "url": "https://unicode.org/reports/tr11/",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "core"
     },
     "text.wide.emoji": {
@@ -1242,7 +1818,9 @@
       "category": "text",
       "slug": "emoji-wide-chars",
       "url": "https://unicode.org/reports/tr51/",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "text.wide.emoji-flags": {
@@ -1250,7 +1828,9 @@
       "category": "text",
       "slug": "emoji-regional-indicator-flags",
       "url": "https://unicode.org/reports/tr51/#Flags",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "text.wide.emoji-vs16": {
@@ -1258,7 +1838,9 @@
       "category": "text",
       "slug": "variation-selector-16-emoji",
       "url": "https://unicode.org/reports/tr51/#Presentation_Style",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "text.wide.emoji-zwj": {
@@ -1266,14 +1848,19 @@
       "category": "text",
       "slug": "emoji-zwj-sequences",
       "url": "https://unicode.org/reports/tr51/#ZWJ_Sequences",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "text.wrap": {
       "name": "Text wraps at width",
       "category": "text",
       "slug": "wrap-at-width",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "unicode.east-asian-ambiguous": {
@@ -1281,7 +1868,9 @@
       "category": "unicode",
       "slug": "east-asian-ambiguous",
       "url": "https://www.unicode.org/reports/tr11/",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "unicode.grapheme-cursor": {
@@ -1289,7 +1878,9 @@
       "category": "unicode",
       "slug": "grapheme-cursor",
       "url": "https://unicode.org/reports/tr29/#Grapheme_Cluster_Boundaries",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     },
     "unicode.tab-stops": {
@@ -1297,7 +1888,10 @@
       "category": "unicode",
       "slug": "tab-stops",
       "url": "https://vt100.net/docs/vt510-rm/HT.html",
-      "tags": ["ecma-48", "vt100"],
+      "tags": [
+        "ecma-48",
+        "vt100"
+      ],
       "baseline": "core"
     },
     "unicode.wrap-boundary": {
@@ -1305,7 +1899,9 @@
       "category": "unicode",
       "slug": "wrap-boundary",
       "url": "https://unicode.org/reports/tr11/",
-      "tags": ["unicode"],
+      "tags": [
+        "unicode"
+      ],
       "baseline": "unicode"
     }
   },
@@ -1314,7 +1910,9 @@
       "name": "VS Code",
       "version": "1.113.0",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://code.visualstudio.com",
       "score": {
         "total": 164,
@@ -1326,7 +1924,9 @@
       "name": "Cursor",
       "version": "2.6.21",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "score": {
         "total": 164,
         "pass": 141,
@@ -1337,7 +1937,9 @@
       "name": "Ghostty",
       "version": "1.3.1",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://ghostty.org",
       "score": {
         "total": 164,
@@ -1349,7 +1951,9 @@
       "name": "iTerm2",
       "version": "3.6.9",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://iterm2.com",
       "score": {
         "total": 164,
@@ -1361,7 +1965,9 @@
       "name": "Kitty",
       "version": "0.46.2",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://sw.kovidgoyal.net/kitty/",
       "score": {
         "total": 164,
@@ -1373,7 +1979,9 @@
       "name": "Terminal.app",
       "version": "2.15",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://support.apple.com/guide/terminal",
       "score": {
         "total": 164,
@@ -1385,7 +1993,9 @@
       "name": "Warp",
       "version": "0.2026.03.18.08.24.03",
       "type": "app",
-      "platforms": ["macos"],
+      "platforms": [
+        "macos"
+      ],
       "url": "https://www.warp.dev",
       "score": {
         "total": 164,
@@ -1399,9 +2009,9 @@
       "type": "headless",
       "url": "https://alacritty.org",
       "score": {
-        "total": 161,
-        "pass": 112,
-        "pct": 70
+        "total": 179,
+        "pass": 120,
+        "pct": 67
       }
     },
     "vt100": {
@@ -1409,9 +2019,9 @@
       "version": "0.2.1",
       "type": "headless",
       "score": {
-        "total": 161,
-        "pass": 85,
-        "pct": 53
+        "total": 179,
+        "pass": 78,
+        "pct": 44
       }
     },
     "vterm": {
@@ -1419,9 +2029,9 @@
       "version": "0.2.0",
       "type": "headless",
       "score": {
-        "total": 161,
-        "pass": 160,
-        "pct": 99
+        "total": 179,
+        "pass": 165,
+        "pct": 92
       }
     },
     "wezterm": {
@@ -1430,9 +2040,9 @@
       "type": "headless",
       "url": "https://wezfurlong.org/wezterm",
       "score": {
-        "total": 161,
-        "pass": 111,
-        "pct": 69
+        "total": 179,
+        "pass": 119,
+        "pct": 66
       }
     }
   },
@@ -2645,6 +3255,9 @@
       "cursor.cup-boundaries": "yes",
       "cursor.cuu-past-top": "yes",
       "cursor.cud-past-bottom": "yes",
+      "cursor.vpa": "yes",
+      "cursor.cpl": "yes",
+      "cursor.hpa": "yes",
       "cursor.cup-scroll-region": "yes",
       "text.basic": "yes",
       "text.newline": "yes",
@@ -2659,6 +3272,10 @@
       "text.next-line": "yes",
       "text.reverse-index-scroll": "yes",
       "text.combining": "yes",
+      "text.hts": "yes",
+      "text.tbc": "no",
+      "text.cht": "yes",
+      "text.cbt": "yes",
       "text.wide.emoji-flags": "no",
       "text.wide.emoji-vs16": "no",
       "text.wide.emoji-zwj": "yes",
@@ -2732,6 +3349,16 @@
       "extensions.osc1337-capabilities": "no",
       "extensions.osc66-text-sizing": "no",
       "extensions.osc5522-clipboard": "no",
+      "extensions.osc1-icon": "yes",
+      "extensions.osc4-palette": "no",
+      "extensions.osc5-special-color": "no",
+      "extensions.osc12-cursor-color": "no",
+      "extensions.osc104-reset-palette": "no",
+      "extensions.osc110-reset-fg": "no",
+      "extensions.osc111-reset-bg": "no",
+      "extensions.osc112-reset-cursor": "no",
+      "extensions.osc17-highlight-bg": "no",
+      "extensions.osc19-highlight-fg": "no",
       "extensions.sixel-da1": "no",
       "input.modify-other-keys": "partial",
       "input.csi-u": "yes",
@@ -2743,6 +3370,7 @@
       "reset.sgr": "yes",
       "reset.ris": "yes",
       "reset.soft": "partial",
+      "reset.decaln": "yes",
       "reset.method": "yes",
       "scrollback.accumulate": "yes",
       "scrollback.total-lines": "yes",
@@ -2773,12 +3401,12 @@
       "sgr.underline.dashed": "no",
       "sgr.blink": "yes",
       "sgr.inverse": "yes",
-      "sgr.hidden": "yes",
+      "sgr.hidden": "no",
       "sgr.strikethrough": "no",
       "sgr.overline": "yes",
       "sgr.underline.color": "no",
-      "sgr.fg.standard": "yes",
-      "sgr.bg.standard": "yes",
+      "sgr.fg.standard": "no",
+      "sgr.bg.standard": "no",
       "sgr.fg.bright": "no",
       "sgr.bg.bright": "no",
       "sgr.fg.default": "yes",
@@ -2808,6 +3436,9 @@
       "cursor.cup-boundaries": "yes",
       "cursor.cuu-past-top": "yes",
       "cursor.cud-past-bottom": "yes",
+      "cursor.vpa": "yes",
+      "cursor.cpl": "yes",
+      "cursor.hpa": "no",
       "cursor.cup-scroll-region": "no",
       "text.basic": "yes",
       "text.newline": "yes",
@@ -2822,6 +3453,10 @@
       "text.next-line": "yes",
       "text.reverse-index-scroll": "yes",
       "text.combining": "no",
+      "text.hts": "no",
+      "text.tbc": "no",
+      "text.cht": "no",
+      "text.cbt": "no",
       "text.wide.emoji-flags": "no",
       "text.wide.emoji-vs16": "no",
       "text.wide.emoji-zwj": "yes",
@@ -2832,14 +3467,14 @@
       "erase.screen.above": "yes",
       "erase.screen.all": "yes",
       "erase.screen.scrollback": "yes",
-      "erase.character": "yes",
+      "erase.character": "no",
       "erase.selective": "no",
       "erase.el-with-attrs": "no",
       "erase.ed-scroll-region": "yes",
-      "editing.insert-chars": "yes",
-      "editing.delete-chars": "yes",
-      "editing.insert-lines": "yes",
-      "editing.delete-lines": "yes",
+      "editing.insert-chars": "no",
+      "editing.delete-chars": "no",
+      "editing.insert-lines": "no",
+      "editing.delete-lines": "no",
       "editing.repeat-char": "no",
       "modes.alt-screen.enter": "no",
       "modes.alt-screen.exit": "yes",
@@ -2851,7 +3486,7 @@
       "modes.reverse-video": "yes",
       "modes.synchronized-output": "yes",
       "modes.origin": "yes",
-      "modes.insert-replace": "yes",
+      "modes.insert-replace": "no",
       "modes.mouse-sgr": "no",
       "modes.mouse-all": "no",
       "modes.application-keypad": "yes",
@@ -2895,6 +3530,16 @@
       "extensions.osc1337-capabilities": "no",
       "extensions.osc66-text-sizing": "no",
       "extensions.osc5522-clipboard": "no",
+      "extensions.osc1-icon": "yes",
+      "extensions.osc4-palette": "no",
+      "extensions.osc5-special-color": "no",
+      "extensions.osc12-cursor-color": "no",
+      "extensions.osc104-reset-palette": "no",
+      "extensions.osc110-reset-fg": "no",
+      "extensions.osc111-reset-bg": "no",
+      "extensions.osc112-reset-cursor": "no",
+      "extensions.osc17-highlight-bg": "no",
+      "extensions.osc19-highlight-fg": "no",
       "extensions.sixel-da1": "no",
       "input.modify-other-keys": "no",
       "input.csi-u": "no",
@@ -2905,7 +3550,8 @@
       "input.button-event-mouse": "no",
       "reset.sgr": "yes",
       "reset.ris": "yes",
-      "reset.soft": "yes",
+      "reset.soft": "no",
+      "reset.decaln": "no",
       "reset.method": "yes",
       "scrollback.accumulate": "yes",
       "scrollback.total-lines": "yes",
@@ -2971,6 +3617,9 @@
       "cursor.cup-boundaries": "yes",
       "cursor.cuu-past-top": "yes",
       "cursor.cud-past-bottom": "yes",
+      "cursor.vpa": "yes",
+      "cursor.cpl": "yes",
+      "cursor.hpa": "no",
       "cursor.cup-scroll-region": "yes",
       "text.basic": "yes",
       "text.newline": "yes",
@@ -2985,6 +3634,10 @@
       "text.next-line": "yes",
       "text.reverse-index-scroll": "yes",
       "text.combining": "yes",
+      "text.hts": "no",
+      "text.tbc": "no",
+      "text.cht": "no",
+      "text.cbt": "no",
       "text.wide.emoji-flags": "yes",
       "text.wide.emoji-vs16": "yes",
       "text.wide.emoji-zwj": "yes",
@@ -3058,6 +3711,16 @@
       "extensions.osc1337-capabilities": "yes",
       "extensions.osc66-text-sizing": "yes",
       "extensions.osc5522-clipboard": "yes",
+      "extensions.osc1-icon": "yes",
+      "extensions.osc4-palette": "no",
+      "extensions.osc5-special-color": "no",
+      "extensions.osc12-cursor-color": "no",
+      "extensions.osc104-reset-palette": "no",
+      "extensions.osc110-reset-fg": "yes",
+      "extensions.osc111-reset-bg": "yes",
+      "extensions.osc112-reset-cursor": "no",
+      "extensions.osc17-highlight-bg": "no",
+      "extensions.osc19-highlight-fg": "no",
       "extensions.sixel-da1": "yes",
       "input.modify-other-keys": "yes",
       "input.csi-u": "yes",
@@ -3069,6 +3732,7 @@
       "reset.sgr": "yes",
       "reset.ris": "yes",
       "reset.soft": "yes",
+      "reset.decaln": "no",
       "reset.method": "yes",
       "scrollback.accumulate": "yes",
       "scrollback.total-lines": "yes",
@@ -3134,6 +3798,9 @@
       "cursor.cup-boundaries": "no",
       "cursor.cuu-past-top": "yes",
       "cursor.cud-past-bottom": "yes",
+      "cursor.vpa": "yes",
+      "cursor.cpl": "yes",
+      "cursor.hpa": "yes",
       "cursor.cup-scroll-region": "yes",
       "text.basic": "yes",
       "text.newline": "yes",
@@ -3148,6 +3815,10 @@
       "text.next-line": "yes",
       "text.reverse-index-scroll": "yes",
       "text.combining": "yes",
+      "text.hts": "yes",
+      "text.tbc": "no",
+      "text.cht": "yes",
+      "text.cbt": "yes",
       "text.wide.emoji-flags": "yes",
       "text.wide.emoji-vs16": "no",
       "text.wide.emoji-zwj": "yes",
@@ -3221,6 +3892,16 @@
       "extensions.osc1337-capabilities": "no",
       "extensions.osc66-text-sizing": "no",
       "extensions.osc5522-clipboard": "no",
+      "extensions.osc1-icon": "yes",
+      "extensions.osc4-palette": "no",
+      "extensions.osc5-special-color": "no",
+      "extensions.osc12-cursor-color": "no",
+      "extensions.osc104-reset-palette": "no",
+      "extensions.osc110-reset-fg": "no",
+      "extensions.osc111-reset-bg": "no",
+      "extensions.osc112-reset-cursor": "no",
+      "extensions.osc17-highlight-bg": "no",
+      "extensions.osc19-highlight-fg": "no",
       "extensions.sixel-da1": "partial",
       "input.modify-other-keys": "partial",
       "input.csi-u": "yes",
@@ -3232,6 +3913,7 @@
       "reset.sgr": "yes",
       "reset.ris": "yes",
       "reset.soft": "partial",
+      "reset.decaln": "yes",
       "reset.method": "yes",
       "scrollback.accumulate": "yes",
       "scrollback.total-lines": "yes",
@@ -3512,6 +4194,7 @@
       "sgr.fg.standard": "Backend returns palette index instead of resolved RGB",
       "cursor.position-report": "Headless mode has no output stream for DSR responses",
       "cursor.reverse-wrap": "Reverse wrap not supported in alacritty headless mode",
+      "text.tbc": "Tab stop clear (TBC) not exposed via alacritty_terminal API",
       "text.wide.emoji-flags": "Emoji flag sequences not rendered as wide characters",
       "text.wide.emoji-vs16": "VS16 emoji variation selectors not handled",
       "erase.screen.all": "Alacritty's ED 2 doesn't clear scrollback content from buffer",
@@ -3547,6 +4230,15 @@
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not supported",
       "extensions.osc66-text-sizing": "OSC 66 text sizing not implemented in alacritty",
       "extensions.osc5522-clipboard": "OSC 5522 not implemented in alacritty",
+      "extensions.osc4-palette": "OSC 4 color query requires a real display — headless backends have no color palette to query",
+      "extensions.osc5-special-color": "OSC 5 special color query requires a real display — headless backends have no color palette to query",
+      "extensions.osc12-cursor-color": "OSC 12 cursor color query requires a real display — headless backends have no color palette to query",
+      "extensions.osc104-reset-palette": "OSC 104 color reset requires a real display — headless backends have no color palette to reset",
+      "extensions.osc110-reset-fg": "OSC 110 foreground reset requires a real display — headless backends have no color palette to reset",
+      "extensions.osc111-reset-bg": "OSC 111 background reset requires a real display — headless backends have no color palette to reset",
+      "extensions.osc112-reset-cursor": "OSC 112 cursor color reset requires a real display — headless backends have no color palette to reset",
+      "extensions.osc17-highlight-bg": "OSC 17 highlight background query requires a real display — headless backends have no color palette to query",
+      "extensions.osc19-highlight-fg": "OSC 19 highlight foreground query requires a real display — headless backends have no color palette to query",
       "extensions.sixel-da1": "Sixel not implemented in alacritty",
       "input.modify-other-keys": "modifyOtherKeys not exposed via alacritty_terminal API",
       "input.pixel-mouse": "SGR pixel mouse mode not exposed via alacritty_terminal API",
@@ -3562,8 +4254,11 @@
       "sgr.underline.curly": "Not in VT100/VT220 — only single underline supported",
       "sgr.underline.dotted": "Not in VT100/VT220 — only single underline supported",
       "sgr.underline.dashed": "Not in VT100/VT220 — only single underline supported",
+      "sgr.hidden": "SGR 8 (hidden/invisible) not implemented in vt100.js baseline emulator",
       "sgr.strikethrough": "Not in VT100/VT220 — use vterm.js for modern SGR",
       "sgr.underline.color": "Not implemented — pure TypeScript emulator",
+      "sgr.fg.standard": "Standard foreground colors (SGR 30–37) not implemented in vt100.js baseline emulator",
+      "sgr.bg.standard": "Standard background colors (SGR 40–47) not implemented in vt100.js baseline emulator",
       "sgr.fg.bright": "Not in VT100/VT220 — only 8 standard colors supported",
       "sgr.bg.bright": "Not in VT100/VT220 — only 8 standard colors supported",
       "sgr.fg.256": "Not in VT100/VT220 — only 8 standard colors supported",
@@ -3571,19 +4266,30 @@
       "sgr.fg.truecolor": "Not in VT100/VT220 — only 8 standard colors supported",
       "sgr.bg.truecolor": "Not in VT100/VT220 — only 8 standard colors supported",
       "cursor.shape": "Not implemented — pure TypeScript emulator",
+      "cursor.hpa": "HPA (horizontal position absolute) not implemented in vt100.js baseline emulator",
       "cursor.cup-scroll-region": "CUP with DECOM not implemented — pure TypeScript emulator",
       "text.wide.emoji": "Not in VT100/VT220 — ASCII only, no Unicode width",
       "text.wide.cjk": "Not in VT100/VT220 — ASCII only, no Unicode width",
       "text.combining": "Combining characters not implemented — pure TypeScript emulator",
+      "text.hts": "Tab stop manipulation not implemented in vt100.js",
+      "text.tbc": "Tab stop manipulation not implemented in vt100.js",
+      "text.cht": "Tab stop manipulation not implemented in vt100.js",
+      "text.cbt": "Tab stop manipulation not implemented in vt100.js",
       "text.wide.emoji-flags": "Emoji flag sequences not rendered as wide characters",
       "text.wide.emoji-vs16": "VS16 emoji variation selectors not handled",
+      "erase.character": "ECH (erase character) not implemented in vt100.js baseline emulator",
       "erase.selective": "DECSED not implemented — pure TypeScript emulator",
       "erase.el-with-attrs": "EL doesn't preserve SGR background — pure TypeScript emulator",
+      "editing.insert-chars": "ICH (insert characters) not implemented in vt100.js baseline emulator",
+      "editing.delete-chars": "DCH (delete characters) not implemented in vt100.js baseline emulator",
+      "editing.insert-lines": "IL (insert lines) not implemented in vt100.js baseline emulator",
+      "editing.delete-lines": "DL (delete lines) not implemented in vt100.js baseline emulator",
       "editing.repeat-char": "REP not implemented — pure TypeScript emulator",
       "modes.alt-screen.enter": "Not in VT100/VT220 — xterm extension",
       "modes.bracketed-paste": "Not in VT100/VT220 — xterm extension",
       "modes.mouse-tracking": "Not in VT100/VT220 — xterm extension",
       "modes.focus-tracking": "Not in VT100/VT220 — xterm extension",
+      "modes.insert-replace": "IRM (insert/replace mode) not implemented in vt100.js baseline emulator",
       "modes.mouse-sgr": "SGR mouse encoding not implemented — pure TypeScript emulator",
       "modes.mouse-all": "Not in VT100/VT220 — xterm extension",
       "modes.left-right-margin": "DECLRMM not implemented — pure TypeScript emulator",
@@ -3622,6 +4328,15 @@
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not implemented — pure TypeScript emulator",
       "extensions.osc66-text-sizing": "Not implemented — pure TypeScript emulator",
       "extensions.osc5522-clipboard": "Not implemented — pure TypeScript emulator",
+      "extensions.osc4-palette": "Not implemented — pure TypeScript emulator",
+      "extensions.osc5-special-color": "Not implemented — pure TypeScript emulator",
+      "extensions.osc12-cursor-color": "Not implemented — pure TypeScript emulator",
+      "extensions.osc104-reset-palette": "Not implemented — pure TypeScript emulator",
+      "extensions.osc110-reset-fg": "Not implemented — pure TypeScript emulator",
+      "extensions.osc111-reset-bg": "Not implemented — pure TypeScript emulator",
+      "extensions.osc112-reset-cursor": "Not implemented — pure TypeScript emulator",
+      "extensions.osc17-highlight-bg": "Not implemented — pure TypeScript emulator",
+      "extensions.osc19-highlight-fg": "Not implemented — pure TypeScript emulator",
       "extensions.sixel-da1": "Not implemented — pure TypeScript emulator",
       "input.modify-other-keys": "Not implemented — pure TypeScript emulator",
       "input.csi-u": "CSI u keyboard protocol not implemented",
@@ -3630,6 +4345,8 @@
       "input.x10-mouse": "X10 mouse mode (?9) not implemented",
       "input.modify-other-keys-3": "Not implemented — pure TypeScript emulator",
       "input.button-event-mouse": "Not in VT100/VT220 — xterm extension",
+      "reset.soft": "DECSTR (soft reset) not implemented in vt100.js baseline emulator",
+      "reset.decaln": "DECALN not implemented in vt100.js baseline emulator",
       "scrollback.alt-screen": "Not in VT100/VT220 — no alternate screen buffer",
       "unicode.wrap-boundary": "Not in VT100/VT220 — ASCII only, no Unicode width",
       "cursor.position-report": "No output stream — pure TypeScript emulator",
@@ -3637,6 +4354,19 @@
       "device.status-report": "No output stream — pure TypeScript emulator"
     },
     "vterm": {
+      "cursor.hpa": "HPA (horizontal position absolute) not implemented in vterm.js",
+      "text.hts": "Tab stop manipulation not implemented in vterm.js",
+      "text.tbc": "Tab stop manipulation not implemented in vterm.js",
+      "text.cht": "Tab stop manipulation not implemented in vterm.js",
+      "text.cbt": "Tab stop manipulation not implemented in vterm.js",
+      "extensions.osc4-palette": "OSC 4 color query not implemented in vterm.js",
+      "extensions.osc5-special-color": "OSC 5 special color query not implemented in vterm.js",
+      "extensions.osc12-cursor-color": "OSC 12 cursor color query not implemented in vterm.js",
+      "extensions.osc104-reset-palette": "OSC 104 color reset not implemented in vterm.js",
+      "extensions.osc112-reset-cursor": "OSC 112 cursor color reset not implemented in vterm.js",
+      "extensions.osc17-highlight-bg": "OSC 17 highlight background query not implemented in vterm.js",
+      "extensions.osc19-highlight-fg": "OSC 19 highlight foreground query not implemented in vterm.js",
+      "reset.decaln": "DECALN not implemented in vterm.js",
       "modes.application-keypad": "Application keypad mode parsed but not exposed via getMode()",
       "modes.left-right-margin": "DECLRMM not implemented",
       "modes.color-scheme-reporting": "Mode 2031 not implemented",
@@ -3655,6 +4385,7 @@
       "sgr.bg.256": "Backend returns palette index instead of resolved RGB",
       "cursor.position-report": "Headless mode has no output stream for DSR responses",
       "cursor.cup-boundaries": "CUP boundary behavior differs in wezterm-term headless mode",
+      "text.tbc": "Tab stop clear (TBC) not exposed via wezterm-term API",
       "text.wide.emoji-vs16": "VS16 emoji variation selectors not handled",
       "erase.selective": "DECSED (selective erase) not supported in wezterm-term",
       "erase.el-with-attrs": "EL doesn't preserve SGR background in headless mode",
@@ -3686,6 +4417,15 @@
       "extensions.osc1337-capabilities": "iTerm2-specific protocol not supported",
       "extensions.osc66-text-sizing": "OSC 66 text sizing not implemented in wezterm",
       "extensions.osc5522-clipboard": "OSC 5522 not implemented in wezterm",
+      "extensions.osc4-palette": "OSC 4 color query requires a real display — headless backends have no color palette to query",
+      "extensions.osc5-special-color": "OSC 5 special color query requires a real display — headless backends have no color palette to query",
+      "extensions.osc12-cursor-color": "OSC 12 cursor color query requires a real display — headless backends have no color palette to query",
+      "extensions.osc104-reset-palette": "OSC 104 color reset requires a real display — headless backends have no color palette to reset",
+      "extensions.osc110-reset-fg": "OSC 110 foreground reset requires a real display — headless backends have no color palette to reset",
+      "extensions.osc111-reset-bg": "OSC 111 background reset requires a real display — headless backends have no color palette to reset",
+      "extensions.osc112-reset-cursor": "OSC 112 cursor color reset requires a real display — headless backends have no color palette to reset",
+      "extensions.osc17-highlight-bg": "OSC 17 highlight background query requires a real display — headless backends have no color palette to query",
+      "extensions.osc19-highlight-fg": "OSC 19 highlight foreground query requires a real display — headless backends have no color palette to query",
       "extensions.sixel-da1": "Sixel DA1 attribute not exposed in headless mode",
       "input.modify-other-keys": "modifyOtherKeys not exposed via wezterm-term API",
       "input.pixel-mouse": "SGR pixel mouse mode not exposed via wezterm-term API",
