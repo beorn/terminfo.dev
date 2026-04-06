@@ -210,6 +210,25 @@ heading("Errors (block deploy)")
   if (!found) info("All feature probeStatus values are valid")
 }
 
+// 4c. Duplicate feature names (same display name, different IDs)
+{
+  let found = false
+  const nameToId = new Map<string, string>()
+  for (const [id, feat] of Object.entries(features)) {
+    if (id === "$comment") continue
+    const name = feat.name
+    if (!name) continue
+    if (nameToId.has(name)) {
+      error(`Duplicate feature name "${name}": "${nameToId.get(name)}" and "${id}" — merge or rename`)
+      errors++
+      found = true
+    } else {
+      nameToId.set(name, id)
+    }
+  }
+  if (!found) info("No duplicate feature names")
+}
+
 // ---------------------------------------------------------------------------
 // WARNINGS
 // ---------------------------------------------------------------------------

@@ -81,8 +81,9 @@ bun scripts/generate-api.ts     # Regenerate API data + badges
 ### 7. Validate + build
 
 ```bash
-bun scripts/validate.ts         # Check tag consistency, missing fields, etc.
+bun scripts/validate.ts         # Check tag consistency, missing fields, duplicates, etc.
 bun run build                   # Build static site (250+ pages)
+bun scripts/check-404s.ts       # Verify no broken internal links
 ```
 
 ### 8. Deploy
