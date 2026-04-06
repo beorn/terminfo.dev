@@ -94,6 +94,7 @@ function buildSidebar() {
     Object.entries(standardsData).map(([k, v]) => [k, v.label]),
   )
 
+  // Order: formal standards → DEC hardware → de facto (xterm) → protocol families → vendor extensions
   const tagOrder = [
     "ecma-48",
     "vt100",
@@ -101,10 +102,13 @@ function buildSidebar() {
     "vt510",
     "dec-private-modes",
     "xterm-extensions",
-    "kitty-extensions",
     "osc",
     "sixel",
     "unicode",
+    "kitty-extensions",
+    "iterm2",
+    "conemu",
+    "vscode-extensions",
   ]
   const sortedTags = [...tags].sort((a, b) => {
     const ai = tagOrder.indexOf(a)
@@ -124,6 +128,7 @@ function buildSidebar() {
     Object.entries(categoriesData).map(([k, v]) => [k, v.label]),
   )
 
+  // Order: rendering → navigation → clearing → behavior → advanced → protocols
   const categoryOrder = [
     "sgr",
     "cursor",
@@ -133,9 +138,11 @@ function buildSidebar() {
     "modes",
     "scrollback",
     "reset",
-    "extensions",
     "charsets",
     "device",
+    "input",
+    "extensions",
+    "unicode",
   ]
 
   // Determine categories and features from features.json
