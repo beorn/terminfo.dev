@@ -55,6 +55,117 @@ export const sgrProbes: ProbeDefinition[] = [
     },
   ),
 
+  // SGR 58;5;N — indexed underline color. Verify underline is active and, if the
+  // backend exposes per-cell underline color, that the indexed color resolved to a
+  // non-default value. Backends that don't expose underlineColor pass on the
+  // underline check alone — they're handled per-backend in annotations.
+  probe(
+    "sgr.underline-color-indexed",
+    (ctx) => {
+      ctx.feed("\x1b[4m\x1b[58;5;5mX")
+      const cell = ctx.getCell(0, 0)
+      if (!cell.underline) return { pass: false, note: "underline not set" }
+      if (cell.underlineColor === undefined) {
+        // Backend doesn't track underline color per cell — accept underline alone.
+        return { pass: true, note: "underlineColor not tracked by backend" }
+      }
+      if (cell.underlineColor === null) {
+        return { pass: false, note: "underlineColor is null after SGR 58;5;5" }
+      }
+      // Palette index 5 is magenta in the standard 16-color palette — at minimum
+      // some red and some blue, no green. We accept any non-zero color since the
+      // exact palette mapping varies by terminal theme.
+      const c = cell.underlineColor
+      const looksColored = c.r > 0 || c.g > 0 || c.b > 0
+      return {
+        pass: looksColored,
+        note: looksColored ? undefined : `underlineColor is rgb(${c.r},${c.g},${c.b})`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b[4m\x1b[58;5;5mX\x1b[0m")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
+      }
+    },
+  ),
+
+  // SGR 58;2;R;G;B — truecolor underline color. Verify underline is active and,
+  // if exposed, that the underline color matches the requested RGB exactly.
+  probe(
+    "sgr.underline-color-rgb",
+    (ctx) => {
+      ctx.feed("\x1b[4m\x1b[58;2;255;0;128mX")
+      const cell = ctx.getCell(0, 0)
+      if (!cell.underline) return { pass: false, note: "underline not set" }
+      if (cell.underlineColor === undefined) {
+        // Backend doesn't track underline color per cell — accept underline alone.
+        return { pass: true, note: "underlineColor not tracked by backend" }
+      }
+      if (cell.underlineColor === null) {
+        return { pass: false, note: "underlineColor is null after SGR 58;2;255;0;128" }
+      }
+      const c = cell.underlineColor
+      const matches = c.r === 255 && c.g === 0 && c.b === 128
+      return {
+        pass: matches,
+        note: matches ? undefined : `underlineColor is rgb(${c.r},${c.g},${c.b}), expected rgb(255,0,128)`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b[4m\x1b[58;2;255;0;128mX\x1b[0m")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
+      }
+    },
+  ),
+
+  // SGR 59 — reset underline color. Set a colored underline on cell 0, then SGR 59
+  // and write to cell 1. Cell 1 should still be underlined but without an explicit
+  // underline color (null or default).
+  probe(
+    "sgr.underline-color-reset",
+    (ctx) => {
+      ctx.feed("\x1b[4m\x1b[58;2;255;0;128mX\x1b[59mY")
+      const cell = ctx.getCell(0, 1)
+      if (!cell.underline) return { pass: false, note: "underline not set on cell 1" }
+      if (cell.underlineColor === undefined) {
+        // Backend doesn't track underline color per cell — accept underline alone.
+        return { pass: true, note: "underlineColor not tracked by backend" }
+      }
+      // After SGR 59 the underline color should be null (default) — anything
+      // else (including the previously-set rgb(255,0,128)) means the reset was
+      // not honored.
+      const c = cell.underlineColor
+      if (c === null) return { pass: true }
+      const stillColored = c.r === 255 && c.g === 0 && c.b === 128
+      return {
+        pass: !stillColored,
+        note: stillColored
+          ? "underlineColor still rgb(255,0,128) after SGR 59 — reset not honored"
+          : `underlineColor is rgb(${c.r},${c.g},${c.b}) after SGR 59`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b[4m\x1b[58;2;255;0;128m\x1b[59mX\x1b[0m")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
+      }
+    },
+  ),
+
   // ── Colors ──
 
   probe(

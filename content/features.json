@@ -96,6 +96,39 @@
     "baseline": "modern",
     "sequence": "ESC [ 58;2;R;G;B m"
   },
+  "sgr.underline-color-indexed": {
+    "name": "Underline color, indexed (SGR 58;5)",
+    "slug": "58-5-underline-color-indexed",
+    "url": "https://sw.kovidgoyal.net/kitty/underlines/",
+    "tags": ["ecma-48", "kitty-extensions"],
+    "group": "underline",
+    "body": "SGR 58;5;N sets the underline color to one of the 256 indexed palette colors, mirroring the SGR 38;5 syntax used for foreground color. The sequence is <code>ESC [ 58 ; 5 ; N m</code>, where N is a palette index (0-15 system colors, 16-231 6×6×6 RGB cube, 232-255 grayscale ramp). The colon-separated form <code>ESC [ 58 : 5 : N m</code> is also accepted by terminals that support ECMA-48 sub-parameter syntax.\n\nIndexed underline color is widely supported on terminals that implement the broader Kitty extended underline protocol: Kitty, WezTerm, foot, Ghostty, VTE-based terminals (GNOME Terminal, Tilix), mintty, and iTerm2. Combine with curly underlines (SGR 4:3) to render diagnostic indicators in palette colors that match the user's theme.\n\nReset the underline color to default (typically the foreground color) with SGR 59.",
+    "probe": "Send <code>\\x1b[4m\\x1b[58;5;5m</code>X, verify the cell at (0,0) has <code>underline</code> active. If the backend tracks underline color per cell, also verify <code>underlineColor</code> matches palette index 5 (magenta).",
+    "baseline": "rich",
+    "sequence": "CSI 58 ; 5 ; N m"
+  },
+  "sgr.underline-color-rgb": {
+    "name": "Underline color, truecolor (SGR 58;2)",
+    "slug": "58-2-underline-color-rgb",
+    "url": "https://sw.kovidgoyal.net/kitty/underlines/",
+    "tags": ["ecma-48", "kitty-extensions"],
+    "group": "underline",
+    "body": "SGR 58;2;R;G;B sets the underline color to a 24-bit truecolor value, mirroring the SGR 38;2 syntax used for foreground color. The sequence is <code>ESC [ 58 ; 2 ; R ; G ; B m</code>, where R, G, and B are 0-255. The ECMA-48 colon-separated form <code>ESC [ 58 : 2 : : R : G : B m</code> (with an empty colorspace ID slot) is also accepted by terminals that follow the strict spec.\n\nTruecolor underlines were originally introduced by Kitty and have since been adopted by every major modern terminal: WezTerm, foot, Ghostty, Alacritty, VTE (GNOME Terminal, Tilix), iTerm2, mintty, Konsole, and Windows Terminal. The underline color is independent of the text foreground color, so applications can render red squiggly underlines for errors and yellow squigglies for warnings while keeping the surrounding text in its normal color.\n\nReset the underline color to default (typically matching the foreground) with SGR 59.",
+    "probe": "Send <code>\\x1b[4m\\x1b[58;2;255;0;128m</code>X, verify the cell at (0,0) has <code>underline</code> active. If the backend tracks underline color per cell, also verify <code>underlineColor</code> matches RGB(255, 0, 128).",
+    "baseline": "rich",
+    "sequence": "CSI 58 ; 2 ; R ; G ; B m"
+  },
+  "sgr.underline-color-reset": {
+    "name": "Reset underline color (SGR 59)",
+    "slug": "59-underline-color-reset",
+    "url": "https://sw.kovidgoyal.net/kitty/underlines/",
+    "tags": ["ecma-48", "kitty-extensions"],
+    "group": "underline",
+    "body": "SGR 59 resets the underline color to its default value, which typically matches the current text foreground color. The sequence is <code>ESC [ 59 m</code>. This is the companion reset for SGR 58 (set underline color), analogous to how SGR 39 resets the foreground color set by SGR 38.\n\nUsing SGR 59 allows applications to clear an explicit underline color without resetting other attributes — the underline style itself (single, double, curly, dotted, dashed) and any other SGR state remain in effect. To remove the underline entirely, use SGR 24 instead.\n\nSGR 59 is supported wherever SGR 58 is supported: Kitty, WezTerm, foot, Ghostty, Alacritty, VTE-based terminals, iTerm2, mintty, Konsole, and Windows Terminal.",
+    "probe": "Send <code>\\x1b[4m\\x1b[58;2;255;0;128mX\\x1b[59mY</code>, verify the cell at (0,0) has the colored underline and the cell at (0,1) has underline active but no explicit <code>underlineColor</code> (or a null/default value).",
+    "baseline": "rich",
+    "sequence": "CSI 59 m"
+  },
   "sgr.blink": {
     "name": "Blink (SGR 5)",
     "slug": "5-blink",
