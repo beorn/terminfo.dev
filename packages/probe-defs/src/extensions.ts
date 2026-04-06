@@ -349,6 +349,269 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
   ),
 
+  // OSC 133 sub-commands — semantic prompt markers (FinalTerm)
+  // Each probe sends one marker and verifies the terminal consumed the sequence
+  // (cursor didn't advance, terminal remains responsive). probeStatus: "partial"
+  // since headless can't verify semantic meaning — only acceptance.
+
+  // OSC 133;A — prompt start (FTCS_PROMPT)
+  probe(
+    "extensions.osc133-a",
+    (ctx) => {
+      ctx.feed("\x1b]133;A\x07X")
+      // Verify the OSC sequence was consumed and "X" landed at column 0.
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]133;A\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 133;A" }
+      // Cursor should be at col 2 (wrote 1 char "X" — OSC consumed)
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 133;A may not be consumed)`,
+      }
+    },
+  ),
+
+  // OSC 133;B — command start (FTCS_COMMAND_START)
+  probe(
+    "extensions.osc133-b",
+    (ctx) => {
+      ctx.feed("\x1b]133;B\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]133;B\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 133;B" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 133;B may not be consumed)`,
+      }
+    },
+  ),
+
+  // OSC 133;C — command executed (FTCS_COMMAND_EXECUTED)
+  probe(
+    "extensions.osc133-c",
+    (ctx) => {
+      ctx.feed("\x1b]133;C\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]133;C\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 133;C" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 133;C may not be consumed)`,
+      }
+    },
+  ),
+
+  // OSC 133;D — command finished with exit code (FTCS_COMMAND_FINISHED)
+  probe(
+    "extensions.osc133-d",
+    (ctx) => {
+      ctx.feed("\x1b]133;D;0\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]133;D;0\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 133;D" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 133;D may not be consumed)`,
+      }
+    },
+  ),
+
+  // OSC 133;P — properties (Cwd, CmdLine, etc.)
+  probe(
+    "extensions.osc133-p",
+    (ctx) => {
+      ctx.feed("\x1b]133;P;Cwd=/tmp\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]133;P;Cwd=/tmp\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 133;P" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 133;P may not be consumed)`,
+      }
+    },
+  ),
+
+  // OSC 633 sub-commands — VS Code shell integration markers
+  // VS Code's parallel namespace to OSC 133, with VS Code-specific extensions (E, P).
+
+  // OSC 633;A — prompt start (mirrors 133;A)
+  probe(
+    "extensions.osc633-a",
+    (ctx) => {
+      ctx.feed("\x1b]633;A\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]633;A\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 633;A" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;A may not be consumed)`,
+      }
+    },
+  ),
+
+  // OSC 633;B — prompt end (mirrors 133;B)
+  probe(
+    "extensions.osc633-b",
+    (ctx) => {
+      ctx.feed("\x1b]633;B\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]633;B\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 633;B" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;B may not be consumed)`,
+      }
+    },
+  ),
+
+  // OSC 633;C — pre-execution (mirrors 133;C)
+  probe(
+    "extensions.osc633-c",
+    (ctx) => {
+      ctx.feed("\x1b]633;C\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]633;C\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 633;C" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;C may not be consumed)`,
+      }
+    },
+  ),
+
+  // OSC 633;D — command finished with exit code (mirrors 133;D)
+  probe(
+    "extensions.osc633-d",
+    (ctx) => {
+      ctx.feed("\x1b]633;D;0\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]633;D;0\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 633;D" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;D may not be consumed)`,
+      }
+    },
+  ),
+
+  // OSC 633;E — set commandline with verification nonce (unique to OSC 633)
+  probe(
+    "extensions.osc633-e",
+    (ctx) => {
+      ctx.feed("\x1b]633;E;ls -la;nonce123\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]633;E;ls -la;nonce123\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 633;E" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;E may not be consumed)`,
+      }
+    },
+  ),
+
+  // OSC 633;P — VS Code-specific properties (Cwd, IsWindows, git status)
+  probe(
+    "extensions.osc633-p",
+    (ctx) => {
+      ctx.feed("\x1b]633;P;Cwd=/tmp\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]633;P;Cwd=/tmp\x07X")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 633;P" }
+      return {
+        pass: pos.col === 2,
+        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;P may not be consumed)`,
+      }
+    },
+  ),
+
   // OSC 9 — desktop notifications
   probe(
     "extensions.notifications",

@@ -1122,6 +1122,127 @@
     "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
     "sequence": "ESC ] 633 ; A BEL"
   },
+  "extensions.osc133-a": {
+    "name": "OSC 133;A prompt start (FTCS_PROMPT)",
+    "slug": "osc133-a-prompt-start",
+    "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
+    "tags": ["osc"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 133;A</strong> (also known as <code>FTCS_PROMPT</code>) marks the start of a shell prompt — the first of the FinalTerm semantic prompt markers. It tells the terminal: <em>everything from here until the next marker is the prompt itself</em>. Shells emit this immediately before drawing the prompt string.</p>\n<p>This marker enables click-to-navigate between prompts, jump-to-previous-command, and visual command boundaries. Without it, the terminal has no way to know where one command ends and the next begins — it just sees a stream of characters. Combined with <a href=\"/extensions/osc133-b-command-start\" class=\"hover-link\">133;B</a>, <a href=\"/extensions/osc133-c-command-executed\" class=\"hover-link\">133;C</a>, and <a href=\"/extensions/osc133-d-command-finished\" class=\"hover-link\">133;D</a>, it forms the complete FinalTerm semantic prompt protocol.</p>",
+    "probe": "Send <code>OSC 133 ; A BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 133 ; A BEL",
+    "probeStatus": "partial"
+  },
+  "extensions.osc133-b": {
+    "name": "OSC 133;B command start (FTCS_COMMAND_START)",
+    "slug": "osc133-b-command-start",
+    "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
+    "tags": ["osc"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 133;B</strong> (also known as <code>FTCS_COMMAND_START</code>) marks the end of the prompt and the start of the user's command line. Shells emit this immediately after drawing the prompt and before the user begins typing. It tells the terminal: <em>everything from here until Enter is what the user is typing</em>.</p>\n<p>This marker lets the terminal distinguish prompt text (which it shouldn't let users edit) from command text (which is the user's input). Editors and shell-aware terminals use this to implement features like command-line history navigation, syntax highlighting of the typed command, and copy-command-only operations that exclude the prompt.</p>",
+    "probe": "Send <code>OSC 133 ; B BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 133 ; B BEL",
+    "probeStatus": "partial"
+  },
+  "extensions.osc133-c": {
+    "name": "OSC 133;C command executed (FTCS_COMMAND_EXECUTED)",
+    "slug": "osc133-c-command-executed",
+    "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
+    "tags": ["osc"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 133;C</strong> (also known as <code>FTCS_COMMAND_EXECUTED</code>) marks the transition from the command line to command output. Shells emit this immediately after the user presses Enter and before the command begins producing output. It tells the terminal: <em>everything from here until 133;D is the command's output</em>.</p>\n<p>This marker lets the terminal group output blocks for selection, scrolling, and folding. Features like \"copy command output\" and \"scroll by command\" depend on knowing where output begins. Combined with <a href=\"/extensions/osc133-d-command-finished\" class=\"hover-link\">133;D</a>, it enables the terminal to compute command duration and show success/failure decorations.</p>",
+    "probe": "Send <code>OSC 133 ; C BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 133 ; C BEL",
+    "probeStatus": "partial"
+  },
+  "extensions.osc133-d": {
+    "name": "OSC 133;D command finished (FTCS_COMMAND_FINISHED)",
+    "slug": "osc133-d-command-finished",
+    "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
+    "tags": ["osc"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 133;D</strong> (also known as <code>FTCS_COMMAND_FINISHED</code>) marks the end of command output, with an optional exit code as a parameter. Shells emit this immediately after the command exits and before the next prompt is drawn. The format is <code>OSC 133 ; D ; exitcode BEL</code>, where exitcode is the shell's <code>$?</code> value.</p>\n<p>With this marker plus the exit code, terminals can show success/failure decorations (green check, red X) next to each command, compute command duration (time between 133;C and 133;D), and let users jump to the previous failed command. This is the marker that enables most of the visible \"command decoration\" features in modern terminals like Ghostty, iTerm2, and VS Code.</p>",
+    "probe": "Send <code>OSC 133 ; D ; 0 BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 133 ; D ; exitcode BEL",
+    "probeStatus": "partial"
+  },
+  "extensions.osc133-p": {
+    "name": "OSC 133;P properties",
+    "slug": "osc133-p-properties",
+    "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
+    "tags": ["osc"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 133;P</strong> sets properties or metadata about the current command. The format is <code>OSC 133 ; P ; key=value BEL</code>, where common keys include <code>Cwd</code> (current working directory), <code>CmdLine</code> (the literal command text), and shell-specific state.</p>\n<p>Property reporting lets the terminal track shell state without parsing command output or relying on environment variables. For example, the terminal can know the working directory of each command in scrollback, enabling features like \"open this command's directory\" or \"reproduce this command in a new tab with the same cwd\". <a href=\"/extensions/osc-633-vscode\" class=\"hover-link\">VS Code's OSC 633</a> extends this concept with additional VS Code-specific properties.</p>",
+    "probe": "Send <code>OSC 133 ; P ; Cwd=/tmp BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 133 ; P ; key=value BEL",
+    "probeStatus": "partial"
+  },
+  "extensions.osc633-a": {
+    "name": "OSC 633;A prompt start",
+    "slug": "osc633-a-prompt-start",
+    "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
+    "tags": ["osc", "vscode-extensions"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 633;A</strong> is VS Code's prompt start marker, mirroring <a href=\"/extensions/osc133-a-prompt-start\" class=\"hover-link\">OSC 133;A</a>. It marks the beginning of a shell prompt so VS Code's integrated terminal (and other OSC 633-aware terminals) can identify where prompts start in scrollback.</p>\n<p>VS Code defined OSC 633 as a parallel namespace to OSC 133 so it could add VS Code-specific extensions without conflicting with the FinalTerm spec. Shells configured with VS Code's shell integration scripts emit both 133 and 633 markers, so the terminal works with whichever protocol is supported.</p>",
+    "probe": "Send <code>OSC 633 ; A BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 633 ; A BEL",
+    "probeStatus": "partial"
+  },
+  "extensions.osc633-b": {
+    "name": "OSC 633;B prompt end",
+    "slug": "osc633-b-prompt-end",
+    "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
+    "tags": ["osc", "vscode-extensions"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 633;B</strong> marks the end of the shell prompt and the start of the user's command line, mirroring <a href=\"/extensions/osc133-b-command-start\" class=\"hover-link\">OSC 133;B</a>. VS Code uses this to identify where the prompt ends and the editable command region begins.</p>\n<p>This is essential for VS Code's command decoration system: it lets the terminal draw decorations alongside the prompt without overlapping the user's input area, and lets it correctly identify which characters in scrollback are prompt vs command.</p>",
+    "probe": "Send <code>OSC 633 ; B BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 633 ; B BEL",
+    "probeStatus": "partial"
+  },
+  "extensions.osc633-c": {
+    "name": "OSC 633;C pre-execution",
+    "slug": "osc633-c-pre-execution",
+    "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
+    "tags": ["osc", "vscode-extensions"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 633;C</strong> is VS Code's pre-execution marker, emitted just before a command begins executing. It mirrors <a href=\"/extensions/osc133-c-command-executed\" class=\"hover-link\">OSC 133;C</a> and marks the boundary between the command line and command output.</p>\n<p>VS Code uses this marker to start tracking command duration, group output for the run-recent-command picker, and prepare command decoration UI. When combined with <a href=\"/extensions/osc633-d-command-finished\" class=\"hover-link\">OSC 633;D</a>, it gives VS Code precise timing for each command execution.</p>",
+    "probe": "Send <code>OSC 633 ; C BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 633 ; C BEL",
+    "probeStatus": "partial"
+  },
+  "extensions.osc633-d": {
+    "name": "OSC 633;D command finished",
+    "slug": "osc633-d-command-finished",
+    "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
+    "tags": ["osc", "vscode-extensions"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 633;D</strong> marks command completion and includes the exit code as a parameter, mirroring <a href=\"/extensions/osc133-d-command-finished\" class=\"hover-link\">OSC 133;D</a>. The format is <code>OSC 633 ; D ; exitcode BEL</code>.</p>\n<p>This is the marker that drives VS Code's command decoration gutter: green check for success (exit 0), red X for failure (non-zero exit). It's also what enables the run-recent-command picker to filter by success/failure status, and what gives the terminal command duration data for performance analysis.</p>",
+    "probe": "Send <code>OSC 633 ; D ; 0 BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 633 ; D ; exitcode BEL",
+    "probeStatus": "partial"
+  },
+  "extensions.osc633-e": {
+    "name": "OSC 633;E set commandline",
+    "slug": "osc633-e-set-commandline",
+    "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
+    "tags": ["osc", "vscode-extensions"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 633;E</strong> reports the explicit command line text along with a verification nonce. The format is <code>OSC 633 ; E ; commandline ; nonce BEL</code>. The nonce is a per-session secret known only to the shell integration script and VS Code, preventing replay attacks where malicious output could spoof a command.</p>\n<p>This is unique to OSC 633 — OSC 133 has no equivalent. It exists because VS Code's run-recent-command and command-line history features need to know exactly what the user typed, not what the terminal can infer from cell contents (which loses information about quoting, escapes, and multi-line input). The nonce makes the protocol safe to use even when running untrusted commands that might emit arbitrary escape sequences.</p>",
+    "probe": "Send <code>OSC 633 ; E ; ls -la ; nonce123 BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 633 ; E ; commandline ; nonce BEL",
+    "probeStatus": "partial"
+  },
+  "extensions.osc633-p": {
+    "name": "OSC 633;P properties",
+    "slug": "osc633-p-properties",
+    "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
+    "tags": ["osc", "vscode-extensions"],
+    "baseline": "rich",
+    "body": "<p><strong>OSC 633;P</strong> sets VS Code-specific properties about the current shell state. The format is <code>OSC 633 ; P ; key=value BEL</code>, with VS Code-defined keys including <code>Cwd</code> (current working directory), <code>IsWindows</code> (whether running under Windows-style path semantics), and shell environment metadata used for git status and other integrations.</p>\n<p>VS Code uses these properties to drive features like the explorer's \"reveal in terminal\" command (which needs to know the terminal's cwd), the terminal tab's git branch indicator, and Windows/WSL path translation. While <a href=\"/extensions/osc133-p-properties\" class=\"hover-link\">OSC 133;P</a> defines a similar mechanism, OSC 633;P uses VS Code-specific keys that the editor recognizes natively.</p>",
+    "probe": "Send <code>OSC 633 ; P ; Cwd=/tmp BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
+    "sequence": "ESC ] 633 ; P ; key=value BEL",
+    "probeStatus": "partial"
+  },
   "extensions.notifications": {
     "name": "Desktop Notifications (OSC 9/777)",
     "slug": "notifications-osc-9",
