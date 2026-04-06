@@ -477,6 +477,36 @@
     "body": "When DECOM (Origin Mode, CSI ? 6 h) is set, CUP coordinates become relative to the current scroll region set by DECSTBM. With a scroll region of rows 5-15 and DECOM enabled, <code>CSI 1 ; 1 H</code> moves the cursor to row 5 (the top of the scroll region) rather than the absolute top of the screen. This interaction between DECSTBM and DECOM is fundamental to how full-screen applications partition the terminal into independently scrolling regions.",
     "probe": "Set DECSTBM 5;15, enable DECOM, send <code>\\x1b[1;1H</code>, verify cursor is at row 4 (0-based scroll region top). Disable DECOM and reset scroll region."
   },
+  "cursor.vpa": {
+    "name": "VPA vertical position absolute (CSI d)",
+    "slug": "vpa-vertical-position-absolute",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["ecma-48"],
+    "body": "VPA (Vertical Position Absolute) moves the cursor to an absolute row without changing the column. The sequence is <code>CSI Ps d</code> where Ps is the 1-based row number (default 1). VPA is the vertical counterpart of CHA (Cursor Horizontal Absolute, CSI G) — together they allow independent positioning on each axis without using the full CUP (CSI H) sequence.",
+    "probe": "Position cursor at row 3, col 5, then send <code>\\x1b[10d</code> (VPA row 10), verify cursor moved to row 9 (0-based) while column remained at 5.",
+    "baseline": "core",
+    "sequence": "CSI Ps d"
+  },
+  "cursor.cpl": {
+    "name": "CPL cursor preceding line (CSI F)",
+    "slug": "cpl-cursor-preceding-line",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["ecma-48"],
+    "body": "CPL (Cursor Preceding Line) moves the cursor to the beginning of the line N rows up. The sequence is <code>CSI Ps F</code> (default Ps=1). Unlike CUU, which preserves the column, CPL always sets the column to 1. CPL is the complement of CNL (Cursor Next Line, CSI E) — CNL moves down, CPL moves up, and both reset the column to the left margin.",
+    "probe": "Position cursor at row 5, col 10, send <code>\\x1b[2F</code> (CPL 2), verify cursor is at row 3, column 0.",
+    "baseline": "core",
+    "sequence": "CSI Ps F"
+  },
+  "cursor.hpa": {
+    "name": "HPA horizontal position absolute (CSI `)",
+    "slug": "hpa-horizontal-position-absolute",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["ecma-48"],
+    "body": "HPA (Horizontal Position Absolute) moves the cursor to an absolute column on the current row. The sequence is <code>CSI Ps `</code> where Ps is the 1-based column number (default 1). HPA is functionally equivalent to CHA (CSI G) but uses a different final character. Both are defined in ECMA-48 — some older terminals only implement one of the two.",
+    "probe": "Write \"ABCDEFGH\" then send <code>\\x1b[5`</code> (HPA col 5), verify cursor column is 4 (0-based).",
+    "baseline": "core",
+    "sequence": "CSI Ps `"
+  },
   "erase.line.right": {
     "name": "Erase to EOL (EL 0)",
     "slug": "el-0-erase-to-eol",
@@ -1268,6 +1298,46 @@
     "probe": "Write \"AB\", move to col 1 via <code>\\x1b[1G</code>, write \"C\", verify cell (0,0) is \"C\" (overwrote \"A\").",
     "baseline": "core"
   },
+  "text.hts": {
+    "name": "HTS set tab stop (ESC H)",
+    "slug": "hts-set-tab-stop",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["ecma-48", "vt100"],
+    "body": "HTS (Horizontal Tab Set) sets a tab stop at the current cursor column. The sequence is <code>ESC H</code>. After setting a custom tab stop, subsequent HT (tab) characters will stop at that column. HTS works in conjunction with TBC (Tab Clear) to allow applications to define custom tab layouts. Default tab stops are every 8 columns, but HTS allows finer control for columnar data alignment.",
+    "probe": "Clear all tab stops with <code>\\x1b[3g</code>, position cursor at column 5 and send <code>\\x1bH</code> (HTS), return to column 0 and send a tab — verify cursor advances to column 5.",
+    "baseline": "core",
+    "sequence": "ESC H"
+  },
+  "text.tbc": {
+    "name": "TBC clear tab stop (CSI g)",
+    "slug": "tbc-clear-tab-stop",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["ecma-48", "vt100"],
+    "body": "TBC (Tab Clear) clears tab stops. <code>CSI 0 g</code> clears the tab stop at the current cursor position; <code>CSI 3 g</code> clears all tab stops. After clearing all tab stops, tab characters have no effect (cursor does not advance). TBC is used together with HTS to set up custom tab stop patterns for formatted output.",
+    "probe": "Clear all tab stops with <code>\\x1b[3g</code>, send a tab from column 0 — verify cursor does not advance (stays at column 0), confirming all tab stops were cleared.",
+    "baseline": "core",
+    "sequence": "CSI Ps g"
+  },
+  "text.cht": {
+    "name": "CHT forward tab (CSI I)",
+    "slug": "cht-forward-tab",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["ecma-48"],
+    "body": "CHT (Cursor Horizontal Forward Tab) advances the cursor forward by N tab stops. The sequence is <code>CSI Ps I</code> where Ps is the number of tab stops to advance (default 1). Unlike a simple tab character (HT, 0x09) which advances by one tab stop, CHT can jump multiple tab stops in a single sequence. With default 8-column tab stops, <code>CSI 2 I</code> from column 0 would advance to column 16.",
+    "probe": "From column 0, send <code>\\x1b[2I</code> (CHT 2) with default 8-column tab stops, verify cursor advanced to column 16 (two tab stops forward).",
+    "baseline": "core",
+    "sequence": "CSI Ps I"
+  },
+  "text.cbt": {
+    "name": "CBT backward tab (CSI Z)",
+    "slug": "cbt-backward-tab",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
+    "tags": ["ecma-48"],
+    "body": "CBT (Cursor Backward Tab) moves the cursor backward by N tab stops. The sequence is <code>CSI Ps Z</code> where Ps is the number of tab stops to move back (default 1). If the cursor is between two tab stops, CBT moves it to the previous tab stop. CBT is useful for navigating columnar data in reverse. If there are no more tab stops to the left, the cursor moves to column 1.",
+    "probe": "Position cursor at column 20, send <code>\\x1b[Z</code> (CBT 1) with default 8-column tab stops, verify cursor moved back to column 16.",
+    "baseline": "core",
+    "sequence": "CSI Ps Z"
+  },
   "reset.sgr": {
     "name": "SGR reset clears attributes",
     "slug": "sgr-0-reset-clears-attributes",
@@ -1303,6 +1373,16 @@
     "body": "Tests whether the terminal backend provides a programmatic reset method that returns the terminal to a clean initial state. This is specific to the Termless testing framework — it verifies that the backend can be reset between test cases.",
     "probe": "Write text, call backend <code>reset()</code> method, verify cursor returned to (0,0). Specific to the Termless testing framework.",
     "baseline": "core"
+  },
+  "reset.decaln": {
+    "name": "DECALN screen alignment (ESC # 8)",
+    "slug": "decaln-screen-alignment",
+    "url": "https://vt100.net/docs/vt510-rm/DECALN.html",
+    "tags": ["vt100"],
+    "body": "DECALN (DEC Screen Alignment Test) fills the entire screen with the letter 'E'. The sequence is <code>ESC # 8</code>. Originally designed for service technicians to verify screen alignment on CRT displays, it is now primarily used as a quick way to fill the screen with known content for testing purposes. DECALN also resets scroll margins and moves the cursor to the home position (row 1, column 1).",
+    "probe": "Send <code>\\x1b#8</code> (DECALN), verify cell at (0,0) contains 'E'.",
+    "baseline": "modern",
+    "sequence": "ESC # 8"
   },
   "charsets.dec-special": {
     "name": "DEC Special Graphics",
@@ -1601,5 +1681,105 @@
     "body": "OSC 52 clipboard read queries the current clipboard content. The sequence <code>ESC ] 52 ; c ; ? BEL</code> requests the terminal to respond with the clipboard data base64-encoded. Fewer terminals support read than write — clipboard read is a security-sensitive operation since a malicious program could silently exfiltrate clipboard contents (passwords, tokens). Terminals that support it often require explicit user opt-in.",
     "probe": "Set clipboard via OSC 52, then query with <code>OSC 52;c;? BEL</code>. Check for response containing the data.",
     "baseline": "rich"
+  },
+  "extensions.osc1-icon": {
+    "name": "Icon name (OSC 1)",
+    "slug": "osc-1-icon-name",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 1 sets the icon name (without changing the window title). The sequence is <code>ESC ] 1 ; Pt BEL</code> where Pt is the icon name string. This is the companion to OSC 0 (which sets both icon name and title) and OSC 2 (which sets only the title). Originally used by X11 window managers to label minimized windows, icon name is less commonly used in modern terminals but remains part of the xterm protocol. Some terminals treat OSC 1 identically to OSC 0 or ignore the icon name entirely.",
+    "probe": "Send <code>\\x1b]1;test-icon\\x07</code> and verify the terminal remains responsive (icon name accepted without error).",
+    "baseline": "core",
+    "sequence": "ESC ] 1 ; Pt BEL"
+  },
+  "extensions.osc4-palette": {
+    "name": "Color palette (OSC 4)",
+    "slug": "osc-4-color-palette",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 4 changes or queries individual entries in the 256-color palette (indices 0-255). To set a color: <code>ESC ] 4 ; c ; spec BEL</code> where c is the palette index and spec is an X11 color specification (e.g. <code>rgb:FF/00/00</code>). To query: <code>ESC ] 4 ; c ; ? BEL</code> — the terminal responds with the current color in <code>rgb:RR/GG/BB</code> format. Applications use this to customize the terminal palette at runtime, e.g. for theme switching or to ensure specific colors match a design system.",
+    "probe": "Query palette color 0 with <code>OSC 4 ; 0 ; ? BEL</code>, verify response matches <code>OSC 4 ; 0 ; rgb:...</code> pattern.",
+    "baseline": "modern",
+    "sequence": "ESC ] 4 ; c ; spec BEL"
+  },
+  "extensions.osc5-special-color": {
+    "name": "Special color (OSC 5)",
+    "slug": "osc-5-special-color",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 5 sets or queries special color resources used for text attributes. The sequence is <code>ESC ] 5 ; c ; spec BEL</code> where c identifies the special color: 0=bold, 1=underline, 2=blink, 3=reverse, 4=italic. To query: <code>ESC ] 5 ; c ; ? BEL</code>. These special colors override the rendered color of text with specific attributes — for example, making all bold text appear in a specific color regardless of the foreground setting. Support is limited to xterm and a few other terminals.",
+    "probe": "Query special color 0 (bold) with <code>OSC 5 ; 0 ; ? BEL</code>, verify response matches <code>OSC 5 ; 0 ; rgb:...</code> pattern.",
+    "baseline": "rich",
+    "sequence": "ESC ] 5 ; c ; spec BEL"
+  },
+  "extensions.osc12-cursor-color": {
+    "name": "Cursor color (OSC 12)",
+    "slug": "osc-12-cursor-color",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 12 sets or queries the text cursor color. To set: <code>ESC ] 12 ; color BEL</code> where color is an X11 color specification. To query: <code>ESC ] 12 ; ? BEL</code> — the terminal responds with the current cursor color in <code>rgb:RR/GG/BB</code> format. Applications use this to make the cursor match their color scheme, or to provide visual feedback (e.g. changing cursor color to red in insert mode). Widely supported by xterm-compatible terminals.",
+    "probe": "Query cursor color with <code>OSC 12 ; ? BEL</code>, verify response matches <code>OSC 12 ; rgb:...</code> pattern.",
+    "baseline": "modern",
+    "sequence": "ESC ] 12 ; color BEL"
+  },
+  "extensions.osc104-reset-palette": {
+    "name": "Reset color palette (OSC 104)",
+    "slug": "osc-104-reset-palette",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 104 resets one or all palette colors to their default values. To reset a specific color: <code>ESC ] 104 ; c BEL</code> where c is the palette index. To reset all 256 colors: <code>ESC ] 104 BEL</code> (no argument). This is the companion to OSC 4 — applications that modify the palette at startup should send OSC 104 on exit to restore the user's original colors. Most terminals that support OSC 4 also support OSC 104.",
+    "probe": "Modify palette color 0 via OSC 4, then send <code>OSC 104 ; 0 BEL</code> to reset it. Verify the terminal consumes the sequence by checking cursor position remains stable.",
+    "baseline": "modern",
+    "sequence": "ESC ] 104 ; c BEL"
+  },
+  "extensions.osc110-reset-fg": {
+    "name": "Reset foreground color (OSC 110)",
+    "slug": "osc-110-reset-fg",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 110 resets the default foreground color to the terminal's configured default. The sequence is simply <code>ESC ] 110 BEL</code>. This is the companion to OSC 10 — after changing the foreground color with <code>OSC 10 ; color BEL</code>, send OSC 110 to restore it. Applications that modify the default foreground (e.g. for theme switching) should reset on exit to avoid leaving the terminal in a modified state.",
+    "probe": "Send <code>OSC 110 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "baseline": "modern",
+    "sequence": "ESC ] 110 BEL"
+  },
+  "extensions.osc111-reset-bg": {
+    "name": "Reset background color (OSC 111)",
+    "slug": "osc-111-reset-bg",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 111 resets the default background color to the terminal's configured default. The sequence is <code>ESC ] 111 BEL</code>. This is the companion to OSC 11 — after changing the background color with <code>OSC 11 ; color BEL</code>, send OSC 111 to restore it. Essential for well-behaved TUI applications that modify terminal colors and need to clean up on exit.",
+    "probe": "Send <code>OSC 111 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "baseline": "modern",
+    "sequence": "ESC ] 111 BEL"
+  },
+  "extensions.osc112-reset-cursor": {
+    "name": "Reset cursor color (OSC 112)",
+    "slug": "osc-112-reset-cursor",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 112 resets the cursor color to the terminal's configured default. The sequence is <code>ESC ] 112 BEL</code>. This is the companion to OSC 12 — after changing the cursor color, send OSC 112 to restore it. Applications that modify cursor color for visual feedback (e.g. mode indicators in vim-like editors) should send this on exit.",
+    "probe": "Send <code>OSC 112 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "baseline": "modern",
+    "sequence": "ESC ] 112 BEL"
+  },
+  "extensions.osc117-reset-highlight-bg": {
+    "name": "Reset highlight background (OSC 117)",
+    "slug": "osc-117-reset-highlight-bg",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 117 resets the selection highlight background color to the terminal's default. The sequence is <code>ESC ] 117 BEL</code>. The highlight background is set via OSC 17. Terminals that support customizable selection colors use this to restore the default appearance. Support is limited to xterm and terminals with full xterm color protocol compatibility.",
+    "probe": "Send <code>OSC 117 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "baseline": "rich",
+    "sequence": "ESC ] 117 BEL"
+  },
+  "extensions.osc119-reset-highlight-fg": {
+    "name": "Reset highlight foreground (OSC 119)",
+    "slug": "osc-119-reset-highlight-fg",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 119 resets the selection highlight foreground color to the terminal's default. The sequence is <code>ESC ] 119 BEL</code>. The highlight foreground is set via OSC 19. Like OSC 117, this is part of the xterm extended color reset protocol. Support is primarily in xterm itself, with partial adoption in other terminals that implement the full xterm color management suite.",
+    "probe": "Send <code>OSC 119 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "baseline": "rich",
+    "sequence": "ESC ] 119 BEL"
   }
 }

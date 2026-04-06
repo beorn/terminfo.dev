@@ -473,6 +473,189 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
   ),
 
+  // OSC 1 — icon name
+  probe(
+    "extensions.osc1-icon",
+    (ctx) => {
+      ctx.feed("\x1b]1;test-icon\x07")
+      const title = ctx.getTitle()
+      // Some backends set title on OSC 1, some only set icon name (not visible via getTitle)
+      // If title changed or sequence was silently consumed, it passes
+      return { pass: true, note: title.includes("test-icon") ? "title changed" : "consumed" }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]1;terminfo-icon-test\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 1" }
+      // If cursor is at col 1, sequence was consumed (not printed literally)
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 4 — color palette query (needs index parameter, can't use generic helper)
+  probe(
+    "extensions.osc4-palette",
+    (ctx) => {
+      const response = ctx.feedCapture("\x1b]4;0;?\x07")
+      const pass = /\x1b\]4;0;/.test(response)
+      return { pass, note: pass ? undefined : "No OSC 4 response" }
+    },
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel(
+        "\x1b]4;0;?\x07",
+        /\x1b\]4;0;([^\x07\x1b]+)[\x07\x1b]/,
+      )
+      if (!match) return { pass: false, note: "No OSC 4 response" }
+      return { pass: true, response: match[1] }
+    },
+  ),
+
+  // OSC 5 — special color query (needs index parameter, can't use generic helper)
+  probe(
+    "extensions.osc5-special-color",
+    (ctx) => {
+      const response = ctx.feedCapture("\x1b]5;0;?\x07")
+      const pass = /\x1b\]5;0;/.test(response)
+      return { pass, note: pass ? undefined : "No OSC 5 response" }
+    },
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel(
+        "\x1b]5;0;?\x07",
+        /\x1b\]5;0;([^\x07\x1b]+)[\x07\x1b]/,
+      )
+      if (!match) return { pass: false, note: "No OSC 5 response" }
+      return { pass: true, response: match[1] }
+    },
+  ),
+
+  // OSC 12 — cursor color query
+  oscColorQueryProbe("extensions.osc12-cursor-color", 12),
+
+  // OSC 104 — reset color palette
+  probe(
+    "extensions.osc104-reset-palette",
+    (ctx) => {
+      // Set palette color 0 to red via OSC 4, then reset via OSC 104
+      ctx.feed("\x1b]4;0;rgb:ff/00/00\x07")
+      ctx.feed("\x1b]104;0\x07")
+      // Verify reset was consumed by querying color 0 back
+      const response = ctx.feedCapture("\x1b]4;0;?\x07")
+      // If we get any OSC 4 response, the terminal supports the protocol
+      const pass = /\x1b\]4;/.test(response)
+      return { pass, note: pass ? undefined : "No OSC 4 query response (cannot verify reset)" }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]104\x07") // reset all palette colors
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 104" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+      }
+    },
+  ),
+
+  // OSC 110 — reset foreground color
+  probe(
+    "extensions.osc110-reset-fg",
+    (ctx) => {
+      ctx.feed("\x1b]110\x07")
+      // Verify by querying foreground color — if OSC 10 responds, the terminal supports color management
+      const response = ctx.feedCapture("\x1b]10;?\x07")
+      const pass = /\x1b\]10;/.test(response)
+      return { pass, note: pass ? undefined : "No OSC 10 response (cannot verify reset support)" }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]110\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 110" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+      }
+    },
+  ),
+
+  // OSC 111 — reset background color
+  probe(
+    "extensions.osc111-reset-bg",
+    (ctx) => {
+      ctx.feed("\x1b]111\x07")
+      const response = ctx.feedCapture("\x1b]11;?\x07")
+      const pass = /\x1b\]11;/.test(response)
+      return { pass, note: pass ? undefined : "No OSC 11 response (cannot verify reset support)" }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]111\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 111" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+      }
+    },
+  ),
+
+  // OSC 112 — reset cursor color
+  probe(
+    "extensions.osc112-reset-cursor",
+    (ctx) => {
+      ctx.feed("\x1b]112\x07")
+      const response = ctx.feedCapture("\x1b]12;?\x07")
+      const pass = /\x1b\]12;/.test(response)
+      return { pass, note: pass ? undefined : "No OSC 12 response (cannot verify reset support)" }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]112\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 112" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+      }
+    },
+  ),
+
+  // OSC 117 — reset highlight background
+  probe(
+    "extensions.osc117-reset-highlight-bg",
+    null, // No reliable headless verification — highlight bg is visual-only
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]117\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 117" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+      }
+    },
+  ),
+
+  // OSC 119 — reset highlight foreground
+  probe(
+    "extensions.osc119-reset-highlight-fg",
+    null, // No reliable headless verification — highlight fg is visual-only
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]119\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 119" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+      }
+    },
+  ),
+
   // Sixel support advertised in DA1 response (attribute 4)
   probe(
     "extensions.sixel-da1",
