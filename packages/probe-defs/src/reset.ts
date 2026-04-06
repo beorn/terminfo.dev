@@ -77,10 +77,7 @@ export const resetProbes: ProbeDefinition[] = [
       // DECALN should reset cursor to home position (1,1)
       return {
         pass: pos.row === 1 && pos.col === 1,
-        note:
-          pos.row === 1 && pos.col === 1
-            ? undefined
-            : `cursor at ${pos.row};${pos.col}, expected 1;1`,
+        note: pos.row === 1 && pos.col === 1 ? undefined : `cursor at ${pos.row};${pos.col}, expected 1;1`,
       }
     },
   ),

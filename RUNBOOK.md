@@ -11,16 +11,16 @@ Run monthly, or when upstream terminal releases happen.
 
 For each source, check if new features/sequences have been added:
 
-| Source | Check | URL |
-|--------|-------|-----|
-| xterm ctlseqs | New patch number? | https://invisible-island.net/xterm/ctlseqs/ctlseqs.html |
-| Kitty | New release? | https://github.com/kovidgoyal/kitty/releases |
-| Ghostty | New release? | https://github.com/ghostty-org/ghostty/releases |
-| iTerm2 | New release? | https://iterm2.com/downloads.html |
-| WezTerm | New release? | https://github.com/wez/wezterm/releases |
-| foot | New release? | https://codeberg.org/dnkl/foot/releases |
-| Windows Terminal | New release? | https://github.com/microsoft/terminal/releases |
-| Alacritty | New release? | https://github.com/alacritty/alacritty/releases |
+| Source           | Check             | URL                                                     |
+| ---------------- | ----------------- | ------------------------------------------------------- |
+| xterm ctlseqs    | New patch number? | https://invisible-island.net/xterm/ctlseqs/ctlseqs.html |
+| Kitty            | New release?      | https://github.com/kovidgoyal/kitty/releases            |
+| Ghostty          | New release?      | https://github.com/ghostty-org/ghostty/releases         |
+| iTerm2           | New release?      | https://iterm2.com/downloads.html                       |
+| WezTerm          | New release?      | https://github.com/wez/wezterm/releases                 |
+| foot             | New release?      | https://codeberg.org/dnkl/foot/releases                 |
+| Windows Terminal | New release?      | https://github.com/microsoft/terminal/releases          |
+| Alacritty        | New release?      | https://github.com/alacritty/alacritty/releases         |
 
 ### 2. Update terminal versions
 
@@ -103,7 +103,6 @@ After each refresh cycle:
 - [ ] Update this runbook with findings
 - [ ] Update the tracking bead (km-d36pn) with current state + next gaps
 
-
 ## Full Rebuild
 
 Recreate all content from scratch. Use when adding a major new feature category,
@@ -114,14 +113,17 @@ or to verify the site is complete against upstream specs.
 For each protocol source, compare against features.json:
 
 **Formal standards:**
+
 - [ ] ECMA-48 / ISO 6429 — CSI sequences, SGR parameters
 - [ ] DEC VT100/VT220/VT510 — cursor, modes, charsets, device queries
 
 **De facto standards (xterm):**
+
 - [ ] xterm ctlseqs — CSI, OSC, DEC private modes
 - [ ] Current coverage: ~74 of ~203 xterm features
 
 **OSC sources:**
+
 - [ ] xterm (OSC 0-62, 104-119) — [/xterm-extensions](/xterm-extensions)
 - [ ] ConEmu (OSC 9 subtypes) — [/conemu](/conemu)
 - [ ] iTerm2 (OSC 1337 namespace) — [/iterm2](/iterm2)
@@ -135,6 +137,7 @@ For each protocol source, compare against features.json:
 - [ ] Konsole (OSC 30/31)
 
 **Terminal-specific extensions:**
+
 - [ ] Kitty keyboard protocol (progressive enhancement flags)
 - [ ] Kitty graphics protocol (transmit, display, animation, placeholders)
 - [ ] Sixel graphics
@@ -143,6 +146,7 @@ For each protocol source, compare against features.json:
 - [ ] Color scheme reporting (mode 2031)
 
 **Unicode:**
+
 - [ ] UAX #11 East Asian Width
 - [ ] Grapheme cluster boundaries
 - [ ] Emoji presentation (VS16, ZWJ)
@@ -164,6 +168,7 @@ For each gap found in Phase 1:
 ### Phase 4: Audit content quality
 
 For each feature:
+
 - [ ] Has a body description (not empty)
 - [ ] Has a probe description
 - [ ] Has correct tags (including "osc" for OSC features)
@@ -171,11 +176,13 @@ For each feature:
 - [ ] Baseline tier is appropriate
 
 For each standard/tag page:
+
 - [ ] Has a description in standards.json
 - [ ] Has a body with substantive content
 - [ ] Links to spec URL
 
 For each terminal page:
+
 - [ ] Has description, body, URL in terminals.json
 - [ ] Has probe data at the current version
 - [ ] All failures are annotated
@@ -205,7 +212,6 @@ Same as Periodic Refresh step 9, plus:
 - [ ] Update this runbook with new sources discovered
 - [ ] Schedule next full rebuild (quarterly recommended)
 
-
 ## Content Manifest
 
 The **content manifest** (`scripts/sitefile.ts`) is the single source of truth for what
@@ -219,6 +225,7 @@ bun sitefile --check            # Check freshness against SLAs
 ```
 
 The manifest declares:
+
 - **27 sources** — formal standards, vendor docs, proposals, release feeds
 - **14 terminals** — all active (non-historical) terminals with probe methods
 - **Freshness SLAs** — probe data: 30 days, analysis: 30 days, metadata: 90 days
@@ -227,51 +234,49 @@ The manifest declares:
 When starting a refresh cycle, run `bun sitefile --check` to see what's stale.
 When finishing a refresh cycle, run `bun sitefile` to update the lockfile.
 
-
 ## Quick Reference
 
-| Task | Command |
-|------|---------|
-| Validate content | `bun scripts/validate.ts` |
-| Regenerate manifest lockfile | `bun sitefile` |
-| Check freshness SLAs | `bun sitefile --check` |
-| Run all headless probes | `bun terminfo probe termless --all` |
-| Run all app probes | `bun terminfo probe app --all` |
-| Run mux probes | `bun terminfo probe mux --all` |
-| Regenerate analysis | `bun analysis` |
-| Regenerate API data | `bun scripts/generate-api.ts` |
-| Build site | `bun run build` |
-| Preview locally | `bun run dev` |
-| Check feature count | `grep -c '"name"' content/features.json` |
-| Check terminal count | `grep -c '"label"' content/terminals.json` |
-
+| Task                         | Command                                    |
+| ---------------------------- | ------------------------------------------ |
+| Validate content             | `bun scripts/validate.ts`                  |
+| Regenerate manifest lockfile | `bun sitefile`                             |
+| Check freshness SLAs         | `bun sitefile --check`                     |
+| Run all headless probes      | `bun terminfo probe termless --all`        |
+| Run all app probes           | `bun terminfo probe app --all`             |
+| Run mux probes               | `bun terminfo probe mux --all`             |
+| Regenerate analysis          | `bun analysis`                             |
+| Regenerate API data          | `bun scripts/generate-api.ts`              |
+| Build site                   | `bun run build`                            |
+| Preview locally              | `bun run dev`                              |
+| Check feature count          | `grep -c '"name"' content/features.json`   |
+| Check terminal count         | `grep -c '"label"' content/terminals.json` |
 
 ## Content Sources
 
 All upstream sources are declared in `scripts/sitefile.ts` with freshness intervals and
 feature family mappings. The table below is a quick reference; the manifest is authoritative.
 
-| Source | Type | URL |
-|--------|------|-----|
-| ECMA-48 | Formal standard | https://ecma-international.org/publications-and-standards/standards/ecma-48/ |
-| UAX #11 East Asian Width | Formal standard | https://unicode.org/reports/tr11/ |
-| VT100 User Guide | Hardware spec | https://vt100.net/docs/vt100-ug/ |
-| VT220 Reference Manual | Hardware spec | https://vt100.net/docs/vt220-rm/contents.html |
-| VT510 Reference Manual | Hardware spec | https://vt100.net/docs/vt510-rm/contents.html |
-| xterm ctlseqs | De facto standard | https://invisible-island.net/xterm/ctlseqs/ctlseqs.html |
-| Kitty protocols | Vendor extension | https://sw.kovidgoyal.net/kitty/protocol-extensions/ |
-| iTerm2 escape codes | Vendor extension | https://iterm2.com/documentation-escape-codes.html |
-| ConEmu ANSI codes | Vendor extension | https://conemu.github.io/en/AnsiEscapeCodes.html |
-| mintty control sequences | Vendor extension | https://github.com/mintty/mintty/wiki/CtrlSeqs |
-| foot ctlseqs | Vendor extension | https://codeberg.org/dnkl/foot/src/branch/master/doc/foot-ctlseqs.7.scd |
-| VTE source (osc parser) | Implementation ref | https://gitlab.gnome.org/GNOME/vte |
-| WezTerm docs | Vendor extension | https://wezfurlong.org/wezterm/ |
-| Ghostty source (osc.zig) | Implementation ref | https://github.com/ghostty-org/ghostty |
-| VS Code shell integration | Vendor extension | https://learn.microsoft.com/en-us/windows/terminal/tutorials/shell-integration |
-| rxvt-unicode docs | Vendor extension | https://pod.tst.eu/http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.pod |
-| FinalTerm semantic prompts | Proposal | https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md |
-| OSC 8 hyperlinks | Proposal | https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda |
-| CSI u / fixterms | Proposal | http://www.leonerd.org.uk/hacks/fixterms/ |
-| Mode 2026 sync output | Proposal | https://gist.github.com/christianparpart/d8a62cc1ab659194571ec44c5a4eba40 |
-| Mode 2031 color scheme | Proposal | https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/color-palette-update-notifications.md |
-| VS Code OSC 633 | Proposal | https://learn.microsoft.com/en-us/windows/terminal/tutorials/shell-integration |
+| Source                     | Type               | URL                                                                                                              |
+| -------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| ECMA-48                    | Formal standard    | https://ecma-international.org/publications-and-standards/standards/ecma-48/                                     |
+| UAX #11 East Asian Width   | Formal standard    | https://unicode.org/reports/tr11/                                                                                |
+| VT100 User Guide           | Hardware spec      | https://vt100.net/docs/vt100-ug/                                                                                 |
+| VT220 Reference Manual     | Hardware spec      | https://vt100.net/docs/vt220-rm/contents.html                                                                    |
+| VT510 Reference Manual     | Hardware spec      | https://vt100.net/docs/vt510-rm/contents.html                                                                    |
+| xterm ctlseqs              | De facto standard  | https://invisible-island.net/xterm/ctlseqs/ctlseqs.html                                                          |
+| Kitty protocols            | Vendor extension   | https://sw.kovidgoyal.net/kitty/protocol-extensions/                                                             |
+| iTerm2 escape codes        | Vendor extension   | https://iterm2.com/documentation-escape-codes.html                                                               |
+| ConEmu ANSI codes          | Vendor extension   | https://conemu.github.io/en/AnsiEscapeCodes.html                                                                 |
+| mintty control sequences   | Vendor extension   | https://github.com/mintty/mintty/wiki/CtrlSeqs                                                                   |
+| foot ctlseqs               | Vendor extension   | https://codeberg.org/dnkl/foot/src/branch/master/doc/foot-ctlseqs.7.scd                                          |
+| VTE source (osc parser)    | Implementation ref | https://gitlab.gnome.org/GNOME/vte                                                                               |
+| WezTerm docs               | Vendor extension   | https://wezfurlong.org/wezterm/                                                                                  |
+| Ghostty source (osc.zig)   | Implementation ref | https://github.com/ghostty-org/ghostty                                                                           |
+| VS Code shell integration  | Vendor extension   | https://learn.microsoft.com/en-us/windows/terminal/tutorials/shell-integration                                   |
+| rxvt-unicode docs          | Vendor extension   | https://pod.tst.eu/http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.pod                                             |
+| FinalTerm semantic prompts | Proposal           | https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md              |
+| OSC 8 hyperlinks           | Proposal           | https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda                                               |
+| CSI u / fixterms           | Proposal           | http://www.leonerd.org.uk/hacks/fixterms/                                                                        |
+| Mode 2026 sync output      | Proposal           | https://gist.github.com/christianparpart/d8a62cc1ab659194571ec44c5a4eba40                                        |
+| Mode 2031 color scheme     | Proposal           | https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/color-palette-update-notifications.md |
+| VS Code OSC 633            | Proposal           | https://learn.microsoft.com/en-us/windows/terminal/tutorials/shell-integration                                   |

@@ -38,11 +38,7 @@ export interface TrackedTerminal {
 }
 
 export interface FreshnessSLA {
-  contentType:
-    | "probe-data"
-    | "analysis"
-    | "feature-metadata"
-    | "terminal-metadata"
+  contentType: "probe-data" | "analysis" | "feature-metadata" | "terminal-metadata"
   maxAgeDays: number
 }
 
@@ -68,15 +64,7 @@ export const sources: Source[] = [
     freshnessDays: 365, // frozen standard, annual check sufficient
     definesFeatures: true,
     definesSupport: false,
-    featureFamilies: [
-      "sgr",
-      "cursor",
-      "erase",
-      "editing",
-      "text",
-      "modes",
-      "reset",
-    ],
+    featureFamilies: ["sgr", "cursor", "erase", "editing", "text", "modes", "reset"],
   },
   {
     id: "uax11",
@@ -138,14 +126,7 @@ export const sources: Source[] = [
     freshnessDays: 30,
     definesFeatures: true,
     definesSupport: true,
-    featureFamilies: [
-      "sgr",
-      "cursor",
-      "modes",
-      "input",
-      "extensions",
-      "device",
-    ],
+    featureFamilies: ["sgr", "cursor", "modes", "input", "extensions", "device"],
   },
 
   // --- Vendor documentation ---
@@ -202,8 +183,7 @@ export const sources: Source[] = [
     type: "vendor-doc",
     label: "foot Control Sequences",
     url: "https://codeberg.org/dnkl/foot/src/branch/master/doc/foot-ctlseqs.7.scd",
-    description:
-      "foot terminal control sequence documentation. Covers OSC 176, OSC 555, and foot-specific extensions.",
+    description: "foot terminal control sequence documentation. Covers OSC 176, OSC 555, and foot-specific extensions.",
     freshnessDays: 60,
     definesFeatures: true,
     definesSupport: true,
@@ -429,8 +409,7 @@ export const terminals: TrackedTerminal[] = [
   {
     id: "terminal-app",
     label: "Terminal.app",
-    releaseUrl:
-      "https://support.apple.com/guide/terminal/welcome/mac",
+    releaseUrl: "https://support.apple.com/guide/terminal/welcome/mac",
     currentVersion: "2.15",
     probeMethod: "app",
   },
@@ -541,8 +520,7 @@ export const explicitIgnores: ExplicitIgnore[] = [
   {
     sourceId: "xterm-ctlseqs",
     item: "Tektronix 4014 mode",
-    reason:
-      "Legacy vector graphics mode from 1970s. No modern terminal implements it meaningfully.",
+    reason: "Legacy vector graphics mode from 1970s. No modern terminal implements it meaningfully.",
   },
   {
     sourceId: "xterm-ctlseqs",
@@ -557,8 +535,7 @@ export const explicitIgnores: ExplicitIgnore[] = [
   {
     sourceId: "ecma-48",
     item: "C1 control codes (0x80-0x9F) as 8-bit",
-    reason:
-      "8-bit C1 codes conflict with UTF-8 encoding. Only the 7-bit ESC-prefixed forms are tested.",
+    reason: "8-bit C1 codes conflict with UTF-8 encoding. Only the 7-bit ESC-prefixed forms are tested.",
   },
   {
     sourceId: "vt510-spec",
@@ -574,8 +551,7 @@ export const explicitIgnores: ExplicitIgnore[] = [
   {
     sourceId: "conemu-docs",
     item: "ConEmu GUI macros",
-    reason:
-      "ConEmu-specific GUI automation commands. Not terminal escape sequences.",
+    reason: "ConEmu-specific GUI automation commands. Not terminal escape sequences.",
   },
 ]
 
@@ -591,12 +567,8 @@ async function generateLockfile() {
   const lockfilePath = path.join(import.meta.dir, "..", "scripts", "sitefile.lock.json")
 
   // Count features from features.json
-  const featuresJson = JSON.parse(
-    fs.readFileSync(path.join(contentDir, "features.json"), "utf-8"),
-  )
-  const featureKeys = Object.keys(featuresJson).filter(
-    (k) => k !== "$comment",
-  )
+  const featuresJson = JSON.parse(fs.readFileSync(path.join(contentDir, "features.json"), "utf-8"))
+  const featureKeys = Object.keys(featuresJson).filter((k) => k !== "$comment")
   const totalFeatures = featureKeys.length
 
   // Count features per family
@@ -608,10 +580,7 @@ async function generateLockfile() {
 
   // Build source lock entries
   const sourceLock = sources.map((s) => {
-    const familyCount = s.featureFamilies.reduce(
-      (sum, fam) => sum + (featureFamilies[fam] || 0),
-      0,
-    )
+    const familyCount = s.featureFamilies.reduce((sum, fam) => sum + (featureFamilies[fam] || 0), 0)
     return {
       sourceId: s.id,
       lastChecked: new Date().toISOString().split("T")[0],
@@ -656,50 +625,35 @@ async function generateLockfile() {
           termId,
           termId.replace(/-/g, ""),
           // VS Code special case
-          ...(termId === "vscode"
-            ? ["com-microsoft-vscode", "com.microsoft.vscode"]
-            : []),
+          ...(termId === "vscode" ? ["com-microsoft-vscode", "com.microsoft.vscode"] : []),
           // screen special case: prefer latest version
           ...(termId === "screen" ? ["screen-5", "screen-4"] : []),
         ]
 
         const matches = idVariants.some(
-          (variant) =>
-            lowerFile.startsWith(variant + "-") ||
-            lowerFile.startsWith(variant + "."),
+          (variant) => lowerFile.startsWith(variant + "-") || lowerFile.startsWith(variant + "."),
         )
 
         if (matches) {
           const filePath = path.join(probeDir, file)
           const data = JSON.parse(fs.readFileSync(filePath, "utf-8"))
-          const date = data.generated
-            ? new Date(data.generated).toISOString().split("T")[0]
-            : "unknown"
-          const count = data.results
-            ? Object.keys(data.results).length
-            : 0
+          const date = data.generated ? new Date(data.generated).toISOString().split("T")[0] : "unknown"
+          const count = data.results ? Object.keys(data.results).length : 0
 
           // Extract version from filename
-          const versionMatch = file.match(
-            /(?:^[a-z0-9.-]+-)([\d][^-]*?)(?:-(?:macos|linux|windows))?\.json$/i,
-          )
+          const versionMatch = file.match(/(?:^[a-z0-9.-]+-)([\d][^-]*?)(?:-(?:macos|linux|windows))?\.json$/i)
           const version = data.version || (versionMatch ? versionMatch[1] : terminal.currentVersion)
 
           // Prefer file matching currentVersion, then newer probe date, then later filename
-          const matchesCurrentVersion =
-            file.includes(terminal.currentVersion)
-          const bestMatchesCurrent =
-            bestMatch?.file.includes(terminal.currentVersion) ?? false
+          const matchesCurrentVersion = file.includes(terminal.currentVersion)
+          const bestMatchesCurrent = bestMatch?.file.includes(terminal.currentVersion) ?? false
 
           const isBetter =
             !bestMatch ||
             (matchesCurrentVersion && !bestMatchesCurrent) ||
             (!bestMatchesCurrent &&
               !matchesCurrentVersion &&
-              new Date(data.generated || 0) >
-                new Date(
-                  bestMatch.date === "unknown" ? 0 : bestMatch.date,
-                ))
+              new Date(data.generated || 0) > new Date(bestMatch.date === "unknown" ? 0 : bestMatch.date))
 
           if (isBetter) {
             bestMatch = { file, date, count, version }
@@ -745,14 +699,10 @@ async function generateLockfile() {
         staleCount++
         continue
       }
-      const age = Math.floor(
-        (now - new Date(entry.lastProbedDate).getTime()) / (1000 * 60 * 60 * 24),
-      )
+      const age = Math.floor((now - new Date(entry.lastProbedDate).getTime()) / (1000 * 60 * 60 * 24))
       const sla = freshnessSLAs.find((s) => s.contentType === "probe-data")
       if (sla && age > sla.maxAgeDays) {
-        console.log(
-          `  STALE: ${entry.terminalId} — ${age} days old (SLA: ${sla.maxAgeDays} days)`,
-        )
+        console.log(`  STALE: ${entry.terminalId} — ${age} days old (SLA: ${sla.maxAgeDays} days)`)
         staleCount++
       }
     }

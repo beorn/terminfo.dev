@@ -255,10 +255,7 @@ export const cursorProbes: ProbeDefinition[] = [
       const cursor = ctx.getCursor()
       return {
         pass: cursor.y === 9 && cursor.x === 4,
-        note:
-          cursor.y === 9 && cursor.x === 4
-            ? undefined
-            : `got ${cursor.y};${cursor.x}, expected 9;4`,
+        note: cursor.y === 9 && cursor.x === 4 ? undefined : `got ${cursor.y};${cursor.x}, expected 9;4`,
       }
     },
     async (ctx) => {
@@ -268,10 +265,7 @@ export const cursorProbes: ProbeDefinition[] = [
       if (!pos) return { pass: false, note: "No cursor response" }
       return {
         pass: pos.row === 10 && pos.col === 5,
-        note:
-          pos.row === 10 && pos.col === 5
-            ? undefined
-            : `got ${pos.row};${pos.col}, expected 10;5`,
+        note: pos.row === 10 && pos.col === 5 ? undefined : `got ${pos.row};${pos.col}, expected 10;5`,
         response: `${pos.row};${pos.col}`,
       }
     },
@@ -286,10 +280,7 @@ export const cursorProbes: ProbeDefinition[] = [
       const cursor = ctx.getCursor()
       return {
         pass: cursor.y === 3 && cursor.x === 0,
-        note:
-          cursor.y === 3 && cursor.x === 0
-            ? undefined
-            : `got ${cursor.y};${cursor.x}, expected 3;0`,
+        note: cursor.y === 3 && cursor.x === 0 ? undefined : `got ${cursor.y};${cursor.x}, expected 3;0`,
       }
     },
     async (ctx) => {
@@ -299,10 +290,7 @@ export const cursorProbes: ProbeDefinition[] = [
       if (!pos) return { pass: false, note: "No cursor response" }
       return {
         pass: pos.row === 4 && pos.col === 1,
-        note:
-          pos.row === 4 && pos.col === 1
-            ? undefined
-            : `got ${pos.row};${pos.col}, expected 4;1`,
+        note: pos.row === 4 && pos.col === 1 ? undefined : `got ${pos.row};${pos.col}, expected 4;1`,
         response: `${pos.row};${pos.col}`,
       }
     },
@@ -322,10 +310,7 @@ export const cursorProbes: ProbeDefinition[] = [
       if (!pos) return { pass: false, note: "No cursor response" }
       return {
         pass: pos.row === 3 && pos.col === 15,
-        note:
-          pos.row === 3 && pos.col === 15
-            ? undefined
-            : `got ${pos.row};${pos.col}, expected 3;15`,
+        note: pos.row === 3 && pos.col === 15 ? undefined : `got ${pos.row};${pos.col}, expected 3;15`,
         response: `${pos.row};${pos.col}`,
       }
     },

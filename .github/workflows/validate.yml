@@ -12,10 +12,10 @@ name: Content Validation
 
 on:
   schedule:
-    - cron: '0 9 * * 1'  # Every Monday 9am UTC
+    - cron: "0 9 * * 1" # Every Monday 9am UTC
   push:
     branches: [main]
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch: # Manual trigger
 
 permissions:
   issues: write

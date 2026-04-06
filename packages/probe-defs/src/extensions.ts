@@ -505,10 +505,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return { pass, note: pass ? undefined : "No OSC 4 response" }
     },
     async (ctx) => {
-      const match = await ctx.queryWithSentinel(
-        "\x1b]4;0;?\x07",
-        /\x1b\]4;0;([^\x07\x1b]+)[\x07\x1b]/,
-      )
+      const match = await ctx.queryWithSentinel("\x1b]4;0;?\x07", /\x1b\]4;0;([^\x07\x1b]+)[\x07\x1b]/)
       if (!match) return { pass: false, note: "No OSC 4 response" }
       return { pass: true, response: match[1] }
     },
@@ -523,10 +520,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return { pass, note: pass ? undefined : "No OSC 5 response" }
     },
     async (ctx) => {
-      const match = await ctx.queryWithSentinel(
-        "\x1b]5;0;?\x07",
-        /\x1b\]5;0;([^\x07\x1b]+)[\x07\x1b]/,
-      )
+      const match = await ctx.queryWithSentinel("\x1b]5;0;?\x07", /\x1b\]5;0;([^\x07\x1b]+)[\x07\x1b]/)
       if (!match) return { pass: false, note: "No OSC 5 response" }
       return { pass: true, response: match[1] }
     },
