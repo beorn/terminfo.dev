@@ -17,7 +17,7 @@
  *   - a direct quote or paraphrase from the source
  *   - a suggested_action for human review
  *
- * Cost: ~$5 per deep query. 6 queries = ~$30.
+ * Cost: ~$0.03 per query (GPT-5.4 with web search). 6 queries = ~$0.20.
  * Run weekly or monthly.
  */
 
@@ -34,13 +34,7 @@ const radarPath = join(contentDir, "radar.jsonl")
 
 interface Finding {
   id: string // hash of title + first citation URL
-  type:
-    | "new-terminal"
-    | "new-protocol"
-    | "new-version"
-    | "ecosystem-signal"
-    | "deprecation"
-    | "spec-change"
+  type: "new-terminal" | "new-protocol" | "new-version" | "ecosystem-signal" | "deprecation" | "spec-change"
   title: string
   description: string
   citations: {
@@ -212,16 +206,33 @@ async function runDeepQuery(queryPrompt: string, queryId: string): Promise<strin
   return new Promise((resolve, reject) => {
     // Note: don't pass --model — it overrides --deep's web search routing.
     // Deep research picks its own model (GPT-5.4 with web search tool).
-    const proc = spawn(
-      "bun",
-      ["llm", "--deep", "-y", "--no-recover", queryPrompt],
-      { cwd: kmRoot, stdio: ["pipe", "pipe", "inherit"] },
-    )
-    let output = ""
-    proc.stdout?.on("data", (chunk) => (output += chunk.toString()))
+    const proc = spawn("bun", ["llm", "--deep", "-y", "--no-recover", queryPrompt], {
+      cwd: kmRoot,
+      stdio: ["pipe", "pipe", "inherit"],
+    })
+    let stdout = ""
+    proc.stdout?.on("data", (chunk) => (stdout += chunk.toString()))
     proc.on("close", (code) => {
-      if (code === 0) resolve(output)
-      else reject(new Error(`llm exited with code ${code}`))
+      if (code !== 0) {
+        reject(new Error(`llm exited with code ${code}`))
+        return
+      }
+      // llm writes content to a temp file and outputs JSON metadata to stdout:
+      // {"query":"...", "chars": N, "model":"...", "file": "/tmp/llm-*.txt"}
+      // Read the actual content from the output file.
+      try {
+        const result = JSON.parse(stdout.trim().split("\n").pop()!) as { file?: string }
+        if (!result.file) {
+          reject(new Error("llm did not return output file path"))
+          return
+        }
+        const content = readFileSync(result.file, "utf-8")
+        // Strip the metadata comment header (lines starting with //)
+        const bodyStart = content.indexOf("\n\n")
+        resolve(bodyStart > 0 ? content.slice(bodyStart + 2) : content)
+      } catch (err) {
+        reject(new Error(`Failed to read llm output: ${err instanceof Error ? err.message : String(err)}`))
+      }
     })
     proc.on("error", reject)
   })
@@ -243,7 +254,12 @@ function extractFindings(rawOutput: string, queryId: string): Finding[] {
     const title = titleMatch[1]!.trim().replace(/[*_`]/g, "") // strip markdown
     if (title.length < 5) continue
     // Skip generic section headers that aren't findings
-    if (/^(?:overview|summary|key details|verifiable|relevant|baseline|conclusion|references|sources?|notes?|what changed)\b/i.test(title)) continue
+    if (
+      /^(?:overview|summary|key details|verifiable|relevant|baseline|conclusion|references|sources?|notes?|what changed)\b/i.test(
+        title,
+      )
+    )
+      continue
 
     // Extract URLs (strip trailing punctuation that commonly appears at end of markdown links)
     const urls = [...section.matchAll(/https?:\/\/[^\s)\]<>"`,]+/g)]
@@ -316,9 +332,18 @@ function normalizeDate(raw: string): string {
   const monthMatch = raw.match(/^(\w+)\s+(20\d\d)$/)
   if (monthMatch) {
     const months: Record<string, string> = {
-      january: "01", february: "02", march: "03", april: "04",
-      may: "05", june: "06", july: "07", august: "08",
-      september: "09", october: "10", november: "11", december: "12",
+      january: "01",
+      february: "02",
+      march: "03",
+      april: "04",
+      may: "05",
+      june: "06",
+      july: "07",
+      august: "08",
+      september: "09",
+      october: "10",
+      november: "11",
+      december: "12",
     }
     const mo = months[monthMatch[1]!.toLowerCase()]
     if (mo) return `${monthMatch[2]}-${mo}-01`
@@ -355,9 +380,7 @@ async function main() {
     return
   }
 
-  const queriesToRun = singleQueryId
-    ? QUERY_TEMPLATES.filter((q) => q.id === singleQueryId)
-    : QUERY_TEMPLATES
+  const queriesToRun = singleQueryId ? QUERY_TEMPLATES.filter((q) => q.id === singleQueryId) : QUERY_TEMPLATES
 
   if (queriesToRun.length === 0) {
     console.error(`Unknown query id: ${singleQueryId}`)
@@ -368,7 +391,7 @@ async function main() {
   console.log(`\n🔭 Terminfo.dev Ecosystem Explorer`)
   console.log(`Running ${queriesToRun.length} ${queriesToRun.length === 1 ? "query" : "queries"}`)
   console.log(`Radar log: ${radarPath}`)
-  console.log(`Cost estimate: ~$${queriesToRun.length * 5}\n`)
+  console.log(`Cost estimate: ~$${(queriesToRun.length * 0.03).toFixed(2)}\n`)
 
   if (dryRun) {
     console.log("DRY RUN — queries that would be sent:\n")
@@ -401,7 +424,7 @@ async function main() {
   }
 
   console.log(`\n✨ Done. Added ${totalAdded} new findings to ${radarPath}`)
-  console.log(`Review with: bun scripts/radar.ts list    (not yet implemented)`)
+  console.log(`Review with: bun run radar list`)
 }
 
 main().catch((err) => {

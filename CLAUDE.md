@@ -122,6 +122,11 @@ bun install                 # Install dependencies
 bun run dev                 # Local dev server (VitePress)
 bun run build               # Build static site (250+ pages)
 bun run preview             # Preview built site
+bun run validate            # Check tag consistency, missing fields
+bun sitefile --check        # Check freshness against SLAs
+bun run explore             # Run discovery queries (GPT-5.4 + web search → radar.jsonl)
+bun run radar stats         # Triage discovery findings
+bun run candidates list     # Review promoted candidates
 ```
 
 ### Unified CLI (`bun terminfo`)

@@ -232,11 +232,12 @@ features, terminals, and protocol changes automatically.
 ```bash
 bun run explore --list              # Show the 6 query templates
 bun run explore --dry-run           # Preview queries without running
-bun run explore --query <id>        # Run one query (~$0.05-$5)
-bun run explore                     # Run all 6 queries (~$0.30-$30)
+bun run explore --query <id>        # Run one query (~$0.03)
+bun run explore                     # Run all 6 queries (~$0.20)
 ```
 
 Query templates:
+
 - `active-terminals` — survey of emulator projects and recent releases
 - `new-protocols-2026` — new OSC/CSI/DCS sequences proposed/implemented
 - `xterm-recent-changes` — xterm ctlseqs changelog since patch 400
@@ -249,6 +250,7 @@ Query templates:
 ### Findings go to radar.jsonl
 
 Every finding has:
+
 - `id` — hash of title + first citation URL (dedup key)
 - `type` — new-terminal / new-protocol / new-version / ecosystem-signal / deprecation / spec-change
 - `title`, `description`
@@ -281,6 +283,7 @@ bun run candidates merge                 # Copy approved candidates → features
 
 Candidates sit in `content/candidates.json` awaiting review. Approved ones get
 merged into `features.json`, then you still need to:
+
 1. Write the probe in `packages/probe-defs/src/<category>.ts`
 2. Re-probe terminals
 3. Add annotations for failures
@@ -323,11 +326,11 @@ bun run candidates merge
 
 ### Cost considerations
 
-- Each `explore` query costs ~$0.05-$5 depending on search depth (GPT-5.4)
-- Full run (6 queries): ~$0.30-$30
-- Weekly cadence: $1500/year max
-- Monthly cadence: $360/year max
-- Targeted query when investigating a specific area: cheap
+- Each `explore` query costs ~$0.03 (GPT-5.4 with web search via Responses API)
+- Full run (6 queries): ~$0.20
+- Weekly cadence: ~$10/year
+- Monthly cadence: ~$2.40/year
+- Targeted query when investigating a specific area: ~$0.03
 
 ## Content Manifest
 
