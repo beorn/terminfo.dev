@@ -212,6 +212,123 @@ Same as Periodic Refresh step 9, plus:
 - [ ] Update this runbook with new sources discovered
 - [ ] Schedule next full rebuild (quarterly recommended)
 
+## Discovery Pipeline
+
+Before you can update the site, you need to know what's changed in the terminal
+ecosystem. The discovery pipeline watches upstream sources and surfaces new
+features, terminals, and protocol changes automatically.
+
+### Two kinds of discovery
+
+1. **Targeted scraping** (`scripts/sitefile.ts --check`) — checks known sources
+   declared in `sitefile.ts` against the lockfile, reports what's stale.
+
+2. **Open-ended exploration** (`scripts/explore.ts`) — runs deep research
+   queries against GPT-5.4 to find things we don't know we don't know: new
+   terminals, new protocols, new proposals, community discussions.
+
+### Running explore
+
+```bash
+bun run explore --list              # Show the 6 query templates
+bun run explore --dry-run           # Preview queries without running
+bun run explore --query <id>        # Run one query (~$0.05-$5)
+bun run explore                     # Run all 6 queries (~$0.30-$30)
+```
+
+Query templates:
+- `active-terminals` — survey of emulator projects and recent releases
+- `new-protocols-2026` — new OSC/CSI/DCS sequences proposed/implemented
+- `xterm-recent-changes` — xterm ctlseqs changelog since patch 400
+- `spec-bodies` — terminal-wg, UAPI group, ECMA, Unicode proposals
+- `ecosystem-articles` — influential terminal articles and discussions
+- `vendor-changelogs` — recent releases of tracked terminals
+
+**Recommended cadence:** monthly. Quarterly at minimum.
+
+### Findings go to radar.jsonl
+
+Every finding has:
+- `id` — hash of title + first citation URL (dedup key)
+- `type` — new-terminal / new-protocol / new-version / ecosystem-signal / deprecation / spec-change
+- `title`, `description`
+- `citations` — array of `{url, published, accessed, snippet}` — **every finding must have at least one citation**
+- `discovered` — when we found it
+- `discoverer` — which script/query found it
+
+Append-only log at `content/radar.jsonl`. Dedup via hash — re-running the same
+query won't duplicate findings.
+
+### Triaging findings
+
+```bash
+bun run radar list                  # List all findings
+bun run radar list --type new-protocol
+bun run radar show <id>             # Show full citations
+bun run radar dismiss <id> "reason" # Dismiss a finding
+bun run radar stats                 # Summary counts
+```
+
+### Promoting findings to candidates
+
+```bash
+bun run candidates promote <radar-id>    # Convert finding → candidate
+bun run candidates list                  # Show pending candidates
+bun run candidates approve <feature-id>  # Approve for merge
+bun run candidates reject <feature-id> "reason"
+bun run candidates merge                 # Copy approved candidates → features.json
+```
+
+Candidates sit in `content/candidates.json` awaiting review. Approved ones get
+merged into `features.json`, then you still need to:
+1. Write the probe in `packages/probe-defs/src/<category>.ts`
+2. Re-probe terminals
+3. Add annotations for failures
+4. Rebuild
+
+### Weekly workflow
+
+```bash
+# 1. Check known sources for staleness
+bun run sitefile --check
+
+# 2. Discover new things (monthly)
+bun run explore
+
+# 3. Triage
+bun run radar stats
+bun run radar list --type new-protocol
+
+# 4. Promote interesting findings
+bun run candidates promote <id>
+
+# 5. Review and approve candidates
+bun run candidates list
+bun run candidates approve <feature-id>
+
+# 6. Merge approved into features.json
+bun run candidates merge
+
+# 7. Write probes for new features (manual)
+# 8. Re-probe (see Periodic Refresh)
+```
+
+### Rules
+
+- **Every finding must have a citation URL** — no LLM hallucinations without sources.
+- **Every citation should have a publication date** — so we distinguish new vs old findings.
+- **Findings stay in radar.jsonl forever** — it's append-only, audit trail.
+- **Candidates need human review** — never auto-merge to features.json.
+- **Probes are never auto-generated** — LLM can draft, human must review and verify.
+
+### Cost considerations
+
+- Each `explore` query costs ~$0.05-$5 depending on search depth (GPT-5.4)
+- Full run (6 queries): ~$0.30-$30
+- Weekly cadence: $1500/year max
+- Monthly cadence: $360/year max
+- Targeted query when investigating a specific area: cheap
+
 ## Content Manifest
 
 The **content manifest** (`scripts/sitefile.ts`) is the single source of truth for what
