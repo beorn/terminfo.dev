@@ -19,7 +19,9 @@
     "validate": "bun scripts/validate.ts",
     "check-404s": "bun scripts/check-404s.ts",
     "sitefile": "bun scripts/sitefile.ts",
-    "explore": "bun scripts/explore.ts"
+    "explore": "bun scripts/explore.ts",
+    "radar": "bun scripts/radar.ts",
+    "candidates": "bun scripts/candidates.ts"
   },
   "dependencies": {
     "@silvery/ansi": "^0.3.0",
