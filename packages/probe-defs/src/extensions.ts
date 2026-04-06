@@ -1000,6 +1000,260 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
   ),
 
+  // OSC 113 — reset pointer fg color
+  probe(
+    "extensions.osc113-reset-pointer-fg",
+    null, // Headless: pointer color is not represented in the terminal cell grid
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]113\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 113" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 114 — reset pointer bg color
+  probe(
+    "extensions.osc114-reset-pointer-bg",
+    null, // Headless: pointer color is not represented in the terminal cell grid
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]114\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 114" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 21 — Kitty key=value color protocol (replacement for OSC 10-19)
+  probe(
+    "extensions.osc21-kitty-color",
+    (ctx) => {
+      // Try to query foreground via OSC 21 — backends that recognize the protocol
+      // respond with another OSC 21 framed payload.
+      const response = ctx.feedCapture("\x1b]21;foreground=?\x07")
+      const pass = /\x1b\]21;/.test(response)
+      return { pass, note: pass ? undefined : "No OSC 21 response" }
+    },
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel(
+        "\x1b]21;foreground=?\x07",
+        /\x1b\]21;([^\x07\x1b]*)[\x07\x1b]/,
+      )
+      if (match) return { pass: true, response: match[1] }
+      // Fallback: write+verify cursor unchanged (sequence consumed)
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]21;foreground=?\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 21" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? "Consumed (no query response)" : `cursor at col ${pos.col}`,
+      }
+    },
+  ),
+
+  // OSC 30001 — Kitty color stack push
+  probe(
+    "extensions.osc30001-color-stack-push",
+    null, // Headless: no observable side-effect (stack is internal terminal state)
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]30001\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 30001" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 30101 — Kitty color stack pop
+  probe(
+    "extensions.osc30101-color-stack-pop",
+    null, // Headless: no observable side-effect (stack is internal terminal state)
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      // Push first so the pop has something to restore — both should be consumed.
+      ctx.write("\x1b]30001\x07")
+      ctx.write("\x1b]30101\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 30101" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 176 — foot Wayland app-id
+  probe(
+    "extensions.osc176-app-id",
+    null, // Headless: app-id is a Wayland window-manager concept, not in the cell grid
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]176;terminfo-test\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 176" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 555 — foot screen flash (visual bell)
+  probe(
+    "extensions.osc555-flash",
+    null, // Headless: visual bell is a UI animation, not in the cell grid
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]555\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 555" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 440 — mintty audio sound
+  probe(
+    "extensions.osc440-audio",
+    null, // Headless: audio playback is not observable from the cell grid
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]440;bell.wav\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 440" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 7770 — mintty font size query/set
+  probe(
+    "extensions.osc7770-font-size",
+    null, // Headless: font size is a UI/render concept, not in the cell grid
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]7770;?\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 7770" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 7777 — mintty font + window size (zoom)
+  probe(
+    "extensions.osc7777-font-window-size",
+    null, // Headless: font/window size is a UI/render concept
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]7777;;\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 7777" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 701 — rxvt-unicode locale query/set
+  probe(
+    "extensions.osc701-locale",
+    null, // Headless: locale state is not observable in the cell grid
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]701;?\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 701" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 702 — rxvt-unicode version query
+  probe(
+    "extensions.osc702-version",
+    null, // Headless: response routing isn't reliably available outside real terminals
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]702\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 702" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 710 — rxvt-unicode set normal font
+  probe(
+    "extensions.osc710-font-normal",
+    null, // Headless: font selection is not observable in the cell grid
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]710;fixed\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 710" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 720 — rxvt-unicode scroll view up
+  probe(
+    "extensions.osc720-scroll-up",
+    null, // Headless: scrollback navigation is a UI concept
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]720\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 720" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
+  // OSC 776 — rxvt-unicode cell size report
+  probe(
+    "extensions.osc776-cell-size",
+    null, // Headless: cell metrics aren't reported through this channel in backends
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]776\x07")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No cursor response after OSC 776" }
+      return {
+        pass: pos.col === 1,
+        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+      }
+    },
+  ),
+
   // Sixel support advertised in DA1 response (attribute 4)
   probe(
     "extensions.sixel-da1",

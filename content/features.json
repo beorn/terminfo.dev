@@ -2017,6 +2017,178 @@
     "probeStatus": "partial",
     "sequence": "ESC ] 3008 ; params BEL"
   },
+
+  "extensions.osc113-reset-pointer-fg": {
+    "name": "Reset pointer fg color (OSC 113)",
+    "slug": "osc-113-reset-pointer-fg",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 113 resets the mouse pointer foreground color to the terminal's configured default. The sequence is <code>ESC ] 113 BEL</code>. This is the companion reset for OSC 13, which sets the pointer foreground color. The pointer color set originated in xterm to allow applications to customize the mouse cursor when hovering over the terminal — historically useful on X11 where the X cursor was not styled by the GUI toolkit. Support is mostly limited to xterm and a small number of xterm-compatible terminals that implement the full color management protocol.",
+    "probe": "Send <code>OSC 113 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "baseline": "rich",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 113 BEL"
+  },
+  "extensions.osc114-reset-pointer-bg": {
+    "name": "Reset pointer bg color (OSC 114)",
+    "slug": "osc-114-reset-pointer-bg",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["osc", "xterm-extensions"],
+    "body": "OSC 114 resets the mouse pointer background color to the terminal's configured default. The sequence is <code>ESC ] 114 BEL</code>. This is the companion reset for OSC 14, which sets the pointer background color. Together with OSC 113, these complete the xterm pointer color management protocol. Most modern terminals delegate cursor styling to the host operating system or window manager and ignore these sequences entirely; xterm is essentially the reference implementation.",
+    "probe": "Send <code>OSC 114 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "baseline": "rich",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 114 BEL"
+  },
+
+  "extensions.osc21-kitty-color": {
+    "name": "Kitty color protocol (OSC 21)",
+    "slug": "osc-21-kitty-color",
+    "url": "https://sw.kovidgoyal.net/kitty/color-stack/",
+    "tags": ["osc", "kitty-extensions"],
+    "body": "OSC 21 is Kitty's key-value color protocol, designed as a structured replacement for the scattered OSC 10–19 color sequences. Instead of issuing separate sequences for foreground, background, cursor, selection, and palette colors, applications send a single <code>ESC ] 21 ; key=value;... BEL</code> sequence that updates any combination of named color slots. Both setting and querying are supported: <code>key=?</code> requests the current value, and the terminal responds with the same key-value framing. The protocol is well-defined and avoids the parsing ambiguities of the legacy xterm color sequences. Currently supported by Kitty, Ghostty, and foot.",
+    "probe": "Send <code>OSC 21 ; foreground=? BEL</code> and verify the terminal responds with the foreground color in key-value form.",
+    "baseline": "rich",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 21 ; key=value BEL"
+  },
+
+  "extensions.osc30001-color-stack-push": {
+    "name": "Kitty color stack push (OSC 30001)",
+    "slug": "osc-30001-color-stack-push",
+    "url": "https://sw.kovidgoyal.net/kitty/color-stack/",
+    "tags": ["osc", "kitty-extensions"],
+    "body": "OSC 30001 saves the terminal's current color state to a stack maintained by the terminal emulator. The sequence is <code>ESC ] 30001 BEL</code> and snapshots the foreground, background, cursor, selection, and full palette colors. This pairs with OSC 30101 (pop) to give applications a clean way to temporarily change colors and reliably restore them later — useful for theme previews, colorized diffs, or full-screen applications that want to leave the terminal in its original state on exit. Originally introduced by Kitty as part of its color management work; foot and Ghostty have adopted the same protocol.",
+    "probe": "Send <code>OSC 30001 BEL</code> and verify the terminal remains responsive (push sequence consumed without error).",
+    "baseline": "rich",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 30001 BEL"
+  },
+  "extensions.osc30101-color-stack-pop": {
+    "name": "Kitty color stack pop (OSC 30101)",
+    "slug": "osc-30101-color-stack-pop",
+    "url": "https://sw.kovidgoyal.net/kitty/color-stack/",
+    "tags": ["osc", "kitty-extensions"],
+    "body": "OSC 30101 restores the most recently saved color state from the terminal's color stack. The sequence is <code>ESC ] 30101 BEL</code> and reverts the foreground, background, cursor, selection, and palette colors to the snapshot captured by the matching OSC 30001 push. This is the reliable cleanup primitive for applications that have changed any of the terminal's colors at runtime — instead of re-emitting individual reset sequences (OSC 110, 111, 112, 104), one pop restores everything atomically. Defined alongside OSC 30001 by Kitty, also supported by foot and Ghostty.",
+    "probe": "Send <code>OSC 30001 BEL</code> followed by <code>OSC 30101 BEL</code> and verify the pop sequence is consumed without error.",
+    "baseline": "rich",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 30101 BEL"
+  },
+
+  "extensions.osc176-app-id": {
+    "name": "Set Wayland app-id (OSC 176)",
+    "slug": "osc-176-app-id",
+    "url": "https://codeberg.org/dnkl/foot/wiki",
+    "tags": ["osc"],
+    "body": "OSC 176 sets the Wayland window's app-id at runtime. The sequence is <code>ESC ] 176 ; app-id BEL</code> and is specific to <a href=\"https://codeberg.org/dnkl/foot\" class=\"hover-link\">foot</a>, the Wayland-native terminal emulator. Wayland window managers use the app-id to group windows, apply per-application rules, and select icons — analogous to <code>WM_CLASS</code> on X11. By exposing app-id setting as an escape sequence, foot lets shell scripts and TUIs differentiate themselves at the compositor level (for example, marking a terminal running a specific TUI so a tiling window manager can place it on a dedicated workspace). No other terminal implements OSC 176; on non-foot terminals the sequence is silently consumed or ignored.",
+    "probe": "Send <code>OSC 176 ; terminfo-test BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "baseline": "rich",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 176 ; app-id BEL"
+  },
+  "extensions.osc555-flash": {
+    "name": "Screen flash (OSC 555)",
+    "slug": "osc-555-flash",
+    "url": "https://codeberg.org/dnkl/foot/wiki",
+    "tags": ["osc"],
+    "body": "OSC 555 triggers a visual bell — the terminal briefly flashes its background color, drawing the user's attention without playing an audible bell. The sequence is <code>ESC ] 555 BEL</code> and is foot-specific. Visual bells are commonly bound to shell error events, IRC/chat notifications, or completion of long-running commands. Most terminals expose visual bell behavior through preferences rather than an escape sequence; foot is unusual in giving applications direct control. Other terminals silently consume OSC 555 (no flash) or pass it through unchanged.",
+    "probe": "Send <code>OSC 555 BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "baseline": "rich",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 555 BEL"
+  },
+
+  "extensions.osc440-audio": {
+    "name": "Audio sound (OSC 440)",
+    "slug": "osc-440-audio",
+    "url": "https://mintty.github.io/",
+    "tags": ["osc"],
+    "body": "OSC 440 plays a WAV audio file as terminal output. The sequence is <code>ESC ] 440 ; wavfile BEL</code> where <code>wavfile</code> is a path or identifier for an audio sample. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a>-only extension and one of the most unusual terminal features in the wild — no other terminal emulator exposes general-purpose audio playback through an escape sequence. mintty originally added this for accessibility and notification scripting on Windows, where Cygwin/MSYS shell scripts could trigger arbitrary sound effects without a separate player. Other terminals silently consume the sequence; audio playback happens nowhere except mintty.",
+    "probe": "Send <code>OSC 440 ; bell.wav BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "baseline": "legacy",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 440 ; wavfile BEL"
+  },
+  "extensions.osc7770-font-size": {
+    "name": "Font size query/set (OSC 7770)",
+    "slug": "osc-7770-font-size",
+    "url": "https://mintty.github.io/",
+    "tags": ["osc"],
+    "body": "OSC 7770 queries or sets the terminal's current font size. To set: <code>ESC ] 7770 ; size BEL</code> where size is a point value. To query: <code>ESC ] 7770 ; ? BEL</code>, and the terminal responds with the current font size. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a> extension, originally added so shell scripts and TUIs running in mintty (Cygwin, MSYS, Git Bash) could programmatically zoom in or out — the same operation users perform with Ctrl+Plus / Ctrl+Minus. No other major terminal implements OSC 7770; font sizing is normally a user-only setting.",
+    "probe": "Send <code>OSC 7770 ; ? BEL</code> and verify the terminal responds with a font size or silently consumes the query.",
+    "baseline": "rich",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 7770 ; size BEL"
+  },
+  "extensions.osc7777-font-window-size": {
+    "name": "Font + window size (OSC 7777)",
+    "slug": "osc-7777-font-window-size",
+    "url": "https://mintty.github.io/",
+    "tags": ["osc"],
+    "body": "OSC 7777 sets both the font size and window size in a single zoom operation. The sequence is <code>ESC ] 7777 ; font ; size BEL</code>, where the font and size parameters control mintty's combined zoom behavior — adjusting the window dimensions to keep the visible character grid stable while the font changes. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a>-specific zoom control that complements OSC 7770 (font size only). Like other mintty font extensions, it has no adoption outside mintty.",
+    "probe": "Send <code>OSC 7777 ; ; BEL</code> (default zoom) and verify the terminal consumes the sequence (cursor position unchanged).",
+    "baseline": "rich",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 7777 ; font ; size BEL"
+  },
+
+  "extensions.osc701-locale": {
+    "name": "Locale query/set (OSC 701)",
+    "slug": "osc-701-locale",
+    "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
+    "tags": ["osc"],
+    "body": "OSC 701 queries or sets the terminal's current locale, which controls character encoding and text input behavior. To set: <code>ESC ] 701 ; locale BEL</code> where <code>locale</code> is a locale identifier like <code>en_US.UTF-8</code>. To query: <code>ESC ] 701 ; ? BEL</code>, and the terminal responds with its current locale. Originally introduced by <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a> so applications running inside the terminal could discover or override the encoding the terminal was decoding text as — important for users who routinely mixed UTF-8 and legacy 8-bit encodings. Also supported by mintty. Modern terminals are universally UTF-8 and silently consume the sequence.",
+    "probe": "Send <code>OSC 701 ; ? BEL</code> and verify the terminal responds with a locale string or silently consumes the query.",
+    "baseline": "legacy",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 701 ; locale BEL"
+  },
+  "extensions.osc702-version": {
+    "name": "Version query (OSC 702)",
+    "slug": "osc-702-version",
+    "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
+    "tags": ["osc"],
+    "body": "OSC 702 returns the terminal's version string. The sequence is <code>ESC ] 702 BEL</code> and the terminal responds with its name and version (e.g., <code>rxvt-unicode 9.30</code>). This is a <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a>-only extension, predating modern terminal version-detection mechanisms like XTVERSION (CSI > q) and DA1/DA2/DA3 fingerprinting. Modern applications use XTVERSION instead, which is supported across xterm, foot, Kitty, Ghostty, WezTerm, and many others. OSC 702 is essentially urxvt archaeology.",
+    "probe": "Send <code>OSC 702 BEL</code> and verify the terminal responds with a version string or silently consumes the query.",
+    "baseline": "legacy",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 702 BEL"
+  },
+  "extensions.osc710-font-normal": {
+    "name": "Set normal font (OSC 710)",
+    "slug": "osc-710-font-normal",
+    "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
+    "tags": ["osc"],
+    "body": "OSC 710 sets the terminal's normal (regular weight) font. The sequence is <code>ESC ] 710 ; font BEL</code> where <code>font</code> is an X11 logical font description (XLFD) or a fontconfig pattern. <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a> introduced a family of font-setting OSCs with different roles: <strong>OSC 711</strong> for the bold font, <strong>OSC 712</strong> for italic, and <strong>OSC 713</strong> for bold-italic. Together they let applications swap the entire font set on the fly. Outside of urxvt this protocol is essentially unused — modern terminals tie font selection to user preferences and do not expose font swapping over escape sequences.",
+    "probe": "Send <code>OSC 710 ; fixed BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "baseline": "legacy",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 710 ; font BEL"
+  },
+  "extensions.osc720-scroll-up": {
+    "name": "Scroll view up (OSC 720)",
+    "slug": "osc-720-scroll-up",
+    "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
+    "tags": ["osc"],
+    "body": "OSC 720 scrolls the visible terminal view up by N lines into the scrollback buffer, as if the user pressed Shift+PageUp. The sequence is <code>ESC ] 720 BEL</code> (some forms accept a count parameter). The companion <strong>OSC 721</strong> scrolls back down toward the live region. Both are <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a>-only extensions, intended for scripts that wanted to drive the scrollback view from inside the terminal. Modern terminals do not expose scrollback navigation over escape sequences — the scrollback is considered a user-interface concept owned by the emulator, not the application — so these sequences are silently consumed everywhere except urxvt.",
+    "probe": "Send <code>OSC 720 BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "baseline": "legacy",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 720 BEL"
+  },
+  "extensions.osc776-cell-size": {
+    "name": "Cell size report (OSC 776)",
+    "slug": "osc-776-cell-size",
+    "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
+    "tags": ["osc"],
+    "body": "OSC 776 reports the terminal's cell dimensions and font metrics. The query is <code>ESC ] 776 BEL</code> and the terminal responds with the cell width, cell height, and font ascent/descent values in pixels — enabling applications to align Sixel or pixel-graphics output to the character grid. This was introduced in <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a> 9.29 and is essentially a urxvt-specific alternative to xterm's CSI 14 t (window pixel size) and OSC 1337 ReportCellSize (iTerm2). Like the other urxvt OSC extensions, it sees no adoption outside its origin terminal.",
+    "probe": "Send <code>OSC 776 BEL</code> and verify the terminal responds with cell metrics or silently consumes the query.",
+    "baseline": "legacy",
+    "probeStatus": "partial",
+    "sequence": "ESC ] 776 BEL"
+  },
+
   "extensions.reflow-resize": {
     "name": "Text reflow on resize",
     "slug": "text-reflow-on-resize",
