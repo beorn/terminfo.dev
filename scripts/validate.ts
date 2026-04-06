@@ -229,6 +229,26 @@ heading("Errors (block deploy)")
   if (!found) info("No duplicate feature names")
 }
 
+// 4d. Terminals missing description or body
+{
+  let found = false
+  for (const [id, term] of Object.entries(terminals)) {
+    const missing: string[] = []
+    if (!term.label) missing.push("label")
+    if (!term.slug) missing.push("slug")
+    const desc = (term as any).description ?? ""
+    const body = (term as any).body ?? ""
+    if (desc.length < 10) missing.push("description")
+    if (body.length < 20) missing.push("body")
+    if (missing.length > 0) {
+      error(`Terminal "${id}" (${term.label}) missing content: ${missing.join(", ")}`)
+      errors++
+      found = true
+    }
+  }
+  if (!found) info("All terminals have description and body content")
+}
+
 // ---------------------------------------------------------------------------
 // WARNINGS
 // ---------------------------------------------------------------------------
