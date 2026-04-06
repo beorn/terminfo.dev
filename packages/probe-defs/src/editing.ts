@@ -108,24 +108,22 @@ export const editingProbes: ProbeDefinition[] = [
     },
   ),
 
-  // VT420 rectangular area operations (1990). Most headless backends don't
-  // implement these — probeStatus is "partial" and we only verify the sequence
-  // is consumed without leaving literal characters on screen.
+  // ── VT420 Rectangular Area Operations (1990) ──
 
   probe(
     "editing.decfra",
     (ctx) => {
-      // DECFRA: fill rows 1-3, cols 1-5 with 'X' (88 = 'X')
+      // DECFRA: fill rows 1-3, cols 1-5 with 'X' (88 = ASCII 'X')
       ctx.feed("\x1b[88;1;1;3;5$x")
-      // Pass if at least one cell in the target rectangle is 'X'.
-      // Otherwise, verify nothing literal leaked into the cells.
-      const filled = ctx.getCell(0, 0).char === "X" || ctx.getCell(1, 0).char === "X" || ctx.getCell(2, 0).char === "X"
-      const c0 = ctx.getCell(0, 0).char
-      const noLeak = isBlank(c0) || c0 === "X"
-      return {
-        pass: filled || noLeak,
-        note: filled ? "filled" : "sequence consumed (no literal leak)",
+      // Verify every cell in the 3×5 rectangle contains 'X'
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 5; col++) {
+          if (ctx.getCell(row, col).char !== "X") {
+            return { pass: false, note: `cell(${row},${col})="${ctx.getCell(row, col).char}", expected "X"` }
+          }
+        }
       }
+      return { pass: true }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H")
@@ -144,15 +142,15 @@ export const editingProbes: ProbeDefinition[] = [
       // Write text first, then erase a rectangle
       ctx.feed("AAAAA\r\nBBBBB\r\nCCCCC\x1b[1;1H")
       ctx.feed("\x1b[1;1;3;5$z") // DECERA rows 1-3 cols 1-5
-      // Pass if cells were erased; otherwise check the sequence didn't leak literal chars.
-      const erased = isBlank(ctx.getCell(0, 0).char) && isBlank(ctx.getCell(1, 0).char)
-      // Look for "$z" or "z" leaking into row 0
-      const text = ctx.getText()
-      const noLeak = !text.includes("$z")
-      return {
-        pass: erased || noLeak,
-        note: erased ? "rectangle erased" : "sequence consumed (no literal leak)",
+      // Verify every cell in the 3×5 rectangle is blank
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 5; col++) {
+          if (!isBlank(ctx.getCell(row, col).char)) {
+            return { pass: false, note: `cell(${row},${col})="${ctx.getCell(row, col).char}", expected blank` }
+          }
+        }
       }
+      return { pass: true }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H")
@@ -168,14 +166,20 @@ export const editingProbes: ProbeDefinition[] = [
   probe(
     "editing.decsera",
     (ctx) => {
-      ctx.feed("\x1b[1;1H\x1b[1;1;3;5${") // DECSERA rows 1-3 cols 1-5
-      const text = ctx.getText()
-      // Sequence consumed if no literal "${" or "{" leaked
-      const noLeak = !text.includes("${") && !text.includes("$ {")
-      return {
-        pass: noLeak,
-        note: noLeak ? "sequence consumed" : "literal leak detected",
+      // DECSERA selectively erases unprotected characters in a rectangle.
+      // Write text, then selective-erase — without DECSCA protection, all chars
+      // should be erased (same as DECERA for unprotected content).
+      ctx.feed("AAAAA\r\nBBBBB\r\nCCCCC\x1b[1;1H")
+      ctx.feed("\x1b[1;1;3;5${") // DECSERA rows 1-3 cols 1-5
+      // Verify all cells erased (none are protected)
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 5; col++) {
+          if (!isBlank(ctx.getCell(row, col).char)) {
+            return { pass: false, note: `cell(${row},${col})="${ctx.getCell(row, col).char}", expected blank` }
+          }
+        }
       }
+      return { pass: true }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H")
@@ -191,13 +195,32 @@ export const editingProbes: ProbeDefinition[] = [
   probe(
     "editing.deccra",
     (ctx) => {
-      ctx.feed("\x1b[1;1H\x1b[1;1;2;5;1;5;10$v") // DECCRA copy rect
-      const text = ctx.getText()
-      const noLeak = !text.includes("$v")
-      return {
-        pass: noLeak,
-        note: noLeak ? "sequence consumed" : "literal leak detected",
+      // Write "HELLO" at row 1, then copy row 1 cols 1-5 to row 3 col 1
+      // DECCRA params: Pts;Pls;Pbs;Prs;Pps;Ptd;Pld;Ppd $v
+      //   source: top=1, left=1, bottom=1, right=5, page=1
+      //   dest:   top=3, left=1, page=1
+      ctx.feed("HELLO\x1b[1;1H")
+      ctx.feed("\x1b[1;1;1;5;1;3;1;1$v") // DECCRA: copy row1 cols1-5 → row3 col1
+      // Verify source row (row 0) still has "HELLO"
+      const srcOk =
+        ctx.getCell(0, 0).char === "H" &&
+        ctx.getCell(0, 1).char === "E" &&
+        ctx.getCell(0, 2).char === "L" &&
+        ctx.getCell(0, 3).char === "L" &&
+        ctx.getCell(0, 4).char === "O"
+      // Verify destination row (row 2) has "HELLO"
+      const dstOk =
+        ctx.getCell(2, 0).char === "H" &&
+        ctx.getCell(2, 1).char === "E" &&
+        ctx.getCell(2, 2).char === "L" &&
+        ctx.getCell(2, 3).char === "L" &&
+        ctx.getCell(2, 4).char === "O"
+      if (!srcOk) return { pass: false, note: "source row corrupted after copy" }
+      if (!dstOk) {
+        const got = [0, 1, 2, 3, 4].map((c) => ctx.getCell(2, c).char).join("")
+        return { pass: false, note: `dest row="${got}", expected "HELLO"` }
       }
+      return { pass: true }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H")
@@ -213,13 +236,18 @@ export const editingProbes: ProbeDefinition[] = [
   probe(
     "editing.deccara",
     (ctx) => {
-      ctx.feed("\x1b[1;1H\x1b[1;1;3;5;7$r") // DECCARA inverse rect
-      const text = ctx.getText()
-      const noLeak = !text.includes("$r")
-      return {
-        pass: noLeak,
-        note: noLeak ? "sequence consumed" : "literal leak detected",
+      // Write text, then apply inverse (SGR 7) to a rectangle via DECCARA
+      ctx.feed("AAAAA\r\nBBBBB\r\nCCCCC\x1b[1;1H")
+      ctx.feed("\x1b[1;1;3;5;7$r") // DECCARA: apply inverse to rows 1-3 cols 1-5
+      // Verify cells in the rectangle have inverse set
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 5; col++) {
+          if (!ctx.getCell(row, col).inverse) {
+            return { pass: false, note: `cell(${row},${col}).inverse=false, expected true` }
+          }
+        }
       }
+      return { pass: true }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H")
@@ -235,13 +263,23 @@ export const editingProbes: ProbeDefinition[] = [
   probe(
     "editing.decrara",
     (ctx) => {
-      ctx.feed("\x1b[1;1H\x1b[1;1;3;5;7$t") // DECRARA toggle inverse rect
-      const text = ctx.getText()
-      const noLeak = !text.includes("$t")
-      return {
-        pass: noLeak,
-        note: noLeak ? "sequence consumed" : "literal leak detected",
+      // Write text with inverse attr, then toggle inverse via DECRARA
+      // First: write text with inverse on
+      ctx.feed("\x1b[7mAAAAA\x1b[0m\r\n\x1b[7mBBBBB\x1b[0m\r\n\x1b[7mCCCCC\x1b[0m\x1b[1;1H")
+      // Verify inverse is set before toggle
+      if (!ctx.getCell(0, 0).inverse) {
+        return { pass: false, note: "pre-condition: inverse not set on cell(0,0)" }
       }
+      ctx.feed("\x1b[1;1;3;5;7$t") // DECRARA: toggle inverse on rows 1-3 cols 1-5
+      // After toggling, inverse should now be off
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 5; col++) {
+          if (ctx.getCell(row, col).inverse) {
+            return { pass: false, note: `cell(${row},${col}).inverse=true after toggle, expected false` }
+          }
+        }
+      }
+      return { pass: true }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H")
@@ -254,6 +292,12 @@ export const editingProbes: ProbeDefinition[] = [
     },
   ),
 
+  // DECSACE sets the attribute-change extent mode (rectangle vs stream) for
+  // DECCARA/DECRARA. It's a pure mode-set with no query mechanism — there's no
+  // DECRPM equivalent, no response, and no observable cell-state change. The only
+  // way to verify it would be to run a DECCARA after setting each mode and compare
+  // results, but that tests DECCARA+DECSACE jointly, not DECSACE alone. Keeping
+  // this probe partial: we verify the sequence is consumed without literal leak.
   probe(
     "editing.decsace",
     (ctx) => {
@@ -279,47 +323,60 @@ export const editingProbes: ProbeDefinition[] = [
   probe(
     "editing.decrqcra",
     (ctx) => {
-      ctx.feed("\x1b[1;1H\x1b[1;1;1;1;1;1*y") // DECRQCRA checksum cell 1,1
-      const text = ctx.getText()
-      const noLeak = !text.includes("*y")
+      // DECRQCRA sends a checksum request; the terminal should respond with
+      // DCS Pid ! ~ D...D ST where D...D is the hex checksum.
+      // Write known content so the checksum is non-trivial.
+      ctx.feed("ABCDE\x1b[1;1H")
+      const response = ctx.feedCapture("\x1b[1;1;1;1;5*y") // Pid=1, page=1, row 1 cols 1-5
+      // Response format: DCS Pid ! ~ xxxx ST  (xxxx = hex digits)
+      const match = /\x1bP(\d+)!~([0-9A-Fa-f]+)\x1b\\/.test(response)
       return {
-        pass: noLeak,
-        note: noLeak ? "sequence consumed" : "literal leak detected",
+        pass: match,
+        note: match ? undefined : `response: ${JSON.stringify(response)}`,
+        response,
       }
     },
     async (ctx) => {
-      ctx.write("\x1b[1;1H")
-      ctx.write("\x1b[1;1;1;1;1;1*y") // DECRQCRA
-      const pos = await ctx.queryCursorPosition()
+      // Query checksum of cell 1,1
+      const result = await ctx.query("\x1b[1;1;1;1;1;1*y", /\x1bP(\d+)!~([0-9A-Fa-f]+)\x1b\\/, 2000)
       return {
-        pass: pos !== null,
-        note: pos ? "sequence consumed" : "no cursor response",
+        pass: result !== null,
+        note: result ? "checksum response received" : "no DECRQCRA response",
+        response: result ? result[0] : undefined,
       }
     },
   ),
 
-  // Column editing operations. SL/SR (ECMA-48) and DECIC/DECDC (VT420)
-  // horizontally shift or insert/delete columns. Most headless backends don't
-  // implement them — probeStatus is "partial" and we only verify the sequence
-  // is consumed without leaking literal characters.
+  // ── Column Editing Operations ──
+  // SL/SR (ECMA-48) and DECIC/DECDC (VT420) horizontally shift or insert/delete
+  // columns within the scrolling region.
 
-  // SL — Shift Left (CSI Ps SP @). Note literal space before @.
-  // If the parser doesn't recognize the intermediate-space form, the sequence
-  // collapses to ICH (Ps @) and the literal " @" pair gets printed afterward.
+  // SL — Shift Left (CSI Ps SP @). Shifts all columns left by Ps positions.
+  // Content at the left edge is lost; blank columns appear at the right edge.
   probe(
     "editing.sl",
     (ctx) => {
-      // Use distinctive markers (digits) so we can detect literal " @" leakage
-      // without confusing it with normal blank cells produced by a real shift.
+      // Write "1234567" at row 1, then SL 2 — shifts all columns left by 2.
+      // Result: col 0 should have '3', col 1 '4', col 2 '5', etc.
+      // Cols at the right edge should be blank.
       ctx.feed("\x1b[1;1H\x1b[2K1234567")
       ctx.feed("\x1b[2 @") // SL 2 — note literal space before @
-      const text = ctx.getText()
-      // If the sequence wasn't parsed, the literal " @" pair shows up on the row.
-      const noLeak = !text.includes("@")
-      return {
-        pass: noLeak,
-        note: noLeak ? "sequence consumed" : "literal '@' leaked into output",
+      const c0 = ctx.getCell(0, 0).char
+      const c1 = ctx.getCell(0, 1).char
+      const c2 = ctx.getCell(0, 2).char
+      const c3 = ctx.getCell(0, 3).char
+      const c4 = ctx.getCell(0, 4).char
+      // After shifting left by 2: "1234567" → "34567  " (blanks at cols 5-6)
+      const shifted = c0 === "3" && c1 === "4" && c2 === "5" && c3 === "6" && c4 === "7"
+      if (!shifted) {
+        const got = [c0, c1, c2, c3, c4].join("")
+        return { pass: false, note: `got "${got}", expected "34567"` }
       }
+      // Right edge should be blank
+      if (!isBlank(ctx.getCell(0, 5).char) || !isBlank(ctx.getCell(0, 6).char)) {
+        return { pass: false, note: "right edge not blank after shift left" }
+      }
+      return { pass: true }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
@@ -333,23 +390,25 @@ export const editingProbes: ProbeDefinition[] = [
     },
   ),
 
-  // SR — Shift Right (CSI Ps SP A). Note literal space before A.
-  // If the parser doesn't recognize the intermediate-space form, it collapses
-  // to CUU (Ps A) — moving the cursor up — and the literal " A" gets printed.
+  // SR — Shift Right (CSI Ps SP A). Shifts all columns right by Ps positions.
+  // Content at the right edge is lost; blank columns appear at the left edge.
   probe(
     "editing.sr",
     (ctx) => {
       ctx.feed("\x1b[1;1H\x1b[2K1234567")
       ctx.feed("\x1b[2 A") // SR 2 — note literal space before A
-      // If the parser collapsed to CUU and printed " A" literally,
-      // there will be an "A" character somewhere on row 0.
-      const cells: string[] = []
-      for (let c = 0; c < 80; c++) cells.push(ctx.getCell(0, c).char)
-      const noLeak = !cells.includes("A")
-      return {
-        pass: noLeak,
-        note: noLeak ? "sequence consumed" : "literal 'A' leaked into output",
-      }
+      // After shifting right by 2: "1234567" → "  1234567" (first 2 cols blank)
+      // but the terminal width truncates at the right edge.
+      const c0 = ctx.getCell(0, 0).char
+      const c1 = ctx.getCell(0, 1).char
+      const c2 = ctx.getCell(0, 2).char
+      const c3 = ctx.getCell(0, 3).char
+      // First 2 cols should be blank, then "12345..."
+      const blanks = isBlank(c0) && isBlank(c1)
+      const shifted = c2 === "1" && c3 === "2"
+      if (!blanks) return { pass: false, note: `cols 0-1 not blank: "${c0}${c1}"` }
+      if (!shifted) return { pass: false, note: `cols 2-3 expected "12", got "${c2}${c3}"` }
+      return { pass: true }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
@@ -363,21 +422,40 @@ export const editingProbes: ProbeDefinition[] = [
     },
   ),
 
-  // DECIC — DEC Insert Column (CSI Ps ' }). Apostrophe intermediate before }.
+  // DECIC — DEC Insert Column (CSI Ps ' }). Inserts Ps blank columns at the
+  // cursor's column position, shifting existing columns right.
   probe(
     "editing.decic",
     (ctx) => {
-      ctx.feed("\x1b[1;1H\x1b[2K1234567")
-      ctx.feed("\x1b[3;3H")
-      ctx.feed("\x1b[2'}") // DECIC 2
-      const text = ctx.getText()
-      // If the parser didn't recognize the intermediate-apostrophe form,
-      // the literal "}" gets printed somewhere.
-      const noLeak = !text.includes("}")
-      return {
-        pass: noLeak,
-        note: noLeak ? "sequence consumed" : "literal '}' leaked into output",
+      // Write "ABCDE" on rows 1-2, position cursor at row 1 col 3, insert 2 cols.
+      // Row 1: "ABCDE" → after DECIC 2 at col 3: "AB  CDE" (C,D,E shifted right)
+      ctx.feed("ABCDE\r\nABCDE\x1b[1;3H")
+      ctx.feed("\x1b[2'}") // DECIC 2 at col 3
+      // Row 0: cols 0-1 = "AB", cols 2-3 = blank (inserted), cols 4-5 = "CD"
+      const r0c0 = ctx.getCell(0, 0).char
+      const r0c1 = ctx.getCell(0, 1).char
+      const r0c2 = ctx.getCell(0, 2).char
+      const r0c3 = ctx.getCell(0, 3).char
+      const r0c4 = ctx.getCell(0, 4).char
+      if (r0c0 !== "A" || r0c1 !== "B") {
+        return { pass: false, note: `cols 0-1 expected "AB", got "${r0c0}${r0c1}"` }
       }
+      if (!isBlank(r0c2) || !isBlank(r0c3)) {
+        return { pass: false, note: `inserted cols 2-3 not blank: "${r0c2}${r0c3}"` }
+      }
+      if (r0c4 !== "C") {
+        return { pass: false, note: `col 4 expected "C", got "${r0c4}"` }
+      }
+      // DECIC is a column operation — it affects ALL rows, so verify row 2 as well
+      const r1c2 = ctx.getCell(1, 2).char
+      const r1c4 = ctx.getCell(1, 4).char
+      if (!isBlank(r1c2)) {
+        return { pass: false, note: `row 1 col 2 not blank: "${r1c2}"` }
+      }
+      if (r1c4 !== "C") {
+        return { pass: false, note: `row 1 col 4 expected "C", got "${r1c4}"` }
+      }
+      return { pass: true }
     },
     async (ctx) => {
       ctx.write("\x1b[3;3H")
@@ -390,21 +468,31 @@ export const editingProbes: ProbeDefinition[] = [
     },
   ),
 
-  // DECDC — DEC Delete Column (CSI Ps ' ~). Apostrophe intermediate before ~.
+  // DECDC — DEC Delete Column (CSI Ps ' ~). Deletes Ps columns at the cursor's
+  // column position, shifting remaining columns left. Blank columns fill the right.
   probe(
     "editing.decdc",
     (ctx) => {
-      ctx.feed("\x1b[1;1H\x1b[2K1234567")
-      ctx.feed("\x1b[3;3H")
-      ctx.feed("\x1b[2'~") // DECDC 2
-      const text = ctx.getText()
-      // If the parser didn't recognize the intermediate-apostrophe form,
-      // the literal "~" gets printed somewhere.
-      const noLeak = !text.includes("~")
-      return {
-        pass: noLeak,
-        note: noLeak ? "sequence consumed" : "literal '~' leaked into output",
+      // Write "ABCDE" on rows 1-2, position cursor at row 1 col 2, delete 2 cols.
+      // Row 1: "ABCDE" → after DECDC 2 at col 2: "ADE  " (B,C deleted, D,E shift left)
+      ctx.feed("ABCDE\r\nABCDE\x1b[1;2H")
+      ctx.feed("\x1b[2'~") // DECDC 2 at col 2
+      // Row 0: col 0 = "A", col 1 = "D", col 2 = "E", cols 3-4 = blank
+      const r0c0 = ctx.getCell(0, 0).char
+      const r0c1 = ctx.getCell(0, 1).char
+      const r0c2 = ctx.getCell(0, 2).char
+      if (r0c0 !== "A") return { pass: false, note: `col 0 expected "A", got "${r0c0}"` }
+      if (r0c1 !== "D") return { pass: false, note: `col 1 expected "D", got "${r0c1}"` }
+      if (r0c2 !== "E") return { pass: false, note: `col 2 expected "E", got "${r0c2}"` }
+      if (!isBlank(ctx.getCell(0, 3).char) || !isBlank(ctx.getCell(0, 4).char)) {
+        return { pass: false, note: "right edge not blank after column delete" }
       }
+      // DECDC is a column operation — verify row 2 as well
+      const r1c1 = ctx.getCell(1, 1).char
+      if (r1c1 !== "D") {
+        return { pass: false, note: `row 1 col 1 expected "D", got "${r1c1}"` }
+      }
+      return { pass: true }
     },
     async (ctx) => {
       ctx.write("\x1b[3;3H")

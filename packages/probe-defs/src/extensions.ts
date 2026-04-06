@@ -284,7 +284,15 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 52 write — set clipboard (most terminals support this)
   probe(
     "extensions.osc52-write",
-    null, // headless can't distinguish write-only support
+    (ctx) => {
+      // Verify the write sequence is consumed without producing visible output
+      ctx.feed(`\x1b]52;c;${btoa("test")}\x07X`)
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
     async (ctx) => {
       const testData = btoa("terminfo-write-test")
       ctx.write(`\x1b]52;c;${testData}\x07`)
@@ -350,9 +358,8 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 133 sub-commands — semantic prompt markers (FinalTerm)
-  // Each probe sends one marker and verifies the terminal consumed the sequence
-  // (cursor didn't advance, terminal remains responsive). probeStatus: "partial"
-  // since headless can't verify semantic meaning — only acceptance.
+  // Each probe sends the marker followed by "X" and verifies "X" landed at cell (0,0),
+  // proving the OSC sequence was silently consumed (not printed literally).
 
   // OSC 133;A — prompt start (FTCS_PROMPT)
   probe(
@@ -884,7 +891,15 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 117 — reset highlight background
   probe(
     "extensions.osc117-reset-highlight-bg",
-    null, // No reliable headless verification — highlight bg is visual-only
+    (ctx) => {
+      // Verify the reset sequence is consumed without producing visible output
+      ctx.feed("\x1b]117\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]117\x07")
@@ -900,7 +915,15 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 119 — reset highlight foreground
   probe(
     "extensions.osc119-reset-highlight-fg",
-    null, // No reliable headless verification — highlight fg is visual-only
+    (ctx) => {
+      // Verify the reset sequence is consumed without producing visible output
+      ctx.feed("\x1b]119\x07X")
+      const cell = ctx.getCell(0, 0)
+      return {
+        pass: cell.char === "X",
+        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
+      }
+    },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]119\x07")
@@ -920,9 +943,11 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscColorQueryProbe("extensions.osc19-highlight-fg", 19),
 
   // OSC 22 — pointer shape
+  // Inherently partial: pointer shape is a visual-only effect on the mouse cursor,
+  // not queryable or observable in the terminal cell grid.
   probe(
     "extensions.osc22-pointer",
-    null, // Headless: no way to detect pointer shape changes
+    null, // Inherently partial: visual-only, no query mechanism
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]22;pointer\x07")

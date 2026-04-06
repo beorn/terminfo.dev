@@ -277,7 +277,10 @@ export const modesProbes: ProbeDefinition[] = [
       const entered = ctx.getMode("altScreen") === true
       ctx.feed("\x1b[?47l")
       const exited = ctx.getMode("altScreen") === false
-      return { pass: entered && exited, note: !entered ? "altScreen not set" : !exited ? "altScreen not cleared" : undefined }
+      return {
+        pass: entered && exited,
+        note: !entered ? "altScreen not set" : !exited ? "altScreen not cleared" : undefined,
+      }
     },
     async (ctx) => {
       ctx.write("\x1b[?47h") // enter legacy alt screen
@@ -297,7 +300,10 @@ export const modesProbes: ProbeDefinition[] = [
       const entered = ctx.getMode("altScreen") === true
       ctx.feed("\x1b[?1047l")
       const exited = ctx.getMode("altScreen") === false
-      return { pass: entered && exited, note: !entered ? "altScreen not set" : !exited ? "altScreen not cleared" : undefined }
+      return {
+        pass: entered && exited,
+        note: !entered ? "altScreen not set" : !exited ? "altScreen not cleared" : undefined,
+      }
     },
     async (ctx) => {
       const decrpmResult = await ctx.queryMode(1047)
@@ -347,13 +353,22 @@ export const modesProbes: ProbeDefinition[] = [
   probe(
     "modes.alt-scroll-1007",
     (ctx) => {
-      // Termless backends don't track this mode, but the parser should accept the sequence.
-      // Verify by feeding and checking the cursor stays responsive.
       ctx.feed("\x1b[?1007h")
+      // Verify via DECRPM query — response CSI ? 1007 ; Ps $ y where Ps=1 means set
+      const response = ctx.feedCapture("\x1b[?1007$p")
+      ctx.feed("\x1b[?1007l")
+      if (response.includes("$y")) {
+        const set = response.includes("1007;1$y")
+        return {
+          pass: set,
+          note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
+          response,
+        }
+      }
+      // Fallback: verify sequence didn't break the terminal
       ctx.feed("X")
       const ok = ctx.getCell(0, 0).char === "X"
-      ctx.feed("\x1b[?1007l")
-      return { pass: ok, note: ok ? "Sequence parsed (mode not tracked by termless)" : "Parser broke" }
+      return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
     },
     async (ctx) => {
       const decrpmResult = await ctx.queryMode(1007)
@@ -374,12 +389,22 @@ export const modesProbes: ProbeDefinition[] = [
   probe(
     "modes.utf8-mouse-1005",
     (ctx) => {
-      // Termless backends don't track utf8 mouse mode; verify the sequence is parsed.
       ctx.feed("\x1b[?1005h")
+      // Verify via DECRPM query — response CSI ? 1005 ; Ps $ y where Ps=1 means set
+      const response = ctx.feedCapture("\x1b[?1005$p")
+      ctx.feed("\x1b[?1005l")
+      if (response.includes("$y")) {
+        const set = response.includes("1005;1$y")
+        return {
+          pass: set,
+          note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
+          response,
+        }
+      }
+      // Fallback: verify sequence didn't break the terminal
       ctx.feed("X")
       const ok = ctx.getCell(0, 0).char === "X"
-      ctx.feed("\x1b[?1005l")
-      return { pass: ok, note: ok ? "Sequence parsed (mode not tracked by termless)" : "Parser broke" }
+      return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
     },
     async (ctx) => {
       const decrpmResult = await ctx.queryMode(1005)
@@ -400,13 +425,22 @@ export const modesProbes: ProbeDefinition[] = [
   probe(
     "modes.deccolm",
     (ctx) => {
-      // DECCOLM clears the screen as a side effect on real hardware. Most modern emulators
-      // ignore the column change but accept the sequence. Verify parser doesn't break.
       ctx.feed("\x1b[?3h")
+      // Verify via DECRPM query — response CSI ? 3 ; Ps $ y where Ps=1 means set
+      const response = ctx.feedCapture("\x1b[?3$p")
+      ctx.feed("\x1b[?3l")
+      if (response.includes("$y")) {
+        const set = response.includes("3;1$y")
+        return {
+          pass: set,
+          note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
+          response,
+        }
+      }
+      // Fallback: verify sequence didn't break the terminal
       ctx.feed("X")
       const ok = ctx.getText().includes("X")
-      ctx.feed("\x1b[?3l")
-      return { pass: ok, note: ok ? "Sequence parsed (column switch typically ignored)" : "Parser broke" }
+      return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
     },
     async (ctx) => {
       const decrpmResult = await ctx.queryMode(3)
