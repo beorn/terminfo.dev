@@ -61,9 +61,12 @@ const features = loadJson(join(contentDir, "features.json")) as Record<
     tags?: string[]
     body?: string
     probe?: string
+    probeStatus?: string
     [key: string]: unknown
   }
 >
+
+const VALID_PROBE_STATUSES = new Set(["automated", "partial", "manual", "unprobed"])
 
 const standards = loadJson(join(contentDir, "standards.json")) as Record<
   string,
@@ -189,6 +192,22 @@ heading("Errors (block deploy)")
     }
   }
   if (!found) info("All feature category prefixes match categories.json")
+}
+
+// 4b. Invalid probeStatus values
+{
+  let found = false
+  for (const [id, feat] of Object.entries(features)) {
+    if (id === "$comment") continue
+    if (feat.probeStatus !== undefined && !VALID_PROBE_STATUSES.has(feat.probeStatus)) {
+      error(
+        `Feature "${id}" has invalid probeStatus "${feat.probeStatus}" (must be one of: ${[...VALID_PROBE_STATUSES].join(", ")})`,
+      )
+      errors++
+      found = true
+    }
+  }
+  if (!found) info("All feature probeStatus values are valid")
 }
 
 // ---------------------------------------------------------------------------
@@ -447,6 +466,22 @@ heading("Info (summary)")
   for (const [tag, cnt] of tagEntries) {
     info(`  ${tag}: ${cnt}`)
   }
+
+  // Probe status distribution (default: automated)
+  const statusCounts: Record<string, number> = {
+    automated: 0,
+    partial: 0,
+    manual: 0,
+    unprobed: 0,
+  }
+  for (const [id, feat] of Object.entries(features)) {
+    if (id === "$comment") continue
+    const status = feat.probeStatus ?? "automated"
+    statusCounts[status] = (statusCounts[status] ?? 0) + 1
+  }
+  info(
+    `Probe status: ${statusCounts.automated} automated, ${statusCounts.partial} partial, ${statusCounts.manual} manual, ${statusCounts.unprobed} unprobed`,
+  )
 }
 
 // 14. Terminal counts

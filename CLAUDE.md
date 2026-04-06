@@ -321,6 +321,27 @@ bun run build
 4. Add annotations for any unexpected failures
 5. Rebuild: `bun run build` — the build validates tags against `standards.json`
 
+### Probe Status
+
+Features can declare a `probeStatus` field describing how thoroughly they're verified.
+Omit the field for normal automated probes — it defaults to `"automated"`. Set it only
+for features that aren't fully verifiable:
+
+- `"automated"` — fully probed by termless and/or real-terminal probes (default)
+- `"partial"` — probe only checks acceptance (e.g., sequence consumed, cursor didn't
+  advance), not the visual or behavioral result. Examples: OSC notifications, OSC 22
+  pointer shape, OSC 9;4 progress — the terminal silently consumes the sequence, so we
+  can tell it didn't crash but not whether anything actually happened.
+- `"manual"` — support data was gathered by reading docs or manual testing; no
+  automated probe runs for this feature.
+- `"unprobed"` — feature is tracked on the site but has no verification at all yet.
+  Use this for features that are fundamentally unprobeable from within a terminal
+  session (text reflow on resize, font ligatures, user-initiated paste).
+
+For `"manual"` and `"unprobed"` features, set the `probe` field to
+`"Manual verification required — no automated probe available."` and don't add a
+matching entry in `packages/probe-defs/`.
+
 ### Valid Tags
 
 Tags in `features.json` **must** match keys in `standards.json` or `categories.json`. Using an

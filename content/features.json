@@ -1506,7 +1506,8 @@
     "tags": ["iterm2"],
     "baseline": "rich",
     "body": "TERM_FEATURES is an environment variable proposed by iTerm2 for terminals to advertise their capabilities as a semicolon-delimited list of capability strings. Unlike escape-sequence-based detection, this approach allows applications to check capabilities without TTY I/O, making it suitable for non-interactive contexts. Adoption remains limited as most terminals prefer escape-sequence-based feature reporting.",
-    "probe": "Check whether the TERM_FEATURES environment variable is set in the terminal session."
+    "probe": "Check whether the TERM_FEATURES environment variable is set in the terminal session.",
+    "probeStatus": "partial"
   },
   "extensions.osc1337-cellsize": {
     "name": "iTerm2 Cell Size Reporting (OSC 1337)",
@@ -1542,7 +1543,8 @@
     "tags": ["osc", "conemu"],
     "body": "OSC 9;4 is a ConEmu-originated protocol for reporting task progress to the terminal. The sequence <code>ESC ] 9 ; 4 ; st ; pr BEL</code> sets progress state (st: 0=remove, 1=normal, 2=error, 3=indeterminate, 4=paused) and percentage (pr: 0-100). Terminals render this as a native progress indicator — typically in the tab bar, title bar, or taskbar.\n\nOriginally a ConEmu extension, it has been widely adopted: Ghostty (1.2+), iTerm2 (3.6.6+), Windows Terminal, Konsole, mintty, and WezTerm all support it. This makes it one of the most cross-terminal ways to display progress. CLI tools like curl, wget, and build systems can emit these sequences to provide native progress feedback.",
     "probe": "Send <code>OSC 9;4;1;50 BEL</code> (set 50% progress), verify the sequence is consumed (cursor doesn't advance). Clear with <code>OSC 9;4;0 BEL</code>.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "probeStatus": "partial"
   },
   "extensions.osc66-text-sizing": {
     "name": "OSC 66 text sizing",
@@ -1671,7 +1673,8 @@
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 clipboard write sets the system clipboard content. The sequence <code>ESC ] 52 ; c ; base64-data BEL</code> sets the clipboard to the decoded base64 content. Most modern terminals support clipboard write, though some require explicit opt-in for security (e.g., iTerm2 prompts the user). Write-only support is more common than read support — many terminals allow setting the clipboard but block reading it back to prevent clipboard snooping by malicious programs.",
     "probe": "Send <code>OSC 52;c;base64-data BEL</code> and verify the terminal remains responsive.",
-    "baseline": "modern"
+    "baseline": "modern",
+    "probeStatus": "partial"
   },
   "extensions.osc52-read": {
     "name": "OSC 52 clipboard read",
@@ -1770,6 +1773,7 @@
     "body": "OSC 117 resets the selection highlight background color to the terminal's default. The sequence is <code>ESC ] 117 BEL</code>. The highlight background is set via OSC 17. Terminals that support customizable selection colors use this to restore the default appearance. Support is limited to xterm and terminals with full xterm color protocol compatibility.",
     "probe": "Send <code>OSC 117 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
     "baseline": "rich",
+    "probeStatus": "partial",
     "sequence": "ESC ] 117 BEL"
   },
   "extensions.osc119-reset-highlight-fg": {
@@ -1780,6 +1784,7 @@
     "body": "OSC 119 resets the selection highlight foreground color to the terminal's default. The sequence is <code>ESC ] 119 BEL</code>. The highlight foreground is set via OSC 19. Like OSC 117, this is part of the xterm extended color reset protocol. Support is primarily in xterm itself, with partial adoption in other terminals that implement the full xterm color management suite.",
     "probe": "Send <code>OSC 119 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
     "baseline": "rich",
+    "probeStatus": "partial",
     "sequence": "ESC ] 119 BEL"
   },
 
@@ -1811,6 +1816,7 @@
     "body": "OSC 22 sets the mouse pointer cursor shape when hovering over the terminal window. The sequence <code>ESC ] 22 ; name BEL</code> sets the pointer to a named cursor shape (e.g., <code>pointer</code>, <code>crosshair</code>, <code>text</code>, <code>wait</code>, <code>help</code>). Applications use this to provide visual feedback — a text cursor over editable regions, a pointer over clickable elements, or a wait cursor during processing. Supported by xterm, foot, Ghostty, and WezTerm. Shape names follow the X11 cursor font or CSS cursor keyword conventions.",
     "probe": "Send <code>OSC 22 ; pointer BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "rich",
+    "probeStatus": "partial",
     "sequence": "ESC ] 22 ; shape BEL"
   },
   "extensions.osc99-kitty-notify": {
@@ -1821,6 +1827,7 @@
     "body": "OSC 99 is Kitty's rich desktop notification protocol, extending simple notification sequences (OSC 9, OSC 777) with structured metadata. The sequence <code>ESC ] 99 ; params BEL</code> supports key-value parameters including notification identifiers, action buttons, custom icons, urgency levels, and sound control. Identifiers allow updating or closing existing notifications. The protocol defines a capability query so applications can discover which notification features the terminal supports. Currently supported by Kitty, with partial adoption by other terminals.",
     "probe": "Send <code>OSC 99 ; i=1:d=0:p=body;test BEL</code> and verify the terminal consumes the notification sequence (cursor position unchanged).",
     "baseline": "rich",
+    "probeStatus": "partial",
     "sequence": "ESC ] 99 ; params BEL"
   },
   "extensions.osc777-notify": {
@@ -1831,6 +1838,7 @@
     "body": "OSC 777 is the rxvt-unicode (urxvt) notification extension, providing structured desktop notifications with separate title and body fields. The sequence <code>ESC ] 777 ; notify ; title ; body BEL</code> triggers a system notification. Unlike OSC 9 which sends a single message string, OSC 777 separates the title and body, giving notification managers more control over presentation. Originally from rxvt-unicode, it has been adopted by foot, Ghostty, WezTerm, and other modern terminals as a simple cross-terminal notification mechanism.",
     "probe": "Send <code>OSC 777 ; notify ; test ; body BEL</code> and verify the terminal consumes the notification sequence (cursor position unchanged).",
     "baseline": "rich",
+    "probeStatus": "partial",
     "sequence": "ESC ] 777 ; notify ; title ; body BEL"
   },
   "extensions.osc666-termprop": {
@@ -1841,6 +1849,7 @@
     "body": "OSC 666 is the VTE terminal property protocol, allowing applications to set typed key-value metadata on the terminal session. The sequence <code>ESC ] 666 ; key=value BEL</code> sets a named property. Properties are typed (string, boolean, integer, color, UUID) and can be queried by the terminal emulator or desktop environment. Designed for integration between terminal applications and the GNOME desktop — properties can signal the shell type, current context, user identity, and session metadata. Defined by VTE (the GNOME terminal widget) and supported by GNOME Terminal, Prompt (GNOME's new terminal), and kgx.",
     "probe": "Send <code>OSC 666 ; test-prop=value BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "rich",
+    "probeStatus": "partial",
     "sequence": "ESC ] 666 ; key=value BEL"
   },
   "extensions.osc3008-context": {
@@ -1851,6 +1860,37 @@
     "body": "OSC 3008 is the systemd/UAPI group context signaling protocol for hierarchical session tracking. The sequence <code>ESC ] 3008 ; params BEL</code> communicates context changes — when a shell enters a container, SSH session, sudo context, or virtual machine. The terminal can display this context hierarchy (e.g., in the title bar or tab) so users always know where their commands execute. Parameters use a key-value format to convey the context type, label, and nesting depth. Defined by the UAPI group (systemd ecosystem), currently supported by VTE-based terminals (GNOME Terminal, Prompt, kgx).",
     "probe": "Send <code>OSC 3008 ; type=test BEL</code> and verify the terminal consumes the context sequence (cursor position unchanged).",
     "baseline": "rich",
+    "probeStatus": "partial",
     "sequence": "ESC ] 3008 ; params BEL"
+  },
+  "extensions.reflow-resize": {
+    "name": "Text reflow on resize",
+    "slug": "text-reflow-on-resize",
+    "url": "https://gitlab.freedesktop.org/terminal-wg/specifications/-/issues/10",
+    "tags": ["xterm-extensions"],
+    "body": "Text reflow on resize refers to the terminal's behavior when its window is resized: a reflowing terminal rewraps long lines to match the new width, preserving logical line boundaries, whereas a non-reflowing terminal keeps hard wraps at the original width, leaving jagged line endings or truncated content.\n\nReflow matters most for the scrollback buffer — when you widen a narrow window, a reflowing terminal joins previously-wrapped lines back into their original long form, while a non-reflowing terminal leaves them broken at the old wrap points. This makes selection, copy, and search dramatically better on reflowing terminals for normal shell output and log files.\n\nReflow is complicated to implement correctly: the terminal must distinguish between soft wraps (inserted by the renderer when a line overflows) and hard wraps (explicit newlines from the application), track logical line boundaries through scrollback eviction, and handle wide characters and combining marks that cross the old wrap boundary. Supported by iTerm2, WezTerm, foot, and Terminal.app. Not supported by xterm, Kitty, Alacritty (by design), or most VTE-based terminals.\n\nThere is no escape sequence to query reflow support — behavior can only be observed by resizing the terminal and inspecting the scrollback. This makes automated probing impossible from within a terminal session.",
+    "probe": "Manual verification required — no automated probe available.",
+    "baseline": "modern",
+    "probeStatus": "unprobed"
+  },
+  "extensions.clipboard-paste": {
+    "name": "System clipboard paste",
+    "slug": "system-clipboard-paste",
+    "url": "https://cirw.in/blog/bracketed-paste",
+    "tags": ["xterm-extensions"],
+    "body": "System clipboard paste describes how pasted text enters the terminal. Modern terminals support <em>bracketed paste mode</em> (DEC private mode 2004) — when enabled, pasted text is wrapped in <code>ESC [ 200 ~</code> ... <code>ESC [ 201 ~</code> markers so applications can distinguish it from typed input, disable autoindent, suppress history expansion, and treat the block atomically. Without bracketed paste, pasted text arrives as raw keystrokes indistinguishable from typing, which causes problems with shells, editors, and REPLs that interpret the first few characters before the rest of the paste arrives.\n\nThis feature is distinct from OSC 52, which is a <em>programmatic</em> clipboard protocol for applications to push data to or read from the system clipboard via escape sequences. OSC 52 is about app-to-clipboard; system clipboard paste is about clipboard-to-app. Both typically coexist: bracketed paste for user-initiated pastes, OSC 52 for programmatic copy.\n\nBracketed paste mode enablement can be probed (DECRPM mode 2004), but <em>whether pasted text actually arrives bracketed in practice</em> depends on the host terminal emulator, operating system paste mechanism, and user settings — and cannot be verified from inside a terminal session without an external paste action.",
+    "probe": "Manual verification required — no automated probe available.",
+    "baseline": "modern",
+    "probeStatus": "unprobed"
+  },
+  "extensions.font-ligatures": {
+    "name": "Font ligatures",
+    "slug": "font-ligatures",
+    "url": "https://practicaltypography.com/ligatures-in-programming-fonts-hell-no.html",
+    "tags": ["xterm-extensions"],
+    "body": "Font ligatures are font-level glyph substitutions that render specific character sequences as a single combined glyph — for example <code>!=</code> rendered as ≠, <code>=></code> as ⇒, <code>-></code> as →, or <code>&lt;=</code> as ≤. Programming-oriented fonts like Fira Code, JetBrains Mono, Iosevka, Cascadia Code, and Monaspace ship with large ligature tables targeting common operators and symbols in popular languages.\n\nLigature support is a <em>terminal renderer</em> feature, not an escape sequence protocol: the terminal decides whether to honor the <code>calt</code> / <code>liga</code> / <code>dlig</code> OpenType tables when shaping runs of monospaced cells. Terminals that opt in must also handle cursor positioning carefully — the cursor should still land on logical character boundaries even though multiple cells display as one glyph, and selections must split ligatures when partially covered.\n\nKnown support: Kitty, WezTerm, Konsole, iTerm2 (opt-in), Alacritty (opt-in, limited), Ghostty, foot, and VTE-based terminals. Not supported by xterm, Terminal.app, or Windows Console Host. Because this is a rendering decision rather than an escape-sequence feature, it cannot be detected via any query protocol — only by visually inspecting output with a ligature-enabled font.",
+    "probe": "Manual verification required — no automated probe available.",
+    "baseline": "rich",
+    "probeStatus": "unprobed"
   }
 }
