@@ -1433,5 +1433,360 @@
   },
   "vterm:reset.decaln": {
     "note": "DECALN not implemented in vterm.js"
+  },
+  "ghostty-native:sgr.underline-color-indexed": {
+    "note": "Headless ghostty-native backend doesn't expose underlineColor on cells",
+    "result": "partial"
+  },
+  "ghostty-native:sgr.underline-color-rgb": {
+    "note": "Headless ghostty-native backend doesn't expose underlineColor on cells",
+    "result": "partial"
+  },
+  "ghostty-native:modes.altscreen-47": {
+    "note": "Legacy ?47 alt screen not honoured by ghostty-native headless backend",
+    "result": "partial"
+  },
+  "ghostty-native:modes.xtpushsgr": {
+    "note": "SGR stack not exposed in headless mode; sequence consumed silently",
+    "result": "partial"
+  },
+  "ghostty-native:modes.xtpopsgr": {
+    "note": "SGR stack not exposed in headless mode; sequence consumed silently",
+    "result": "partial"
+  },
+  "ghostty-native:modes.xtsave": {
+    "note": "XTSAVE private mode save not exposed in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:modes.xtrestore": {
+    "note": "XTRESTORE private mode restore not exposed in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:modes.xtpushcolors": {
+    "note": "Color palette stack not exposed in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:modes.xtpopcolors": {
+    "note": "Color palette stack not exposed in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:device.xtwinops-14": {
+    "note": "Window pixel-size report requires a real window system",
+    "result": "partial"
+  },
+  "ghostty-native:device.xtwinops-16": {
+    "note": "Cell pixel-size report requires a real window system",
+    "result": "partial"
+  },
+  "ghostty-native:device.xtwinops-18": {
+    "note": "Text area size report not exposed in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:device.xtwinops-20": {
+    "note": "Icon label report requires a real window system",
+    "result": "partial"
+  },
+  "ghostty-native:device.xtwinops-21": {
+    "note": "Window title report requires a real window system",
+    "result": "partial"
+  },
+  "ghostty-native:device.xtwinops-22": {
+    "note": "Title stack push not exposed in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:device.xtwinops-23": {
+    "note": "Title stack pop not exposed in headless mode",
+    "result": "partial"
+  },
+  "ghostty-native:extensions.osc21-kitty-color": {
+    "note": "Kitty color protocol (OSC 21) not implemented by ghostty",
+    "result": "partial"
+  },
+  "xtermjs:device.xtwinops-14": {
+    "note": "Window operations require real window system; not exposed in headless mode",
+    "result": "partial"
+  },
+  "xtermjs:device.xtwinops-16": {
+    "note": "Window operations require real window system; not exposed in headless mode",
+    "result": "partial"
+  },
+  "xtermjs:device.xtwinops-18": {
+    "note": "Text area size report not exposed in xterm.js headless mode",
+    "result": "partial"
+  },
+  "xtermjs:device.xtwinops-20": {
+    "note": "Icon label report not exposed in xterm.js headless mode",
+    "result": "partial"
+  },
+  "xtermjs:device.xtwinops-21": {
+    "note": "Window title report not exposed in xterm.js headless mode",
+    "result": "partial"
+  },
+  "xtermjs:extensions.osc52-clipboard": {
+    "note": "OSC 52 clipboard not implemented in xterm.js"
+  },
+  "xtermjs:extensions.osc52-read": {
+    "note": "OSC 52 clipboard read not implemented in xterm.js"
+  },
+  "xtermjs:extensions.osc10-fg-color": {
+    "note": "OSC 10 foreground color query not implemented in xterm.js"
+  },
+  "xtermjs:extensions.osc11-bg-color": {
+    "note": "OSC 11 background color query not implemented in xterm.js"
+  },
+  "xtermjs:extensions.osc21-kitty-color": {
+    "note": "Kitty color protocol (OSC 21) not implemented in xterm.js"
+  },
+  "wezterm:sgr.underline-color-indexed": {
+    "note": "Headless wezterm backend doesn't expose underlineColor on cells",
+    "result": "partial"
+  },
+  "wezterm:sgr.underline-color-rgb": {
+    "note": "Headless wezterm backend doesn't expose underlineColor on cells",
+    "result": "partial"
+  },
+  "wezterm:modes.xtpushsgr": {
+    "note": "SGR stack not exposed in headless mode; sequence consumed silently",
+    "result": "partial"
+  },
+  "wezterm:modes.xtpopsgr": {
+    "note": "SGR stack not exposed in headless mode; sequence consumed silently",
+    "result": "partial"
+  },
+  "wezterm:modes.xtsave": {
+    "note": "XTSAVE private mode save not exposed in headless mode",
+    "result": "partial"
+  },
+  "wezterm:modes.xtrestore": {
+    "note": "XTRESTORE private mode restore not exposed in headless mode",
+    "result": "partial"
+  },
+  "wezterm:modes.xtpushcolors": {
+    "note": "Color palette stack not exposed in headless mode",
+    "result": "partial"
+  },
+  "wezterm:modes.xtpopcolors": {
+    "note": "Color palette stack not exposed in headless mode",
+    "result": "partial"
+  },
+  "wezterm:device.xtwinops-14": {
+    "note": "Window pixel-size report requires a real window system",
+    "result": "partial"
+  },
+  "wezterm:device.xtwinops-16": {
+    "note": "Cell pixel-size report requires a real window system",
+    "result": "partial"
+  },
+  "wezterm:device.xtwinops-18": {
+    "note": "Text area size report not exposed in headless mode",
+    "result": "partial"
+  },
+  "wezterm:device.xtwinops-20": {
+    "note": "Icon label report requires a real window system",
+    "result": "partial"
+  },
+  "wezterm:device.xtwinops-21": {
+    "note": "Window title report requires a real window system",
+    "result": "partial"
+  },
+  "wezterm:device.xtwinops-22": {
+    "note": "Title stack push not exposed in headless mode",
+    "result": "partial"
+  },
+  "wezterm:device.xtwinops-23": {
+    "note": "Title stack pop not exposed in headless mode",
+    "result": "partial"
+  },
+  "wezterm:extensions.osc21-kitty-color": {
+    "note": "Kitty color protocol (OSC 21) not implemented by wezterm"
+  },
+  "kitty:sgr.underline-color-indexed": {
+    "note": "Underline color not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:sgr.underline-color-rgb": {
+    "note": "Underline color not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:modes.altscreen-1048": {
+    "note": "?1048 save/restore cursor not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:modes.xtpushsgr": {
+    "note": "SGR stack not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:modes.xtpopsgr": {
+    "note": "SGR stack not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:modes.xtsave": {
+    "note": "XTSAVE private mode save not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:modes.xtrestore": {
+    "note": "XTRESTORE private mode restore not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:modes.xtpushcolors": {
+    "note": "Color palette stack not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:modes.xtpopcolors": {
+    "note": "Color palette stack not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:device.xtwinops-14": {
+    "note": "Window operations not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:device.xtwinops-16": {
+    "note": "Window operations not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:device.xtwinops-18": {
+    "note": "Window operations not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:device.xtwinops-20": {
+    "note": "Window operations not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:device.xtwinops-21": {
+    "note": "Window operations not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:device.xtwinops-22": {
+    "note": "Title stack not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:device.xtwinops-23": {
+    "note": "Title stack not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "kitty:extensions.osc21-kitty-color": {
+    "note": "OSC 21 query responses not exposed via Python batch bridge",
+    "result": "partial"
+  },
+  "alacritty:sgr.underline-color-indexed": {
+    "note": "Headless alacritty backend doesn't expose underlineColor on cells",
+    "result": "partial"
+  },
+  "alacritty:sgr.underline-color-rgb": {
+    "note": "Headless alacritty backend doesn't expose underlineColor on cells",
+    "result": "partial"
+  },
+  "alacritty:modes.altscreen-47": {
+    "note": "Legacy ?47 alt screen not supported by alacritty"
+  },
+  "alacritty:modes.altscreen-1047": {
+    "note": "?1047 alt screen (with clear) not exposed in headless mode",
+    "result": "partial"
+  },
+  "alacritty:modes.altscreen-1048": {
+    "note": "?1048 save/restore cursor not exposed in headless mode",
+    "result": "partial"
+  },
+  "alacritty:modes.xtpushsgr": {
+    "note": "SGR stack not implemented by alacritty"
+  },
+  "alacritty:modes.xtpopsgr": {
+    "note": "SGR stack not implemented by alacritty"
+  },
+  "alacritty:modes.xtsave": {
+    "note": "XTSAVE private mode save not implemented by alacritty"
+  },
+  "alacritty:modes.xtrestore": {
+    "note": "XTRESTORE private mode restore not implemented by alacritty"
+  },
+  "alacritty:modes.xtpushcolors": {
+    "note": "Color palette stack not implemented by alacritty"
+  },
+  "alacritty:modes.xtpopcolors": {
+    "note": "Color palette stack not implemented by alacritty"
+  },
+  "alacritty:device.xtwinops-14": {
+    "note": "Window pixel-size report requires a real window system",
+    "result": "partial"
+  },
+  "alacritty:device.xtwinops-16": {
+    "note": "Cell pixel-size report requires a real window system",
+    "result": "partial"
+  },
+  "alacritty:device.xtwinops-18": {
+    "note": "Text area size report not exposed in headless mode",
+    "result": "partial"
+  },
+  "alacritty:device.xtwinops-20": {
+    "note": "Icon label report not implemented by alacritty"
+  },
+  "alacritty:device.xtwinops-21": {
+    "note": "Window title report not implemented by alacritty"
+  },
+  "alacritty:device.xtwinops-22": {
+    "note": "Title stack not implemented by alacritty"
+  },
+  "alacritty:device.xtwinops-23": {
+    "note": "Title stack not implemented by alacritty"
+  },
+  "alacritty:extensions.osc21-kitty-color": {
+    "note": "Kitty color protocol (OSC 21) not implemented by alacritty"
+  },
+  "vt100:sgr.underline-color-indexed": {
+    "note": "Colored underline (SGR 58) post-dates VT220 — not implemented in vt100.js baseline"
+  },
+  "vt100:sgr.underline-color-rgb": {
+    "note": "Colored underline (SGR 58) post-dates VT220 — not implemented in vt100.js baseline"
+  },
+  "vt100:sgr.underline-color-reset": {
+    "note": "Colored underline (SGR 59) post-dates VT220 — not implemented in vt100.js baseline"
+  },
+  "vt100:modes.altscreen-47": {
+    "note": "Alt screen variants not supported in vt100.js baseline"
+  },
+  "vt100:modes.altscreen-1047": {
+    "note": "Alt screen variants not supported in vt100.js baseline"
+  },
+  "vt100:modes.altscreen-1048": {
+    "note": "Alt screen variants not supported in vt100.js baseline"
+  },
+  "vt100:device.xtwinops-14": {
+    "note": "XTWINOPS not implemented — post-dates VT220 baseline"
+  },
+  "vt100:device.xtwinops-16": {
+    "note": "XTWINOPS not implemented — post-dates VT220 baseline"
+  },
+  "vt100:device.xtwinops-18": {
+    "note": "XTWINOPS not implemented — post-dates VT220 baseline"
+  },
+  "vt100:device.xtwinops-20": {
+    "note": "XTWINOPS not implemented — post-dates VT220 baseline"
+  },
+  "vt100:device.xtwinops-21": {
+    "note": "XTWINOPS not implemented — post-dates VT220 baseline"
+  },
+  "vt100:extensions.osc21-kitty-color": {
+    "note": "Kitty color protocol (OSC 21) not implemented — post-dates VT220 baseline"
+  },
+  "vterm:modes.altscreen-1048": {
+    "note": "?1048 save/restore cursor not implemented in vterm.js"
+  },
+  "vterm:device.xtwinops-14": {
+    "note": "XTWINOPS window pixel-size report not implemented in vterm.js"
+  },
+  "vterm:device.xtwinops-16": {
+    "note": "XTWINOPS cell pixel-size report not implemented in vterm.js"
+  },
+  "vterm:device.xtwinops-18": {
+    "note": "XTWINOPS text area size report not implemented in vterm.js"
+  },
+  "vterm:device.xtwinops-20": {
+    "note": "XTWINOPS icon label report not implemented in vterm.js"
+  },
+  "vterm:device.xtwinops-21": {
+    "note": "XTWINOPS window title report not implemented in vterm.js"
+  },
+  "vterm:extensions.osc21-kitty-color": {
+    "note": "Kitty color protocol (OSC 21) not implemented in vterm.js"
   }
 }

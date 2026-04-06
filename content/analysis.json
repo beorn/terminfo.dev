@@ -1,75 +1,75 @@
 {
-  "$generated": "2026-04-06T05:55:05.670Z",
+  "$generated": "2026-04-06T07:00:42.724Z",
   "terminals/ghostty": {
-    "analysis": "<p><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> scores <strong>91%</strong> (172/189) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#3</strong> of 12 tested terminals. Missing <strong>17</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> scores <strong>92%</strong> (232/251) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#2</strong> of 12 tested terminals. Missing <strong>19</strong> features.</p>",
     "date": "2026-04-06",
-    "probeCount": 189,
+    "probeCount": 251,
     "changes": null
   },
   "terminals/kitty": {
-    "analysis": "<p><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> scores <strong>86%</strong> (163/189) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#6</strong> of 12 tested terminals. Uniquely supports: <a href=\"/extensions/osc-5-special-color\" class=\"hover-link\">Special color (OSC 5)</a>. Missing <strong>26</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> scores <strong>87%</strong> (219/251) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#7</strong> of 12 tested terminals. Missing <strong>32</strong> features.</p>",
     "date": "2026-04-06",
-    "probeCount": 189,
+    "probeCount": 251,
     "changes": null
   },
   "terminals/iterm2": {
-    "analysis": "<p><a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> scores <strong>94%</strong> (178/189) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#1</strong> of 12 tested terminals. Uniquely supports: <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a>. Missing <strong>11</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> scores <strong>95%</strong> (239/251) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI baselines. Ranks <strong>#1</strong> of 12 tested terminals. Uniquely supports: <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a>. Missing <strong>12</strong> features.</p>",
     "date": "2026-04-06",
-    "probeCount": 189,
+    "probeCount": 251,
     "changes": null
   },
   "terminals/terminal-app": {
-    "analysis": "<p><a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a> scores <strong>86%</strong> (141/164) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#7</strong> of 12 tested terminals. Missing <strong>23</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a> scores <strong>87%</strong> (219/251) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#8</strong> of 12 tested terminals. Missing <strong>32</strong> features.</p>",
     "date": "2026-04-06",
-    "probeCount": 164,
+    "probeCount": 251,
     "changes": null
   },
   "terminals/warp": {
-    "analysis": "<p><a href=\"/terminals/warp\" class=\"hover-link\">Warp</a> scores <strong>90%</strong> (147/164) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#5</strong> of 12 tested terminals. Missing <strong>17</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/warp\" class=\"hover-link\">Warp</a> scores <strong>90%</strong> (147/164) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, Legacy, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#5</strong> of 12 tested terminals. Missing <strong>17</strong> features.</p>",
     "date": "2026-04-06",
     "probeCount": 164,
     "changes": null
   },
   "terminals/cursor": {
-    "analysis": "<p><a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a> scores <strong>86%</strong> (141/164) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#8</strong> of 12 tested terminals. Missing <strong>23</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a> scores <strong>86%</strong> (141/164) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, Legacy, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#9</strong> of 12 tested terminals. Missing <strong>23</strong> features.</p>",
     "date": "2026-04-06",
     "probeCount": 164,
     "changes": null
   },
   "terminals/vs-code": {
-    "analysis": "<p><a href=\"/terminals/vs-code\" class=\"hover-link\">VS Code</a> scores <strong>90%</strong> (148/164) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#4</strong> of 12 tested terminals. Missing <strong>16</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/vs-code\" class=\"hover-link\">VS Code</a> scores <strong>90%</strong> (148/164) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, Legacy, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#4</strong> of 12 tested terminals. Missing <strong>16</strong> features.</p>",
     "date": "2026-04-06",
     "probeCount": 164,
     "changes": null
   },
   "terminals/vterm-js": {
-    "analysis": "<p><a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a> scores <strong>93%</strong> (166/179) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI baselines. Ranks <strong>#2</strong> of 12 tested terminals. Uniquely supports: <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/osc5522-clipboard\" class=\"hover-link\">OSC 5522 advanced clipboard</a>. Missing <strong>13</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a> scores <strong>91%</strong> (207/227) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI baselines. Ranks <strong>#3</strong> of 12 tested terminals. Uniquely supports: <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/osc5522-clipboard\" class=\"hover-link\">OSC 5522 advanced clipboard</a>. Missing <strong>20</strong> features.</p>",
     "date": "2026-04-06",
-    "probeCount": 179,
+    "probeCount": 227,
     "changes": null
   },
   "terminals/vt100-js": {
-    "analysis": "<p><a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> scores <strong>44%</strong> (78/179) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#12</strong> of 12 tested terminals. Missing <strong>101</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> scores <strong>50%</strong> (114/227) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#12</strong> of 12 tested terminals. Missing <strong>113</strong> features.</p>",
     "date": "2026-04-06",
-    "probeCount": 179,
+    "probeCount": 227,
     "changes": null
   },
   "terminals/alacritty": {
-    "analysis": "<p><a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a> scores <strong>82%</strong> (147/179) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#10</strong> of 12 tested terminals. Uniquely missing (all other terminals pass): <a href=\"/cursor/reverse-wrap-45\" class=\"hover-link\">Reverse Wrap (Mode 45)</a>, <a href=\"/erase/ed-2-erase-screen\" class=\"hover-link\">Erase screen (ED 2)</a>. Missing <strong>32</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a> scores <strong>81%</strong> (183/227) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#10</strong> of 12 tested terminals. Uniquely missing (all other terminals pass): <a href=\"/cursor/reverse-wrap-45\" class=\"hover-link\">Reverse Wrap (Mode 45)</a>, <a href=\"/erase/ed-2-erase-screen\" class=\"hover-link\">Erase screen (ED 2)</a>. Missing <strong>44</strong> features.</p>",
     "date": "2026-04-06",
-    "probeCount": 179,
+    "probeCount": 227,
     "changes": null
   },
   "terminals/wezterm": {
-    "analysis": "<p><a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a> scores <strong>85%</strong> (152/179) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#9</strong> of 12 tested terminals. Missing <strong>27</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a> scores <strong>88%</strong> (199/227) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#6</strong> of 12 tested terminals. Missing <strong>28</strong> features.</p>",
     "date": "2026-04-06",
-    "probeCount": 179,
+    "probeCount": 227,
     "changes": null
   },
   "terminals/xterm-js": {
-    "analysis": "<p><a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> scores <strong>73%</strong> (130/179) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#11</strong> of 12 tested terminals. Missing <strong>49</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> scores <strong>78%</strong> (177/227) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Modern TUI, Rich TUI, <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> baselines. Ranks <strong>#11</strong> of 12 tested terminals. Missing <strong>50</strong> features.</p>",
     "date": "2026-04-06",
-    "probeCount": 179,
+    "probeCount": 227,
     "changes": null
   },
   "terminals/vt52-historical": {
@@ -103,17 +103,22 @@
     "changes": null
   },
   "baseline/core": {
-    "analysis": "<p><strong>0</strong> of 12 tested terminals achieve 100% Core TUI compliance. Lagging: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (77%), <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (94%), <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> (94%). Most commonly missing: <a href=\"/text/tbc-clear-tab-stop\" class=\"hover-link\">TBC clear tab stop (CSI g)</a>, <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>.</p>",
+    "analysis": "<p><strong>0</strong> of 12 tested terminals achieve 100% Core TUI compliance. Lagging: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (77%), <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (94%), <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> (94%). Most commonly missing: <a href=\"/text/tbc-clear-tab-stop\" class=\"hover-link\">TBC clear tab stop (CSI g)</a>, <a href=\"/text/cht-forward-tab\" class=\"hover-link\">CHT forward tab (CSI I)</a>, <a href=\"/text/cbt-backward-tab\" class=\"hover-link\">CBT backward tab (CSI Z)</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "baseline/modern": {
-    "analysis": "<p><strong>2</strong> of 12 tested terminals achieve 100% Modern TUI compliance. Lagging: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (24%), <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> (76%), <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a> (85%). Most commonly missing: <a href=\"/modes/mode-2031-color-scheme\" class=\"hover-link\">Mode 2031 color scheme reporting</a>, <a href=\"/extensions/osc-4-color-palette\" class=\"hover-link\">Color palette (OSC 4)</a>, <a href=\"/extensions/osc-12-cursor-color\" class=\"hover-link\">Cursor color (OSC 12)</a>.</p>",
+    "analysis": "<p><strong>2</strong> of 12 tested terminals achieve 100% Modern TUI compliance. Lagging: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (26%), <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> (79%), <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a> (85%). Most commonly missing: <a href=\"/modes/mode-2031-color-scheme\" class=\"hover-link\">Mode 2031 color scheme reporting</a>, <a href=\"/extensions/osc-4-color-palette\" class=\"hover-link\">Color palette (OSC 4)</a>, <a href=\"/extensions/osc-12-cursor-color\" class=\"hover-link\">Cursor color (OSC 12)</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "baseline/rich": {
-    "analysis": "<p><strong>0</strong> of 12 tested terminals achieve 100% Rich TUI compliance. Lagging: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (3%), <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> (14%), <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a> (46%). Most commonly missing: <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/osc5522-clipboard\" class=\"hover-link\">OSC 5522 advanced clipboard</a>.</p>",
+    "analysis": "<p><strong>0</strong> of 12 tested terminals achieve 100% Rich TUI compliance. Lagging: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (36%), <a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a> (50%), <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> (52%). Most commonly missing: <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/osc5522-clipboard\" class=\"hover-link\">OSC 5522 advanced clipboard</a>.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "baseline/legacy": {
+    "analysis": "<p><strong>9</strong> of 12 tested terminals achieve 100% Legacy compliance. Lagging: <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a> (0%), <a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a> (0%), <a href=\"/terminals/vs-code\" class=\"hover-link\">VS Code</a> (0%).</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -123,42 +128,42 @@
     "changes": null
   },
   "compare/ghostty-vs-kitty": {
-    "analysis": "<p><strong><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a></strong> scores 91% (172/189) vs <strong><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a></strong> at 86% (163/189). <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> leads by 5 percentage points. Only in <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>: <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/modes/mode-2031-color-scheme\" class=\"hover-link\">Mode 2031 color scheme reporting</a>, <a href=\"/device/decrqss\" class=\"hover-link\">Request Setting (DECRQSS)</a> and 10 more. Only in <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/extensions/kitty-graphics-unicode-placeholders\" class=\"hover-link\">Kitty graphics: Unicode placeholders</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc-5-special-color\" class=\"hover-link\">Special color (OSC 5)</a>, <a href=\"/extensions/osc-17-highlight-bg\" class=\"hover-link\">Highlight background (OSC 17)</a> and 1 more.</p>",
+    "analysis": "<p><strong><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a></strong> scores 92% (232/251) vs <strong><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a></strong> at 87% (219/251). <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> leads by 5 percentage points. Only in <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>: <a href=\"/cursor/ansi-save-cursor\" class=\"hover-link\">ANSI save cursor (CSI s)</a>, <a href=\"/cursor/ansi-restore-cursor\" class=\"hover-link\">ANSI restore cursor (CSI u)</a>, <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a> and 14 more. Only in <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/extensions/kitty-graphics-unicode-placeholders\" class=\"hover-link\">Kitty graphics: Unicode placeholders</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc-5-special-color\" class=\"hover-link\">Special color (OSC 5)</a>, <a href=\"/extensions/osc-17-highlight-bg\" class=\"hover-link\">Highlight background (OSC 17)</a> and 1 more.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "compare/ghostty-vs-iterm2": {
-    "analysis": "<p><strong><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a></strong> scores 91% (172/189) vs <strong><a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a></strong> at 94% (178/189). <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> leads by 3 percentage points. Only in <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a>, <a href=\"/extensions/osc52-clipboard-read\" class=\"hover-link\">OSC 52 clipboard read</a>, <a href=\"/extensions/osc-17-highlight-bg\" class=\"hover-link\">Highlight background (OSC 17)</a>, <a href=\"/extensions/osc-19-highlight-fg\" class=\"hover-link\">Highlight foreground (OSC 19)</a> and 1 more.</p>",
+    "analysis": "<p><strong><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a></strong> scores 92% (232/251) vs <strong><a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a></strong> at 95% (239/251). <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> leads by 3 percentage points. Only in <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>: <a href=\"/device/xtwinops-16-cell-size-pixels\" class=\"hover-link\">Report cell size in pixels (CSI 16 t)</a>. Only in <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a>, <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a>, <a href=\"/device/xtwinops-20-icon-label\" class=\"hover-link\">Report icon label (CSI 20 t)</a>, <a href=\"/device/xtwinops-21-window-title\" class=\"hover-link\">Report window title (CSI 21 t)</a>, <a href=\"/extensions/osc52-clipboard-read\" class=\"hover-link\">OSC 52 clipboard read</a> and 3 more.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "compare/ghostty-vs-warp": {
-    "analysis": "<p><strong><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a></strong> scores 91% (172/189) vs <strong><a href=\"/terminals/warp\" class=\"hover-link\">Warp</a></strong> at 90% (147/164). <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> leads by 1 percentage point. Only in <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>: <a href=\"/cursor/vpa-vertical-position-absolute\" class=\"hover-link\">VPA vertical position absolute (CSI d)</a>, <a href=\"/cursor/cpl-cursor-preceding-line\" class=\"hover-link\">CPL cursor preceding line (CSI F)</a>, <a href=\"/cursor/hpa-horizontal-position-absolute\" class=\"hover-link\">HPA horizontal position absolute (CSI `)</a>, <a href=\"/text/hts-set-tab-stop\" class=\"hover-link\">HTS set tab stop (ESC H)</a>, <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a> and 21 more. Only in <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a></strong> scores 92% (232/251) vs <strong><a href=\"/terminals/warp\" class=\"hover-link\">Warp</a></strong> at 90% (147/164). <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> leads by 2 percentage points. Only in <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>: <a href=\"/sgr/58-5-underline-color-indexed\" class=\"hover-link\">Underline color, indexed (SGR 58;5)</a>, <a href=\"/sgr/58-2-underline-color-rgb\" class=\"hover-link\">Underline color, truecolor (SGR 58;2)</a>, <a href=\"/sgr/59-underline-color-reset\" class=\"hover-link\">Reset underline color (SGR 59)</a>, <a href=\"/cursor/ansi-save-cursor\" class=\"hover-link\">ANSI save cursor (CSI s)</a>, <a href=\"/cursor/ansi-restore-cursor\" class=\"hover-link\">ANSI restore cursor (CSI u)</a> and 81 more. Only in <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "compare/ghostty-vs-terminal-app": {
-    "analysis": "<p><strong><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a></strong> scores 91% (172/189) vs <strong><a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> at 86% (141/164). <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> leads by 5 percentage points. Only in <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>: <a href=\"/cursor/vpa-vertical-position-absolute\" class=\"hover-link\">VPA vertical position absolute (CSI d)</a>, <a href=\"/cursor/cpl-cursor-preceding-line\" class=\"hover-link\">CPL cursor preceding line (CSI F)</a>, <a href=\"/cursor/hpa-horizontal-position-absolute\" class=\"hover-link\">HPA horizontal position absolute (CSI `)</a>, <a href=\"/text/hts-set-tab-stop\" class=\"hover-link\">HTS set tab stop (ESC H)</a>, <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a> and 29 more. Only in <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/extensions/kitty-graphics-unicode-placeholders\" class=\"hover-link\">Kitty graphics: Unicode placeholders</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a></strong> scores 92% (232/251) vs <strong><a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> at 87% (219/251). <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> leads by 5 percentage points. Only in <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>: <a href=\"/cursor/ansi-save-cursor\" class=\"hover-link\">ANSI save cursor (CSI s)</a>, <a href=\"/cursor/ansi-restore-cursor\" class=\"hover-link\">ANSI restore cursor (CSI u)</a>, <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a> and 14 more. Only in <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/extensions/kitty-graphics-unicode-placeholders\" class=\"hover-link\">Kitty graphics: Unicode placeholders</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc-5-special-color\" class=\"hover-link\">Special color (OSC 5)</a>, <a href=\"/extensions/osc-17-highlight-bg\" class=\"hover-link\">Highlight background (OSC 17)</a> and 1 more.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "compare/iterm2-vs-kitty": {
-    "analysis": "<p><strong><a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 94% (178/189) vs <strong><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a></strong> at 86% (163/189). <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> leads by 8 percentage points. Only in <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/modes/mode-2031-color-scheme\" class=\"hover-link\">Mode 2031 color scheme reporting</a>, <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a> and 14 more. Only in <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/extensions/kitty-graphics-unicode-placeholders\" class=\"hover-link\">Kitty graphics: Unicode placeholders</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc-5-special-color\" class=\"hover-link\">Special color (OSC 5)</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 95% (239/251) vs <strong><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a></strong> at 87% (219/251). <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> leads by 8 percentage points. Only in <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/cursor/ansi-save-cursor\" class=\"hover-link\">ANSI save cursor (CSI s)</a>, <a href=\"/cursor/ansi-restore-cursor\" class=\"hover-link\">ANSI restore cursor (CSI u)</a>, <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a> and 19 more. Only in <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/extensions/kitty-graphics-unicode-placeholders\" class=\"hover-link\">Kitty graphics: Unicode placeholders</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc-5-special-color\" class=\"hover-link\">Special color (OSC 5)</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "compare/kitty-vs-warp": {
-    "analysis": "<p><strong><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a></strong> scores 86% (163/189) vs <strong><a href=\"/terminals/warp\" class=\"hover-link\">Warp</a></strong> at 90% (147/164). <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a> leads by 4 percentage points. Only in <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/cursor/vpa-vertical-position-absolute\" class=\"hover-link\">VPA vertical position absolute (CSI d)</a>, <a href=\"/cursor/cpl-cursor-preceding-line\" class=\"hover-link\">CPL cursor preceding line (CSI F)</a>, <a href=\"/cursor/hpa-horizontal-position-absolute\" class=\"hover-link\">HPA horizontal position absolute (CSI `)</a>, <a href=\"/text/hts-set-tab-stop\" class=\"hover-link\">HTS set tab stop (ESC H)</a> and 20 more. Only in <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/extensions/kitty-keyboard-protocol\" class=\"hover-link\" title=\"Kitty Keyboard Protocol\">Kitty keyboard protocol</a>, <a href=\"/extensions/kitty-keyboard-disambiguate\" class=\"hover-link\">Kitty keyboard: DISAMBIGUATE (flag 1)</a> and 4 more.</p>",
+    "analysis": "<p><strong><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a></strong> scores 87% (219/251) vs <strong><a href=\"/terminals/warp\" class=\"hover-link\">Warp</a></strong> at 90% (147/164). <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a> leads by 3 percentage points. Only in <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>: <a href=\"/sgr/58-5-underline-color-indexed\" class=\"hover-link\">Underline color, indexed (SGR 58;5)</a>, <a href=\"/sgr/58-2-underline-color-rgb\" class=\"hover-link\">Underline color, truecolor (SGR 58;2)</a>, <a href=\"/sgr/59-underline-color-reset\" class=\"hover-link\">Reset underline color (SGR 59)</a>, <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/cursor/vpa-vertical-position-absolute\" class=\"hover-link\">VPA vertical position absolute (CSI d)</a> and 76 more. Only in <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/extensions/kitty-keyboard-protocol\" class=\"hover-link\" title=\"Kitty Keyboard Protocol\">Kitty keyboard protocol</a>, <a href=\"/extensions/kitty-keyboard-disambiguate\" class=\"hover-link\">Kitty keyboard: DISAMBIGUATE (flag 1)</a> and 4 more.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "compare/iterm2-vs-terminal-app": {
-    "analysis": "<p><strong><a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 94% (178/189) vs <strong><a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> at 86% (141/164). <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> leads by 8 percentage points. Only in <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/cursor/vpa-vertical-position-absolute\" class=\"hover-link\">VPA vertical position absolute (CSI d)</a>, <a href=\"/cursor/cpl-cursor-preceding-line\" class=\"hover-link\">CPL cursor preceding line (CSI F)</a>, <a href=\"/cursor/hpa-horizontal-position-absolute\" class=\"hover-link\">HPA horizontal position absolute (CSI `)</a>, <a href=\"/text/hts-set-tab-stop\" class=\"hover-link\">HTS set tab stop (ESC H)</a>, <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a> and 35 more. Only in <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/extensions/kitty-graphics-unicode-placeholders\" class=\"hover-link\">Kitty graphics: Unicode placeholders</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 95% (239/251) vs <strong><a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> at 87% (219/251). <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> leads by 8 percentage points. Only in <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/cursor/ansi-save-cursor\" class=\"hover-link\">ANSI save cursor (CSI s)</a>, <a href=\"/cursor/ansi-restore-cursor\" class=\"hover-link\">ANSI restore cursor (CSI u)</a>, <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a>, <a href=\"/text/emoji-zwj-sequences\" class=\"hover-link\">Emoji ZWJ sequences (2 cols)</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a> and 19 more. Only in <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/extensions/kitty-graphics-unicode-placeholders\" class=\"hover-link\">Kitty graphics: Unicode placeholders</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>, <a href=\"/extensions/osc-5-special-color\" class=\"hover-link\">Special color (OSC 5)</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "compare/iterm2-vs-warp": {
-    "analysis": "<p><strong><a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 94% (178/189) vs <strong><a href=\"/terminals/warp\" class=\"hover-link\">Warp</a></strong> at 90% (147/164). <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> leads by 4 percentage points. Only in <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/cursor/vpa-vertical-position-absolute\" class=\"hover-link\">VPA vertical position absolute (CSI d)</a>, <a href=\"/cursor/cpl-cursor-preceding-line\" class=\"hover-link\">CPL cursor preceding line (CSI F)</a>, <a href=\"/cursor/hpa-horizontal-position-absolute\" class=\"hover-link\">HPA horizontal position absolute (CSI `)</a>, <a href=\"/text/hts-set-tab-stop\" class=\"hover-link\">HTS set tab stop (ESC H)</a>, <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a> and 27 more. Only in <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>.</p>",
+    "analysis": "<p><strong><a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a></strong> scores 95% (239/251) vs <strong><a href=\"/terminals/warp\" class=\"hover-link\">Warp</a></strong> at 90% (147/164). <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a> leads by 5 percentage points. Only in <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>: <a href=\"/sgr/58-5-underline-color-indexed\" class=\"hover-link\">Underline color, indexed (SGR 58;5)</a>, <a href=\"/sgr/58-2-underline-color-rgb\" class=\"hover-link\">Underline color, truecolor (SGR 58;2)</a>, <a href=\"/sgr/59-underline-color-reset\" class=\"hover-link\">Reset underline color (SGR 59)</a>, <a href=\"/cursor/ansi-save-cursor\" class=\"hover-link\">ANSI save cursor (CSI s)</a>, <a href=\"/cursor/ansi-restore-cursor\" class=\"hover-link\">ANSI restore cursor (CSI u)</a> and 88 more. Only in <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -168,22 +173,22 @@
     "changes": null
   },
   "compare/terminal-app-vs-warp": {
-    "analysis": "<p><strong><a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> scores 86% (141/164) vs <strong><a href=\"/terminals/warp\" class=\"hover-link\">Warp</a></strong> at 90% (147/164). <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a> leads by 4 percentage points. Only in <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/extensions/kitty-graphics-unicode-placeholders\" class=\"hover-link\">Kitty graphics: Unicode placeholders</a>, <a href=\"/extensions/sixel-graphics\" class=\"hover-link\">Sixel graphics</a>. Only in <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/extensions/kitty-keyboard-protocol\" class=\"hover-link\" title=\"Kitty Keyboard Protocol\">Kitty keyboard protocol</a>, <a href=\"/extensions/kitty-keyboard-disambiguate\" class=\"hover-link\">Kitty keyboard: DISAMBIGUATE (flag 1)</a> and 4 more.</p>",
+    "analysis": "<p><strong><a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a></strong> scores 87% (219/251) vs <strong><a href=\"/terminals/warp\" class=\"hover-link\">Warp</a></strong> at 90% (147/164). <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a> leads by 3 percentage points. Only in <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>: <a href=\"/sgr/58-5-underline-color-indexed\" class=\"hover-link\">Underline color, indexed (SGR 58;5)</a>, <a href=\"/sgr/58-2-underline-color-rgb\" class=\"hover-link\">Underline color, truecolor (SGR 58;2)</a>, <a href=\"/sgr/59-underline-color-reset\" class=\"hover-link\">Reset underline color (SGR 59)</a>, <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a>, <a href=\"/cursor/vpa-vertical-position-absolute\" class=\"hover-link\">VPA vertical position absolute (CSI d)</a> and 76 more. Only in <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a>: <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a>, <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a>, <a href=\"/device/xtversion\" class=\"hover-link\">Terminal Version (XTVERSION)</a>, <a href=\"/extensions/kitty-keyboard-protocol\" class=\"hover-link\" title=\"Kitty Keyboard Protocol\">Kitty keyboard protocol</a>, <a href=\"/extensions/kitty-keyboard-disambiguate\" class=\"hover-link\">Kitty keyboard: DISAMBIGUATE (flag 1)</a> and 4 more.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "sgr": {
-    "analysis": "<p>The <strong>SGR (<a href=\"/text\" class=\"hover-link\">Text</a> Styling)</strong> category covers 29 features. Top performers (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a> and 6 more. Common gaps: <a href=\"/sgr/2-faint-dim\" class=\"hover-link\">Faint/dim (SGR 2)</a> (1 terminal fails), <a href=\"/sgr/3-italic\" class=\"hover-link\">Italic (SGR 3)</a> (1 terminal fails), <a href=\"/sgr/21-double-underline\" class=\"hover-link\">Double underline (SGR 21)</a> (1 terminal fails).</p>",
+    "analysis": "<p>The <strong>SGR (<a href=\"/text\" class=\"hover-link\">Text</a> Styling)</strong> category covers 32 features. Top performers (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a> and 6 more. Common gaps: <a href=\"/sgr/2-faint-dim\" class=\"hover-link\">Faint/dim (SGR 2)</a> (1 terminal fails), <a href=\"/sgr/3-italic\" class=\"hover-link\">Italic (SGR 3)</a> (1 terminal fails), <a href=\"/sgr/21-double-underline\" class=\"hover-link\">Double underline (SGR 21)</a> (1 terminal fails).</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "cursor": {
-    "analysis": "<p>The <strong><a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a></strong> category covers 20 features. Top performers (100%): <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Common gaps: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a> (6 terminals fail), <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a> (5 terminals fail), <a href=\"/cursor/hpa-horizontal-position-absolute\" class=\"hover-link\">HPA horizontal position absolute (CSI `)</a> (2 terminals fail).</p>",
+    "analysis": "<p>The <strong><a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a></strong> category covers 22 features. Top performers (100%): <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Common gaps: <a href=\"/cursor/cup-screen-boundaries\" class=\"hover-link\">CUP at screen boundaries</a> (6 terminals fail), <a href=\"/cursor/cup-decom-scroll-region\" class=\"hover-link\">CUP with DECOM</a> (5 terminals fail), <a href=\"/cursor/ansi-save-cursor\" class=\"hover-link\">ANSI save cursor (CSI s)</a> (2 terminals fail).</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "text": {
-    "analysis": "<p>The <strong><a href=\"/text\" class=\"hover-link\">Text</a></strong> category covers 20 features. Common gaps: <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a> (9 terminals fail), <a href=\"/text/tbc-clear-tab-stop\" class=\"hover-link\">TBC clear tab stop (CSI g)</a> (8 terminals fail), <a href=\"/text/cht-forward-tab\" class=\"hover-link\">CHT forward tab (CSI I)</a> (5 terminals fail).</p>",
+    "analysis": "<p>The <strong><a href=\"/text\" class=\"hover-link\">Text</a></strong> category covers 20 features. Common gaps: <a href=\"/text/tbc-clear-tab-stop\" class=\"hover-link\">TBC clear tab stop (CSI g)</a> (9 terminals fail), <a href=\"/text/variation-selector-16-emoji\" class=\"hover-link\">Variation selector 16 (emoji presentation)</a> (9 terminals fail), <a href=\"/text/cht-forward-tab\" class=\"hover-link\">CHT forward tab (CSI I)</a> (6 terminals fail).</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -193,12 +198,12 @@
     "changes": null
   },
   "editing": {
-    "analysis": "<p>The <strong><a href=\"/editing\" class=\"hover-link\">Editing</a></strong> category covers 5 features. Top performers (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a> and 6 more. Common gaps: <a href=\"/editing/ich-insert-characters\" class=\"hover-link\">Insert characters (ICH)</a> (1 terminal fails), <a href=\"/editing/dch-delete-characters\" class=\"hover-link\">Delete characters (DCH)</a> (1 terminal fails), <a href=\"/editing/il-insert-lines\" class=\"hover-link\">Insert lines (IL)</a> (1 terminal fails).</p>",
+    "analysis": "<p>The <strong><a href=\"/editing\" class=\"hover-link\">Editing</a></strong> category covers 17 features. Top performers (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a> and 6 more. Common gaps: <a href=\"/editing/ich-insert-characters\" class=\"hover-link\">Insert characters (ICH)</a> (1 terminal fails), <a href=\"/editing/dch-delete-characters\" class=\"hover-link\">Delete characters (DCH)</a> (1 terminal fails), <a href=\"/editing/il-insert-lines\" class=\"hover-link\">Insert lines (IL)</a> (1 terminal fails).</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "modes": {
-    "analysis": "<p>The <strong><a href=\"/modes\" class=\"hover-link\">Modes</a></strong> category covers 16 features. Top performers (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>. Common gaps: <a href=\"/modes/mode-2031-color-scheme\" class=\"hover-link\">Mode 2031 color scheme reporting</a> (8 terminals fail), <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a> (2 terminals fail), <a href=\"/modes/left-right-margin-69\" class=\"hover-link\">Left/Right Margins (DECLRMM, Mode 69)</a> (2 terminals fail).</p>",
+    "analysis": "<p>The <strong><a href=\"/modes\" class=\"hover-link\">Modes</a></strong> category covers 28 features. Top performers (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>. Common gaps: <a href=\"/modes/mode-2031-color-scheme\" class=\"hover-link\">Mode 2031 color scheme reporting</a> (8 terminals fail), <a href=\"/modes/decset-1048-save-restore-cursor\" class=\"hover-link\">Save/restore cursor (?1048)</a> (4 terminals fail), <a href=\"/modes/decom-origin-mode\" class=\"hover-link\">Origin mode (DECOM)</a> (2 terminals fail).</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -208,12 +213,12 @@
     "changes": null
   },
   "reset": {
-    "analysis": "<p>The <strong><a href=\"/reset\" class=\"hover-link\">Reset</a></strong> category covers 5 features. Top performers (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a> and 5 more. Common gaps: <a href=\"/reset/decaln-screen-alignment\" class=\"hover-link\">DECALN screen alignment (ESC # 8)</a> (2 terminals fail), <a href=\"/reset/decstr-soft-reset\" class=\"hover-link\">Soft reset (DECSTR)</a> (1 terminal fails).</p>",
+    "analysis": "<p>The <strong><a href=\"/reset\" class=\"hover-link\">Reset</a></strong> category covers 5 features. Top performers (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a> and 5 more. Common gaps: <a href=\"/reset/decaln-screen-alignment\" class=\"hover-link\">DECALN screen alignment (ESC # 8)</a> (2 terminals fail), <a href=\"/reset/decstr-soft-reset\" class=\"hover-link\">Soft reset (DECSTR)</a> (1 terminal fails).</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions": {
-    "analysis": "<p>The <strong><a href=\"/extensions\" class=\"hover-link\">Extensions</a></strong> category covers 50 features. Common gaps: <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a> (11 terminals fail), <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a> (11 terminals fail), <a href=\"/extensions/osc5522-clipboard\" class=\"hover-link\">OSC 5522 advanced clipboard</a> (11 terminals fail).</p>",
+    "analysis": "<p>The <strong><a href=\"/extensions\" class=\"hover-link\">Extensions</a></strong> category covers 79 features. Common gaps: <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a> (11 terminals fail), <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a> (11 terminals fail), <a href=\"/extensions/osc5522-clipboard\" class=\"hover-link\">OSC 5522 advanced clipboard</a> (11 terminals fail).</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -223,7 +228,7 @@
     "changes": null
   },
   "device": {
-    "analysis": "<p>The <strong><a href=\"/device\" class=\"hover-link\">Device Status</a></strong> category covers 9 features. Top performers (100%): <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>. Common gaps: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a> (8 terminals fail), <a href=\"/device/xtgettcap\" class=\"hover-link\">Query Terminfo (XTGETTCAP)</a> (7 terminals fail), <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a> (6 terminals fail).</p>",
+    "analysis": "<p>The <strong><a href=\"/device\" class=\"hover-link\">Device Status</a></strong> category covers 25 features. Top performers (100%): <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>. Common gaps: <a href=\"/device/da3-tertiary-device-attributes\" class=\"hover-link\">Tertiary Device Attributes (DA3)</a> (8 terminals fail), <a href=\"/device/xtgettcap\" class=\"hover-link\">Query Terminfo (XTGETTCAP)</a> (7 terminals fail), <a href=\"/device/term-features\" class=\"hover-link\">Feature Reporting (TERM_FEATURES)</a> (6 terminals fail).</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -238,12 +243,12 @@
     "changes": null
   },
   "ecma-48": {
-    "analysis": "<p><strong><a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a></strong> defines 70 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>95%</strong>. Full compliance (100%): <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 71% (50/70).</p>",
+    "analysis": "<p><strong><a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a></strong> defines 73 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>94%</strong>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 68% (50/73).</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "vt100": {
-    "analysis": "<p><strong><a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a></strong> defines 56 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>95%</strong>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 86% (48/56).</p>",
+    "analysis": "<p><strong><a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a></strong> defines 57 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>95%</strong>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 86% (49/57).</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -253,27 +258,27 @@
     "changes": null
   },
   "vt510": {
-    "analysis": "<p><strong><a href=\"/vt510\" class=\"hover-link\" title=\"Video Terminal 510\">VT510</a></strong> defines 10 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>83%</strong>. Full compliance (100%): <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 40% (4/10).</p>",
+    "analysis": "<p><strong><a href=\"/vt510\" class=\"hover-link\" title=\"Video Terminal 510\">VT510</a></strong> defines 18 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>89%</strong>. Full compliance (100%): <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 67% (12/18).</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "dec-private-modes": {
-    "analysis": "<p><strong><a href=\"/dec-private-modes\" class=\"hover-link\">DEC Private Modes</a></strong> defines 22 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>93%</strong>. Full compliance (100%): <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminals/vs-code\" class=\"hover-link\">VS Code</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 55% (12/22).</p>",
+    "analysis": "<p><strong><a href=\"/dec-private-modes\" class=\"hover-link\">DEC Private Modes</a></strong> defines 28 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>92%</strong>. Full compliance (100%): <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>, <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a>, <a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a>, <a href=\"/terminals/vs-code\" class=\"hover-link\">VS Code</a>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 54% (15/28).</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "xterm-extensions": {
-    "analysis": "<p><strong><a href=\"/xterm-extensions\" class=\"hover-link\">Xterm Extensions</a></strong> defines 50 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>80%</strong>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 17% (8/46).</p>",
+    "analysis": "<p><strong><a href=\"/xterm-extensions\" class=\"hover-link\">Xterm Extensions</a></strong> defines 79 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>82%</strong>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 34% (24/70).</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "kitty-extensions": {
-    "analysis": "<p><strong><a href=\"/kitty-extensions\" class=\"hover-link\">Kitty Extensions</a></strong> defines 18 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>62%</strong>. Full compliance (100%): <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 0% (0/17).</p>",
+    "analysis": "<p><strong><a href=\"/kitty-extensions\" class=\"hover-link\">Kitty Extensions</a></strong> defines 25 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>65%</strong>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 0% (0/21).</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "iterm2": {
-    "analysis": "<p><strong><a href=\"/iterm2\" class=\"hover-link\">iTerm2 Extensions</a></strong> defines 3 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>11%</strong>. Full compliance (100%): <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> at 0% (0/2).</p>",
+    "analysis": "<p><strong><a href=\"/iterm2\" class=\"hover-link\">iTerm2 Extensions</a></strong> defines 4 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>11%</strong>. Full compliance (100%): <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>. Lowest: <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> at 0% (0/2).</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -283,12 +288,12 @@
     "changes": null
   },
   "vscode-extensions": {
-    "analysis": "<p><strong><a href=\"/vscode-extensions\" class=\"hover-link\">VS Code Extensions</a></strong> defines 1 feature in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>75%</strong>. Full compliance (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminals/warp\" class=\"hover-link\">Warp</a> and 4 more. Lowest: <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> at 0% (0/1).</p>",
+    "analysis": "<p><strong><a href=\"/vscode-extensions\" class=\"hover-link\">VS Code Extensions</a></strong> defines 7 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>97%</strong>. Full compliance (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a> and 4 more. Lowest: <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> at 86% (6/7).</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "osc": {
-    "analysis": "<p><strong>Operating System Commands (OSC)</strong> defines 35 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>64%</strong>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 12% (3/26).</p>",
+    "analysis": "<p><strong>Operating System Commands (OSC)</strong> defines 61 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average adoption across terminals: <strong>74%</strong>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 37% (14/38).</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -339,6 +344,21 @@
   },
   "sgr/58-underline-color": {
     "analysis": "<p>Supported by <strong>11</strong> of <strong>12</strong> terminals (92%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "sgr/58-5-underline-color-indexed": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Colored underline (SGR 58) post-dates <a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "sgr/58-2-underline-color-rgb": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Colored underline (SGR 58) post-dates <a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "sgr/59-underline-color-reset": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Colored underline (SGR 59) post-dates <a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> — not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -502,6 +522,16 @@
     "date": "2026-04-06",
     "changes": null
   },
+  "cursor/ansi-save-cursor": {
+    "analysis": "<p>Supported by <strong>7</strong> of <strong>9</strong> terminals (78%). Not supported by: <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "cursor/ansi-restore-cursor": {
+    "analysis": "<p>Supported by <strong>7</strong> of <strong>9</strong> terminals (78%). Not supported by: <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
   "cursor/reverse-wrap-45": {
     "analysis": "<p>Supported by <strong>11</strong> of <strong>12</strong> terminals (92%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: Reverse wrap not supported in alacritty <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> mode.</p>",
     "date": "2026-04-06",
@@ -528,17 +558,17 @@
     "changes": null
   },
   "cursor/vpa-vertical-position-absolute": {
-    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "cursor/cpl-cursor-preceding-line": {
-    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "cursor/hpa-horizontal-position-absolute": {
-    "analysis": "<p>Supported by <strong>6</strong> of <strong>8</strong> terminals (75%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: HPA (horizontal position absolute) not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: HPA (horizontal position absolute) not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> baseline emulator.</p>",
+    "analysis": "<p>Supported by <strong>7</strong> of <strong>9</strong> terminals (78%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: HPA (horizontal position absolute) not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: HPA (horizontal position absolute) not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> baseline emulator.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -619,6 +649,66 @@
   },
   "editing/rep-repeat-character": {
     "analysis": "<p>Supported by <strong>11</strong> of <strong>12</strong> terminals (92%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: REP not implemented — pure TypeScript emulator.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/sl-shift-left": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/sr-shift-right": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/decic-insert-columns": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/decdc-delete-columns": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/decfra-fill-rectangle": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/decera-erase-rectangle": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/decsera-selective-erase-rectangle": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/deccra-copy-rectangle": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/deccara-change-attrs-rectangle": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/decrara-reverse-attrs-rectangle": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/decsace-select-attribute-change-extent": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "editing/decrqcra-checksum-rectangle": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -727,6 +817,36 @@
     "date": "2026-04-06",
     "changes": null
   },
+  "modes/decset-47-alt-screen-legacy": {
+    "analysis": "<p>Supported by <strong>7</strong> of <strong>9</strong> terminals (78%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Alt screen variants not supported in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> baseline; <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: Legacy ?47 alt screen not supported by alacritty.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/decset-1047-alt-screen-clear": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Alt screen variants not supported in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/decset-1048-save-restore-cursor": {
+    "analysis": "<p>Supported by <strong>5</strong> of <strong>9</strong> terminals (56%). Not supported by: <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>: ?1048 save/restore <a href=\"/cursor\" class=\"hover-link\" title=\"Text Cursor\">cursor</a> not exposed via Python batch bridge; <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: ?1048 save/restore <a href=\"/cursor\" class=\"hover-link\" title=\"Text Cursor\">cursor</a> not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Alt screen variants not supported in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/decset-1007-alt-scroll": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/decset-1005-utf8-mouse": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/deccolm-80-132-column": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
   "scrollback/accumulates": {
     "analysis": "<p>Supported by <strong>all 12</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-04-06",
@@ -803,17 +923,17 @@
     "changes": null
   },
   "extensions/osc-52-clipboard": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>12</strong> terminals (83%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>12</strong> terminals (83%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/extensions/osc-52-clipboard\" class=\"hover-link\" title=\"Operating System Command 52\">OSC 52</a> clipboard not implemented in <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-10-fg-color-query": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>12</strong> terminals (83%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>12</strong> terminals (83%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/extensions/osc-10-fg-color-query\" class=\"hover-link\" title=\"Foreground Color Query\">OSC 10</a> foreground color query not implemented in <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-11-bg-color-query": {
-    "analysis": "<p>Supported by <strong>10</strong> of <strong>12</strong> terminals (83%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>10</strong> of <strong>12</strong> terminals (83%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/extensions/osc-11-bg-color-query\" class=\"hover-link\" title=\"Background Color Query\">OSC 11</a> background color query not implemented in <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -834,6 +954,61 @@
   },
   "extensions/osc-633-vscode": {
     "analysis": "<p>Supported by <strong>9</strong> of <strong>12</strong> terminals (75%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: <a href=\"/terminals/vs-code\" class=\"hover-link\">VS Code</a> <a href=\"/features\" class=\"hover-link\" title=\"Shell\">shell</a> integration (<a href=\"/extensions/osc-633-vscode\" class=\"hover-link\" title=\"VS Code Shell Integration\">OSC 633</a>) not supported; <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: <a href=\"/terminals/vs-code\" class=\"hover-link\">VS Code</a> <a href=\"/features\" class=\"hover-link\" title=\"Shell\">shell</a> integration (<a href=\"/extensions/osc-633-vscode\" class=\"hover-link\" title=\"VS Code Shell Integration\">OSC 633</a>) not supported; <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/terminals/vs-code\" class=\"hover-link\">VS Code</a> <a href=\"/features\" class=\"hover-link\" title=\"Shell\">shell</a> integration (<a href=\"/extensions/osc-633-vscode\" class=\"hover-link\" title=\"VS Code Shell Integration\">OSC 633</a>) not supported.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc133-a-prompt-start": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc133-b-command-start": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc133-c-command-executed": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc133-d-command-finished": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc133-p-properties": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc633-a-prompt-start": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc633-b-prompt-end": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc633-c-pre-execution": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc633-d-command-finished": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc633-e-set-commandline": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc633-p-properties": {
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -953,7 +1128,7 @@
     "changes": null
   },
   "text/hts-set-tab-stop": {
-    "analysis": "<p>Supported by <strong>6</strong> of <strong>8</strong> terminals (75%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>7</strong> of <strong>9</strong> terminals (78%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -963,12 +1138,12 @@
     "changes": null
   },
   "text/cht-forward-tab": {
-    "analysis": "<p>Supported by <strong>3</strong> of <strong>8</strong> terminals (38%). Not supported by: <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>3</strong> of <strong>9</strong> terminals (33%). Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "text/cbt-backward-tab": {
-    "analysis": "<p>Supported by <strong>3</strong> of <strong>8</strong> terminals (38%). Not supported by: <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a>, <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>.</p>",
+    "analysis": "<p>Supported by <strong>3</strong> of <strong>9</strong> terminals (33%). Part of the <strong>Core TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Tab stop manipulation not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -993,7 +1168,7 @@
     "changes": null
   },
   "reset/decaln-screen-alignment": {
-    "analysis": "<p>Supported by <strong>6</strong> of <strong>8</strong> terminals (75%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: <a href=\"/reset\" class=\"hover-link\" title=\"DEC Screen Alignment Test\">DECALN</a> not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: <a href=\"/reset\" class=\"hover-link\" title=\"DEC Screen Alignment Test\">DECALN</a> not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> baseline emulator.</p>",
+    "analysis": "<p>Supported by <strong>7</strong> of <strong>9</strong> terminals (78%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: <a href=\"/reset\" class=\"hover-link\" title=\"DEC Screen Alignment Test\">DECALN</a> not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: <a href=\"/reset\" class=\"hover-link\" title=\"DEC Screen Alignment Test\">DECALN</a> not implemented in <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> baseline emulator.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -1062,6 +1237,41 @@
     "date": "2026-04-06",
     "changes": null
   },
+  "device/xtwinops-14-window-size-pixels": {
+    "analysis": "<p>Supported by <strong>7</strong> of <strong>9</strong> terminals (78%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: <a href=\"/xterm-extensions\" class=\"hover-link\" title=\"Xterm Window Operations\">XTWINOPS</a> window pixel-size report not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: <a href=\"/xterm-extensions\" class=\"hover-link\" title=\"Xterm Window Operations\">XTWINOPS</a> not implemented — post-dates <a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "device/xtwinops-16-cell-size-pixels": {
+    "analysis": "<p>Supported by <strong>4</strong> of <strong>9</strong> terminals (44%). Not supported by: <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, <a href=\"/terminals/iterm2\" class=\"hover-link\">iTerm2</a>, <a href=\"/terminals/terminal-app\" class=\"hover-link\">Terminal.app</a>, <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>: Window operations not exposed via Python batch bridge; <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: <a href=\"/xterm-extensions\" class=\"hover-link\" title=\"Xterm Window Operations\">XTWINOPS</a> cell pixel-size report not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: <a href=\"/xterm-extensions\" class=\"hover-link\" title=\"Xterm Window Operations\">XTWINOPS</a> not implemented — post-dates <a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "device/xtwinops-18-text-area-chars": {
+    "analysis": "<p>Supported by <strong>7</strong> of <strong>9</strong> terminals (78%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. Notes: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>: <a href=\"/xterm-extensions\" class=\"hover-link\" title=\"Xterm Window Operations\">XTWINOPS</a> text area size report not implemented in <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: <a href=\"/xterm-extensions\" class=\"hover-link\" title=\"Xterm Window Operations\">XTWINOPS</a> not implemented — post-dates <a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "device/xtwinops-20-icon-label": {
+    "analysis": "<p>Supported by <strong>3</strong> of <strong>9</strong> terminals (33%). Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "device/xtwinops-21-window-title": {
+    "analysis": "<p>Supported by <strong>3</strong> of <strong>9</strong> terminals (33%). Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "device/xtwinops-22-push-title": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: Title stack not implemented by alacritty.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "device/xtwinops-23-pop-title": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: Title stack not implemented by alacritty.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
   "extensions/osc1337-cellsize": {
     "analysis": "<p>Supported by <strong>1</strong> of <strong>12</strong> terminals (8%). Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
@@ -1094,6 +1304,36 @@
   },
   "modes/mode-2031-color-scheme": {
     "analysis": "<p>Supported by <strong>4</strong> of <strong>12</strong> terminals (33%). Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/xtpushsgr-push-sgr": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: SGR stack not implemented by alacritty.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/xtpopsgr-pop-sgr": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: SGR stack not implemented by alacritty.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/xtsave-save-dec-modes": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: XTSAVE private mode save not implemented by alacritty.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/xtrestore-restore-dec-modes": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: XTRESTORE private mode restore not implemented by alacritty.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/xtpushcolors-push-palette": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: Color palette stack not implemented by alacritty.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "modes/xtpopcolors-pop-palette": {
+    "analysis": "<p>Supported by <strong>8</strong> of <strong>9</strong> terminals (89%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>. Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>: Color palette stack not implemented by alacritty.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -1153,92 +1393,167 @@
     "changes": null
   },
   "extensions/osc52-clipboard-read": {
-    "analysis": "<p>Supported by <strong>6</strong> of <strong>12</strong> terminals (50%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>: <a href=\"/extensions/osc52-clipboard-read\" class=\"hover-link\">OSC 52 clipboard read</a> not exposed via Python batch bridge; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator.</p>",
+    "analysis": "<p>Supported by <strong>6</strong> of <strong>12</strong> terminals (50%). Part of the <strong>Rich TUI</strong> baseline. Notes: <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>: <a href=\"/extensions/osc52-clipboard-read\" class=\"hover-link\">OSC 52 clipboard read</a> not exposed via Python batch bridge; <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>: Not implemented — pure TypeScript emulator; <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>: <a href=\"/extensions/osc52-clipboard-read\" class=\"hover-link\">OSC 52 clipboard read</a> not implemented in <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-1-icon-name": {
-    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 9</strong> tested terminals — universal adoption. Part of the <strong>Core TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-4-color-palette": {
-    "analysis": "<p>Supported by <strong>3</strong> of <strong>8</strong> terminals (38%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>4</strong> of <strong>9</strong> terminals (44%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-5-special-color": {
-    "analysis": "<p>Supported by <strong>1</strong> of <strong>8</strong> terminals (13%). Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>2</strong> of <strong>9</strong> terminals (22%). Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-12-cursor-color": {
-    "analysis": "<p>Supported by <strong>3</strong> of <strong>8</strong> terminals (38%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>4</strong> of <strong>9</strong> terminals (44%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-104-reset-palette": {
-    "analysis": "<p>Supported by <strong>3</strong> of <strong>8</strong> terminals (38%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>4</strong> of <strong>9</strong> terminals (44%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-110-reset-fg": {
-    "analysis": "<p>Supported by <strong>4</strong> of <strong>8</strong> terminals (50%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>5</strong> of <strong>9</strong> terminals (56%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-111-reset-bg": {
-    "analysis": "<p>Supported by <strong>4</strong> of <strong>8</strong> terminals (50%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>5</strong> of <strong>9</strong> terminals (56%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-112-reset-cursor": {
-    "analysis": "<p>Supported by <strong>3</strong> of <strong>8</strong> terminals (38%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>4</strong> of <strong>9</strong> terminals (44%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-117-reset-highlight-bg": {
-    "analysis": "<p>Supported by <strong>all 3</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-119-reset-highlight-fg": {
-    "analysis": "<p>Supported by <strong>all 3</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-17-highlight-bg": {
-    "analysis": "<p>Supported by <strong>2</strong> of <strong>8</strong> terminals (25%). Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>3</strong> of <strong>9</strong> terminals (33%). Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-19-highlight-fg": {
-    "analysis": "<p>Supported by <strong>2</strong> of <strong>8</strong> terminals (25%). Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>3</strong> of <strong>9</strong> terminals (33%). Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-22-pointer-shape": {
-    "analysis": "<p>Supported by <strong>all 3</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-99-kitty-notify": {
-    "analysis": "<p>Supported by <strong>all 3</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-777-notify": {
-    "analysis": "<p>Supported by <strong>all 3</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-666-termprop": {
-    "analysis": "<p>Supported by <strong>all 3</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "extensions/osc-3008-systemd-context": {
-    "analysis": "<p>Supported by <strong>all 3</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-113-reset-pointer-fg": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-114-reset-pointer-bg": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-21-kitty-color": {
+    "analysis": "<p>Supported by <strong>4</strong> of <strong>9</strong> terminals (44%). Not supported by: <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-30001-color-stack-push": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-30101-color-stack-pop": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-176-app-id": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-555-flash": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-440-audio": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-7770-font-size": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-7777-font-window-size": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-701-locale": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-702-version": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-710-font-normal": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-720-scroll-up": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "date": "2026-04-06",
+    "changes": null
+  },
+  "extensions/osc-776-cell-size": {
+    "analysis": "<p>Supported by <strong>all 4</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
     "date": "2026-04-06",
     "changes": null
   },
@@ -1273,12 +1588,12 @@
     "changes": null
   },
   "standards-index": {
-    "analysis": "<p>Terminfo.dev tracks <strong>13</strong> terminal standards, from <a href=\"/ecma-48\" class=\"hover-link\" title=\"European Computer Manufacturers Association standard 48\">ECMA-48</a> (1976) to <a href=\"/kitty-extensions\" class=\"hover-link\">Kitty Extensions</a> (2017). Highest average adoption: <strong><a href=\"/conemu\" class=\"hover-link\">ConEmu Extensions</a></strong> at 100%. Lowest: <strong><a href=\"/iterm2\" class=\"hover-link\">iTerm2 Extensions</a></strong> at 11%. <strong>1</strong> of 12 terminals achieve 100% <a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a> compliance.</p>",
+    "analysis": "<p>Terminfo.dev tracks <strong>13</strong> terminal standards, from <a href=\"/ecma-48\" class=\"hover-link\" title=\"European Computer Manufacturers Association standard 48\">ECMA-48</a> (1976) to <a href=\"/kitty-extensions\" class=\"hover-link\">Kitty Extensions</a> (2017). Highest average adoption: <strong><a href=\"/conemu\" class=\"hover-link\">ConEmu Extensions</a></strong> at 100%. Lowest: <strong><a href=\"/iterm2\" class=\"hover-link\">iTerm2 Extensions</a></strong> at 11%.</p>",
     "date": "2026-04-06",
     "changes": null
   },
   "features-index": {
-    "analysis": "<p>The <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix covers <strong>189</strong> features across <strong>13</strong> categories. Best-supported category: <strong><a href=\"/charsets\" class=\"hover-link\">Character Sets</a></strong> (100% average). Most challenging: <strong><a href=\"/extensions\" class=\"hover-link\">Extensions</a></strong> (61%). <strong>81</strong> features are universally supported by all tested terminals. <strong>1</strong> feature has zero support across all tested terminals.</p>",
+    "analysis": "<p>The <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix covers <strong>263</strong> features across <strong>13</strong> categories. Best-supported category: <strong><a href=\"/charsets\" class=\"hover-link\">Character Sets</a></strong> (100% average). Most challenging: <strong><a href=\"/device\" class=\"hover-link\">Device Status</a></strong> (64%). <strong>133</strong> features are universally supported by all tested terminals. <strong>1</strong> feature has zero support across all tested terminals.</p>",
     "date": "2026-04-06",
     "changes": null
   }
