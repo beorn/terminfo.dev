@@ -22,7 +22,9 @@
     "explore": "bun scripts/explore.ts",
     "radar": "bun scripts/radar.ts",
     "candidates": "bun scripts/candidates.ts",
-    "update": "bun scripts/update.ts"
+    "update": "bun scripts/update.ts",
+    "sync-probe-status": "bun scripts/sync-probe-status.ts",
+    "watch-releases": "bun scripts/watch-releases.ts"
   },
   "dependencies": {
     "@silvery/ansi": "^0.3.0",
