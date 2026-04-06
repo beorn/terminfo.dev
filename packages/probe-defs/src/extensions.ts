@@ -1268,4 +1268,34 @@ export const extensionsProbes: ProbeDefinition[] = [
       return { pass, note: pass ? `DA1 attrs: ${match[1]}` : `DA1 attrs: ${match[1]} (no sixel)` }
     },
   ),
+
+  // Sixel geometry report — CSI ? Pi ; Pa ; Pv S → CSI ? Pi ; ... S
+  // Added in xterm patch 402 (2025-06-22). xterm-only as of 2026.
+  // Partial probe verifies the sequence is consumed without leaking literal characters.
+  probe(
+    "extensions.sixel-geometry-report",
+    (ctx) => {
+      // Read color register count: Pi=1, Pa=1 (read), Pv=0
+      const response = ctx.feedCapture("\x1b[?1;1;0S")
+      if (/\x1b\[\?1;[0-9;]+S/.test(response)) {
+        return { pass: true, response, note: "Sixel geometry response received" }
+      }
+      // Verify sequence consumed (not printed literally) and terminal responsive
+      const probeResponse = ctx.feedCapture("\x1b[c")
+      return {
+        pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("?1;1;0S"),
+        note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
+          ? "Sequence consumed; terminal responsive (no sixel geometry response)"
+          : "Terminal unresponsive after CSI ? 1 ; 1 ; 0 S",
+      }
+    },
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel("\x1b[?1;1;0S", /\x1b\[\?1;([0-9;]+)S/, 1000)
+      if (match) return { pass: true, response: match[0], note: `geometry: ${match[1]}` }
+      // Verify the sequence didn't break the terminal — DSR should still respond.
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No response after sixel geometry query" }
+      return { pass: false, note: "Sequence consumed but no sixel geometry response" }
+    },
+  ),
 ]

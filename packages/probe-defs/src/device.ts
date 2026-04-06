@@ -281,4 +281,64 @@ export const deviceProbes: ProbeDefinition[] = [
       return { pass: true, note: "Sequence consumed; terminal responsive" }
     },
   ),
+
+  // XTREPORTCOLORS — report color/graphics capabilities: CSI # R → CSI Pm # Q
+  // Added in xterm patch 400; updated in patches 401/402 (2025).
+  // xterm-only as of 2026 — partial probe verifies the sequence doesn't leak.
+  probe(
+    "device.xtreportcolors",
+    (ctx) => {
+      // If a backend implements XTREPORTCOLORS, the response matches CSI Pm # Q.
+      // Otherwise verify the query is consumed (not printed literally).
+      const response = ctx.feedCapture("\x1b[#R")
+      if (/\x1b\[[0-9;]*#Q/.test(response)) {
+        return { pass: true, response, note: "XTREPORTCOLORS response received" }
+      }
+      const probeResponse = ctx.feedCapture("\x1b[c")
+      return {
+        pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("#R"),
+        note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
+          ? "Sequence consumed; terminal responsive (no XTREPORTCOLORS response)"
+          : "Terminal unresponsive after CSI # R",
+      }
+    },
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel("\x1b[#R", /\x1b\[([0-9;]*)#Q/, 1000)
+      if (match) return { pass: true, response: match[0], note: `Pm=${match[1]}` }
+      // Verify the sequence didn't break the terminal — DSR should still respond.
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No response after CSI # R" }
+      return { pass: false, note: "Sequence consumed but no XTREPORTCOLORS response" }
+    },
+  ),
+
+  // XTGETXRES — query xterm resource value: DCS + Q Pt ST → DCS response
+  // Added in xterm; documented in patches 401/402 (2025).
+  // xterm-only as of 2026 — partial probe verifies the sequence doesn't leak.
+  probe(
+    "device.xtgetxres",
+    (ctx) => {
+      // Hex-encoded "xterm" = 7874657271. Send DCS + Q 7874657271 ST.
+      const query = "\x1bP+Q7874657271\x1b\\"
+      const response = ctx.feedCapture(query)
+      if (/\x1bP[01]\+R/.test(response)) {
+        return { pass: true, response, note: "XTGETXRES response received" }
+      }
+      const probeResponse = ctx.feedCapture("\x1b[c")
+      return {
+        pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("+Q"),
+        note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
+          ? "Sequence consumed; terminal responsive (no XTGETXRES response)"
+          : "Terminal unresponsive after DCS + Q",
+      }
+    },
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel("\x1bP+Q7874657271\x1b\\", /\x1bP([01])\+R/)
+      if (match) return { pass: true, response: match[0], note: `XTGETXRES status=${match[1]}` }
+      // Verify the sequence didn't break the terminal — DSR should still respond.
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) return { pass: false, note: "No response after XTGETXRES" }
+      return { pass: false, note: "Sequence consumed but no XTGETXRES response" }
+    },
+  ),
 ]

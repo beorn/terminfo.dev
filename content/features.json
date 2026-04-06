@@ -2427,6 +2427,32 @@
     "probeStatus": "partial",
     "sequence": "ESC [ 23 ; 0 t"
   },
+  "device.xtreportcolors": {
+    "name": "XTREPORTCOLORS — report color capabilities (CSI # R)",
+    "slug": "xtreportcolors",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "sequence": "CSI # R",
+    "body": "XTREPORTCOLORS queries xterm's color and graphics capabilities. The sequence is <code>CSI # R</code>, and the response is <code>CSI Pm # Q</code> where Pm describes the color change support level and graphics capabilities. The response values include: 0=dynamic color change allowed, 1=not allowed, 2=direct-color control, 3=color register control only, 4-5=sixel support, 6=sixel scrolling support, 8-9=ReGIS graphics support, 10=selected graphics read/write support. After the first Pm, the response may include color register count and sixel geometry. Added in xterm patch 400 and updated in patch 401 (2025) to report sixel scrolling support.\n\nSupport: xterm only as of 2026. Proposed as a unified capability query to replace the patchwork of individual feature queries.",
+    "probe": "Send <code>CSI # R</code>, verify response matches <code>CSI Pm # Q</code> pattern.",
+    "probeStatus": "partial"
+  },
+  "device.xtgetxres": {
+    "name": "XTGETXRES — query resource value (DCS + Q)",
+    "slug": "xtgetxres",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": [
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "sequence": "DCS + Q Pt ST",
+    "body": "XTGETXRES queries xterm's configuration resources at runtime. The sequence is <code>DCS + Q Pt ST</code> where Pt is a hex-encoded resource name. Common queries include <code>disallowedWindowOps</code>, <code>disallowedColorOps</code>, and <code>disallowedPasteControls</code> — letting applications discover which xterm operations are restricted in the current configuration. Updated in patches 401/402 (2025) to document new resources like disallowedColorOps and sixelScrolling.\n\nSupport: xterm only. Similar in spirit to XTGETTCAP but queries xterm resources rather than terminfo capabilities.",
+    "probe": "Send XTGETXRES query for 'xterm' (hex: 7874657271), verify a DCS response arrives.",
+    "probeStatus": "partial"
+  },
   "device.env-term": {
     "name": "TERM env variable",
     "slug": "env-term",
@@ -2556,6 +2582,20 @@
     "body": "DA1 (Primary Device Attributes) response includes attribute 4, indicating sixel graphics support. This is the standard way for applications to detect sixel capability — send CSI c, check if the response contains ;4; in the attribute list. More reliable than attempting to render a sixel image and checking if the cursor moved.",
     "probe": "Check if the DA1 response (<code>CSI ? Ps ; Ps ; ... c</code>) includes attribute 4, indicating sixel graphics support.",
     "baseline": "rich"
+  },
+  "extensions.sixel-geometry-report": {
+    "name": "Sixel geometry report (CSI ? Pi;Pa;Pv S)",
+    "slug": "sixel-geometry-report",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": [
+      "sixel",
+      "xterm-extensions"
+    ],
+    "baseline": "rich",
+    "sequence": "CSI ? Pi ; Pa ; Pv S",
+    "body": "Queries xterm for sixel graphics geometry. Added in xterm patch 402 (2025-06-22). The Pi parameter specifies the item being queried (color registers, geometry, etc.), Pa is the action (read/reset/set), and Pv is the value. The response reports current sixel capability values so applications can size sixel images to match the terminal's maximum supported dimensions.\n\nSupport: xterm only as of 2026. Mentioned in xterm ChangeLog patch 402.",
+    "probe": "Send <code>CSI ? 1 ; 1 ; 0 S</code> (read color register count), verify response matches <code>CSI ? 1 ; ... S</code>.",
+    "probeStatus": "partial"
   },
   "extensions.osc9-progress": {
     "name": "OSC 9;4 progress bar",
