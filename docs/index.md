@@ -271,7 +271,7 @@ function backendTooltip(name, version) {
 
 ## Terminal Baseline 2026 {#baselines}
 
-<p class="section-subtitle">Inspired by <a href="https://web.dev/baseline">Web Baseline</a> — minimum feature sets that terminals should support</p>
+<p class="section-subtitle">Inspired by <a href="https://web.dev/baseline">Web Baseline</a> — minimum feature sets that terminals should support. For the weird and wonderful history of protocols that didn't make the cut, see the <a href="/baseline/legacy">Legacy baseline</a>.</p>
 
 <div class="baseline-grid">
   <a v-for="bl in ['core', 'modern', 'rich', 'unicode']" :key="bl" class="baseline-card baseline-card-link" :href="'/baseline/' + bl">
