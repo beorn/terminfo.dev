@@ -29,6 +29,16 @@
     "forDevelopers": "Rich features enable experiences that were previously impossible in terminals — clickable links, inline images, precise keyboard input. Use feature detection (via DA1 responses or DECRPM queries) and degrade gracefully when unavailable.",
     "forTerminalAuthors": "Rich compliance differentiates your terminal. The Kitty keyboard protocol is the most impactful single feature — it solves decades of terminal input ambiguity. Ghostty, Kitty, WezTerm, and foot lead here."
   },
+  "legacy": {
+    "label": "Legacy",
+    "emoji": "🟤",
+    "color": "#a16207",
+    "order": 4,
+    "tagline": "Protocol archaeology",
+    "description": "Features from historical terminal specs (DEC VT340/420, ReGIS, Tektronix) or superseded extensions (DEC locator before mouse tracking, rxvt-only sequences, urxvt Perl extensions). These are standards-defined and some terminals still implement them, but they are effectively unused in modern applications. This baseline exists for completeness, terminal archaeology, and compatibility testing against historical software.",
+    "forDevelopers": "Don't use these in new applications. They're documented here for completeness, historical reference, and debugging compatibility with ancient software. Legacy features will always remain a minority of what any modern terminal implements.",
+    "forTerminalAuthors": "Implementing Legacy features is purely for compatibility with old software or niche use cases — DEC terminal preservation, academic projects, historical terminal emulators, or corner-case software that still depends on VT420-era sequences. Most modern terminals intentionally skip most of this baseline."
+  },
   "unicode": {
     "label": "Unicode",
     "emoji": "🌐",
