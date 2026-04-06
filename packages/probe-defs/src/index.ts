@@ -26,6 +26,10 @@ import { charsetsProbes } from "./charsets.ts"
 import { unicodeProbes } from "./unicode.ts"
 
 export const ALL_PROBES = [
+  // Extensions first — OSC 52 clipboard probes may trigger permission dialogs
+  // (e.g. Kitty). Running them early gives the user time to click "Accept"
+  // while the remaining probes execute.
+  ...extensionsProbes,
   ...sgrProbes,
   ...cursorProbes,
   ...textProbes,
@@ -33,7 +37,6 @@ export const ALL_PROBES = [
   ...editingProbes,
   ...modesProbes,
   ...deviceProbes,
-  ...extensionsProbes,
   ...inputProbes,
   ...resetProbes,
   ...scrollbackProbes,

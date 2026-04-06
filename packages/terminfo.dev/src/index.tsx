@@ -82,7 +82,7 @@ async function runProbes(): Promise<ProbeResults> {
         notes[probe.id] = `error: ${err instanceof Error ? err.message : String(err)}`
       }
     }
-    await drainStdin(1000)
+    await drainStdin(100)
   })
 
   // Restore terminal state completely
@@ -146,15 +146,36 @@ async function checkTerminalStatus(
  * Returns true if user chose yes, false otherwise.
  */
 async function askYesNo(question: string): Promise<boolean> {
-  const { createInterface } = await import("node:readline")
-  return new Promise<boolean>((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(`  ${question} `, (answer) => {
-      rl.close()
-      const ans = answer.trim().toLowerCase()
-      if (ans === "")
-        resolve(true) // default yes
-      else resolve(ans === "y" || ans === "yes")
+  // Print the prompt ourselves so the user sees it during the drain wait
+  process.stdout.write(`  ${question} `)
+
+  // Drain late-arriving escape sequences in raw mode (e.g. OSC 52 from Kitty
+  // after user clicks through a clipboard permission dialog). The drain loop
+  // discards all bytes that arrive within the quiet window, then we read the
+  // actual user keypress (y/n/Enter) while still in raw mode.
+  return withRawMode(async () => {
+    await drainStdin(100)
+
+    // Read a single keypress
+    return new Promise<boolean>((resolve) => {
+      function onData(chunk: Buffer) {
+        process.stdin.off("data", onData)
+
+        const ch = chunk.toString()
+        // Ignore escape sequences — wait for a real keypress
+        if (ch.startsWith("\x1b")) {
+          process.stdin.on("data", onData)
+          return
+        }
+
+        const key = ch.trim().toLowerCase()
+        // Enter, y, Y → yes; n, N → no
+        const yes = key === "" || key === "y"
+        process.stdout.write(yes ? "Y\n" : "n\n")
+        resolve(yes)
+      }
+
+      process.stdin.on("data", onData)
     })
   })
 }
@@ -208,7 +229,7 @@ program
   .option("--all", "Test all running daemons")
   .action(async (daemon: string | undefined, opts) => {
     // --serve: start daemon mode
-    if (opts.listen) {
+    if (opts.serve) {
       const { startDaemon } = await import("./serve.ts")
       await startDaemon(opts.port ?? 0)
       return
