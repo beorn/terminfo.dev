@@ -119,8 +119,7 @@ export const editingProbes: ProbeDefinition[] = [
       ctx.feed("\x1b[88;1;1;3;5$x")
       // Pass if at least one cell in the target rectangle is 'X'.
       // Otherwise, verify nothing literal leaked into the cells.
-      const filled =
-        ctx.getCell(0, 0).char === "X" || ctx.getCell(1, 0).char === "X" || ctx.getCell(2, 0).char === "X"
+      const filled = ctx.getCell(0, 0).char === "X" || ctx.getCell(1, 0).char === "X" || ctx.getCell(2, 0).char === "X"
       const c0 = ctx.getCell(0, 0).char
       const noLeak = isBlank(c0) || c0 === "X"
       return {
@@ -291,6 +290,125 @@ export const editingProbes: ProbeDefinition[] = [
     async (ctx) => {
       ctx.write("\x1b[1;1H")
       ctx.write("\x1b[1;1;1;1;1;1*y") // DECRQCRA
+      const pos = await ctx.queryCursorPosition()
+      return {
+        pass: pos !== null,
+        note: pos ? "sequence consumed" : "no cursor response",
+      }
+    },
+  ),
+
+  // Column editing operations. SL/SR (ECMA-48) and DECIC/DECDC (VT420)
+  // horizontally shift or insert/delete columns. Most headless backends don't
+  // implement them — probeStatus is "partial" and we only verify the sequence
+  // is consumed without leaking literal characters.
+
+  // SL — Shift Left (CSI Ps SP @). Note literal space before @.
+  // If the parser doesn't recognize the intermediate-space form, the sequence
+  // collapses to ICH (Ps @) and the literal " @" pair gets printed afterward.
+  probe(
+    "editing.sl",
+    (ctx) => {
+      // Use distinctive markers (digits) so we can detect literal " @" leakage
+      // without confusing it with normal blank cells produced by a real shift.
+      ctx.feed("\x1b[1;1H\x1b[2K1234567")
+      ctx.feed("\x1b[2 @") // SL 2 — note literal space before @
+      const text = ctx.getText()
+      // If the sequence wasn't parsed, the literal " @" pair shows up on the row.
+      const noLeak = !text.includes("@")
+      return {
+        pass: noLeak,
+        note: noLeak ? "sequence consumed" : "literal '@' leaked into output",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("1234567")
+      ctx.write("\x1b[2 @") // SL 2
+      const pos = await ctx.queryCursorPosition()
+      return {
+        pass: pos !== null,
+        note: pos ? "sequence consumed" : "no cursor response",
+      }
+    },
+  ),
+
+  // SR — Shift Right (CSI Ps SP A). Note literal space before A.
+  // If the parser doesn't recognize the intermediate-space form, it collapses
+  // to CUU (Ps A) — moving the cursor up — and the literal " A" gets printed.
+  probe(
+    "editing.sr",
+    (ctx) => {
+      ctx.feed("\x1b[1;1H\x1b[2K1234567")
+      ctx.feed("\x1b[2 A") // SR 2 — note literal space before A
+      // If the parser collapsed to CUU and printed " A" literally,
+      // there will be an "A" character somewhere on row 0.
+      const cells: string[] = []
+      for (let c = 0; c < 80; c++) cells.push(ctx.getCell(0, c).char)
+      const noLeak = !cells.includes("A")
+      return {
+        pass: noLeak,
+        note: noLeak ? "sequence consumed" : "literal 'A' leaked into output",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("1234567")
+      ctx.write("\x1b[2 A") // SR 2
+      const pos = await ctx.queryCursorPosition()
+      return {
+        pass: pos !== null,
+        note: pos ? "sequence consumed" : "no cursor response",
+      }
+    },
+  ),
+
+  // DECIC — DEC Insert Column (CSI Ps ' }). Apostrophe intermediate before }.
+  probe(
+    "editing.decic",
+    (ctx) => {
+      ctx.feed("\x1b[1;1H\x1b[2K1234567")
+      ctx.feed("\x1b[3;3H")
+      ctx.feed("\x1b[2'}") // DECIC 2
+      const text = ctx.getText()
+      // If the parser didn't recognize the intermediate-apostrophe form,
+      // the literal "}" gets printed somewhere.
+      const noLeak = !text.includes("}")
+      return {
+        pass: noLeak,
+        note: noLeak ? "sequence consumed" : "literal '}' leaked into output",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[3;3H")
+      ctx.write("\x1b[2'}") // DECIC 2
+      const pos = await ctx.queryCursorPosition()
+      return {
+        pass: pos !== null,
+        note: pos ? "sequence consumed" : "no cursor response",
+      }
+    },
+  ),
+
+  // DECDC — DEC Delete Column (CSI Ps ' ~). Apostrophe intermediate before ~.
+  probe(
+    "editing.decdc",
+    (ctx) => {
+      ctx.feed("\x1b[1;1H\x1b[2K1234567")
+      ctx.feed("\x1b[3;3H")
+      ctx.feed("\x1b[2'~") // DECDC 2
+      const text = ctx.getText()
+      // If the parser didn't recognize the intermediate-apostrophe form,
+      // the literal "~" gets printed somewhere.
+      const noLeak = !text.includes("~")
+      return {
+        pass: noLeak,
+        note: noLeak ? "sequence consumed" : "literal '~' leaked into output",
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[3;3H")
+      ctx.write("\x1b[2'~") // DECDC 2
       const pos = await ctx.queryCursorPosition()
       return {
         pass: pos !== null,
