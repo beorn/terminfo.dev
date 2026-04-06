@@ -1663,6 +1663,97 @@
     "probe": "Check whether the TERM_FEATURES environment variable is set in the terminal session.",
     "probeStatus": "partial"
   },
+  "device.env-term": {
+    "name": "TERM env variable",
+    "slug": "env-term",
+    "tags": [],
+    "baseline": "core",
+    "sequence": "$TERM (environment variable)",
+    "body": "The <code>TERM</code> environment variable identifies the terminal type for terminfo/termcap lookup. It is set by the terminal emulator at startup and is the oldest and most widely supported mechanism for terminal self-identification. Applications use <code>TERM</code> to load capability databases and decide which escape sequences are safe to emit.\n\nCommon values include <code>xterm-256color</code>, <code>screen-256color</code>, <code>tmux-256color</code>, <code>xterm-kitty</code>, <code>wezterm</code>, <code>foot</code>, and <code>ghostty</code>. Some terminals expose a custom value to enable terminfo entries that describe their extensions; others choose a generic value like <code>xterm-256color</code> to maximize compatibility with software that only ships with a small terminfo database.",
+    "probe": "Manual verification required — no automated probe available.",
+    "probeStatus": "manual"
+  },
+  "device.env-colorterm": {
+    "name": "COLORTERM env variable",
+    "slug": "env-colorterm",
+    "tags": [],
+    "baseline": "modern",
+    "sequence": "$COLORTERM",
+    "body": "The <code>COLORTERM</code> environment variable indicates that the terminal supports truecolor (24-bit) output beyond what <code>TERM</code> implies. The de facto standard values are <code>truecolor</code> and <code>24bit</code>; either signals that applications can safely emit SGR 38;2;R;G;B and SGR 48;2;R;G;B sequences.\n\nBecause <code>TERM</code> values rarely encode truecolor capability accurately and terminfo's <code>RGB</code> capability is unevenly populated, <code>COLORTERM</code> has become the most reliable runtime hint for truecolor support. Most modern terminals — kitty, WezTerm, Ghostty, foot, iTerm2, Alacritty, Windows Terminal — set it automatically.",
+    "probe": "Manual verification required — no automated probe available.",
+    "probeStatus": "manual"
+  },
+  "device.env-term-program": {
+    "name": "TERM_PROGRAM env variable",
+    "slug": "env-term-program",
+    "tags": [],
+    "baseline": "modern",
+    "sequence": "$TERM_PROGRAM",
+    "body": "The <code>TERM_PROGRAM</code> environment variable identifies the specific terminal emulator running the session, independent of the more generic <code>TERM</code> value. Common values include <code>iTerm.app</code>, <code>Apple_Terminal</code>, <code>WezTerm</code>, <code>vscode</code>, <code>ghostty</code>, and <code>Hyper</code>.\n\nA companion variable, <code>TERM_PROGRAM_VERSION</code>, reports the emulator's version string and lets applications gate features on minimum versions. The pair was popularized by Apple Terminal and iTerm2 and is now widely set by macOS-friendly terminals as well as several cross-platform emulators.",
+    "probe": "Manual verification required — no automated probe available.",
+    "probeStatus": "manual"
+  },
+  "device.env-lc-terminal": {
+    "name": "LC_TERMINAL env variable",
+    "slug": "env-lc-terminal",
+    "tags": ["iterm2"],
+    "baseline": "rich",
+    "sequence": "$LC_TERMINAL",
+    "body": "The <code>LC_TERMINAL</code> environment variable was introduced by iTerm2 as a way to identify the terminal across SSH sessions. Because <code>LC_*</code> variables are forwarded by default in OpenSSH's <code>SendEnv</code> configuration, <code>LC_TERMINAL</code> survives the hop from local shell into a remote host where <code>TERM_PROGRAM</code> would otherwise be lost.\n\niTerm2 sets <code>LC_TERMINAL=iTerm2</code> and <code>LC_TERMINAL_VERSION</code> to the build number. Other terminals occasionally adopt the convention to advertise themselves through SSH in the same way.",
+    "probe": "Manual verification required — no automated probe available.",
+    "probeStatus": "manual"
+  },
+  "device.env-vte-version": {
+    "name": "VTE_VERSION env variable",
+    "slug": "env-vte-version",
+    "tags": [],
+    "baseline": "modern",
+    "sequence": "$VTE_VERSION",
+    "body": "The <code>VTE_VERSION</code> environment variable is set by terminals built on the VTE widget library — GNOME Terminal, Tilix, Terminator, Xfce Terminal, Guake, and others. Its value is a packed version number such as <code>6200</code> (meaning VTE 0.62.0), letting applications detect not just that they are running inside a VTE-based terminal but also which features the underlying widget supports.\n\nShell integration scripts commonly check <code>VTE_VERSION</code> to decide whether to enable OSC 7 (working directory reporting) and other VTE-specific behaviors.",
+    "probe": "Manual verification required — no automated probe available.",
+    "probeStatus": "manual"
+  },
+  "device.env-kitty": {
+    "name": "KITTY_* env variables",
+    "slug": "env-kitty",
+    "tags": ["kitty-extensions"],
+    "baseline": "rich",
+    "sequence": "$KITTY_PID, $KITTY_WINDOW_ID, $KITTY_INSTALLATION_DIR",
+    "body": "The kitty terminal sets a family of <code>KITTY_*</code> environment variables to expose runtime information to child processes. <code>KITTY_PID</code> holds the kitty process ID, <code>KITTY_WINDOW_ID</code> identifies the OS window, and <code>KITTY_INSTALLATION_DIR</code> points at kitty's installation tree (used by kitty's shell integration to locate helper scripts).\n\nApplications can detect a kitty session by checking for any of these variables, and kitten utilities rely on them to communicate back to the parent terminal.",
+    "probe": "Manual verification required — no automated probe available.",
+    "probeStatus": "manual"
+  },
+  "device.env-wezterm": {
+    "name": "WEZTERM_* env variables",
+    "slug": "env-wezterm",
+    "tags": [],
+    "baseline": "rich",
+    "sequence": "$WEZTERM_PANE, $WEZTERM_EXECUTABLE",
+    "body": "WezTerm sets a family of <code>WEZTERM_*</code> environment variables in every spawned shell. <code>WEZTERM_PANE</code> contains the numeric pane ID, <code>WEZTERM_EXECUTABLE</code> points at the wezterm binary, and additional variables expose the config directory and unix socket used by the <code>wezterm cli</code> tool.\n\nApplications can detect a WezTerm session by checking for these variables, and the wezterm CLI uses them to target the correct pane when invoked from within the terminal.",
+    "probe": "Manual verification required — no automated probe available.",
+    "probeStatus": "manual"
+  },
+  "device.env-wt-session": {
+    "name": "WT_SESSION env variable",
+    "slug": "env-wt-session",
+    "tags": [],
+    "baseline": "rich",
+    "sequence": "$WT_SESSION",
+    "body": "The <code>WT_SESSION</code> environment variable is set by Windows Terminal to a GUID that uniquely identifies the current terminal session. A companion variable, <code>WT_PROFILE_ID</code>, identifies the Windows Terminal profile that launched the shell.\n\nApplications use <code>WT_SESSION</code> as the canonical way to detect Windows Terminal, since older versions did not set <code>TERM_PROGRAM</code> and the <code>TERM</code> value on Windows is typically inherited from the underlying console host rather than chosen by Windows Terminal itself.",
+    "probe": "Manual verification required — no automated probe available.",
+    "probeStatus": "manual"
+  },
+  "device.env-no-color": {
+    "name": "NO_COLOR env variable",
+    "slug": "env-no-color",
+    "url": "https://no-color.org",
+    "tags": [],
+    "baseline": "modern",
+    "sequence": "$NO_COLOR",
+    "body": "The <code>NO_COLOR</code> environment variable is a community standard documented at <a href=\"https://no-color.org\">no-color.org</a>. When it is set to any non-empty value, programs that emit ANSI color escapes should suppress them and produce uncolored output. The convention was proposed by Jason Stafford in 2017 and has since been adopted by more than 300 applications, libraries, and language standard libraries.\n\nUnlike the other environment variables on this page, <code>NO_COLOR</code> is set by the user (or a wrapper script) rather than the terminal — but it interacts with the same self-identification machinery, since applications often consult <code>NO_COLOR</code> alongside <code>COLORTERM</code> and <code>TERM</code> when deciding how much color to emit.",
+    "probe": "Manual verification required — no automated probe available.",
+    "probeStatus": "manual"
+  },
   "extensions.osc1337-cellsize": {
     "name": "iTerm2 Cell Size Reporting (OSC 1337)",
     "slug": "osc1337-cellsize",
