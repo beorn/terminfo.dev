@@ -18,7 +18,8 @@
     "preview": "vitepress preview docs",
     "validate": "bun scripts/validate.ts",
     "check-404s": "bun scripts/check-404s.ts",
-    "sitefile": "bun scripts/sitefile.ts"
+    "sitefile": "bun scripts/sitefile.ts",
+    "explore": "bun scripts/explore.ts"
   },
   "dependencies": {
     "@silvery/ansi": "^0.3.0",
