@@ -64,7 +64,15 @@ export default {
     // when a category ID matches a standard/tag ID (e.g. "unicode")
     const terminals = loadTerminals()
 
+    // Collect tags that collide with categories — their features will be merged
+    const allTags = getAllTags()
+    const collidingTags = new Set(allTags.filter((tag) => Object.keys(data.categories).includes(tag)))
+
     const categoryPages = Object.entries(data.categories).map(([cat, features]) => {
+      // If this category ID also matches a tag, merge tagged features from other categories
+      const taggedIds = collidingTags.has(cat) ? new Set(getFeaturesForTag(cat)) : new Set<string>()
+      const categoryFeatureIds = new Set(features.map((f) => f.id))
+
       const featureRows = features.map((f) => {
         const desc = data.featureDescriptions[f.id]
         const results: Record<string, { result: string; note: string }> = {}
@@ -85,6 +93,30 @@ export default {
         }
       })
 
+      // Add tagged features not already in the category (e.g. text.wide.* tagged "unicode")
+      for (const fid of taggedIds) {
+        if (categoryFeatureIds.has(fid)) continue
+        const desc = data.featureDescriptions[fid]
+        if (!desc) continue
+        const fcat = fid.split(".")[0]
+        const results: Record<string, { result: string; note: string }> = {}
+        for (const b of sortedBackends) {
+          const result = data.results[b.name]?.[fid] ?? "unknown"
+          const ann = data.annotations?.[`${b.name}:${fid}`]
+          const note = ann?.note ?? data.notes[b.name]?.[fid] ?? ""
+          results[b.name] = { result, note }
+        }
+        featureRows.push({
+          id: fid,
+          slug: featureSlug(fid),
+          category: fcat,
+          name: desc?.name ?? fid,
+          url: featuresMeta[fid]?.url ?? "",
+          tags: featuresMeta[fid]?.tags ?? [],
+          results,
+        })
+      }
+
       const a = allAnalysis[cat]
 
       // If this category ID also exists as a standard/tag, include body content
@@ -103,7 +135,7 @@ export default {
           body: linkifyContentExcluding(catBody, selfHrefs),
           historicalBody: linkifyContentExcluding(catHistBody, selfHrefs),
           specUrl: tagUrls[cat] ?? "",
-          featureCount: String(features.length),
+          featureCount: String(featureRows.length),
           features: JSON.stringify(featureRows),
           backends: JSON.stringify(backends),
           analysis: linkifyContentExcluding(a?.analysis ?? "", selfHrefs),
@@ -114,7 +146,8 @@ export default {
     })
 
     // --- Tag pages ---
-    const tags = getAllTags()
+    // Skip tags that collide with category IDs — those features are merged into the category page
+    const tags = allTags.filter((tag) => !collidingTags.has(tag))
     const tagPages = tags.map((tag) => {
       const featureIds = getFeaturesForTag(tag)
 
@@ -137,6 +170,17 @@ export default {
           tags: featuresMeta[fid]?.tags ?? [],
           results,
         }
+      })
+
+      // Sort features by sequence number extracted from names
+      // Matches: "Hyperlinks (OSC 8)" → 8, "OSC 52 clipboard write" → 52, "Bold (SGR 1)" → 1
+      featureRows.sort((a, b) => {
+        const numA = a.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)
+        const numB = b.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)
+        if (numA && numB) return parseInt(numA[1], 10) - parseInt(numB[1], 10)
+        if (numA) return -1
+        if (numB) return 1
+        return a.name.localeCompare(b.name)
       })
 
       const a = allAnalysis[tag]

@@ -51,13 +51,21 @@ export function loadFeaturesMeta(): Record<string, FeatureMeta> {
   return _featuresMeta!
 }
 
-/** Get all unique tags from features.json */
+/** Get all unique tags from features.json, validating against standards.json */
 export function getAllTags(): string[] {
   const meta = loadFeaturesMeta()
+  const standards = loadStandards()
+  const validTags = new Set(Object.keys(standards))
   const tags = new Set<string>()
-  for (const entry of Object.values(meta)) {
+  for (const [id, entry] of Object.entries(meta)) {
     for (const tag of entry.tags ?? []) {
       tags.add(tag)
+      if (!validTags.has(tag)) {
+        console.warn(
+          `[tags] WARNING: feature "${id}" uses unknown tag "${tag}" — ` +
+            `add it to standards.json or use an existing tag: ${[...validTags].sort().join(", ")}`,
+        )
+      }
     }
   }
   return [...tags].sort()

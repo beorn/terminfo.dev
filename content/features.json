@@ -1052,7 +1052,7 @@
   "extensions.osc-633-vscode": {
     "name": "VS Code Shell Integration (OSC 633)",
     "slug": "osc-633-vscode",
-    "tags": ["osc"],
+    "tags": ["osc", "vscode-extensions"],
     "baseline": "rich",
     "body": "<p><strong>OSC 633</strong> is VS Code's shell integration protocol, extending <a href=\"/extensions/osc-133-semantic-prompts\" class=\"hover-link\">OSC 133</a> with additional markers for command detection, output boundaries, and shell state. It enables features like command decorations (green/red markers showing success/failure), run-recent-command, and sticky scroll for terminal output.</p>\n<p>The protocol uses escape sequences to mark four boundaries: <strong>prompt start</strong> (A), <strong>command start</strong> (B), <strong>command executed</strong> (C), and <strong>command finished</strong> (D, with exit code). VS Code's built-in shell integration scripts for bash, zsh, fish, and PowerShell emit these markers automatically. The terminal then knows exactly where each prompt, command, and output block begins and ends.</p>\n<p>OSC 633 adds VS Code-specific extensions beyond OSC 133: <strong>property reporting</strong> (P;key=value) for shell state like current directory and shell type, <strong>command line reporting</strong> (E) for the exact command text, and <strong>continuation prompt marking</strong> for multi-line commands. Other terminals (Kitty, WezTerm) support the base OSC 133 protocol but not the VS Code-specific extensions.</p>",
     "probe": "Send <code>OSC 633 ; A BEL</code> (VS Code prompt start marker) and verify the terminal accepts the sequence. OSC 633 is a superset of OSC 133.",
@@ -1089,6 +1089,7 @@
   "text.basic": {
     "name": "Basic text rendering",
     "slug": "basic-text-rendering",
+    "tags": ["ecma-48", "vt100"],
     "body": "Tests whether the terminal can render plain ASCII text at the cursor position. This is the most fundamental terminal capability — writing characters to the screen.",
     "probe": "Write \"Hello\", verify the text buffer contains \"Hello\". In app mode, verify cursor advanced to column 6.",
     "baseline": "core"
@@ -1096,6 +1097,7 @@
   "text.wrap": {
     "name": "Text wraps at width",
     "slug": "wrap-at-width",
+    "tags": ["ecma-48", "vt100"],
     "body": "Tests whether text that exceeds the terminal width automatically wraps to the next line. This is controlled by DECAWM (auto-wrap mode), which is enabled by default on virtually all terminals.",
     "probe": "Write 85 characters, verify text wrapped and a character appears on row 1.",
     "baseline": "core"
@@ -1261,6 +1263,7 @@
   "text.overwrite": {
     "name": "Overwrite at cursor",
     "slug": "overwrite-at-cursor",
+    "tags": ["ecma-48", "vt100"],
     "body": "Tests whether writing a character at the cursor position overwrites the existing character at that position. This is the default behavior in replace mode (IRM off) — characters replace whatever was previously at the cursor location.",
     "probe": "Write \"AB\", move to col 1 via <code>\\x1b[1G</code>, write \"C\", verify cell (0,0) is \"C\" (overwrote \"A\").",
     "baseline": "core"
@@ -1456,7 +1459,7 @@
     "name": "OSC 9;4 progress bar",
     "slug": "osc9-progress-bar",
     "url": "https://conemu.github.io/en/AnsiEscapeCodes.html#ConEmu_specific_OSC",
-    "tags": ["conemu"],
+    "tags": ["osc", "conemu"],
     "body": "OSC 9;4 is a ConEmu-originated protocol for reporting task progress to the terminal. The sequence <code>ESC ] 9 ; 4 ; st ; pr BEL</code> sets progress state (st: 0=remove, 1=normal, 2=error, 3=indeterminate, 4=paused) and percentage (pr: 0-100). Terminals render this as a native progress indicator — typically in the tab bar, title bar, or taskbar.\n\nOriginally a ConEmu extension, it has been widely adopted: Ghostty (1.2+), iTerm2 (3.6.6+), Windows Terminal, Konsole, mintty, and WezTerm all support it. This makes it one of the most cross-terminal ways to display progress. CLI tools like curl, wget, and build systems can emit these sequences to provide native progress feedback.",
     "probe": "Send <code>OSC 9;4;1;50 BEL</code> (set 50% progress), verify the sequence is consumed (cursor doesn't advance). Clear with <code>OSC 9;4;0 BEL</code>.",
     "baseline": "rich"
@@ -1465,7 +1468,7 @@
     "name": "OSC 66 text sizing",
     "slug": "osc66-text-sizing",
     "url": "https://sw.kovidgoyal.net/kitty/text-sizing-protocol/",
-    "tags": ["kitty"],
+    "tags": ["osc", "kitty-extensions"],
     "body": "OSC 66 is the Kitty text sizing protocol, allowing applications to render text at different sizes (scale 1-7x) and explicitly specify character cell widths. The sequence <code>ESC ] 66 ; params BEL</code> controls text sizing with <code>s=N</code> for scale factor and <code>w=N</code> for explicit cell width.\n\nThis protocol addresses the fundamental character width ambiguity problem — applications can tell the terminal exactly how wide a character should be, rather than relying on potentially inconsistent wcwidth() calculations. Supported by kitty and foot, with Ghostty parsing (but not yet rendering) the sequences.",
     "probe": "Query text sizing state with <code>OSC 66;? BEL</code> and check for response. Fallback: send <code>OSC 66;s=2 BEL</code> and verify the sequence is consumed.",
     "baseline": "rich"
@@ -1474,7 +1477,7 @@
     "name": "OSC 5522 advanced clipboard",
     "slug": "osc5522-clipboard",
     "url": "https://sw.kovidgoyal.net/kitty/clipboard/",
-    "tags": ["kitty"],
+    "tags": ["osc", "kitty-extensions"],
     "body": "OSC 5522 is the Kitty advanced clipboard protocol, extending OSC 52 with MIME type support, rich content handling, and authorization tokens. When mode 5522 is enabled, bracketed paste is replaced with MIME-aware paste events that include content type metadata.\n\nUnlike OSC 52 which only handles plain text base64 data, OSC 5522 supports multiple MIME types (text/plain, text/html, image/png, etc.) in a single clipboard operation, with pre-authorization tokens for secure paste handling. Currently supported by kitty, with Ghostty parsing but not yet fully implementing the protocol.",
     "probe": "Query clipboard capabilities with <code>OSC 5522;? BEL</code> and check for response.",
     "baseline": "rich"
@@ -1483,7 +1486,7 @@
     "name": "Mode 2031 color scheme reporting",
     "slug": "mode-2031-color-scheme",
     "url": "https://contour-terminal.org/vt-extensions/color-palette-update-notifications/",
-    "tags": ["xterm-ext"],
+    "tags": ["xterm-extensions"],
     "body": "Private mode 2031 enables unsolicited notifications when the terminal's color scheme changes between dark and light. When enabled, the terminal sends <code>CSI ? 997 ; Ps n</code> (DECDSR) whenever the scheme changes, where Ps=1 for dark and Ps=2 for light.\n\nApplications can also synchronously query the current scheme via <code>CSI ? 997 n</code> (DECDSR 997). This solves a longstanding problem for TUI applications that need to adapt their color palette to the terminal's dark/light mode. Supported by iTerm2 (3.6.6+), tmux 3.6, Contour, foot, and kitty.",
     "probe": "Check DECRPM for mode 2031. Fallback: query current scheme via <code>DECDSR 997</code> and check for response.",
     "baseline": "modern"
@@ -1492,7 +1495,7 @@
     "name": "modifyOtherKeys mode 3",
     "slug": "modify-other-keys-3",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": ["xterm-ext"],
+    "tags": ["xterm-extensions"],
     "body": "xterm's modifyOtherKeys mode 3 (patch 398, April 2025) makes ALL keyboard input — including unmodified keys — send escape sequences. Mode 2 only affects modified keys (Ctrl+X, Alt+X), while mode 3 extends this to every keypress. The sequence is <code>CSI > 4 ; 3 m</code>.\n\nMode 3 also extends modifier encoding to cursor-keys, function-keys, keypad-keys, modifier-keys, and special-keys, with subparameters in XTMODKEYS for selective modifier masking. This provides applications with unambiguous key identification similar to the kitty keyboard protocol, but using xterm's native encoding.",
     "probe": "Send <code>CSI > 4 ; 3 m</code> to enable modifyOtherKeys mode 3, verify terminal is responsive, then disable with <code>CSI > 4 ; 0 m</code>.",
     "baseline": "rich"
@@ -1502,7 +1505,7 @@
     "name": "Kitty keyboard: DISAMBIGUATE (flag 1)",
     "slug": "kitty-keyboard-disambiguate",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
-    "tags": ["kitty"],
+    "tags": ["kitty-extensions"],
     "body": "Flag 1 of the Kitty keyboard protocol's progressive enhancement. When set, the terminal uses CSI u encoding for keys that would otherwise be ambiguous — e.g., Escape vs Alt, Tab vs Ctrl+I, Enter vs Ctrl+M. This is the minimum flag most applications need. Without it, decades-old terminal ambiguities persist. All terminals claiming kitty keyboard support must implement this flag.",
     "probe": "Push keyboard mode with flag 1 (<code>CSI > 1 u</code>), query flags (<code>CSI ? u</code>), verify bit 1 is set in response, then pop (<code>CSI < u</code>).",
     "baseline": "rich"
@@ -1511,7 +1514,7 @@
     "name": "Kitty keyboard: REPORT_EVENTS (flag 2)",
     "slug": "kitty-keyboard-report-events",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
-    "tags": ["kitty"],
+    "tags": ["kitty-extensions"],
     "body": "Flag 2 enables key release and repeat event reporting. Without this flag, terminals only report key press events. With it, the terminal sends event-type sub-parameters: 1=press, 2=repeat, 3=release. Essential for games, keyboard-driven UIs that need to track held keys, and applications that distinguish tap from hold.",
     "probe": "Push keyboard mode with flags 1+2 (<code>CSI > 3 u</code>), query flags, verify bit 2 is set.",
     "baseline": "rich"
@@ -1520,7 +1523,7 @@
     "name": "Kitty keyboard: REPORT_ALTERNATE (flag 4)",
     "slug": "kitty-keyboard-report-alternate",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
-    "tags": ["kitty"],
+    "tags": ["kitty-extensions"],
     "body": "Flag 4 reports alternate key representations. When set, the terminal includes a shifted_key sub-parameter showing what key the user intended (e.g., Shift+1 reports both '1' and '!'). Without this flag, applications receive only the base key and must guess the shifted result based on keyboard layout — which varies by locale.",
     "probe": "Push keyboard mode with flags 1+4 (<code>CSI > 5 u</code>), query flags, verify bit 4 is set.",
     "baseline": "rich"
@@ -1529,7 +1532,7 @@
     "name": "Kitty keyboard: REPORT_ALL_KEYS (flag 8)",
     "slug": "kitty-keyboard-report-all-keys",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
-    "tags": ["kitty"],
+    "tags": ["kitty-extensions"],
     "body": "Flag 8 makes ALL keypresses generate escape sequences, including unmodified printable characters that would normally be sent as plain text. This gives applications complete, unambiguous key identification but changes fundamental terminal behavior — plain typing no longer produces direct output. Applications must explicitly handle every key. Known gotcha: enabling this flag can break mouse hover/tracking in some implementations if not handled carefully.",
     "probe": "Push keyboard mode with flags 1+8 (<code>CSI > 9 u</code>), query flags, verify bit 8 is set.",
     "baseline": "rich"
@@ -1538,7 +1541,7 @@
     "name": "Kitty keyboard: REPORT_TEXT (flag 16)",
     "slug": "kitty-keyboard-report-text",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
-    "tags": ["kitty"],
+    "tags": ["kitty-extensions"],
     "body": "Flag 16 adds associated text codepoints to key events. When a key press would produce text (after input method processing, dead keys, compose sequences), the terminal includes the resulting text as an additional parameter. This is critical for international input — compose sequences, CJK input methods, and dead key combinations produce text that can't be derived from the key code alone.",
     "probe": "Push keyboard mode with flags 1+16 (<code>CSI > 17 u</code>), query flags, verify bit 16 is set.",
     "baseline": "rich"
@@ -1548,7 +1551,7 @@
     "name": "Kitty graphics: transmit",
     "slug": "kitty-graphics-transmit",
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#transmitting-data",
-    "tags": ["kitty"],
+    "tags": ["kitty-extensions"],
     "body": "The transmit action (<code>a=t</code>) sends image data to the terminal for storage without displaying it. The terminal assigns an image ID and acknowledges receipt. This is the foundation of the kitty graphics protocol — images are transmitted once and can be displayed multiple times at different positions.",
     "probe": "Transmit a 1x1 PNG with <code>a=t</code> and a unique image ID. Check for acknowledgment response (APC G ... ST).",
     "baseline": "rich"
@@ -1557,7 +1560,7 @@
     "name": "Kitty graphics: display",
     "slug": "kitty-graphics-display",
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#displaying-images",
-    "tags": ["kitty"],
+    "tags": ["kitty-extensions"],
     "body": "The display/placement action (<code>a=p</code>) places a previously transmitted image at a screen position. Supports specifying rows/columns, z-index, and cropping. This separation of transmit and display enables efficient re-use — transmit once, place many times.",
     "probe": "Transmit a test image, then place it with <code>a=p</code>. Check for acknowledgment.",
     "baseline": "rich"
@@ -1566,7 +1569,7 @@
     "name": "Kitty graphics: animation",
     "slug": "kitty-graphics-animation",
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#animation",
-    "tags": ["kitty"],
+    "tags": ["kitty-extensions"],
     "body": "The animation frame action (<code>a=f</code>) adds animation frames to a previously transmitted image. Supports frame composition modes (overwrite, blend), per-frame timing, and looping. Not all terminals that support kitty graphics support animation.",
     "probe": "Transmit a base image, then add an animation frame with <code>a=f</code>. Check response for success (not EINVAL).",
     "baseline": "rich"
@@ -1575,7 +1578,7 @@
     "name": "Kitty graphics: Unicode placeholders",
     "slug": "kitty-graphics-unicode-placeholders",
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders",
-    "tags": ["kitty"],
+    "tags": ["kitty-extensions"],
     "body": "Unicode placeholders (<code>U=1</code>) allow images to be placed using special Unicode characters in the text grid rather than absolute positioning. The terminal replaces placeholder characters with image content. This enables images to participate in text reflow, scrolling, and selection — unlike absolutely-positioned images which are fixed to screen coordinates.",
     "probe": "Transmit a test image with <code>U=1</code> (Unicode placeholder mode). Check response for success.",
     "baseline": "rich"
@@ -1585,7 +1588,7 @@
     "name": "OSC 52 clipboard write",
     "slug": "osc52-clipboard-write",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": ["xterm-ext"],
+    "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 clipboard write sets the system clipboard content. The sequence <code>ESC ] 52 ; c ; base64-data BEL</code> sets the clipboard to the decoded base64 content. Most modern terminals support clipboard write, though some require explicit opt-in for security (e.g., iTerm2 prompts the user). Write-only support is more common than read support — many terminals allow setting the clipboard but block reading it back to prevent clipboard snooping by malicious programs.",
     "probe": "Send <code>OSC 52;c;base64-data BEL</code> and verify the terminal remains responsive.",
     "baseline": "modern"
@@ -1594,7 +1597,7 @@
     "name": "OSC 52 clipboard read",
     "slug": "osc52-clipboard-read",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": ["xterm-ext"],
+    "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 clipboard read queries the current clipboard content. The sequence <code>ESC ] 52 ; c ; ? BEL</code> requests the terminal to respond with the clipboard data base64-encoded. Fewer terminals support read than write — clipboard read is a security-sensitive operation since a malicious program could silently exfiltrate clipboard contents (passwords, tokens). Terminals that support it often require explicit user opt-in.",
     "probe": "Set clipboard via OSC 52, then query with <code>OSC 52;c;? BEL</code>. Check for response containing the data.",
     "baseline": "rich"

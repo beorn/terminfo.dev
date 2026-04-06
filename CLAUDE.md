@@ -319,7 +319,22 @@ bun run build
 2. Add metadata to `content/features.json` (name, slug, url, tags, body, probe, baseline)
 3. Re-probe all terminals (see "Re-Probing All Terminals" above)
 4. Add annotations for any unexpected failures
-5. Rebuild: `bun run build`
+5. Rebuild: `bun run build` — the build validates tags against `standards.json`
+
+### Valid Tags
+
+Tags in `features.json` **must** match keys in `standards.json` or `categories.json`. Using an
+unknown tag silently creates a broken page. The build warns on unknown tags.
+
+**Standards (from `standards.json`):** `ecma-48`, `vt100`, `vt220`, `vt510`, `dec-private-modes`,
+`xterm-extensions`, `kitty-extensions`, `osc`, `sixel`, `unicode`, `iterm2`, `conemu`,
+`vscode-extensions`
+
+**Categories (from `categories.json`):** `sgr`, `cursor`, `text`, `erase`, `editing`, `modes`,
+`scrollback`, `reset`, `extensions`, `charsets`, `device`, `input`, `unicode`
+
+A feature can have multiple tags (e.g. `["osc", "xterm-extensions"]`). OSC features **must**
+include the `"osc"` tag in addition to any vendor tag.
 
 ### Probe Quality Rules
 
