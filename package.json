@@ -15,7 +15,8 @@
     "analysis:validate": "bun scripts/generate-analysis.ts --validate",
     "dev": "vitepress dev docs",
     "build": "vitepress build docs",
-    "preview": "vitepress preview docs"
+    "preview": "vitepress preview docs",
+    "validate": "bun scripts/validate.ts"
   },
   "dependencies": {
     "@silvery/ansi": "^0.3.0",
