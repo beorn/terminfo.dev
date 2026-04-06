@@ -205,7 +205,9 @@ function cmdList(): void {
     console.log(`${BOLD}${color}${status}${RESET}  (${list.length})`)
     for (const [id, c] of list) {
       console.log(`  ${BOLD}${id}${RESET}  ${c.name}`)
-      console.log(`    ${DIM}slug=${c.slug}  baseline=${c.proposed_baseline}  tags=[${c.proposed_tags.join(", ")}]${RESET}`)
+      console.log(
+        `    ${DIM}slug=${c.slug}  baseline=${c.proposed_baseline}  tags=[${c.proposed_tags.join(", ")}]${RESET}`,
+      )
       if (c.sequence) console.log(`    ${DIM}sequence:${RESET} ${c.sequence}`)
       if (c.source_url) console.log(`    ${DIM}source:${RESET} ${BLUE}${c.source_url}${RESET}`)
       if (c.reviewer_notes) console.log(`    ${DIM}notes:${RESET} ${c.reviewer_notes}`)

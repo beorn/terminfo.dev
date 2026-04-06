@@ -42,13 +42,7 @@ interface Citation {
 
 interface Finding {
   id: string
-  type:
-    | "new-terminal"
-    | "new-protocol"
-    | "new-version"
-    | "ecosystem-signal"
-    | "deprecation"
-    | "spec-change"
+  type: "new-terminal" | "new-protocol" | "new-version" | "ecosystem-signal" | "deprecation" | "spec-change"
   title: string
   description: string
   citations: Citation[]

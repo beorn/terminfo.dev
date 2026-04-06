@@ -53,11 +53,7 @@ function header(step: number, name: string): void {
   console.log(`\n${BOLD}${CYAN}=== Step ${step}: ${name} ===${RESET}\n`)
 }
 
-function runCommand(
-  cmd: string,
-  args: string[],
-  opts: { cwd?: string } = {},
-): { ok: boolean; code: number } {
+function runCommand(cmd: string, args: string[], opts: { cwd?: string } = {}): { ok: boolean; code: number } {
   const cwd = opts.cwd ?? siteRoot
   console.log(`${DIM}$ ${cmd} ${args.join(" ")}${RESET}`)
   const result = spawnSync(cmd, args, {
@@ -165,11 +161,7 @@ function printSummary(results: StepResult[]): void {
 // Flows
 // ---------------------------------------------------------------------------
 
-async function runStep(
-  step: () => Promise<StepResult>,
-  results: StepResult[],
-  noPause: boolean,
-): Promise<boolean> {
+async function runStep(step: () => Promise<StepResult>, results: StepResult[], noPause: boolean): Promise<boolean> {
   const result = await step()
   results.push(result)
   if (!result.ok && !result.skipped) {

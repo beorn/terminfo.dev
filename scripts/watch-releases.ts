@@ -174,9 +174,7 @@ function findCurrentVersion(terminalId: string): string | null {
 /**
  * Fetch the latest release from a GitHub or Codeberg API endpoint.
  */
-async function fetchLatestRelease(
-  source: ReleaseSource,
-): Promise<{ version: string; date: string }> {
+async function fetchLatestRelease(source: ReleaseSource): Promise<{ version: string; date: string }> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     "User-Agent": "terminfo.dev/watch-releases",
@@ -245,8 +243,7 @@ async function main() {
 
     try {
       const { version: latestVersion, date } = await fetchLatestRelease(source)
-      const isNewer =
-        currentVersion !== null ? compareVersions(currentVersion, latestVersion) < 0 : false
+      const isNewer = currentVersion !== null ? compareVersions(currentVersion, latestVersion) < 0 : false
 
       return {
         terminal: source.terminal,
@@ -285,14 +282,8 @@ async function main() {
   console.log()
 
   const labelWidth = Math.max(...results.map((r) => r.label.length))
-  const curWidth = Math.max(
-    ...results.map((r) => (r.currentVersion ?? "unknown").length),
-    "current:".length,
-  )
-  const latWidth = Math.max(
-    ...results.map((r) => (r.latestVersion ?? "error").length),
-    "latest:".length,
-  )
+  const curWidth = Math.max(...results.map((r) => (r.currentVersion ?? "unknown").length), "current:".length)
+  const latWidth = Math.max(...results.map((r) => (r.latestVersion ?? "error").length), "latest:".length)
 
   let hasNew = false
   for (const r of results) {

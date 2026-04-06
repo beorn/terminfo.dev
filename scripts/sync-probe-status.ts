@@ -108,7 +108,9 @@ const partialCount = Object.keys(features).filter(
   (k) => k !== "$comment" && probeTermlessMap.has(k) && probeTermlessMap.get(k) === false,
 ).length
 
-console.log(`\n  ${DIM}Final: ${automatedCount} automated, ${partialCount} partial (of ${totalWithProbes} with probes)${RESET}`)
+console.log(
+  `\n  ${DIM}Final: ${automatedCount} automated, ${partialCount} partial (of ${totalWithProbes} with probes)${RESET}`,
+)
 
 // Write
 if (upgraded > 0 || downgraded > 0 || changes.length > 0) {
