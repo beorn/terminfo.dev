@@ -704,6 +704,94 @@
     "baseline": "modern",
     "sequence": "ESC [ N b"
   },
+  "editing.decfra": {
+    "name": "DECFRA — fill rectangular area",
+    "slug": "decfra-fill-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECFRA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECFRA (<code>CSI Pc ; Pt ; Pl ; Pb ; Pr $ x</code>) fills a rectangular area with character <code>Pc</code> from rows <code>Pt</code> through <code>Pb</code> and columns <code>Pl</code> through <code>Pr</code>. Introduced on the DEC VT420 in 1990 for form-fill applications and spreadsheets that needed to paint rectangular regions of the screen — drawing dividers, padding fields, or clearing a region with a fill character — without touching cells outside the rectangle. xterm and mintty implement DECFRA; nearly every other modern terminal skips it. The character must be in the printable ASCII range or DEC supplemental graphic range.",
+    "probe": "Send <code>\\x1b[88;1;1;3;5$x</code> (fill rows 1-3, cols 1-5 with 'X'), verify cells in the rectangle contain 'X'.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pc ; Pt ; Pl ; Pb ; Pr $ x"
+  },
+  "editing.decera": {
+    "name": "DECERA — erase rectangular area",
+    "slug": "decera-erase-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECERA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECERA (<code>CSI Pt ; Pl ; Pb ; Pr $ z</code>) erases a rectangular region from rows <code>Pt</code>-<code>Pb</code>, columns <code>Pl</code>-<code>Pr</code>, replacing each cell with a space and the current SGR background. Unlike a global ED, DECERA leaves protected characters (set via DECSCA) untouched, making it safe inside form-fill applications that have static labels alongside editable fields. Companion to DECFRA. Another VT420-era feature surviving mostly in xterm and mintty.",
+    "probe": "Write text across multiple rows, send <code>\\x1b[1;1;3;5$z</code> (erase rows 1-3, cols 1-5), verify cells in the rectangle are blank.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ z"
+  },
+  "editing.decsera": {
+    "name": "DECSERA — selective erase rectangular area",
+    "slug": "decsera-selective-erase-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECSERA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECSERA (<code>CSI Pt ; Pl ; Pb ; Pr $ {</code>) is the selective-erase variant of DECERA: it erases unprotected characters within the rectangle but leaves any cell marked with the DECSCA character protection attribute intact. This is the rectangular companion to DECSED (selective erase in display). On VT420-era hardware, form designers used DECSCA to protect field labels and DECSERA to clear input fields between records without disturbing the form structure.",
+    "probe": "Write text across multiple rows, send <code>\\x1b[1;1;3;5${</code> (selective erase rows 1-3, cols 1-5), verify the sequence is consumed without the literal characters appearing.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ {"
+  },
+  "editing.deccra": {
+    "name": "DECCRA — copy rectangular area",
+    "slug": "deccra-copy-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECCRA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECCRA (<code>CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v</code>) copies a rectangular area from one location to another. The source rectangle is <code>Pts</code>;<code>Pls</code>-<code>Pbs</code>;<code>Prs</code> on page <code>Pps</code>; the destination's top-left is <code>Ptd</code>;<code>Pld</code>. The most complex of the VT420 rectangle operations: cells are copied including their SGR attributes, source and destination may overlap (the result is as if the source were captured first), and the operation can cross page boundaries on terminals that implement multi-page memory. xterm implements all of this. Almost nothing else does.",
+    "probe": "Write text in a region, send <code>\\x1b[1;1;2;5;1;5;10$v</code> (copy rows 1-2 cols 1-5 to row 5 col 10), verify the sequence is consumed.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v"
+  },
+  "editing.deccara": {
+    "name": "DECCARA — change attrs in rectangle",
+    "slug": "deccara-change-attrs-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECCARA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECCARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ r</code>) changes the SGR attributes of every cell in a rectangular region without touching the characters themselves. The <code>Ps</code> parameters are SGR codes (1=bold, 4=underline, 7=inverse, etc.), accumulated and applied to the rectangle. Whether DECCARA operates on a true rectangle or on the stream of cells between the corners depends on DECSACE. Used by VT420-era forms to highlight an entire input field, error message, or table cell without rewriting its contents.",
+    "probe": "Write text, send <code>\\x1b[1;1;3;5;7$r</code> (apply inverse to rows 1-3 cols 1-5), verify the sequence is consumed.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ r"
+  },
+  "editing.decrara": {
+    "name": "DECRARA — reverse attrs in rectangle",
+    "slug": "decrara-reverse-attrs-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECRARA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECRARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ t</code>) toggles the listed SGR attributes within a rectangular region. Each cell flips the listed bits — bold cells become non-bold, non-bold cells become bold, and so on. Like DECCARA, it leaves the characters alone and obeys DECSACE to operate on a rectangle or a stream. VT420-era applications used DECRARA to flash highlight a field on validation errors or to invert a selected row in a list.",
+    "probe": "Write text, send <code>\\x1b[1;1;3;5;7$t</code> (toggle inverse on rows 1-3 cols 1-5), verify the sequence is consumed.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ t"
+  },
+  "editing.decsace": {
+    "name": "DECSACE — select attribute-change extent",
+    "slug": "decsace-select-attribute-change-extent",
+    "url": "https://vt100.net/docs/vt510-rm/DECSACE.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECSACE (<code>CSI Ps * x</code>) selects how DECCARA and DECRARA interpret their coordinates. <code>Ps</code>=1 (the default) treats the corners as endpoints of a stream of cells in scan order, so the operation affects the partial rows at the top and bottom plus every cell on the rows between. <code>Ps</code>=2 treats the coordinates as a true rectangle, affecting only the cells inside the box. Modern users almost always want the rectangle interpretation; the stream default is a relic of how DEC originally specified the operations.",
+    "probe": "Send <code>\\x1b[2*x</code> (select rectangle extent), verify the sequence is consumed.",
+    "probeStatus": "partial",
+    "sequence": "CSI Ps * x"
+  },
+  "editing.decrqcra": {
+    "name": "DECRQCRA — checksum rectangular area",
+    "slug": "decrqcra-checksum-rectangle",
+    "url": "https://vt100.net/docs/vt510-rm/DECRQCRA.html",
+    "tags": ["vt510"],
+    "baseline": "legacy",
+    "body": "DECRQCRA (<code>CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y</code>) computes a 16-bit checksum of the cells in a rectangular region and reports it back to the host as a DCS response (<code>DCS Pid ! ~ checksum ST</code>). <code>Pid</code> is a request identifier echoed in the response; <code>Ppid</code> is the page number. The checksum hashes both characters and SGR attributes, which is why it's used by DEC's terminal conformance test suites — a test script can paint a known pattern, ask the terminal for the checksum, and compare against an expected value to confirm the terminal rendered the pattern correctly. xterm still implements this. Almost no application has ever used it outside of test suites.",
+    "probe": "Send <code>\\x1b[1;1;1;1;1;1*y</code> (checksum cell 1,1), verify the sequence is consumed without literal output.",
+    "probeStatus": "partial",
+    "sequence": "CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y"
+  },
   "input.modify-other-keys": {
     "name": "modifyOtherKeys",
     "slug": "modify-other-keys",
