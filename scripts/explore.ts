@@ -210,9 +210,11 @@ function loadExistingIds(): Set<string> {
 async function runDeepQuery(queryPrompt: string, queryId: string): Promise<string> {
   const kmRoot = "/Users/beorn/Code/pim/km"
   return new Promise((resolve, reject) => {
+    // Note: don't pass --model — it overrides --deep's web search routing.
+    // Deep research picks its own model (GPT-5.4 with web search tool).
     const proc = spawn(
       "bun",
-      ["llm", "--deep", "--model", "gpt-5.4", "-y", "--no-recover", queryPrompt],
+      ["llm", "--deep", "-y", "--no-recover", queryPrompt],
       { cwd: kmRoot, stdio: ["pipe", "pipe", "inherit"] },
     )
     let output = ""
