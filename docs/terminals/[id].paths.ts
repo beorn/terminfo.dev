@@ -226,7 +226,11 @@ export default {
     const terminalsPath = join(__dirname, "..", "..", "content", "terminals.json")
     const terminalsData = JSON.parse(readFileSync(terminalsPath, "utf-8")) as Record<
       string,
-      HistoricalTerminal & { intermediary?: boolean; headlessBackends?: string[] }
+      HistoricalTerminal & {
+        intermediary?: boolean
+        headlessBackends?: string[]
+        manifestBackend?: string
+      }
     >
 
     // Classify terminal type from terminals.json metadata
@@ -249,6 +253,12 @@ export default {
       ;(page.params as any).terminalType = getTerminalType(page.params.backendId)
     }
 
+    // Index probed pages by backendId so unprobed terminals can inherit via manifestBackend
+    const pagesByBackendId = new Map<string, (typeof pages)[number]>()
+    for (const page of pages) {
+      pagesByBackendId.set(page.params.backendId, page)
+    }
+
     const existingSlugs = new Set(pages.map((p) => p.params.id))
 
     // Add pages for ALL terminals in terminals.json that don't have probe results
@@ -257,6 +267,57 @@ export default {
       if (existingSlugs.has(term.slug)) continue
 
       const a = allAnalysis["terminals/" + term.slug]
+
+      // If this terminal declares a manifestBackend, inherit probe results from it.
+      // This lets terminals like cmux (built on libghostty) show Ghostty's feature data
+      // without running separate probes. We do NOT recurse: the inherited page must
+      // itself have probe results, otherwise we fall back to an empty page.
+      let inheritedFrom = ""
+      let inheritedFromLabel = ""
+      let inheritedStats: {
+        version: string
+        engine: string
+        generated: string
+        total: string
+        yes: string
+        no: string
+        partial: string
+        pct: string
+        categories: string
+        versions?: string
+      } = {
+        version: "",
+        engine: "",
+        generated: "",
+        total: "",
+        yes: "",
+        no: "",
+        partial: "",
+        pct: "",
+        categories: "",
+      }
+
+      const backendName = term.manifestBackend
+      if (backendName) {
+        const source = pagesByBackendId.get(backendName)
+        // Only inherit if source has actual probe results (total !== "")
+        if (source && source.params.total) {
+          inheritedFrom = backendName
+          inheritedFromLabel = (source.params as any).terminalName ?? backendName
+          inheritedStats = {
+            version: source.params.version ?? "",
+            engine: (source.params as any).engine ?? "",
+            generated: source.params.generated ?? "",
+            total: source.params.total ?? "",
+            yes: source.params.yes ?? "",
+            no: source.params.no ?? "",
+            partial: source.params.partial ?? "",
+            pct: source.params.pct ?? "",
+            categories: source.params.categories ?? "",
+            versions: (source.params as any).versions ?? "",
+          }
+        }
+      }
 
       pages.push({
         params: {
@@ -274,15 +335,19 @@ export default {
           terminalUrl: term.url ?? "",
           terminalRepo: term.repo ?? "",
           terminalAuthor: "",
-          version: "",
-          engine: "",
-          generated: "",
-          total: "",
-          yes: "",
-          no: "",
-          partial: "",
-          pct: "",
-          categories: "",
+          version: inheritedStats.version,
+          engine: inheritedStats.engine,
+          generated: inheritedStats.generated,
+          total: inheritedStats.total,
+          yes: inheritedStats.yes,
+          no: inheritedStats.no,
+          partial: inheritedStats.partial,
+          pct: inheritedStats.pct,
+          categories: inheritedStats.categories,
+          versions: inheritedStats.versions ?? "",
+          inheritedFrom,
+          inheritedFromLabel,
+          inheritedFromSlug: inheritedFrom ? terminalSlug(inheritedFrom, data.meta) : "",
           analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${term.slug}`])),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",

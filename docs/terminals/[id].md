@@ -129,6 +129,12 @@ const breadcrumbParent = (() => {
 
 <p v-if="p.backendCaveat" class="backend-caveat">&#x26A0; {{ p.backendCaveat }}</p>
 
+<p v-if="p.inheritedFrom" class="inherited-note">
+  Feature results inherited from
+  <a :href="'/terminals/' + p.inheritedFromSlug">{{ p.inheritedFromLabel }}</a>
+  &mdash; this terminal uses the same underlying engine and is not probed separately.
+</p>
+
 <div v-if="!isHistorical && p.total" class="score-card">
   <div class="score-number">{{ p.pct }}<span class="score-pct">%</span></div>
   <div class="score-detail">
@@ -288,6 +294,26 @@ const breadcrumbParent = (() => {
   border-radius: 6px;
   font-size: 0.9em;
   margin: 1em 0;
+}
+
+.inherited-note {
+  background: var(--vp-c-brand-soft);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  margin: 1em 0;
+  color: var(--vp-c-text-2);
+  border-left: 3px solid var(--vp-c-brand-1);
+}
+
+.inherited-note a {
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.inherited-note a:hover {
+  text-decoration: underline;
 }
 
 .score-card {
