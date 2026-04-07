@@ -228,7 +228,7 @@ program
   .option("--serve", "Start daemon for remote testing")
   .option("-p, --port <port>", "Port for --serve", uint)
   .option("--all", "Test all running daemons")
-  .action(async (opts: { daemon?: string; json?: boolean; serve?: boolean; port?: number; all?: boolean }) => {
+  .actionMerged(async (opts: { daemon?: string; json?: boolean; serve?: boolean; port?: number; all?: boolean }) => {
     // --serve: start daemon mode
     if (opts.serve) {
       const { startDaemon } = await import("./serve.ts")

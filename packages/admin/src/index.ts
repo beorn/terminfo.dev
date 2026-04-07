@@ -60,7 +60,7 @@ probe
   .description("Headless library probes via Termless backends")
   .option("--all", "Probe all backends")
   .option("-f, --force", "Re-run even if cached")
-  .action(async (opts: { selectors: string[]; all?: boolean; force?: boolean }) => {
+  .actionMerged(async (opts: { selectors: string[]; all?: boolean; force?: boolean }) => {
     const { runTermlessProbes } = await import("./termless.ts")
     await runTermlessProbes(opts.all ? [] : opts.selectors, opts)
   })
@@ -74,7 +74,7 @@ probe
   .option("--start", "Start daemon in this terminal")
   .option("-p, --port <port>", "Port for --start", parseInt)
   .option("--all", "Probe all running daemons")
-  .action(async (opts: { daemon?: string; start?: boolean; port?: number; all?: boolean }) => {
+  .actionMerged(async (opts: { daemon?: string; start?: boolean; port?: number; all?: boolean }) => {
     const { handleServer } = await import("./server.ts")
     await handleServer(opts.daemon, opts)
   })
@@ -87,7 +87,7 @@ probe
   .description("Launch and probe macOS terminal apps")
   .option("--all", "Probe all installed terminals")
   .option("-f, --force", "Re-run even if cached")
-  .action(async (opts: { terminal?: string; all?: boolean; force?: boolean }) => {
+  .actionMerged(async (opts: { terminal?: string; all?: boolean; force?: boolean }) => {
     const { handleApp } = await import("./app.ts")
     await handleApp(opts.terminal, opts)
   })
@@ -100,7 +100,7 @@ probe
   .description("Probe through terminal multiplexers (tmux, screen)")
   .option("--all", "Probe through all installed multiplexers")
   .option("-f, --force", "Re-run even if cached")
-  .action(async (opts: { multiplexer?: string; all?: boolean; force?: boolean }) => {
+  .actionMerged(async (opts: { multiplexer?: string; all?: boolean; force?: boolean }) => {
     const { handleMux } = await import("./mux.ts")
     await handleMux(opts.multiplexer, opts)
   })
