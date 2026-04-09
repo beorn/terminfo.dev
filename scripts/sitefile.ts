@@ -567,14 +567,17 @@ async function generateLockfile() {
   const lockfilePath = path.join(import.meta.dir, "..", "scripts", "sitefile.lock.json")
 
   // Count features from features.json
-  const featuresJson = JSON.parse(fs.readFileSync(path.join(contentDir, "features.json"), "utf-8"))
+  const featuresJson = JSON.parse(fs.readFileSync(path.join(contentDir, "features.json"), "utf-8")) as Record<
+    string,
+    unknown
+  >
   const featureKeys = Object.keys(featuresJson).filter((k) => k !== "$comment")
   const totalFeatures = featureKeys.length
 
   // Count features per family
   const featureFamilies: Record<string, number> = {}
   for (const key of featureKeys) {
-    const family = key.split(".")[0]
+    const family = key.split(".")[0]!
     featureFamilies[family] = (featureFamilies[family] || 0) + 1
   }
 
@@ -636,13 +639,13 @@ async function generateLockfile() {
 
         if (matches) {
           const filePath = path.join(probeDir, file)
-          const data = JSON.parse(fs.readFileSync(filePath, "utf-8"))
-          const date = data.generated ? new Date(data.generated).toISOString().split("T")[0] : "unknown"
+          const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, any>
+          const date = data.generated ? new Date(data.generated).toISOString().split("T")[0]! : "unknown"
           const count = data.results ? Object.keys(data.results).length : 0
 
           // Extract version from filename
           const versionMatch = file.match(/(?:^[a-z0-9.-]+-)([\d][^-]*?)(?:-(?:macos|linux|windows))?\.json$/i)
-          const version = data.version || (versionMatch ? versionMatch[1] : terminal.currentVersion)
+          const version: string = data.version || (versionMatch ? versionMatch[1] : terminal.currentVersion)
 
           // Prefer file matching currentVersion, then newer probe date, then later filename
           const matchesCurrentVersion = file.includes(terminal.currentVersion)

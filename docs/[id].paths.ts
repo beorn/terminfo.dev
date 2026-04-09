@@ -98,7 +98,7 @@ export default {
         if (categoryFeatureIds.has(fid)) continue
         const desc = data.featureDescriptions[fid]
         if (!desc) continue
-        const fcat = fid.split(".")[0]
+        const fcat = fid.split(".")[0]!
         const results: Record<string, { result: string; note: string }> = {}
         for (const b of sortedBackends) {
           const result = data.results[b.name]?.[fid] ?? "unknown"
@@ -177,7 +177,7 @@ export default {
       featureRows.sort((a, b) => {
         const numA = a.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)
         const numB = b.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)
-        if (numA && numB) return parseInt(numA[1], 10) - parseInt(numB[1], 10)
+        if (numA && numB) return parseInt(numA[1]!, 10) - parseInt(numB[1]!, 10)
         if (numA) return -1
         if (numB) return 1
         return a.name.localeCompare(b.name)

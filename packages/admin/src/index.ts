@@ -56,8 +56,8 @@ probe.addHelpSection("Examples:", [
 
 probe
   .command("termless")
-  .argument("[selectors...]", "Backend selectors to probe")
   .description("Headless library probes via Termless backends")
+  .argument("[selectors...]", "Backend selectors to probe")
   .option("--all", "Probe all backends")
   .option("-f, --force", "Re-run even if cached")
   .actionMerged(async (opts: { selectors: string[]; all?: boolean; force?: boolean }) => {
@@ -69,8 +69,8 @@ probe
 
 probe
   .command("server")
-  .argument("[daemon]", "Daemon name to probe")
   .description("Probe running daemon servers")
+  .argument("[daemon]", "Daemon name to probe")
   .option("--start", "Start daemon in this terminal")
   .option("-p, --port <port>", "Port for --start", parseInt)
   .option("--all", "Probe all running daemons")
@@ -83,8 +83,8 @@ probe
 
 probe
   .command("app")
-  .argument("[terminal]", "Terminal app to probe")
   .description("Launch and probe macOS terminal apps")
+  .argument("[terminal]", "Terminal app to probe")
   .option("--all", "Probe all installed terminals")
   .option("-f, --force", "Re-run even if cached")
   .actionMerged(async (opts: { terminal?: string; all?: boolean; force?: boolean }) => {
@@ -96,8 +96,8 @@ probe
 
 probe
   .command("mux")
-  .argument("[multiplexer]", "Multiplexer to probe (tmux, screen)")
   .description("Probe through terminal multiplexers (tmux, screen)")
+  .argument("[multiplexer]", "Multiplexer to probe (tmux, screen)")
   .option("--all", "Probe through all installed multiplexers")
   .option("-f, --force", "Re-run even if cached")
   .actionMerged(async (opts: { multiplexer?: string; all?: boolean; force?: boolean }) => {

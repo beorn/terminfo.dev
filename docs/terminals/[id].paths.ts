@@ -301,7 +301,7 @@ export default {
       if (backendName) {
         const source = pagesByBackendId.get(backendName)
         // Only inherit if source has actual probe results (total !== "")
-        if (source && source.params.total) {
+        if (source?.params?.total) {
           inheritedFrom = backendName
           inheritedFromLabel = (source.params as any).terminalName ?? backendName
           inheritedStats = {

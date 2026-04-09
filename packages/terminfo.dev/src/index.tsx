@@ -222,8 +222,8 @@ program.addHelpSection("Examples:", [
 
 program
   .command("test")
-  .argument("[daemon]", "Daemon name to test")
   .description("Test this terminal's feature support")
+  .argument("[daemon]", "Daemon name to test")
   .option("--json", "Output results as JSON")
   .option("--serve", "Start daemon for remote testing")
   .option("-p, --port <port>", "Port for --serve", uint)

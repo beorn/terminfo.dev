@@ -154,7 +154,7 @@ function findCurrentVersion(terminalId: string): string | null {
       // File format: terminal-version-platform.json or terminal-version.json
       if (!file.startsWith(terminalId + "-")) continue
       try {
-        const data = JSON.parse(readFileSync(join(dir, file), "utf-8"))
+        const data = JSON.parse(readFileSync(join(dir, file), "utf-8")) as Record<string, any>
         if (data.terminalVersion) {
           versions.push(data.terminalVersion)
         }
@@ -197,21 +197,21 @@ async function fetchLatestRelease(source: ReleaseSource): Promise<{ version: str
     throw new Error(`HTTP ${res.status}: ${res.statusText}`)
   }
 
-  const data = await res.json()
+  const data = (await res.json()) as Record<string, any>
 
   if (source.type === "github-tags") {
     // Tags API returns an array of {name, ...} — no date info
-    const tags = Array.isArray(data) ? data : [data]
+    const tags = (Array.isArray(data) ? data : [data]) as Record<string, any>[]
     if (tags.length === 0) throw new Error("No tags found")
     return {
-      version: normalizeVersion(tags[0].name),
+      version: normalizeVersion(tags[0]!.name),
       date: "", // Tags don't carry date info
     }
   }
 
   if (source.type === "codeberg") {
     // Codeberg returns an array
-    const release = Array.isArray(data) ? data[0] : data
+    const release = Array.isArray(data) ? (data as any[])[0] : data
     if (!release) throw new Error("No releases found")
     return {
       version: normalizeVersion(release.tag_name),
@@ -318,7 +318,7 @@ async function main() {
     }
 
     const raw = readFileSync(terminalsPath, "utf-8")
-    const terminals = JSON.parse(raw)
+    const terminals = JSON.parse(raw) as Record<string, any>
 
     for (const r of newReleases) {
       if (terminals[r.terminal]) {
