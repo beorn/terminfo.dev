@@ -143,7 +143,7 @@ terminfo.dev is part of a suite of terminal development tools:
 - **[Termless](https://termless.dev)** — the headless testing framework that powers all probe results
 - **[Silvery](https://silvery.dev)** — React TUI framework, the primary consumer of compatibility data
 - **[Flexily](https://beorn.codes/flexily)** — layout engine used by Silvery
-- **[Loggily](https://beorn.codes/loggily)** — structured logging used across all tools
+- **[Loggily](https://loggily.dev)** — structured logging used across all tools
 - **[Contribute results](/contribute)** — test your terminal and add it to the database
 
 ## Built By
