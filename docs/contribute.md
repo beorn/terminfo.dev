@@ -48,7 +48,7 @@ npx terminfo.dev detect         # Check what terminal was detected
 
 Everything is open source ([CC BY 4.0](https://github.com/beorn/terminfo.dev)):
 
-- [CLI source](https://github.com/beorn/terminfo.dev/tree/main/cli) — what `npx` runs
+- [CLI source](https://github.com/beorn/terminfo.dev/tree/main/packages/terminfo.dev) — what `npx` runs
 - [Probe definitions](https://github.com/beorn/terminfo.dev/tree/main/packages/probes) — the feature tests
 - [npm package](https://www.npmjs.com/package/terminfo.dev) — `terminfo.dev` on npm
 

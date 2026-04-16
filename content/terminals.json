@@ -97,7 +97,7 @@
   "vt52-historical": {
     "label": "DEC VT52",
     "slug": "vt52-historical",
-    "url": "https://vt100.net/docs/vt52-ug/",
+    "url": "https://vt100.net/docs/vt52-mm/",
     "description": "DEC's pre-ANSI terminal. Proprietary escape sequences predating ECMA-48. DEC, 1975.",
     "body": "<p>The <strong>DEC VT52</strong>, released in 1975, was Digital Equipment Corporation's first video terminal with cursor addressing — a breakthrough that replaced hardcopy printing terminals with screen-based interaction. Designed by DEC's terminal engineering group in Maynard, Massachusetts, it sold for approximately $1,200 and became widely used in universities, labs, and offices running DEC's PDP and VAX systems.</p>\n<p>The VT52 used a <strong>proprietary escape sequence language</strong> predating the ECMA-48 (ANSI) standard. Cursor movement used <code>ESC A</code>/<code>B</code>/<code>C</code>/<code>D</code> (up/down/right/left), direct addressing used <code>ESC Y</code> followed by row and column bytes, and the screen could be cleared with <code>ESC H ESC J</code>. This language was simpler than ANSI sequences but fundamentally incompatible — no CSI introducer, no parameters, no semicolons.</p>\n<p>The VT52's <strong>80-column, 24-line display</strong> established the screen geometry the VT100 would later standardize for decades. Many terminal emulators still include a VT52 compatibility mode (xterm's <code>DECANM</code> toggle), and its escape codes surface in legacy systems, CP/M software, and early Unix ports. The VT52 was the stepping stone: its commercial success convinced DEC to invest in the VT100, which adopted the new ANSI standard and changed computing forever.</p>",
     "platforms": [],

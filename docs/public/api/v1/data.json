@@ -254,7 +254,7 @@
       "name": "Feature Reporting (TERM_FEATURES)",
       "category": "device",
       "slug": "term-features",
-      "url": "https://gitlab.com/gnachman/iterm2/-/wikis/TERM_FEATURES",
+      "url": "https://iterm2.com/documentation-escape-codes.html",
       "tags": ["iterm2"],
       "baseline": "rich"
     },
@@ -1547,7 +1547,7 @@
       "name": "Reverse index (RI)",
       "category": "scrollback",
       "slug": "ri-reverse-index",
-      "url": "https://vt100.net/docs/vt510-rm/RI.html",
+      "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
       "tags": ["ecma-48", "vt100"],
       "baseline": "core"
     },
@@ -1882,7 +1882,7 @@
       "name": "Carriage return",
       "category": "text",
       "slug": "cr-carriage-return",
-      "url": "https://vt100.net/docs/vt510-rm/CR.html",
+      "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
       "tags": ["ecma-48", "vt100"],
       "baseline": "core"
     },
@@ -1906,7 +1906,7 @@
       "name": "Line feed",
       "category": "text",
       "slug": "lf-line-feed",
-      "url": "https://vt100.net/docs/vt510-rm/LF.html",
+      "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
       "tags": ["ecma-48", "vt100"],
       "baseline": "core"
     },
@@ -1929,7 +1929,7 @@
       "name": "Reverse Index at Scroll Top",
       "category": "text",
       "slug": "reverse-index-scroll",
-      "url": "https://vt100.net/docs/vt510-rm/RI.html",
+      "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
       "tags": ["vt100"],
       "baseline": "core"
     },
@@ -1937,7 +1937,7 @@
       "name": "Tab stops",
       "category": "text",
       "slug": "ht-tab-stops",
-      "url": "https://vt100.net/docs/vt510-rm/HT.html",
+      "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
       "tags": ["ecma-48", "vt100"],
       "baseline": "core"
     },
@@ -2016,7 +2016,7 @@
       "name": "Tab Stops (HT)",
       "category": "unicode",
       "slug": "tab-stops",
-      "url": "https://vt100.net/docs/vt510-rm/HT.html",
+      "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
       "tags": ["ecma-48", "vt100"],
       "baseline": "core"
     },

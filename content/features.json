@@ -1153,7 +1153,7 @@
   "scrollback.reverse-index": {
     "name": "Reverse index (RI)",
     "slug": "ri-reverse-index",
-    "url": "https://vt100.net/docs/vt510-rm/RI.html",
+    "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
     "tags": ["ecma-48", "vt100"],
     "body": "RI moves the cursor up one line. If the cursor is at the top margin of the scroll region, the content scrolls down and a blank line is inserted at the top. The sequence is <code>ESC M</code>. This is the reverse of a line feed at the bottom of the scroll region. Used by applications that need to insert content above the current cursor position.",
     "probe": "Write 3 lines, move to row 0, send <code>\\x1bM</code> (RI), verify row 0 is now blank.",
@@ -1568,7 +1568,7 @@
   "text.tab": {
     "name": "Tab stops",
     "slug": "ht-tab-stops",
-    "url": "https://vt100.net/docs/vt510-rm/HT.html",
+    "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
     "tags": ["ecma-48", "vt100"],
     "body": "HT (Horizontal Tab) advances the cursor to the next tab stop. Default tab stops are set every 8 columns. The tab character (0x09) does not produce visible output — it moves the cursor forward. Tab stops can be set with HTS and cleared with TBC.",
     "probe": "Write tab then \"X\", verify X appears at column 8 (after the default 8-column tab stop).",
@@ -1577,7 +1577,7 @@
   "unicode.tab-stops": {
     "name": "Tab Stops (HT)",
     "slug": "tab-stops",
-    "url": "https://vt100.net/docs/vt510-rm/HT.html",
+    "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "HT (0x09) advances the cursor to the next tab stop. Default tab stops are at every 8th column. Terminals should support HTS (ESC H) to set custom tab stops and TBC (CSI 3 g) to clear them.",
@@ -1586,7 +1586,7 @@
   "text.cr": {
     "name": "Carriage return",
     "slug": "cr-carriage-return",
-    "url": "https://vt100.net/docs/vt510-rm/CR.html",
+    "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
     "tags": ["ecma-48", "vt100"],
     "body": "CR (0x0D) moves the cursor to the beginning of the current line without advancing to the next line. Used in combination with LF for line endings, and on its own for overwriting the current line (e.g., progress bars).",
     "probe": "Write \"AB\\rC\", verify C overwrote A at col 0 while B remains at col 1.",
@@ -1595,7 +1595,7 @@
   "text.newline": {
     "name": "Line feed",
     "slug": "lf-line-feed",
-    "url": "https://vt100.net/docs/vt510-rm/LF.html",
+    "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
     "tags": ["ecma-48", "vt100"],
     "body": "LF (0x0A) moves the cursor down one line. If the cursor is at the bottom of the scroll region, the content scrolls up and a blank line appears at the bottom. On most terminals, LF also performs an implicit carriage return (moves to column 1), though the VT100 specification treats LF as vertical movement only.",
     "probe": "Write \"A\\r\\nB\", verify A is at cell (0,0) and B is at cell (1,0).",
@@ -1635,7 +1635,7 @@
     "baseline": "core",
     "body": "RI (ESC M) at the top of the scroll region scrolls the entire region down, inserting a blank line at the top. This is the inverse of a newline at the bottom of the scroll region. Used for smooth scrolling and status line implementations.",
     "probe": "Set scroll region, write text at top row, send Reverse Index (<code>ESC M</code>), verify content shifted down by one line.",
-    "url": "https://vt100.net/docs/vt510-rm/RI.html"
+    "url": "https://vt100.net/docs/vt510-rm/chapter4.html"
   },
   "text.overwrite": {
     "name": "Overwrite at cursor",
@@ -1849,7 +1849,7 @@
   "device.term-features": {
     "name": "Feature Reporting (TERM_FEATURES)",
     "slug": "term-features",
-    "url": "https://gitlab.com/gnachman/iterm2/-/wikis/TERM_FEATURES",
+    "url": "https://iterm2.com/documentation-escape-codes.html",
     "tags": ["iterm2"],
     "baseline": "rich",
     "body": "TERM_FEATURES is an environment variable proposed by iTerm2 for terminals to advertise their capabilities as a semicolon-delimited list of capability strings. Unlike escape-sequence-based detection, this approach allows applications to check capabilities without TTY I/O, making it suitable for non-interactive contexts. Adoption remains limited as most terminals prefer escape-sequence-based feature reporting.",

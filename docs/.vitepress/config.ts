@@ -431,7 +431,7 @@ export default defineConfig({
     const rel = pageData.relativePath
 
     // Canonical URL (cleanUrls: true — no .html extension)
-    const cleanPath = rel.replace(/index\.md$/, "").replace(/\.md$/, "")
+    const cleanPath = rel.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, "")
     const canonicalUrl = `https://terminfo.dev/${cleanPath}`
     pageData.frontmatter.head ??= []
     pageData.frontmatter.head.push(["link", { rel: "canonical", href: canonicalUrl }])
