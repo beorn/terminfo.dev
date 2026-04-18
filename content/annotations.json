@@ -2180,9 +2180,5 @@
   "wezterm:extensions.osc2-title": {
     "note": "OSC 2 title handled by WezTerm GUI, not headless backend",
     "result": "no"
-  },
-  "kitty:extensions.iterm2-images": {
-    "note": "iTerm2 inline images not supported — Kitty uses its own graphics protocol",
-    "result": "no"
   }
 }
