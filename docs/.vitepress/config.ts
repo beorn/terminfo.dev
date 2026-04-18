@@ -346,6 +346,9 @@ function buildSidebar() {
         { text: "TTY Architecture", link: "/fundamentals/tty-architecture" },
         { text: "Terminal Modes & stty", link: "/fundamentals/stty" },
         { text: "Terminal Detection", link: "/fundamentals/term-detection" },
+        { text: "Color Fundamentals", link: "/fundamentals/color-fundamentals" },
+        { text: "Color Schemes", link: "/fundamentals/color-schemes" },
+        { text: "Color Detection", link: "/fundamentals/color-detection" },
         { text: "Terminal Security", link: "/fundamentals/security" },
       ],
     },
@@ -490,6 +493,21 @@ export default defineConfig({
       pageData.title = "Terminal Security: Clipboard, Paste Injection, Escape Attacks"
       pageData.description =
         "Terminal attack surfaces \u2014 OSC 52 clipboard exfiltration, OSC 8 hyperlink spoofing, paste injection without bracketed paste, escape sequence injection in logs, and title bar spoofing."
+    }
+    if (rel === "fundamentals/color-fundamentals.md") {
+      pageData.title = "Terminal Color Fundamentals: ANSI 16, 256-Color, Truecolor"
+      pageData.description =
+        "Three generations of terminal color \u2014 ANSI 16 named slots, 256-color indexed cube, 24-bit truecolor hex. SGR vs OSC escape families, the SGR attrs (bold, dim, italic, underline, inverse), and how modern TUIs negotiate tiers."
+    }
+    if (rel === "fundamentals/color-schemes.md") {
+      pageData.title = "Terminal Color Schemes: The 22-Slot User-Configurable Palette"
+      pageData.description =
+        "The 22-slot color scheme every major terminal exposes: 16 ANSI + foreground, background, cursor (\u00d7 2), selection (\u00d7 2). How applications adopt the user's theme via OSC 10/11/4/12/17/19 queries."
+    }
+    if (rel === "fundamentals/color-detection.md") {
+      pageData.title = "Terminal Color Detection: NO_COLOR, COLORTERM, OSC Probes"
+      pageData.description =
+        "The detection stack TUIs use to pick truecolor, 256-color, ANSI 16, or monochrome \u2014 NO_COLOR, COLORTERM, $TERM, OSC 10/11/4 probing, and graceful tier degradation."
     }
 
     // Static index pages
@@ -690,6 +708,9 @@ export default defineConfig({
           { text: "TTY Architecture", link: "/fundamentals/tty-architecture" },
           { text: "Terminal Modes & stty", link: "/fundamentals/stty" },
           { text: "Terminal Detection", link: "/fundamentals/term-detection" },
+          { text: "Color Fundamentals", link: "/fundamentals/color-fundamentals" },
+          { text: "Color Schemes", link: "/fundamentals/color-schemes" },
+          { text: "Color Detection", link: "/fundamentals/color-detection" },
           { text: "Terminal Security", link: "/fundamentals/security" },
         ],
       },
