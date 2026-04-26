@@ -50,15 +50,15 @@ Either value signals truecolor support. Modern terminals set it automatically. I
 
 ## `$TERM` — the baseline claim
 
-`$TERM` tells you how the terminal wants to be *treated*, not what it actually is. See [Terminal Detection](/fundamentals/term-detection) for the full discussion. For color purposes, the practical rules:
+`$TERM` tells you how the terminal wants to be _treated_, not what it actually is. See [Terminal Detection](/fundamentals/term-detection) for the full discussion. For color purposes, the practical rules:
 
-| `$TERM` pattern | Tier inferred |
-|-----------------|---------------|
-| `dumb` | mono |
-| `*-direct` | truecolor |
-| `*-256color` | 256-color |
+| `$TERM` pattern                          | Tier inferred                                      |
+| ---------------------------------------- | -------------------------------------------------- |
+| `dumb`                                   | mono                                               |
+| `*-direct`                               | truecolor                                          |
+| `*-256color`                             | 256-color                                          |
 | `*xterm*`, `*screen*`, `*tmux*`, `rxvt*` | ANSI 16 (fallback: assume COLORTERM for truecolor) |
-| empty | mono |
+| empty                                    | mono                                               |
 
 Most modern terminals ship `$TERM=xterm-256color` — the broadest compatibility setting — even when they support truecolor. `COLORTERM` is the truecolor signal; `$TERM` is the baseline floor.
 
@@ -105,7 +105,7 @@ Less widely supported — iTerm2, Kitty, and Terminal.app do; many others drop t
 - Accept partial results: missing slots fall back to formulas (e.g., `cursorText = background` is universally safe).
 - Put the terminal into raw mode for the probe; restore the prior mode after.
 
-The [@silvery/theme-detect](https://npmjs.com/package/@silvery/theme-detect) library implements a full probe + fingerprint pipeline you can drop into any TUI.
+[`@silvery/ansi`](https://npmjs.com/package/@silvery/ansi) ships `probeColors` (the OSC 4/10/11 primitive) and [`@silvery/theme`](https://npmjs.com/package/@silvery/theme) ships `detectScheme` / `detectTheme` (the full probe + fingerprint + derive pipeline) — drop them into any TUI.
 
 ## Degradation strategy
 
@@ -116,7 +116,7 @@ After detection, emit at the detected tier:
 - **ANSI 16** — map to named slots, emit `\e[31m` / `\e[91m` / etc. Let the user's theme decide what "red" looks like.
 - **mono** — strip color, rely on SGR attrs (bold, inverse, underline) for hierarchy
 
-Your semantic token (`$error`) resolves to different concrete outputs depending on tier, but the *token* stays the same in your component code. That's the point of the abstraction.
+Your semantic token (`$error`) resolves to different concrete outputs depending on tier, but the _token_ stays the same in your component code. That's the point of the abstraction.
 
 ## See also
 

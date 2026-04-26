@@ -24,7 +24,7 @@ The original color model from the VT100 era. Sixteen named colors — 8 base plu
 \e[1;31m bold+red text \e[0m       # bold changes color on some terminals
 ```
 
-The user's color scheme maps the 16 names to actual hex values. This is what makes ANSI 16 *portable*: you write "red" and the user's theme decides whether that's vivid or muted. It's also what makes it *unreliable* if your app needs a specific shade — the same ANSI code renders differently everywhere.
+The user's color scheme maps the 16 names to actual hex values. This is what makes ANSI 16 _portable_: you write "red" and the user's theme decides whether that's vivid or muted. It's also what makes it _unreliable_ if your app needs a specific shade — the same ANSI code renders differently everywhere.
 
 ### 256-color indexed
 
@@ -37,7 +37,7 @@ xterm introduced a 256-color palette in the 1990s: 16 ANSI (as above) + 216 RGB 
 
 The RGB cube entries (16–231) map to fixed hex values — theme-independent. This is the cheapest way to get "specific color" without requiring truecolor. Index 16–231 formula: `16 + 36*r + 6*g + b` where `r,g,b ∈ 0..5`. Grayscale 232–255: evenly-spaced grays from near-black to near-white.
 
-Terminals almost universally support 256-color (it's 30+ years old). Whether an application *uses* it depends on `$TERM` (`*-256color` signals support) and `COLORTERM`.
+Terminals almost universally support 256-color (it's 30+ years old). Whether an application _uses_ it depends on `$TERM` (`*-256color` signals support) and `COLORTERM`.
 
 ### Truecolor (24-bit)
 
@@ -60,20 +60,20 @@ Your app emits SGR to color its output. Your terminal emits OSC responses when p
 
 ## The SGR attrs that aren't colors
 
-SGR also carries **attrs** — bold, italic, underline, inverse, dim, strikethrough. These layer *on top of* color and are independent of it. Universally supported attrs:
+SGR also carries **attrs** — bold, italic, underline, inverse, dim, strikethrough. These layer _on top of_ color and are independent of it. Universally supported attrs:
 
-| Code | Attr | Note |
-|------|------|------|
-| `1` | bold | Some terminals also brighten the color |
-| `2` | dim | Uneven support — alpha-blend on some, intensity-reduction on others |
-| `3` | italic | Truly italic if the font has an italic variant; slanted otherwise |
-| `4` | underline | Basic single underline |
-| `7` | inverse | Swaps fg + bg |
-| `9` | strikethrough | Newer — check [terminal matrix](/text) |
-| `22` | normal intensity | Turns off bold/dim |
-| `23` | no italic | |
-| `24` | no underline | |
-| `27` | no inverse | |
+| Code | Attr             | Note                                                                |
+| ---- | ---------------- | ------------------------------------------------------------------- |
+| `1`  | bold             | Some terminals also brighten the color                              |
+| `2`  | dim              | Uneven support — alpha-blend on some, intensity-reduction on others |
+| `3`  | italic           | Truly italic if the font has an italic variant; slanted otherwise   |
+| `4`  | underline        | Basic single underline                                              |
+| `7`  | inverse          | Swaps fg + bg                                                       |
+| `9`  | strikethrough    | Newer — check [terminal matrix](/text)                              |
+| `22` | normal intensity | Turns off bold/dim                                                  |
+| `23` | no italic        |                                                                     |
+| `24` | no underline     |                                                                     |
+| `27` | no inverse       |                                                                     |
 
 Modern terminals add curly/dotted/dashed underlines, underline colors, and more — see [underlines](/text/underline-style).
 
