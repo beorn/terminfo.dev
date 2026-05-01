@@ -39,14 +39,14 @@ function Header({ terminal, terminalVersion, os, osVersion, probeCount, category
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text bold>{osc8("https://terminfo.dev", "terminfo.dev")}</Text>
-      <Text dimColor>Can your terminal do that?</Text>
+      <Text color="$fg-muted">Can your terminal do that?</Text>
       <Text> </Text>
       <Box flexDirection="row" gap={2}>
         <Box flexDirection="column" width={12}>
-          <Text dimColor>Terminal</Text>
-          <Text dimColor>Platform</Text>
-          <Text dimColor>Probes</Text>
-          <Text dimColor>Score</Text>
+          <Text color="$fg-muted">Terminal</Text>
+          <Text color="$fg-muted">Platform</Text>
+          <Text color="$fg-muted">Probes</Text>
+          <Text color="$fg-muted">Score</Text>
         </Box>
         <Box flexDirection="column">
           <Text bold>
@@ -94,7 +94,7 @@ function CategorySection({
           <Box key={p.id} flexDirection="row" paddingLeft={2}>
             <Text color={p.pass ? "green" : "red"}>{icon} </Text>
             <Text>{osc8(url, p.name)}</Text>
-            {p.note && <Text dimColor> — {p.note}</Text>}
+            {p.note && <Text color="$fg-muted"> — {p.note}</Text>}
           </Box>
         )
       })}
@@ -106,8 +106,8 @@ function Footer({ submitMode }: { submitMode: boolean }) {
   if (submitMode) return null
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Text dimColor>Submit: npx terminfo.dev --submit</Text>
-      <Text dimColor>JSON: npx terminfo.dev --json</Text>
+      <Text color="$fg-muted">Submit: npx terminfo.dev --submit</Text>
+      <Text color="$fg-muted">JSON: npx terminfo.dev --json</Text>
     </Box>
   )
 }
