@@ -106,6 +106,7 @@ Features are tagged by their defining standard (10 standards). Each standard pag
 
 - **Default configuration only.** Results reflect each terminal's out-of-the-box behavior. User configuration (custom keybindings, enabled/disabled features, modified settings) may change what a terminal supports.
 - **Specific versions, not all versions.** Probe results are from particular versions of each terminal and backend. Older or newer versions may differ. The version tested is shown alongside each result.
+- **Terminal applications are not probe targets.** Tools like Carbonyl and Browsh render browser content inside an existing terminal; they consume terminal features rather than providing a terminal-emulator surface of their own. Running a probe inside one of these apps would measure the outer terminal hosting the app, not the app itself.
 - **Visual features cannot be fully automated.** Some capabilities — font rendering quality, glyph width consistency, cursor blink timing, color accuracy — require visual inspection and cannot be verified purely through escape sequence responses.
 - **Single-platform app probes (macOS).** Terminal application probes are currently run on macOS only. Linux and Windows results are available through the community CLI (`npx terminfo.dev submit`) but are not yet part of the automated test matrix.
 - **Headless != rendered.** A headless backend passing a probe means the parser accepts and stores the sequence correctly. It does not guarantee the feature renders correctly in the corresponding terminal application.
