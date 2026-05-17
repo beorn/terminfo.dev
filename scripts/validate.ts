@@ -89,6 +89,23 @@ const terminals = loadJson(join(contentDir, "terminals.json")) as Record<
   }
 >
 
+const platforms = loadJson(join(contentDir, "platforms.json")) as Record<
+  string,
+  {
+    label?: string
+    slug?: string
+    tagline?: string
+    description?: string
+    appTerminalIds?: string[]
+    parserBackendIds?: string[]
+    multiplexerIds?: string[]
+    untrackedTerminals?: Array<{ label?: string; url?: string; type?: string; note?: string }>
+    notes?: string[]
+    sources?: Array<{ label?: string; url?: string }>
+    [key: string]: unknown
+  }
+>
+
 const annotations = loadJson(join(contentDir, "annotations.json")) as Record<string, { note: string; result?: string }>
 
 const baselines = loadJson(join(contentDir, "baselines.json")) as Record<
@@ -111,6 +128,8 @@ const standardKeys = new Set(Object.keys(standards))
 const categoryKeys = new Set(Object.keys(categories))
 const validTags = new Set([...standardKeys, ...categoryKeys])
 const baselineKeys = new Set(Object.keys(baselines))
+const platformKeys = new Set(Object.keys(platforms).filter((k) => k !== "$comment"))
+const knownPlatformKeys = new Set(["macos", "linux", "windows"])
 
 // Remove the $comment key if present
 featureIds.delete("$comment")
@@ -248,6 +267,88 @@ heading("Errors (block deploy)")
     }
   }
   if (!found) info("All terminals have description and body content")
+}
+
+// 4e. Platform pages reference valid terminal metadata
+{
+  let found = false
+  const terminalKeys = new Set(Object.keys(terminals))
+
+  for (const [id, platform] of Object.entries(platforms)) {
+    if (id === "$comment") continue
+    const missing: string[] = []
+    if (!knownPlatformKeys.has(id)) missing.push("known platform id")
+    if (!platform.label) missing.push("label")
+    if (!platform.slug) missing.push("slug")
+    if (platform.slug && platform.slug !== id) missing.push("slug must match id")
+    if (!platform.tagline) missing.push("tagline")
+    if (!platform.description) missing.push("description")
+    if (!Array.isArray(platform.appTerminalIds)) missing.push("appTerminalIds")
+    if (!Array.isArray(platform.parserBackendIds)) missing.push("parserBackendIds")
+    if (!Array.isArray(platform.multiplexerIds)) missing.push("multiplexerIds")
+    if (!Array.isArray(platform.sources) || platform.sources.length === 0) missing.push("sources")
+
+    if (missing.length > 0) {
+      error(`Platform "${id}" missing or invalid fields: ${missing.join(", ")}`)
+      errors++
+      found = true
+    }
+
+    const seen = new Set<string>()
+    for (const section of ["appTerminalIds", "parserBackendIds", "multiplexerIds"] as const) {
+      for (const terminalId of platform[section] ?? []) {
+        if (!terminalKeys.has(terminalId)) {
+          error(`Platform "${id}" ${section} references unknown terminal "${terminalId}"`)
+          errors++
+          found = true
+        }
+        if (seen.has(terminalId)) {
+          error(`Platform "${id}" lists terminal "${terminalId}" more than once`)
+          errors++
+          found = true
+        }
+        seen.add(terminalId)
+      }
+    }
+
+    for (const gap of platform.untrackedTerminals ?? []) {
+      const gapMissing: string[] = []
+      if (!gap.label) gapMissing.push("label")
+      if (!gap.url) gapMissing.push("url")
+      if (!gap.type) gapMissing.push("type")
+      if (!gap.note) gapMissing.push("note")
+      if (gap.url && !/^https?:\/\//.test(gap.url)) gapMissing.push("absolute url")
+      if (gapMissing.length > 0) {
+        error(
+          `Platform "${id}" has invalid untracked terminal "${gap.label ?? "(missing label)"}": ${gapMissing.join(", ")}`,
+        )
+        errors++
+        found = true
+      }
+    }
+
+    for (const source of platform.sources ?? []) {
+      const sourceMissing: string[] = []
+      if (!source.label) sourceMissing.push("label")
+      if (!source.url) sourceMissing.push("url")
+      if (source.url && !/^https?:\/\//.test(source.url)) sourceMissing.push("absolute url")
+      if (sourceMissing.length > 0) {
+        error(`Platform "${id}" has invalid source "${source.label ?? "(missing label)"}": ${sourceMissing.join(", ")}`)
+        errors++
+        found = true
+      }
+    }
+  }
+
+  for (const id of knownPlatformKeys) {
+    if (!platformKeys.has(id)) {
+      error(`Missing platform page metadata for "${id}"`)
+      errors++
+      found = true
+    }
+  }
+
+  if (!found) info("All platform page metadata is valid")
 }
 
 // ---------------------------------------------------------------------------

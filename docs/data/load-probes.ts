@@ -168,3 +168,41 @@ export function loadAnalysis(): Record<string, AnalysisEntry> {
   }
   return _analysisCached!
 }
+
+export interface PlatformSource {
+  label: string
+  url: string
+}
+
+export interface PlatformGap {
+  label: string
+  url: string
+  type: string
+  note: string
+}
+
+export interface PlatformMeta {
+  label: string
+  slug: string
+  tagline: string
+  description: string
+  appTerminalIds: string[]
+  parserBackendIds: string[]
+  multiplexerIds: string[]
+  untrackedTerminals: PlatformGap[]
+  notes: string[]
+  sources: PlatformSource[]
+}
+
+let _platformsCached: Record<string, PlatformMeta> | null = null
+
+/** Load content/platforms.json — curated platform metadata for /os pages */
+export function loadPlatformsMeta(): Record<string, PlatformMeta> {
+  if (!_platformsCached) {
+    const path = join(__dirname, "..", "..", "content", "platforms.json")
+    const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, PlatformMeta>
+    delete (raw as any).$comment
+    _platformsCached = raw
+  }
+  return _platformsCached
+}

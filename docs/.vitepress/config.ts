@@ -37,6 +37,16 @@ function terminalSlug(name: string, meta: Record<string, any>): string {
   return label.replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
 }
 
+function loadPlatformItems(): Array<{ text: string; link: string }> {
+  const platformsPath = join(docsDir, "..", "content", "platforms.json")
+  const platforms = JSON.parse(readFileSync(platformsPath, "utf-8")) as Record<string, { label: string; slug: string }>
+  delete (platforms as any).$comment
+  return Object.values(platforms).map((p) => ({
+    text: p.label,
+    link: `/os/${p.slug}`,
+  }))
+}
+
 function buildSidebar() {
   // Load backends from probe results
   const probesLibsDir = join(docsDir, "..", "content", "probes-libs")
@@ -283,6 +293,8 @@ function buildSidebar() {
     link: `/framework/${id}`,
   }))
 
+  const platformItems = loadPlatformItems()
+
   const sidebar = [
     { text: "Matrix", link: "/" },
     {
@@ -331,6 +343,11 @@ function buildSidebar() {
       ],
     },
     {
+      text: "Operating Systems",
+      link: "/os",
+      items: platformItems,
+    },
+    {
       text: "Compare",
       items: compareItems,
     },
@@ -371,6 +388,7 @@ function buildSidebar() {
     sortedTags,
     tagLabels,
     baselineItems,
+    platformItems,
   }
 }
 
@@ -385,6 +403,7 @@ const {
   sortedTags,
   tagLabels,
   baselineItems,
+  platformItems,
 } = buildSidebar()
 
 export default defineConfig({
@@ -536,6 +555,11 @@ export default defineConfig({
       pageData.description =
         "Every terminal emulator tested by terminfo.dev \u2014 app terminals (Ghostty, Kitty, iTerm2), parser backends (xterm.js, vterm.js), multiplexers (tmux, Screen), and historical terminals (VT100, VT220, xterm)."
     }
+    if (rel === "os.md") {
+      pageData.title = "Operating System Terminal Support: macOS, Linux, Windows"
+      pageData.description =
+        "Terminal support by operating system. See which terminals are available on macOS, Linux, and Windows, and which scores are app probes, parser probes, inherited engine scores, or reference-only evidence."
+    }
     if (rel === "glossary.md") {
       pageData.title = "Terminal Glossary: Acronyms and Technical Terms"
       pageData.description =
@@ -556,6 +580,9 @@ export default defineConfig({
           pageData.title = `${params.backendName} \u2014 Terminal Feature Support`
           pageData.description = `${params.backendName} terminal emulator feature support: ${params.pct}% (${params.yes}/${params.total} features). ${params.backendDescription}`
         }
+      } else if (rel.startsWith("os/")) {
+        pageData.title = `${params.label} Terminal Support \u2014 OS Compatibility Matrix`
+        pageData.description = `${params.label} terminal emulator support: ${params.appCount} app terminals, ${params.measuredAppCount} platform-specific app probes, ${params.parserCount} parser backends, and ${params.gapCount} tracked gaps.`
       } else if (params.featureName) {
         pageData.title = `${params.featureName} \u2014 Terminal Support`
         pageData.description = `Which terminal emulators support ${params.featureName}? Support matrix showing ${params.yesCount} of ${params.totalCount} backends.`
@@ -699,6 +726,10 @@ export default defineConfig({
           { text: "Multiplexers", link: "/multiplexers", items: termMultiplexers },
           { text: "Historical", items: historicalTerminals.map(({ text, link }) => ({ text, link })) },
         ],
+      },
+      {
+        text: "OS",
+        items: [{ text: "Overview", link: "/os" }, ...platformItems],
       },
       {
         text: "Fundamentals",

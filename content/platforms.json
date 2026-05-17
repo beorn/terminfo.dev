@@ -1,0 +1,124 @@
+{
+  "macos": {
+    "label": "macOS",
+    "slug": "macos",
+    "tagline": "The best-covered app-terminal platform in the current terminfo.dev dataset.",
+    "description": "macOS has the broadest real-app probe coverage on terminfo.dev today. Cross-platform terminals are listed here when they ship a macOS build, but their scores stay tied to the source of evidence: app probe, parser probe, inherited engine, or not yet probed.",
+    "appTerminalIds": [
+      "ghostty",
+      "kitty",
+      "iterm2",
+      "terminal-app",
+      "warp",
+      "cursor",
+      "com.microsoft.VSCode",
+      "cmux",
+      "alacritty",
+      "wezterm"
+    ],
+    "parserBackendIds": ["vterm", "vt100", "xtermjs"],
+    "multiplexerIds": ["tmux", "screen"],
+    "untrackedTerminals": [],
+    "notes": [
+      "Current real-app probe files are macOS-first, so macOS scores are the strongest platform-specific evidence in the dataset.",
+      "Alacritty and WezTerm are tracked as app terminals, but current automated results for them come from their reusable parser backends rather than from a macOS GUI-app probe."
+    ],
+    "sources": [
+      { "label": "Apple Terminal User Guide", "url": "https://support.apple.com/guide/terminal/welcome/mac" },
+      { "label": "Ghostty docs", "url": "https://ghostty.org/docs" },
+      { "label": "iTerm2", "url": "https://iterm2.com/" },
+      { "label": "kitty", "url": "https://sw.kovidgoyal.net/kitty/" },
+      {
+        "label": "Warp install docs",
+        "url": "https://docs.warp.dev/getting-started/quickstart/installation-and-setup"
+      },
+      { "label": "Alacritty", "url": "https://alacritty.org/" },
+      { "label": "WezTerm downloads", "url": "https://wezterm.org/installation.html" },
+      { "label": "VS Code terminal docs", "url": "https://code.visualstudio.com/docs/terminal/getting-started" },
+      { "label": "Cursor download", "url": "https://cursor.com/en-US/download" }
+    ]
+  },
+  "linux": {
+    "label": "Linux",
+    "slug": "linux",
+    "tagline": "A broad terminal ecosystem with parser coverage and clear app-probe gaps.",
+    "description": "Linux support spans native GUI terminals, Wayland-first terminals, editor-integrated terminals, and Unix multiplexers. The Linux page separates availability from measured app coverage because most current full-app probes were captured on macOS.",
+    "appTerminalIds": ["ghostty", "kitty", "warp", "cursor", "com.microsoft.VSCode", "alacritty", "wezterm"],
+    "parserBackendIds": ["vterm", "vt100", "xtermjs"],
+    "multiplexerIds": ["tmux", "screen"],
+    "untrackedTerminals": [
+      {
+        "label": "foot",
+        "url": "https://codeberg.org/dnkl/foot",
+        "type": "app terminal",
+        "note": "Wayland-native terminal with modern protocol support; not yet represented by terminfo.dev probe files."
+      },
+      {
+        "label": "GNOME Terminal",
+        "url": "https://help.gnome.org/users/gnome-terminal/",
+        "type": "app terminal",
+        "note": "GTK/VTE terminal common on GNOME desktops; not yet represented by terminfo.dev probe files."
+      }
+    ],
+    "notes": [
+      "Linux availability is broader than current Linux app-probe coverage. Parser-backend scores are useful implementation evidence, but they do not prove compositor, font, or input behavior in a full Linux terminal window.",
+      "tmux and GNU Screen are included because they are operating-system-level workflow dependencies for many Linux users, even though they are multiplexers rather than terminal emulator windows."
+    ],
+    "sources": [
+      { "label": "Ghostty Linux docs", "url": "https://ghostty.org/docs/linux" },
+      { "label": "kitty", "url": "https://sw.kovidgoyal.net/kitty/" },
+      {
+        "label": "Warp install docs",
+        "url": "https://docs.warp.dev/getting-started/quickstart/installation-and-setup"
+      },
+      { "label": "Alacritty", "url": "https://alacritty.org/" },
+      { "label": "WezTerm Linux install", "url": "https://wezterm.org/install/linux.html" },
+      { "label": "VS Code terminal docs", "url": "https://code.visualstudio.com/docs/terminal/getting-started" },
+      { "label": "Cursor download", "url": "https://cursor.com/en-US/download" },
+      { "label": "foot source", "url": "https://codeberg.org/dnkl/foot" },
+      { "label": "GNOME Terminal help", "url": "https://help.gnome.org/users/gnome-terminal/" }
+    ]
+  },
+  "windows": {
+    "label": "Windows",
+    "slug": "windows",
+    "tagline": "Windows terminals, editor-integrated terminals, and the ConPTY layer.",
+    "description": "Windows terminal behavior includes both terminal applications and the Windows pseudo-console layer that hosts command-line applications. terminfo.dev tracks available Windows terminals separately from current app-probe evidence so platform pages do not imply unmeasured scores.",
+    "appTerminalIds": ["warp", "cursor", "com.microsoft.VSCode", "alacritty", "wezterm"],
+    "parserBackendIds": ["vterm", "vt100", "xtermjs"],
+    "multiplexerIds": [],
+    "untrackedTerminals": [
+      {
+        "label": "Windows Terminal",
+        "url": "https://github.com/microsoft/terminal",
+        "type": "app terminal",
+        "note": "Microsoft's modern Windows terminal application; not yet represented by terminfo.dev probe files."
+      },
+      {
+        "label": "ConPTY",
+        "url": "https://devblogs.microsoft.com/commandline/windows-command-line-introducing-the-windows-pseudo-console-conpty/",
+        "type": "platform API",
+        "note": "Windows pseudo-console infrastructure used by terminal hosts; it is a platform layer, not a standalone terminal app."
+      }
+    ],
+    "notes": [
+      "Windows pages intentionally distinguish terminal applications from ConPTY. ConPTY is relevant to terminal behavior, but it is not itself an app terminal with a feature score.",
+      "Current Windows entries are availability and parser/reference coverage until Windows app probes are added."
+    ],
+    "sources": [
+      { "label": "Windows Terminal source", "url": "https://github.com/microsoft/terminal" },
+      {
+        "label": "ConPTY introduction",
+        "url": "https://devblogs.microsoft.com/commandline/windows-command-line-introducing-the-windows-pseudo-console-conpty/"
+      },
+      {
+        "label": "Warp install docs",
+        "url": "https://docs.warp.dev/getting-started/quickstart/installation-and-setup"
+      },
+      { "label": "Alacritty", "url": "https://alacritty.org/" },
+      { "label": "WezTerm Windows install", "url": "https://wezterm.org/install/windows.html" },
+      { "label": "VS Code terminal docs", "url": "https://code.visualstudio.com/docs/terminal/getting-started" },
+      { "label": "Cursor download", "url": "https://cursor.com/en-US/download" }
+    ]
+  }
+}
