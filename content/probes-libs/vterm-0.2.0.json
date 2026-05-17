@@ -1,7 +1,7 @@
 {
   "backend": "vterm",
   "version": "0.2.0",
-  "generated": "2026-05-17T20:05:48.260Z",
+  "generated": "2026-05-17T20:17:38.992Z",
   "probeHash": "15e2beccc8fe",
   "results": {
     "extensions.truecolor": true,
@@ -67,6 +67,7 @@
     "extensions.osc7777-font-window-size": true,
     "extensions.osc701-locale": true,
     "extensions.osc702-version": true,
+    "extensions.osc720-scroll-up": true,
     "extensions.osc776-cell-size": true,
     "extensions.sixel-da1": true,
     "extensions.sixel-geometry-report": true,

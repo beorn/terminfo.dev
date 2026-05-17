@@ -53,6 +53,28 @@ function colorStackProbe(): ProbeDefinition["termless"] {
   }
 }
 
+function osc720ScrollProbe(): ProbeDefinition["termless"] {
+  return (ctx) => {
+    for (let i = 0; i < 30; i++) ctx.feed(`scroll-${i}\r\n`)
+    const before = ctx.getScrollback()
+    if (before.totalLines <= before.screenLines || before.viewportOffset <= 0) {
+      return {
+        pass: false,
+        note: `No scrollback to scroll (viewport=${before.viewportOffset}, total=${before.totalLines}, screen=${before.screenLines})`,
+      }
+    }
+    ctx.feed("\x1b]720\x07")
+    const after = ctx.getScrollback()
+    const pass = after.viewportOffset < before.viewportOffset
+    return {
+      pass,
+      note: pass
+        ? `viewport ${before.viewportOffset}→${after.viewportOffset}`
+        : `viewport did not move up (${before.viewportOffset}→${after.viewportOffset})`,
+    }
+  }
+}
+
 /** Kitty keyboard flag probe — push flags, query, check specific bit. */
 function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: number): ProbeDefinition {
   return probe(
@@ -1269,20 +1291,16 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 720 — rxvt-unicode scroll view up
-  probe(
-    "extensions.osc720-scroll-up",
-    null, // Headless: scrollback navigation is a UI concept
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]720\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 720" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
-    },
-  ),
+  probe("extensions.osc720-scroll-up", osc720ScrollProbe(), async (ctx) => {
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write("\x1b]720\x07")
+    const pos = await ctx.queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response after OSC 720" }
+    return {
+      pass: pos.col === 1,
+      note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+    }
+  }),
 
   // OSC 776 — rxvt-unicode cell size report
   probe(

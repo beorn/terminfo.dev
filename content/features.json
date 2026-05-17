@@ -2604,9 +2604,8 @@
     "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
     "tags": ["osc"],
     "body": "OSC 720 scrolls the visible terminal view up by N lines into the scrollback buffer, as if the user pressed Shift+PageUp. The sequence is <code>ESC ] 720 BEL</code> (some forms accept a count parameter). The companion <strong>OSC 721</strong> scrolls back down toward the live region. Both are <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a>-only extensions, intended for scripts that wanted to drive the scrollback view from inside the terminal. Modern terminals do not expose scrollback navigation over escape sequences — the scrollback is considered a user-interface concept owned by the emulator, not the application — so these sequences are silently consumed everywhere except urxvt.",
-    "probe": "Send <code>OSC 720 BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "probe": "Populate scrollback, send <code>OSC 720 BEL</code>, and verify the visible viewport moves up into scrollback.",
     "baseline": "legacy",
-    "probeStatus": "partial",
     "sequence": "ESC ] 720 BEL"
   },
   "extensions.osc776-cell-size": {

@@ -177,4 +177,28 @@ describe("partial probe automation candidates", () => {
       expect(result.pass).toBe(true)
     }
   })
+
+  test("OSC 720 verifies scrollback viewport movement", () => {
+    const p = probe("extensions.osc720-scroll-up")
+    expect(p.termless).toBeTypeOf("function")
+
+    let scrollReads = 0
+    const fed: string[] = []
+    const result = p.termless!(
+      context({
+        feed(text) {
+          fed.push(text)
+        },
+        getScrollback() {
+          scrollReads++
+          return scrollReads === 1
+            ? { viewportOffset: 1, totalLines: 4, screenLines: 3 }
+            : { viewportOffset: 0, totalLines: 4, screenLines: 3 }
+        },
+      }),
+    )
+
+    expect(result.pass).toBe(true)
+    expect(fed).toContain("\x1b]720\x07")
+  })
 })
