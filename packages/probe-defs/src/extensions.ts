@@ -21,6 +21,38 @@ function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
   )
 }
 
+function oscQueryProbe(querySeq: string, responsePattern: RegExp, noResponseNote: string): ProbeDefinition["termless"] {
+  return (ctx) => {
+    const response = ctx.feedCapture(querySeq)
+    const pass = responsePattern.test(response)
+    return { pass, note: pass ? undefined : noResponseNote, response }
+  }
+}
+
+function pointerColorResetProbe(
+  setCode: 13 | 14,
+  resetCode: 113 | 114,
+  defaultPattern: RegExp,
+): ProbeDefinition["termless"] {
+  return (ctx) => {
+    ctx.feed(`\x1b]${setCode};rgb:12/34/56\x07`)
+    ctx.feed(`\x1b]${resetCode}\x07`)
+    const response = ctx.feedCapture(`\x1b]${setCode};?\x07`)
+    const pass = defaultPattern.test(response)
+    return { pass, note: pass ? undefined : `OSC ${setCode} query did not report reset default`, response }
+  }
+}
+
+function colorStackProbe(): ProbeDefinition["termless"] {
+  return (ctx) => {
+    const response = ctx.feedCapture(
+      "\x1b]10;rgb:10/20/30\x07\x1b]30001\x07\x1b]10;rgb:aa/bb/cc\x07\x1b]30101\x07\x1b]10;?\x07",
+    )
+    const pass = /\x1b\]10;rgb:1010\/2020\/3030/.test(response)
+    return { pass, note: pass ? undefined : "Color stack did not restore OSC 10 foreground", response }
+  }
+}
+
 /** Kitty keyboard flag probe — push flags, query, check specific bit. */
 function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: number): ProbeDefinition {
   return probe(
@@ -1028,7 +1060,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 113 — reset pointer fg color
   probe(
     "extensions.osc113-reset-pointer-fg",
-    null, // Headless: pointer color is not represented in the terminal cell grid
+    pointerColorResetProbe(13, 113, /\x1b\]13;rgb:ffff\/ffff\/ffff/),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]113\x07")
@@ -1044,7 +1076,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 114 — reset pointer bg color
   probe(
     "extensions.osc114-reset-pointer-bg",
-    null, // Headless: pointer color is not represented in the terminal cell grid
+    pointerColorResetProbe(14, 114, /\x1b\]14;rgb:0000\/0000\/0000/),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]114\x07")
@@ -1083,38 +1115,30 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 30001 — Kitty color stack push
-  probe(
-    "extensions.osc30001-color-stack-push",
-    null, // Headless: no observable side-effect (stack is internal terminal state)
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]30001\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 30001" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
-    },
-  ),
+  probe("extensions.osc30001-color-stack-push", colorStackProbe(), async (ctx) => {
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write("\x1b]30001\x07")
+    const pos = await ctx.queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response after OSC 30001" }
+    return {
+      pass: pos.col === 1,
+      note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+    }
+  }),
 
   // OSC 30101 — Kitty color stack pop
-  probe(
-    "extensions.osc30101-color-stack-pop",
-    null, // Headless: no observable side-effect (stack is internal terminal state)
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      // Push first so the pop has something to restore — both should be consumed.
-      ctx.write("\x1b]30001\x07")
-      ctx.write("\x1b]30101\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 30101" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
-    },
-  ),
+  probe("extensions.osc30101-color-stack-pop", colorStackProbe(), async (ctx) => {
+    ctx.write("\x1b[1;1H\x1b[2K")
+    // Push first so the pop has something to restore — both should be consumed.
+    ctx.write("\x1b]30001\x07")
+    ctx.write("\x1b]30101\x07")
+    const pos = await ctx.queryCursorPosition()
+    if (!pos) return { pass: false, note: "No cursor response after OSC 30101" }
+    return {
+      pass: pos.col === 1,
+      note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+    }
+  }),
 
   // OSC 176 — foot Wayland app-id
   probe(
@@ -1167,7 +1191,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 7770 — mintty font size query/set
   probe(
     "extensions.osc7770-font-size",
-    null, // Headless: font size is a UI/render concept, not in the cell grid
+    oscQueryProbe("\x1b]7770;?\x07", /\x1b\]7770;[0-9]+/, "No OSC 7770 font-size response"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]7770;?\x07")
@@ -1183,7 +1207,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 7777 — mintty font + window size (zoom)
   probe(
     "extensions.osc7777-font-window-size",
-    null, // Headless: font/window size is a UI/render concept
+    oscQueryProbe("\x1b]7777;?\x07", /\x1b\]7777;[0-9]+/, "No OSC 7777 font/window-size response"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]7777;;\x07")
@@ -1199,7 +1223,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 701 — rxvt-unicode locale query/set
   probe(
     "extensions.osc701-locale",
-    null, // Headless: locale state is not observable in the cell grid
+    oscQueryProbe("\x1b]701;?\x07", /\x1b\]701;[A-Za-z0-9_.-]+/, "No OSC 701 locale response"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]701;?\x07")
@@ -1215,7 +1239,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 702 — rxvt-unicode version query
   probe(
     "extensions.osc702-version",
-    null, // Headless: response routing isn't reliably available outside real terminals
+    oscQueryProbe("\x1b]702\x07", /\x1b\]702;[^\x07\x1b]+/, "No OSC 702 version response"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]702\x07")
@@ -1263,7 +1287,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 776 — rxvt-unicode cell size report
   probe(
     "extensions.osc776-cell-size",
-    null, // Headless: cell metrics aren't reported through this channel in backends
+    oscQueryProbe("\x1b]776\x07", /\x1b\]776;\d+;\d+;\d+/, "No OSC 776 cell-size response"),
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]776\x07")

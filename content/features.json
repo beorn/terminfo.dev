@@ -2472,7 +2472,6 @@
     "body": "OSC 113 resets the mouse pointer foreground color to the terminal's configured default. The sequence is <code>ESC ] 113 BEL</code>. This is the companion reset for OSC 13, which sets the pointer foreground color. The pointer color set originated in xterm to allow applications to customize the mouse cursor when hovering over the terminal — historically useful on X11 where the X cursor was not styled by the GUI toolkit. Support is mostly limited to xterm and a small number of xterm-compatible terminals that implement the full color management protocol.",
     "probe": "Send <code>OSC 113 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 113 BEL"
   },
   "extensions.osc114-reset-pointer-bg": {
@@ -2483,7 +2482,6 @@
     "body": "OSC 114 resets the mouse pointer background color to the terminal's configured default. The sequence is <code>ESC ] 114 BEL</code>. This is the companion reset for OSC 14, which sets the pointer background color. Together with OSC 113, these complete the xterm pointer color management protocol. Most modern terminals delegate cursor styling to the host operating system or window manager and ignore these sequences entirely; xterm is essentially the reference implementation.",
     "probe": "Send <code>OSC 114 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 114 BEL"
   },
   "extensions.osc21-kitty-color": {
@@ -2504,7 +2502,6 @@
     "body": "OSC 30001 saves the terminal's current color state to a stack maintained by the terminal emulator. The sequence is <code>ESC ] 30001 BEL</code> and snapshots the foreground, background, cursor, selection, and full palette colors. This pairs with OSC 30101 (pop) to give applications a clean way to temporarily change colors and reliably restore them later — useful for theme previews, colorized diffs, or full-screen applications that want to leave the terminal in its original state on exit. Originally introduced by Kitty as part of its color management work; foot and Ghostty have adopted the same protocol.",
     "probe": "Send <code>OSC 30001 BEL</code> and verify the terminal remains responsive (push sequence consumed without error).",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 30001 BEL"
   },
   "extensions.osc30101-color-stack-pop": {
@@ -2515,7 +2512,6 @@
     "body": "OSC 30101 restores the most recently saved color state from the terminal's color stack. The sequence is <code>ESC ] 30101 BEL</code> and reverts the foreground, background, cursor, selection, and palette colors to the snapshot captured by the matching OSC 30001 push. This is the reliable cleanup primitive for applications that have changed any of the terminal's colors at runtime — instead of re-emitting individual reset sequences (OSC 110, 111, 112, 104), one pop restores everything atomically. Defined alongside OSC 30001 by Kitty, also supported by foot and Ghostty.",
     "probe": "Send <code>OSC 30001 BEL</code> followed by <code>OSC 30101 BEL</code> and verify the pop sequence is consumed without error.",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 30101 BEL"
   },
   "extensions.osc176-app-id": {
@@ -2559,7 +2555,6 @@
     "body": "OSC 7770 queries or sets the terminal's current font size. To set: <code>ESC ] 7770 ; size BEL</code> where size is a point value. To query: <code>ESC ] 7770 ; ? BEL</code>, and the terminal responds with the current font size. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a> extension, originally added so shell scripts and TUIs running in mintty (Cygwin, MSYS, Git Bash) could programmatically zoom in or out — the same operation users perform with Ctrl+Plus / Ctrl+Minus. No other major terminal implements OSC 7770; font sizing is normally a user-only setting.",
     "probe": "Send <code>OSC 7770 ; ? BEL</code> and verify the terminal responds with a font size or silently consumes the query.",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 7770 ; size BEL"
   },
   "extensions.osc7777-font-window-size": {
@@ -2570,7 +2565,6 @@
     "body": "OSC 7777 sets both the font size and window size in a single zoom operation. The sequence is <code>ESC ] 7777 ; font ; size BEL</code>, where the font and size parameters control mintty's combined zoom behavior — adjusting the window dimensions to keep the visible character grid stable while the font changes. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a>-specific zoom control that complements OSC 7770 (font size only). Like other mintty font extensions, it has no adoption outside mintty.",
     "probe": "Send <code>OSC 7777 ; ; BEL</code> (default zoom) and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 7777 ; font ; size BEL"
   },
   "extensions.osc701-locale": {
@@ -2581,7 +2575,6 @@
     "body": "OSC 701 queries or sets the terminal's current locale, which controls character encoding and text input behavior. To set: <code>ESC ] 701 ; locale BEL</code> where <code>locale</code> is a locale identifier like <code>en_US.UTF-8</code>. To query: <code>ESC ] 701 ; ? BEL</code>, and the terminal responds with its current locale. Originally introduced by <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a> so applications running inside the terminal could discover or override the encoding the terminal was decoding text as — important for users who routinely mixed UTF-8 and legacy 8-bit encodings. Also supported by mintty. Modern terminals are universally UTF-8 and silently consume the sequence.",
     "probe": "Send <code>OSC 701 ; ? BEL</code> and verify the terminal responds with a locale string or silently consumes the query.",
     "baseline": "legacy",
-    "probeStatus": "partial",
     "sequence": "ESC ] 701 ; locale BEL"
   },
   "extensions.osc702-version": {
@@ -2592,7 +2585,6 @@
     "body": "OSC 702 returns the terminal's version string. The sequence is <code>ESC ] 702 BEL</code> and the terminal responds with its name and version (e.g., <code>rxvt-unicode 9.30</code>). This is a <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a>-only extension, predating modern terminal version-detection mechanisms like XTVERSION (CSI > q) and DA1/DA2/DA3 fingerprinting. Modern applications use XTVERSION instead, which is supported across xterm, foot, Kitty, Ghostty, WezTerm, and many others. OSC 702 is essentially urxvt archaeology.",
     "probe": "Send <code>OSC 702 BEL</code> and verify the terminal responds with a version string or silently consumes the query.",
     "baseline": "legacy",
-    "probeStatus": "partial",
     "sequence": "ESC ] 702 BEL"
   },
   "extensions.osc710-font-normal": {
@@ -2625,7 +2617,6 @@
     "body": "OSC 776 reports the terminal's cell dimensions and font metrics. The query is <code>ESC ] 776 BEL</code> and the terminal responds with the cell width, cell height, and font ascent/descent values in pixels — enabling applications to align Sixel or pixel-graphics output to the character grid. This was introduced in <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a> 9.29 and is essentially a urxvt-specific alternative to xterm's CSI 14 t (window pixel size) and OSC 1337 ReportCellSize (iTerm2). Like the other urxvt OSC extensions, it sees no adoption outside its origin terminal.",
     "probe": "Send <code>OSC 776 BEL</code> and verify the terminal responds with cell metrics or silently consumes the query.",
     "baseline": "legacy",
-    "probeStatus": "partial",
     "sequence": "ESC ] 776 BEL"
   },
   "extensions.clipboard-paste": {

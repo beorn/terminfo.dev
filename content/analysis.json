@@ -1,5 +1,5 @@
 {
-  "$generated": "2026-05-17T19:52:31.754Z",
+  "$generated": "2026-05-17T20:08:38.759Z",
   "terminals/ghostty": {
     "analysis": "<p><a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> scores <strong>91%</strong> (231/254) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Core TUI, Rich TUI, Legacy baselines. Ranks <strong>#3</strong> of 12 tested terminals. Missing <strong>23</strong> features.</p>",
     "date": "2026-05-17",
@@ -43,9 +43,9 @@
     "changes": null
   },
   "terminals/vterm-js": {
-    "analysis": "<p><a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a> scores <strong>94%</strong> (221/235) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Modern TUI, Rich TUI, Legacy baselines. Ranks <strong>#2</strong> of 12 tested terminals. Uniquely supports: <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/osc5522-clipboard\" class=\"hover-link\">OSC 5522 advanced clipboard</a>, <a href=\"/text/tbc-clear-tab-stop\" class=\"hover-link\">TBC clear tab stop (CSI g)</a>, <a href=\"/modes/decsclm-smooth-scroll\" class=\"hover-link\">DECSCLM — smooth scroll mode</a>. Missing <strong>14</strong> features.</p>",
+    "analysis": "<p><a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a> scores <strong>94%</strong> (230/244) on the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev feature matrix, with gaps in the Modern TUI, Rich TUI, Legacy baselines. Ranks <strong>#2</strong> of 12 tested terminals. Uniquely supports: <a href=\"/extensions/osc1337-cellsize\" class=\"hover-link\">iTerm2 Cell Size Reporting (OSC 1337)</a>, <a href=\"/extensions/osc1337-capabilities\" class=\"hover-link\">iTerm2 Capability Reporting (OSC 1337)</a>, <a href=\"/extensions/osc5522-clipboard\" class=\"hover-link\">OSC 5522 advanced clipboard</a>, <a href=\"/text/tbc-clear-tab-stop\" class=\"hover-link\">TBC clear tab stop (CSI g)</a>, <a href=\"/modes/decsclm-smooth-scroll\" class=\"hover-link\">DECSCLM — smooth scroll mode</a>. Missing <strong>14</strong> features.</p>",
     "date": "2026-05-17",
-    "probeCount": 235,
+    "probeCount": 244,
     "changes": null
   },
   "terminals/vt100-js": {
@@ -118,7 +118,7 @@
     "changes": null
   },
   "baseline/legacy": {
-    "analysis": "<p><strong>0</strong> of 12 tested terminals achieve 100% Legacy compliance. Lagging: <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> (11%), <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a> (20%), <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (22%). Most commonly missing: <a href=\"/editing/decrqcra-checksum-rectangle\" class=\"hover-link\">DECRQCRA — checksum rectangular area</a>, <a href=\"/editing/decfra-fill-rectangle\" class=\"hover-link\">DECFRA — fill rectangular area</a>, <a href=\"/editing/decera-erase-rectangle\" class=\"hover-link\">DECERA — erase rectangular area</a>.</p>",
+    "analysis": "<p><strong>0</strong> of 12 tested terminals achieve 100% Legacy compliance. Lagging: <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> (11%), <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (22%), <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a> (22%). Most commonly missing: <a href=\"/editing/decrqcra-checksum-rectangle\" class=\"hover-link\">DECRQCRA — checksum rectangular area</a>, <a href=\"/editing/decfra-fill-rectangle\" class=\"hover-link\">DECFRA — fill rectangular area</a>, <a href=\"/editing/decera-erase-rectangle\" class=\"hover-link\">DECERA — erase rectangular area</a>.</p>",
     "date": "2026-05-17",
     "changes": null
   },
@@ -1498,12 +1498,12 @@
     "changes": null
   },
   "extensions/osc-113-reset-pointer-fg": {
-    "analysis": "<p>Supported by <strong>all 7</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-05-17",
     "changes": null
   },
   "extensions/osc-114-reset-pointer-bg": {
-    "analysis": "<p>Supported by <strong>all 7</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-05-17",
     "changes": null
   },
@@ -1513,12 +1513,12 @@
     "changes": null
   },
   "extensions/osc-30001-color-stack-push": {
-    "analysis": "<p>Supported by <strong>all 7</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-05-17",
     "changes": null
   },
   "extensions/osc-30101-color-stack-pop": {
-    "analysis": "<p>Supported by <strong>all 7</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-05-17",
     "changes": null
   },
@@ -1538,22 +1538,22 @@
     "changes": null
   },
   "extensions/osc-7770-font-size": {
-    "analysis": "<p>Supported by <strong>all 7</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-05-17",
     "changes": null
   },
   "extensions/osc-7777-font-window-size": {
-    "analysis": "<p>Supported by <strong>all 7</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong>Rich TUI</strong> baseline.</p>",
     "date": "2026-05-17",
     "changes": null
   },
   "extensions/osc-701-locale": {
-    "analysis": "<p>Supported by <strong>all 7</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
     "date": "2026-05-17",
     "changes": null
   },
   "extensions/osc-702-version": {
-    "analysis": "<p>Supported by <strong>all 7</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
     "date": "2026-05-17",
     "changes": null
   },
@@ -1568,7 +1568,7 @@
     "changes": null
   },
   "extensions/osc-776-cell-size": {
-    "analysis": "<p>Supported by <strong>all 7</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
+    "analysis": "<p>Supported by <strong>all 8</strong> tested terminals — universal adoption. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline.</p>",
     "date": "2026-05-17",
     "changes": null
   },
