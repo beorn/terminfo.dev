@@ -1,8 +1,8 @@
 {
   "backend": "vterm",
   "version": "0.2.0",
-  "generated": "2026-04-18T05:36:09.779Z",
-  "probeHash": "34eda06e1595",
+  "generated": "2026-05-17T19:52:18.083Z",
+  "probeHash": "15e2beccc8fe",
   "results": {
     "extensions.truecolor": true,
     "extensions.kitty-keyboard": true,
@@ -184,6 +184,7 @@
     "modes.alt-scroll-1007": true,
     "modes.utf8-mouse-1005": true,
     "modes.deccolm": true,
+    "modes.decsclm": true,
     "modes.color-scheme-reporting": true,
     "modes.xtpushsgr": true,
     "modes.xtpopsgr": true,
@@ -199,6 +200,7 @@
     "device.xtgettcap": true,
     "device.decrpm": true,
     "device.xtversion": true,
+    "device.dsr-996-color-scheme": true,
     "device.xtwinops-14": true,
     "device.xtwinops-16": true,
     "device.xtwinops-18": true,

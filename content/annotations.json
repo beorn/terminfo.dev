@@ -365,6 +365,9 @@
     "note": "OSC 9 notifications not exposed via Python batch bridge",
     "result": "partial"
   },
+  "kitty:extensions.iterm2-images": {
+    "note": "Kitty uses its own graphics protocol instead of iTerm2 inline images"
+  },
   "kitty:input.modify-other-keys": {
     "note": "modifyOtherKeys not exposed via Python batch bridge",
     "result": "partial"
