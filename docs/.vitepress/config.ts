@@ -729,8 +729,11 @@ export default defineConfig({
     },
   },
 
-  async buildEnd() {
-    const { dataPath, badgeCount } = generateApi()
+  async buildEnd(siteConfig) {
+    // Build verification must not rewrite tracked docs/public artifacts.
+    // Standalone `bun scripts/generate-api.ts` refreshes source-public
+    // snapshots; VitePress build owns the ignored deploy artifact.
+    const { dataPath, badgeCount } = generateApi(siteConfig.outDir)
     console.log(`[API] Generated ${dataPath} + ${badgeCount} badges`)
   },
 })

@@ -75,14 +75,14 @@ The probe command will exit with an error listing unannotated failures.
 
 ```bash
 bun analysis                    # Regenerate analysis.json commentary
-bun scripts/generate-api.ts     # Regenerate API data + badges
+bun scripts/generate-api.ts     # Regenerate tracked docs/public API data + badges
 ```
 
 ### 7. Validate + build
 
 ```bash
 bun scripts/validate.ts         # Check tag consistency, missing fields, duplicates, etc.
-bun run build                   # Build static site (250+ pages)
+bun run build                   # Build static site (250+ pages) + emit API/badges into docs/.vitepress/dist/
 bun scripts/check-404s.ts       # Verify no broken internal links
 ```
 

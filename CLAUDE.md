@@ -120,7 +120,7 @@ Each file: `{ backend, version, results: { featureId: boolean }, notes, probeHas
 ```bash
 bun install                 # Install dependencies
 bun run dev                 # Local dev server (VitePress)
-bun run build               # Build static site (250+ pages)
+bun run build               # Build static site (250+ pages) + emits API/badges into docs/.vitepress/dist/
 bun run preview             # Preview built site
 
 # Periodic refresh (see /terminfo-update skill)
@@ -239,7 +239,7 @@ bun terminfo probe termless --all        # 1. Run headless probes
 bun terminfo probe app --all             # 2. Run app probes (or probe server --all)
 bun terminfo probe mux --all             # 3. Run multiplexer probes
 bun analysis                             # 4. Regenerate analysis commentary
-bun run build                            # 5. Build site
+bun run build                            # 5. Build site + emit API/badges into ignored docs/.vitepress/dist/
 git add -A && git commit && git push     # 6. Deploy
 ```
 
@@ -314,7 +314,7 @@ bun terminfo probe app --all --force
 # User must run `bun terminfo probe server --start` in each terminal,
 # then from here: `bun terminfo probe server --all`
 
-# 3. Rebuild
+# 3. Refresh tracked public API snapshots, then build the deploy artifact
 bun scripts/generate-api.ts
 bun run build
 ```

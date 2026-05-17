@@ -5,8 +5,10 @@
  *   docs/public/api/v1/data.json     — complete compatibility database
  *   docs/public/api/v1/badges/*.svg   — per-terminal score badges
  *
- * Called from the VitePress buildEnd hook (docs/.vitepress/config.ts)
- * or standalone: bun scripts/generate-api.ts
+ * Standalone `bun scripts/generate-api.ts` refreshes tracked docs/public
+ * snapshots for local/dev consumers. VitePress buildEnd passes the ignored
+ * build outDir so `bun run build` emits fresh deploy artifacts without
+ * dirtying the source tree.
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
