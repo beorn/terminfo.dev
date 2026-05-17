@@ -73,7 +73,7 @@ Environment variables lie. Applications that really need to know can ask the ter
 \e]11;?\a           # query background
 ```
 
-Response: `\e]10;rgb:abcd/ef12/3456\a` (each channel is 16-bit hex in most terminals). Timing out? The terminal probably doesn't support the query — degrade gracefully. See [OSC colors](/extensions/osc-colors) for the support matrix.
+Response: `\e]10;rgb:abcd/ef12/3456\a` (each channel is 16-bit hex in most terminals). Timing out? The terminal probably doesn't support the query — degrade gracefully. See [OSC 10 foreground color queries](/extensions/osc-10-fg-color-query) for the support matrix.
 
 ### OSC 4 — ANSI slots
 
@@ -123,5 +123,5 @@ Your semantic token (`$error`) resolves to different concrete outputs depending 
 - [Color Fundamentals](/fundamentals/color-fundamentals) — ANSI 16 / 256 / truecolor escape sequences
 - [Color Schemes](/fundamentals/color-schemes) — the 22-slot user-configurable scheme
 - [Terminal Detection](/fundamentals/term-detection) — broader detection mechanisms
-- [OSC color queries](/extensions/osc-colors) — per-terminal support matrix
+- [OSC color queries](/extensions/osc-10-fg-color-query) — per-terminal support matrix
 - [silvery.dev/guide/capability-tiers](https://silvery.dev/guide/capability-tiers) — silvery's detection + degradation implementation

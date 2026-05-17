@@ -47,7 +47,7 @@ The modern standard: full 16.7M colors via `\e[38;2;<r>;<g>;<b>m` (fg) and `\e[4
 \e[38;2;255;87;34m #FF5722 \e[0m
 ```
 
-Almost every modern terminal supports truecolor (Ghostty, Kitty, iTerm2, WezTerm, Alacritty, Windows Terminal, modern xterm, GNOME Terminal). See [Color compliance](/display/color-truecolor) for the per-terminal matrix.
+Almost every modern terminal supports truecolor (Ghostty, Kitty, iTerm2, WezTerm, Alacritty, Windows Terminal, modern xterm, GNOME Terminal). See [24-bit truecolor](/extensions/24-bit-truecolor) for the per-terminal matrix.
 
 ## SGR vs OSC — two different escape families
 
@@ -75,7 +75,7 @@ SGR also carries **attrs** — bold, italic, underline, inverse, dim, strikethro
 | `24` | no underline     |                                                                     |
 | `27` | no inverse       |                                                                     |
 
-Modern terminals add curly/dotted/dashed underlines, underline colors, and more — see [underlines](/text/underline-style).
+Modern terminals add curly/dotted/dashed underlines, underline colors, and more — see [curly underline](/sgr/4-3-curly-underline).
 
 ## Portability: writing TUI code that works everywhere
 
@@ -91,5 +91,5 @@ Applications face a choice for each colored output:
 
 - [Color Schemes](/fundamentals/color-schemes) — the 22-slot user-configurable scheme
 - [Color Detection](/fundamentals/color-detection) — `NO_COLOR`, `COLORTERM`, OSC probes
-- [Truecolor compliance](/display/color-truecolor) — per-terminal test results
-- [256-color support](/display/color-256) — baseline-tier compatibility
+- [Truecolor compliance](/extensions/24-bit-truecolor) — per-terminal test results
+- [256-color support](/sgr/38-5-256-color-fg) — baseline-tier compatibility

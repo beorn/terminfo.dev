@@ -51,13 +51,13 @@ The count is locked by the OSC surface. Terminals expose exactly these slots via
 - **OSC 17** — selection background
 - **OSC 19** — selection foreground
 
-Nothing else is standard. `cursorText` is universally `= background` by convention (no query exists). Some terminals expose additional slots (bold color, URL color, match highlight) but those are vendor-specific and not part of the portable 22. See [OSC color queries](/extensions/osc-colors) for the per-terminal matrix.
+Nothing else is standard. `cursorText` is universally `= background` by convention (no query exists). Some terminals expose additional slots (bold color, URL color, match highlight) but those are vendor-specific and not part of the portable 22. See [OSC 10 foreground color queries](/extensions/osc-10-fg-color-query) for the per-terminal matrix.
 
 ## Cross-emulator consistency
 
 All major terminals implement the 22-slot model. Where they differ:
 
-- **Query support** — whether OSC 4/10/11/12/17/19 respond to `?` queries. Most do (see [terminfo.dev OSC matrix](/extensions/osc-palette)); older terminals may silently drop the query.
+- **Query support** — whether OSC 4/10/11/12/17/19 respond to `?` queries. Most do (see [terminfo.dev OSC matrix](/extensions/osc-4-color-palette)); older terminals may silently drop the query.
 - **Default values** — every terminal ships a different "unless the user changes it" scheme. xterm's defaults differ from Terminal.app's, which differ from Windows Terminal's.
 - **User-configurable scope** — some let users tweak slots live via menus; others require config-file edits and a restart.
 
@@ -76,5 +76,5 @@ The same scheme can drive many themes (one framework's `$primary` may be mapped 
 
 - [Color Fundamentals](/fundamentals/color-fundamentals) — ANSI 16 / 256 / truecolor basics
 - [Color Detection](/fundamentals/color-detection) — probing the user's scheme
-- [OSC palette queries](/extensions/osc-palette) — per-terminal OSC 4 support
-- [OSC colors](/extensions/osc-colors) — per-terminal OSC 10/11/12 support
+- [OSC palette queries](/extensions/osc-4-color-palette) — per-terminal OSC 4 support
+- [OSC colors](/extensions/osc-10-fg-color-query) — per-terminal OSC 10/11/12 support
