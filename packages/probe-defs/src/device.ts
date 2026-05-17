@@ -151,6 +151,30 @@ export const deviceProbes: ProbeDefinition[] = [
     },
   ),
 
+  // DSR ?996 — color-scheme query: CSI ? 996 n → CSI ? 997 ; Ps n
+  probe(
+    "device.dsr-996-color-scheme",
+    (ctx) => {
+      const response = ctx.feedCapture("\x1b[?996n")
+      const match = /\x1b\[\?997;([12])n/.exec(response)
+      if (!match) return { pass: false, note: "No DSR ?997 color-scheme response", response }
+      return {
+        pass: true,
+        note: match[1] === "1" ? "dark" : "light",
+        response,
+      }
+    },
+    async (ctx) => {
+      const match = await ctx.queryWithSentinel("\x1b[?996n", /\x1b\[\?997;([12])n/)
+      if (!match) return { pass: false, note: "No DSR ?997 color-scheme response" }
+      return {
+        pass: true,
+        note: match[1] === "1" ? "dark" : "light",
+        response: match[0],
+      }
+    },
+  ),
+
   // XTWINOPS 14 — report window size in pixels: CSI 14 t → CSI 4 ; H ; W t
   responseProbe(
     "device.xtwinops-14",

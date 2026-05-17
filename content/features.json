@@ -2675,8 +2675,7 @@
     "tags": ["vt510", "dec-private-modes"],
     "body": "DECSCLM (Scrolling Mode) toggles between smooth and jump scrolling via <code>CSI ? 4 h</code> (smooth) and <code>CSI ? 4 l</code> (jump). On the original VT100, smooth scrolling animated text line-by-line at a visible speed, while jump scrolling snapped instantly — a noticeable difference on 1978 CRT hardware.\n\nOn modern terminals this distinction is largely cosmetic. Most terminals either ignore DECSCLM entirely or treat it as a no-op since rendering is already instantaneous. Contour implements it for completeness. xterm supports it and actually does render line-by-line in smooth mode, creating a retro scrolling effect.",
     "probe": "Send CSI ? 4 h to enable smooth scroll, verify mode is set via DECRPM query.",
-    "baseline": "legacy",
-    "probeStatus": "partial"
+    "baseline": "legacy"
   },
   "device.dsr-996-color-scheme": {
     "name": "DSR ?996 — color scheme query",
@@ -2685,7 +2684,6 @@
     "tags": ["dec-private-modes"],
     "body": "DSR ?996 queries the terminal's current color scheme (dark or light). The query is <code>CSI ? 996 n</code> and the response is <code>CSI ? 997 ; Ps n</code> where Ps is 1 for dark and 2 for light.\n\nThis is Contour's approach to color scheme detection, related to but distinct from Mode 2031 (which uses DECRPM to report and unsolicited DSR to notify of changes). DSR ?996 is a one-shot query that returns the current state, while Mode 2031 enables ongoing notifications when the scheme changes.",
     "probe": "Send CSI ? 996 n and verify response matches CSI ? 997 ; Ps n format.",
-    "baseline": "rich",
-    "probeStatus": "partial"
+    "baseline": "rich"
   }
 }

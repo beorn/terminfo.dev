@@ -457,6 +457,33 @@ export const modesProbes: ProbeDefinition[] = [
     },
   ),
 
+  // ?4 — DECSCLM smooth scroll mode. This is observable through DECRPM even
+  // though modern emulators often render both smooth and jump scrolling instantly.
+  probe(
+    "modes.decsclm",
+    (ctx) => {
+      ctx.feed("\x1b[?4h")
+      const response = ctx.feedCapture("\x1b[?4$p")
+      ctx.feed("\x1b[?4l")
+      const set = response.includes("?4;1$y")
+      return {
+        pass: set,
+        note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
+        response,
+      }
+    },
+    async (ctx) => {
+      ctx.write("\x1b[?4h")
+      const result = await ctx.queryMode(4)
+      ctx.write("\x1b[?4l")
+      return {
+        pass: result === "set",
+        note: result === "set" ? "DECRPM: mode set" : `DECRPM: mode ${result ?? "no response"}`,
+        response: result ?? undefined,
+      }
+    },
+  ),
+
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
   // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty
   probe(
