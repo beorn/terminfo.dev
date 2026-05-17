@@ -62,6 +62,6 @@
   "unicode": {
     "label": "Unicode",
     "order": 13,
-    "description": "Unicode text handling: East Asian ambiguous character width, wide character wrapping at line boundaries, and tab stop behavior with mixed-width text. Correct Unicode handling is essential for TUI applications to maintain proper cursor alignment and text layout across different scripts and character sets. Unicode width handling is arguably the hardest problem in terminal emulation. The wcwidth() function (from 1988) predates emoji entirely. Different terminals use different Unicode versions for width tables, and there's no standard for grapheme cluster width."
+    "description": "Modern terminals are UTF-8 terminals: applications write UTF-8 bytes, the terminal decodes them into Unicode code points, and the screen grid assigns each displayed grapheme a cell width. Encoding is now the easy part; width is where terminals disagree. East Asian ambiguous-width characters, emoji, combining marks, variation selectors, zero-width joiners, wide-character wrapping, and tab stops with mixed-width text all affect cursor alignment. Correct Unicode handling is essential for TUI applications because a one-cell disagreement between the app and terminal shifts every column to the right. The wcwidth() function predates emoji, terminals track different Unicode versions, and there is no single standard for grapheme-cluster width."
   }
 }

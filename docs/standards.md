@@ -364,7 +364,15 @@ printf '\e[?1049l'
 
 ### Unicode (1991+) — The Width Problem {#unicode}
 
-#### Before Unicode: The Character Set Wars
+#### What Terminals Actually Implement
+
+Modern terminals are UTF-8 terminals. Applications write UTF-8 bytes; the terminal decodes those bytes into Unicode code points; then the terminal grid decides how many cells each displayed grapheme occupies. The byte encoding is no longer the interesting compatibility boundary — UTF-8 is effectively universal across modern shells, terminal emulators, SSH sessions, and TUI frameworks.
+
+The hard part is the cell grid. A terminal is not a proportional text renderer: every cursor move, table column, progress bar, and box border assumes a fixed number of cells. After decoding UTF-8, the terminal has to decide whether the next visible grapheme is zero cells (combining mark), one cell (most text), or two cells (CJK and most emoji). Applications make the same decision before emitting cursor movement sequences. If the app and terminal disagree by one cell, every column after that point is wrong.
+
+Terminfo.dev's Unicode probes focus on the implemented behavior that breaks real TUIs: wide-character wrapping, ambiguous-width policy, mixed-width tab stops, combining characters, variation selectors, zero-width joiner sequences, and emoji width. This is why the Unicode page is less about "does the terminal support Unicode?" and more about "does the terminal put the cursor where the application expects after Unicode text?"
+
+#### Historical Context: The Character Set Wars
 
 Before Unicode, every language needed its own character encoding — and they were mutually incompatible:
 
@@ -384,7 +392,7 @@ Before Unicode, every language needed its own character encoding — and they we
 
 A Japanese terminal couldn't display Chinese text. A German terminal couldn't display Russian. Emails between countries garbled characters. The web was a mess of `Content-Type: text/html; charset=iso-8859-1` headers that were wrong half the time.
 
-Unicode solved this by assigning a unique number (code point) to every character in every writing system — currently over 149,000 characters across 161 scripts. <a href="https://en.wikipedia.org/wiki/UTF-8" target="_blank" rel="noopener">UTF-8</a> encodes these code points in 1–4 bytes, is backward-compatible with ASCII, and is now the dominant encoding on the web and in terminals.
+Unicode solved this by assigning a unique number (code point) to every character in every writing system — currently over 149,000 characters across 161 scripts. <a href="https://en.wikipedia.org/wiki/UTF-8" target="_blank" rel="noopener">UTF-8</a> encodes these code points in 1–4 bytes, is backward-compatible with ASCII, and became the encoding that let Unix terminals adopt Unicode without abandoning existing byte streams.
 
 ::: info The Unix connection
 Unicode emerged from the same world as Unix terminals. <a href="https://en.wikipedia.org/wiki/Joe_Becker_(Unicode)" target="_blank" rel="noopener">Joe Becker</a> (Xerox), <a href="https://en.wikipedia.org/wiki/Lee_Collins_(Unicode)" target="_blank" rel="noopener">Lee Collins</a> (Apple), and <a href="https://en.wikipedia.org/wiki/Mark_Davis_(Unicode)" target="_blank" rel="noopener">Mark Davis</a> (Apple) drafted the initial proposal in 1987. UTF-8 — the encoding that made Unicode practical — was designed by <a href="https://en.wikipedia.org/wiki/Rob_Pike" target="_blank" rel="noopener">Rob Pike</a> and <a href="https://en.wikipedia.org/wiki/Ken_Thompson" target="_blank" rel="noopener">Ken Thompson</a> (creators of Unix and Plan 9) on a placemat in a New Jersey diner in 1992. It was adopted by Plan 9, then Linux, then the web. The people who built Unix also built the encoding that terminals use today.

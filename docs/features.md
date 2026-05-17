@@ -70,7 +70,7 @@ const categoryMeta = {
   },
   unicode: {
     icon: '🌐',
-    tagline: 'East Asian width, emoji, and the cursor alignment problem',
+    tagline: 'UTF-8 is table stakes; width is where terminals disagree',
   },
 }
 
@@ -267,9 +267,11 @@ Modern input protocols provide richer keyboard and mouse reporting than the VT10
 
 <p class="category-link"><a class="hover-link" href="/input">View Input Protocol features &rarr;</a></p>
 
-### Unicode — The Width Problem
+### Unicode — UTF-8 and the Width Problem
 
-East Asian ambiguous character width, wide character wrapping, and tab stop behavior with mixed-width text. Getting Unicode right is essential for TUI applications to maintain proper **cursor alignment** across scripts and character sets. When a terminal miscalculates the width of an emoji or CJK character, everything to the right of it shifts — breaking layouts, misaligning columns, and corrupting displays.
+Modern terminals speak UTF-8: applications write UTF-8 bytes, and the terminal decodes them into Unicode text. The hard part is what happens after decoding. East Asian ambiguous character width, emoji grapheme clusters, combining marks, wide-character wrapping, and tab stops with mixed-width text all decide where the cursor lands.
+
+Getting Unicode right is essential for TUI applications to maintain proper **cursor alignment** across scripts and character sets. When a terminal miscalculates the width of an emoji or CJK character, everything to the right of it shifts — breaking layouts, misaligning columns, and corrupting displays.
 
 <p class="category-link"><a class="hover-link" href="/unicode">View Unicode features &rarr;</a></p>
 
