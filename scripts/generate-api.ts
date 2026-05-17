@@ -288,8 +288,9 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
     kitty: "kitty",
   }
 
-  // Merge all feature IDs
-  const allFeatureIds = new Set([...app.featureIds, ...headless.featureIds])
+  // Merge all feature IDs. features.json is authoritative for published
+  // feature pages; result files may lag for manual/unprobed features.
+  const allFeatureIds = new Set([...Object.keys(featuresJson), ...app.featureIds, ...headless.featureIds])
 
   // Build features map
   const features: ApiData["features"] = {}

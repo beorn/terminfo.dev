@@ -1197,6 +1197,16 @@
     "body": "DECSTBM with no parameters (<code>ESC [ r</code>) resets the scroll region to the full screen. After reset, scrolling operations should affect all rows. Applications use this to restore normal scrolling behavior after using scroll regions. Failing to properly reset can leave the terminal in a state where only part of the screen scrolls, causing rendering corruption for subsequent applications.",
     "probe": "Set DECSTBM 5;10, then send <code>\\x1b[r</code> (no params), write 30 lines, verify full-screen scrolling works (total lines > screen height)."
   },
+  "scrollback.viewport-hold-output": {
+    "name": "Viewport holds on output",
+    "slug": "viewport-holds-on-output",
+    "url": "https://invisible-island.net/xterm/manpage/xterm.html",
+    "tags": ["xterm-extensions"],
+    "baseline": "modern",
+    "body": "Tests whether the visible scrollback viewport stays anchored when new output arrives while the user is scrolled up in the main screen. This is a terminal UI policy, not a VT escape sequence: the application can write output, but the terminal emulator owns the user's viewport position.\n\nThis behavior matters for long-running inline applications, build logs, and agent UIs. If output forces the viewport back to the live bottom, users lose their place while reading history. If the viewport stays anchored, the newest output remains below the visible region until the user scrolls back down or presses a key that the terminal treats as an explicit return to the live region.\n\nTerminals expose this policy under different names and defaults. xterm has <code>scrollTtyOutput</code>; Ghostty exposes <code>scroll-to-bottom</code> with separate <code>keystroke</code> and <code>output</code> flags. Synchronized output (<code>DECSET 2026</code>) should only batch painting, but the manual probe repeats the test inside a synchronized-output block because terminal UI policies can still differ around batched output.",
+    "probe": "Manual UI probe. Fill scrollback with at least two pages of lines, scroll the viewport up until the live bottom is no longer visible, then emit a uniquely named marker line without keyboard input. Pass if the viewport remains on the old lines; fail if it jumps to the marker at the bottom. Repeat with the marker wrapped in <code>\\x1b[?2026h</code> ... <code>\\x1b[?2026l</code> to check synchronized output, and record any terminal setting that changes the result.",
+    "probeStatus": "manual"
+  },
   "extensions.kitty-keyboard": {
     "name": "Kitty keyboard protocol",
     "slug": "kitty-keyboard-protocol",

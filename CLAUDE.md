@@ -357,6 +357,13 @@ For `"manual"` and `"unprobed"` features, set the `probe` field to
 `"Manual verification required — no automated probe available."` and don't add a
 matching entry in `packages/probe-defs/`.
 
+For UI-owned viewport behavior, prefer `"manual"` plus an exact reproduction
+recipe over a fake automated probe. Examples: whether output while the user is
+scrolled up yanks the viewport to the live bottom, whether a scrollbar appears,
+or whether a copy/search UI opens. App-side PTY probes can observe parser output,
+cursor position, cell state, and query responses; they cannot observe the user's
+scrollback viewport unless a terminal exposes a separate automation API.
+
 ### Valid Tags
 
 Tags in `features.json` **must** match keys in `standards.json` or `categories.json`. Using an
