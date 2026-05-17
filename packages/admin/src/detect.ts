@@ -3,7 +3,7 @@
  */
 
 export async function handleDetect(opts: { json?: boolean }): Promise<void> {
-  const { detectTerminal } = await import("../../terminfo.dev/src/detect.ts")
+  const { detectTerminal } = await import("terminfo.dev/src/detect.ts")
   const terminal = detectTerminal()
 
   if (opts.json) {

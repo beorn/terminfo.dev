@@ -13,8 +13,9 @@
 
 import { readFileSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
-import { ALL_PROBES } from "../terminfo.dev/src/probes/unified.ts"
-import { withRawMode, drainStdin } from "../terminfo.dev/src/tty.ts"
+import { fileURLToPath } from "node:url"
+import { ALL_PROBES } from "terminfo.dev/src/probes/unified.ts"
+import { withRawMode, drainStdin } from "terminfo.dev/src/tty.ts"
 
 // ── Main ──
 
@@ -26,7 +27,7 @@ async function main(): Promise<void> {
   }
 
   // Compute probe hash from the shared probe definitions
-  const probesPath = new URL("../terminfo.dev/src/probes/unified.ts", import.meta.url).pathname
+  const probesPath = fileURLToPath(import.meta.resolve("terminfo.dev/src/probes/unified.ts"))
   const probesContent = readFileSync(probesPath)
   const probeHash = createHash("md5").update(probesContent).digest("hex").slice(0, 12)
 

@@ -6,8 +6,7 @@
  */
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "vitest"
 import type { TerminalBackend } from "@termless/core"
-import { ALL_PROBES } from "../../packages/probe-defs/src/index.ts"
-import type { TermlessContext } from "../../packages/probe-defs/src/types.ts"
+import { ALL_PROBES, type TermlessContext } from "@terminfo/probe-defs"
 
 // ── Re-use backend discovery from setup.ts ──
 // We need the backends array but NOT the describeBackends helper (we'll create our own)

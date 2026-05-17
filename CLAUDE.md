@@ -22,8 +22,9 @@ content/                        ← ALL input data
   probes-mux/                     measured: multiplexer pass-through results
 
 packages/                       ← source code (internal tools)
-  probes/                         probe test files (*.probe.ts, setup.ts, vitest.config.ts)
-  cli/
+  probe-defs/                      @terminfo/probe-defs: pure probe definitions + shared types
+  probes/                         @terminfo/probes: Vitest runner over Termless backends
+  admin/                          @terminfo/admin: dev/orchestration CLI (bun terminfo)
     src/                          unified CLI (bun terminfo) — all 4 probe mechanisms
       index.ts                    entry point: probe {termless,server,app,here}, report, status, submit, detect
       termless.ts                 headless library probes (Vitest + Termless)
@@ -68,8 +69,13 @@ docs/                           ← VitePress site (built → deployed)
   compare/[id].md                 comparison pages
 
 versions.json                   backend version catalog (which versions to probe)
-package.json                    scripts, dependencies
+package.json                    private workspace root; packages/* are Bun workspaces
 ```
+
+`packages/*/package.json` manifests are load-bearing. Cross-package imports use
+package names (`@terminfo/probe-defs`, `terminfo.dev/src/...`) rather than
+relative paths like `../../probe-defs/src`; km's root workspace also includes
+`vendor/terminfo.dev/packages/*` so local repo commands resolve the same graph.
 
 ## Data Architecture
 

@@ -1,0 +1,14 @@
+{
+  "name": "@terminfo/probes",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@terminfo/probe-defs": "workspace:*",
+    "@termless/core": "^0.4.0",
+    "loggily": "^0.4.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.1"
+  }
+}

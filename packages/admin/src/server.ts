@@ -20,13 +20,13 @@ export async function handleServer(
 ): Promise<void> {
   if (opts.start) {
     // Start daemon in this terminal
-    const { startDaemon } = await import("../../terminfo.dev/src/serve.ts")
+    const { startDaemon } = await import("terminfo.dev/src/serve.ts")
     await startDaemon(opts.port ?? 0)
     return
   }
 
   // Import daemon listing
-  const { listDaemons } = await import("../../terminfo.dev/src/serve.ts")
+  const { listDaemons } = await import("terminfo.dev/src/serve.ts")
   const daemons = listDaemons()
 
   if (!opts.all && !daemon) {

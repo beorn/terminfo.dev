@@ -1,0 +1,14 @@
+{
+  "name": "@terminfo/admin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@silvery/commander": "^0.19.0",
+    "@termless/core": "^0.4.0",
+    "loggily": "^0.4.0",
+    "react": "^19.1.1",
+    "silvery": "^0.19.0",
+    "terminfo.dev": "workspace:*"
+  }
+}
