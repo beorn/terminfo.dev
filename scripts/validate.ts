@@ -67,6 +67,7 @@ const features = loadJson(join(contentDir, "features.json")) as Record<
 >
 
 const VALID_PROBE_STATUSES = new Set(["automated", "partial", "manual", "unprobed"])
+const MIN_FEATURE_BODY_LENGTH = 260
 
 const standards = loadJson(join(contentDir, "standards.json")) as Record<
   string,
@@ -385,7 +386,22 @@ heading("Warnings (fix soon)")
   if (count === 0) info("All features have body text")
 }
 
-// 10. Features missing probe description
+// 10. Features with stub body text
+{
+  let count = 0
+  for (const [id, feat] of Object.entries(features)) {
+    if (id === "$comment") continue
+    const body = (feat.body ?? "").trim()
+    if (body.length > 0 && body.length < MIN_FEATURE_BODY_LENGTH) {
+      warn(`Feature "${id}" body is brief (${body.length} chars, target >= ${MIN_FEATURE_BODY_LENGTH})`)
+      warnings++
+      count++
+    }
+  }
+  if (count === 0) info(`All feature bodies are at least ${MIN_FEATURE_BODY_LENGTH} chars`)
+}
+
+// 11. Features missing probe description
 {
   let count = 0
   for (const [id, feat] of Object.entries(features)) {
@@ -399,7 +415,7 @@ heading("Warnings (fix soon)")
   if (count === 0) info("All features have probe descriptions")
 }
 
-// 11. Annotations referencing nonexistent features or backends
+// 12. Annotations referencing nonexistent features or backends
 {
   // Build set of all backends from probe files + terminals.json
   const allBackends = new Set<string>()
@@ -457,7 +473,7 @@ heading("Warnings (fix soon)")
   if (count === 0) info("All annotations reference valid backends and features")
 }
 
-// 12. Tag/category ID collisions
+// 13. Tag/category ID collisions
 {
   let count = 0
   for (const key of standardKeys) {
@@ -476,7 +492,7 @@ heading("Warnings (fix soon)")
 
 heading("Info (summary)")
 
-// 13. Feature counts
+// 14. Feature counts
 {
   const featureCount = featureIds.size
   info(`Total features: ${featureCount}`)
@@ -523,7 +539,7 @@ heading("Info (summary)")
   )
 }
 
-// 14. Terminal counts
+// 15. Terminal counts
 {
   const termCount = Object.keys(terminals).length
   const probeBackends = new Set<string>()
@@ -561,7 +577,7 @@ heading("Info (summary)")
   info(`Probe files: ${probeAppsFiles.length} apps, ${probeLibsFiles.length} libs, ${probeMuxFiles.length} mux`)
 }
 
-// 15. Annotation coverage
+// 16. Annotation coverage
 {
   // Count total failure results across all probe files
   let totalFailures = 0
