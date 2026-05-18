@@ -6,7 +6,7 @@
   "dependencies": {
     "@terminfo/probe-defs": "workspace:*",
     "@termless/core": "^0.6.0",
-    "loggily": "^0.10.0"
+    "loggily": "^0.8.0"
   },
   "devDependencies": {
     "vitest": "^4.1.4"
