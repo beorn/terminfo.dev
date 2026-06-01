@@ -407,6 +407,6 @@ feature family mappings. The table below is a quick reference; the manifest is a
 | FinalTerm semantic prompts | Proposal           | https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md              |
 | OSC 8 hyperlinks           | Proposal           | https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda                                               |
 | CSI u / fixterms           | Proposal           | http://www.leonerd.org.uk/hacks/fixterms/                                                                        |
-| Mode 2026 sync output      | Proposal           | https://gist.github.com/christianparpart/d8a62cc1ab659194571ec44c5a4eba40                                        |
+| Mode 2026 sync output      | Proposal           | https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/synchronized-output.md               |
 | Mode 2031 color scheme     | Proposal           | https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/color-palette-update-notifications.md |
 | VS Code OSC 633            | Proposal           | https://learn.microsoft.com/en-us/windows/terminal/tutorials/shell-integration                                   |

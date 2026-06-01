@@ -38,7 +38,7 @@ Emit exact colors via `\e[38;2;r;g;bm`. Total control, zero adaptation. The user
 
 Query the terminal's 22 slots at startup (via OSC 10/11/4/12/17/19), then derive a theme that uses those exact colors for semantic roles. `$primary` resolves to the user's blue, `$error` to their red, `$muted` to a blend of their fg and bg. Your app looks _native_ on every terminal — like part of the terminal, not an intrusion.
 
-This is what frameworks like [silvery](https://silvery.dev), modern [Ink](https://github.com/vadimdemedes/ink), and [Bubble Tea](https://github.com/charmbracelet/bubbletea) target. See [silvery.dev/guide/color-schemes](https://silvery.dev/guide/color-schemes) for one full implementation.
+This is what frameworks like [silvery](https://silvery.dev), modern [Ink](https://github.com/vadimdemedes/ink), and [Bubble Tea](https://github.com/charmbracelet/bubbletea) target. See [silvery.dev/guide/styling](https://silvery.dev/guide/styling) for one full implementation.
 
 ## Why 22 and not, say, 30
 

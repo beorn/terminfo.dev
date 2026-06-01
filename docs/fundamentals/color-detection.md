@@ -124,4 +124,4 @@ Your semantic token (`$error`) resolves to different concrete outputs depending 
 - [Color Schemes](/fundamentals/color-schemes) — the 22-slot user-configurable scheme
 - [Terminal Detection](/fundamentals/term-detection) — broader detection mechanisms
 - [OSC color queries](/extensions/osc-10-fg-color-query) — per-terminal support matrix
-- [silvery.dev/guide/capability-tiers](https://silvery.dev/guide/capability-tiers) — silvery's detection + degradation implementation
+- [silvery.dev/guide/styling](https://silvery.dev/guide/styling) — silvery's capability detection + degradation implementation

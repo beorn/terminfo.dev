@@ -28,6 +28,7 @@ jobs:
             --no-progress
             --accept '200..=204,206,301,302,303,307,308,403,429'
             --exclude '^(mailto|tel|javascript):'
+            --base-url 'https://terminfo.dev'
             './**/*.md'
             './**/*.html'
           fail: true
