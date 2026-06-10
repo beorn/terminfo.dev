@@ -1,0 +1,8 @@
+{
+  "modules": ["release", "format-check", "oxfmt"],
+  "vars": { "bunVersion": "1.3.13" },
+  "overrides": {
+    "release": "publishes packages/terminfo.dev subpackage; site ships via separate deploy.yml (Cloudflare Pages) — generic root-publish template doesn't apply",
+    "oxfmt": "extra ignorePatterns beyond canonical: .next/, .vitepress/dist/, content/probes-libs/"
+  }
+}

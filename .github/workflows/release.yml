@@ -17,6 +17,9 @@ jobs:
         with:
           bun-version: latest
       - run: bun install
+      # Pre-publish gate: content/data validation must be green before the
+      # CLI package reaches npm (mirrors deploy.yml's validate leg).
+      - run: bun run validate
       - uses: pnpm/action-setup@v4
         with:
           version: 9
