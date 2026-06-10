@@ -5,8 +5,35 @@ on:
     branches: [main]
 
 jobs:
-  deploy:
+  # Deploy gate: content validation + build + 404 sweep must pass before
+  # anything reaches Cloudflare. Previously deploy ran ungated, so a bad
+  # commit went live immediately and the weekly validate workflow only
+  # flagged it after the fact.
+  validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Validate content
+        run: bun run validate
+
+      - name: Build site
+        run: bun run build
+
+      - name: Check for 404s
+        run: bun scripts/check-404s.ts
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
