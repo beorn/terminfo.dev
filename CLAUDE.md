@@ -216,8 +216,6 @@ npx terminfo.dev submit                   # Test + submit to terminfo.dev
 npx terminfo.dev detect                   # Detect terminal
 ```
 
-Also available via curl: `curl -sL terminfo.dev/test | sh`
-
 #### Convenience scripts
 
 ```bash
