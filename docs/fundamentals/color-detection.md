@@ -17,7 +17,7 @@ next: false
 Modern applications consult signals in this order (highest priority first):
 
 1. **Explicit app flags** — `--no-color`, `--color-tier=<tier>`, app-specific `SILVERY_COLOR`, `CLICOLOR_FORCE`
-2. **`NO_COLOR`** (any value) → disable color entirely ([no-color.org](https://no-color.org))
+2. **`NO_COLOR`** (any value) → disable color entirely ([no-color.org](https://web.archive.org/web/20260616201813/https://no-color.org/))
 3. **`TERM=dumb`** → disable color entirely
 4. **Not a TTY** (`!isatty(stdout)`) → disable color (pipe-safe)
 5. **`COLORTERM=truecolor` or `=24bit`** → enable truecolor
@@ -30,7 +30,7 @@ This is a heuristic stack. Lower tiers are safer defaults; higher tiers require 
 
 ## `NO_COLOR` — the universal opt-out
 
-The [no-color.org](https://no-color.org) standard: if `NO_COLOR` is set to any non-empty value, applications MUST NOT add color to their output. This is an accessibility + user-preference feature, not a capability question. Honor it absolutely.
+The [no-color.org](https://web.archive.org/web/20260616201813/https://no-color.org/) standard (linked via archived snapshot — the domain's DNS delegation broke in 2026-07): if `NO_COLOR` is set to any non-empty value, applications MUST NOT add color to their output. This is an accessibility + user-preference feature, not a capability question. Honor it absolutely.
 
 ```sh
 NO_COLOR=1 myapp     # no color
