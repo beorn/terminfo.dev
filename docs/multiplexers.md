@@ -23,15 +23,15 @@ This indirection gives you powerful features:
 The cost? Every escape sequence your application sends must now pass through an intermediary that may not understand it.
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Terminal Emulator (Ghostty, iTerm2, etc.)       │
-│  ┌───────────────────────────────────────────┐   │
-│  │  Multiplexer (tmux, screen)               │   │
-│  │  ┌─────────────────────────────────────┐   │   │
-│  │  │  Shell / Application (vim, htop)    │   │   │
-│  │  └─────────────────────────────────────┘   │   │
-│  └───────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────┐
+│  Terminal Emulator (Ghostty, iTerm2, etc.)    │
+│  ┌─────────────────────────────────────────┐  │
+│  │  Multiplexer (tmux, screen)             │  │
+│  │  ┌───────────────────────────────────┐  │  │
+│  │  │  Shell / Application (vim, htop)  │  │  │
+│  │  └───────────────────────────────────┘  │  │
+│  └─────────────────────────────────────────┘  │
+└───────────────────────────────────────────────┘
 ```
 
 Without a multiplexer, escape sequences travel one hop: app to terminal. With one, they travel two: app to multiplexer, multiplexer to terminal. The multiplexer must parse, understand, and re-emit every sequence — or decide to drop it.

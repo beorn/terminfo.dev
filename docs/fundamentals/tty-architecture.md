@@ -21,14 +21,14 @@ Every terminal session involves these components, connected through the kernel:
 ┌─────────────────────────────────┐
 │  Terminal Emulator              │  Ghostty, Kitty, iTerm2, Terminal.app
 │  (renders text, captures keys)  │  Converts keystrokes → bytes
-│  Display ← GPU rendering       ││ Parses escape sequences → pixels
-└─────────────────────────────────┘
+│  Display ← GPU rendering        │  Parses escape sequences → pixels
+└──────────────┬──────────────────┘
                │ PTY master fd
                │ (read/write bytes)
 ┌──────────────┴──────────────────┐
 │  Kernel PTY + Line Discipline   │  Echo, line editing, signals
 │  (transforms input ↔ output)    │  Ctrl+C → SIGINT, Ctrl+Z → SIGTSTP
-└─────────────────────────────────┘
+└──────────────┬──────────────────┘
                │ PTY slave fd
                │ (/dev/pts/N)
 ┌──────────────┴──────────────────┐
@@ -109,13 +109,13 @@ SSH creates a terminal session across a network by adding a PTY layer on the rem
 <pre>
 LOCAL                              REMOTE
 ┌────────────────┐                ┌─────────────────────────┐
-│ Terminal        │                │ Shell (bash)            │
-│ Emulator        │                │ reads from PTY slave    │
+│ Terminal       │                │ Shell (bash)            │
+│ Emulator       │                │ reads from PTY slave    │
 └───────┬────────┘                └──────────┬──────────────┘
         │ PTY                                │ PTY (remote)
 ┌───────┴────────┐                ┌──────────┴──────────────┐
 │ ssh client     │◄──TCP/SSH──────│ sshd                    │
-│ (raw mode)     │────tunnel──────││ (allocates remote PTY) ││
+│ (raw mode)     │────tunnel──────│ (allocates remote PTY)  │
 └────────────────┘                └─────────────────────────┘
 </pre>
 </div>
@@ -130,18 +130,18 @@ Terminal multiplexers insert an **extra PTY** between the terminal emulator and 
 
 <div class="architecture-diagram">
 <pre>
-┌────────────────────┐
+┌─────────────────────┐
 │ Terminal Emulator   │
-└────────┬───────────┘
+└────────┬────────────┘
          │ PTY 1
-┌────────┴───────────┐
-│ tmux server        │  ← Maintains its own virtual terminal buffer
-│ (virtual terminal) │  ← Re-renders content to the outer PTY
-└────────────────────┘
+┌────────┴────────────┐
+│ tmux server         │  ← Maintains its own virtual terminal buffer
+│ (virtual terminal)  │  ← Re-renders content to the outer PTY
+└────────┬────────────┘
          │ PTY 2
-┌────────┴───────────┐
+┌────────┴────────────┐
 │ Shell / Application │
-└────────────────────┘
+└─────────────────────┘
 </pre>
 </div>
 
