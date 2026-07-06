@@ -16,7 +16,7 @@ next: false
 
 ### ANSI 16
 
-The original color model from the VT100 era. Sixteen named colors — 8 base plus 8 bright variants — accessed by `SGR` codes 30–37 (fg) and 40–47 (bg), plus 90–97 and 100–107 for the bright variants. These are **named slots**, not specific RGB values. Your terminal emulator chooses what "red" actually looks like; the same ANSI "red" is crimson in Solarized Dark, peach in Gruvbox, and tomato in default xterm.
+The original color model, from ECMA-48/ANSI X3.64 (the VT100 itself was monochrome). Sixteen named colors — 8 base plus 8 bright variants — accessed by `SGR` codes 30–37 (fg) and 40–47 (bg), plus 90–97 and 100–107 for the bright variants. These are **named slots**, not specific RGB values. Your terminal emulator chooses what "red" actually looks like; the same ANSI "red" is crimson in Solarized Dark, peach in Gruvbox, and tomato in default xterm.
 
 ```
 \e[31m red text \e[0m              # normal red
@@ -28,7 +28,7 @@ The user's color scheme maps the 16 names to actual hex values. This is what mak
 
 ### 256-color indexed
 
-xterm introduced a 256-color palette in the 1990s: 16 ANSI (as above) + 216 RGB cube entries (6×6×6 with 51-unit steps) + 24 grayscale steps. Accessed via `\e[38;5;<n>m` for fg and `\e[48;5;<n>m` for bg.
+xterm introduced a 256-color palette in 1999: 16 ANSI (as above) + 216 RGB cube entries (6×6×6, with channel levels 0, 95, 135, 175, 215, 255) + 24 grayscale steps. Accessed via `\e[38;5;<n>m` for fg and `\e[48;5;<n>m` for bg.
 
 ```
 \e[38;5;196m vivid red (cube)    \e[0m   # index 196 = #FF0000
@@ -37,7 +37,7 @@ xterm introduced a 256-color palette in the 1990s: 16 ANSI (as above) + 216 RGB 
 
 The RGB cube entries (16–231) map to fixed hex values — theme-independent. This is the cheapest way to get "specific color" without requiring truecolor. Index 16–231 formula: `16 + 36*r + 6*g + b` where `r,g,b ∈ 0..5`. Grayscale 232–255: evenly-spaced grays from near-black to near-white.
 
-Terminals almost universally support 256-color (it's 30+ years old). Whether an application _uses_ it depends on `$TERM` (`*-256color` signals support) and `COLORTERM`.
+Terminals almost universally support 256-color (it's been around since 1999). Whether an application _uses_ it depends on `$TERM` (`*-256color` signals support) and `COLORTERM`.
 
 ### Truecolor (24-bit)
 

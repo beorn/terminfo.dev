@@ -25,8 +25,8 @@ These 33 characters are called **C0 controls** (the "C" stands for "control," th
 <thead><tr><th>Hex</th><th>Dec</th><th>Ctrl</th><th>Caret</th><th>Name</th><th>Terminal Behavior</th></tr></thead>
 <tbody>
 <tr><td><code>00</code></td><td>0</td><td>Ctrl+@</td><td>^@</td><td>NUL</td><td>Ignored by most terminals. Padding character in legacy systems.</td></tr>
-<tr><td><code>01</code></td><td>1</td><td>Ctrl+A</td><td>^A</td><td>SOH</td><td>No terminal effect. Used by tmux as the default prefix key.</td></tr>
-<tr><td><code>02</code></td><td>2</td><td>Ctrl+B</td><td>^B</td><td>STX</td><td>No terminal effect. Used by screen as the default prefix key.</td></tr>
+<tr><td><code>01</code></td><td>1</td><td>Ctrl+A</td><td>^A</td><td>SOH</td><td>No terminal effect. Used by screen as the default prefix key.</td></tr>
+<tr><td><code>02</code></td><td>2</td><td>Ctrl+B</td><td>^B</td><td>STX</td><td>No terminal effect. Used by tmux as the default prefix key.</td></tr>
 <tr><td><code>03</code></td><td>3</td><td>Ctrl+C</td><td>^C</td><td>ETX</td><td>No terminal effect. The <em>kernel TTY driver</em> sends SIGINT to the foreground process group.</td></tr>
 <tr><td><code>04</code></td><td>4</td><td>Ctrl+D</td><td>^D</td><td>EOT</td><td>No terminal effect. Interpreted by the TTY driver as end-of-file in canonical mode.</td></tr>
 <tr><td><code>05</code></td><td>5</td><td>Ctrl+E</td><td>^E</td><td>ENQ</td><td>Some terminals respond with an answerback string (configurable).</td></tr>

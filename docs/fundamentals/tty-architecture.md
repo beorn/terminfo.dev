@@ -56,7 +56,7 @@ When a terminal emulator starts, it:
 5. Writes to the PTY master to send the user's keystrokes
 
 ::: info Why it's called "pseudo"
-Real terminals were physical devices connected via serial cables — the DEC VT100 plugged into a RS-232 port. A PTY creates a virtual equivalent: the PTY slave behaves exactly like a serial terminal device, but the other end is a user-space program instead of a physical device. The kernel doesn't know the difference.
+Real terminals were physical devices connected via serial cables — the DEC VT100 plugged into an RS-232 port. A PTY creates a virtual equivalent: the PTY slave behaves exactly like a serial terminal device, but the other end is a user-space program instead of a physical device. The kernel doesn't know the difference.
 :::
 
 ## The Kernel TTY Line Discipline

@@ -1,11 +1,11 @@
 ---
 title: Test Your Terminal
-description: Find out exactly what your terminal supports — 133 feature tests in under a minute
+description: Find out exactly what your terminal supports — the full probe suite runs in under a minute
 ---
 
 # Test Your Terminal
 
-Find out exactly what your terminal supports — 133 features tested in under a minute.
+Find out exactly what your terminal supports — the full probe suite runs in under a minute.
 
 ```bash
 npx terminfo.dev
@@ -46,7 +46,7 @@ npx terminfo.dev detect         # Check what terminal was detected
 
 ## Source Code
 
-Everything is open source ([CC BY 4.0](https://github.com/beorn/terminfo.dev)):
+Everything is [open source](https://github.com/beorn/terminfo.dev) — code under MIT, data under CC BY 4.0:
 
 - [CLI source](https://github.com/beorn/terminfo.dev/tree/main/packages/terminfo.dev) — what `npx` runs
 - [Probe definitions](https://github.com/beorn/terminfo.dev/tree/main/packages/probes) — the feature tests
@@ -54,7 +54,7 @@ Everything is open source ([CC BY 4.0](https://github.com/beorn/terminfo.dev)):
 
 ## Already Tested
 
-**App terminals**: Ghostty, iTerm2, Kitty, VS Code, Warp, Terminal.app, Cursor, Alacritty, WezTerm
+**App terminals**: Ghostty, iTerm2, Kitty, VS Code, Warp, Terminal.app, Cursor
 
 **Headless backends**: vterm.js, xterm.js, Alacritty, Ghostty, Kitty, WezTerm, vt100.js
 

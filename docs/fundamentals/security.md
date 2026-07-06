@@ -28,11 +28,10 @@ printf '\e]52;c;?\a'
 
 **How terminals handle this:**
 
-| Policy                      | Behavior                         | Terminals                       |
-| --------------------------- | -------------------------------- | ------------------------------- |
-| Write allowed, read blocked | Default in most modern terminals | Ghostty, iTerm2, Kitty, WezTerm |
-| Both blocked by default     | Must opt in via settings         | Terminal.app                    |
-| Both allowed                | Full access                      | Some older xterm configs        |
+| Policy                      | Behavior                                        | Terminals (as probed on macOS)      |
+| --------------------------- | ----------------------------------------------- | ----------------------------------- |
+| Write allowed, read blocked | Default in most modern terminals                | Ghostty, Kitty, Warp, Terminal.app  |
+| Write and read allowed      | Read works out of the box or after a permission | iTerm2, VS Code, Cursor             |
 
 Reading the clipboard is the dangerous operation. A compromised process in a tmux session could silently capture anything you copy. Most terminals now block clipboard reads by default and require explicit opt-in.
 
@@ -149,13 +148,13 @@ printf '\e]2;My Title\a'
 
 If an attacker can write to your terminal (e.g., through a log file, a malicious SSH banner, or crafted data in a pipeline), they can change the window title to display misleading information — a fake hostname, a different directory path, or a spoofed user identity.
 
-Some older terminals also supported _reading_ the title back via a query sequence (OSC 21). This created an injection risk: an attacker could set the title to contain shell commands, then trigger a title query. The terminal would send the title contents back through stdin, where the shell might execute them. Modern terminals have disabled title query responses.
+Some older terminals also supported _reading_ the title back via a query sequence (`CSI 21 t`, the XTWINOPS title report). This created an injection risk: an attacker could set the title to contain shell commands, then trigger a title query. The terminal would send the title contents back through stdin, where the shell might execute them. Modern terminals have disabled title query responses.
 
 **Current status:** Title setting is generally considered low-risk and is widely allowed. Title _querying_ is blocked by default in all modern terminals due to the injection risk.
 
 ::: warning What to do
 
-- Terminal authors: never respond to title query sequences (OSC 21) with the actual title contents. Most modern terminals already block this.
+- Terminal authors: never respond to title query sequences (`CSI 21 t`) with the actual title contents. Most modern terminals already block this.
 - Users: be aware that window titles can be set by remote content. Don't rely on the title bar to verify which host or directory you're in.
 - Sanitize data before passing it to title-setting sequences in your application. Strip control characters and limit the length.
   :::

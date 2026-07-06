@@ -22,7 +22,7 @@ terminfo.dev takes a different approach: **probe the terminal directly** and rep
 
 ## Three Data Sources
 
-**[Terminal Applications](/)** — tested on real terminals via the `npx terminfo.dev` community CLI or automated app launch probes. Each test sends escape sequences to the actual terminal and verifies behavior via cursor position reports, device attribute queries, and rendered width measurements. These results reflect what users actually experience. Currently 8 terminal apps tested: Ghostty, iTerm2, Kitty, Terminal.app, Warp, VS Code, Cursor, and cmux.
+**[Terminal Applications](/)** — tested on real terminals via the `npx terminfo.dev` community CLI or automated app launch probes. Each test sends escape sequences to the actual terminal and verifies behavior via cursor position reports, device attribute queries, and rendered width measurements. These results reflect what users actually experience. Currently 7 terminal apps tested: Ghostty, iTerm2, Kitty, Terminal.app, Warp, VS Code, and Cursor.
 
 **[Headless Backends](/backends)** — tested via [Termless](https://termless.dev) against headless terminal emulator libraries. These test parser correctness — whether the library correctly parses and stores the escape sequence. A headless pass means "the parser accepts this" not "this renders correctly." Some features (like blink, cursor shape) may parse correctly but are not exposed through the library's API. Currently 7 headless backends tested (some with multiple versions).
 
@@ -37,7 +37,7 @@ The site shows these as separate sections: real terminal results first (the prim
 Anyone can test their actual terminal application:
 
 ```bash
-npx terminfo.dev probe     # Run 148 probes against your terminal
+npx terminfo.dev test      # Run the probe suite against your terminal
 npx terminfo.dev submit    # Run probes + submit results
 ```
 
@@ -71,7 +71,7 @@ Community probes test **real terminal behavior** — does the actual application
 
 ## Feature Categories
 
-153 features across 13 categories:
+270+ features across 13 categories:
 
 - **SGR** — Text styling: bold, italic, underline variants (5 styles + color), colors (standard, bright, 256, truecolor), strikethrough, overline, selective resets
 - **Cursor** — Positioning (CUP, CHA, CNL), visibility (DECTCEM), shape (DECSCUSR), save/restore (DECSC), position report (DSR 6)
@@ -89,7 +89,7 @@ Community probes test **real terminal behavior** — does the actual application
 
 ## Standards Coverage
 
-Features are tagged by their defining standard (10 standards). Each standard page includes a link to the canonical specification:
+Features are tagged by their defining standard (13 standards). Each standard page includes a link to the canonical specification:
 
 - [ECMA-48](/ecma-48) (ISO/IEC 6429) — the CSI grammar, SGR, cursor control, erase
 - [VT100](/vt100) — DEC's foundational terminal (1978)
@@ -98,6 +98,9 @@ Features are tagged by their defining standard (10 standards). Each standard pag
 - [DEC Private Modes](/dec-private-modes) — DECSET/DECRST mode toggles
 - [Xterm Extensions](/xterm-extensions) — 256/truecolor, mouse, bracketed paste
 - [Kitty Extensions](/kitty-extensions) — keyboard protocol, graphics, underline styles
+- [iTerm2 Extensions](/iterm2) — inline images, shell integration
+- [ConEmu Extensions](/conemu) — progress reporting (OSC 9;4)
+- [VS Code Extensions](/vscode-extensions) — shell-integration sequences
 - [OSC](/osc) — Operating System Commands (title, clipboard, prompts)
 - [Sixel](/sixel) — DEC raster graphics
 - [Unicode](/unicode) — wide character handling
@@ -118,7 +121,7 @@ Features are tagged by their defining standard (10 standards). Each standard pag
 
 - **90+ new features** added across all categories — from 62 to 153 features tracked
 - New categories: **Editing** (ICH/DCH/IL/DL), **Character Sets** (DEC Special Graphics), **Device Status** (DA1/DSR)
-- **Descriptive URL slugs** with standard numbers (e.g., `/sgr/sgr-4-4-dotted-underline`)
+- **Descriptive URL slugs** with standard numbers (e.g., `/sgr/4-4-dotted-underline`)
 - **xterm.js underline variants** now reported accurately (reading internal extended attributes)
 - **Standard specification links** on all tag pages (ECMA-48, VT100, VT510, xterm ctlseqs, Kitty)
 - **Clickable support cells** throughout the site — every checkmark links to the feature detail page

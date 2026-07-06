@@ -144,7 +144,7 @@ ECMA-48 defines a family of control-sequence formats (CSI, OSC, DCS, and others)
     <tr><td><code>ESC[38;2;255;100;0m</code>Hello<code>ESC[0m</code></td><td><span style="color:#ff6400"><strong>Hello</strong></span></td><td><a href="/sgr/38-2-truecolor-fg">Truecolor</a></td></tr>
     <tr><td><code>ESC[5;10H</code></td><td><em>cursor jumps to row 5, col 10</em></td><td><a href="/cursor/cup-cursor-position">Cursor Position</a></td></tr>
     <tr><td><code>ESC[?1049h</code></td><td><em>screen clears</em></td><td><a href="/modes/decset-1049-alt-screen-enter">Alternate Screen</a></td></tr>
-    <tr><td><code>ESC[6n</code></td><td>terminal replies <code>ESC[24;80R</code></td><td><a href="/device/dsr-5-device-status-report">Cursor Report</a></td></tr>
+    <tr><td><code>ESC[6n</code></td><td>terminal replies <code>ESC[24;80R</code></td><td><a href="/cursor/dsr-6-cursor-position-report">Cursor Report</a></td></tr>
     <tr><td><code>ESC[&gt;1u</code></td><td><em>keyboard sends unambiguous keys</em></td><td><a href="/extensions/kitty-keyboard-protocol">Kitty Keyboard</a></td></tr>
   </tbody>
 </table>
@@ -203,7 +203,7 @@ Line erase (EL 0/1/2), screen erase (ED 0/1/2/3), and character erase (ECH) allo
 
 ### Editing — Insert and Delete
 
-ICH, DCH, IL, and DL are the VT220 editing sequences that make **full-screen terminal applications practical**. Insert Character (ICH) pushes existing text right to make room; Delete Character (DCH) removes and shifts text left. Without these, every text change would require redrawing the entire line or screen.
+ICH, DCH, IL, and DL are the DEC editing sequences — introduced across the VT102-to-VT420 series — that make **full-screen terminal applications practical**. Insert Character (ICH) pushes existing text right to make room; Delete Character (DCH) removes and shifts text left. Without these, every text change would require redrawing the entire line or screen.
 
 These sequences are used by virtually every TUI application: vim, tmux, less, htop, every readline-based shell prompt. They're so fundamental they're easy to take for granted.
 
@@ -247,7 +247,7 @@ Modern terminal extensions beyond the traditional VT specification: **Kitty keyb
 
 Sixel (1983, revived) and Kitty graphics protocol (2017) enable inline image display in terminals. Graphics support remains fragmented — some terminals intentionally avoid image protocols for security or complexity reasons. Sixel is older and more widely supported; Kitty graphics is more capable and purpose-built.
 
-<p class="category-link"><a class="hover-link" href="/features">View Graphics features &rarr;</a></p>
+<p class="category-link"><a class="hover-link" href="/extensions">View Graphics features &rarr;</a></p>
 
 ### Character Sets — Box-Drawing from 1978
 
@@ -263,7 +263,7 @@ Applications use **DA1** (Device Attributes) to identify terminal type and capab
 
 ### Input Protocols — Beyond VT100 Keyboard
 
-Modern input protocols provide richer keyboard and mouse reporting than the VT100's original scheme. **Mouse tracking** comes in six variants (X10, normal, button-event, urxvt, SGR, pixel). **Keyboard enhancement** protocols (modifyOtherKeys, Kitty keyboard) provide modifier-aware key reporting and key release events — capabilities that were simply impossible in the original terminal model.
+Modern input protocols provide richer keyboard and mouse reporting than the VT100's original scheme. **Mouse tracking** combines four tracking modes (X10, normal, button-event, any-event) with extended report encodings (SGR, urxvt, pixel-precision). **Keyboard enhancement** protocols (modifyOtherKeys, Kitty keyboard) provide modifier-aware key reporting and key release events — capabilities that were simply impossible in the original terminal model.
 
 <p class="category-link"><a class="hover-link" href="/input">View Input Protocol features &rarr;</a></p>
 

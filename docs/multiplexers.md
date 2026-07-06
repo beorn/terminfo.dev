@@ -117,8 +117,8 @@ if [ -n "$TMUX" ]; then
   echo "Inside tmux"
 fi
 
-# Check TERM_PROGRAM for the outer terminal
-# (tmux sets TERM_PROGRAM to "tmux", original terminal is in TERM_PROGRAM saved by tmux)
+# Inside tmux, TERM_PROGRAM reports "tmux" — the outer terminal's value
+# is not exposed (try `tmux show-environment` for what tmux captured)
 echo "$TERM_PROGRAM"
 
 # Check for any multiplexer via TERM
@@ -132,10 +132,12 @@ esac
 For features that tmux doesn't understand natively, you can bypass its filtering with the passthrough escape sequence:
 
 ```bash
-# Send an escape sequence directly to the outer terminal, bypassing tmux
-printf '\ePtmux;\e\e]8;;https://example.com\a Link \e\e]8;;\a\e\\'
+# Send an escape sequence directly to the outer terminal, bypassing tmux.
+# Wrap only the escape sequences — print visible text normally so tmux's
+# screen buffer stays in sync with what's on screen.
+printf '\ePtmux;\e\e]8;;https://example.com\a\e\\Link\ePtmux;\e\e]8;;\a\e\\'
 
-# Generic format: wrap the sequence in DCS tmux; ... ST
+# Generic format: wrap each sequence in DCS tmux; ... ST
 # Every ESC inside must be doubled
 ```
 

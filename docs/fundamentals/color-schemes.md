@@ -22,7 +22,7 @@ next: false
 | Cursor       | 2     | cursorColor (bg of cursor cell), cursorText (char under cursor)                                       |
 | Selection    | 2     | selectionBackground, selectionForeground                                                              |
 
-This is the "scheme" layer — the raw hex values the terminal paints. It's theme-independent at the application level: your app doesn't know if these 22 values are "Dracula" or "Solarized Dark" — it just knows that slot 0 (black) is `#282A36` and slot 9 (brightRed) is `#FFB86C`.
+This is the "scheme" layer — the raw hex values the terminal paints. It's theme-independent at the application level: your app doesn't know if these 22 values are "Dracula" or "Solarized Dark" — it just knows that slot 0 (black) is `#21222C` and slot 9 (brightRed) is `#FF6E6E`.
 
 ## How applications use this
 
@@ -70,7 +70,7 @@ Two related-but-distinct ideas:
 - **Scheme** — the 22-slot data. What the terminal exposes. Low-level.
 - **Theme** — an application's semantic tokens (`$primary`, `$muted`, `$error`, `$border`, …) derived from a scheme. High-level.
 
-The same scheme can drive many themes (one framework's `$primary` may be mapped to scheme's `brightBlue`; another's may be mapped to `primary`/`cursorColor`). Derivation rules are per-framework; the scheme is shared.
+The same scheme can drive many themes (one framework's `$primary` may be mapped to scheme's `brightBlue`; another's may be mapped to `foreground`/`cursorColor`). Derivation rules are per-framework; the scheme is shared.
 
 ## See also
 

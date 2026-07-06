@@ -79,7 +79,7 @@ Full terminal applications whose VT parser can be tested headlessly. These are t
     <span class="backend-name">Alacritty</span>
     <span class="backend-lang">Rust</span>
   </div>
-  <p class="backend-desc">The VTE-based parser from the minimal, GPU-accelerated Rust terminal. Also tested as an app terminal — <a href="/terminals/alacritty" class="dual-link">see app results</a>.</p>
+  <p class="backend-desc">The parser (built on the Rust <code>vte</code> crate) from the minimal, GPU-accelerated Rust terminal.</p>
 </a>
 
 <a class="backend-card" href="/terminals/wezterm">
@@ -87,7 +87,7 @@ Full terminal applications whose VT parser can be tested headlessly. These are t
     <span class="backend-name">WezTerm</span>
     <span class="backend-lang">Rust</span>
   </div>
-  <p class="backend-desc">The termwiz parser from WezTerm's terminal + multiplexer. Also tested as an app terminal — <a href="/terminals/wezterm" class="dual-link">see app results</a>.</p>
+  <p class="backend-desc">The termwiz parser from WezTerm's terminal + multiplexer.</p>
 </a>
 
 <a class="backend-card" href="/terminals/kitty">

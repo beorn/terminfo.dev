@@ -249,14 +249,14 @@ printf '\e8'
 
 ### VT220 (1983) — Editing Operations Arrive {#vt220}
 
-The VT220's keyboard layout (LK201) popularized the inverted-T arrow cluster and navigation key arrangement that later became standard on PC keyboards — the layout that dominates to this day. The VT220 added the **insert/delete operations** (ICH, DCH, IL, DL) that make full-screen terminal applications practical. Without VT220 editing sequences, programs like vim and tmux would have to redraw the entire screen for every character insertion. The VT220 also introduced 8-bit control codes, user-defined keys, and national replacement character sets.
+The VT220's keyboard layout (LK201) popularized the inverted-T arrow cluster and navigation key arrangement that later became standard on PC keyboards — the layout that dominates to this day. The VT200 era cemented the **insert/delete operations** (DCH, IL, DL — introduced on the VT102; ICH followed on the VT420) that make full-screen terminal applications practical. Without these editing sequences, programs like vim and tmux would have to redraw the entire screen for every character insertion. The VT220 also introduced 8-bit control codes, user-defined keys, and national replacement character sets.
 
 These editing sequences are so fundamental that it's hard to imagine terminals without them — but they weren't in the VT100. The jump from VT100 to VT220 was the jump from a display terminal to an interactive editing terminal.
 
 ::: info At a glance
 **Introduced:**
 
-- Insert/delete character (ICH, DCH) and line (IL, DL) operations
+- Insert/delete character (DCH) and line (IL, DL) operations, begun on the VT102 (ICH arrived with the VT420)
 - 8-bit control codes and national replacement character sets
 - The LK201 keyboard layout (inverted-T arrows, navigation cluster)
 
@@ -298,7 +298,7 @@ Sixel was largely dormant for decades until modern terminals (xterm, foot, WezTe
 **Still matters:**
 
 - Widest inline image support among modern terminals (xterm, foot, WezTerm, mlterm)
-- Only graphics protocol that works over plain SSH without special setup
+- Works over plain SSH with no extra setup — like all pure escape-sequence protocols
 - Active competitor to Kitty graphics in the terminal image display debate
   :::
 
@@ -469,15 +469,15 @@ Powerline and Nerd Font glyphs are Private Use Area characters — they're not p
 
 xterm began as a summer project in 1984 — Mark Vandevoorde, a student of Jim Gettys, wrote it as a terminal emulator for the VAXStation 100. As Gettys later noted, "part of why xterm's internals are so horrifying is that it was originally intended that a single process be able to drive multiple displays." **One person** — Thomas Dickey — maintains xterm, ncurses, AND the terminfo database. He's been doing it since 1996. The xterm control sequences document (ctlseqs) is the single most important reference for terminal developers, documenting not just xterm's behavior but the de facto standards the rest of the ecosystem follows.
 
-Xterm became the reference for many widely deployed extensions, including **256-color** support, the **alternate screen buffer** with cursor save, four **mouse tracking modes**, **focus reporting**, **bracketed paste**, **OSC 8 hyperlinks**, and **OSC 52 clipboard access**. Most features that developers think of as "standard" were actually xterm innovations that other terminals copied.
+Xterm became the reference for many widely deployed extensions, including **256-color** support, the **alternate screen buffer** with cursor save, four **mouse tracking modes**, **focus reporting**, **bracketed paste**, and **OSC 52 clipboard access**. Many features that developers think of as "standard" were actually xterm innovations that other terminals copied — though not all: OSC 8 hyperlinks, for example, were specified by Egmont Koblinger and shipped first in VTE and iTerm2, with xterm adopting them only years later.
 
 ::: info At a glance
 **Introduced:**
 
-- 256-color and truecolor (24-bit RGB) SGR extensions
+- 256-color SGR extension; standardized the truecolor (24-bit RGB) syntax in ctlseqs (Konsole shipped it first)
 - Focus reporting (?1004) — apps know when the terminal gains/loses focus
 - OSC 52 clipboard access — programmatic read/write of the system clipboard
-- OSC 8 hyperlinks — clickable URLs in terminal output
+- Alternate screen buffer, mouse tracking modes, and bracketed paste
 
 **Still matters:**
 
@@ -519,7 +519,7 @@ The OSC namespace is **open-ended** — any terminal can define new number codes
 
 Kovid Goyal, already known as the creator of <a href="https://calibre-ebook.com/" target="_blank" rel="noopener">Calibre</a> (the e-book manager), built Kitty out of frustration with existing terminal limitations. The keyboard protocol was born from a specific pain: writing a Vim-like editor where `Ctrl+I` and `Tab` needed to be different keys. Kitty introduced protocols that solve fundamental limitations of the 1978-era terminal model. The **Kitty keyboard protocol** provides unambiguous, modifier-aware key reporting — solving exactly that problem: `Ctrl+I` and `Tab` are the same byte (0x09) in traditional terminals. With the Kitty protocol, they're distinct events, and key-up events are reportable for the first time.
 
-The keyboard protocol has seen broad adoption — Ghostty, WezTerm, foot, and others now implement it, making it the closest thing to an emerging standard for terminal input. The **Kitty graphics protocol** enables inline image display via chunked base64 transfer, though its adoption is narrower: WezTerm and Kitty itself support it, but Ghostty does not. Kitty also defined **extended underline styles** (curly, dotted, dashed) with independent underline colors, which have seen wide adoption across modern terminals.
+The keyboard protocol has seen broad adoption — Ghostty, WezTerm, foot, and others now implement it, making it the closest thing to an emerging standard for terminal input. The **Kitty graphics protocol** enables inline image display via chunked base64 transfer, and its adoption keeps widening: our probes show Kitty, Ghostty, iTerm2, and Warp passing it, while xterm.js-based terminals (VS Code, Cursor) do not. Kitty also defined **extended underline styles** (curly, dotted, dashed) with independent underline colors, which have seen wide adoption across modern terminals.
 
 ::: info At a glance
 **Introduced:**
@@ -539,7 +539,7 @@ The keyboard protocol has seen broad adoption — Ghostty, WezTerm, foot, and ot
 <p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
 
 ::: tip Why Kitty matters
-Kitty significantly advanced terminal input by documenting key-release reporting and a comprehensive keyboard protocol. Earlier efforts like xterm's modifyOtherKeys and Leonerd's CSI u/fixterms addressed parts of this problem. The keyboard protocol has been widely adopted (Ghostty, WezTerm, foot, and others), making it the closest thing to an emerging standard for terminal input. The graphics protocol has narrower adoption — supported by Kitty and WezTerm, but not by Ghostty, which chose not to implement it.
+Kitty significantly advanced terminal input by documenting key-release reporting and a comprehensive keyboard protocol. Earlier efforts like xterm's modifyOtherKeys and Leonerd's CSI u/fixterms addressed parts of this problem. The keyboard protocol has been widely adopted (Ghostty, WezTerm, foot, and others), making it the closest thing to an emerging standard for terminal input. The graphics protocol's adoption is narrower but growing — Kitty, Ghostty, WezTerm, iTerm2, and Warp support it, while xterm.js-based terminals do not.
 :::
 
 ---

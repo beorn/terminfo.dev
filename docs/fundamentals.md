@@ -53,6 +53,33 @@ Every terminal session involves the same layers, whether you're running `ls` in 
     <p class="fundamentals-desc">How applications discover what the terminal supports — from unreliable environment variables to runtime escape sequence queries. Why static databases fall short.</p>
   </a>
 
+  <a class="fundamentals-card fundamentals-card-link" href="/fundamentals/color-fundamentals">
+    <div class="fundamentals-header">
+      <span class="fundamentals-icon">🎨</span>
+      <span class="fundamentals-name">Color Fundamentals</span>
+    </div>
+    <p class="fundamentals-tagline">ANSI 16, 256-color, truecolor, and the escape sequences that carry them</p>
+    <p class="fundamentals-desc">The three generations of terminal color — named slots the theme controls, the fixed 256-entry palette, and full 24-bit RGB — and when to use each.</p>
+  </a>
+
+  <a class="fundamentals-card fundamentals-card-link" href="/fundamentals/color-schemes">
+    <div class="fundamentals-header">
+      <span class="fundamentals-icon">🌗</span>
+      <span class="fundamentals-name">Color Schemes</span>
+    </div>
+    <p class="fundamentals-tagline">The 22-slot user-configurable scheme every terminal exposes</p>
+    <p class="fundamentals-desc">How themes map the ANSI color names to actual hex values — foreground, background, cursor, selection, and the 16 palette slots — and why the same "red" looks different everywhere.</p>
+  </a>
+
+  <a class="fundamentals-card fundamentals-card-link" href="/fundamentals/color-detection">
+    <div class="fundamentals-header">
+      <span class="fundamentals-icon">🔦</span>
+      <span class="fundamentals-name">Color Detection</span>
+    </div>
+    <p class="fundamentals-tagline">NO_COLOR, COLORTERM, OSC probes — how applications figure out what color to emit</p>
+    <p class="fundamentals-desc">Detecting color depth and dark-vs-light background at runtime — environment variable conventions, OSC 10/11 queries, and graceful degradation.</p>
+  </a>
+
   <a class="fundamentals-card fundamentals-card-link" href="/fundamentals/security">
     <div class="fundamentals-header">
       <span class="fundamentals-icon">🔒</span>

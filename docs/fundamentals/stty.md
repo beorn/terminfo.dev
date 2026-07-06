@@ -34,7 +34,7 @@ In raw mode, every byte is delivered to the application **immediately**, with no
 
 TUI applications — vim, htop, less, top, tmux — switch to raw mode on startup and restore canonical mode on exit. This gives them full control: they can respond to every keypress, handle arrow keys and function keys, draw anywhere on the screen, and manage their own display. When vim shows your cursor moving as you press arrow keys, that's vim reading raw bytes, interpreting them, and writing escape sequences to reposition the cursor — the kernel is not involved.
 
-Technically, "raw mode" is not a single flag but a collection of termios settings. The `stty raw` command disables input processing (`icanon`), echo (`echo`), signal generation (`isig`), and output processing (`opost`), among others. The POSIX function `cfmakeraw()` sets the canonical combination. Applications typically use `tcgetattr()` to save the current settings, call `cfmakeraw()` to switch to raw mode, and call `tcsetattr()` with the saved settings on exit to restore the terminal.
+Technically, "raw mode" is not a single flag but a collection of termios settings. The `stty raw` command disables input processing (`icanon`), signal generation (`isig`), and output processing (`opost`), among others — but notably it does *not* disable echo, which is why the classic incantation is `stty raw -echo`. The C library function `cfmakeraw()` (a BSD/glibc extension) sets the full combination, including clearing echo. Applications typically use `tcgetattr()` to save the current settings, call `cfmakeraw()` to switch to raw mode, and call `tcsetattr()` with the saved settings on exit to restore the terminal.
 
 ## Echo
 
@@ -74,7 +74,7 @@ The terminal emulator knows nothing about process management. When you press Ctr
 <table class="command-table">
 <thead><tr><th>Command</th><th>What It Does</th></tr></thead>
 <tbody>
-<tr><td><code>stty raw</code></td><td>Switch to raw mode. Disables line buffering, echo, signal characters, and output processing. Every byte passes through unmodified.</td></tr>
+<tr><td><code>stty raw</code></td><td>Switch to raw mode. Disables line buffering, signal characters, and output processing — but not echo; pair with <code>stty -echo</code> for full raw input. Every byte passes through unmodified.</td></tr>
 <tr><td><code>stty -raw</code></td><td>Switch back to canonical (cooked) mode. Re-enables line buffering and input processing. Note: doesn't restore all settings — use <code>stty sane</code> for a full reset.</td></tr>
 <tr><td><code>stty -echo</code></td><td>Disable echo. Characters you type are not displayed. Used by password prompts. Pair with <code>stty echo</code> to re-enable.</td></tr>
 <tr><td><code>stty sane</code></td><td>Reset all settings to sensible defaults. The nuclear recovery option — fixes garbled terminals after a crashed program.</td></tr>

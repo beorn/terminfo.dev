@@ -58,7 +58,7 @@ DA1's real value in modern detection is as a **sentinel**. Because nearly every 
 
 ## DECRPM (Mode Report)
 
-DECRPM — DEC Private Mode Report — is the best general-purpose mechanism for probing individual terminal features at runtime. The application sends `CSI ? Pm $ p` (where `Pm` is a private mode number), and the terminal responds with `CSI ? Pm ; Ps $ y`, where `Ps` indicates the mode status: **1** = set, **2** = reset, **0** = not recognized.
+DECRPM — DEC Private Mode Report — is the best general-purpose mechanism for probing individual terminal features at runtime. The application sends `CSI ? Pm $ p` (where `Pm` is a private mode number; the request is formally called DECRQM), and the terminal responds with `CSI ? Pm ; Ps $ y`, where `Ps` indicates the mode status: **1** = set, **2** = reset, **3** = permanently set, **4** = permanently reset, **0** = not recognized.
 
 This is powerful because many modern features are controlled via DEC private modes. Bracketed paste mode (2004), mouse tracking modes (1000/1002/1003/1006), focus tracking (1004), alternate screen (1049), synchronized output (2026), and grapheme clustering (2027) all have mode numbers. By sending a DECRPM query for each mode, an application can determine at runtime whether the terminal supports it — and it gets back a definitive answer, not a heuristic.
 
@@ -76,7 +76,7 @@ The trade-off is that XTVERSION requires the application to maintain a mapping f
 
 Runtime probing is the approach that terminfo.dev takes — and it's the most reliable method for determining what a terminal actually supports. Instead of trusting a database entry, an environment variable, or a self-reported identity, runtime probing sends the actual escape sequence and checks whether the terminal handles it correctly.
 
-The simplest form of runtime probing uses cursor position: the application saves the cursor position, sends an escape sequence (for example, a wide emoji character), queries the cursor position again, and checks whether the cursor moved the expected distance. If the terminal correctly handled the emoji as two columns wide, the cursor will be at the right position. If not, the application knows the terminal doesn't support that feature. More sophisticated probes use DECRPM queries, OSC response parsing, and DA1 sentinels.
+The simplest form of runtime probing uses cursor position: the application saves the cursor position, writes test content (for example, a wide emoji character), queries the cursor position again, and checks whether the cursor moved the expected distance. If the terminal correctly handled the emoji as two columns wide, the cursor will be at the right position. If not, the application knows the terminal doesn't support that feature. More sophisticated probes use DECRPM queries, OSC response parsing, and DA1 sentinels.
 
 This is what [Termless](https://termless.dev) does with headless backends — it instantiates a terminal emulator in-process, writes escape sequences, and reads back the terminal state programmatically. It's also what the `npx terminfo.dev` CLI does with real terminals — it sends probes over the PTY and reads the responses. The results are ground truth: not what a database says should work, not what an environment variable claims, but what the terminal actually did when presented with the sequence. This behavioral approach is why terminfo.dev can track features that terminfo has no vocabulary for.
 
