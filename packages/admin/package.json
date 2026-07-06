@@ -2,13 +2,13 @@
   "name": "@terminfo/admin",
   "version": "0.0.0",
   "private": true,
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": "./entry.ts"
   },
-  "files": [
-    "dist"
-  ],
   "publishConfig": {
     "access": "public",
     "exports": {
