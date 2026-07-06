@@ -94,13 +94,13 @@ Color coding:
 
 ### Feature Object
 
-| Field      | Type        | Description                                                                                                               |
-| ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `name`     | `string`    | Human-readable feature name                                                                                               |
+| Field      | Type        | Description                                                                                                                                   |
+| ---------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | `string`    | Human-readable feature name                                                                                                                   |
 | `category` | `string`    | Category: `sgr`, `cursor`, `text`, `erase`, `editing`, `modes`, `scrollback`, `reset`, `extensions`, `charsets`, `device`, `input`, `unicode` |
-| `slug`     | `string`    | URL-friendly slug for the feature detail page                                                                             |
-| `url`      | `string?`   | Link to the relevant specification                                                                                        |
-| `tags`     | `string[]?` | Standard tags: `ecma-48`, `vt100`, `vt220`, `vt510`, `kitty-extensions`, etc.                                             |
+| `slug`     | `string`    | URL-friendly slug for the feature detail page                                                                                                 |
+| `url`      | `string?`   | Link to the relevant specification                                                                                                            |
+| `tags`     | `string[]?` | Standard tags: `ecma-48`, `vt100`, `vt220`, `vt510`, `kitty-extensions`, etc.                                                                 |
 
 ### Terminal Object
 

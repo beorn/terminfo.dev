@@ -28,10 +28,10 @@ printf '\e]52;c;?\a'
 
 **How terminals handle this:**
 
-| Policy                      | Behavior                                        | Terminals (as probed on macOS)      |
-| --------------------------- | ----------------------------------------------- | ----------------------------------- |
-| Write allowed, read blocked | Default in most modern terminals                | Ghostty, Kitty, Warp, Terminal.app  |
-| Write and read allowed      | Read works out of the box or after a permission | iTerm2, VS Code, Cursor             |
+| Policy                      | Behavior                                        | Terminals (as probed on macOS)     |
+| --------------------------- | ----------------------------------------------- | ---------------------------------- |
+| Write allowed, read blocked | Default in most modern terminals                | Ghostty, Kitty, Warp, Terminal.app |
+| Write and read allowed      | Read works out of the box or after a permission | iTerm2, VS Code, Cursor            |
 
 Reading the clipboard is the dangerous operation. A compromised process in a tmux session could silently capture anything you copy. Most terminals now block clipboard reads by default and require explicit opt-in.
 
