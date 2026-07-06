@@ -3,6 +3,24 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./entry.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/entry.d.mts",
+        "import": "./dist/entry.mjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsdown"
+  },
   "dependencies": {
     "@silvery/commander": "^0.19.0",
     "@termless/core": "^0.6.0",
@@ -10,5 +28,14 @@
     "react": "^19.2.5",
     "silvery": "^0.19.0",
     "terminfo.dev": "workspace:*"
+  },
+  "devDependencies": {
+    "tsdown": "^0.21.7"
+  },
+  "tsdown": {
+    "clean": true,
+    "dts": true,
+    "entry": "entry.ts",
+    "format": "esm"
   }
 }
