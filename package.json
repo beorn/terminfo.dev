@@ -17,7 +17,7 @@
     "analysis": "bun scripts/generate-analysis.ts",
     "analysis:validate": "bun scripts/generate-analysis.ts --validate",
     "dev": "vitepress dev docs",
-    "build": "bunx --bun vitepress build docs",
+    "build": "vitepress build docs",
     "preview": "vitepress preview docs",
     "validate": "bun scripts/validate.ts",
     "check-404s": "bun scripts/check-404s.ts",
@@ -29,7 +29,6 @@
     "update": "bun scripts/update.ts",
     "sync-probe-status": "bun scripts/sync-probe-status.ts",
     "watch-releases": "bun scripts/watch-releases.ts",
-    "fmt": "oxfmt --write .",
     "fmt:check": "oxfmt --check .",
     "fix": "oxfmt --write ."
   },
@@ -50,7 +49,7 @@
     "terminfo.dev": "workspace:*",
     "vitepress": "^1.6.4",
     "vitepress-enrich": "^0.4.0",
-    "vitest": "^4.1.4",
+    "vitest": "^4.1.10",
     "vue": "^3.5.31"
   },
   "engines": {
