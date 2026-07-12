@@ -45,13 +45,13 @@
     "@terminfo/admin": "workspace:*",
     "@terminfo/probe-defs": "workspace:*",
     "@terminfo/probes": "workspace:*",
-    "@vue/server-renderer": "^3.5.31",
+    "@vue/server-renderer": "^3.5.39",
     "oxfmt": "0.38.0",
     "terminfo.dev": "workspace:*",
     "vitepress": "^1.6.4",
-    "vitepress-enrich": "^0.4.0",
-    "vitest": "^4.1.4",
-    "vue": "^3.5.31"
+    "vitepress-enrich": "^0.5.0",
+    "vitest": "^4.1.10",
+    "vue": "^3.5.39"
   },
   "engines": {
     "node": ">=23.6.0"
