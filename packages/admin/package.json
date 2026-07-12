@@ -10,13 +10,13 @@
     ".": "./entry.ts"
   },
   "publishConfig": {
-    "access": "public",
     "exports": {
       ".": {
         "types": "./dist/entry.d.mts",
         "import": "./dist/entry.mjs"
       }
-    }
+    },
+    "access": "public"
   },
   "scripts": {
     "build": "tsdown"
@@ -30,7 +30,7 @@
     "terminfo.dev": "workspace:*"
   },
   "devDependencies": {
-    "tsdown": "^0.21.7"
+    "tsdown": "^0.22.5"
   },
   "tsdown": {
     "clean": true,
