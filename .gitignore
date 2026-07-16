@@ -1,9 +1,0 @@
-node_modules/
-docs/.vitepress/cache/
-docs/.vitepress/dist/
-packages/*/dist/
-.DS_Store
-.playwright-cli/
-*.png
-!docs/public/og-image.png
-.gstack/
