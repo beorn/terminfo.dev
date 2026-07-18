@@ -74,7 +74,7 @@ bun run probes:status             # Config, backends, cache info
 
 | Backend        | Engine                  | Type            |
 | -------------- | ----------------------- | --------------- |
-| xtermjs        | @xterm/headless 5.5     | JS              |
+| xtermjs        | @xterm/headless 6.0     | JS              |
 | ghostty        | ghostty-web 0.4         | WASM            |
 | vt100          | Pure TypeScript         | JS              |
 | alacritty      | alacritty_terminal 0.26 | Native (Rust)   |
