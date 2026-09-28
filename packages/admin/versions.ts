@@ -32,6 +32,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(__dirname, "..", "..")
 const RESULTS_DIR = join(REPO_ROOT, "content", "probes-libs")
 const PROBES_DIR = join(REPO_ROOT, "packages", "probes")
+const PROBE_DEFS_DIR = join(REPO_ROOT, "packages", "probe-defs", "src")
 const VERSIONS_PATH = join(REPO_ROOT, "versions.json")
 // Cache dir handled by ensureCachedVersion() in backends.ts
 
@@ -56,11 +57,19 @@ interface VersionRunResult {
   error?: string
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 // ── Probe hash ──
 
 /**
- * Compute a hash of all probe files + the setup.ts infrastructure.
- * Used as cache key — if probes haven't changed, skip re-running.
+ * Compute the executable suite hash from the runner, setup, and imported
+ * definitions. This identifies the suite, not any backend that runs it.
  */
 export function probeHash(): string {
   const hash = createHash("md5")
@@ -70,14 +79,28 @@ export function probeHash(): string {
     .filter((f) => f.endsWith(".probe.ts"))
     .sort()
   for (const f of probeFiles) {
+    hash.update(f)
     hash.update(readFileSync(join(PROBES_DIR, f)))
+  }
+
+  // The unified runner imports these definitions through @terminfo/probe-defs.
+  // A changed definition must invalidate every cached backend result.
+  const definitionFiles = readdirSync(PROBE_DEFS_DIR)
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".spec.ts"))
+    .sort()
+  for (const f of definitionFiles) {
+    hash.update(f)
+    hash.update(readFileSync(join(PROBE_DEFS_DIR, f)))
   }
 
   // Hash the backends infrastructure (changes here affect results)
   const backendsFile = join(PROBES_DIR, "setup.ts")
-  if (existsSync(backendsFile)) {
-    hash.update(readFileSync(backendsFile))
-  }
+  hash.update("setup.ts")
+  hash.update(readFileSync(backendsFile))
+
+  const configFile = join(PROBES_DIR, "vitest.config.ts")
+  hash.update("vitest.config.ts")
+  hash.update(readFileSync(configFile))
 
   return hash.digest("hex").slice(0, 12)
 }
@@ -102,8 +125,8 @@ function isCacheValid(resultPath: string, currentHash: string): boolean {
   if (!existsSync(resultPath)) return false
 
   try {
-    const data = JSON.parse(readFileSync(resultPath, "utf-8")) as any
-    return data.probeHash === currentHash
+    const data: unknown = JSON.parse(readFileSync(resultPath, "utf-8"))
+    return isRecord(data) && data.probeHash === currentHash
   } catch {
     return false
   }
@@ -122,8 +145,11 @@ function resolveUpstreamPath(cacheDir: string, upstream: string): string {
   }
 
   // Read package.json to find the entry point
-  const pkgJson = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8")) as any
-  const entry = (pkgJson.module ?? pkgJson.main ?? "index.js") as string
+  const pkgJson: unknown = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8"))
+  if (!isRecord(pkgJson)) throw new Error(`Invalid package metadata for ${upstream} in ${pkgDir}`)
+  const candidate = pkgJson.module ?? pkgJson.main ?? "index.js"
+  if (typeof candidate !== "string") throw new Error(`Invalid package entry for ${upstream} in ${pkgDir}`)
+  const entry = candidate
   const entryPath = join(pkgDir, entry)
 
   if (existsSync(entryPath)) return entryPath
@@ -177,8 +203,8 @@ function runProbesForVersion(
   let aliasTarget: string
   try {
     aliasTarget = resolveUpstreamPath(cacheDir, upstream)
-  } catch (e: any) {
-    log.debug?.(`Failed to resolve upstream path: ${e.message}`)
+  } catch (e: unknown) {
+    log.debug?.(`Failed to resolve upstream path: ${errorMessage(e)}`)
     return null
   }
 
@@ -204,19 +230,20 @@ function runProbesForVersion(
 
     const json = JSON.parse(stdout)
     return parseVitestJson(json)
-  } catch (e: any) {
+  } catch (e: unknown) {
     // vitest exits with non-zero when tests fail — that's expected for probes
     // Try to parse stdout from the error
-    if (e.stdout) {
+    const failedOutput = isRecord(e) ? e.stdout : undefined
+    if (typeof failedOutput === "string" || Buffer.isBuffer(failedOutput)) {
       try {
-        const stdout = e.stdout.toString("utf-8")
-        const json = JSON.parse(stdout)
+        const stdout = typeof failedOutput === "string" ? failedOutput : failedOutput.toString("utf-8")
+        const json: unknown = JSON.parse(stdout)
         return parseVitestJson(json)
-      } catch {
-        // Fall through
+      } catch (parseError: unknown) {
+        log.debug?.(`Could not parse vitest output for ${backendName}@${version}: ${errorMessage(parseError)}`)
       }
     }
-    log.debug?.(`Error running probes for ${backendName}@${version}: ${e.message}`)
+    log.debug?.(`Error running probes for ${backendName}@${version}: ${errorMessage(e)}`)
     return null
   } finally {
     // Clean up temporary config
@@ -240,7 +267,7 @@ export interface VersionsRunOptions {
 /**
  * Run versioned probes — probes against older versions of backends.
  */
-export async function runVersionedProbes(opts?: VersionsRunOptions): Promise<VersionRunResult[]> {
+export function runVersionedProbes(opts?: VersionsRunOptions): Promise<VersionRunResult[]> {
   const catalog = loadVersionsCatalog()
   const hash = probeHash()
   const results: VersionRunResult[] = []
@@ -267,8 +294,8 @@ export async function runVersionedProbes(opts?: VersionsRunOptions): Promise<Ver
       let cacheDir: string
       try {
         cacheDir = ensureCachedVersion(config.upstream, version)
-      } catch (e: any) {
-        results.push({ backend: backendName, version, skipped: false, error: e.message })
+      } catch (e: unknown) {
+        results.push({ backend: backendName, version, skipped: false, error: errorMessage(e) })
         continue
       }
 
@@ -327,5 +354,5 @@ export async function runVersionedProbes(opts?: VersionsRunOptions): Promise<Ver
     }
   }
 
-  return results
+  return Promise.resolve(results)
 }
