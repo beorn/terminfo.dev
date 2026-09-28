@@ -7,8 +7,7 @@
  * terminal you want to test, then use `terminfo.dev test-all` or
  * curl to run probes remotely.
  *
- * Probes are loaded dynamically on each request — the server never needs
- * restarting when probe definitions change on disk.
+ * Probe definitions are loaded at daemon startup; restart after changing them.
  *
  * Discovery: writes terminal info + port to ~/.terminfo-dev/daemons/
  * so clients can find all running daemons automatically.
@@ -22,23 +21,11 @@ import { homedir } from "node:os"
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import { detectTerminal } from "./detect.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
+import { ALL_PROBES } from "./probes/unified.ts"
 
 const s = createStyle()
 
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
-
-/** Resolve the absolute path to the probes module (once, at startup). */
-const PROBES_PATH = require.resolve("./probes/unified.ts")
-
-/**
- * Dynamically load probes, busting the module cache so that changes
- * on disk are picked up without restarting the server.
- */
-async function loadProbes() {
-  delete require.cache[PROBES_PATH]
-  const mod = await import("./probes/unified.ts")
-  return mod.ALL_PROBES as import("./probes/unified.ts").Probe[]
-}
 
 interface DaemonInfo {
   pid: number
@@ -49,6 +36,7 @@ interface DaemonInfo {
   osVersion: string
   started: string
   token: string
+  runId: string
 }
 
 function register(info: DaemonInfo): string {
@@ -63,6 +51,7 @@ function unregister(filepath: string) {
   try {
     unlinkSync(filepath)
   } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return
     throw new Error(
       `Could not remove daemon registration ${filepath}: ${err instanceof Error ? err.message : String(err)}`,
     )
@@ -93,9 +82,13 @@ export function listDaemons(): DaemonInfo[] {
   })
 }
 
-export async function startDaemon(port = 0): Promise<void> {
+export function startDaemon(port = 0): void {
   const terminal = detectTerminal()
   const token = randomBytes(32).toString("hex")
+  const runId =
+    process.env.TERMINFO_RUN_ID && /^[0-9a-f]{32}$/.test(process.env.TERMINFO_RUN_ID)
+      ? process.env.TERMINFO_RUN_ID
+      : randomBytes(16).toString("hex")
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
@@ -122,16 +115,18 @@ export async function startDaemon(port = 0): Promise<void> {
           JSON.stringify({
             terminal: terminal.name,
             terminalVersion: terminal.version,
+            pid: process.pid,
+            runId,
             os: terminal.os,
             osVersion: terminal.osVersion,
-            probes: "dynamic",
+            probes: "loaded-at-start",
           }),
         )
         return
       }
 
       if (url.pathname === "/probe") {
-        const probes = await loadProbes()
+        const probes = ALL_PROBES
         console.log(s.dim(`[${new Date().toISOString()}] Running ${probes.length} probes...`))
 
         const results: Record<string, boolean> = {}
@@ -182,7 +177,7 @@ export async function startDaemon(port = 0): Promise<void> {
           res.end(JSON.stringify({ error: "Missing ?id= parameter" }))
           return
         }
-        const probes = await loadProbes()
+        const probes = ALL_PROBES
         const probe = probes.find((p) => p.id === probeId)
         if (!probe) {
           res.statusCode = 404
@@ -281,7 +276,7 @@ export async function startDaemon(port = 0): Promise<void> {
         JSON.stringify({
           endpoints: {
             "/info": "Terminal info",
-            "/probe": "Run all probes (dynamically loaded)",
+            "/probe": "Run all probes loaded at daemon startup",
             "/probe/single?id=sgr.bold": "Run single probe",
             "/query": "POST — execute raw escape sequence commands",
           },
@@ -313,6 +308,7 @@ export async function startDaemon(port = 0): Promise<void> {
       osVersion: terminal.osVersion,
       started: new Date().toISOString(),
       token,
+      runId,
     }
 
     const filepath = register(info)
@@ -321,7 +317,7 @@ export async function startDaemon(port = 0): Promise<void> {
     console.log(`${s.bold("terminfo.dev")} daemon running\n`)
     console.log(`  Terminal:  ${s.bold(terminal.name)} ${terminal.version}`)
     console.log(`  Port:      ${s.bold(String(actualPort))}`)
-    console.log(`  Probes:    dynamic (loaded on each request)`)
+    console.log(`  Probes:    loaded at startup (restart after definitions change)`)
     console.log(``)
     console.log(`  Test:   use the registered daemon token to authorize /probe`)
     console.log(`  Info:   curl http://localhost:${actualPort}/info`)
@@ -363,7 +359,7 @@ function readBody(req: IncomingMessage): Promise<string> {
 /** Convert \\x1b notation to actual escape characters */
 function unescapeSequence(s: string): string {
   return s
-    .replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_: string, hex: string) => String.fromCharCode(parseInt(hex, 16)))
     .replace(/\\e/g, "\x1b")
     .replace(/\\n/g, "\n")
     .replace(/\\r/g, "\r")

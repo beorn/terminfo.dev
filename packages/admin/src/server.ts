@@ -10,6 +10,7 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { readDaemonProbeResponse, requestDaemonProbe } from "terminfo.dev/src/daemon-client.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -21,7 +22,7 @@ export async function handleServer(
   if (opts.start) {
     // Start daemon in this terminal
     const { startDaemon } = await import("terminfo.dev/src/serve.ts")
-    await startDaemon(opts.port ?? 0)
+    startDaemon(opts.port ?? 0)
     return
   }
 
@@ -69,18 +70,16 @@ export async function handleServer(
   }
 
   console.log(`terminfo.dev — testing ${targets.length} terminal(s)\n`)
+  const failures: string[] = []
+  let saved = 0
 
   for (const d of targets) {
     const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
 
     try {
-      const res = await fetch(`http://127.0.0.1:${d.port}/probe`, { signal: AbortSignal.timeout(120000) })
-      if (!res.ok) {
-        console.error(`  ${label.padEnd(25)} HTTP ${res.status}`)
-        continue
-      }
-      const data = (await res.json()) as any
-      const passed = Object.values(data.results).filter((v: any) => v).length
+      const res = await requestDaemonProbe(d)
+      const data = await readDaemonProbeResponse(res)
+      const passed = Object.values(data.results).filter(Boolean).length
       const total = Object.keys(data.results).length
       const pct = Math.round((passed / total) * 100)
       console.log(`  ${label.padEnd(25)} ${passed}/${total} (${pct}%)`)
@@ -89,8 +88,7 @@ export async function handleServer(
       const { verifyTerminalIdentity } = await import("terminfo.dev/src/identity-guard.ts")
       const identityCheck = verifyTerminalIdentity(data.terminal, data.responses, data.results)
       if (!identityCheck.ok) {
-        console.error(`  ${label.padEnd(25)} REJECTED: ${identityCheck.reason}`)
-        continue
+        throw new Error(`REJECTED: ${identityCheck.reason}`)
       }
 
       // Save results
@@ -99,8 +97,10 @@ export async function handleServer(
       const name = data.terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
       const ver = (data.terminalVersion || "unknown").replace(/[^a-z0-9.-]/g, "-")
       writeFileSync(`${dir}/${name}-${ver}-${data.os}.json`, JSON.stringify(data, null, 2))
+      saved++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      failures.push(`${label}: ${msg}`)
       if (msg.includes("ECONNREFUSED")) {
         console.error(`  ${label.padEnd(25)} not running (stale daemon file)`)
       } else {
@@ -109,5 +109,6 @@ export async function handleServer(
     }
   }
 
-  console.log("\nResults saved to content/probes-apps/")
+  if (saved > 0) console.log(`\n${saved} result(s) saved to content/probes-apps/`)
+  if (failures.length > 0) throw new Error(`Daemon collection failed: ${failures.join("; ")}`)
 }

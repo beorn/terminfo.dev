@@ -2,6 +2,7 @@
  * @failure TTY replies can be lost before listening or attributed to the wrong query.
  * @level l2
  * @consumer Real-terminal probe runner
+ * @testonly none
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { query, queryMode, queryWithSentinel, withRawMode } from "./tty.ts"

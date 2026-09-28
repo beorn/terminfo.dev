@@ -2,6 +2,8 @@
  * @failure An unrelated local process or web page can make the daemon emit terminal control bytes.
  * @level l3
  * @consumer Real-terminal daemon HTTP clients
+ * @testonly none
+ * @reach fs-walk /tmp/terminfo-serve-*
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -31,7 +33,7 @@ async function startTestDaemon() {
       const files = readdirSync(join(home!, ".terminfo-dev/daemons"))
       expect(files).toHaveLength(1)
       filename = join(home!, ".terminfo-dev/daemons", files[0]!)
-      registration = JSON.parse(readFileSync(filename, "utf8"))
+      registration = JSON.parse(readFileSync(filename, "utf8")) as { port: number; token?: string }
     },
     { timeout: 2000 },
   )

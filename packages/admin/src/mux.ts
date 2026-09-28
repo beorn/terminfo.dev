@@ -8,10 +8,22 @@
  * that run directly on a terminal now run through the multiplexer's PTY layer.
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
 import { execSync } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import {
+  createProbeRun,
+  findOwnedDaemon,
+  readDaemonProbeResponse,
+  removeProbeRun,
+  requestDaemonProbe,
+  shellQuote,
+  stopOwnedDaemon,
+  type DaemonRegistration,
+  type OwnedDaemon,
+  type ProbeRun,
+} from "terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -31,7 +43,6 @@ interface MuxDef {
   kill: (sessionName: string) => void
 }
 
-const SESSION_NAME = "terminfo-probe"
 const BUN = process.execPath
 
 const MUXES: MuxDef[] = [
@@ -53,9 +64,7 @@ const MUXES: MuxDef[] = [
       execSync(`tmux new-session -d -s ${session} -x 120 -y 40 "${scriptPath}"`, { timeout: 10_000 })
     },
     kill: (session) => {
-      try {
-        execSync(`tmux kill-session -t ${session}`, { timeout: 5000, stdio: "ignore" })
-      } catch {}
+      execSync(`tmux kill-session -t ${session}`, { timeout: 5000, stdio: "ignore" })
     },
   },
   {
@@ -75,9 +84,7 @@ const MUXES: MuxDef[] = [
       execSync(`screen -dmS ${session} ${scriptPath}`, { timeout: 10_000 })
     },
     kill: (session) => {
-      try {
-        execSync(`screen -S ${session} -X quit`, { timeout: 5000, stdio: "ignore" })
-      } catch {}
+      execSync(`screen -S ${session} -X quit`, { timeout: 5000, stdio: "ignore" })
     },
   },
 ]
@@ -96,116 +103,35 @@ function whichBinary(name: string): string | null {
  * Write a wrapper script that clears outer terminal identity env vars
  * so the daemon inside the mux detects the mux as the terminal.
  */
-function writeServeScript(): string {
-  const scriptPath = "/tmp/terminfo-mux-serve.sh"
-  const serveCmd = `${BUN} "${CLI_ENTRY}" probe server --start`
+function writeServeScript(run: ProbeRun): void {
+  const serveCmd = `TERMINFO_RUN_ID=${run.id} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
   writeFileSync(
-    scriptPath,
+    run.scriptPath,
     [
       "#!/bin/bash",
-      "# Clear outer terminal identity so daemon detects the mux",
-      "unset __CFBundleIdentifier",
-      "unset TERM_PROGRAM",
-      "unset TERM_PROGRAM_VERSION",
-      "unset GHOSTTY_RESOURCES_DIR",
-      "unset KITTY_WINDOW_ID",
-      "unset WEZTERM_EXECUTABLE",
-      "unset ALACRITTY_WINDOW_ID",
-      "unset TERMINAL_EMULATOR",
+      "unset __CFBundleIdentifier TERM_PROGRAM TERM_PROGRAM_VERSION",
+      "unset GHOSTTY_RESOURCES_DIR KITTY_WINDOW_ID WEZTERM_EXECUTABLE ALACRITTY_WINDOW_ID TERMINAL_EMULATOR",
       serveCmd,
-      "sleep 999999", // Keep session alive after daemon starts
     ].join("\n") + "\n",
+    { flag: "wx", mode: 0o700 },
   )
-  execSync(`chmod +x ${scriptPath}`)
-  return scriptPath
-}
-
-/** Wait for a daemon that started within the last 60s */
-async function waitForDaemon(timeoutMs: number = 30_000): Promise<{ port: number; terminal: string } | null> {
-  const deadline = Date.now() + timeoutMs
-
-  while (Date.now() < deadline) {
-    try {
-      mkdirSync(DAEMON_DIR, { recursive: true })
-      const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
-      for (const file of files) {
-        try {
-          const data = JSON.parse(readFileSync(join(DAEMON_DIR, file), "utf-8")) as any
-          const started = new Date(data.started).getTime()
-          if (Date.now() - started < 60_000) {
-            // Verify daemon is alive via /info
-            try {
-              const res = await fetch(`http://127.0.0.1:${data.port}/info`, { signal: AbortSignal.timeout(2000) })
-              if (res.ok) return { port: data.port, terminal: data.terminal }
-            } catch {}
-          }
-        } catch {}
-      }
-    } catch {}
-    await new Promise((r) => setTimeout(r, 500))
-  }
-
-  return null
-}
-
-/** Kill daemon processes registered in ~/.terminfo-dev/daemons/ */
-async function killDaemonProcesses(): Promise<void> {
-  try {
-    mkdirSync(DAEMON_DIR, { recursive: true })
-    const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
-    for (const file of files) {
-      try {
-        const data = JSON.parse(readFileSync(join(DAEMON_DIR, file), "utf-8")) as any
-        if (data.pid) {
-          try {
-            process.kill(data.pid, "SIGTERM")
-          } catch {}
-        }
-        // Also kill the serve script wrapper if it's still running
-        try {
-          execSync(`pkill -f "terminfo-mux-serve.sh" 2>/dev/null || true`, { timeout: 3000 })
-        } catch {}
-        unlinkSync(join(DAEMON_DIR, file))
-      } catch {}
-    }
-  } catch {}
-}
-
-/** Remove stale daemon files (daemons that are no longer running) */
-async function cleanStaleDaemons(): Promise<void> {
-  try {
-    mkdirSync(DAEMON_DIR, { recursive: true })
-    const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
-    for (const file of files) {
-      try {
-        const data = JSON.parse(readFileSync(join(DAEMON_DIR, file), "utf-8")) as any
-        const res = await fetch(`http://127.0.0.1:${data.port}/info`, { signal: AbortSignal.timeout(1000) })
-        if (!res.ok) throw new Error("not ok")
-      } catch {
-        try {
-          unlinkSync(join(DAEMON_DIR, file))
-        } catch {}
-      }
-    }
-  } catch {}
 }
 
 /** Probe a daemon and save results to probes-mux/ */
 async function probeDaemon(
-  port: number,
+  daemon: DaemonRegistration,
   muxId: string,
   version: string,
 ): Promise<{ total: number; passed: number } | null> {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/probe`, { signal: AbortSignal.timeout(120_000) })
-    if (!res.ok) return null
+    const res = await requestDaemonProbe(daemon)
 
-    const data = (await res.json()) as any
-    const results = data.results ?? {}
+    const data = await readDaemonProbeResponse(res)
+    const results = data.results
     const total = Object.keys(results).length
     const passed = Object.values(results).filter(Boolean).length
 
-    const result: Record<string, any> = {
+    const result = {
       terminal: muxId,
       terminalVersion: version,
       os: data.os ?? detectOS(),
@@ -213,17 +139,17 @@ async function probeDaemon(
       source: "mux",
       generated: new Date().toISOString(),
       results,
+      ...(data.notes ? { notes: data.notes } : {}),
+      ...(data.responses ? { responses: data.responses } : {}),
     }
-    if (data.notes && Object.keys(data.notes).length > 0) result.notes = data.notes
-    if (data.responses && Object.keys(data.responses).length > 0) result.responses = data.responses
 
     mkdirSync(RESULTS_DIR, { recursive: true })
     const filename = `${muxId}-${version}-${result.os}.json`
     writeFileSync(join(RESULTS_DIR, filename), JSON.stringify(result, null, 2))
 
     return { total, passed }
-  } catch (e: any) {
-    console.log(`  Probe failed: ${e.message}`)
+  } catch (err) {
+    console.log(`  Probe failed: ${err instanceof Error ? err.message : String(err)}`)
     return null
   }
 }
@@ -247,63 +173,65 @@ async function runMux(
   mux: MuxDef,
   opts: { force?: boolean },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
-  if (!whichBinary(mux.binary)) {
-    return { success: false, error: "not installed" }
-  }
-
+  if (!whichBinary(mux.binary)) return { success: false, error: "not installed" }
   const version = mux.version()
-
-  // Cache check
   if (!opts.force) {
     const resultPath = join(RESULTS_DIR, `${mux.id}-${version}-${detectOS()}.json`)
     if (existsSync(resultPath)) {
-      try {
-        const existing = JSON.parse(readFileSync(resultPath, "utf-8")) as any
-        if (Object.keys(existing.results ?? {}).length >= 120) {
-          return { success: true, skipped: true }
-        }
-      } catch {}
+      const existing = JSON.parse(readFileSync(resultPath, "utf8")) as { results?: Record<string, unknown> }
+      if (Object.keys(existing.results ?? {}).length >= 120) return { success: true, skipped: true }
     }
   }
 
-  // Kill leftover session from a previous run
-  mux.kill(SESSION_NAME)
-  await new Promise((r) => setTimeout(r, 500))
-
-  // Clean stale daemon registrations so we detect the new one
-  await cleanStaleDaemons()
-
-  const scriptPath = writeServeScript()
-
-  console.log(`  Launching ${mux.name} v${version}...`)
+  const run = createProbeRun()
+  const sessionName = `terminfo-${run.id.slice(0, 16)}`
+  let sessionStarted = false
+  let daemon: OwnedDaemon | null = null
+  let outcome: { success: boolean; error?: string } = { success: false, error: "probe did not complete" }
   try {
-    mux.start(SESSION_NAME, scriptPath)
-  } catch (e: any) {
-    return { success: false, error: `Failed to start ${mux.name}: ${e.message}` }
+    writeServeScript(run)
+    console.log(`  Launching ${mux.name} v${version}...`)
+    mux.start(sessionName, run.scriptPath)
+    sessionStarted = true
+    console.log(`  Waiting for owned daemon inside ${mux.name}...`)
+    daemon = await findOwnedDaemon(run.id, DAEMON_DIR)
+    if (!daemon) throw new Error("Owned daemon did not register within 30s")
+    console.log(`  Probing on port ${daemon.registration.port}...`)
+    const result = await probeDaemon(daemon.registration, mux.id, version)
+    if (!result) throw new Error("Probe failed")
+    console.log(`  ${result.passed}/${result.total} probes passed`)
+    outcome = { success: true }
+  } catch (err) {
+    outcome = { success: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    const cleanupErrors: string[] = []
+    if (daemon) {
+      try {
+        await stopOwnedDaemon(daemon)
+      } catch (err) {
+        cleanupErrors.push(`daemon: ${String(err)}`)
+      }
+    }
+    if (sessionStarted) {
+      try {
+        mux.kill(sessionName)
+      } catch (err) {
+        cleanupErrors.push(`session: ${String(err)}`)
+      }
+    }
+    try {
+      removeProbeRun(run)
+    } catch (err) {
+      cleanupErrors.push(`script: ${String(err)}`)
+    }
+    if (cleanupErrors.length > 0) {
+      outcome = {
+        success: false,
+        error: [outcome.success ? undefined : outcome.error, ...cleanupErrors].filter(Boolean).join("; "),
+      }
+    }
   }
-
-  console.log(`  Waiting for daemon inside ${mux.name}...`)
-  const daemon = await waitForDaemon()
-
-  if (!daemon) {
-    mux.kill(SESSION_NAME)
-    return { success: false, error: "Daemon didn't register within 30s" }
-  }
-
-  console.log(`  Probing on port ${daemon.port}...`)
-  const result = await probeDaemon(daemon.port, mux.id, version)
-
-  // Thorough cleanup: kill session, daemon processes, and stale registrations
-  mux.kill(SESSION_NAME)
-  await killDaemonProcesses()
-  await cleanStaleDaemons()
-
-  if (!result) {
-    return { success: false, error: "Probe failed" }
-  }
-
-  console.log(`  ${result.passed}/${result.total} probes passed`)
-  return { success: true }
+  return outcome
 }
 
 // ── Main handler ──
@@ -353,7 +281,9 @@ export async function handleMux(muxName: string | undefined, opts: { all?: boole
 
     // Pause between launches
     if (muxesToRun.indexOf(mux) < muxesToRun.length - 1) {
-      await new Promise((r) => setTimeout(r, 2000))
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 2000)
+      })
     }
   }
 
@@ -363,11 +293,11 @@ export async function handleMux(muxName: string | undefined, opts: { all?: boole
     console.log(`  ${mux.name.padEnd(16)} ${status}`)
   }
 
-  // Final cleanup — ensure no orphaned processes or sessions
-  for (const mux of MUXES) {
-    mux.kill(SESSION_NAME)
+  const failures = outcomes.filter(({ result }) => !result.success)
+  if (failures.length > 0) {
+    throw new Error(
+      `Mux collection failed: ${failures.map(({ mux, result }) => `${mux.id}: ${result.error}`).join("; ")}`,
+    )
   }
-  await killDaemonProcesses()
-
   console.log(`\nResults saved to content/probes-mux/`)
 }

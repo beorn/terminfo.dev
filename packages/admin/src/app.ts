@@ -8,11 +8,22 @@
  * the full 128-probe set from the serve daemon.
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs"
-import { execSync, spawn, type ChildProcess } from "node:child_process"
-import { createHash } from "node:crypto"
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
+import { execFileSync, execSync, spawn, type ChildProcess } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import {
+  createProbeRun,
+  findOwnedDaemon,
+  readDaemonProbeResponse,
+  removeProbeRun,
+  requestDaemonProbe,
+  shellQuote,
+  stopOwnedDaemon,
+  type DaemonRegistration,
+  type OwnedDaemon,
+  type ProbeRun,
+} from "terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "terminfo.dev/src/identity-guard.ts"
 
@@ -95,154 +106,88 @@ function getAppVersion(app: AppDef): string {
 
 // ── Launch terminal with serve daemon ──
 
-function launchWithServe(app: AppDef): ChildProcess | null {
-  const serveCmd = `${BUN} "${CLI_ENTRY}" probe server --start`
+interface AppLaunch {
+  proc: ChildProcess | null
+  windowId?: number
+}
 
-  // Direct binary launch (Ghostty, Kitty)
+function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
+  const serveCmd = `TERMINFO_RUN_ID=${run.id} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
+  writeFileSync(run.scriptPath, `#!/bin/bash\n${serveCmd}\n`, { flag: "wx", mode: 0o700 })
+
   if (app.binaryPath && existsSync(app.binaryPath)) {
-    // Write serve command to a script to avoid quoting/escaping issues
-    const scriptPath = "/tmp/terminfo-serve.sh"
-    writeFileSync(scriptPath, `#!/bin/bash\n${serveCmd}\nsleep 999999\n`)
-    execSync(`chmod +x ${scriptPath}`)
-
-    const args = app.launchArgs(scriptPath)
-    const child = spawn(app.binaryPath, args, {
+    const child = spawn(app.binaryPath, app.launchArgs(run.scriptPath), {
       detached: true,
       stdio: "ignore",
       env: { ...process.env },
     })
     child.unref()
-
-    // Hide the terminal window immediately and repeatedly until it sticks
-    const hideApp = () => {
-      try {
-        execSync(`osascript -e 'tell application "System Events" to set visible of process "${app.name}" to false'`, {
-          timeout: 2000,
-        })
-      } catch {}
-    }
-    // Hide as fast as possible, then again after a delay to catch late windows
-    setTimeout(hideApp, 300)
-    setTimeout(hideApp, 800)
-    setTimeout(hideApp, 1500)
-
-    return child
+    return { proc: child }
   }
 
-  // AppleScript launch (iTerm2, Terminal.app) — uses their own scripting APIs, not System Events
-  // Write serve command to a temp script to avoid quoting issues in AppleScript
-  const scriptPath = "/tmp/terminfo-serve.sh"
-  writeFileSync(scriptPath, `#!/bin/bash\n${serveCmd}\nsleep 999999\n`)
-  execSync(`chmod +x ${scriptPath}`)
-
   if (app.id === "iterm2") {
-    try {
-      execSync(
-        `osascript -e 'tell application "iTerm"
-  create window with default profile command "/tmp/terminfo-serve.sh"
-end tell
-tell application "System Events" to set visible of process "iTerm2" to false'`,
-        { timeout: 15000 },
-      )
-      // Hide again after delay in case window appears late
-      setTimeout(() => {
-        try {
-          execSync(`osascript -e 'tell application "System Events" to set visible of process "iTerm2" to false'`, {
-            timeout: 2000,
-          })
-        } catch {}
-      }, 500)
-      return null
-    } catch {
-      return null
-    }
+    const output = execFileSync(
+      "osascript",
+      [
+        "-e",
+        `tell application "iTerm"
+  set w to create window with default profile command ${JSON.stringify(run.scriptPath)}
+  return id of w
+end tell`,
+      ],
+      { encoding: "utf8", timeout: 15_000 },
+    ).trim()
+    const windowId = Number(output)
+    if (!Number.isInteger(windowId)) throw new Error(`iTerm did not return the launched window ID: ${output}`)
+    return { proc: null, windowId }
   }
 
   if (app.id === "terminal-app") {
-    try {
-      execSync(
-        `osascript -e 'tell application "Terminal"
-  do script "/tmp/terminfo-serve.sh"
-end tell
-tell application "System Events" to set visible of process "Terminal" to false'`,
-        { timeout: 15000 },
-      )
-      setTimeout(() => {
-        try {
-          execSync(`osascript -e 'tell application "System Events" to set visible of process "Terminal" to false'`, {
-            timeout: 2000,
-          })
-        } catch {}
-      }, 500)
-      return null
-    } catch {
-      return null
-    }
+    const output = execFileSync(
+      "osascript",
+      [
+        "-e",
+        `tell application "Terminal"
+  set t to do script ${JSON.stringify(run.scriptPath)}
+  return id of window of t
+end tell`,
+      ],
+      { encoding: "utf8", timeout: 15_000 },
+    ).trim()
+    const windowId = Number(output)
+    if (!Number.isInteger(windowId)) throw new Error(`Terminal did not return the launched window ID: ${output}`)
+    return { proc: null, windowId }
   }
 
-  // Warp — can only be tested if user runs serve manually
-  console.log(`  ${app.name}: Run \`terminfo probe server --start\` manually in ${app.name}`)
-  return null
+  throw new Error(`${app.name} requires manually starting the probe server`)
 }
 
-// ── Wait for daemon to register ──
-
-async function waitForDaemon(
-  appId: string,
-  timeoutMs: number = 30_000,
-): Promise<{ port: number; terminal: string } | null> {
-  const deadline = Date.now() + timeoutMs
-  const normAppId = appId.toLowerCase().replace(/[^a-z0-9-]/g, "-")
-
-  while (Date.now() < deadline) {
-    try {
-      const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
-      for (const file of files) {
-        const data = JSON.parse(readFileSync(join(DAEMON_DIR, file), "utf-8")) as any
-        // Check if this daemon was just started (within last 60s)
-        const started = new Date(data.started).getTime()
-        if (Date.now() - started < 60_000) {
-          if (data.terminal) {
-            const normDaemonTerm = String(data.terminal)
-              .toLowerCase()
-              .replace(/[^a-z0-9-]/g, "-")
-            if (
-              normDaemonTerm !== normAppId &&
-              !normDaemonTerm.includes(normAppId) &&
-              !normAppId.includes(normDaemonTerm)
-            ) {
-              continue
-            }
-          }
-          // Verify it's alive
-          try {
-            const res = await fetch(`http://127.0.0.1:${data.port}/health`, { signal: AbortSignal.timeout(2000) })
-            if (res.ok) {
-              return { port: data.port, terminal: data.terminal }
-            }
-          } catch {}
-        }
-      }
-    } catch {}
-    await new Promise((r) => setTimeout(r, 500))
+function stopLaunchedApp(app: AppDef, launch: AppLaunch): void {
+  if (launch.proc) {
+    launch.proc.kill("SIGTERM")
+    return
   }
-
-  return null
+  if (launch.windowId === undefined) return
+  const application = app.id === "iterm2" ? "iTerm" : "Terminal"
+  execFileSync(
+    "osascript",
+    ["-e", `tell application "${application}" to close (first window whose id is ${launch.windowId})`],
+    { timeout: 5000 },
+  )
 }
 
 // ── Probe a daemon ──
 
 async function probeDaemon(
-  port: number,
+  daemon: DaemonRegistration,
   appId: string,
   version: string,
 ): Promise<{ total: number; passed: number } | null> {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/probe`, { signal: AbortSignal.timeout(120_000) })
-    if (!res.ok) return null
+    const res = await requestDaemonProbe(daemon)
 
-    const data = (await res.json()) as any
-    const results = data.results ?? {}
+    const data = await readDaemonProbeResponse(res)
+    const results = data.results
     const total = Object.keys(results).length
     const passed = Object.values(results).filter(Boolean).length
 
@@ -254,7 +199,7 @@ async function probeDaemon(
     }
 
     // Save result with the correct terminal name (not what detect.ts guessed)
-    const result: Record<string, any> = {
+    const result = {
       terminal: appId,
       terminalVersion: version,
       os: "macos",
@@ -262,38 +207,19 @@ async function probeDaemon(
       source: "daemon",
       generated: new Date().toISOString(),
       results,
+      ...(data.notes ? { notes: data.notes } : {}),
+      ...(data.responses ? { responses: data.responses } : {}),
     }
-    if (data.notes && Object.keys(data.notes).length > 0) result.notes = data.notes
-    if (data.responses && Object.keys(data.responses).length > 0) result.responses = data.responses
 
     mkdirSync(RESULTS_DIR, { recursive: true })
     const filename = `${appId}-${version}-macos.json`
     writeFileSync(join(RESULTS_DIR, filename), JSON.stringify(result, null, 2))
 
     return { total, passed }
-  } catch (e: any) {
-    console.log(`  Probe failed: ${e.message}`)
+  } catch (err) {
+    console.log(`  Probe failed: ${err instanceof Error ? err.message : String(err)}`)
     return null
   }
-}
-
-// ── Kill terminal process ──
-
-function killTerminal(proc: ChildProcess | null, app: AppDef): void {
-  if (proc) {
-    try {
-      proc.kill("SIGTERM")
-    } catch {}
-    return
-  }
-
-  // For AppleScript-launched terminals, close the window via AppleScript
-  if (app.id === "iterm2") {
-    try {
-      execSync(`osascript -e 'tell application "iTerm" to close current window'`, { timeout: 5000 })
-    } catch {}
-  }
-  // Don't close Terminal.app — user might have other windows open
 }
 
 // ── Run one app ──
@@ -302,55 +228,65 @@ async function runApp(
   app: AppDef,
   opts: { force?: boolean },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
-  if (!existsSync(app.appPath)) {
-    return { success: false, error: "not installed" }
-  }
-
+  if (!existsSync(app.appPath)) return { success: false, error: "not installed" }
   const version = getAppVersion(app)
-
-  // Cache check
   if (!opts.force) {
     const resultPath = join(RESULTS_DIR, `${app.id}-${version}-macos.json`)
     if (existsSync(resultPath)) {
-      try {
-        const existing = JSON.parse(readFileSync(resultPath, "utf-8")) as any
-        const probeCount = Object.keys(existing.results ?? {}).length
-        if (probeCount >= 120) {
-          // recent enough probe set
-          return { success: true, skipped: true }
-        }
-      } catch {}
+      const existing = JSON.parse(readFileSync(resultPath, "utf8")) as { results?: Record<string, unknown> }
+      if (Object.keys(existing.results ?? {}).length >= 120) return { success: true, skipped: true }
     }
   }
-
-  // Warp needs manual serve
   if (app.id === "warp" && !app.binaryPath) {
     return { success: false, error: "Run `terminfo probe server --start` in Warp manually, then use `probe server`" }
   }
 
-  console.log(`  Launching ${app.name} v${version}...`)
-  const proc = launchWithServe(app)
-
-  console.log(`  Waiting for daemon...`)
-  const daemon = await waitForDaemon(app.id)
-
-  if (!daemon) {
-    killTerminal(proc, app)
-    return { success: false, error: "Daemon didn't register within 30s" }
+  const run = createProbeRun()
+  let launch: AppLaunch | undefined
+  let daemon: OwnedDaemon | null = null
+  let outcome: { success: boolean; error?: string } = { success: false, error: "probe did not complete" }
+  try {
+    console.log(`  Launching ${app.name} v${version}...`)
+    launch = launchWithServe(app, run)
+    console.log(`  Waiting for owned daemon...`)
+    daemon = await findOwnedDaemon(run.id, DAEMON_DIR, app.id)
+    if (!daemon) throw new Error("Owned daemon did not register within 30s")
+    console.log(`  Probing on port ${daemon.registration.port}...`)
+    const result = await probeDaemon(daemon.registration, app.id, version)
+    if (!result) throw new Error("Probe failed")
+    console.log(`  ${result.passed}/${result.total} probes passed`)
+    outcome = { success: true }
+  } catch (err) {
+    outcome = { success: false, error: err instanceof Error ? err.message : String(err) }
+  } finally {
+    const cleanupErrors: string[] = []
+    if (daemon) {
+      try {
+        await stopOwnedDaemon(daemon)
+      } catch (err) {
+        cleanupErrors.push(`daemon: ${String(err)}`)
+      }
+    }
+    if (launch) {
+      try {
+        stopLaunchedApp(app, launch)
+      } catch (err) {
+        cleanupErrors.push(`window: ${String(err)}`)
+      }
+    }
+    try {
+      removeProbeRun(run)
+    } catch (err) {
+      cleanupErrors.push(`script: ${String(err)}`)
+    }
+    if (cleanupErrors.length > 0) {
+      outcome = {
+        success: false,
+        error: [outcome.success ? undefined : outcome.error, ...cleanupErrors].filter(Boolean).join("; "),
+      }
+    }
   }
-
-  console.log(`  Probing on port ${daemon.port}...`)
-  const result = await probeDaemon(daemon.port, app.id, version)
-
-  // Clean up — kill the terminal
-  killTerminal(proc, app)
-
-  if (!result) {
-    return { success: false, error: "Probe failed" }
-  }
-
-  console.log(`  ${result.passed}/${result.total} probes passed`)
-  return { success: true }
+  return outcome
 }
 
 // ── Main ──
@@ -401,7 +337,9 @@ export async function handleApp(terminal: string | undefined, opts: { all?: bool
 
     // Brief pause between launches
     if (appsToRun.indexOf(app) < appsToRun.length - 1) {
-      await new Promise((r) => setTimeout(r, 2000))
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 2000)
+      })
     }
   }
 
@@ -411,27 +349,10 @@ export async function handleApp(terminal: string | undefined, opts: { all?: bool
     console.log(`  ${app.name.padEnd(16)} ${status}`)
   }
 
-  // Final cleanup — kill orphaned daemon processes and clean stale registrations
-  cleanupDaemons()
-}
-
-/** Kill any remaining daemon processes and remove stale registration files */
-function cleanupDaemons(): void {
-  try {
-    const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
-    for (const file of files) {
-      try {
-        const data = JSON.parse(readFileSync(join(DAEMON_DIR, file), "utf-8")) as any
-        if (data.pid) {
-          try {
-            process.kill(data.pid, "SIGTERM")
-          } catch {} // process already dead
-        }
-      } catch {}
-    }
-    // Clean up the serve script
-    try {
-      unlinkSync("/tmp/terminfo-serve.sh")
-    } catch {}
-  } catch {}
+  const failures = results.filter(({ result }) => !result.success)
+  if (failures.length > 0) {
+    throw new Error(
+      `App collection failed: ${failures.map(({ app, result }) => `${app.id}: ${result.error}`).join("; ")}`,
+    )
+  }
 }

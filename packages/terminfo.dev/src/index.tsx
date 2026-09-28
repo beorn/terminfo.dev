@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { readDaemonProbeResponse, requestDaemonProbe } from "./daemon-client.ts"
 /**
  * terminfo.dev CLI — can your terminal do that?
  *
@@ -20,7 +21,6 @@
 import React from "react"
 import { Command, uint } from "@silvery/commander"
 import { renderString } from "silvery"
-import { hyperlink } from "@silvery/ansi"
 import { isTTY } from "silvery/ui/cli"
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
@@ -44,11 +44,14 @@ function loadFeatureSlugs(): Record<string, string> {
   ]
   for (const path of candidates) {
     try {
-      const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, any>
+      const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>
       delete raw.$comment
       const slugs: Record<string, string> = {}
       for (const [id, meta] of Object.entries(raw)) {
-        slugs[id] = (meta as any).slug ?? id.replace(/\./g, "/")
+        slugs[id] =
+          typeof meta === "object" && meta !== null && "slug" in meta && typeof meta.slug === "string"
+            ? meta.slug
+            : id.replace(/\./g, "/")
       }
       return slugs
     } catch {
@@ -232,7 +235,7 @@ program
     // --serve: start daemon mode
     if (opts.serve) {
       const { startDaemon } = await import("./serve.ts")
-      await startDaemon(opts.port ?? 0)
+      startDaemon(opts.port ?? 0)
       return
     }
 
@@ -243,10 +246,9 @@ program
 
       let targets = daemons
       if (opts.daemon) {
+        const selectedName = opts.daemon.toLowerCase()
         targets = daemons.filter(
-          (d) =>
-            d.terminal.toLowerCase() === opts.daemon!.toLowerCase() ||
-            d.terminal.toLowerCase().includes(opts.daemon!.toLowerCase()),
+          (d) => d.terminal.toLowerCase() === selectedName || d.terminal.toLowerCase().includes(selectedName),
         )
         if (targets.length === 0) {
           console.error(`No daemon found matching "${opts.daemon}".`)
@@ -266,19 +268,17 @@ program
       }
 
       console.log(`\nterminfo.dev — testing ${targets.length} terminal(s)\n`)
+      const failures: string[] = []
+      let saved = 0
 
       for (const d of targets) {
         const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
         process.stdout.write(`  ${label.padEnd(25)} `)
 
         try {
-          const res = await fetch(`http://127.0.0.1:${d.port}/probe`, { signal: AbortSignal.timeout(120000) })
-          if (!res.ok) {
-            console.log(`- HTTP ${res.status}`)
-            continue
-          }
-          const data = (await res.json()) as any
-          const passed = Object.values(data.results).filter((v: any) => v).length
+          const res = await requestDaemonProbe(d)
+          const data = await readDaemonProbeResponse(res)
+          const passed = Object.values(data.results).filter(Boolean).length
           const total = Object.keys(data.results).length
           const pct = Math.round((passed / total) * 100)
           console.log(`${passed}/${total} (${pct}%)`)
@@ -286,8 +286,7 @@ program
           const { verifyTerminalIdentity } = await import("./identity-guard.ts")
           const identityCheck = verifyTerminalIdentity(data.terminal, data.responses, data.results)
           if (!identityCheck.ok) {
-            console.log(`- REJECTED: ${identityCheck.reason}`)
-            continue
+            throw new Error(`REJECTED: ${identityCheck.reason}`)
           }
 
           const { mkdirSync, writeFileSync } = await import("node:fs")
@@ -296,8 +295,10 @@ program
           const name = data.terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
           const ver = (data.terminalVersion || "unknown").replace(/[^a-z0-9.-]/g, "-")
           writeFileSync(`${dir}/${name}-${ver}-${data.os}.json`, JSON.stringify(data, null, 2))
+          saved++
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
+          failures.push(`${label}: ${msg}`)
           if (msg.includes("ECONNREFUSED")) {
             console.log("- not running (stale daemon file)")
           } else {
@@ -306,7 +307,8 @@ program
         }
       }
 
-      console.log("\nResults saved to content/probes-apps/")
+      if (saved > 0) console.log(`\n${saved} result(s) saved to content/probes-apps/`)
+      if (failures.length > 0) throw new Error(`Daemon collection failed: ${failures.join("; ")}`)
       return
     }
 
