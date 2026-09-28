@@ -30,7 +30,7 @@
     "terminfo.dev": "workspace:*"
   },
   "devDependencies": {
-    "tsdown": "^0.22.5",
+    "tsdown": "0.22.13",
     "typescript": "^5.9.3"
   },
   "tsdown": {
