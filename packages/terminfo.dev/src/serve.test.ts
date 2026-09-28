@@ -3,14 +3,40 @@
  * @level l3
  * @consumer Real-terminal daemon HTTP clients
  */
-import { spawn, type ChildProcess } from "node:child_process"
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs"
+import { spawn, spawnSync, type ChildProcess } from "node:child_process"
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 let child: ChildProcess | undefined
 let home: string | undefined
+const packageRoot = join(import.meta.dirname, "../../..")
+
+async function startTestDaemon() {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-"))
+  child = spawn(
+    process.execPath,
+    ["-e", `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`],
+    {
+      cwd: packageRoot,
+      env: { ...process.env, HOME: home, TERM: "dumb", TERM_PROGRAM: "" },
+      stdio: ["pipe", "ignore", "pipe"],
+    },
+  )
+  let filename!: string
+  let registration!: { port: number; token?: string }
+  await vi.waitFor(
+    () => {
+      const files = readdirSync(join(home!, ".terminfo-dev/daemons"))
+      expect(files).toHaveLength(1)
+      filename = join(home!, ".terminfo-dev/daemons", files[0]!)
+      registration = JSON.parse(readFileSync(filename, "utf8"))
+    },
+    { timeout: 2000 },
+  )
+  return { filename, registration }
+}
 
 afterEach(async () => {
   if (child && child.exitCode === null) {
@@ -24,25 +50,7 @@ afterEach(async () => {
 
 describe("daemon HTTP boundary", () => {
   it("requires its private token and refuses cross-origin mutation", async () => {
-    home = mkdtempSync(join(tmpdir(), "terminfo-serve-"))
-    child = spawn(
-      process.execPath,
-      ["-e", `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`],
-      {
-        cwd: join(import.meta.dirname, "../../.."),
-        env: { ...process.env, HOME: home, TERM: "dumb", TERM_PROGRAM: "" },
-        stdio: ["pipe", "ignore", "pipe"],
-      },
-    )
-    let registration!: { port: number; token?: string }
-    await vi.waitFor(
-      () => {
-        const files = readdirSync(join(home!, ".terminfo-dev/daemons"))
-        expect(files).toHaveLength(1)
-        registration = JSON.parse(readFileSync(join(home!, ".terminfo-dev/daemons", files[0]!), "utf8"))
-      },
-      { timeout: 2000 },
-    )
+    const { registration } = await startTestDaemon()
     const url = `http://127.0.0.1:${registration.port}/query`
     const body = JSON.stringify({ commands: [{ write: "test" }] })
     const unauth = await fetch(url, { method: "POST", body })
@@ -57,5 +65,36 @@ describe("daemon HTTP boundary", () => {
     expect(crossOrigin.status).toBe(403)
     const authorized = await fetch(url, { method: "POST", body, headers })
     expect(authorized.status).toBe(200)
+  }, 5000)
+
+  it("names a malformed registration instead of silently omitting it", () => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-"))
+    const dir = join(home, ".terminfo-dev/daemons")
+    mkdirSync(dir, { recursive: true })
+    const badFile = join(dir, "bad.json")
+    writeFileSync(badFile, "{broken")
+    const result = spawnSync(
+      process.execPath,
+      ["-e", `import { listDaemons } from "./packages/terminfo.dev/src/serve.ts"; listDaemons()`],
+      {
+        cwd: packageRoot,
+        env: { ...process.env, HOME: home },
+        encoding: "utf8",
+      },
+    )
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain(badFile)
+  })
+
+  it("reports failure to remove its own registration on shutdown", async () => {
+    const { filename } = await startTestDaemon()
+    const stderr: Buffer[] = []
+    child!.stderr!.on("data", (chunk: Buffer) => stderr.push(chunk))
+    rmSync(filename)
+    mkdirSync(filename)
+    child!.kill("SIGTERM")
+    const exitCode = await new Promise<number | null>((resolve) => child!.once("exit", resolve))
+    expect(exitCode).toBe(1)
+    expect(Buffer.concat(stderr).toString()).toContain(filename)
   }, 5000)
 })

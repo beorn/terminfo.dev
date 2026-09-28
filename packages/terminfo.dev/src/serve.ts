@@ -62,23 +62,35 @@ function register(info: DaemonInfo): string {
 function unregister(filepath: string) {
   try {
     unlinkSync(filepath)
-  } catch {}
+  } catch (err) {
+    throw new Error(
+      `Could not remove daemon registration ${filepath}: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
 }
 
 export function listDaemons(): DaemonInfo[] {
+  let files: string[]
   try {
-    const files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
-    const daemons: DaemonInfo[] = []
-    for (const f of files) {
-      try {
-        const data = JSON.parse(readFileSync(join(DAEMON_DIR, f), "utf-8")) as DaemonInfo
-        daemons.push(data)
-      } catch {}
-    }
-    return daemons
-  } catch {
-    return []
+    files = readdirSync(DAEMON_DIR).filter((f) => f.endsWith(".json"))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
+    throw new Error(
+      `Could not list daemon registrations in ${DAEMON_DIR}: ${err instanceof Error ? err.message : String(err)}`,
+    )
   }
+  return files.map((file) => {
+    const filepath = join(DAEMON_DIR, file)
+    try {
+      const data = JSON.parse(readFileSync(filepath, "utf-8")) as DaemonInfo
+      if (!Number.isInteger(data.pid) || !Number.isInteger(data.port) || !/^[0-9a-f]{64}$/.test(data.token)) {
+        throw new Error("missing or invalid pid, port, or token")
+      }
+      return data
+    } catch (err) {
+      throw new Error(`Invalid daemon registration ${filepath}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  })
 }
 
 export async function startDaemon(port = 0): Promise<void> {
@@ -317,9 +329,15 @@ export async function startDaemon(port = 0): Promise<void> {
 
     // Clean up on exit
     const cleanup = () => {
-      unregister(filepath)
+      let exitCode = 0
+      try {
+        unregister(filepath)
+      } catch (err) {
+        console.error(err)
+        exitCode = 1
+      }
       server.close()
-      process.exit(0)
+      process.exit(exitCode)
     }
     process.on("SIGINT", cleanup)
     process.on("SIGTERM", cleanup)

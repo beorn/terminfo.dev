@@ -85,4 +85,42 @@ describe("TTY transaction replies", () => {
     await Promise.all([first, second])
     expect(writes).toEqual(["first-start", "\x1b[6n", "first-end", "second"])
   })
+
+  it("queues a delayed child query after its original operation has ended", async () => {
+    const writes: string[] = []
+    process.stdout.write = ((chunk: string) => {
+      writes.push(chunk)
+      if (chunk === "\x1b[6n") reply("\x1b[1;1R")
+      return true
+    }) as typeof process.stdout.write
+    let timerFired!: () => void
+    const started = new Promise<void>((resolve) => {
+      timerFired = resolve
+    })
+    let queryFinished!: (match: string[] | null) => void
+    const delayed = new Promise<string[] | null>((resolve) => {
+      queryFinished = resolve
+    })
+    await withRawMode(async () => {
+      setTimeout(() => {
+        timerFired()
+        void query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20).then(queryFinished)
+      }, 0)
+    })
+    let releaseHold!: () => void
+    const hold = new Promise<void>((resolve) => {
+      releaseHold = resolve
+    })
+    const second = withRawMode(async () => {
+      writes.push("hold-start")
+      await hold
+      writes.push("hold-end")
+    })
+    await started
+    expect(writes).toEqual(["hold-start"])
+    releaseHold()
+    await second
+    expect(await delayed).toBeTruthy()
+    expect(writes).toEqual(["hold-start", "hold-end", "\x1b[6n"])
+  })
 })

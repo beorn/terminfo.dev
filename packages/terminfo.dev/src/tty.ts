@@ -12,13 +12,24 @@ import { AsyncLocalStorage } from "node:async_hooks"
  * Must be called while stdin is in raw mode.
  */
 const ttyOperations = new WeakMap<typeof process.stdin, Promise<void>>()
-const operationContext = new AsyncLocalStorage<boolean>()
+const operationContext = new AsyncLocalStorage<{ active: boolean }>()
 
 /** Serialize whole terminal operations; queries inside one operation run inline. */
 export function withTTYOperation<T>(fn: () => Promise<T>): Promise<T> {
-  if (operationContext.getStore()) return fn()
+  if (operationContext.getStore()?.active) return fn()
   const previous = ttyOperations.get(process.stdin) ?? Promise.resolve()
-  const current = previous.catch(() => {}).then(() => operationContext.run(true, fn))
+  const current = previous
+    .catch(() => {})
+    .then(() => {
+      const lease = { active: true }
+      return operationContext.run(lease, async () => {
+        try {
+          return await fn()
+        } finally {
+          lease.active = false
+        }
+      })
+    })
   ttyOperations.set(
     process.stdin,
     current.then(
