@@ -84,9 +84,12 @@ async function submitViaBrowser(title: string, body: string, data: SubmitData): 
 function formatIssueBody(data: SubmitData, passed: number, total: number, pct: number): string {
   const categories = new Map<string, { pass: number; fail: number; failList: string[] }>()
   for (const [id, pass] of Object.entries(data.results)) {
-    const cat = id.split(".")[0]!
-    if (!categories.has(cat)) categories.set(cat, { pass: 0, fail: 0, failList: [] })
-    const entry = categories.get(cat)!
+    const cat = id.split(".")[0] ?? id
+    let entry = categories.get(cat)
+    if (!entry) {
+      entry = { pass: 0, fail: 0, failList: [] }
+      categories.set(cat, entry)
+    }
     if (pass) entry.pass++
     else {
       entry.fail++
@@ -127,5 +130,7 @@ ${JSON.stringify(data, null, 2)}
 </details>
 
 ---
+I dedicate these results to the public domain (CC0 1.0) so terminfo.dev can publish them under any license.
+
 *Submitted via \`npx terminfo.dev submit\`*`
 }
