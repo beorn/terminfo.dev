@@ -297,4 +297,130 @@ describe("selected results", () => {
       /pixels-no-image.*screenshotRef/,
     )
   })
+
+  it("rejects a future schema even when it also carries legacy fields", () => {
+    const hybrid = {
+      ...run("hybrid"),
+      schemaVersion: 3,
+      terminal: "kitty",
+      terminalVersion: "0.46.2",
+      generated: "2026-09-28T12:00:00.000Z",
+      results: { "cursor.position": true },
+    }
+    expect(() => parseRun("future.json", JSON.stringify(hybrid), catalog)).toThrow(/future\.json.*schemaVersion/)
+  })
+
+  it("rejects correction evidence that cannot be traced to the immutable run", () => {
+    const measured = parseRun("run.json", JSON.stringify(run("evidence-run")), catalog)
+    const base = {
+      id: "correction",
+      reviewer: "reviewer",
+      reason: "reviewed evidence",
+      scope: {
+        target: { kind: "app" as const, id: "kitty" },
+        versions: ["0.46.2", "0.46.2"] as [string, string],
+        suites: ["suite-2", "suite-2"] as [string, string],
+      },
+      sources: ["capture://1"],
+      supersedes: [],
+      featureId: "extensions.graphics",
+    }
+    const pixels = {
+      ...base,
+      observation: { featureId: "extensions.graphics", outcome: "supported" as const, evidence: "pixels" as const },
+    }
+    expect(() => parseInterpretations("interpretations.json", JSON.stringify([pixels]), catalog)).toThrow(
+      /screenshotRef/,
+    )
+    const inventedRaw = {
+      ...base,
+      observation: {
+        featureId: "extensions.graphics",
+        outcome: "supported" as const,
+        evidence: "query" as const,
+        rawReplyRef: "missing-reply",
+      },
+    }
+    expect(() =>
+      projectResults([measured], [reviewFor(measured), inventedRaw], catalog, { currentProbeHash: "current" }),
+    ).toThrow(/missing-reply/)
+  })
+
+  it("supersedes corrections and identity reviews regardless of file order", () => {
+    const measured = parseRun("run.json", JSON.stringify(run("supersession")), catalog)
+    const scope = {
+      target: { kind: "app" as const, id: "kitty" },
+      versions: ["0.46.2", "0.46.2"] as [string, string],
+      suites: ["suite-2", "suite-2"] as [string, string],
+    }
+    const a = {
+      id: "a",
+      reviewer: "reviewer",
+      reason: "first reading",
+      scope,
+      sources: ["capture://a"],
+      supersedes: [],
+      featureId: "extensions.graphics",
+      observation: {
+        featureId: "extensions.graphics",
+        outcome: "supported" as const,
+        evidence: "behavior" as const,
+        rawReplyRef: "extensions.graphics",
+      },
+    }
+    const b = {
+      id: "b",
+      reviewer: "reviewer",
+      reason: "corrected reading",
+      scope,
+      sources: ["capture://b"],
+      supersedes: ["a"],
+      featureId: "extensions.graphics",
+      observation: {
+        featureId: "extensions.graphics",
+        outcome: "inconclusive" as const,
+        reason: "timeout" as const,
+        evidence: "behavior" as const,
+        rawReplyRef: "extensions.graphics",
+      },
+    }
+    expect(
+      projectResults([measured], [reviewFor(measured), b, a], catalog, { currentProbeHash: "current" }).current[
+        "app:kitty"
+      ]?.cells["extensions.graphics"]?.outcome,
+    ).toBe("inconclusive")
+    const review = reviewFor(measured)
+    const revoke = { ...review, id: "revoke", verifiesIdentity: false, reviewed: false, supersedes: [review.id] }
+    expect(
+      projectResults([measured], [review, revoke], catalog, { currentProbeHash: "current" }).current["app:kitty"],
+    ).toBeUndefined()
+  })
+
+  it("compares measured instants across time zones", () => {
+    const earlier = parseRun(
+      "earlier.json",
+      JSON.stringify(run("earlier", { measuredAt: "2026-09-28T14:00:00+02:00" })),
+      catalog,
+    )
+    const later = parseRun("later.json", JSON.stringify(run("later", { measuredAt: "2026-09-28T12:30:00Z" })), catalog)
+    expect(
+      projectResults([earlier, later], [reviewFor(earlier), reviewFor(later)], catalog, { currentProbeHash: "current" })
+        .current["app:kitty"]?.runId,
+    ).toBe("later")
+  })
+
+  it("rejects malformed interpretation ranges and boolean review fields", () => {
+    const measured = parseRun("run.json", JSON.stringify(run("scope-run")), catalog)
+    const review = reviewFor(measured)
+    expect(() =>
+      parseInterpretations(
+        "bad-range.json",
+        JSON.stringify([{ ...review, scope: { ...review.scope, versions: [17, null] } }]),
+        catalog,
+      ),
+    ).toThrow(/bad-range\.json.*versions/)
+    expect(() =>
+      parseInterpretations("bad-flag.json", JSON.stringify([{ ...review, reviewed: "yes" }]), catalog),
+    ).toThrow(/bad-flag\.json.*reviewed/)
+  })
 })

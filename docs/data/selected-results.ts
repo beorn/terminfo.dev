@@ -276,6 +276,8 @@ function validateObservationOutcome(value: Record<string, unknown>, path: string
 export function parseRun(path: string, source: string, catalogIds: readonly string[]): LoadedRun {
   const raw = parseJsonStrict(path, source)
   if (!object(raw)) fail(path, "run must be an object")
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== 2)
+    fail(path, `unsupported schemaVersion ${String(raw.schemaVersion)}`)
   const catalog = new Set(catalogIds)
   const sha256 = createHash("sha256").update(source).digest("hex")
   if (raw.schemaVersion === 2) {
@@ -408,19 +410,37 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
     if (
       !object(entry.scope) ||
       !object(entry.scope.target) ||
-      !nonempty(entry.scope.target.kind) ||
-      !nonempty(entry.scope.target.id) ||
+      !["app", "headless", "mux"].includes(String(entry.scope.target.kind)) ||
+      !nonempty(entry.scope.target.id)
+    ) {
+      fail(path, `invalid scope target for ${id}`)
+    }
+    if (
       !Array.isArray(entry.scope.versions) ||
       entry.scope.versions.length !== 2 ||
-      !Array.isArray(entry.scope.suites) ||
-      entry.scope.suites.length !== 2
+      !entry.scope.versions.every(nonempty)
     ) {
-      fail(path, `invalid scope for ${id}`)
+      fail(path, `invalid versions for ${id}`)
+    }
+    if (!Array.isArray(entry.scope.suites) || entry.scope.suites.length !== 2 || !entry.scope.suites.every(nonempty)) {
+      fail(path, `invalid suites for ${id}`)
     }
     if (!Array.isArray(entry.sources) || entry.sources.length === 0 || !entry.sources.every(nonempty)) {
       fail(path, `missing sources for ${id}`)
     }
-    if (!Array.isArray(entry.supersedes)) fail(path, `missing supersedes for ${id}`)
+    if (!Array.isArray(entry.supersedes) || !entry.supersedes.every(nonempty))
+      fail(path, `invalid supersedes for ${id}`)
+    if (new Set(entry.supersedes).size !== entry.supersedes.length || entry.supersedes.includes(id))
+      fail(path, `duplicate/self supersedes for ${id}`)
+    if (entry.runId !== undefined && !nonempty(entry.runId)) fail(path, `invalid runId for ${id}`)
+    if (
+      entry.runSha256 !== undefined &&
+      (typeof entry.runSha256 !== "string" || !/^[a-f0-9]{64}$/.test(entry.runSha256))
+    )
+      fail(path, `invalid run SHA256 for ${id}`)
+    for (const flag of ["reviewed", "verifiesIdentity"] as const) {
+      if (entry[flag] !== undefined && typeof entry[flag] !== "boolean") fail(path, `invalid ${flag} for ${id}`)
+    }
     if (entry.verifiesIdentity || entry.reviewed) {
       if (!nonempty(entry.runId)) fail(path, `identity/community review ${id} requires exact runId`)
       if (typeof entry.runSha256 !== "string" || !/^[a-f0-9]{64}$/.test(entry.runSha256)) {
@@ -439,6 +459,15 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
         fail(path, `observation feature mismatch in ${id}`)
       }
       validateObservationOutcome(entry.observation, path, entry.featureId)
+      if (entry.observation.evidence === "pixels" && !nonempty(entry.observation.screenshotRef))
+        fail(path, `pixels correction ${id} requires screenshotRef`)
+      if (entry.observation.evidence === "query" && !nonempty(entry.observation.rawReplyRef))
+        fail(path, `query correction ${id} requires rawReplyRef`)
+    }
+  }
+  for (const entry of raw as Interpretation[]) {
+    for (const superseded of entry.supersedes) {
+      if (!ids.has(superseded)) fail(path, `interpretation ${entry.id} supersedes unknown ${superseded}`)
     }
   }
   return raw as Interpretation[]
@@ -478,6 +507,29 @@ function identityRepliesMatch(run: LoadedRun): boolean {
   return new RegExp(`(^|[^a-zA-Z0-9])${escapedVersion}($|[^a-zA-Z0-9])`).test(versionReply)
 }
 
+function activeInterpretations(entries: readonly Interpretation[]): Interpretation[] {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]))
+  if (byId.size !== entries.length) throw new Error("duplicate interpretation ID")
+  const visited = new Set<string>()
+  const visiting = new Set<string>()
+  const superseded = new Set<string>()
+  const visit = (id: string): void => {
+    if (visiting.has(id)) throw new Error(`interpretation supersession cycle at ${id}`)
+    if (visited.has(id)) return
+    const entry = byId.get(id)
+    if (!entry) throw new Error(`unknown superseded interpretation ${id}`)
+    visiting.add(id)
+    for (const prior of entry.supersedes) {
+      superseded.add(prior)
+      visit(prior)
+    }
+    visiting.delete(id)
+    visited.add(id)
+  }
+  for (const entry of entries) visit(entry.id)
+  return entries.filter((entry) => !superseded.has(entry.id))
+}
+
 function projectRun(
   run: LoadedRun,
   interpretations: readonly Interpretation[],
@@ -485,6 +537,7 @@ function projectRun(
   currentProbeHash: string,
 ): SelectedVersion {
   const cells: Record<string, SelectedCell> = {}
+  const correctedFeatures = new Set<string>()
   for (const observation of run.observations) {
     cells[observation.featureId] = {
       ...observation,
@@ -512,6 +565,31 @@ function projectRun(
       throw new Error(`interpretation ${entry.id}: no raw observation for ${entry.featureId}`)
     }
     const observation = entry.observation
+    if (correctedFeatures.has(entry.featureId)) throw new Error(`conflicting active corrections for ${entry.featureId}`)
+    correctedFeatures.add(entry.featureId)
+    validateObservationOutcome(observation as unknown as Record<string, unknown>, entry.id, entry.featureId)
+    if (observation.rawReplyRef && !(observation.rawReplyRef in run.rawReplies))
+      throw new Error(`interpretation ${entry.id}: missing raw reply ${observation.rawReplyRef}`)
+    if (observation.evidence === "query" && !observation.rawReplyRef)
+      throw new Error(`interpretation ${entry.id}: query requires rawReplyRef`)
+    if (observation.evidence === "pixels" && !observation.screenshotRef)
+      throw new Error(`interpretation ${entry.id}: pixels requires screenshotRef`)
+    if (
+      observation.screenshotRef &&
+      !run.screenshotRefs.includes(observation.screenshotRef) &&
+      !entry.sources.includes(observation.screenshotRef)
+    )
+      throw new Error(`interpretation ${entry.id}: unknown screenshotRef ${observation.screenshotRef}`)
+    if (
+      observation.outcome === "unsupported" &&
+      !run.assertions.some(
+        (a) =>
+          a.featureId === entry.featureId &&
+          a.kind === "negative" &&
+          (!a.rawReplyRef || a.rawReplyRef === observation.rawReplyRef),
+      )
+    )
+      throw new Error(`interpretation ${entry.id}: unsupported lacks asserted negative observation`)
     cells[entry.featureId] = {
       ...observation,
       conclusive:
@@ -578,6 +656,7 @@ export function projectResults(
   policy: { currentProbeHash: string },
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
+  const active = activeInterpretations(interpretations)
   const ids = new Set<string>()
   for (const run of runs) {
     if (ids.has(run.runId)) throw new Error(`duplicate runId ${run.runId}`)
@@ -603,11 +682,11 @@ export function projectResults(
   for (const run of runs) {
     const key = keyFor(run)
     history[key] ??= []
-    history[key].push(projectRun(run, interpretations, catalogIds, policy.currentProbeHash))
-    const reviewed = interpretations.some(
+    history[key].push(projectRun(run, active, catalogIds, policy.currentProbeHash))
+    const reviewed = active.some(
       (entry) => entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.reviewed,
     )
-    const identityReview = interpretations.some(
+    const identityReview = active.some(
       (entry) =>
         entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.verifiesIdentity,
     )
@@ -648,11 +727,11 @@ export function projectResults(
       choices.sort((a, b) => {
         const af = a.probeHash === policy.currentProbeHash && a.suiteComplete ? 1 : 0
         const bf = b.probeHash === policy.currentProbeHash && b.suiteComplete ? 1 : 0
-        return bf - af || b.measuredAt.localeCompare(a.measuredAt) || b.runId.localeCompare(a.runId)
+        return bf - af || Date.parse(b.measuredAt) - Date.parse(a.measuredAt) || b.runId.localeCompare(a.runId)
       })
       const chosen = choices[0]
       if (!chosen) throw new Error(`missing chosen run for ${key} ${version}`)
-      versions[key].push(projectRun(chosen, interpretations, catalogIds, policy.currentProbeHash))
+      versions[key].push(projectRun(chosen, active, catalogIds, policy.currentProbeHash))
     }
     const selected = versions[key][0]
     if (!selected) throw new Error(`missing selected version for ${key}`)
