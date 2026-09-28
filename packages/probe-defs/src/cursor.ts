@@ -1,5 +1,24 @@
-import type { ProbeDefinition } from "./types.ts"
-import { cursorProbe, probe } from "./helpers.ts"
+import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import { cursorProbe, parserStateResult, probe } from "./helpers.ts"
+
+function headlessPosition(ctx: TermlessContext, row: number, col: number): ProbeResult {
+  const cursor = ctx.getCursor()
+  return parserStateResult(cursor.y === row && cursor.x === col, `cursor row=${row}, col=${col} (0-based)`, cursor)
+}
+
+function reportedPosition(position: { row: number; col: number } | null, row: number, col: number): ProbeResult {
+  if (!position) {
+    return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+  }
+  const response = JSON.stringify(position)
+  const pass = position.row === row && position.col === col
+  return {
+    pass,
+    response,
+    observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+    assertions: [{ kind: pass ? "positive" : "negative", expected: `row ${row}, col ${col}`, observed: response }],
+  }
+}
 
 export const cursorProbes: ProbeDefinition[] = [
   // CUP — cursor absolute position (1-based params → 0-based termless)
@@ -62,18 +81,13 @@ export const cursorProbes: ProbeDefinition[] = [
     "cursor.horizontal-absolute",
     (ctx) => {
       ctx.feed("ABCDE\x1b[3G")
-      return { pass: ctx.getCursor().x === 2 }
+      return headlessPosition(ctx, 0, 2)
     },
     async (ctx) => {
       ctx.write("\x1b[3;1H") // move to row 3
       ctx.write("\x1b[15G") // CHA col 15
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row === 3 && pos.col === 15,
-        note: pos.row === 3 && pos.col === 15 ? undefined : `got ${pos.row};${pos.col}, expected 3;15`,
-        response: `${pos.row};${pos.col}`,
-      }
+      return reportedPosition(pos, 3, 15)
     },
   ),
 
@@ -82,17 +96,13 @@ export const cursorProbes: ProbeDefinition[] = [
     "cursor.next-line",
     (ctx) => {
       ctx.feed("ABC\x1b[2E")
-      return { pass: ctx.getCursor().y === 2 && ctx.getCursor().x === 0 }
+      return headlessPosition(ctx, 2, 0)
     },
     async (ctx) => {
       ctx.write("\x1b[3;5H") // move to row 3, col 5
       ctx.write("\x1b[E") // CNL — next line
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row === 4 && pos.col === 1,
-        note: pos.row === 4 && pos.col === 1 ? undefined : `got ${pos.row};${pos.col}, expected 4;1`,
-      }
+      return reportedPosition(pos, 4, 1)
     },
   ),
 
@@ -102,20 +112,31 @@ export const cursorProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b[3;5H")
       const response = ctx.feedCapture("\x1b[6n")
+      if (!response) {
+        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+      }
+      const match = response.startsWith("\x1b[") ? /^([1-9]\d*);([1-9]\d*)R$/.exec(response.slice(2)) : null
+      const row = Number(match?.[1])
+      const col = Number(match?.[2])
+      if (!match || !Number.isSafeInteger(row) || !Number.isSafeInteger(col)) {
+        return {
+          pass: false,
+          response,
+          observation: { outcome: "inconclusive", reason: "invalid-reply", evidence: "query" },
+        }
+      }
+      const pass = row === 3 && col === 5
       return {
-        pass: response.includes("3;5R"),
+        pass,
         response,
+        observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+        assertions: [{ kind: pass ? "positive" : "negative", expected: "ESC[3;5R", observed: response }],
       }
     },
     async (ctx) => {
       ctx.write("\x1b[3;5H") // Move to row 3, col 5
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No DSR 6 response" }
-      return {
-        pass: pos.row === 3 && pos.col === 5,
-        note: pos.row === 3 && pos.col === 5 ? undefined : `got ${pos.row};${pos.col}, expected 3;5`,
-        response: `${pos.row};${pos.col}`,
-      }
+      return reportedPosition(pos, 3, 5)
     },
   ),
 
@@ -127,12 +148,7 @@ export const cursorProbes: ProbeDefinition[] = [
       ctx.feed("\x1b[s") // ANSI save (CSI s)
       ctx.feed("\x1b[10;15H") // move elsewhere
       ctx.feed("\x1b[u") // ANSI restore (CSI u)
-      const cursor = ctx.getCursor()
-      const pass = cursor.y === 2 && cursor.x === 4
-      return {
-        pass,
-        note: pass ? undefined : `cursor at ${cursor.y};${cursor.x}, expected 2;4 after CSI s/u`,
-      }
+      return headlessPosition(ctx, 2, 4)
     },
     async (ctx) => {
       ctx.write("\x1b[3;5H") // row 3, col 5
@@ -140,12 +156,7 @@ export const cursorProbes: ProbeDefinition[] = [
       ctx.write("\x1b[10;15H") // move
       ctx.write("\x1b[u") // CSI u — restore
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after restore" }
-      return {
-        pass: pos.row === 3 && pos.col === 5,
-        note: pos.row === 3 && pos.col === 5 ? undefined : `got ${pos.row};${pos.col}, expected 3;5`,
-        response: `${pos.row};${pos.col}`,
-      }
+      return reportedPosition(pos, 3, 5)
     },
   ),
 
@@ -156,12 +167,7 @@ export const cursorProbes: ProbeDefinition[] = [
       ctx.feed("\x1b[s") // ANSI save
       ctx.feed("\x1b[12;18H") // move elsewhere
       ctx.feed("\x1b[u") // ANSI restore
-      const cursor = ctx.getCursor()
-      const pass = cursor.y === 3 && cursor.x === 5
-      return {
-        pass,
-        note: pass ? undefined : `cursor at ${cursor.y};${cursor.x}, expected 3;5 after CSI u`,
-      }
+      return headlessPosition(ctx, 3, 5)
     },
     async (ctx) => {
       ctx.write("\x1b[4;6H") // row 4, col 6
@@ -169,12 +175,7 @@ export const cursorProbes: ProbeDefinition[] = [
       ctx.write("\x1b[12;18H") // move
       ctx.write("\x1b[u") // CSI u — restore
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after restore" }
-      return {
-        pass: pos.row === 4 && pos.col === 6,
-        note: pos.row === 4 && pos.col === 6 ? undefined : `got ${pos.row};${pos.col}, expected 4;6`,
-        response: `${pos.row};${pos.col}`,
-      }
+      return reportedPosition(pos, 4, 6)
     },
   ),
 
@@ -183,7 +184,7 @@ export const cursorProbes: ProbeDefinition[] = [
     "cursor.save-restore",
     (ctx) => {
       ctx.feed("AB\x1b7\x1b[5;5H\x1b8")
-      return { pass: ctx.getCursor().x === 2 && ctx.getCursor().y === 0 }
+      return headlessPosition(ctx, 0, 2)
     },
     async (ctx) => {
       ctx.write("\x1b[3;5H") // Move to row 3, col 5
@@ -191,12 +192,7 @@ export const cursorProbes: ProbeDefinition[] = [
       ctx.write("\x1b[10;10H") // Move somewhere else
       ctx.write("\x1b8") // DECRC — restore cursor
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after restore" }
-      return {
-        pass: pos.row === 3 && pos.col === 5,
-        note: pos.row === 3 && pos.col === 5 ? undefined : `got ${pos.row};${pos.col}, expected 3;5`,
-        response: `${pos.row};${pos.col}`,
-      }
+      return reportedPosition(pos, 3, 5)
     },
   ),
 
@@ -262,21 +258,13 @@ export const cursorProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b[4;1H") // position at row 3 (1-based row 4)
       ctx.feed("\x1b[999A") // CUU with huge count
-      return {
-        pass: ctx.getCursor().y === 0,
-        note: ctx.getCursor().y === 0 ? undefined : `got row ${ctx.getCursor().y}, expected 0`,
-      }
+      return headlessPosition(ctx, 0, 0)
     },
     async (ctx) => {
       ctx.write("\x1b[4;1H") // position at row 4
       ctx.write("\x1b[999A") // CUU past top
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row === 1,
-        note: pos.row === 1 ? undefined : `got row ${pos.row}, expected 1`,
-        response: `${pos.row};${pos.col}`,
-      }
+      return reportedPosition(pos, 1, 1)
     },
   ),
 
@@ -286,21 +274,31 @@ export const cursorProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b[1;1H") // position at row 0
       ctx.feed("\x1b[999B") // CUD with huge count
-      return {
-        pass: ctx.getCursor().y === 23, // last row of 24-row terminal
-        note: ctx.getCursor().y === 23 ? undefined : `got row ${ctx.getCursor().y}, expected 23`,
-      }
+      const rows = ctx.getScrollback().screenLines
+      const cursor = ctx.getCursor()
+      return parserStateResult(
+        rows > 0 ? cursor.y === rows - 1 && cursor.x === 0 : null,
+        `cursor at last initialized row ${rows - 1}, col 0`,
+        { cursor, rows },
+        rows > 0 ? undefined : "Backend screen row count is unavailable",
+      )
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H") // position at row 1
       ctx.write("\x1b[999B") // CUD past bottom
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      // Should stop at last row (1-based)
+      if (!pos) {
+        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+      }
       return {
-        pass: pos.row >= 20, // at least near the bottom
-        note: `cursor at row ${pos.row}`,
-        response: `${pos.row};${pos.col}`,
+        pass: false,
+        response: JSON.stringify(pos),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "query",
+          note: "The app fixture did not measure its screen height, so the bottom row is unknown",
+        },
       }
     },
   ),
@@ -311,22 +309,13 @@ export const cursorProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b[3;5H") // position at row 3, col 5 (1-based)
       ctx.feed("\x1b[10d") // VPA row 10
-      const cursor = ctx.getCursor()
-      return {
-        pass: cursor.y === 9 && cursor.x === 4,
-        note: cursor.y === 9 && cursor.x === 4 ? undefined : `got ${cursor.y};${cursor.x}, expected 9;4`,
-      }
+      return headlessPosition(ctx, 9, 4)
     },
     async (ctx) => {
       ctx.write("\x1b[3;5H") // position at row 3, col 5
       ctx.write("\x1b[10d") // VPA row 10
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row === 10 && pos.col === 5,
-        note: pos.row === 10 && pos.col === 5 ? undefined : `got ${pos.row};${pos.col}, expected 10;5`,
-        response: `${pos.row};${pos.col}`,
-      }
+      return reportedPosition(pos, 10, 5)
     },
   ),
 
@@ -336,22 +325,13 @@ export const cursorProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b[6;10H") // position at row 6, col 10 (1-based)
       ctx.feed("\x1b[2F") // CPL 2 — move up 2 lines, column to 0
-      const cursor = ctx.getCursor()
-      return {
-        pass: cursor.y === 3 && cursor.x === 0,
-        note: cursor.y === 3 && cursor.x === 0 ? undefined : `got ${cursor.y};${cursor.x}, expected 3;0`,
-      }
+      return headlessPosition(ctx, 3, 0)
     },
     async (ctx) => {
       ctx.write("\x1b[6;10H") // position at row 6, col 10
       ctx.write("\x1b[2F") // CPL 2
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row === 4 && pos.col === 1,
-        note: pos.row === 4 && pos.col === 1 ? undefined : `got ${pos.row};${pos.col}, expected 4;1`,
-        response: `${pos.row};${pos.col}`,
-      }
+      return reportedPosition(pos, 4, 1)
     },
   ),
 
@@ -360,49 +340,60 @@ export const cursorProbes: ProbeDefinition[] = [
     "cursor.hpa",
     (ctx) => {
       ctx.feed("ABCDEFGH\x1b[5`") // HPA col 5
-      return { pass: ctx.getCursor().x === 4 }
+      return headlessPosition(ctx, 0, 4)
     },
     async (ctx) => {
       ctx.write("\x1b[3;1H") // move to row 3
       ctx.write("\x1b[15`") // HPA col 15
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row === 3 && pos.col === 15,
-        note: pos.row === 3 && pos.col === 15 ? undefined : `got ${pos.row};${pos.col}, expected 3;15`,
-        response: `${pos.row};${pos.col}`,
-      }
+      return reportedPosition(pos, 3, 15)
     },
   ),
 
-  // CUP with DECSTBM + DECOM — cursor should be relative to scroll region
+  // CUP with DECSTBM + DECOM — physical cursor is margin-relative, but CPR reports relative coordinates.
+  // DEC VT510: https://vt100.net/mirror/mds-199909/cd3/term/vt510rmb.pdf (DECOM and DSR—CPR)
   probe(
     "cursor.cup-scroll-region",
     (ctx) => {
-      ctx.feed("\x1b[5;15r") // set scroll region rows 5-15
-      ctx.feed("\x1b[?6h") // enable DECOM (origin mode)
-      ctx.feed("\x1b[1;1H") // CUP 1;1 — should go to scroll region top (row 4, 0-based)
-      const cursor = ctx.getCursor()
-      const pass = cursor.y === 4 && cursor.x === 0
-      ctx.feed("\x1b[?6l") // disable DECOM
-      ctx.feed("\x1b[r") // reset scroll region
-      return {
-        pass,
-        note: pass ? undefined : `got ${cursor.y};${cursor.x}, expected 4;0`,
+      try {
+        ctx.feed("\x1b[5;15r") // set scroll region rows 5-15
+        ctx.feed("\x1b[?6h") // enable DECOM (origin mode)
+        ctx.feed("\x1b[1;1H") // CUP 1;1 — should go to scroll region top (row 4, 0-based)
+        return headlessPosition(ctx, 4, 0)
+      } finally {
+        try {
+          ctx.feed("\x1b[?6l") // disable DECOM
+        } finally {
+          ctx.feed("\x1b[r") // reset scroll region
+        }
       }
     },
     async (ctx) => {
-      ctx.write("\x1b[5;15r") // set scroll region rows 5-15
-      ctx.write("\x1b[?6h") // enable DECOM
-      ctx.write("\x1b[1;1H") // CUP 1;1 — relative to scroll region
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?6l") // disable DECOM
-      ctx.write("\x1b[r") // reset scroll region
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row === 5 && pos.col === 1,
-        note: pos.row === 5 && pos.col === 1 ? undefined : `got ${pos.row};${pos.col}, expected 5;1`,
-        response: `${pos.row};${pos.col}`,
+      try {
+        ctx.write("\x1b[5;15r") // set scroll region rows 5-15
+        ctx.write("\x1b[?6h") // enable DECOM
+        ctx.write("\x1b[1;1H") // CUP 1;1 — relative to scroll region
+        const pos = await ctx.queryCursorPosition()
+        const result = reportedPosition(pos, 1, 1)
+        if (result.observation?.outcome === "supported") {
+          return {
+            pass: false,
+            response: result.response,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "Relative CPR 1;1 also occurs if DECOM and margins are ignored; physical row was not observed",
+            },
+          }
+        }
+        return result
+      } finally {
+        try {
+          ctx.write("\x1b[?6l") // disable DECOM
+        } finally {
+          ctx.write("\x1b[r") // reset scroll region
+        }
       }
     },
   ),
