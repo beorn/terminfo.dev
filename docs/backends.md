@@ -55,7 +55,7 @@ Embeddable terminal emulator libraries -- these **are** the terminal. They don't
     <span class="backend-name">vterm.js</span>
     <span class="backend-lang">TypeScript</span>
   </div>
-  <p class="backend-desc">Full-featured terminal emulator targeting 100% feature support. Built for correctness — a reference implementation for modern terminal behavior.</p>
+  <p class="backend-desc">Headless TypeScript emulator aiming for trustworthy measurements of applicable parser and state behavior.</p>
 </a>
 
 <a class="backend-card" href="/terminals/vt100-js">

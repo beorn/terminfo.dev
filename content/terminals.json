@@ -4,8 +4,8 @@
     "slug": "ghostty",
     "kind": "app",
     "url": "https://ghostty.org",
-    "description": "GPU-accelerated terminal by Mitchell Hashimoto. Written in Zig, Metal/OpenGL/Vulkan. Excellent standards compliance.",
-    "body": "<p>Ghostty is a terminal emulator created by <strong>Mitchell Hashimoto</strong>, founder of HashiCorp (Terraform, Vagrant, Vault). Written in <strong>Zig</strong> with GPU-accelerated rendering via Metal (macOS), OpenGL, and Vulkan. First released in late 2024 after years of development, Ghostty quickly gained attention for its focus on correctness and performance.</p>\n<p>Ghostty's architecture separates the terminal emulation core into <strong>libghostty</strong>, a reusable library that other projects can embed. This is how <strong>cmux</strong> (the Ghostty multiplexer) gets its terminal emulation — it links against libghostty directly. The library handles VT parsing, grid management, and rendering, while the app adds window management and platform integration.</p>\n<p>Among modern terminals, Ghostty has some of the best standards compliance, supporting kitty keyboard protocol, kitty graphics, sixel, OSC 8 hyperlinks, semantic prompts, and full Unicode including grapheme clustering. It scores consistently near the top of terminfo.dev's feature matrix.</p>",
+    "description": "GPU-accelerated terminal by Mitchell Hashimoto. Metal on macOS and OpenGL on Linux.",
+    "body": "<p><strong>Ghostty</strong> is a GPU-accelerated terminal created by <strong>Mitchell Hashimoto</strong>. Written in Zig, it renders with Metal on macOS and OpenGL on Linux.</p>\n<p>Its terminal emulation core is available through <strong>libghostty</strong>, which other applications can embed. cmux is a separate app built on that library.</p>\n<p>Ghostty documents support for the Kitty keyboard and graphics protocols, OSC 8 hyperlinks, and Unicode grapheme clustering. Individual capabilities on this site are reported from selected app or parser runs.</p>",
     "headlessBackends": ["ghostty-native"],
     "manifestBackend": "ghostty",
     "platforms": ["macos"]
@@ -16,7 +16,7 @@
     "kind": "app",
     "url": "https://sw.kovidgoyal.net/kitty",
     "description": "GPU-accelerated terminal by Kovid Goyal. Pioneer of the Kitty keyboard and graphics protocols. Written in C/Python.",
-    "body": "<p><strong>Kitty</strong> was created by <strong>Kovid Goyal</strong> and first released in 2017. Written in C and Python with <strong>OpenGL GPU rendering</strong>, it was one of the first terminals to use the GPU for text rendering, achieving smooth scrolling and low latency that traditional CPU-rendered terminals couldn't match.</p>\n<p>Kitty's most lasting contribution to the terminal ecosystem is the <strong>Kitty keyboard protocol</strong> (CSI u), which solves decades-old ambiguity in how terminals encode keypresses. The protocol has since been adopted by Ghostty, WezTerm, foot, and others. Kitty also pioneered the <strong>Kitty graphics protocol</strong> for inline image display and introduced extended underline styles (curly, dotted, dashed) with independent underline colors — features now standard in modern terminals.</p>\n<p>Kitty supports a rich extension ecosystem through \"kittens\" — small Python programs that run inside the terminal. Notable kittens include an image viewer, SSH integration, and a diff viewer. The terminal also features native tab and window management, remote control via IPC, and extensive Unicode support.</p>",
+    "body": "<p><strong>Kitty</strong> was created by <strong>Kovid Goyal</strong> and first released in 2017. Written in C and Python, it uses <strong>OpenGL GPU rendering</strong>.</p>\n<p>Kitty introduced the <strong>Kitty keyboard protocol</strong>, which addresses long-standing ambiguity in terminal key reporting, and the <strong>Kitty graphics protocol</strong> for inline images. Its documented extensions also include styled underlines and independent underline colors.</p>\n<p>Kitty supports an extension ecosystem through “kittens,” including an image viewer, SSH integration, and a diff viewer. The terminal also provides tab and window management, remote control, and Unicode support.</p>",
     "headlessBackends": ["kitty"],
     "manifestBackend": "kitty",
     "platforms": ["macos"]
@@ -78,8 +78,8 @@
     "slug": "cmux",
     "kind": "app",
     "url": "https://cmux.com/",
-    "description": "Terminal built on libghostty. Inherits Ghostty's complete VT parser and standards compliance.",
-    "body": "<p><strong>cmux</strong> is a terminal built by the <strong>Ghostty project</strong>, powered by <strong>libghostty</strong> — the same terminal emulation library that drives Ghostty. Unlike traditional multiplexers (despite the name), cmux is a full terminal application that inherits Ghostty's complete VT parser, renderer, and standards compliance.</p>\n<p>Because cmux links directly against libghostty, it supports the same feature set as Ghostty: kitty keyboard protocol, kitty graphics, sixel, OSC 8 hyperlinks, semantic prompts, and full Unicode with grapheme clustering. Its feature score on terminfo.dev should be nearly identical to Ghostty's.</p>",
+    "description": "macOS terminal workspace built on libghostty.",
+    "body": "<p><strong>cmux</strong> is a separate macOS terminal workspace built on <strong>libghostty</strong>, the terminal library from Ghostty.</p>\n<p>Sharing that library does not establish identical app-level behavior. cmux is tracked as its own terminal context when results are available.</p>",
     "headlessBackends": [],
     "manifestBackend": "ghostty",
     "platforms": ["macos"]
@@ -172,8 +172,8 @@
     "kind": "headless",
     "url": "https://www.npmjs.com/package/vterm.js",
     "repo": "https://github.com/beorn/vterm",
-    "description": "Full-featured TypeScript terminal emulator targeting 100% of the terminfo.dev feature matrix.",
-    "body": "<p><strong>vterm.js</strong> is a comprehensive terminal emulator library written in pure TypeScript with zero dependencies. It targets 100% coverage of the terminfo.dev feature matrix — every SGR attribute (including blink, overline, curly/dotted/dashed underline with independent colors), all cursor shapes (DECSCUSR), every DEC private mode, OSC 8 hyperlinks, device attribute responses (DA1/DA2/DSR/DECRPM), DEC Special Graphics character sets, synchronized output, and full Unicode width handling including emoji ZWJ sequences and variation selectors.</p><p>vterm.js is the <strong>default backend for <a href=\"https://termless.dev\" class=\"hover-link\">Termless</a></strong> — the headless terminal testing framework that powers terminfo.dev's probe infrastructure. Where <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> covers ~58% of the feature matrix (the common baseline), vterm.js targets 100% — including the edge cases, modern protocols, and obscure DEC sequences that comprehensive testing requires.</p><p>Pure TypeScript, zero dependencies, runs on any JavaScript runtime (Bun, Node.js, Deno, browsers). Provides an <code>onResponse</code> callback for DA1/DA2/DSR queries — enabling bidirectional terminal communication testing that most headless emulators can't do.</p>",
+    "description": "Headless TypeScript emulator aiming for trustworthy coverage of applicable parser behavior.",
+    "body": "<p><strong>vterm.js</strong> is a headless terminal emulator library written in TypeScript with zero runtime dependencies. It exposes terminal cell and parser state, plus query responses for terminal applications.</p>\n<p>Termless uses vterm.js as a headless backend. The target here is complete, conclusive evidence for applicable parser and state behavior, with unsupported behavior and features requiring a renderer or host integration shown separately. A universal feature-support percentage is not the goal.</p>\n<p>It runs in Bun, Node.js, and browsers.</p>",
     "headlessBackends": ["vterm"],
     "platforms": ["macos", "linux", "windows"]
   },
@@ -183,8 +183,8 @@
     "kind": "headless",
     "url": "https://www.npmjs.com/package/vt100.js",
     "repo": "https://github.com/beorn/vt100",
-    "description": "Lightweight pure TypeScript VT100/VT220 terminal emulator. Zero dependencies, fast, ~90% feature coverage.",
-    "body": "<p><strong>vt100.js</strong> is a lightweight, zero-dependency terminal emulator written in pure TypeScript. It covers approximately 58% of the terminfo.dev feature matrix — SGR styling (bold, italic, underline, 256-color, truecolor), cursor positioning and visibility, scroll regions, alternate screen buffer, and basic character set handling. The coverage is a deliberate tradeoff: by focusing on the most commonly used features, vt100.js stays small, fast, and easy to reason about.</p>\n<p>vt100.js was originally designed as the default backend for <a href=\"https://termless.dev\" class=\"hover-link\">Termless</a> (headless terminal testing). <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a> has since replaced it as the default, offering near-100% feature coverage. The two libraries are complementary: vt100.js for speed in CI pipelines where only common features matter, vterm.js for thoroughness when standards compliance is the goal.</p>\n<p>Pure TypeScript, zero dependencies, runs on any JavaScript runtime (Bun, Node.js, Deno, browsers).</p>",
+    "description": "Small zero-dependency TypeScript emulator focused on VT100 behavior.",
+    "body": "<p><strong>vt100.js</strong> is a small, zero-dependency TypeScript emulator focused on the original DEC VT100’s monochrome screen, cursor movement, scroll regions, and character sets.</p>\n<p>It is a headless backend in Termless. Its narrower design makes it a useful comparison with vterm.js; support on this site comes from versioned observations rather than a fixed coverage percentage.</p>",
     "headlessBackends": ["vt100"],
     "platforms": ["macos", "linux", "windows"]
   },
@@ -194,8 +194,8 @@
     "kind": "app",
     "url": "https://alacritty.org",
     "repo": "https://github.com/alacritty/alacritty",
-    "description": "GPU-accelerated terminal emulator written in Rust. Pioneered GPU rendering for terminals in 2017.",
-    "body": "<p><strong>Alacritty</strong> was the first terminal emulator to use <strong>GPU-accelerated rendering</strong>, announced by Joe Wilm in January 2017. Written in Rust, it proved that GPU rendering could dramatically improve terminal performance — achieving smooth scrolling and low latency that traditional CPU-rendered terminals couldn't match.</p><p>Alacritty is deliberately minimal: no tabs, no splits, no built-in multiplexer. It's designed to do one thing well — render text fast — and delegates everything else to tools like tmux. Configuration is via a YAML file. This minimalism is polarizing: some developers love the simplicity, others want integrated features.</p><p>The <code>alacritty_terminal</code> Rust crate (the parser/emulator core) is reusable outside Alacritty itself. Termless uses it as a headless backend via napi-rs bindings, testing parser correctness without any rendering.</p>",
+    "description": "Minimal GPU-accelerated terminal emulator written in Rust.",
+    "body": "<p><strong>Alacritty</strong> is a minimal, GPU-accelerated terminal emulator written in Rust by <strong>Joe Wilm</strong>.</p><p>It has no built-in tabs or splits and delegates session management to other tools. Current Alacritty configuration uses <strong>TOML</strong>.</p><p>The <code>alacritty_terminal</code> Rust crate provides its parser and emulation core. Termless exercises that core as a headless backend, without the app renderer.</p>",
     "headlessBackends": ["alacritty"],
     "platforms": ["macos", "linux", "windows"]
   },

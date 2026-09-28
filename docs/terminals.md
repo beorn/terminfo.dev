@@ -21,7 +21,7 @@ Standalone terminal applications tested on real hardware via automated probing. 
     <span class="term-name">Ghostty</span>
     <span class="term-tag">Zig</span>
   </div>
-  <p class="term-desc">GPU-accelerated terminal by Mitchell Hashimoto. Excellent standards compliance, near the top of the feature matrix.</p>
+  <p class="term-desc">GPU-accelerated terminal by Mitchell Hashimoto, with native macOS and Linux interfaces.</p>
 </a>
 
 <a class="term-card" href="/terminals/kitty">
@@ -61,7 +61,7 @@ Standalone terminal applications tested on real hardware via automated probing. 
     <span class="term-name">Alacritty</span>
     <span class="term-tag">Rust</span>
   </div>
-  <p class="term-desc">GPU-accelerated minimal terminal. Pioneered GPU rendering for terminals in 2017.</p>
+  <p class="term-desc">Minimal GPU-accelerated terminal written in Rust.</p>
 </a>
 
 <a class="term-card" href="/terminals/wezterm">
@@ -109,7 +109,7 @@ Terminal emulator parsers tested without rendering -- the parser and state machi
     <span class="term-name">vterm.js</span>
     <span class="term-tag">TypeScript</span>
   </div>
-  <p class="term-desc">Full-featured terminal emulator targeting 100% of the terminfo.dev feature matrix.</p>
+  <p class="term-desc">Headless TypeScript emulator aiming for trustworthy coverage of applicable parser behavior.</p>
 </a>
 
 <a class="term-card" href="/terminals/vt100-js">
@@ -117,7 +117,7 @@ Terminal emulator parsers tested without rendering -- the parser and state machi
     <span class="term-name">vt100.js</span>
     <span class="term-tag">TypeScript</span>
   </div>
-  <p class="term-desc">Lightweight VT100/VT220-era emulator. Zero dependencies, fast, ~58% feature coverage.</p>
+  <p class="term-desc">Lightweight, zero-dependency emulator focused on VT100 behavior.</p>
 </a>
 
 </div>
