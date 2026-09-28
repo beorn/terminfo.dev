@@ -4,9 +4,12 @@
  * @consumer Site, API, analysis, and reviewed census import.
  * @testonly none
  */
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import { createHash } from "node:crypto"
-import { parseInterpretations, parseRun, projectResults } from "../docs/data/selected-results.ts"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { loadSelectedResults, parseInterpretations, parseRun, projectResults } from "../docs/data/selected-results.ts"
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
 const target = {
@@ -39,7 +42,22 @@ const run = (runId: string, overrides: Record<string, unknown> = {}) => ({
   measuredAt: "2026-09-28T12:00:00.000Z",
   origin: { kind: "collector" },
   rawReplies: { ...identityReplies, "extensions.query": "ACK", "extensions.graphics": "NO", "cursor.position": "" },
-  assertions: [{ featureId: "extensions.graphics", kind: "negative", rawReplyRef: "extensions.graphics" }],
+  assertions: [
+    {
+      featureId: "extensions.query",
+      kind: "positive",
+      rawReplyRef: "extensions.query",
+      expected: "ACK",
+      observed: "ACK",
+    },
+    {
+      featureId: "extensions.graphics",
+      kind: "negative",
+      rawReplyRef: "extensions.graphics",
+      expected: "ACK",
+      observed: "NO",
+    },
+  ],
   screenshotRefs: [],
   observations: [
     observation("extensions.query", "supported", "query"),
@@ -64,7 +82,179 @@ const reviewFor = (value: ReturnType<typeof parseRun>) => ({
   reviewed: true,
 })
 
+const contentDirs: string[] = []
+afterEach(() => {
+  for (const path of contentDirs.splice(0)) rmSync(path, { recursive: true, force: true })
+})
+
+function temporaryContent() {
+  const path = mkdtempSync(join(tmpdir(), "terminfo-selected-"))
+  contentDirs.push(path)
+  for (const name of ["probes-apps", "probes-mux", "probes-libs", "artifacts"]) mkdirSync(join(path, name))
+  writeFileSync(join(path, "features.json"), JSON.stringify(Object.fromEntries(catalog.map((id) => [id, {}]))))
+  return path
+}
+
 describe("selected results", () => {
+  it("loads screenshot bytes by digest and refuses a missing or modified artifact", () => {
+    const content = temporaryContent()
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+      "base64",
+    )
+    const digest = createHash("sha256").update(png).digest("hex")
+    const screenshotRef = `sha256:${digest}`
+    const artifactPath = join(content, "artifacts", `${digest}.png`)
+    writeFileSync(artifactPath, png)
+    writeFileSync(
+      join(content, "probes-apps", "pixels.json"),
+      JSON.stringify(
+        run("pixels", {
+          screenshotRefs: [screenshotRef],
+          observations: [{ featureId: "extensions.graphics", outcome: "supported", evidence: "pixels", screenshotRef }],
+        }),
+      ),
+    )
+    expect(
+      loadSelectedResults(content, "current").history["app:kitty"]?.[0]?.cells["extensions.graphics"]?.chain
+        .screenshotRef,
+    ).toBe(screenshotRef)
+    writeFileSync(artifactPath, Buffer.concat([png, Buffer.from("changed")]))
+    expect(() => loadSelectedResults(content, "current")).toThrow(/artifact.*(hash|digest)/)
+    rmSync(artifactPath)
+    expect(() => loadSelectedResults(content, "current")).toThrow(/missing.*artifact/)
+  })
+
+  it("refuses screenshot paths and correction sources that bypass the artifact store", () => {
+    expect(() =>
+      parseRun("path.json", JSON.stringify(run("path", { screenshotRefs: ["../../outside.png"] })), catalog),
+    ).toThrow(/screenshotRef/)
+    const measured = parseRun("run.json", JSON.stringify(run("no-artifact")), catalog)
+    const screenshotRef = `sha256:${"1".repeat(64)}`
+    const correction = {
+      ...reviewFor(measured),
+      featureId: "extensions.graphics",
+      sources: [screenshotRef],
+      observation: {
+        featureId: "extensions.graphics",
+        outcome: "supported" as const,
+        evidence: "pixels" as const,
+        screenshotRef,
+      },
+    }
+    expect(() => projectResults([measured], [correction], catalog, { currentProbeHash: "current" })).toThrow(
+      /unknown screenshotRef/,
+    )
+  })
+
+  it("refuses inherited reply keys and unsupported positive assertions", () => {
+    const inherited = run("inherited", {
+      observations: [
+        { featureId: "extensions.query", outcome: "supported", evidence: "query", rawReplyRef: "toString" },
+      ],
+    })
+    expect(() => parseRun("inherited.json", JSON.stringify(inherited), catalog)).toThrow(/missing raw reply.*toString/)
+    const missingAssertion = run("missing-assertion", { assertions: [] })
+    expect(() => parseRun("missing-assertion.json", JSON.stringify(missingAssertion), catalog)).toThrow(
+      /extensions.query.*positive/,
+    )
+  })
+
+  it("refuses diagnostics that overlap an observation or invent a result kind", () => {
+    const overlapping = run("overlap", {
+      ungradedDiagnostics: { "extensions.query": { kind: "legacy-callback", pass: true } },
+    })
+    expect(() => parseRun("overlap.json", JSON.stringify(overlapping), catalog)).toThrow(
+      /extensions.query.*both|both.*extensions.query/,
+    )
+    const invented = run("invented", {
+      ungradedDiagnostics: { "cursor.position": { kind: "unsupported", pass: false } },
+    })
+    expect(() => parseRun("invented.json", JSON.stringify(invented), catalog)).toThrow(/diagnostic.*cursor.position/)
+  })
+
+  it("retains old callback diagnostics without adding them to tested or support counts", () => {
+    const diagnostic = { kind: "legacy-callback" as const, pass: true, note: "old callback" }
+    const measured = parseRun(
+      "diagnostic.json",
+      JSON.stringify(
+        run("diagnostic", {
+          ungradedDiagnostics: { "cursor.position": diagnostic },
+        }),
+      ),
+      catalog,
+    )
+    const selected = projectResults([measured], [reviewFor(measured)], catalog, { currentProbeHash: "current" })
+      .current["app:kitty"]
+    expect(selected?.ungradedDiagnostics).toEqual({
+      evidence: "legacy",
+      label: "old callback result, unverified",
+      results: { "cursor.position": diagnostic },
+    })
+    expect(selected?.counts).toMatchObject({ tested: 2, notTested: 1, conclusive: 2 })
+    expect(selected?.cells["cursor.position"]).toBeUndefined()
+    expect(selected?.v1["cursor.position"]).toBeUndefined()
+  })
+
+  it("requires expected and observed values bound to the same feature and raw record", () => {
+    const value = run("binding", { observations: [observation("extensions.query", "supported", "query")] })
+    for (const assertion of [
+      {
+        featureId: "extensions.graphics",
+        kind: "positive",
+        rawReplyRef: "extensions.query",
+        expected: "ACK",
+        observed: "ACK",
+      },
+      {
+        featureId: "extensions.query",
+        kind: "positive",
+        rawReplyRef: "extensions.graphics",
+        expected: "ACK",
+        observed: "ACK",
+      },
+      { featureId: "extensions.query", kind: "positive", rawReplyRef: "extensions.query", expected: "ACK" },
+    ]) {
+      expect(() => parseRun("binding.json", JSON.stringify({ ...value, assertions: [assertion] }), catalog)).toThrow(
+        /extensions.query.*assertion/,
+      )
+    }
+  })
+
+  it("requires state observations and performed actions instead of bare capability flags", () => {
+    const makeState = (observed: string, evidence: string, action?: string) =>
+      run("state", {
+        observations: [
+          { featureId: "cursor.position", outcome: "supported", evidence, rawReplyRef: "cursor.position" },
+        ],
+        rawReplies: { ...identityReplies, "cursor.position": observed },
+        assertions: [
+          {
+            featureId: "cursor.position",
+            kind: "positive",
+            rawReplyRef: "cursor.position",
+            expected: "cursor moves to column 3",
+            observed,
+            action,
+          },
+        ],
+      })
+    expect(() => parseRun("flag.json", JSON.stringify(makeState("true", "parser-state")), catalog)).toThrow(
+      /actual state snapshot/,
+    )
+    expect(() => parseRun("empty.json", JSON.stringify(makeState("{}", "parser-state")), catalog)).toThrow(
+      /actual state snapshot/,
+    )
+    const state = JSON.stringify({ cursor: { row: 1, column: 3 } })
+    expect(() => parseRun("action.json", JSON.stringify(makeState(state, "interaction")), catalog)).toThrow(
+      /performed action/,
+    )
+    expect(
+      parseRun("state.json", JSON.stringify(makeState(state, "interaction", "press Right twice")), catalog)
+        .observations[0]?.outcome,
+    ).toBe("supported")
+  })
+
   it("rejects invalid required input and unsupported claims without an asserted negative", () => {
     expect(() => parseRun("broken.json", "{", catalog)).toThrow(/broken\.json/)
     expect(() =>
@@ -138,7 +328,19 @@ describe("selected results", () => {
   })
 
   it("scopes reviewed corrections and leaves raw run bytes unchanged", () => {
-    const bytes = JSON.stringify(run("kitty-app"))
+    const capture = run("kitty-app", {
+      assertions: [
+        ...run("kitty-app").assertions,
+        {
+          featureId: "extensions.graphics",
+          kind: "positive",
+          rawReplyRef: "extensions.graphics",
+          expected: "explicit protocol rejection",
+          observed: "NO",
+        },
+      ],
+    })
+    const bytes = JSON.stringify(capture)
     const hash = createHash("sha256").update(bytes).digest("hex")
     const app = parseRun("app.json", bytes, catalog)
     const headless = parseRun(
@@ -178,7 +380,7 @@ describe("selected results", () => {
     expect(projection.current["app:kitty"]?.cells["extensions.graphics"]?.outcome).toBe("supported")
     expect(projection.current["headless:kitty"]?.cells["extensions.graphics"]?.outcome).toBe("unsupported")
     expect(app.sha256).toBe(hash)
-    expect(JSON.stringify(run("kitty-app"))).toBe(bytes)
+    expect(JSON.stringify(capture)).toBe(bytes)
   })
 
   it("keeps legacy booleans ungraded and omits unknown causes from v1", () => {
@@ -220,7 +422,7 @@ describe("selected results", () => {
       sources: ["capture://later"],
       supersedes: [],
       featureId: "extensions.graphics",
-      observation: { featureId: "extensions.graphics", outcome: "supported" as const, evidence: "behavior" as const },
+      observation: { featureId: "extensions.graphics", outcome: "supported" as const, evidence: "consumed" as const },
     }
     const correctedHistory = projectResults([legacy], [correction], catalog, { currentProbeHash: "current" }).history[
       "app:kitty"

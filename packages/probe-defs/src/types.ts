@@ -57,12 +57,30 @@ export interface RunOrigin {
   url?: string
 }
 
+/** Immutable declaration of the probes available in one suite revision. */
+export interface ProbeSuiteManifest {
+  probeHash: string
+  sourceRevision: string
+  generatedAt: string
+  adapterVersion: string
+  probes: Record<ProbeTarget["kind"], string[]>
+}
+
 export interface ProbeAssertion {
   featureId: string
   kind: "positive" | "negative"
   rawReplyRef?: string
+  /** The predicate/expected state and the actually observed bytes or serialized state. */
+  expected: string
+  observed: string
+  /** Required for interaction evidence; names the action actually performed. */
+  action?: string
   note?: string
 }
+
+export type UngradedDiagnostic =
+  | { kind: "legacy-callback"; pass: boolean; note?: string; response?: string }
+  | { kind: "collector-error"; name: string; message?: string }
 
 /** Captured from the module/binary actually loaded by a headless run. */
 export type HeadlessRuntimeIdentity =
@@ -101,6 +119,7 @@ export interface ProbeRun {
   assertions: ProbeAssertion[]
   screenshotRefs: string[]
   observations: Observation[]
+  ungradedDiagnostics?: Record<string, UngradedDiagnostic>
 }
 
 export interface Interpretation {

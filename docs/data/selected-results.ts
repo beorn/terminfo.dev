@@ -13,6 +13,7 @@ import {
   type ProbeTarget,
   type RunOrigin,
   type HeadlessRuntimeIdentity,
+  type UngradedDiagnostic,
 } from "@terminfo/probe-defs"
 import { verifyTerminalIdentity, TERMINAL_IDENTITY_RULES } from "terminfo.dev/src/identity-guard.ts"
 
@@ -34,6 +35,7 @@ export interface LoadedRun {
   assertions: ProbeAssertion[]
   screenshotRefs: string[]
   observations: Observation[]
+  ungradedDiagnostics: Record<string, UngradedDiagnostic>
   legacy: boolean
 }
 
@@ -62,6 +64,11 @@ export interface SelectedVersion {
   sha256: string
   cells: Record<string, SelectedCell>
   v1: Record<string, boolean>
+  ungradedDiagnostics: {
+    evidence: "legacy"
+    label: "old callback result, unverified"
+    results: Record<string, UngradedDiagnostic>
+  }
   counts: {
     catalog: number
     tested: number
@@ -83,6 +90,8 @@ export interface SelectedProjection {
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
 const nonempty = (value: unknown): value is string => typeof value === "string" && value.length > 0
+const screenshotDigest = (value: unknown): value is string =>
+  typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value)
 const date = (value: unknown): value is string => nonempty(value) && !Number.isNaN(Date.parse(value))
 function fail(path: string, message: string): never {
   throw new Error(`${path}: ${message}`)
@@ -224,7 +233,9 @@ function parseObservation(
   validateObservationOutcome(value, path, featureId)
   const rawReplyRef =
     value.rawReplyRef === undefined ? undefined : asString(value.rawReplyRef, path, `rawReplyRef for ${featureId}`)
-  if (rawReplyRef && !(rawReplyRef in rawReplies)) fail(path, `missing raw reply ${rawReplyRef} for ${featureId}`)
+  if (rawReplyRef && !Object.hasOwn(rawReplies, rawReplyRef)) {
+    fail(path, `missing raw reply ${rawReplyRef} for ${featureId}`)
+  }
   const screenshotRef =
     value.screenshotRef === undefined
       ? undefined
@@ -235,14 +246,6 @@ function parseObservation(
   if (screenshotRef && !screenshotRefs.includes(screenshotRef)) {
     fail(path, `screenshotRef ${screenshotRef} is absent from run`)
   }
-  if (
-    value.outcome === "unsupported" &&
-    !assertions.some(
-      (a) => a.featureId === featureId && a.kind === "negative" && (!a.rawReplyRef || a.rawReplyRef === rawReplyRef),
-    )
-  ) {
-    fail(path, `unsupported ${featureId} lacks asserted negative observation`)
-  }
   const observation: Observation = {
     featureId,
     outcome: value.outcome as Observation["outcome"],
@@ -252,7 +255,75 @@ function parseObservation(
   if (rawReplyRef) observation.rawReplyRef = rawReplyRef
   if (screenshotRef) observation.screenshotRef = screenshotRef
   if (value.note !== undefined) observation.note = asString(value.note, path, `note for ${featureId}`)
+  validateObservation(observation, path, rawReplies, assertions)
   return observation
+}
+
+function validateObservation(
+  observation: Observation,
+  path: string,
+  rawReplies: Record<string, string>,
+  assertions: readonly ProbeAssertion[],
+): void {
+  const { featureId, evidence, outcome, rawReplyRef } = observation
+  if (rawReplyRef && !Object.hasOwn(rawReplies, rawReplyRef)) {
+    fail(path, `missing raw reply ${rawReplyRef} for ${featureId}`)
+  }
+  if (outcome !== "supported" && outcome !== "unsupported") return
+  if (evidence === "consumed" || evidence === "legacy" || evidence === "pixels") return
+  const kind = outcome === "supported" ? "positive" : "negative"
+  const assertion = assertions.find(
+    (entry) =>
+      entry.featureId === featureId &&
+      entry.kind === kind &&
+      nonempty(rawReplyRef) &&
+      entry.rawReplyRef === rawReplyRef,
+  )
+  if (!assertion) fail(path, `${featureId} lacks bound ${kind} assertion`)
+  if (!nonempty(assertion.expected) || !nonempty(assertion.observed)) {
+    fail(path, `${featureId} assertion requires expected and observed evidence`)
+  }
+  if (evidence === "parser-state" || evidence === "interaction") {
+    const state = parseJsonStrict(`${path}: ${featureId} state snapshot`, assertion.observed)
+    if (!object(state) || Object.keys(state).length === 0) fail(path, `${featureId} requires an actual state snapshot`)
+    if (evidence === "interaction" && !nonempty(assertion.action)) {
+      fail(path, `${featureId} requires the performed action`)
+    }
+  }
+}
+
+function parseDiagnostics(
+  value: unknown,
+  path: string,
+  catalog: Set<string>,
+  observations: readonly Observation[],
+): Record<string, UngradedDiagnostic> {
+  if (value === undefined) return {}
+  if (!object(value)) fail(path, "invalid ungradedDiagnostics")
+  const diagnostics: Record<string, UngradedDiagnostic> = {}
+  for (const [id, entry] of Object.entries(value)) {
+    if (!catalog.has(id)) fail(path, `unknown diagnostic feature ${id}`)
+    if (observations.some((observation) => observation.featureId === id)) {
+      fail(path, `${id} occurs in both observations and ungradedDiagnostics`)
+    }
+    if (!object(entry)) fail(path, `invalid diagnostic for ${id}`)
+    const allowed =
+      entry.kind === "legacy-callback" ? ["kind", "pass", "note", "response"] : ["kind", "name", "message"]
+    if (Object.keys(entry).some((key) => !allowed.includes(key))) fail(path, `invalid diagnostic fields for ${id}`)
+    if (entry.kind === "legacy-callback" && typeof entry.pass === "boolean") {
+      for (const key of ["note", "response"]) {
+        if (entry[key] !== undefined && typeof entry[key] !== "string") {
+          fail(path, `invalid diagnostic ${key} for ${id}`)
+        }
+      }
+    } else if (entry.kind === "collector-error" && nonempty(entry.name)) {
+      if (entry.message !== undefined && typeof entry.message !== "string") {
+        fail(path, `invalid diagnostic message for ${id}`)
+      }
+    } else fail(path, `invalid diagnostic for ${id}`)
+    diagnostics[id] = entry as UngradedDiagnostic
+  }
+  return diagnostics
 }
 
 function validateObservationOutcome(value: Record<string, unknown>, path: string, featureId: string): void {
@@ -276,8 +347,9 @@ function validateObservationOutcome(value: Record<string, unknown>, path: string
 export function parseRun(path: string, source: string, catalogIds: readonly string[]): LoadedRun {
   const raw = parseJsonStrict(path, source)
   if (!object(raw)) fail(path, "run must be an object")
-  if (raw.schemaVersion !== undefined && raw.schemaVersion !== 2)
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== 2) {
     fail(path, `unsupported schemaVersion ${String(raw.schemaVersion)}`)
+  }
   const catalog = new Set(catalogIds)
   const sha256 = createHash("sha256").update(source).digest("hex")
   if (raw.schemaVersion === 2) {
@@ -291,7 +363,11 @@ export function parseRun(path: string, source: string, catalogIds: readonly stri
     if (!object(raw.rawReplies) || !Object.values(raw.rawReplies).every((v) => typeof v === "string")) {
       fail(path, "invalid rawReplies")
     }
-    if (!Array.isArray(raw.assertions) || !Array.isArray(raw.screenshotRefs) || !raw.screenshotRefs.every(nonempty)) {
+    if (
+      !Array.isArray(raw.assertions) ||
+      !Array.isArray(raw.screenshotRefs) ||
+      !raw.screenshotRefs.every(screenshotDigest)
+    ) {
       fail(path, "invalid assertions or screenshotRefs")
     }
     const assertions = raw.assertions as ProbeAssertion[]
@@ -303,7 +379,7 @@ export function parseRun(path: string, source: string, catalogIds: readonly stri
       ) {
         fail(path, "invalid assertion")
       }
-      if (assertion.rawReplyRef && !(assertion.rawReplyRef in raw.rawReplies)) {
+      if (assertion.rawReplyRef && !Object.hasOwn(raw.rawReplies, assertion.rawReplyRef)) {
         fail(path, `missing assertion raw reply ${assertion.rawReplyRef}`)
       }
     }
@@ -344,6 +420,7 @@ export function parseRun(path: string, source: string, catalogIds: readonly stri
       assertions,
       screenshotRefs: raw.screenshotRefs as string[],
       observations,
+      ungradedDiagnostics: parseDiagnostics(raw.ungradedDiagnostics, path, catalog, observations),
       legacy: false,
     }
   }
@@ -391,6 +468,7 @@ export function parseRun(path: string, source: string, catalogIds: readonly stri
     assertions: [],
     screenshotRefs: [],
     observations,
+    ungradedDiagnostics: {},
     legacy: true,
   }
 }
@@ -428,16 +506,19 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
     if (!Array.isArray(entry.sources) || entry.sources.length === 0 || !entry.sources.every(nonempty)) {
       fail(path, `missing sources for ${id}`)
     }
-    if (!Array.isArray(entry.supersedes) || !entry.supersedes.every(nonempty))
+    if (!Array.isArray(entry.supersedes) || !entry.supersedes.every(nonempty)) {
       fail(path, `invalid supersedes for ${id}`)
-    if (new Set(entry.supersedes).size !== entry.supersedes.length || entry.supersedes.includes(id))
+    }
+    if (new Set(entry.supersedes).size !== entry.supersedes.length || entry.supersedes.includes(id)) {
       fail(path, `duplicate/self supersedes for ${id}`)
+    }
     if (entry.runId !== undefined && !nonempty(entry.runId)) fail(path, `invalid runId for ${id}`)
     if (
       entry.runSha256 !== undefined &&
       (typeof entry.runSha256 !== "string" || !/^[a-f0-9]{64}$/.test(entry.runSha256))
-    )
+    ) {
       fail(path, `invalid run SHA256 for ${id}`)
+    }
     for (const flag of ["reviewed", "verifiesIdentity"] as const) {
       if (entry[flag] !== undefined && typeof entry[flag] !== "boolean") fail(path, `invalid ${flag} for ${id}`)
     }
@@ -459,10 +540,12 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
         fail(path, `observation feature mismatch in ${id}`)
       }
       validateObservationOutcome(entry.observation, path, entry.featureId)
-      if (entry.observation.evidence === "pixels" && !nonempty(entry.observation.screenshotRef))
+      if (entry.observation.evidence === "pixels" && !nonempty(entry.observation.screenshotRef)) {
         fail(path, `pixels correction ${id} requires screenshotRef`)
-      if (entry.observation.evidence === "query" && !nonempty(entry.observation.rawReplyRef))
+      }
+      if (entry.observation.evidence === "query" && !nonempty(entry.observation.rawReplyRef)) {
         fail(path, `query correction ${id} requires rawReplyRef`)
+      }
     }
   }
   for (const entry of raw as Interpretation[]) {
@@ -568,28 +651,16 @@ function projectRun(
     if (correctedFeatures.has(entry.featureId)) throw new Error(`conflicting active corrections for ${entry.featureId}`)
     correctedFeatures.add(entry.featureId)
     validateObservationOutcome(observation as unknown as Record<string, unknown>, entry.id, entry.featureId)
-    if (observation.rawReplyRef && !(observation.rawReplyRef in run.rawReplies))
-      throw new Error(`interpretation ${entry.id}: missing raw reply ${observation.rawReplyRef}`)
-    if (observation.evidence === "query" && !observation.rawReplyRef)
+    validateObservation(observation, `interpretation ${entry.id}`, run.rawReplies, run.assertions)
+    if (observation.evidence === "query" && !observation.rawReplyRef) {
       throw new Error(`interpretation ${entry.id}: query requires rawReplyRef`)
-    if (observation.evidence === "pixels" && !observation.screenshotRef)
+    }
+    if (observation.evidence === "pixels" && !observation.screenshotRef) {
       throw new Error(`interpretation ${entry.id}: pixels requires screenshotRef`)
-    if (
-      observation.screenshotRef &&
-      !run.screenshotRefs.includes(observation.screenshotRef) &&
-      !entry.sources.includes(observation.screenshotRef)
-    )
+    }
+    if (observation.screenshotRef && !run.screenshotRefs.includes(observation.screenshotRef)) {
       throw new Error(`interpretation ${entry.id}: unknown screenshotRef ${observation.screenshotRef}`)
-    if (
-      observation.outcome === "unsupported" &&
-      !run.assertions.some(
-        (a) =>
-          a.featureId === entry.featureId &&
-          a.kind === "negative" &&
-          (!a.rawReplyRef || a.rawReplyRef === observation.rawReplyRef),
-      )
-    )
-      throw new Error(`interpretation ${entry.id}: unsupported lacks asserted negative observation`)
+    }
     cells[entry.featureId] = {
       ...observation,
       conclusive:
@@ -634,6 +705,11 @@ function projectRun(
     sha256: run.sha256,
     cells,
     v1,
+    ungradedDiagnostics: {
+      evidence: "legacy",
+      label: "old callback result, unverified",
+      results: run.ungradedDiagnostics,
+    },
     counts: {
       catalog: catalogIds.length,
       tested,
@@ -747,6 +823,7 @@ export function loadSelectedResults(contentDir: string, currentProbeHash: string
   if (!object(features)) fail(featuresPath, "invalid catalog")
   const catalog = Object.keys(features).filter((id) => !id.startsWith("$"))
   const runs: LoadedRun[] = []
+  const verifiedScreenshots = new Set<string>()
   for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) {
     const path = join(contentDir, dir)
     if (!existsSync(path)) fail(path, "missing required probe directory")
@@ -754,7 +831,22 @@ export function loadSelectedResults(contentDir: string, currentProbeHash: string
       .filter((f) => f.endsWith(".json") && f !== "unified.json")
       .sort()) {
       const runPath = join(path, file)
-      runs.push(parseRun(runPath, readFileSync(runPath, "utf8"), catalog))
+      const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog)
+      for (const ref of run.screenshotRefs) {
+        if (verifiedScreenshots.has(ref)) continue
+        const digest = ref.slice("sha256:".length)
+        const artifactPath = join(contentDir, "artifacts", `${digest}.png`)
+        if (!existsSync(artifactPath)) fail(runPath, `missing screenshot artifact ${artifactPath}`)
+        const bytes = readFileSync(artifactPath)
+        if (createHash("sha256").update(bytes).digest("hex") !== digest) {
+          fail(runPath, `screenshot artifact digest mismatch at ${artifactPath}`)
+        }
+        if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+          fail(runPath, `screenshot artifact is not a PNG at ${artifactPath}`)
+        }
+        verifiedScreenshots.add(ref)
+      }
+      runs.push(run)
     }
   }
   const interpretationsPath = join(contentDir, "interpretations.json")
