@@ -69,9 +69,10 @@ export function sgrProbe(
     async term(ctx) {
       if (ctx.capture) {
         try {
-          ctx.write("\x1b[0m\x1b[2J\x1b[HX")
-          const control = await ctx.capture({ role: "control", label: "Unstyled X" })
-          ctx.write("\x1b[0m\x1b[2J\x1b[H" + sequence + "X")
+          const sample = "AaBb 0123456789 - terminal text"
+          ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sample)
+          const control = await ctx.capture({ role: "control", label: "Unstyled text sample" })
+          ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sequence + sample)
           const target = await ctx.capture({ role: "target", label: id })
           return {
             pass: false,
