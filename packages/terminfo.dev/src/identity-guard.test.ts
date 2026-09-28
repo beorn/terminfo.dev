@@ -98,4 +98,20 @@ describe("verifyTerminalIdentity", () => {
     expect(termRes.ok).toBe(false)
     expect(termRes.reason).toContain("does not support XTVERSION")
   })
+
+  it("marks checked: true when an identity rule exists and passes", () => {
+    const res = verifyTerminalIdentity(
+      "kitty",
+      { "device.primary-da": "\u001b[?62;52;c", "device.xtversion": "kitty(0.46.2)" },
+      { "device.xtversion": true },
+    )
+    expect(res.ok).toBe(true)
+    expect(res.checked).toBe(true)
+  })
+
+  it("marks checked: false when no identity rule is registered", () => {
+    const res = verifyTerminalIdentity("unknown-terminal", { "device.primary-da": "\u001b[?1;2c" })
+    expect(res.ok).toBe(true)
+    expect(res.checked).toBe(false)
+  })
 })

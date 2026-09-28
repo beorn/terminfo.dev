@@ -50,6 +50,7 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
 export interface VerificationResult {
   ok: boolean
   reason?: string
+  checked: boolean
 }
 
 /**
@@ -65,7 +66,7 @@ export function verifyTerminalIdentity(
 
   if (!rule) {
     // No specific rule registered for this terminal
-    return { ok: true }
+    return { ok: true, checked: false }
   }
 
   const da1 = responses?.["device.primary-da"]
@@ -77,6 +78,7 @@ export function verifyTerminalIdentity(
     if (!xtversion || xtversion === "No XTVERSION response" || xtversionResult === false) {
       return {
         ok: false,
+        checked: true,
         reason: `Terminal "${terminal}" requires an XTVERSION response, but received none or false`,
       }
     }
@@ -93,6 +95,7 @@ export function verifyTerminalIdentity(
     ) {
       return {
         ok: false,
+        checked: true,
         reason: `Terminal "${terminal}" does not support XTVERSION, but received: "${xtversion}"`,
       }
     }
@@ -103,6 +106,7 @@ export function verifyTerminalIdentity(
     if (!rule.xtversionPattern.test(xtversion)) {
       return {
         ok: false,
+        checked: true,
         reason: `Terminal "${terminal}" XTVERSION mismatch: expected ${rule.xtversionPattern}, got "${xtversion}"`,
       }
     }
@@ -113,6 +117,7 @@ export function verifyTerminalIdentity(
     if (rule.da1ForbiddenPattern.test(da1)) {
       return {
         ok: false,
+        checked: true,
         reason: `Terminal "${terminal}" DA1 mismatch: forbidden pattern ${rule.da1ForbiddenPattern} matched "${da1}"`,
       }
     }
@@ -123,10 +128,11 @@ export function verifyTerminalIdentity(
     if (!rule.da1Pattern.test(da1)) {
       return {
         ok: false,
+        checked: true,
         reason: `Terminal "${terminal}" DA1 mismatch: expected ${rule.da1Pattern}, got "${da1}"`,
       }
     }
   }
 
-  return { ok: true }
+  return { ok: true, checked: true }
 }

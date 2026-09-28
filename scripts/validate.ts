@@ -355,6 +355,9 @@ heading("Errors (block deploy)")
 // 4f. Probe files terminal identity verification
 {
   let found = false
+  let verifiedCount = 0
+  let uncheckedCount = 0
+
   for (const f of probeAppsFiles) {
     try {
       const fullPath = join(probeAppsDir, f)
@@ -371,6 +374,10 @@ heading("Errors (block deploy)")
           error(`Probe file "probes-apps/${f}" failed terminal identity check: ${check.reason}`)
           errors++
           found = true
+        } else if (check.checked) {
+          verifiedCount++
+        } else {
+          uncheckedCount++
         }
       }
     } catch (e: any) {
@@ -395,11 +402,21 @@ heading("Errors (block deploy)")
           error(`Probe file "probes-mux/${f}" failed terminal identity check: ${check.reason}`)
           errors++
           found = true
+        } else if (check.checked) {
+          verifiedCount++
+        } else {
+          uncheckedCount++
         }
       }
-    } catch {}
+    } catch (e: any) {
+      error(`Probe file "probes-mux/${f}" could not be parsed: ${e.message}`)
+      errors++
+      found = true
+    }
   }
-  if (!found) info("All probe files match terminal identity guards")
+  if (!found) {
+    info(`Probe terminal identity guards: ${verifiedCount} verified, ${uncheckedCount} unchecked (no rule registered)`)
+  }
 }
 
 // ---------------------------------------------------------------------------

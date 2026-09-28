@@ -39,11 +39,15 @@ jobs:
       - name: Run validation
         id: validate
         run: |
+          set -o pipefail
           bun scripts/validate.ts 2>&1 | tee /tmp/validate-output.txt
           echo "output<<EOF" >> $GITHUB_OUTPUT
           cat /tmp/validate-output.txt >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
         continue-on-error: true
+
+      - name: Run unit tests
+        run: bun vitest run
 
       - name: Build site
         run: bun run build
