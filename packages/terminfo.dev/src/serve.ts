@@ -279,7 +279,7 @@ export async function startDaemon(port = 0): Promise<void> {
       )
     })().catch((err) => {
       console.error("Probe daemon request failed:", err)
-      if (res.headersSent) res.destroy(err)
+      if (res.headersSent) res.destroy(err instanceof Error ? err : new Error(String(err)))
       else {
         res.statusCode = 500
         res.end(JSON.stringify({ error: "Probe daemon request failed" }))

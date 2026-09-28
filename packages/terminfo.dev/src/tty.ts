@@ -115,7 +115,8 @@ export async function queryWithSentinelOutcome(
       () => process.stdout.write(sequence + "\x1b[c"),
       true,
     )
-    return result.match ? { kind: "reply", match: result.match } : { kind: result.reason }
+    if (result.match) return { kind: "reply", match: result.match }
+    return { kind: result.reason === "sentinel" ? "sentinel" : "timeout" }
   })
 }
 
