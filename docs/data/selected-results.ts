@@ -51,6 +51,14 @@ export interface SelectedCell extends Observation {
     rawReply?: string
     assertions: ProbeAssertion[]
     screenshot?: { url: string; sha256: string }
+    frames?: Array<{
+      role: ObservationFrame["role"]
+      label: string
+      capturedAt: number
+      url: string
+      sha256: string
+      sourceRef?: string
+    }>
   }
   chain: {
     origin: RunOrigin
@@ -992,6 +1000,16 @@ function observationRecord(run: LoadedRun, observation: Observation): SelectedCe
         url: `/artifacts/${screenshotRef.slice("sha256:".length)}.png`,
         sha256: screenshotRef.slice("sha256:".length),
       },
+    }),
+    ...(observation.frames && {
+      frames: observation.frames.map((frame) => ({
+        role: frame.role,
+        label: frame.label,
+        capturedAt: frame.capturedAt,
+        url: `/artifacts/${frame.ref.slice("sha256:".length)}.png`,
+        sha256: frame.ref.slice("sha256:".length),
+        ...(frame.sourceRef && { sourceRef: frame.sourceRef }),
+      })),
     }),
   }
 }

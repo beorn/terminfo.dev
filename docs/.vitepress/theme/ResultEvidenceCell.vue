@@ -44,11 +44,15 @@ const shortLabel = computed(() => {
 
 const screenshot = computed(() => props.cell?.record?.screenshot)
 const screenshotUrl = computed(() => (screenshot.value ? withBase(screenshot.value.url) : undefined))
+const frames = computed(() => props.cell?.record?.frames ?? [])
+const previewFrame = computed(() => frames.value.find((frame) => frame.role === "target"))
+const previewImageUrl = computed(() => (previewFrame.value ? withBase(previewFrame.value.url) : screenshotUrl.value))
 const rawReply = computed(() => props.cell?.record?.rawReply)
 const assertions = computed(() => props.cell?.record?.assertions ?? [])
 const hasRawResults = computed(() => rawReply.value !== undefined || assertions.value.length > 0)
 const actionLabel = computed(() => {
   if (!props.cell) return "No evidence in current selection"
+  if (frames.value.length) return "View captured frames"
   if (screenshotUrl.value) return "View screenshot"
   return hasRawResults.value ? "View raw results" : "No raw evidence recorded"
 })
@@ -57,6 +61,11 @@ const accessibleName = computed(
     `${props.featureName} in ${props.targetName}${props.version ? ` ${props.version.target.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
 )
 const rawReplyDisplay = computed(() => (rawReply.value === undefined ? "" : JSON.stringify(rawReply.value)))
+
+function frameTime(capturedAt: number): string {
+  const date = new Date(capturedAt)
+  return Number.isNaN(date.getTime()) ? `${capturedAt} ms since Unix epoch` : date.toISOString()
+}
 
 function showPreview(): void {
   if (dialogVisible.value || !trigger.value || typeof window === "undefined") return
@@ -134,8 +143,13 @@ onBeforeUnmount(() => {
           >Method: {{ cell.evidence }}<template v-if="cell.reason"> · {{ cell.reason }}</template></span
         >
         <span v-if="cell?.note">{{ cell.note }}</span>
-        <img v-if="screenshotUrl" :src="screenshotUrl" :alt="`Recorded ${featureName} result`" />
-        <span>{{ actionLabel }}<template v-if="screenshotUrl"> · open for original image</template></span>
+        <img
+          v-if="previewImageUrl"
+          :src="previewImageUrl"
+          :alt="previewFrame ? `${previewFrame.label} target frame` : `Recorded ${featureName} result`"
+        />
+        <span v-if="frames.length">{{ frames.length }} recorded frames · control and target</span>
+        <span>{{ actionLabel }}<template v-if="previewImageUrl"> · open for original image</template></span>
       </div>
 
       <dialog
@@ -161,7 +175,23 @@ onBeforeUnmount(() => {
         <p v-if="cell?.note">{{ cell.note }}</p>
         <p v-if="cell?.reason">Reason: {{ cell.reason }}</p>
 
-        <template v-if="screenshotUrl">
+        <template v-if="frames.length">
+          <h3>Captured frames</h3>
+          <div class="result-evidence__frames">
+            <figure v-for="(frame, index) in frames" :key="index" class="result-evidence__image">
+              <img :src="withBase(frame.url)" :alt="`${frame.role} frame: ${frame.label}`" />
+              <figcaption>
+                <strong>{{ frame.role === "control" ? "Control" : "Target" }}</strong> · {{ frame.label }}<br />
+                Captured {{ frameTime(frame.capturedAt) }} · SHA-256 {{ frame.sha256 }}
+                <template v-if="frame.sourceRef"><br />Source capture {{ frame.sourceRef }}</template>
+              </figcaption>
+              <a :href="withBase(frame.url)" target="_blank" rel="noopener noreferrer"
+                >Open original {{ frame.role }} image</a
+              >
+            </figure>
+          </div>
+        </template>
+        <template v-else-if="screenshotUrl">
           <figure class="result-evidence__image">
             <img :src="screenshotUrl" :alt="`Original recorded image for ${featureName} in ${targetName}`" />
             <figcaption>Original recorded image · SHA-256 {{ screenshot?.sha256 }}</figcaption>
@@ -172,7 +202,7 @@ onBeforeUnmount(() => {
         <h3>Observation</h3>
         <p v-if="!version">No reviewed current run is selected for this terminal context.</p>
         <p v-else-if="!cell">This feature was not tested by the reviewed current run.</p>
-        <p v-else-if="!screenshotUrl && !hasRawResults">No raw evidence was captured for this observation.</p>
+        <p v-else-if="!previewImageUrl && !hasRawResults">No raw evidence was captured for this observation.</p>
         <template v-if="rawReply !== undefined">
           <h4>Raw reply</h4>
           <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>

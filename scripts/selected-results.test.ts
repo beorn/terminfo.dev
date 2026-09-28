@@ -184,12 +184,16 @@ describe("selected results", () => {
     const screenshotRef = `sha256:${digest}`
     const artifactPath = join(content, "artifacts", `${digest}.png`)
     writeFileSync(artifactPath, png)
+    const controlPng = Buffer.concat([png, Buffer.from("control frame")])
+    const controlDigest = createHash("sha256").update(controlPng).digest("hex")
+    const controlRef = `sha256:${controlDigest}`
+    writeFileSync(join(content, "artifacts", `${controlDigest}.png`), controlPng)
     writeFileSync(
       join(content, "probes-apps", "pixels.json"),
       JSON.stringify(
         run("pixels", {
           probeHash: "pixels",
-          screenshotRefs: [screenshotRef],
+          screenshotRefs: [controlRef, screenshotRef],
           observations: [
             {
               featureId: "extensions.graphics",
@@ -197,6 +201,10 @@ describe("selected results", () => {
               reason: "insufficient-evidence",
               evidence: "pixels",
               screenshotRef,
+              frames: [
+                { role: "control", ref: controlRef, capturedAt: 1, label: "before" },
+                { role: "target", ref: screenshotRef, capturedAt: 2, label: "after" },
+              ],
             },
           ],
         }),
@@ -208,7 +216,18 @@ describe("selected results", () => {
     ]
     expect(cell?.chain.screenshotRef).toBe(screenshotRef)
     expect(cell?.record.screenshot).toEqual({ url: `/artifacts/${digest}.png`, sha256: digest })
+    expect(cell?.record.frames).toEqual([
+      {
+        role: "control",
+        label: "before",
+        capturedAt: 1,
+        url: `/artifacts/${controlDigest}.png`,
+        sha256: controlDigest,
+      },
+      { role: "target", label: "after", capturedAt: 2, url: `/artifacts/${digest}.png`, sha256: digest },
+    ])
     expect(readFileSync(join(output, `${digest}.png`))).toEqual(png)
+    expect(readFileSync(join(output, `${controlDigest}.png`))).toEqual(controlPng)
     writeFileSync(artifactPath, Buffer.concat([png, Buffer.from("changed")]))
     expect(() => loadSelectedResults(content, "current")).toThrow(/artifact.*(hash|digest)/)
     rmSync(artifactPath)
