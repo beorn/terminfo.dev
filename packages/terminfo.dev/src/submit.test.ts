@@ -35,6 +35,7 @@ describe("submitResults issue terms", () => {
   })
 
   it("includes the CC0 dedication in both gh and browser issue bodies", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {})
     execFileSync.mockReturnValue("https://github.com/beorn/terminfo.dev/issues/1\n")
     await submitResults(data)
     const ghBody = writeFileSync.mock.calls[0]?.[1]
