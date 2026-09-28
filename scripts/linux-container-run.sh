@@ -31,6 +31,9 @@ compose_receipt() {
       error("container v2 probe run identity is missing")
     elif ($c.display.glxinfo | type) != "string" or ($c.display.geometry | type) != "string" then
       error("container display receipt is missing")
+    elif $c.clipboardFixture.runId != $h.runId or $c.clipboardFixture.profile != $h.clipboardProfile or
+         ($c.clipboardFixture.sha256 | type) != "string" then
+      error("container clipboard fixture disagrees with host run or profile")
     else
       $h + {
         executable:$c.executable,
@@ -38,6 +41,7 @@ compose_receipt() {
         collector:$c.collector,
         probeRun:$c.probeRun,
         display:$c.display,
+        clipboardFixture:$c.clipboardFixture,
         capture:$c.capture,
         receiptInputs:{hostSha256:$hostSha,containerSha256:$containerSha}
       }
@@ -57,8 +61,11 @@ fi
 
 if [[ "${1:-}" == "--inside" ]]; then
   shift
-  [[ -n "${TERMINFO_RUN_ID:-}" && -n "${TERMINFO_RUNNER:-}" && -n "${KITTY_BINARY:-}" && -n "${KITTY_SOURCE_ARCHIVE:-}" ]] || {
-    echo "Missing run ID, runner, Kitty binary, or source archive" >&2
+  [[ -n "${TERMINFO_RUN_ID:-}" && -n "${TERMINFO_RUNNER:-}" && -n "${KITTY_BINARY:-}" &&
+     -n "${KITTY_EXPECTED_VERSION:-}" && -n "${KITTY_SOURCE_ARCHIVE:-}" &&
+     -n "${KITTY_SOURCE_SRI:-}" && -n "${KITTY_SOURCE_URL:-}" &&
+     -n "${TERMINFO_KITTY_PRESET:-}" && -n "${TERMINFO_CLIPBOARD_PROFILE:-}" ]] || {
+    echo "Missing run, runner, Kitty, source, preset, or clipboard profile metadata" >&2
     exit 2
   }
   [[ "$(id -u)" != 0 ]] || { echo "Refusing root container user" >&2; exit 2; }
@@ -71,6 +78,14 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "Loaded image ID disagrees with host receipt" >&2
     exit 2
   }
+  jq -e --arg preset "$TERMINFO_KITTY_PRESET" --arg profile "$TERMINFO_CLIPBOARD_PROFILE" \
+    --arg version "$KITTY_EXPECTED_VERSION" --arg url "$KITTY_SOURCE_URL" \
+    '.preset == $preset and .clipboardProfile == $profile and
+     .declaredTarget.version == $version and .sourceArtifact.url == $url' \
+    /out/host-measured.json >/dev/null || {
+      echo "Container preset, profile, or Kitty metadata disagrees with host receipt" >&2
+      exit 2
+    }
   [[ -d "$HOME" && -w "$HOME" ]] || { echo "HOME is not a writable private tmpfs" >&2; exit 2; }
 
   bun "$TERMINFO_RUNNER" --help >/out/import-smoke.txt 2>/out/import-smoke.err || {
@@ -92,19 +107,27 @@ if [[ "${1:-}" == "--inside" ]]; then
   }
   sha256sum "$KITTY_BINARY" | tee /out/executable.sha256
   sha256sum "$KITTY_SOURCE_ARCHIVE" | tee /out/source-archive.sha256
+  read -r source_sha source_path < /out/source-archive.sha256
+  expected_source_sha=$(printf '%s' "${KITTY_SOURCE_SRI#sha256-}" | base64 -d | od -An -tx1 -v | tr -d ' \n')
+  [[ "$KITTY_SOURCE_SRI" == sha256-* && "$source_sha" == "$expected_source_sha" ]] || {
+    echo "Loaded Kitty source archive differs from declared fixed hash" >&2
+    exit 2
+  }
   "$KITTY_BINARY" --version | tee /out/executable-version.txt
-  grep -Eq '^kitty 0\.49\.1([[:space:]]|$)' /out/executable-version.txt || {
-    echo "Loaded Kitty version is not 0.49.1" >&2
+  read -r executable_name actual_version _ < /out/executable-version.txt
+  [[ "$executable_name" == kitty && "$actual_version" == "$KITTY_EXPECTED_VERSION" ]] || {
+    echo "Loaded Kitty version is not declared $KITTY_EXPECTED_VERSION" >&2
     exit 2
   }
   fc-match -f '%{family} | %{file}\n' 'DejaVu Sans Mono' > /out/font.txt
 
   xvfb_pid=
+  helper_pid=
   daemon_pid=
   cleanup() {
     local status=$?
     trap - EXIT
-    for owned_pid in "$daemon_pid" "$xvfb_pid"; do
+    for owned_pid in "$daemon_pid" "$helper_pid" "$xvfb_pid"; do
       if [[ -n "$owned_pid" ]] && kill -0 "$owned_pid" 2>/dev/null; then
         if ! kill "$owned_pid"; then
           echo "Could not stop owned process $owned_pid" >&2
@@ -128,6 +151,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     sleep 0.1
   done
   [[ -s "$HOME/display-number" ]] || { echo "Xvfb display allocation timed out" >&2; exit 2; }
+  chmod 600 "$HOME/display-number"
   read -r display_number <"$HOME/display-number"
   export DISPLAY=":$display_number"
   export XDG_CACHE_HOME="$HOME/.cache"
@@ -138,11 +162,56 @@ if [[ "${1:-}" == "--inside" ]]; then
     exit 2
   }
 
+  case "$TERMINFO_CLIPBOARD_PROFILE" in
+    default)
+      kitty_clipboard_control=
+      clipboard_permissions='clipboard: read=ask,write=allow; OSC52=not-run'
+      ;;
+    allow)
+      kitty_clipboard_control='write-clipboard read-clipboard'
+      clipboard_permissions='clipboard: read=allow,write=allow'
+      ;;
+    deny-read)
+      kitty_clipboard_control='write-clipboard'
+      clipboard_permissions='clipboard: read=deny,write=allow'
+      ;;
+    *) echo "Unknown clipboard profile: $TERMINFO_CLIPBOARD_PROFILE" >&2; exit 2 ;;
+  esac
+  baseline_path="$HOME/clipboard-baseline.txt"
+  printf 'terminfo-owned-clipboard-%s' "$TERMINFO_RUN_ID" > "$baseline_path"
+  chmod 600 "$baseline_path"
+  baseline_sha=$(sha256sum "$baseline_path" | cut -d ' ' -f 1)
+  xclip_binary=$(readlink -f "$(command -v xclip)")
+  xclip_sha=$(sha256sum "$xclip_binary" | cut -d ' ' -f 1)
+  xclip -quiet -selection clipboard -in "$baseline_path" </dev/null >/out/xclip-owner.log 2>&1 &
+  helper_pid=$!
+  for _ in $(seq 1 100); do
+    kill -0 "$helper_pid" 2>/dev/null || { cat /out/xclip-owner.log >&2; exit 2; }
+    if timeout 1 xclip -selection clipboard -out > "$HOME/clipboard-initial-read.txt" 2>/out/xclip-initial-read.err &&
+       cmp -s "$baseline_path" "$HOME/clipboard-initial-read.txt"; then
+      break
+    fi
+    sleep 0.1
+  done
+  [[ -r "$HOME/clipboard-initial-read.txt" &&
+     "$(sha256sum "$HOME/clipboard-initial-read.txt" | cut -d ' ' -f 1)" == "$baseline_sha" ]] || {
+    echo "Owned xclip baseline did not survive independent clipboard read" >&2
+    cat /out/xclip-owner.log /out/xclip-initial-read.err >&2
+    exit 2
+  }
+  initial_read_sha=$(sha256sum "$HOME/clipboard-initial-read.txt" | cut -d ' ' -f 1)
+
   export TERMINFO_CAPTURE_DIRECTORY=/out/artifacts
   export TERMINFO_RUNTIME_PROVENANCE=/out/runtime-provenance.json
-  "$KITTY_BINARY" --config NONE --class terminfo-kitty-container-daemon \
-    -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600 \
-    -o font_family='DejaVu Sans Mono' -o font_size=16 \
+  export TERMINFO_CLIPBOARD_FIXTURE_RECEIPT=/out/clipboard-fixture.json
+  kitty_args=(--config NONE --class terminfo-kitty-container-daemon
+    -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600
+    -o 'font_family=DejaVu Sans Mono' -o font_size=16)
+  if [[ -n "$kitty_clipboard_control" ]]; then
+    kitty_args+=(-o "clipboard_control=$kitty_clipboard_control")
+  fi
+  printf -v kitty_config '%q ' "${kitty_args[@]}"
+  "$KITTY_BINARY" "${kitty_args[@]}" \
     bun "$TERMINFO_RUNNER" test --serve >/out/daemon.log 2>&1 &
   daemon_pid=$!
   daemon_dir="$HOME/.terminfo-dev/daemons"
@@ -182,8 +251,10 @@ if [[ "${1:-}" == "--inside" ]]; then
   curl --fail-with-body --silent --show-error -H "Authorization: Bearer $token" \
     -H 'Content-Type: application/json' --data-binary @"$HOME/version-query.json" \
     "http://127.0.0.1:$port/query" > /out/xtversion-observation.json
-  jq -e '.results[0].response | contains("0.49.1")' /out/xtversion-observation.json >/dev/null || {
-    echo "XTVERSION did not return Kitty 0.49.1; run invalid" >&2; exit 2;
+  jq -e --arg version "$KITTY_EXPECTED_VERSION" \
+    '.results[0].response | contains("kitty(" + $version + ")")' \
+    /out/xtversion-observation.json >/dev/null || {
+    echo "XTVERSION did not return declared Kitty $KITTY_EXPECTED_VERSION; run invalid" >&2; exit 2;
   }
   timeout 10 xdotool search --sync --onlyvisible --pid "$daemon_pid" > /out/windows.txt
   [[ "$(wc -l < /out/windows.txt)" == 1 ]] || { echo "Ambiguous owned probe window" >&2; exit 2; }
@@ -191,13 +262,34 @@ if [[ "${1:-}" == "--inside" ]]; then
   [[ "$(xdotool getwindowpid "$window_id")" == "$daemon_pid" ]] || {
     echo "Probe window does not belong to the launched Kitty" >&2; exit 2;
   }
+  collector_pid=$(jq -er .pid /out/daemon-registration.json)
+  [[ "$collector_pid" =~ ^[0-9]+$ && -r "/proc/$collector_pid/status" ]] || {
+    echo "Collector daemon registration does not identify a live process" >&2; exit 2;
+  }
+  window_pid=$(xdotool getwindowpid "$window_id")
+  jq -n --arg run "$TERMINFO_RUN_ID" --arg profile "$TERMINFO_CLIPBOARD_PROFILE" \
+    --arg display "$DISPLAY" --argjson number "$display_number" \
+    --arg displayFdPath "$HOME/display-number" --argjson xvfbPid "$xvfb_pid" \
+    --argjson terminalPid "$daemon_pid" --argjson collectorPid "$collector_pid" \
+    --arg windowId "$window_id" --argjson windowPid "$window_pid" \
+    --argjson helperPid "$helper_pid" --arg helperPath "$xclip_binary" --arg helperSha "$xclip_sha" \
+    --arg baselinePath "$baseline_path" --arg baselineSha "$baseline_sha" --arg initialSha "$initial_read_sha" \
+    --arg config "$kitty_config" --arg permissions "$clipboard_permissions" \
+    '{schemaVersion:1,runId:$run,profile:$profile,
+      display:{name:$display,number:$number,displayFdPath:$displayFdPath,xvfbPid:$xvfbPid},
+      terminal:{pid:$terminalPid,collectorPid:$collectorPid,windowId:$windowId,windowPid:$windowPid},
+      selection:{helperPid:$helperPid,helperExecutable:{path:$helperPath,sha256:$helperSha},
+        baselinePath:$baselinePath,baselineSha256:$baselineSha,initialReadSha256:$initialSha},
+      config:$config,permissions:$permissions}' > "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
+  chmod 600 "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
+  clipboard_fixture_sha=$(sha256sum "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT" | cut -d ' ' -f 1)
   xdotool getwindowgeometry --shell "$window_id" > /out/geometry.txt
   read -r executable_sha executable_path < /out/executable.sha256
   read -r source_sha source_path < /out/source-archive.sha256
   jq -n --slurpfile host /out/host-measured.json \
     --arg path "$(readlink -f "$KITTY_BINARY")" --arg sha "$executable_sha" \
     --arg version "$(cat /out/executable-version.txt)" --arg sourceSha "$source_sha" \
-    --arg config '--config NONE; remember_window_size=no; initial_window_width=800; initial_window_height=600; font_family=DejaVu Sans Mono; font_size=16' \
+    --arg config "$kitty_config" \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
     --rawfile display /out/xdpyinfo.txt --rawfile gl /out/glxinfo.txt '
     $host[0] as $h | {
@@ -255,6 +347,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
     --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" \
     --arg png "artifacts/$png_sha.png" --arg pngSha "$png_sha" --arg xwdSha "$xwd_sha" \
+    --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg clipboardSha "$clipboard_fixture_sha" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
     '{runId:$run,
@@ -263,13 +356,27 @@ if [[ "${1:-}" == "--inside" ]]; then
       collector:{frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha},
       probeRun:{path:"v2-run.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
+      clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
       capture:{xwd:("artifacts/"+$xwdSha+".xwd"),xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}}' \
     > /out/container-receipt.json
   exit 0
 fi
 
-[[ "$#" == 1 ]] || { echo "Usage: $0 OUTPUT_DIRECTORY" >&2; exit 2; }
-output_parent=$1
+[[ "$#" == 5 && "${1:-}" == --preset && "${3:-}" == --clipboard-profile ]] || {
+  echo "Usage: $0 --preset baseline|current --clipboard-profile default|allow|deny-read OUTPUT_DIRECTORY" >&2
+  exit 2
+}
+preset=$2
+clipboard_profile=$4
+output_parent=$5
+case "$preset" in
+  baseline|current) ;;
+  *) echo "Unknown Kitty preset: $preset" >&2; exit 2 ;;
+esac
+case "$clipboard_profile" in
+  default|allow|deny-read) ;;
+  *) echo "Unknown clipboard profile: $clipboard_profile" >&2; exit 2 ;;
+esac
 script_dir=$(cd "$(dirname "$0")" && pwd -P)
 vendor_root=$(cd "$script_dir/.." && pwd -P)
 code_root=$(cd "$vendor_root/../.." && pwd -P)
@@ -339,7 +446,7 @@ root_lock_sha=$(sha256sum "$code_root/bun.lock" | cut -d ' ' -f 1)
 (
   cd "$code_root"
   TERMINFO_LINUX_RUNNER_DIR="$prep/bundle" TERMINFO_LINUX_RUNNER_SHA256="$bundle_sha" \
-    nix build --impure .#kitty-visual-current-image --out-link "$prep/image.tar" \
+    nix build --impure ".#kitty-visual-${preset}-image" --out-link "$prep/image.tar" \
       --option max-jobs 2 --option cores 2 -L
 ) > "$prep/nix-build.log" 2>&1 || {
   tail -100 "$prep/nix-build.log" >&2
@@ -348,9 +455,29 @@ root_lock_sha=$(sha256sum "$code_root/bun.lock" | cut -d ' ' -f 1)
 }
 image_tar_sha=$(sha256sum "$prep/image.tar" | cut -d ' ' -f 1)
 docker load --input "$prep/image.tar" >"$prep/docker-load.txt"
-image_id=$(docker image inspect terminfo-kitty-probe:0.49.1 --format '{{.Id}}')
+image_id=$(docker image inspect "terminfo-kitty-probe:$preset" --format '{{.Id}}')
+docker image inspect "$image_id" > "$prep/image-inspect.json"
 image_arch=$(docker image inspect "$image_id" --format '{{.Architecture}}')
 [[ "$image_arch" == amd64 ]] || { echo "Loaded image architecture is $image_arch, expected amd64" >&2; exit 2; }
+jq -e --arg preset "$preset" '
+  .[0].Config.Labels["org.hallohuman.terminfo.kitty.preset"] == $preset and
+  (.[0].Config.Labels["org.hallohuman.terminfo.kitty.version"] | test("^[0-9]+[.][0-9]+[.][0-9]+$")) and
+  (.[0].Config.Labels["org.hallohuman.terminfo.kitty.source-url"] | startswith("https://github.com/kovidgoyal/kitty/")) and
+  (.[0].Config.Labels["org.hallohuman.terminfo.kitty.source-sri"] | test("^sha256-[A-Za-z0-9+/]{43}=$"))' \
+  "$prep/image-inspect.json" >/dev/null || {
+  echo "Loaded image lacks declared Kitty preset metadata" >&2; exit 2;
+}
+kitty_version=$(jq -er '.[0].Config.Labels["org.hallohuman.terminfo.kitty.version"]' "$prep/image-inspect.json")
+source_url=$(jq -er '.[0].Config.Labels["org.hallohuman.terminfo.kitty.source-url"]' "$prep/image-inspect.json")
+source_sri=$(jq -er '.[0].Config.Labels["org.hallohuman.terminfo.kitty.source-sri"]' "$prep/image-inspect.json")
+for declared_env in "TERMINFO_KITTY_PRESET=$preset" "KITTY_EXPECTED_VERSION=$kitty_version" \
+  "KITTY_SOURCE_URL=$source_url" "KITTY_SOURCE_SRI=$source_sri"; do
+  jq -e --arg entry "$declared_env" '.[0].Config.Env | index($entry) != null' \
+    "$prep/image-inspect.json" >/dev/null || {
+    echo "Loaded image environment disagrees with declared Kitty metadata: $declared_env" >&2
+    exit 2
+  }
+done
 jq -n \
   --arg run "$run_id" --arg image "$image_id" --arg tar "$image_tar_sha" \
   --arg arch "$image_arch" --arg nix "$nix_lock_revision" --arg source "$source_revision" \
@@ -358,10 +485,12 @@ jq -n \
   --arg bundleNar "$bundle_sha" --arg lock "$root_lock_sha" \
   --arg runnerSha "$frozen_runner_sha" --arg receiptSha "$build_receipt_sha" \
   --arg sourceStatus "$source_status" --slurpfile build "$cli_receipt" \
-  --arg url 'https://github.com/kovidgoyal/kitty/releases/download/v0.49.1/kitty-0.49.1-x86_64.txz' \
+  --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$kitty_version" \
+  --arg url "$source_url" --arg sri "$source_sri" \
   --arg runnerUrl "file://$prep/runner-bundle.tar" \
-  '{runId:$run, declaredTarget:{kind:"app",id:"kitty",version:"0.49.1",os:"linux"},
-    sourceArtifact:{url:$url},
+  '{runId:$run,preset:$preset,clipboardProfile:$profile,
+    declaredTarget:{kind:"app",id:"kitty",version:$version,os:"linux"},
+    sourceArtifact:{url:$url,sri:$sri},
     runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
       frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
       build:$build[0],rootBunLockSha256:$lock},
@@ -375,6 +504,7 @@ container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-on
   --tmpfs "/home/runner:rw,nosuid,nodev,uid=$(id -u),gid=$(id -g),mode=0700" \
   --mount "type=bind,src=$raw,dst=/out" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_IMAGE_ID=$image_id" \
+  --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" \
   "$image_id")
 echo "$container_id" > "$prep/container-id.txt"
 if ! timeout 180 docker start --attach "$container_id" > "$prep/container-stdout.log" 2>"$prep/container-stderr.log"; then
@@ -411,9 +541,19 @@ jq -e --arg run "$(jq -er .probeRunId "$raw/observed.json")" --arg sha "$probe_s
 }
 source_sha=$(jq -er .sourceArtifact.sha256 "$raw/container-receipt.json")
 source_sri=$(nix hash convert --hash-algo sha256 --to sri "$source_sha")
-[[ "$source_sri" == 'sha256-jP1o7UhNmjLk44mr/+Gg7G4PvXvlyeocT6Qbnq1K95E=' ]] || {
+[[ "$source_sri" == "$(jq -er .sourceArtifact.sri "$raw/host-measured.json")" ]] || {
   echo "Runtime Kitty source archive differs from the flake pin: $source_sri" >&2
   exit 2
+}
+clipboard_sha=$(sha256sum "$raw/clipboard-fixture.json" | cut -d ' ' -f 1)
+jq -e --arg run "$run_id" --arg profile "$clipboard_profile" \
+  '.runId == $run and .profile == $profile' "$raw/clipboard-fixture.json" >/dev/null || {
+  echo "Retained clipboard fixture has wrong run ID or profile" >&2; exit 2;
+}
+jq -e --arg run "$run_id" --arg profile "$clipboard_profile" --arg sha "$clipboard_sha" \
+  '.clipboardFixture.runId == $run and .clipboardFixture.profile == $profile and
+   .clipboardFixture.sha256 == $sha' "$raw/container-receipt.json" >/dev/null || {
+  echo "Container clipboard fixture differs from exact retained receipt" >&2; exit 2;
 }
 compose_receipt "$raw/host-measured.json" "$raw/container-receipt.json" "$raw/run-receipt.json"
 echo "$run_dir"
