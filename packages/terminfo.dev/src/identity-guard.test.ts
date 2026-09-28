@@ -19,6 +19,12 @@ describe("verifyTerminalIdentity", () => {
     expect(
       verifyTerminalIdentity("kitty", {
         "device.primary-da": da1,
+        "device.xtversion": "\x1bP>|kitty(0.49.1)\x1b\\\x1b[?62;4c",
+      }).ok,
+    ).toBe(true)
+    expect(
+      verifyTerminalIdentity("kitty", {
+        "device.primary-da": da1,
         "device.xtversion": "\x1bP>|kitty(0.49.1)",
       }).ok,
     ).toBe(false)
