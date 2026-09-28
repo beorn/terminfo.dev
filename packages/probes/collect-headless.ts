@@ -54,7 +54,18 @@ function loadedBackend(value: unknown, specifier: string): TerminalBackend {
 }
 
 function context(backend: TerminalBackend): TermlessContext {
+  let cols: number
+  try {
+    cols = backend.getRow(0).length
+  } catch (cause) {
+    throw new Error(`${backend.name} has no initialized row 0 grid for headless probes`, { cause })
+  }
+  if (!Number.isSafeInteger(cols) || cols < 1) {
+    throw new Error(`${backend.name} returned invalid initialized grid width ${cols}`)
+  }
+  if (cols !== 80) throw new Error(`${backend.name} initialized ${cols} columns; requested 80`)
   return {
+    cols,
     feed(text) {
       backend.feed(encoder.encode(text))
     },

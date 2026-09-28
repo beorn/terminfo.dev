@@ -35,12 +35,6 @@ function tabPositionResult(
   }
 }
 
-function headlessColumns(feed: (sequence: string) => void, cursor: () => { x: number }): number | null {
-  feed("\x1b[9999G")
-  const cols = cursor().x + 1
-  return cols >= 1 && cols <= 9999 ? cols : null
-}
-
 export const textProbes: ProbeDefinition[] = [
   probe(
     "text.basic",
@@ -291,12 +285,11 @@ export const textProbes: ProbeDefinition[] = [
   probe(
     "text.hts",
     (ctx) => {
-      const cols = headlessColumns(ctx.feed, ctx.getCursor)
       try {
         ctx.feed("\x1b[3g\x1b[6G\x1bH\x1b[1G\t")
         return { pass: ctx.getCursor().x === 5 }
       } finally {
-        if (cols !== null) restoreDefaultTabs(ctx.feed, cols)
+        restoreDefaultTabs(ctx.feed, ctx.cols)
       }
     },
     async (ctx) => {
@@ -314,8 +307,8 @@ export const textProbes: ProbeDefinition[] = [
   probe(
     "text.tbc",
     (ctx) => {
-      const cols = headlessColumns(ctx.feed, ctx.getCursor)
-      if (cols === null || cols < 17) {
+      const cols = ctx.cols
+      if (cols < 17) {
         return {
           pass: false,
           observation: {
@@ -434,8 +427,8 @@ export const textProbes: ProbeDefinition[] = [
   probe(
     "text.cht",
     (ctx) => {
-      const cols = headlessColumns(ctx.feed, ctx.getCursor)
-      if (cols === null || cols < 21) {
+      const cols = ctx.cols
+      if (cols < 21) {
         return {
           pass: false,
           observation: {
@@ -476,8 +469,8 @@ export const textProbes: ProbeDefinition[] = [
   probe(
     "text.cbt",
     (ctx) => {
-      const cols = headlessColumns(ctx.feed, ctx.getCursor)
-      if (cols === null || cols < 21) {
+      const cols = ctx.cols
+      if (cols < 21) {
         return {
           pass: false,
           observation: {

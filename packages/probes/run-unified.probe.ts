@@ -60,7 +60,18 @@ const enc = new TextEncoder()
 const dec = new TextDecoder()
 
 function createTermlessContext(b: TerminalBackend): TermlessContext {
+  let cols: number
+  try {
+    cols = b.getRow(0).length
+  } catch (cause) {
+    throw new Error(`${b.name} has no initialized row 0 grid for headless probes`, { cause })
+  }
+  if (!Number.isSafeInteger(cols) || cols < 1) {
+    throw new Error(`${b.name} returned invalid initialized grid width ${cols}`)
+  }
+  if (cols !== 80) throw new Error(`${b.name} initialized ${cols} columns; requested 80`)
   return {
+    cols,
     feed(text: string) {
       b.feed(enc.encode(text))
     },

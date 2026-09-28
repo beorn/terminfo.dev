@@ -24,6 +24,47 @@ function app(overrides: Partial<TermContext> = {}): TermContext {
   }
 }
 
+function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
+  return {
+    cols: 80,
+    feed() {},
+    feedCapture: () => "",
+    getCell: () => ({
+      char: "👨‍👩‍👧",
+      wide: true,
+      bold: false,
+      dim: false,
+      italic: false,
+      underline: false,
+      underlineColor: null,
+      strikethrough: false,
+      inverse: false,
+      hidden: false,
+      blink: false,
+      fg: null,
+      bg: null,
+    }),
+    getCursor: () => ({ x: 2, y: 0, visible: true, style: null }),
+    getMode: () => false,
+    getText: () => "X",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset() {},
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "unknown",
+      extensions: new Set(),
+    },
+    ...overrides,
+  }
+}
+
 function byId(id: string) {
   const probe = [...textProbes, ...unicodeProbes].find((item) => item.id === id)
   if (!probe?.term || !probe.termless) throw new Error(`missing ${id} callbacks`)
@@ -83,6 +124,25 @@ test("CHT and CBT establish tab stops independent of inherited terminal state", 
   expect((await byId("text.cht").term(app({ cols: 12 }))).observation).toMatchObject({ outcome: "inconclusive" })
 })
 
+test("headless HTS restores tab stops within the initialized grid width", () => {
+  const feeds: string[] = []
+  let cursorX = 5
+  const result = byId("text.hts").termless(
+    headless({
+      cols: 80,
+      feed(sequence) {
+        feeds.push(sequence)
+        if (sequence.includes("\x1b[9999G")) cursorX = 80
+      },
+      getCursor: () => ({ x: cursorX, y: 0, visible: true, style: null }),
+    }),
+  )
+  expect(result.pass).toBe(true)
+  expect(feeds.join("")).not.toContain("\x1b[9999G")
+  expect(feeds.at(-1)).toContain("\x1b[1;73H\x1bH")
+  expect(feeds.at(-1)).not.toContain("\x1b[1;81H\x1bH")
+})
+
 test("grapheme ID measures the ZWJ sample width, including headless cell state", async () => {
   const probe = byId("unicode.grapheme-cursor")
   const result = await probe.term(app({ measureRenderedWidth: async () => 2 }))
@@ -90,42 +150,7 @@ test("grapheme ID measures the ZWJ sample width, including headless cell state",
   expect(result.assertions).toMatchObject([{ kind: "positive", expected: "2", observed: "2" }])
   expect((await probe.term(app())).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
 
-  const headless = probe.termless({
-    feed() {},
-    feedCapture: () => "",
-    getCell: () => ({
-      char: "👨‍👩‍👧",
-      wide: true,
-      bold: false,
-      dim: false,
-      italic: false,
-      underline: false,
-      underlineColor: null,
-      strikethrough: false,
-      inverse: false,
-      hidden: false,
-      blink: false,
-      fg: null,
-      bg: null,
-    }),
-    getCursor: () => ({ x: 2, y: 0, visible: true, style: null }),
-    getMode: () => false,
-    getText: () => "X",
-    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
-    getTitle: () => "",
-    reset() {},
-    capabilities: {
-      truecolor: false,
-      kittyKeyboard: false,
-      kittyGraphics: false,
-      sixel: false,
-      osc8Hyperlinks: false,
-      semanticPrompts: false,
-      reflow: false,
-      unicode: "unknown",
-      extensions: new Set(),
-    },
-  } satisfies TermlessContext)
-  expect(headless.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
-  expect(headless.assertions).toMatchObject([{ kind: "positive", observed: headless.response }])
+  const headlessResult = probe.termless(headless())
+  expect(headlessResult.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(headlessResult.assertions).toMatchObject([{ kind: "positive", observed: headlessResult.response }])
 })
