@@ -528,6 +528,42 @@ describe("selected results", () => {
     expect(correctedHistory?.v1["extensions.graphics"]).toBeUndefined()
   })
 
+  it("admits insufficient evidence only for an inconclusive observation", () => {
+    const partial = (outcome: "inconclusive" | "error" | "supported") =>
+      run(`insufficient-${outcome}`, {
+        probeHash: "query",
+        assertions:
+          outcome === "supported"
+            ? [
+                {
+                  featureId: "extensions.query",
+                  kind: "positive",
+                  rawReplyRef: "extensions.query",
+                  expected: "ACK",
+                  observed: "ACK",
+                },
+              ]
+            : [],
+        observations: [
+          {
+            featureId: "extensions.query",
+            outcome,
+            reason: "insufficient-evidence",
+            evidence: "query",
+            rawReplyRef: "extensions.query",
+          },
+        ],
+      })
+    const inconclusive = parseRun("inconclusive.json", JSON.stringify(partial("inconclusive")), catalog)
+    expect(inconclusive.observations).toMatchObject([{ outcome: "inconclusive", reason: "insufficient-evidence" }])
+    expect(() => parseRun("error.json", JSON.stringify(partial("error")), catalog)).toThrow(
+      /insufficient-evidence.*inconclusive/,
+    )
+    expect(() => parseRun("supported.json", JSON.stringify(partial("supported")), catalog)).toThrow(
+      /insufficient-evidence.*inconclusive/,
+    )
+  })
+
   it("requires a source and exact run ID before a review verifies identity", () => {
     const broad = {
       id: "review-broad",

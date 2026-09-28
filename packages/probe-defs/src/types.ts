@@ -18,6 +18,8 @@ export const OBSERVATION_REASONS = [
   "policy-refused",
   "collector-error",
   "invalid-reply",
+  /** A valid consumption or state was observed, but it cannot establish the tested result. */
+  "insufficient-evidence",
 ] as const
 export type ObservationReason = (typeof OBSERVATION_REASONS)[number]
 
@@ -183,6 +185,8 @@ export interface Interpretation {
 
 /** Context for headless backends (synchronous cell-state access) */
 export interface TermlessContext {
+  /** Width read back from the backend after initialization, never inferred from cursor behavior. */
+  readonly cols: number
   feed(text: string): void
   feedCapture(text: string): string
   getCell(

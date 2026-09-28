@@ -27,6 +27,7 @@ const baseCell = {
 
 function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
   return {
+    cols: 80,
     feed() {},
     feedCapture() {
       return ""
@@ -86,7 +87,11 @@ test("SGR consumption stays inconclusive while headless cell state supports an a
 
   const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
   expect(consumed.pass).toBe(true)
-  expect(consumed.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed" })
+  expect(consumed.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "consumed",
+  })
   expect(consumed.assertions).toBeUndefined()
 
   const silent = await probe.term(terminal())
@@ -107,8 +112,156 @@ test("unexposed overline stays inconclusive and cannot inherit the old true bool
   if (!probe?.termless) throw new Error("missing headless overline probe")
   const result = probe.termless(headless())
   expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "parser-state",
+  })
   expect(JSON.parse(result.response ?? "")).toMatchObject({ char: "X" })
+})
+
+test("underline color needs an observed color, not only an underline or a consumed sequence", async () => {
+  for (const id of ["sgr.underline.color", "sgr.underline-color-rgb"]) {
+    const probe = sgrProbes.find((item) => item.id === id)
+    if (!probe?.termless || !probe.term) throw new Error(`missing ${id} callback`)
+
+    const unexposed = probe.termless(
+      headless({ getCell: () => ({ ...baseCell, underline: true, underlineColor: undefined }) }),
+    )
+    expect(unexposed.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "parser-state",
+    })
+    expect(unexposed.assertions, id).toBeUndefined()
+
+    const colored = probe.termless(
+      headless({
+        getCell: () => ({
+          ...baseCell,
+          underline: true,
+          fg: { r: 255, g: 0, b: 128 },
+          underlineColor: { r: 255, g: 0, b: 128 },
+        }),
+      }),
+    )
+    expect(colored.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(colored.assertions, id).toMatchObject([{ kind: "positive", observed: colored.response }])
+
+    const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
+    expect(consumed.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "consumed",
+    })
+    expect(consumed.assertions, id).toBeUndefined()
+  }
+})
+
+test("indexed underline color follows two distinct measured palette controls", async () => {
+  const probe = sgrProbes.find((item) => item.id === "sgr.underline-color-indexed")
+  if (!probe?.termless || !probe.term) throw new Error("missing indexed underline color callback")
+  const measure = probe.termless
+  const index4 = { r: 10, g: 20, b: 30 }
+  const index5 = { r: 40, g: 50, b: 60 }
+  const run = (
+    firstColor: typeof index4 | null | undefined,
+    secondColor: typeof index5 | null | undefined,
+    secondFg = index5,
+  ) =>
+    measure(
+      headless({
+        getCell: (_row, col) => ({
+          ...baseCell,
+          char: col === 0 ? "X" : "Y",
+          underline: true,
+          fg: col === 0 ? index4 : secondFg,
+          underlineColor: col === 0 ? firstColor : secondColor,
+        }),
+      }),
+    )
+
+  const unexposed = run(undefined, undefined)
+  expect(unexposed.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(unexposed.assertions).toBeUndefined()
+
+  const matched = run(index4, index5)
+  expect(matched.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(matched.assertions).toMatchObject([{ kind: "positive", observed: matched.response }])
+  expect(JSON.parse(matched.response ?? "")).toMatchObject({
+    index4: { fg: index4, underlineColor: index4 },
+    index5: { fg: index5, underlineColor: index5 },
+  })
+
+  const ignoredColor = { r: 0, g: 0, b: 0 }
+  const ignored = run(ignoredColor, ignoredColor)
+  expect(ignored.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(ignored.assertions).toMatchObject([{ kind: "negative", observed: ignored.response }])
+
+  const indistinguishable = run(index4, index4, index4)
+  expect(indistinguishable.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+
+  const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
+  expect(consumed.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "consumed",
+  })
+})
+
+test("underline color reset needs both an observed colored before cell and default after cell", () => {
+  const probe = sgrProbes.find((item) => item.id === "sgr.underline-color-reset")
+  if (!probe?.termless) throw new Error("missing underline color reset callback")
+  const color = { r: 255, g: 0, b: 128 }
+  const withCells = (before: ReturnType<TermlessContext["getCell"]>, after: ReturnType<TermlessContext["getCell"]>) =>
+    headless({ getCell: (_row, col) => (col === 0 ? before : after) })
+
+  const missingBefore = probe.termless(
+    withCells({ ...baseCell, underline: true, underlineColor: undefined }, { ...baseCell, char: "Y", underline: true }),
+  )
+  expect(missingBefore.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(missingBefore.assertions).toBeUndefined()
+
+  const missingAfter = probe.termless(
+    withCells(
+      { ...baseCell, underline: true, underlineColor: color },
+      { ...baseCell, char: "Y", underline: true, underlineColor: undefined },
+    ),
+  )
+  expect(missingAfter.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+
+  const reset = probe.termless(
+    withCells({ ...baseCell, underline: true, underlineColor: color }, { ...baseCell, char: "Y", underline: true }),
+  )
+  expect(reset.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(reset.assertions).toMatchObject([{ kind: "positive", observed: reset.response }])
+
+  const stillColored = probe.termless(
+    withCells(
+      { ...baseCell, underline: true, underlineColor: color },
+      { ...baseCell, char: "Y", underline: true, underlineColor: color },
+    ),
+  )
+  expect(stillColored.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(stillColored.assertions).toMatchObject([{ kind: "negative", observed: stillColored.response }])
+})
+
+test("legacy SGR reset diagnostics cannot pass when the setup attribute was never observed", () => {
+  for (const id of [
+    "sgr.fg.default",
+    "sgr.bg.default",
+    "sgr.selective-reset.bold",
+    "sgr.selective-reset.underline",
+    "sgr.selective-reset.italic",
+    "sgr.selective-reset.inverse",
+    "sgr.reset",
+  ]) {
+    const probe = sgrProbes.find((item) => item.id === id)
+    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    const result = probe.termless(headless({ getCell: (_row, col) => ({ ...baseCell, char: col === 0 ? "X" : "Y" }) }))
+    expect(result.pass, id).toBe(false)
+    expect(result.observation, id).toBeUndefined() // Still an ungraded legacy callback.
+  }
 })
 
 test("cursor movement binds measured positions and parser state, never a missing reply", async () => {

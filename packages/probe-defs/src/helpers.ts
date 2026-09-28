@@ -1,7 +1,7 @@
 import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermlessContext, TermContext } from "./types.ts"
 
 /** Keep the serialized state alongside the exact assertion that used it. */
-function parserStateResult(pass: boolean | null, expected: string, state: object, note?: string): ProbeResult {
+export function parserStateResult(pass: boolean | null, expected: string, state: object, note?: string): ProbeResult {
   const response = JSON.stringify(state)
   return {
     pass: pass === true,
@@ -9,6 +9,7 @@ function parserStateResult(pass: boolean | null, expected: string, state: object
     ...(note && { note }),
     observation: {
       outcome: pass === null ? "inconclusive" : pass ? "supported" : "unsupported",
+      ...(pass === null && { reason: "insufficient-evidence" as const }),
       evidence: "parser-state",
       ...(note && { note }),
     },
@@ -83,6 +84,7 @@ export function sgrProbe(
         response: `${pos.row};${pos.col}`,
         observation: {
           outcome: "inconclusive",
+          reason: "insufficient-evidence",
           evidence: "consumed",
           note: "Cursor advance does not verify SGR styling",
         },

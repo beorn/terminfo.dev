@@ -1,5 +1,43 @@
-import type { ProbeDefinition } from "./types.ts"
-import { sgrProbe, probe } from "./helpers.ts"
+import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import { parserStateResult, sgrProbe, probe } from "./helpers.ts"
+
+const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
+
+function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): boolean {
+  return a.r === b.r && a.g === b.g && a.b === b.b
+}
+
+function rgbUnderlineApplied(cell: ReturnType<TermlessContext["getCell"]>): boolean | null {
+  if (cell.underline === undefined || cell.underlineColor === undefined) return null
+  return (
+    Boolean(cell.underline) && cell.underlineColor !== null && sameRgb(cell.underlineColor, requestedUnderlineColor)
+  )
+}
+
+/** A cursor reply proves consumption of the SGR sequence, never the visual attribute. */
+async function consumedSgr(ctx: TermContext, sequence: string): Promise<ProbeResult> {
+  ctx.write("\x1b[1;1H\x1b[2K")
+  ctx.write(sequence + "X\x1b[0m")
+  const pos = await ctx.queryCursorPosition()
+  if (!pos) {
+    return {
+      pass: false,
+      note: "No cursor response",
+      observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+    }
+  }
+  return {
+    pass: pos.col === 2,
+    note: "Cursor advance does not verify SGR styling",
+    response: `${pos.row};${pos.col}`,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "consumed",
+      note: "Cursor advance does not verify SGR styling",
+    },
+  }
+}
 
 export const sgrProbes: ProbeDefinition[] = [
   // ── Attributes ──
@@ -32,101 +70,60 @@ export const sgrProbes: ProbeDefinition[] = [
 
   // ── Underline color ──
 
-  probe(
-    "sgr.underline.color",
-    (ctx) => {
-      ctx.feed("\x1b[4m\x1b[58;2;255;0;128mX")
-      const cell = ctx.getCell(0, 0)
-      if (!cell.underline) return { pass: false, note: "underline not set" }
-      if (!cell.underlineColor) return { pass: false, note: "underlineColor not set" }
-      return {
-        pass: cell.underlineColor.r === 255 && cell.underlineColor.g === 0 && cell.underlineColor.b === 128,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[4m\x1b[58;2;255;0;0mX\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-      }
-    },
-  ),
+  sgrProbe("sgr.underline.color", "\x1b[4m\x1b[58;2;255;0;128m", rgbUnderlineApplied),
 
-  // SGR 58;5;N — indexed underline color. Verify underline is active and, if the
-  // backend exposes per-cell underline color, that the indexed color resolved to a
-  // non-default value. Backends that don't expose underlineColor pass on the
-  // underline check alone — they're handled per-backend in annotations.
+  // Index values may be theme-specific. Compare two distinct palette controls
+  // to their underline colors; one coincidental/default color cannot prove SGR 58.
   probe(
     "sgr.underline-color-indexed",
     (ctx) => {
-      ctx.feed("\x1b[4m\x1b[58;5;5mX")
-      const cell = ctx.getCell(0, 0)
-      if (!cell.underline) return { pass: false, note: "underline not set" }
-      if (cell.underlineColor === undefined) {
-        // Backend doesn't track underline color per cell — accept underline alone.
-        return { pass: true, note: "underlineColor not tracked by backend" }
+      ctx.feed("\x1b[4m\x1b[38;5;4m\x1b[58;5;4mX\x1b[38;5;5m\x1b[58;5;5mY")
+      const index4 = ctx.getCell(0, 0)
+      const index5 = ctx.getCell(0, 1)
+      const state = {
+        index4: {
+          char: index4.char,
+          underline: index4.underline as unknown,
+          fg: index4.fg,
+          underlineColor: index4.underlineColor,
+        },
+        index5: {
+          char: index5.char,
+          underline: index5.underline as unknown,
+          fg: index5.fg,
+          underlineColor: index5.underlineColor,
+        },
       }
-      if (cell.underlineColor === null) {
-        return { pass: false, note: "underlineColor is null after SGR 58;5;5" }
+      const expected = "SGR 58 index 4/5 underline colors equal the distinct SGR 38 index 4/5 foreground colors"
+      if (
+        index4.char !== "X" ||
+        index5.char !== "Y" ||
+        index4.underline === undefined ||
+        index5.underline === undefined ||
+        !index4.fg ||
+        !index5.fg ||
+        index4.underlineColor === undefined ||
+        index5.underlineColor === undefined
+      ) {
+        return parserStateResult(null, expected, state, "Palette control or underline cell state was not exposed")
       }
-      // Palette index 5 is magenta in the standard 16-color palette — at minimum
-      // some red and some blue, no green. We accept any non-zero color since the
-      // exact palette mapping varies by terminal theme.
-      const c = cell.underlineColor
-      const looksColored = c.r > 0 || c.g > 0 || c.b > 0
-      return {
-        pass: looksColored,
-        note: looksColored ? undefined : `underlineColor is rgb(${c.r},${c.g},${c.b})`,
+      if (sameRgb(index4.fg, index5.fg)) {
+        return parserStateResult(null, expected, state, "Palette controls resolve to indistinguishable colors")
       }
+      const matches =
+        Boolean(index4.underline) &&
+        Boolean(index5.underline) &&
+        index4.underlineColor !== null &&
+        index5.underlineColor !== null &&
+        sameRgb(index4.fg, index4.underlineColor) &&
+        sameRgb(index5.fg, index5.underlineColor)
+      return parserStateResult(matches, expected, state)
     },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[4m\x1b[58;5;5mX\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-      }
-    },
+    (ctx) => consumedSgr(ctx, "\x1b[4m\x1b[58;5;5m"),
+    "consumed",
   ),
 
-  // SGR 58;2;R;G;B — truecolor underline color. Verify underline is active and,
-  // if exposed, that the underline color matches the requested RGB exactly.
-  probe(
-    "sgr.underline-color-rgb",
-    (ctx) => {
-      ctx.feed("\x1b[4m\x1b[58;2;255;0;128mX")
-      const cell = ctx.getCell(0, 0)
-      if (!cell.underline) return { pass: false, note: "underline not set" }
-      if (cell.underlineColor === undefined) {
-        // Backend doesn't track underline color per cell — accept underline alone.
-        return { pass: true, note: "underlineColor not tracked by backend" }
-      }
-      if (cell.underlineColor === null) {
-        return { pass: false, note: "underlineColor is null after SGR 58;2;255;0;128" }
-      }
-      const c = cell.underlineColor
-      const matches = c.r === 255 && c.g === 0 && c.b === 128
-      return {
-        pass: matches,
-        note: matches ? undefined : `underlineColor is rgb(${c.r},${c.g},${c.b}), expected rgb(255,0,128)`,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[4m\x1b[58;2;255;0;128mX\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-      }
-    },
-  ),
+  sgrProbe("sgr.underline-color-rgb", "\x1b[4m\x1b[58;2;255;0;128m", rgbUnderlineApplied),
 
   // SGR 59 — reset underline color. Set a colored underline on cell 0, then SGR 59
   // and write to cell 1. Cell 1 should still be underlined but without an explicit
@@ -135,35 +132,27 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.underline-color-reset",
     (ctx) => {
       ctx.feed("\x1b[4m\x1b[58;2;255;0;128mX\x1b[59mY")
-      const cell = ctx.getCell(0, 1)
-      if (!cell.underline) return { pass: false, note: "underline not set on cell 1" }
-      if (cell.underlineColor === undefined) {
-        // Backend doesn't track underline color per cell — accept underline alone.
-        return { pass: true, note: "underlineColor not tracked by backend" }
+      const before = ctx.getCell(0, 0)
+      const after = ctx.getCell(0, 1)
+      const state = { before, after }
+      const expected = "X has underline rgb(255,0,128); Y remains underlined with default/null color after SGR 59"
+      if (
+        before.char !== "X" ||
+        after.char !== "Y" ||
+        before.underline === undefined ||
+        after.underline === undefined ||
+        before.underlineColor === undefined ||
+        after.underlineColor === undefined
+      ) {
+        return parserStateResult(null, expected, state, "Before/after underline cell state was not exposed")
       }
-      // After SGR 59 the underline color should be null (default) — anything
-      // else (including the previously-set rgb(255,0,128)) means the reset was
-      // not honored.
-      const c = cell.underlineColor
-      if (c === null) return { pass: true }
-      const stillColored = c.r === 255 && c.g === 0 && c.b === 128
-      return {
-        pass: !stillColored,
-        note: stillColored
-          ? "underlineColor still rgb(255,0,128) after SGR 59 — reset not honored"
-          : `underlineColor is rgb(${c.r},${c.g},${c.b}) after SGR 59`,
+      if (!before.underline || !before.underlineColor || !sameRgb(before.underlineColor, requestedUnderlineColor)) {
+        return parserStateResult(null, expected, state, "Requested colored underline prerequisite was not observed")
       }
+      return parserStateResult(Boolean(after.underline) && after.underlineColor === null, expected, state)
     },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[4m\x1b[58;2;255;0;128m\x1b[59mX\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-      }
-    },
+    (ctx) => consumedSgr(ctx, "\x1b[4m\x1b[58;2;255;0;128m\x1b[59m"),
+    "consumed",
   ),
 
   // ── Colors ──
@@ -252,8 +241,9 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.fg.default",
     (ctx) => {
       ctx.feed("\x1b[31mX\x1b[39mY")
-      const cell = ctx.getCell(0, 1)
-      return { pass: cell.fg === null }
+      const before = ctx.getCell(0, 0)
+      const after = ctx.getCell(0, 1)
+      return { pass: before.char === "X" && Boolean(before.fg) && after.char === "Y" && after.fg === null }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
@@ -271,8 +261,9 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.bg.default",
     (ctx) => {
       ctx.feed("\x1b[42mX\x1b[49mY")
-      const cell = ctx.getCell(0, 1)
-      return { pass: cell.bg === null }
+      const before = ctx.getCell(0, 0)
+      const after = ctx.getCell(0, 1)
+      return { pass: before.char === "X" && Boolean(before.bg) && after.char === "Y" && after.bg === null }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
@@ -372,8 +363,16 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.selective-reset.bold",
     (ctx) => {
       ctx.feed("\x1b[1mX\x1b[22mY")
-      const cell = ctx.getCell(0, 1)
-      return { pass: cell.bold === false && cell.dim === false }
+      const before = ctx.getCell(0, 0)
+      const after = ctx.getCell(0, 1)
+      return {
+        pass:
+          before.char === "X" &&
+          before.bold === true &&
+          after.char === "Y" &&
+          after.bold === false &&
+          after.dim === false,
+      }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
@@ -391,8 +390,16 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.selective-reset.underline",
     (ctx) => {
       ctx.feed("\x1b[4mX\x1b[24mY")
-      const cell = ctx.getCell(0, 1)
-      return { pass: !cell.underline }
+      const before = ctx.getCell(0, 0)
+      const after = ctx.getCell(0, 1)
+      return {
+        pass:
+          before.char === "X" &&
+          Boolean(before.underline) &&
+          after.char === "Y" &&
+          after.underline !== undefined &&
+          !after.underline,
+      }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
@@ -410,8 +417,9 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.selective-reset.italic",
     (ctx) => {
       ctx.feed("\x1b[3mX\x1b[23mY")
-      const cell = ctx.getCell(0, 1)
-      return { pass: cell.italic === false }
+      const before = ctx.getCell(0, 0)
+      const after = ctx.getCell(0, 1)
+      return { pass: before.char === "X" && before.italic === true && after.char === "Y" && after.italic === false }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
@@ -429,8 +437,9 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.selective-reset.inverse",
     (ctx) => {
       ctx.feed("\x1b[7mX\x1b[27mY")
-      const cell = ctx.getCell(0, 1)
-      return { pass: cell.inverse === false }
+      const before = ctx.getCell(0, 0)
+      const after = ctx.getCell(0, 1)
+      return { pass: before.char === "X" && before.inverse === true && after.char === "Y" && after.inverse === false }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
@@ -450,8 +459,20 @@ export const sgrProbes: ProbeDefinition[] = [
     "sgr.reset",
     (ctx) => {
       ctx.feed("\x1b[1;3;4mX\x1b[0mY")
-      const cell = ctx.getCell(0, 1)
-      return { pass: cell.bold === false && cell.italic === false && !cell.underline }
+      const before = ctx.getCell(0, 0)
+      const after = ctx.getCell(0, 1)
+      return {
+        pass:
+          before.char === "X" &&
+          before.bold === true &&
+          before.italic === true &&
+          Boolean(before.underline) &&
+          after.char === "Y" &&
+          after.bold === false &&
+          after.italic === false &&
+          after.underline !== undefined &&
+          !after.underline,
+      }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")

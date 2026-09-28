@@ -406,6 +406,9 @@ function validateObservationOutcome(value: Record<string, unknown>, path: string
   if (value.reason !== undefined && !OBSERVATION_REASONS.includes(value.reason as NonNullable<Observation["reason"]>)) {
     fail(path, `invalid reason for ${featureId}`)
   }
+  if (value.reason === "insufficient-evidence" && value.outcome !== "inconclusive") {
+    fail(path, `insufficient-evidence requires inconclusive outcome for ${featureId}`)
+  }
   if ((value.outcome === "error" || value.outcome === "inconclusive") && !value.reason) {
     fail(path, `missing reason for ${featureId}`)
   }
