@@ -45,11 +45,14 @@ export const inputProbes: ProbeDefinition[] = [
     (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
     async (ctx) => {
       ctx.write("\x1b[>1u") // push CSI u level 1
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[<u") // pop
-      return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after enabling CSI u mode",
+      try {
+        const pos = await ctx.queryCursorPosition()
+        return {
+          pass: pos !== null,
+          note: pos ? undefined : "No cursor response after enabling CSI u mode",
+        }
+      } finally {
+        ctx.write("\x1b[<u") // pop the mode pushed for this probe, even if the query fails
       }
     },
   ),

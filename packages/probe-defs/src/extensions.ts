@@ -81,11 +81,14 @@ function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: number):
     id,
     (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
     async (ctx) => {
-      const match = await ctx.queryWithSentinel(`\x1b[>${pushValue}u\x1b[?u`, /\x1b\[\?(\d+)u/)
-      ctx.write("\x1b[<u") // pop
-      if (!match?.[1]) return { pass: false, note: "No kitty keyboard response" }
-      const flags = parseInt(match[1], 10)
-      return { pass: (flags & flagBit) !== 0, response: `flags=${flags}` }
+      try {
+        const match = await ctx.queryWithSentinel(`\x1b[>${pushValue}u\x1b[?u`, /\x1b\[\?(\d+)u/)
+        if (!match?.[1]) return { pass: false, note: "No kitty keyboard response" }
+        const flags = parseInt(match[1], 10)
+        return { pass: (flags & flagBit) !== 0, response: `flags=${flags}` }
+      } finally {
+        ctx.write("\x1b[<u") // pop the mode pushed for this probe, even if the query fails
+      }
     },
   )
 }
@@ -142,10 +145,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     async (ctx) => {
       // Push mode 1 + query atomically — some terminals only respond to
       // CSI ? u after a mode has been pushed (no response when stack is empty)
-      const match = await ctx.queryWithSentinel("\x1b[>1u\x1b[?u", /\x1b\[\?(\d+)u/)
-      ctx.write("\x1b[<u") // pop
-      if (!match?.[1]) return { pass: false, note: "No kitty keyboard response" }
-      return { pass: true, response: `flags=${match[1]}` }
+      try {
+        const match = await ctx.queryWithSentinel("\x1b[>1u\x1b[?u", /\x1b\[\?(\d+)u/)
+        if (!match?.[1]) return { pass: false, note: "No kitty keyboard response" }
+        return { pass: true, response: `flags=${match[1]}` }
+      } finally {
+        ctx.write("\x1b[<u") // pop the mode pushed for this probe, even if the query fails
+      }
     },
   ),
 

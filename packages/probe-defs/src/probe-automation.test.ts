@@ -142,6 +142,49 @@ describe("Kitty protocol detection", () => {
     }
     expect((await p.term(terminalContext({}))).pass).toBe(false)
   })
+
+  // A rejected query used to skip the pop and leak this probe's keyboard mode into later probes.
+  test("Kitty keyboard probes pop their own stack entry after a reply, no reply, or query error", async () => {
+    const cases = [
+      ["extensions.kitty-keyboard", 1],
+      ["extensions.kitty-keyboard.disambiguate", 1],
+      ["extensions.kitty-keyboard.report-events", 3],
+      ["extensions.kitty-keyboard.report-alternate", 5],
+      ["extensions.kitty-keyboard.report-all-keys", 9],
+      ["extensions.kitty-keyboard.report-text", 17],
+      ["input.csi-u", 1],
+    ] as const
+
+    for (const [id, flags] of cases) {
+      const p = probe(id)
+      if (!p.term) throw new Error(`${id} needs a TTY callback`)
+      for (const outcome of ["reply", "no-reply", "error"] as const) {
+        const writes: string[] = []
+        const failure = new Error(`${id}: query failed`)
+        const ctx = terminalContext({
+          write(text) {
+            writes.push(text)
+          },
+          queryWithSentinel: async (sequence) => {
+            writes.push(sequence)
+            if (outcome === "error") throw failure
+            return outcome === "reply" ? ["\x1b[?31u", "31"] : null
+          },
+          queryCursorPosition: async () => {
+            if (outcome === "error") throw failure
+            return outcome === "reply" ? { row: 1, col: 1 } : null
+          },
+        })
+
+        if (outcome === "error") await expect(p.term(ctx)).rejects.toBe(failure)
+        else expect((await p.term(ctx)).pass, `${id}: ${outcome}`).toBe(outcome === "reply")
+        expect(writes, `${id}: ${outcome}`).toEqual([
+          `\x1b[>${flags}u${id === "input.csi-u" ? "" : "\x1b[?u"}`,
+          "\x1b[<u",
+        ])
+      }
+    }
+  })
 })
 
 describe("partial probe automation candidates", () => {
