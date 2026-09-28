@@ -1,3 +1,10 @@
+/**
+ * @failure A website build labels another commit or missing GitHub attempt as the owning deployed source.
+ * @level l1 — measures build identity against an isolated real Git checkout.
+ * @consumer docs/.vitepress/config.ts build footer and emitted build metadata.
+ * @testonly none
+ */
+
 import { execFileSync } from "node:child_process"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"

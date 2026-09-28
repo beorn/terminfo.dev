@@ -1,3 +1,10 @@
+/**
+ * @failure A missing or mismatched container receipt is accepted as a host image's completed run.
+ * @level l1 — invokes the real shell receipt composer on owned temporary files.
+ * @consumer scripts/linux-container-run.sh host-side run receipt.
+ * @testonly none
+ */
+
 import { spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
