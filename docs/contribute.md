@@ -40,7 +40,7 @@ For example, [Kitty's keyboard query](https://sw.kovidgoyal.net/kitty/keyboard-p
 
 ## Reading results
 
-We are correcting older probes and results that treated sequence consumption or a missing reply as a complete support verdict. Historical booleans without the necessary evidence remain unverified; a new label cannot reconstruct evidence that was never captured.
+We are correcting older probes and results that treated sequence consumption or a missing reply as a conclusive support result. Historical booleans without the necessary evidence remain unverified; a new label cannot reconstruct evidence that was never captured.
 
 The model being introduced keeps outcome and method together: **supported**, **unsupported**, **inconclusive** or **collection error**, accompanied by the specific assertion and evidence. **Not tested** means there is no applicable observation. Documentation can describe an implementation, but is separate from a measured result. Older scorecards do not yet express all of these distinctions.
 

@@ -53,14 +53,24 @@ const fixture = vi.hoisted(() => {
     counts: { catalog: 270, tested: 2, notTested: 268, conclusive: 2, supported: 1, unsupported: 1 },
     ungradedDiagnostics: { evidence: "legacy", label: "old callback result, unverified", results: {} },
   }
+  const mux = {
+    ...selected,
+    runId: "tmux-reviewed",
+    sha256: "b".repeat(64),
+    target: { ...target, kind: "mux", id: "tmux", outerTerminal: "kitty", mux: "tmux" },
+    cells: {},
+    v1: { "sgr.bold": true },
+    counts: { catalog: 270, tested: 1, notTested: 269, conclusive: 1, supported: 1, unsupported: 0 },
+  }
   return {
     runSha256,
     measuredAt,
     selected,
+    mux,
     projection: {
-      current: { "app:kitty": selected },
-      versions: { "app:kitty": [selected] },
-      history: { "app:kitty": [selected] },
+      current: { "app:kitty": selected, "mux:tmux": mux },
+      versions: { "app:kitty": [selected], "mux:tmux": [mux] },
+      history: { "app:kitty": [selected], "mux:tmux": [mux] },
       exclusions: [],
     },
   }
@@ -68,7 +78,11 @@ const fixture = vi.hoisted(() => {
 
 vi.mock("../docs/data/current-results.ts", () => ({
   loadCurrentResults: () => ({ projection: fixture.projection }),
-  compatibilityTargets: () => new Map([["kitty", { contextKey: "app:kitty", selected: fixture.selected }]]),
+  compatibilityTargets: () =>
+    new Map([
+      ["kitty", { contextKey: "app:kitty", selected: fixture.selected }],
+      ["tmux", { contextKey: "mux:tmux", selected: fixture.mux }],
+    ]),
 }))
 
 import probesLoader from "../docs/data/probes.data.ts"
@@ -103,6 +117,9 @@ describe("selected-run consumer parity", () => {
       expect(v1.terminals.kitty.score).toMatchObject({ total: 2, pass: 1 })
       expect(v1.methodology.contexts.kitty).toMatchObject({ contextKey: "app:kitty", runSha256: fixture.runSha256 })
       expect(v2.current["app:kitty"].sha256).toBe(fixture.runSha256)
+      expect(v2.current["mux:tmux"].sha256).toBe(fixture.mux.sha256)
+      expect(v1.terminals.tmux).toBeUndefined()
+      expect(v1.results.tmux).toBeUndefined()
       expect(v2.current["app:kitty"].counts).toMatchObject({ conclusive: 2, supported: 1, unsupported: 1 })
       expect(analysis).toMatchObject({
         runSha256: fixture.runSha256,

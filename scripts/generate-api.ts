@@ -218,6 +218,7 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
   for (const { selected, contextKey, policy } of byTarget.values()) {
     if (selected.counts.conclusive === 0) continue
     const { kind, id, os } = selected.target
+    if (kind === "mux") continue // v1 terminal type only describes apps and headless engines; v2 carries mux targets.
     const meta = backendMeta[id]
     const label = kind === "app" ? (appLabels[id] ?? id) : (meta?.label ?? id)
     const slug = slugify(label)
