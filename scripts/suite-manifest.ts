@@ -7,6 +7,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { probeSuiteSnapshot, type ProbeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { parseSuiteManifest } from "../docs/data/selected-results.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const SUITES_DIR = join(ROOT, "content", "suites")
@@ -22,45 +23,26 @@ function sameStrings(actual: unknown, expected: string[]): actual is string[] {
   )
 }
 
-function verifyValue(value: unknown, path: string, snapshot: ProbeSuiteSnapshot): ProbeSuiteManifest {
-  if (
-    !isRecord(value) ||
-    Object.keys(value).sort().join(",") !== "adapterVersion,generatedAt,probeHash,probes,sourceRevision"
-  ) {
-    throw new Error(`Invalid suite manifest shape: ${path}`)
-  }
+function verifyValue(value: ProbeSuiteManifest, path: string, snapshot: ProbeSuiteSnapshot): ProbeSuiteManifest {
   if (value.probeHash !== snapshot.probeHash) throw new Error(`Suite hash mismatch: ${path}`)
   if (value.adapterVersion !== snapshot.adapterVersion) throw new Error(`Suite adapter version mismatch: ${path}`)
-  if (typeof value.sourceRevision !== "string" || !/^[0-9a-f]{40}$/.test(value.sourceRevision)) {
-    throw new Error(`Invalid suite sourceRevision: ${path}`)
-  }
-  if (
-    typeof value.generatedAt !== "string" ||
-    Number.isNaN(Date.parse(value.generatedAt)) ||
-    new Date(value.generatedAt).toISOString() !== value.generatedAt
-  ) {
-    throw new Error(`Invalid suite generatedAt: ${path}`)
-  }
-  if (!isRecord(value.probes) || Object.keys(value.probes).sort().join(",") !== "app,headless,mux") {
-    throw new Error(`Invalid suite probe kinds: ${path}`)
-  }
   for (const kind of KINDS) {
     if (!sameStrings(value.probes[kind], snapshot.probes[kind])) {
       throw new Error(`Suite ${kind} membership mismatch: ${path}`)
     }
   }
-  return value as unknown as ProbeSuiteManifest
+  return value
 }
 
 /** Verify a stored declaration against the currently executable suite. */
 export function verifySuiteManifest(path: string, snapshot: ProbeSuiteSnapshot): ProbeSuiteManifest {
-  let parsed: unknown
+  let source: string
   try {
-    parsed = JSON.parse(readFileSync(path, "utf8"))
+    source = readFileSync(path, "utf8")
   } catch (cause) {
     throw new Error(`Cannot read suite manifest ${path}`, { cause })
   }
-  return verifyValue(parsed, path, snapshot)
+  return verifyValue(parseSuiteManifest(path, source), path, snapshot)
 }
 
 /** Create exclusively; an existing hash is checked and its original metadata retained. */
@@ -69,7 +51,7 @@ export function persistSuiteManifest(
   manifest: ProbeSuiteManifest,
   snapshot: ProbeSuiteSnapshot,
 ): "created" | "existing" {
-  verifyValue(manifest, path, snapshot)
+  verifyValue(parseSuiteManifest(path, JSON.stringify(manifest)), path, snapshot)
   mkdirSync(dirname(path), { recursive: true })
   let descriptor: number
   try {

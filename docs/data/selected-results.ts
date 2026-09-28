@@ -14,6 +14,7 @@ import {
   type RunOrigin,
   type HeadlessRuntimeIdentity,
   type UngradedDiagnostic,
+  type ProbeSuiteManifest,
 } from "@terminfo/probe-defs"
 import { verifyTerminalIdentity, TERMINAL_IDENTITY_RULES } from "terminfo.dev/src/identity-guard.ts"
 
@@ -28,6 +29,7 @@ export interface LoadedRun {
   suiteId: string
   probeHash: string | null
   suiteComplete: boolean
+  suiteProbeCount: number | null
   sourceRevision: string | null
   measuredAt: string
   origin: RunOrigin
@@ -60,6 +62,7 @@ export interface SelectedVersion {
   suiteId: string
   probeHash: string | null
   suiteFreshness: string
+  suite: { observed: number; expected: number | null; complete: boolean }
   sourceRevision: string | null
   sha256: string
   cells: Record<string, SelectedCell>
@@ -344,7 +347,42 @@ function validateObservationOutcome(value: Record<string, unknown>, path: string
   }
 }
 
-export function parseRun(path: string, source: string, catalogIds: readonly string[]): LoadedRun {
+export function parseSuiteManifest(path: string, source: string): ProbeSuiteManifest {
+  const value = parseJsonStrict(path, source)
+  if (
+    !object(value) ||
+    Object.keys(value).sort().join(",") !== "adapterVersion,generatedAt,probeHash,probes,sourceRevision"
+  ) {
+    fail(path, "invalid suite manifest shape")
+  }
+  const probeHash = asString(value.probeHash, path, "suite probeHash")
+  const adapterVersion = asString(value.adapterVersion, path, "suite adapterVersion")
+  if (typeof value.sourceRevision !== "string" || !/^[0-9a-f]{40}$/.test(value.sourceRevision)) {
+    fail(path, "invalid suite sourceRevision")
+  }
+  if (!date(value.generatedAt) || new Date(value.generatedAt).toISOString() !== value.generatedAt) {
+    fail(path, "invalid suite generatedAt")
+  }
+  if (!object(value.probes) || Object.keys(value.probes).sort().join(",") !== "app,headless,mux") {
+    fail(path, "invalid suite probe kinds")
+  }
+  const probes: ProbeSuiteManifest["probes"] = { app: [], headless: [], mux: [] }
+  for (const kind of ["app", "headless", "mux"] as const) {
+    const ids = value.probes[kind]
+    if (!Array.isArray(ids) || !ids.every(nonempty) || new Set(ids).size !== ids.length) {
+      fail(path, `invalid ${kind} suite membership`)
+    }
+    probes[kind] = ids
+  }
+  return { probeHash, sourceRevision: value.sourceRevision, generatedAt: value.generatedAt, adapterVersion, probes }
+}
+
+export function parseRun(
+  path: string,
+  source: string,
+  catalogIds: readonly string[],
+  suites: ReadonlyMap<string, ProbeSuiteManifest> = new Map(),
+): LoadedRun {
   const raw = parseJsonStrict(path, source)
   if (!object(raw)) fail(path, "run must be an object")
   if (raw.schemaVersion !== undefined && raw.schemaVersion !== 2) {
@@ -398,6 +436,21 @@ export function parseRun(path: string, source: string, catalogIds: readonly stri
       fail(path, "duplicate observation feature ID")
     }
     if (raw.suiteComplete !== true && raw.suiteComplete !== false) fail(path, "missing suiteComplete")
+    const probeHash = asString(raw.probeHash, path, "probeHash")
+    const manifest = suites.get(probeHash)
+    if (!manifest || manifest.probeHash !== probeHash) {
+      fail(path, `unknown suite ${probeHash}; missing trusted manifest`)
+    }
+    const expected = new Set(manifest.probes[target.kind])
+    for (const observation of observations) {
+      if (!expected.has(observation.featureId)) {
+        fail(path, `${observation.featureId} is outside suite ${probeHash} for ${target.kind}`)
+      }
+    }
+    const suiteComplete = observations.length === expected.size
+    if (raw.suiteComplete !== suiteComplete) {
+      fail(path, `suiteComplete disagrees with observed membership (${observations.length} of ${expected.size} probes)`)
+    }
     if (!date(raw.measuredAt)) fail(path, "invalid measuredAt")
     return {
       path,
@@ -408,8 +461,9 @@ export function parseRun(path: string, source: string, catalogIds: readonly stri
       identity: raw.identity as LoadedRun["identity"],
       ...(runtimeIdentity && { runtimeIdentity }),
       suiteId: asString(raw.suiteId, path, "suiteId"),
-      probeHash: asString(raw.probeHash, path, "probeHash"),
-      suiteComplete: raw.suiteComplete,
+      probeHash,
+      suiteComplete,
+      suiteProbeCount: expected.size,
       sourceRevision: asString(raw.sourceRevision, path, "sourceRevision"),
       measuredAt: raw.measuredAt,
       origin: {
@@ -458,6 +512,7 @@ export function parseRun(path: string, source: string, catalogIds: readonly stri
     suiteId: "legacy",
     probeHash: typeof raw.probeHash === "string" ? raw.probeHash : null,
     suiteComplete: false,
+    suiteProbeCount: null,
     sourceRevision: null,
     measuredAt: raw.generated,
     origin: { kind: "collector" },
@@ -691,9 +746,11 @@ function projectRun(
     else if (cell.conclusive && cell.outcome === "unsupported") v1[id] = false
   }
   const suiteFreshness =
-    run.probeHash === currentProbeHash && run.suiteComplete
-      ? "current suite"
-      : `older suite (${run.observations.length} probes)${run.probeHash ? "" : "; missing probeHash"}`
+    !run.legacy && !run.suiteComplete
+      ? `partial (${run.observations.length} of ${run.suiteProbeCount} probes)`
+      : run.probeHash === currentProbeHash && run.suiteComplete
+        ? "current suite"
+        : `older suite (${run.observations.length} probes)${run.probeHash ? "" : "; missing probeHash"}`
   return {
     runId: run.runId,
     target: run.target,
@@ -701,6 +758,7 @@ function projectRun(
     suiteId: run.suiteId,
     probeHash: run.probeHash,
     suiteFreshness,
+    suite: { observed: run.observations.length, expected: run.suiteProbeCount, complete: run.suiteComplete },
     sourceRevision: run.sourceRevision,
     sha256: run.sha256,
     cells,
@@ -777,7 +835,9 @@ export function projectResults(
             ? "identity-replies-mismatch"
             : run.origin.kind === "community-issue" && !reviewed
               ? "community-unreviewed"
-              : null
+              : !run.suiteComplete
+                ? "suite-incomplete"
+                : null
     if (reason) {
       exclusions.push({ runId: run.runId, path: run.path, reason })
       continue
@@ -822,6 +882,18 @@ export function loadSelectedResults(contentDir: string, currentProbeHash: string
   const features = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8"))
   if (!object(features)) fail(featuresPath, "invalid catalog")
   const catalog = Object.keys(features).filter((id) => !id.startsWith("$"))
+  const suites = new Map<string, ProbeSuiteManifest>()
+  const suitesDir = join(contentDir, "suites")
+  if (existsSync(suitesDir)) {
+    for (const file of readdirSync(suitesDir)
+      .filter((name) => name.endsWith(".json"))
+      .sort()) {
+      const path = join(suitesDir, file)
+      const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+      if (file !== `${manifest.probeHash}.json`) fail(path, `suite filename does not match ${manifest.probeHash}`)
+      suites.set(manifest.probeHash, manifest)
+    }
+  }
   const runs: LoadedRun[] = []
   const verifiedScreenshots = new Set<string>()
   for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) {
@@ -831,7 +903,7 @@ export function loadSelectedResults(contentDir: string, currentProbeHash: string
       .filter((f) => f.endsWith(".json") && f !== "unified.json")
       .sort()) {
       const runPath = join(path, file)
-      const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog)
+      const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
       for (const ref of run.screenshotRefs) {
         if (verifiedScreenshots.has(ref)) continue
         const digest = ref.slice("sha256:".length)

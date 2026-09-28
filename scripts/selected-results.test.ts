@@ -9,9 +9,31 @@ import { createHash } from "node:crypto"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { loadSelectedResults, parseInterpretations, parseRun, projectResults } from "../docs/data/selected-results.ts"
+import {
+  loadSelectedResults,
+  parseInterpretations,
+  parseRun as parseRunSource,
+  projectResults,
+} from "../docs/data/selected-results.ts"
+import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
+const manifest = (probeHash: string, ids = ["extensions.graphics", "extensions.query"]): ProbeSuiteManifest => ({
+  probeHash,
+  sourceRevision: "1".repeat(40),
+  generatedAt: "2026-09-28T00:00:00.000Z",
+  adapterVersion: "3.3.1",
+  probes: { app: ids, headless: ids, mux: ids },
+})
+const manifests = new Map([
+  ["current", manifest("current")],
+  ["old", manifest("old")],
+  ["state", manifest("state", ["cursor.position"])],
+  ["pixels", manifest("pixels", ["extensions.graphics"])],
+  ["query", manifest("query", ["extensions.query"])],
+])
+const parseRun = (path: string, source: string, catalogIds: readonly string[]) =>
+  parseRunSource(path, source, catalogIds, manifests)
 const target = {
   kind: "app" as const,
   id: "kitty",
@@ -90,12 +112,55 @@ afterEach(() => {
 function temporaryContent() {
   const path = mkdtempSync(join(tmpdir(), "terminfo-selected-"))
   contentDirs.push(path)
-  for (const name of ["probes-apps", "probes-mux", "probes-libs", "artifacts"]) mkdirSync(join(path, name))
+  for (const name of ["probes-apps", "probes-mux", "probes-libs", "artifacts", "suites"]) mkdirSync(join(path, name))
+  for (const [hash, declaration] of manifests) {
+    writeFileSync(join(path, "suites", `${hash}.json`), JSON.stringify(declaration))
+  }
   writeFileSync(join(path, "features.json"), JSON.stringify(Object.fromEntries(catalog.map((id) => [id, {}]))))
   return path
 }
 
 describe("selected results", () => {
+  it("derives completeness from trusted target membership and refuses unknown suites", () => {
+    const partial = run("partial", { observations: [observation("extensions.query", "supported", "query")] })
+    expect(() => parseRun("partial.json", JSON.stringify(partial), catalog)).toThrow(/suiteComplete.*1.*2/)
+    const unknown = run("unknown-suite", { probeHash: "unknown" })
+    expect(() => parseRun("unknown-suite.json", JSON.stringify(unknown), catalog)).toThrow(/unknown suite.*unknown/)
+    const outside = run("outside", {
+      observations: [{ featureId: "cursor.position", outcome: "inconclusive", evidence: "query", reason: "timeout" }],
+      suiteComplete: false,
+    })
+    expect(() => parseRun("outside.json", JSON.stringify(outside), catalog)).toThrow(/cursor.position.*suite/)
+  })
+
+  it("keeps partial runs as labeled history and selects only complete runs", () => {
+    const complete = parseRun("complete.json", JSON.stringify(run("complete", { probeHash: "old" })), catalog)
+    const partial = parseRun(
+      "partial.json",
+      JSON.stringify(
+        run("partial", {
+          observations: [observation("extensions.query", "supported", "query")],
+          suiteComplete: false,
+          measuredAt: "2026-09-29T00:00:00.000Z",
+        }),
+      ),
+      catalog,
+    )
+    const projection = projectResults([complete, partial], [reviewFor(complete), reviewFor(partial)], catalog, {
+      currentProbeHash: "current",
+    })
+    expect(projection.current["app:kitty"]?.runId).toBe("complete")
+    expect(projection.versions["app:kitty"]?.map((value) => value.runId)).toEqual(["complete"])
+    expect(projection.history["app:kitty"]?.find((value) => value.runId === "partial")?.suiteFreshness).toBe(
+      "partial (1 of 2 probes)",
+    )
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "partial", reason: "suite-incomplete" }),
+    )
+    expect(projectResults([partial], [reviewFor(partial)], catalog, { currentProbeHash: "current" }).current).toEqual(
+      {},
+    )
+  })
   it("loads screenshot bytes by digest and refuses a missing or modified artifact", () => {
     const content = temporaryContent()
     const png = Buffer.from(
@@ -110,6 +175,7 @@ describe("selected results", () => {
       join(content, "probes-apps", "pixels.json"),
       JSON.stringify(
         run("pixels", {
+          probeHash: "pixels",
           screenshotRefs: [screenshotRef],
           observations: [{ featureId: "extensions.graphics", outcome: "supported", evidence: "pixels", screenshotRef }],
         }),
@@ -197,7 +263,10 @@ describe("selected results", () => {
   })
 
   it("requires expected and observed values bound to the same feature and raw record", () => {
-    const value = run("binding", { observations: [observation("extensions.query", "supported", "query")] })
+    const value = run("binding", {
+      probeHash: "query",
+      observations: [observation("extensions.query", "supported", "query")],
+    })
     for (const assertion of [
       {
         featureId: "extensions.graphics",
@@ -224,6 +293,7 @@ describe("selected results", () => {
   it("requires state observations and performed actions instead of bare capability flags", () => {
     const makeState = (observed: string, evidence: string, action?: string) =>
       run("state", {
+        probeHash: "state",
         observations: [
           { featureId: "cursor.position", outcome: "supported", evidence, rawReplyRef: "cursor.position" },
         ],
@@ -399,7 +469,12 @@ describe("selected results", () => {
     const timeout = parseRun(
       "timeout.json",
       JSON.stringify(
-        run("timeout", { observations: [observation("extensions.query", "inconclusive", "query", "timeout")] }),
+        run("timeout", {
+          observations: [
+            observation("extensions.query", "inconclusive", "query", "timeout"),
+            observation("extensions.graphics", "unsupported", "behavior"),
+          ],
+        }),
       ),
       catalog,
     )
