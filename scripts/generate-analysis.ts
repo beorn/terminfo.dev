@@ -217,7 +217,7 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
 function crossValidate(
   features: Record<string, FeatureMeta>,
   terminals: Record<string, TerminalMeta>,
-  resultMap: Map<string, { results: Record<string, boolean> }>,
+  resultMap: Map<string, SelectedAnalysisInput>,
   annotations: Record<string, { note: string; url?: string; result?: string }>,
 ): void {
   // Features in results should be in features.json — warn for missing
