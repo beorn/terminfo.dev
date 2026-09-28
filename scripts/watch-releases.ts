@@ -216,7 +216,7 @@ function parseCandidate(source: ReleaseSource, raw: unknown): ReleaseCandidate {
     excluded.push(source.type === "github-tags" ? "undated tag feed" : "missing publication time")
   const sourceUrl =
     source.type === "github-tags"
-      ? source.apiUrl.replace("api.github.com/repos/", "github.com/").replace(/\/tags$/, "/releases/tag") +
+      ? source.apiUrl.replace("api.github.com/repos/", "github.com/").replace(/\/tags$/, "/tree") +
         "/" +
         encodeURIComponent(tag)
       : raw.html_url

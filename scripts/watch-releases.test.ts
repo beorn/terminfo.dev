@@ -83,6 +83,19 @@ describe("monthly release cutoff", () => {
     ])
   })
 
+  it("treats a tag-only source as undated and links to the tag itself", async () => {
+    const tags: ReleaseSource = {
+      terminal: "example",
+      label: "Example",
+      type: "github-tags",
+      apiUrl: "https://api.github.com/repos/example/terminal/tags",
+    }
+    const { fetcher } = pages([{ name: "v1.3.0" }], [])
+    const candidates = await fetchReleaseFeed(tags, fetcher)
+    expect(candidates[0]?.excluded).toEqual(["undated tag feed"])
+    expect(candidates[0]?.sourceUrl).toBe("https://github.com/example/terminal/tree/v1.3.0")
+  })
+
   it("refuses a feed that cannot be proven complete within the page bound", async () => {
     const { fetcher } = pages([release("v1.1.0", "2026-08-01T00:00:00Z")], [release("v1.2.0", "2026-08-02T00:00:00Z")])
     await expect(fetchReleaseFeed(source, fetcher, 1)).rejects.toThrow("release feed incomplete after 1 pages")
