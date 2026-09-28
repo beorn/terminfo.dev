@@ -93,8 +93,35 @@ test("TBC accepts a measured right-margin tab and restores an eight-column fixtu
   const stationary = await probe.term(
     app({ queryCursorPosition: async () => ({ row: 1, col: ++stationaryQueries === 1 ? 9 : 1 }) }),
   )
-  expect(stationary.observation).toMatchObject({ outcome: "inconclusive", evidence: "behavior" })
+  expect(stationary.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "behavior",
+  })
   expect((await probe.term(app())).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+})
+
+test("TBC retains vterm's no-stop cursor state as inconclusive", () => {
+  const feeds: string[] = []
+  let read = 0
+  const result = byId("text.tbc").termless(
+    headless({
+      feed(sequence) {
+        feeds.push(sequence)
+      },
+      // Actual vterm.js 0.7.0 observation at 80 columns: first tab x=8,
+      // after TBC with no remaining stops x=0. HT's destination is unspecified.
+      getCursor: () => ({ x: read++ === 0 ? 8 : 0, y: 0, visible: true, style: null }),
+    }),
+  )
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "parser-state",
+  })
+  expect(JSON.parse(result.response ?? "")).toMatchObject({ cols: 80, before: { x: 8 }, after: { x: 0 } })
+  expect(result.assertions).toBeUndefined()
+  expect(feeds.at(-1)).toContain("\x1b[1;73H\x1bH")
 })
 
 test("CHT and CBT establish tab stops independent of inherited terminal state", async () => {
@@ -121,7 +148,10 @@ test("CHT and CBT establish tab stops independent of inherited terminal state", 
     )
     expect(ignored.observation).toMatchObject({ outcome: "unsupported", evidence: "behavior" })
   }
-  expect((await byId("text.cht").term(app({ cols: 12 }))).observation).toMatchObject({ outcome: "inconclusive" })
+  expect((await byId("text.cht").term(app({ cols: 12 }))).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+  })
 })
 
 test("headless HTS restores tab stops within the initialized grid width", () => {

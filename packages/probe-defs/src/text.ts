@@ -313,6 +313,7 @@ export const textProbes: ProbeDefinition[] = [
           pass: false,
           observation: {
             outcome: "inconclusive",
+            reason: "insufficient-evidence",
             evidence: "parser-state",
             note: "Tab fixture needs at least 17 columns",
           },
@@ -331,6 +332,7 @@ export const textProbes: ProbeDefinition[] = [
             response,
             observation: {
               outcome: "inconclusive",
+              reason: "insufficient-evidence",
               evidence: "parser-state",
               note: "Could not establish the initial tab stop",
             },
@@ -345,6 +347,7 @@ export const textProbes: ProbeDefinition[] = [
           response,
           observation: {
             outcome: pass ? "supported" : unchanged ? "unsupported" : "inconclusive",
+            ...(pass || unchanged ? {} : { reason: "insufficient-evidence" as const }),
             evidence: "parser-state",
           },
           ...(pass || unchanged
@@ -367,7 +370,12 @@ export const textProbes: ProbeDefinition[] = [
       if (ctx.cols < 17) {
         return {
           pass: false,
-          observation: { outcome: "inconclusive", evidence: "behavior", note: "Tab fixture needs at least 17 columns" },
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "behavior",
+            note: "Tab fixture needs at least 17 columns",
+          },
         }
       }
       try {
@@ -390,6 +398,7 @@ export const textProbes: ProbeDefinition[] = [
             response,
             observation: {
               outcome: "inconclusive",
+              reason: "insufficient-evidence",
               evidence: "behavior",
               note: "Could not establish the initial tab stop",
             },
@@ -402,6 +411,7 @@ export const textProbes: ProbeDefinition[] = [
           response,
           observation: {
             outcome: pass ? "supported" : unchanged ? "unsupported" : "inconclusive",
+            ...(pass || unchanged ? {} : { reason: "insufficient-evidence" as const }),
             evidence: "behavior",
           },
           ...(pass || unchanged
@@ -433,6 +443,7 @@ export const textProbes: ProbeDefinition[] = [
           pass: false,
           observation: {
             outcome: "inconclusive",
+            reason: "insufficient-evidence",
             evidence: "parser-state",
             note: "Tab fixture needs at least 21 columns",
           },
@@ -451,7 +462,12 @@ export const textProbes: ProbeDefinition[] = [
       if (ctx.cols < 21) {
         return {
           pass: false,
-          observation: { outcome: "inconclusive", evidence: "behavior", note: "Tab fixture needs at least 21 columns" },
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "behavior",
+            note: "Tab fixture needs at least 21 columns",
+          },
         }
       }
       try {
@@ -475,6 +491,7 @@ export const textProbes: ProbeDefinition[] = [
           pass: false,
           observation: {
             outcome: "inconclusive",
+            reason: "insufficient-evidence",
             evidence: "parser-state",
             note: "Tab fixture needs at least 21 columns",
           },
@@ -493,7 +510,12 @@ export const textProbes: ProbeDefinition[] = [
       if (ctx.cols < 21) {
         return {
           pass: false,
-          observation: { outcome: "inconclusive", evidence: "behavior", note: "Tab fixture needs at least 21 columns" },
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "behavior",
+            note: "Tab fixture needs at least 21 columns",
+          },
         }
       }
       try {
