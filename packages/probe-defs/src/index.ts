@@ -5,14 +5,17 @@ export type {
   ObservationReason,
   ObservationEvidence,
   Observation,
+  ObservationFrame,
   ProbeTarget,
   ProbeSuiteManifest,
   RunOrigin,
   AppLaunchReceipt,
+  AppSourceArtifact,
   ProbeAssertion,
   UngradedDiagnostic,
   HeadlessRuntimeIdentity,
   ProbeRun,
+  RunProvenance,
   Interpretation,
 } from "./types.ts"
 export {

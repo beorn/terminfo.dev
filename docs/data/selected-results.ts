@@ -8,12 +8,14 @@ import {
   OBSERVATION_REASONS,
   type Interpretation,
   type Observation,
+  type ObservationFrame,
   type ProbeAssertion,
   type ProbeRun,
   type ProbeTarget,
   type RunOrigin,
   type AppLaunchReceipt,
   type HeadlessRuntimeIdentity,
+  type RunProvenance,
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
 } from "@terminfo/probe-defs"
@@ -27,6 +29,7 @@ export interface LoadedRun {
   target: ProbeTarget
   identity: ProbeRun["identity"]
   runtimeIdentity?: HeadlessRuntimeIdentity
+  provenance?: RunProvenance
   suiteId: string
   probeHash: string | null
   suiteComplete: boolean
@@ -289,6 +292,65 @@ function parseRuntimeIdentity(value: unknown, target: ProbeTarget, path: string)
   }
 }
 
+function parseObservationFrames(
+  value: unknown,
+  path: string,
+  featureId: string,
+  screenshotRefs: readonly string[],
+  primaryRef: string | undefined,
+  evidence: Observation["evidence"],
+): ObservationFrame[] | undefined {
+  if (value === undefined) return undefined
+  if (evidence !== "pixels" || !Array.isArray(value) || value.length < 2) {
+    fail(path, `invalid frames for ${featureId}; pixels require control and target`)
+  }
+  const frames: ObservationFrame[] = value.map((entry: unknown, index: number) => {
+    if (!object(entry) || !["control", "target"].includes(String(entry.role))) {
+      fail(path, `invalid frame role ${index} for ${featureId}`)
+    }
+    const ref = asString(entry.ref, path, `frame ${index} ref for ${featureId}`)
+    if (!screenshotDigest(ref)) fail(path, `invalid frame ref ${index} for ${featureId}`)
+    if (!screenshotRefs.includes(ref)) fail(path, `frame ${ref} is absent from run`)
+    if (typeof entry.capturedAt !== "number" || !Number.isFinite(entry.capturedAt) || entry.capturedAt < 0) {
+      fail(path, `invalid frame capturedAt ${index} for ${featureId}`)
+    }
+    const label = asString(entry.label, path, `frame ${index} label for ${featureId}`)
+    const sourceRef = entry.sourceRef
+    if (sourceRef !== undefined && !screenshotDigest(sourceRef)) {
+      fail(path, `invalid frame sourceRef ${index} for ${featureId}`)
+    }
+    return {
+      role: entry.role as ObservationFrame["role"],
+      ref,
+      capturedAt: entry.capturedAt,
+      label,
+      ...(sourceRef && { sourceRef }),
+    }
+  })
+  const targets = frames.filter((frame) => frame.role === "target")
+  if (!frames.some((frame) => frame.role === "control") || targets.length === 0) {
+    fail(path, `frames for ${featureId} require control and target`)
+  }
+  if (!primaryRef || !targets.some((frame) => frame.ref === primaryRef)) {
+    fail(path, `primary screenshotRef for ${featureId} must be a target frame`)
+  }
+  let priorTargetAt = -1
+  for (const targetFrame of targets) {
+    if (targetFrame.capturedAt <= priorTargetAt) {
+      fail(path, `target frames for ${featureId} require strictly increasing capturedAt`)
+    }
+    priorTargetAt = targetFrame.capturedAt
+  }
+  return frames
+}
+
+const TEMPORAL_PIXEL_FEATURES = new Set([
+  "sgr.blink",
+  "extensions.kitty-graphics.animation",
+  "modes.synchronized-output",
+  "extensions.osc555-flash",
+])
+
 function parseObservation(
   value: unknown,
   path: string,
@@ -301,6 +363,9 @@ function parseObservation(
   const featureId = asString(value.featureId, path, "observation.featureId")
   if (!catalog.has(featureId)) fail(path, `unknown feature ${featureId}`)
   validateObservationOutcome(value, path, featureId)
+  if (value.evidence === "pixels" && (value.outcome === "supported" || value.outcome === "unsupported")) {
+    fail(path, `collector pixels for ${featureId} must remain inconclusive until reviewed Interpretation`)
+  }
   const rawReplyRef =
     value.rawReplyRef === undefined ? undefined : asString(value.rawReplyRef, path, `rawReplyRef for ${featureId}`)
   if (rawReplyRef && !Object.hasOwn(rawReplies, rawReplyRef)) {
@@ -310,12 +375,20 @@ function parseObservation(
     value.screenshotRef === undefined
       ? undefined
       : asString(value.screenshotRef, path, `screenshotRef for ${featureId}`)
-  if (value.evidence === "pixels" && !screenshotRef) {
+  if (value.evidence === "pixels" && value.outcome !== "error" && !screenshotRef) {
     fail(path, `pixels observation ${featureId} requires screenshotRef`)
   }
   if (screenshotRef && !screenshotRefs.includes(screenshotRef)) {
     fail(path, `screenshotRef ${screenshotRef} is absent from run`)
   }
+  const frames = parseObservationFrames(
+    value.frames,
+    path,
+    featureId,
+    screenshotRefs,
+    screenshotRef,
+    value.evidence as Observation["evidence"],
+  )
   const observation: Observation = {
     featureId,
     outcome: value.outcome as Observation["outcome"],
@@ -324,6 +397,7 @@ function parseObservation(
   if (value.reason !== undefined) observation.reason = value.reason as Observation["reason"]
   if (rawReplyRef) observation.rawReplyRef = rawReplyRef
   if (screenshotRef) observation.screenshotRef = screenshotRef
+  if (frames) observation.frames = frames
   if (value.note !== undefined) observation.note = asString(value.note, path, `note for ${featureId}`)
   validateObservation(observation, path, rawReplies, assertions)
   return observation
@@ -472,9 +546,48 @@ function parseAppLaunchReceipt(
     fail(path, "invalid appLaunch.executableSha256")
   }
   if (!object(value.sourceArtifact)) fail(path, "missing appLaunch.sourceArtifact")
-  const sourcePath = asString(value.sourceArtifact.path, path, "appLaunch.sourceArtifact.path")
-  if (!sourcePath.startsWith("/") || !/^[a-f0-9]{64}$/.test(String(value.sourceArtifact.sha256))) {
-    fail(path, "invalid appLaunch.sourceArtifact")
+  let sourceArtifact: AppLaunchReceipt["sourceArtifact"]
+  if (value.sourceArtifact.kind === "sealed-macos-system-volume") {
+    if (
+      Object.keys(value.sourceArtifact).sort().join(",") !==
+      "codeSignature,kind,macOSBuild,sealed,snapshotName,snapshotUUID"
+    ) {
+      fail(path, "invalid sealed appLaunch.sourceArtifact fields")
+    }
+    const macOSBuild = asString(value.sourceArtifact.macOSBuild, path, "appLaunch.sourceArtifact.macOSBuild")
+    const snapshotUUID = asString(value.sourceArtifact.snapshotUUID, path, "appLaunch.sourceArtifact.snapshotUUID")
+    const snapshotName = asString(value.sourceArtifact.snapshotName, path, "appLaunch.sourceArtifact.snapshotName")
+    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(snapshotUUID)) {
+      fail(path, "invalid appLaunch.sourceArtifact.snapshotUUID")
+    }
+    if (value.sourceArtifact.sealed !== true) fail(path, "appLaunch.sourceArtifact.sealed must be true")
+    if (!object(value.sourceArtifact.codeSignature)) fail(path, "missing appLaunch.sourceArtifact.codeSignature")
+    const identifier = asString(
+      value.sourceArtifact.codeSignature.identifier,
+      path,
+      "appLaunch.codeSignature.identifier",
+    )
+    const cdHash = asString(value.sourceArtifact.codeSignature.cdHash, path, "appLaunch.codeSignature.cdHash")
+    if (!/^[a-f0-9]{40}$/.test(cdHash)) fail(path, "invalid appLaunch.sourceArtifact.codeSignature.cdHash")
+    if (value.sourceArtifact.codeSignature.strictVerified !== true) {
+      fail(path, "appLaunch.sourceArtifact.codeSignature.strictVerified must be true")
+    }
+    sourceArtifact = {
+      kind: "sealed-macos-system-volume",
+      macOSBuild,
+      snapshotUUID,
+      snapshotName,
+      sealed: true,
+      codeSignature: { identifier, cdHash, strictVerified: true },
+    }
+  } else if (value.sourceArtifact.kind === undefined) {
+    const sourcePath = asString(value.sourceArtifact.path, path, "appLaunch.sourceArtifact.path")
+    if (!sourcePath.startsWith("/") || !/^[a-f0-9]{64}$/.test(String(value.sourceArtifact.sha256))) {
+      fail(path, "invalid appLaunch.sourceArtifact")
+    }
+    sourceArtifact = { path: sourcePath, sha256: value.sourceArtifact.sha256 as string }
+  } else {
+    fail(path, "unknown appLaunch.sourceArtifact kind")
   }
   return {
     bundlePath,
@@ -482,7 +595,83 @@ function parseAppLaunchReceipt(
     cfBundleVersion,
     executablePath,
     executableSha256: value.executableSha256 as string,
-    sourceArtifact: { path: sourcePath, sha256: value.sourceArtifact.sha256 as string },
+    sourceArtifact,
+  }
+}
+
+/** The collector and loader share this validation before a native run is sealed or selected. */
+export function parseRunProvenance(
+  value: unknown,
+  target: ProbeTarget,
+  expected: { probeHash: string; sourceRevision: string },
+  path: string,
+): RunProvenance | undefined {
+  if (value === undefined) return undefined
+  if (target.kind !== "app") fail(path, "native provenance requires an app target")
+  if (
+    !object(value) ||
+    !object(value.executable) ||
+    !object(value.sourceArtifact) ||
+    !object(value.runtime) ||
+    !object(value.fixture)
+  ) {
+    fail(path, "invalid native provenance blocks")
+  }
+  const digest = (input: unknown, field: string): string => {
+    const parsed = asString(input, path, field)
+    if (!/^[a-f0-9]{64}$/.test(parsed)) fail(path, `invalid ${field} SHA256`)
+    return parsed
+  }
+  const executablePath = asString(value.executable.path, path, "provenance.executable.path")
+  if (!executablePath.startsWith("/")) fail(path, "provenance.executable.path must be absolute")
+  const version = asString(value.executable.version, path, "provenance.executable.version")
+  const versionTokens = version.match(/(?<![A-Za-z0-9.])\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9.-]+)?(?![A-Za-z0-9.])/g)
+  if (versionTokens?.length !== 1 || versionTokens[0] !== target.version) {
+    fail(path, `provenance.executable.version differs from target.version ${target.version}`)
+  }
+  const sourceUrl = asString(value.sourceArtifact.url, path, "provenance.sourceArtifact.url")
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(sourceUrl)
+  } catch {
+    fail(path, "invalid provenance.sourceArtifact.url")
+  }
+  if (parsedUrl.protocol !== "https:") fail(path, "provenance.sourceArtifact.url must use HTTPS")
+  const imageId = asString(value.runtime.imageId, path, "provenance.runtime.imageId")
+  if (!/^sha256:[a-f0-9]{64}$/.test(imageId)) fail(path, "invalid provenance.runtime.imageId")
+  const nixLockRevision = asString(value.runtime.nixLockRevision, path, "provenance.runtime.nixLockRevision")
+  if (!/^[a-f0-9]{40}$/.test(nixLockRevision)) fail(path, "invalid provenance.runtime.nixLockRevision")
+  const sourceRevision = asString(value.runtime.sourceRevision, path, "provenance.runtime.sourceRevision")
+  if (!/^[a-f0-9]{40}$/.test(sourceRevision) || sourceRevision !== expected.sourceRevision) {
+    fail(path, "provenance.runtime.sourceRevision differs from run sourceRevision")
+  }
+  const suiteHash = asString(value.runtime.suiteHash, path, "provenance.runtime.suiteHash")
+  if (suiteHash !== expected.probeHash) fail(path, "provenance.runtime.suiteHash differs from run probeHash")
+  if (typeof value.runtime.cleanTree !== "boolean") fail(path, "provenance.runtime.cleanTree must be boolean")
+  return {
+    executable: {
+      path: executablePath,
+      sha256: digest(value.executable.sha256, "provenance.executable.sha256"),
+      version,
+    },
+    sourceArtifact: { url: sourceUrl, sha256: digest(value.sourceArtifact.sha256, "provenance.sourceArtifact.sha256") },
+    runtime: {
+      imageId,
+      imageTarSha256: digest(value.runtime.imageTarSha256, "provenance.runtime.imageTarSha256"),
+      arch: asString(value.runtime.arch, path, "provenance.runtime.arch"),
+      nixLockRevision,
+      sourceRevision,
+      cleanTree: value.runtime.cleanTree,
+      suiteHash,
+    },
+    fixture: {
+      definition: asString(value.fixture.definition, path, "provenance.fixture.definition"),
+      config: asString(value.fixture.config, path, "provenance.fixture.config"),
+      font: asString(value.fixture.font, path, "provenance.fixture.font"),
+      geometry: asString(value.fixture.geometry, path, "provenance.fixture.geometry"),
+      display: asString(value.fixture.display, path, "provenance.fixture.display"),
+      gl: asString(value.fixture.gl, path, "provenance.fixture.gl"),
+    },
   }
 }
 
@@ -552,6 +741,8 @@ export function parseRun(
     }
     if (raw.suiteComplete !== true && raw.suiteComplete !== false) fail(path, "missing suiteComplete")
     const probeHash = asString(raw.probeHash, path, "probeHash")
+    const sourceRevision = asString(raw.sourceRevision, path, "sourceRevision")
+    const provenance = parseRunProvenance(raw.provenance, target, { probeHash, sourceRevision }, path)
     const manifest = suites.get(probeHash)
     if (!manifest || manifest.probeHash !== probeHash) {
       fail(path, `unknown suite ${probeHash}; missing trusted manifest`)
@@ -575,11 +766,12 @@ export function parseRun(
       target,
       identity: raw.identity as LoadedRun["identity"],
       ...(runtimeIdentity && { runtimeIdentity }),
+      ...(provenance && { provenance }),
       suiteId: asString(raw.suiteId, path, "suiteId"),
       probeHash,
       suiteComplete,
       suiteProbeCount: expected.size,
-      sourceRevision: asString(raw.sourceRevision, path, "sourceRevision"),
+      sourceRevision,
       measuredAt: raw.measuredAt,
       origin: {
         kind: raw.origin.kind as RunOrigin["kind"],
@@ -836,7 +1028,8 @@ function projectRun(
     if (entry.observation.featureId !== entry.featureId) {
       throw new Error(`interpretation ${entry.id}: observation feature mismatch`)
     }
-    if (!run.observations.some((observation) => observation.featureId === entry.featureId)) {
+    const recordedObservation = run.observations.find((observation) => observation.featureId === entry.featureId)
+    if (!recordedObservation) {
       throw new Error(`interpretation ${entry.id}: no raw observation for ${entry.featureId}`)
     }
     const observation = entry.observation
@@ -852,6 +1045,49 @@ function projectRun(
     }
     if (observation.screenshotRef && !run.screenshotRefs.includes(observation.screenshotRef)) {
       throw new Error(`interpretation ${entry.id}: unknown screenshotRef ${observation.screenshotRef}`)
+    }
+    const frames = parseObservationFrames(
+      observation.frames,
+      `interpretation ${entry.id}`,
+      entry.featureId,
+      run.screenshotRefs,
+      observation.screenshotRef,
+      observation.evidence,
+    )
+    if (
+      observation.evidence === "pixels" &&
+      (observation.outcome === "supported" || observation.outcome === "unsupported")
+    ) {
+      if (entry.runId !== run.runId || entry.runSha256 !== run.sha256) {
+        throw new Error(`pixels interpretation ${entry.id} requires exact run SHA256`)
+      }
+      if (!frames) throw new Error(`pixels interpretation ${entry.id} requires control and target frames`)
+      const originalFrames = [...(recordedObservation.frames ?? [])]
+      for (const frame of frames) {
+        const match = originalFrames.findIndex(
+          (recorded) =>
+            recorded.role === frame.role &&
+            recorded.ref === frame.ref &&
+            recorded.capturedAt === frame.capturedAt &&
+            recorded.label === frame.label &&
+            recorded.sourceRef === frame.sourceRef,
+        )
+        if (match < 0) {
+          throw new Error(
+            `pixels interpretation ${entry.id} cites a frame outside immutable ${entry.featureId} feature frames`,
+          )
+        }
+        originalFrames.splice(match, 1)
+      }
+      if (
+        TEMPORAL_PIXEL_FEATURES.has(entry.featureId) &&
+        frames.filter((frame) => frame.role === "target").length < 2
+      ) {
+        throw new Error(`temporal pixels interpretation ${entry.id} requires 2 target frames`)
+      }
+      if (run.target.os?.toLowerCase().startsWith("linux") && !run.provenance) {
+        throw new Error(`pixels interpretation ${entry.id} requires Linux fixture provenance for geometry and font`)
+      }
     }
     cells[entry.featureId] = {
       ...observation,
@@ -982,17 +1218,21 @@ export function projectResults(
           ? run.identity === "unverified"
             ? "identity-unverified"
             : "identity-unreviewed"
-          : !identityRepliesMatch(run)
-            ? run.target.kind === "headless"
-              ? "runtime-identity-unverified"
-              : "identity-replies-mismatch"
-            : !/^[0-9a-f]{40}$/.test(run.sourceRevision ?? "")
-              ? "source-uncommitted"
-              : run.origin.kind === "community-issue" && !reviewed
-                ? "community-unreviewed"
-                : !run.suiteComplete
-                  ? "suite-incomplete"
-                  : null
+          : run.target.kind === "app" && run.target.os?.toLowerCase().startsWith("linux") && !run.provenance
+            ? "native-provenance-missing"
+            : run.provenance && !run.provenance.runtime.cleanTree
+              ? "native-provenance-dirty"
+              : !identityRepliesMatch(run)
+                ? run.target.kind === "headless"
+                  ? "runtime-identity-unverified"
+                  : "identity-replies-mismatch"
+                : !/^[0-9a-f]{40}$/.test(run.sourceRevision ?? "")
+                  ? "source-uncommitted"
+                  : run.origin.kind === "community-issue" && !reviewed
+                    ? "community-unreviewed"
+                    : !run.suiteComplete
+                      ? "suite-incomplete"
+                      : null
     if (reason) {
       exclusions.push({ runId: run.runId, path: run.path, reason })
       continue

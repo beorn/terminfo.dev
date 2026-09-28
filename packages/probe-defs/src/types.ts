@@ -42,7 +42,18 @@ export interface Observation {
   evidence: ObservationEvidence
   rawReplyRef?: string
   screenshotRef?: string
+  frames?: ObservationFrame[]
   note?: string
+}
+
+/** Collector-owned capture checkpoint, with the published PNG bound by its digest. */
+export interface ObservationFrame {
+  role: "control" | "target"
+  ref: string
+  capturedAt: number
+  label: string
+  /** Original capture bytes, such as XWD; retained with the raw run receipt. */
+  sourceRef?: string
 }
 
 export interface ProbeTarget {
@@ -70,8 +81,20 @@ export interface AppLaunchReceipt {
   cfBundleVersion: string
   executablePath: string
   executableSha256: string
-  sourceArtifact: { path: string; sha256: string }
+  sourceArtifact: AppSourceArtifact
 }
+
+/** An installed app may come from a retained file or a measured sealed macOS system volume. */
+export type AppSourceArtifact =
+  | { path: string; sha256: string }
+  | {
+      kind: "sealed-macos-system-volume"
+      macOSBuild: string
+      snapshotUUID: string
+      snapshotName: string
+      sealed: true
+      codeSignature: { identifier: string; cdHash: string; strictVerified: true }
+    }
 
 /** Immutable declaration of the probes available in one suite revision. */
 export interface ProbeSuiteManifest {
@@ -148,6 +171,8 @@ export interface ProbeRun {
   target: ProbeTarget
   identity: "verified" | "unverified" | "disputed"
   runtimeIdentity?: HeadlessRuntimeIdentity
+  /** Measured in the running native-app environment before the run is sealed. */
+  provenance?: RunProvenance
   suiteId: string
   probeHash: string
   suiteComplete: boolean
@@ -159,6 +184,22 @@ export interface ProbeRun {
   screenshotRefs: string[]
   observations: Observation[]
   ungradedDiagnostics?: Record<string, UngradedDiagnostic>
+}
+
+/** One native-app receipt, independent of which OS executed the collector. */
+export interface RunProvenance {
+  executable: { path: string; sha256: string; version: string }
+  sourceArtifact: { url: string; sha256: string }
+  runtime: {
+    imageId: string
+    imageTarSha256: string
+    arch: string
+    nixLockRevision: string
+    sourceRevision: string
+    cleanTree: boolean
+    suiteHash: string
+  }
+  fixture: { definition: string; config: string; font: string; geometry: string; display: string; gl: string }
 }
 
 export interface Interpretation {
@@ -245,6 +286,8 @@ export interface TermContext {
   queryOutcome(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<TerminalQueryOutcome>
   queryWithSentinelOutcome(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<TerminalQueryOutcome>
   queryMode(modeNum: number): Promise<"set" | "reset" | "unknown" | null>
+  /** Present only when an owned OS capture adapter is installed for this run. */
+  capture?: (request: Pick<ObservationFrame, "role" | "label">) => Promise<ObservationFrame>
   cols: number
 }
 

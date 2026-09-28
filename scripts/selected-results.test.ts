@@ -15,7 +15,7 @@ import {
   parseRun as parseRunSource,
   projectResults,
 } from "../docs/data/selected-results.ts"
-import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
+import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
 const manifest = (probeHash: string, ids = ["extensions.graphics", "extensions.query"]): ProbeSuiteManifest => ({
@@ -190,7 +190,15 @@ describe("selected results", () => {
         run("pixels", {
           probeHash: "pixels",
           screenshotRefs: [screenshotRef],
-          observations: [{ featureId: "extensions.graphics", outcome: "supported", evidence: "pixels", screenshotRef }],
+          observations: [
+            {
+              featureId: "extensions.graphics",
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef,
+            },
+          ],
         }),
       ),
     )
@@ -663,6 +671,61 @@ describe("selected results", () => {
     ).toThrow(/executableSha256/)
   })
 
+  it("accepts only a fully measured sealed macOS system-volume source for Terminal.app", () => {
+    const appLaunch = {
+      bundlePath: "/System/Applications/Utilities/Terminal.app",
+      cfBundleShortVersionString: "2.15",
+      cfBundleVersion: "455",
+      executablePath: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+      executableSha256: "a".repeat(64),
+      sourceArtifact: {
+        kind: "sealed-macos-system-volume",
+        macOSBuild: "25E144",
+        snapshotUUID: "11111111-2222-3333-4444-555555555555",
+        snapshotName: "com.apple.os.update-AAA",
+        sealed: true,
+        codeSignature: { identifier: "com.apple.Terminal", cdHash: "b".repeat(40), strictVerified: true },
+      },
+    }
+    const candidate = (launch: unknown) =>
+      parseRun(
+        "sealed-terminal.json",
+        JSON.stringify(
+          run("sealed-terminal", {
+            target: { ...target, id: "terminal-app", version: "2.15" },
+            rawReplies: {
+              "device.primary-da": "\x1b[?1;2c",
+              "device.secondary-da": "\x1b[>1;95;0c",
+              "extensions.query": "ACK",
+              "extensions.graphics": "NO",
+            },
+            origin: { kind: "collector", appLaunch: launch },
+          }),
+        ),
+        catalog,
+      )
+    const accepted = candidate(appLaunch)
+    expect(accepted.origin.appLaunch?.sourceArtifact).toMatchObject({ kind: "sealed-macos-system-volume" })
+    expect(
+      projectResults([accepted], [reviewFor(accepted)], catalog, { currentProbeHash: "current" }).current[
+        "app:terminal-app"
+      ]?.runId,
+    ).toBe("sealed-terminal")
+    for (const invalid of [
+      { ...appLaunch, sourceArtifact: { ...appLaunch.sourceArtifact, sealed: false } },
+      { ...appLaunch, sourceArtifact: { ...appLaunch.sourceArtifact, snapshotUUID: "" } },
+      {
+        ...appLaunch,
+        sourceArtifact: {
+          ...appLaunch.sourceArtifact,
+          codeSignature: { ...appLaunch.sourceArtifact.codeSignature, strictVerified: false },
+        },
+      },
+    ]) {
+      expect(() => candidate(invalid)).toThrow(/sourceArtifact/)
+    }
+  })
+
   it("refuses a headless runtime receipt whose loaded engine version conflicts with target", () => {
     const value = run("headless-mismatch", {
       target: { ...target, kind: "headless" },
@@ -708,6 +771,62 @@ describe("selected results", () => {
     )
   })
 
+  it("requires measured in-run native provenance for a selectable Linux app", () => {
+    const provenance = {
+      executable: { path: "/nix/store/kitty/bin/kitty", sha256: "a".repeat(64), version: "kitty 0.46.2" },
+      sourceArtifact: { url: "https://example.invalid/kitty-0.46.2.txz", sha256: "b".repeat(64) },
+      runtime: {
+        imageId: `sha256:${"c".repeat(64)}`,
+        imageTarSha256: "d".repeat(64),
+        arch: "x86_64-linux",
+        nixLockRevision: "e".repeat(40),
+        sourceRevision: "2".repeat(40),
+        cleanTree: true,
+        suiteHash: "current",
+      },
+      fixture: {
+        definition: "curly underline before/after",
+        config: "NONE",
+        font: "DejaVu Sans Mono",
+        geometry: "80x24, 800x600",
+        display: "Xvfb :0",
+        gl: "Mesa llvmpipe",
+      },
+    }
+    const linux = (runId: string, changes: Record<string, unknown> = {}) =>
+      parseRun(
+        `${runId}.json`,
+        JSON.stringify(run(runId, { target: { ...target, os: "linux" }, provenance, ...changes })),
+        catalog,
+      )
+    const accepted = linux("linux-receipt")
+    expect(accepted.provenance).toMatchObject(provenance)
+    expect(
+      projectResults([accepted], [reviewFor(accepted)], catalog, { currentProbeHash: "current" }).current["app:kitty"]
+        ?.runId,
+    ).toBe("linux-receipt")
+    const missing = linux("linux-missing", { provenance: undefined })
+    expect(
+      projectResults([missing], [reviewFor(missing)], catalog, { currentProbeHash: "current" }).current["app:kitty"],
+    ).toBeUndefined()
+    const dirty = linux("linux-dirty", {
+      provenance: { ...provenance, runtime: { ...provenance.runtime, cleanTree: false } },
+    })
+    expect(
+      projectResults([dirty], [reviewFor(dirty)], catalog, { currentProbeHash: "current" }).current["app:kitty"],
+    ).toBeUndefined()
+    expect(() =>
+      linux("linux-version-mismatch", {
+        provenance: { ...provenance, executable: { ...provenance.executable, version: "kitty 0.46.20" } },
+      }),
+    ).toThrow(/executable.version.*target.version/)
+    expect(() =>
+      linux("linux-suite-mismatch", {
+        provenance: { ...provenance, runtime: { ...provenance.runtime, suiteHash: "old" } },
+      }),
+    ).toThrow(/suiteHash.*probeHash/)
+  })
+
   it("requires actual WASM bytes and a native sidecar bound to loaded bytes", () => {
     const wasm = run("wasm-no-binary", {
       target: { ...target, kind: "headless" },
@@ -744,11 +863,279 @@ describe("selected results", () => {
 
   it("requires a per-probe screenshot reference for pixel evidence", () => {
     const withoutImage = run("pixels-no-image", {
-      observations: [{ featureId: "extensions.graphics", outcome: "supported", evidence: "pixels" }],
+      observations: [
+        {
+          featureId: "extensions.graphics",
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+        },
+      ],
     })
     expect(() => parseRun("pixels-no-image.json", JSON.stringify(withoutImage), catalog)).toThrow(
       /pixels-no-image.*screenshotRef/,
     )
+    const prematureSupport = run("pixels-unreviewed", {
+      probeHash: "pixels",
+      screenshotRefs: [`sha256:${"a".repeat(64)}`],
+      observations: [
+        {
+          featureId: "extensions.graphics",
+          outcome: "supported",
+          evidence: "pixels",
+          screenshotRef: `sha256:${"a".repeat(64)}`,
+        },
+      ],
+    })
+    expect(() => parseRun("pixels-unreviewed.json", JSON.stringify(prematureSupport), catalog)).toThrow(
+      /collector pixels.*reviewed Interpretation/,
+    )
+    const captureError = run("pixels-capture-error", {
+      probeHash: "pixels",
+      assertions: [],
+      observations: [
+        { featureId: "extensions.graphics", outcome: "error", reason: "collector-error", evidence: "pixels" },
+      ],
+    })
+    expect(parseRun("pixels-capture-error.json", JSON.stringify(captureError), catalog).observations).toMatchObject([
+      { outcome: "error", reason: "collector-error", evidence: "pixels" },
+    ])
+  })
+
+  it("binds control and target frames to the run before admitting pixel observations", () => {
+    const control = `sha256:${"a".repeat(64)}`
+    const targetRef = `sha256:${"b".repeat(64)}`
+    const later = `sha256:${"c".repeat(64)}`
+    const frames: [ObservationFrame, ObservationFrame] = [
+      {
+        role: "control",
+        ref: control,
+        capturedAt: 1,
+        label: "unstyled X",
+        sourceRef: `sha256:${"d".repeat(64)}`,
+      },
+      { role: "target", ref: targetRef, capturedAt: 2, label: "curly underline X" },
+    ]
+    const visual = (changes: Record<string, unknown> = {}) =>
+      run("visual", {
+        probeHash: "pixels",
+        screenshotRefs: [control, targetRef, later],
+        assertions: [],
+        observations: [
+          {
+            featureId: "extensions.graphics",
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "pixels",
+            screenshotRef: targetRef,
+            frames,
+          },
+        ],
+        ...changes,
+      })
+    const observed = parseRun("visual.json", JSON.stringify(visual()), catalog)
+    expect(observed.observations[0]?.frames).toEqual(frames)
+    const correction = {
+      ...reviewFor(observed),
+      featureId: "extensions.graphics",
+      sources: [control, targetRef],
+      observation: {
+        featureId: "extensions.graphics",
+        outcome: "supported" as const,
+        evidence: "pixels" as const,
+        screenshotRef: targetRef,
+        frames,
+      },
+    }
+    expect(
+      projectResults([observed], [correction], catalog, { currentProbeHash: "current" }).history["app:kitty"]?.[0]
+        ?.cells["extensions.graphics"]?.outcome,
+    ).toBe("supported")
+    for (const alteredFrames of [
+      [frames[0], { ...frames[1], capturedAt: 99 }],
+      [
+        { ...frames[0], role: "target" as const },
+        { ...frames[1], role: "control" as const },
+      ],
+      [...frames, { ...frames[1], capturedAt: 3, label: "fabricated later frame" }],
+    ]) {
+      expect(() =>
+        projectResults(
+          [observed],
+          [
+            {
+              ...correction,
+              observation: {
+                ...correction.observation,
+                screenshotRef: alteredFrames[0]?.role === "target" ? control : targetRef,
+                frames: alteredFrames,
+              },
+            },
+          ],
+          catalog,
+          { currentProbeHash: "current" },
+        ),
+      ).toThrow(/immutable.*feature frame/)
+    }
+    const invalid = (candidate: unknown) =>
+      parseRun("invalid-frame.json", JSON.stringify(visual({ observations: [candidate] })), catalog)
+    const base = observed.observations[0]
+    if (!base) throw new Error("missing visual observation")
+    expect(() => invalid({ ...base, frames: [{ ...frames[0], ref: `sha256:${"e".repeat(64)}` }, frames[1]] })).toThrow(
+      /frame.*absent from run/,
+    )
+    expect(() => invalid({ ...base, frames: [frames[1]] })).toThrow(/control.*target/)
+    expect(() => invalid({ ...base, frames: [frames[0]] })).toThrow(/control.*target/)
+    expect(() => invalid({ ...base, screenshotRef: control })).toThrow(/primary.*target/)
+    expect(() => invalid({ ...base, frames: [{ ...frames[0], sourceRef: "fixture.xwd" }, frames[1]] })).toThrow(
+      /sourceRef/,
+    )
+    expect(() =>
+      invalid({
+        ...base,
+        frames: [frames[0], frames[1], { role: "target", ref: later, capturedAt: 2, label: "later" }],
+      }),
+    ).toThrow(/target.*capturedAt/)
+  })
+
+  it("cannot borrow another feature's retained image for a reviewed pixel result", () => {
+    const control = `sha256:${"a".repeat(64)}`
+    const graphics = `sha256:${"b".repeat(64)}`
+    const query = `sha256:${"c".repeat(64)}`
+    const graphicsFrames = [
+      { role: "control" as const, ref: control, capturedAt: 1, label: "control" },
+      { role: "target" as const, ref: graphics, capturedAt: 2, label: "graphics" },
+    ]
+    const queryFrames = [
+      { role: "control" as const, ref: control, capturedAt: 3, label: "control" },
+      { role: "target" as const, ref: query, capturedAt: 4, label: "query" },
+    ]
+    const measured = parseRun(
+      "two-features.json",
+      JSON.stringify(
+        run("two-features", {
+          screenshotRefs: [control, graphics, query],
+          assertions: [],
+          observations: [
+            {
+              featureId: "extensions.graphics",
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: graphics,
+              frames: graphicsFrames,
+            },
+            {
+              featureId: "extensions.query",
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: query,
+              frames: queryFrames,
+            },
+          ],
+        }),
+      ),
+      catalog,
+    )
+    const correction = {
+      ...reviewFor(measured),
+      featureId: "extensions.graphics",
+      observation: {
+        featureId: "extensions.graphics",
+        outcome: "supported" as const,
+        evidence: "pixels" as const,
+        screenshotRef: query,
+        frames: [graphicsFrames[0]!, queryFrames[1]!],
+      },
+    }
+    expect(() => projectResults([measured], [correction], catalog, { currentProbeHash: "current" })).toThrow(
+      /immutable.*feature frame/,
+    )
+  })
+
+  it("refuses a reviewed animation claim from a static pixel pair", () => {
+    const ids = [...catalog, "sgr.blink"]
+    const suites = new Map([...manifests, ["blink", manifest("blink", ["sgr.blink"])]])
+    const control = `sha256:${"a".repeat(64)}`
+    const targetRef = `sha256:${"b".repeat(64)}`
+    const later = `sha256:${"c".repeat(64)}`
+    const frames = [
+      { role: "control" as const, ref: control, capturedAt: 1, label: "unblinking" },
+      { role: "target" as const, ref: targetRef, capturedAt: 2, label: "phase one" },
+    ]
+    const measured = parseRunSource(
+      "blink.json",
+      JSON.stringify(
+        run("blink", {
+          probeHash: "blink",
+          screenshotRefs: [control, targetRef, later],
+          assertions: [],
+          observations: [
+            {
+              featureId: "sgr.blink",
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: targetRef,
+              frames,
+            },
+          ],
+        }),
+      ),
+      ids,
+      suites,
+    )
+    const correction = {
+      ...reviewFor(measured),
+      featureId: "sgr.blink",
+      observation: {
+        featureId: "sgr.blink",
+        outcome: "supported" as const,
+        evidence: "pixels" as const,
+        screenshotRef: targetRef,
+        frames,
+      },
+    }
+    expect(() => projectResults([measured], [correction], ids, { currentProbeHash: "blink" })).toThrow(
+      /temporal.*2 target/,
+    )
+    const temporalFrames = [...frames, { role: "target" as const, ref: later, capturedAt: 3, label: "phase two" }]
+    const temporalMeasured = parseRunSource(
+      "blink-temporal.json",
+      JSON.stringify(
+        run("blink-temporal", {
+          probeHash: "blink",
+          screenshotRefs: [control, targetRef, later],
+          assertions: [],
+          observations: [
+            {
+              featureId: "sgr.blink",
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: later,
+              frames: temporalFrames,
+            },
+          ],
+        }),
+      ),
+      ids,
+      suites,
+    )
+    const temporal = {
+      ...reviewFor(temporalMeasured),
+      featureId: "sgr.blink",
+      observation: {
+        ...correction.observation,
+        screenshotRef: later,
+        frames: temporalFrames,
+      },
+    }
+    expect(
+      projectResults([temporalMeasured], [temporal], ids, { currentProbeHash: "blink" }).history["app:kitty"]?.[0]
+        ?.cells["sgr.blink"]?.outcome,
+    ).toBe("supported")
   })
 
   it("rejects a future schema even when it also carries legacy fields", () => {
