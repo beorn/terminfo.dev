@@ -283,6 +283,13 @@ program
           const pct = Math.round((passed / total) * 100)
           console.log(`${passed}/${total} (${pct}%)`)
 
+          const { verifyTerminalIdentity } = await import("./identity-guard.ts")
+          const identityCheck = verifyTerminalIdentity(data.terminal, data.responses, data.results)
+          if (!identityCheck.ok) {
+            console.log(`- REJECTED: ${identityCheck.reason}`)
+            continue
+          }
+
           const { mkdirSync, writeFileSync } = await import("node:fs")
           const dir = "content/probes-apps"
           mkdirSync(dir, { recursive: true })

@@ -85,6 +85,14 @@ export async function handleServer(
       const pct = Math.round((passed / total) * 100)
       console.log(`  ${label.padEnd(25)} ${passed}/${total} (${pct}%)`)
 
+      // Verify terminal identity before saving results
+      const { verifyTerminalIdentity } = await import("terminfo.dev/src/identity-guard.ts")
+      const identityCheck = verifyTerminalIdentity(data.terminal, data.responses, data.results)
+      if (!identityCheck.ok) {
+        console.error(`  ${label.padEnd(25)} REJECTED: ${identityCheck.reason}`)
+        continue
+      }
+
       // Save results
       const dir = join(ROOT, "content", "probes-apps")
       mkdirSync(dir, { recursive: true })

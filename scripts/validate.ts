@@ -8,6 +8,7 @@
 
 import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { join, basename } from "node:path"
+import { verifyTerminalIdentity } from "../packages/terminfo.dev/src/identity-guard.ts"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -349,6 +350,56 @@ heading("Errors (block deploy)")
   }
 
   if (!found) info("All platform page metadata is valid")
+}
+
+// 4f. Probe files terminal identity verification
+{
+  let found = false
+  for (const f of probeAppsFiles) {
+    try {
+      const fullPath = join(probeAppsDir, f)
+      const data = loadJson(fullPath) as {
+        terminal?: string
+        backend?: string
+        responses?: Record<string, any>
+        results?: Record<string, any>
+      }
+      const term = data.terminal || data.backend
+      if (term) {
+        const check = verifyTerminalIdentity(term, data.responses, data.results)
+        if (!check.ok) {
+          error(`Probe file "probes-apps/${f}" failed terminal identity check: ${check.reason}`)
+          errors++
+          found = true
+        }
+      }
+    } catch (e: any) {
+      error(`Probe file "probes-apps/${f}" could not be parsed: ${e.message}`)
+      errors++
+      found = true
+    }
+  }
+  for (const f of probeMuxFiles) {
+    try {
+      const fullPath = join(probeMuxDir, f)
+      const data = loadJson(fullPath) as {
+        terminal?: string
+        backend?: string
+        responses?: Record<string, any>
+        results?: Record<string, any>
+      }
+      const term = data.terminal || data.backend
+      if (term && data.responses) {
+        const check = verifyTerminalIdentity(term, data.responses, data.results)
+        if (!check.ok) {
+          error(`Probe file "probes-mux/${f}" failed terminal identity check: ${check.reason}`)
+          errors++
+          found = true
+        }
+      }
+    } catch {}
+  }
+  if (!found) info("All probe files match terminal identity guards")
 }
 
 // ---------------------------------------------------------------------------

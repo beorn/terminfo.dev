@@ -14,6 +14,7 @@ import { createHash } from "node:crypto"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { homedir } from "node:os"
+import { verifyTerminalIdentity } from "terminfo.dev/src/identity-guard.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -191,6 +192,7 @@ async function waitForDaemon(
   timeoutMs: number = 30_000,
 ): Promise<{ port: number; terminal: string } | null> {
   const deadline = Date.now() + timeoutMs
+  const normAppId = appId.toLowerCase().replace(/[^a-z0-9-]/g, "-")
 
   while (Date.now() < deadline) {
     try {
@@ -200,6 +202,18 @@ async function waitForDaemon(
         // Check if this daemon was just started (within last 60s)
         const started = new Date(data.started).getTime()
         if (Date.now() - started < 60_000) {
+          if (data.terminal) {
+            const normDaemonTerm = String(data.terminal)
+              .toLowerCase()
+              .replace(/[^a-z0-9-]/g, "-")
+            if (
+              normDaemonTerm !== normAppId &&
+              !normDaemonTerm.includes(normAppId) &&
+              !normAppId.includes(normDaemonTerm)
+            ) {
+              continue
+            }
+          }
           // Verify it's alive
           try {
             const res = await fetch(`http://127.0.0.1:${data.port}/health`, { signal: AbortSignal.timeout(2000) })
@@ -231,6 +245,13 @@ async function probeDaemon(
     const results = data.results ?? {}
     const total = Object.keys(results).length
     const passed = Object.values(results).filter(Boolean).length
+
+    // Verify terminal identity using DA1 / XTVERSION guard before saving
+    const identityCheck = verifyTerminalIdentity(appId, data.responses, results)
+    if (!identityCheck.ok) {
+      console.log(`  Terminal identity mismatch for "${appId}": ${identityCheck.reason}`)
+      return null
+    }
 
     // Save result with the correct terminal name (not what detect.ts guessed)
     const result: Record<string, any> = {
