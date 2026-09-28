@@ -29,14 +29,15 @@ interface VersionInfo {
 }
 
 /** Versions displayed on a terminal page come only from reviewed, exact-context runs. */
-function versionsForBackend(
-  data: ReturnType<typeof loadProbes>,
-  backendName: string,
-  backendType?: string,
-): VersionInfo[] {
-  const contextKey = data.selectedByBackend[backendName]?.contextKey
+function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: string): VersionInfo[] {
+  const current = data.selectedByBackend[backendName]
+  if (!current) return []
+  const contextKey = current?.contextKey
   const versions = (contextKey ? (data.selected.versions[contextKey] ?? []) : [])
-    .filter((selected) => selected.target.id === backendName && selected.target.kind === backendType)
+    .filter(
+      (selected) =>
+        selected.target.id === current?.selected.target.id && selected.target.kind === current.selected.target.kind,
+    )
     .filter((selected) => selected.counts.conclusive > 0)
     .map((selected) => ({
       version: selected.target.version,
@@ -52,7 +53,7 @@ export default {
     const data = loadProbes()
     const allAnalysis = loadAnalysis()
 
-    const pages = data.backends.map((b) => {
+    const pages: Array<{ params: Record<string, string> }> = data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
       const stats = data.stats[b.name] ?? { total: 0, yes: 0, no: 0, partial: 0, pct: 0 }
       const slug = terminalSlug(b.name, data.meta)
@@ -97,12 +98,12 @@ export default {
         })
       }
 
-      const terminal = (meta as any).terminal ?? {}
+      const terminal = meta.terminal ?? {}
 
       const a = allAnalysis["terminals/" + slug]
 
       // Load all version results for this backend
-      const versions = versionsForBackend(data, b.name, b.type)
+      const versions = versionsForBackend(data, b.name)
       const selected = data.selectedByBackend[b.name]?.selected
 
       return {
@@ -116,14 +117,11 @@ export default {
           backendType: meta.type ?? "",
           backendCaveat: meta.caveat ?? "",
           // Terminal app info (separate from backend)
-          terminalName: (meta as any).label ?? terminal.name ?? b.name,
-          terminalDescription: (meta as any).description ?? terminal.description ?? "",
-          terminalBody: linkifyContentExcluding(
-            (meta as any).body ?? terminal.body ?? "",
-            new Set([`/terminals/${slug}`]),
-          ),
+          terminalName: meta.label ?? terminal.name ?? b.name,
+          terminalDescription: meta.description ?? terminal.description ?? "",
+          terminalBody: linkifyContentExcluding(meta.body ?? terminal.body ?? "", new Set([`/terminals/${slug}`])),
           terminalUrl: meta.url ?? terminal.url ?? "",
-          terminalRepo: (meta as any).repo ?? terminal.repo ?? "",
+          terminalRepo: meta.repo ?? terminal.repo ?? "",
           terminalAuthor: terminal.author ?? "",
           version: b.version,
           engine: b.engine,
@@ -141,6 +139,7 @@ export default {
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
           historical: "false",
+          terminalType: "app",
         },
       }
     })
@@ -150,6 +149,7 @@ export default {
     const terminalsData = JSON.parse(readFileSync(terminalsPath, "utf-8")) as Record<
       string,
       HistoricalTerminal & {
+        kind?: "app" | "headless" | "mux"
         intermediary?: boolean
         headlessBackends?: string[]
         manifestBackend?: string
@@ -158,12 +158,12 @@ export default {
 
     // Classify terminal type from terminals.json metadata
     function getTerminalType(backendName: string): string {
+      const selectedKind = data.selectedByBackend[backendName]?.selected.target.kind
+      if (selectedKind === "headless" || selectedKind === "mux") return selectedKind
       for (const [, entry] of Object.entries(terminalsData)) {
         if (entry.slug === terminalSlug(backendName, data.meta)) {
           if (entry.historical) return "historical"
-          if (entry.intermediary) return "mux"
-          // JS-package terminals with headless backends are libraries
-          if (entry.headlessBackends?.length && entry.label?.endsWith(".js")) return "headless"
+          if (entry.kind === "headless" || entry.kind === "mux") return entry.kind
           if (entry.headlessBackends?.length) return "app+headless"
           return "app"
         }
@@ -173,7 +173,7 @@ export default {
 
     // Enrich pages with terminal type
     for (const page of pages) {
-      ;(page.params as any).terminalType = getTerminalType(page.params.backendId)
+      page.params.terminalType = getTerminalType(page.params.backendId ?? "")
     }
 
     const existingSlugs = new Set(pages.map((p) => p.params.id))
@@ -234,11 +234,11 @@ export default {
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
           historical: term.historical ? "true" : "false",
-          terminalType: term.historical ? "historical" : (term as any).intermediary ? "mux" : "app",
+          terminalType: term.historical ? "historical" : (term.kind ?? "app"),
           year: String(term.year ?? ""),
           manufacturer: term.manufacturer ?? "",
           significance: term.significance ?? "",
-        } as any,
+        },
       })
     }
 

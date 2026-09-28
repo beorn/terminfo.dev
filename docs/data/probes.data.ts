@@ -49,6 +49,7 @@ export interface BackendMeta {
   type?: string
   caveat?: string
   slug?: string
+  repo?: string
   terminal?: TerminalMeta
 }
 
@@ -97,23 +98,37 @@ function loadFeatureDescriptions(): Record<string, FeatureMeta> {
     throw new Error(`features.json not found at ${path}`)
   }
   {
-    const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, any>
-    delete raw.$comment
+    const raw: unknown = JSON.parse(readFileSync(path, "utf-8"))
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`Invalid feature catalog ${path}`)
     // Normalize: strings become { name: string }, objects stay as-is
     const result: Record<string, FeatureMeta> = {}
-    for (const [id, val] of Object.entries(raw)) {
+    for (const [id, val] of Object.entries(raw as Record<string, unknown>)) {
+      if (id.startsWith("$")) continue
       if (typeof val === "string") result[id] = { name: val }
       else {
-        const v = val as any
+        if (!val || typeof val !== "object" || Array.isArray(val)) {
+          throw new Error(`${path}: ${id} requires a feature name`)
+        }
+        const v = val as Record<string, unknown>
+        if (typeof v.name !== "string") throw new Error(`${path}: ${id} requires a feature name`)
+        const optionalString = (field: string): string | undefined => {
+          const value = v[field]
+          if (value === undefined) return undefined
+          if (typeof value !== "string") throw new Error(`${path}: invalid ${id}.${field}`)
+          return value
+        }
+        if (v.tags !== undefined && (!Array.isArray(v.tags) || !v.tags.every((tag) => typeof tag === "string"))) {
+          throw new Error(`${path}: invalid ${id}.tags`)
+        }
         result[id] = {
           name: v.name,
-          slug: v.slug,
-          url: v.url,
-          tags: v.tags,
-          group: v.group,
-          body: v.body,
-          probe: v.probe,
-          baseline: v.baseline,
+          slug: optionalString("slug"),
+          url: optionalString("url"),
+          tags: v.tags as string[] | undefined,
+          group: optionalString("group"),
+          body: optionalString("body"),
+          probe: optionalString("probe"),
+          baseline: optionalString("baseline"),
         }
       }
     }
@@ -166,7 +181,7 @@ export default {
     const featureDescriptions = loadFeatureDescriptions()
     const features: FeatureResult[] = Object.entries(featureDescriptions)
       .filter(([id]) => !id.startsWith("$"))
-      .map(([id, meta]) => ({ id, name: meta.name || id, category: id.split(".")[0]!, spec: meta.url }))
+      .map(([id, meta]) => ({ id, name: meta.name || id, category: id.split(".")[0] ?? id, spec: meta.url }))
       .sort((a, b) => a.id.localeCompare(b.id))
     const categories: Record<string, FeatureResult[]> = {}
     for (const feature of features) (categories[feature.category] ??= []).push(feature)
@@ -177,33 +192,43 @@ export default {
     for (const [id, terminal] of Object.entries(terminalContent)) {
       meta[id] = { ...meta[id], ...terminal }
     }
+    for (const [key, { selected }] of byTarget) {
+      const id = selected.target.id
+      if (key !== id) {
+        meta[key] = {
+          ...meta[id],
+          label: `${meta[id]?.label ?? id} (${selected.target.kind})`,
+          slug: key,
+        }
+      }
+    }
     const annotations = loadAnnotations()
     const backends: BackendInfo[] = []
     const results: ProbeData["results"] = {}
     const notes: ProbeData["notes"] = {}
     const stats: ProbeData["stats"] = {}
     const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(byTarget)
-    for (const { selected } of byTarget.values()) {
+    for (const [key, { selected }] of byTarget) {
       if (selected.counts.conclusive === 0) continue
-      const { kind, id, os } = selected.target
-      if (results[id]) throw new Error(`Ambiguous published terminal ${id}: multiple selected target kinds`)
+      const { kind, os } = selected.target
+      if (results[key]) throw new Error(`Ambiguous published terminal ${key}: multiple selected targets`)
       backends.push({
-        name: id,
+        name: key,
         version: selected.target.version,
         engine: "",
         type: kind,
         ...(os && { platforms: [os] }),
       })
-      results[id] = Object.fromEntries(
+      results[key] = Object.fromEntries(
         Object.entries(selected.v1).map(([feature, value]) => [feature, value ? "yes" : "no"]),
       )
-      notes[id] = Object.fromEntries(
-        Object.entries(selected.cells)
-          .filter(([, cell]) => cell.note)
-          .map(([feature, cell]) => [feature, cell.note!]),
+      notes[key] = Object.fromEntries(
+        Object.entries(selected.cells).flatMap(([feature, cell]) =>
+          Object.hasOwn(selected.v1, feature) && cell.note ? [[feature, cell.note]] : [],
+        ),
       )
       const { conclusive, supported, unsupported } = selected.counts
-      stats[id] = {
+      stats[key] = {
         total: conclusive,
         yes: supported,
         no: unsupported,
@@ -246,22 +271,21 @@ function computeBaselines(data: ProbeData): void {
 
   // Group features by baseline
   for (const [id, meta] of Object.entries(data.featureDescriptions)) {
-    if (meta.baseline && baselines[meta.baseline]) {
-      baselines[meta.baseline]!.push(id)
-    }
+    if (meta.baseline) baselines[meta.baseline]?.push(id)
   }
 
   // Compute per-backend baseline stats
   const baselineStats: Record<string, Record<string, { total: number; yes: number; pct: number }>> = {}
   for (const backend of data.backends) {
-    baselineStats[backend.name] = {}
+    const backendStats: Record<string, { total: number; yes: number; pct: number }> = {}
+    baselineStats[backend.name] = backendStats
     const br = data.results[backend.name] ?? {}
     for (const bl of baselineOrder) {
       const ids = baselines[bl] ?? []
       const tested = ids.filter((id) => id in br)
       const total = tested.length
       const yes = tested.filter((id) => br[id] === "yes").length
-      baselineStats[backend.name]![bl] = { total, yes, pct: total > 0 ? Math.round((yes / total) * 100) : 0 }
+      backendStats[bl] = { total, yes, pct: total > 0 ? Math.round((yes / total) * 100) : 0 }
     }
   }
 

@@ -44,6 +44,7 @@ interface ApiData {
     revision: string
     v2: string
     methods: string
+    keyPolicy: string
     contexts: Record<
       string,
       {
@@ -103,8 +104,9 @@ function loadFeaturesJson(): Record<string, FeatureMeta> {
     else {
       if (!isRecord(val) || typeof val.name !== "string") throw new Error(`${path}: ${id} requires a feature name`)
       for (const field of ["slug", "url", "group", "body", "probe", "baseline"]) {
-        if (val[field] !== undefined && typeof val[field] !== "string")
+        if (val[field] !== undefined && typeof val[field] !== "string") {
           throw new Error(`${path}: invalid ${id}.${field}`)
+        }
       }
       if (val.tags !== undefined && (!Array.isArray(val.tags) || !val.tags.every((tag) => typeof tag === "string"))) {
         throw new Error(`${path}: invalid ${id}.tags`)
@@ -166,13 +168,6 @@ const appUrls: Record<string, string> = {
   "terminal-app": "https://support.apple.com/guide/terminal",
   warp: "https://www.warp.dev",
   "com.microsoft.VSCode": "https://code.visualstudio.com",
-}
-
-function slugify(label: string): string {
-  return label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+$/, "")
 }
 
 // --- Badge SVG ---
@@ -251,17 +246,16 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
   const notes: ApiData["notes"] = {}
   const contexts: ApiData["methodology"]["contexts"] = {}
 
-  for (const { selected, contextKey, policy } of byTarget.values()) {
+  for (const [key, { selected, contextKey, policy }] of byTarget) {
     if (selected.counts.conclusive === 0) continue
     const { kind, id, os } = selected.target
     if (kind === "mux") continue // v1 terminal type only describes apps and headless engines; v2 carries mux targets.
     const meta = backendMeta[id]
     const label = kind === "app" ? (appLabels[id] ?? id) : (meta?.label ?? id)
-    const slug = slugify(label)
-    if (terminals[slug]) throw new Error(`Ambiguous API terminal slug ${slug}: multiple selected targets`)
+    if (terminals[key]) throw new Error(`Ambiguous API terminal key ${key}: multiple selected targets`)
     const { conclusive: total, supported: pass } = selected.counts
     const pct = Math.round((pass / total) * 100)
-    terminals[slug] = {
+    terminals[key] = {
       name: label,
       version: selected.target.version,
       type: kind === "headless" ? "headless" : "app",
@@ -270,13 +264,15 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
       ...(!appUrls[id] && meta?.url && { url: meta.url }),
       score: { total, pass, pct },
     }
-    results[slug] = Object.fromEntries(
+    results[key] = Object.fromEntries(
       Object.entries(selected.v1).map(([feature, value]) => [feature, value ? "yes" : "no"]),
     )
-    notes[slug] = Object.fromEntries(
-      Object.entries(selected.cells).flatMap(([feature, cell]) => (cell.note ? [[feature, cell.note]] : [])),
+    notes[key] = Object.fromEntries(
+      Object.entries(selected.cells).flatMap(([feature, cell]) =>
+        Object.hasOwn(selected.v1, feature) && cell.note ? [[feature, cell.note]] : [],
+      ),
     )
-    contexts[slug] = {
+    contexts[key] = {
       contextKey,
       runSha256: selected.sha256,
       target: selected.target,
@@ -296,6 +292,8 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
       revision: "2026-09-28",
       v2: "/api/v2/data.json",
       methods: "/contribute#what-a-probe-can-establish",
+      keyPolicy:
+        "Released v1 keys keep their published target kind; another kind with the same catalog ID uses kind-ID. New collisions keep the app at the bare ID. v2 uses full kind:ID contexts.",
       contexts,
     },
     features,

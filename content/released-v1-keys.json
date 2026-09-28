@@ -1,0 +1,17 @@
+{
+  "sourceRevision": "e346c24cb89611b1e1dbea392b83579bebede92e",
+  "sourcePath": "docs/public/api/v1/data.json",
+  "keys": {
+    "ghostty": "app",
+    "vs-code": "app",
+    "cursor": "app",
+    "kitty": "app",
+    "warp": "app",
+    "terminal-app": "app",
+    "iterm2": "app",
+    "vterm": "headless",
+    "vt100": "headless",
+    "wezterm": "headless",
+    "alacritty": "headless"
+  }
+}

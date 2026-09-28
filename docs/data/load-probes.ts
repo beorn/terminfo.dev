@@ -49,7 +49,8 @@ export function loadFeaturesMeta(): Record<string, FeatureMeta> {
       _featuresMeta = {}
     }
   }
-  return _featuresMeta!
+  if (!_featuresMeta) throw new Error("Feature metadata failed to initialize")
+  return _featuresMeta
 }
 
 /** Get all unique tags from features.json, validating against standards.json */
@@ -91,6 +92,7 @@ export function featureSlug(id: string): string {
  * ghostty-native -> ghostty, xtermjs -> xterm-js, ghostty (WASM) -> ghostty-wasm
  */
 export function terminalSlug(name: string, meta: ProbeData["meta"]): string {
+  if (meta[name]?.slug === name) return name
   const label = (meta[name]?.label ?? name).toLowerCase()
   return label.replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
 }
@@ -161,7 +163,8 @@ export function loadAnalysis(): Record<string, AnalysisEntry> {
     if (existsSync(path)) console.warn(`${path}: historical analysis snapshot is not current evidence; regenerating`)
     _analysisCached = generateAnalysis()
   }
-  return _analysisCached!
+  if (!_analysisCached) throw new Error("Analysis failed to initialize")
+  return _analysisCached
 }
 
 export interface PlatformSource {
@@ -196,7 +199,7 @@ export function loadPlatformsMeta(): Record<string, PlatformMeta> {
   if (!_platformsCached) {
     const path = join(__dirname, "..", "..", "content", "platforms.json")
     const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, PlatformMeta>
-    delete (raw as any).$comment
+    delete (raw as Record<string, unknown>).$comment
     _platformsCached = raw
   }
   return _platformsCached

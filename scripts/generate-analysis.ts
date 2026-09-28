@@ -36,6 +36,7 @@ interface FeatureMeta {
 interface TerminalMeta {
   label: string
   slug: string
+  kind?: "app" | "headless" | "mux"
   url?: string
   description?: string
   body?: string
@@ -184,6 +185,7 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
 }
 
 interface SelectedAnalysisInput {
+  sourceId: string
   results: Record<string, boolean>
   version: string
   type: "app" | "headless" | "mux"
@@ -195,11 +197,11 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
   const { projection } = loadCurrentResults(contentDir)
   const selected = compatibilityTargets(projection, contentDir)
   const resultMap = new Map<string, SelectedAnalysisInput>()
-  for (const { selected: version } of selected.values()) {
+  for (const [key, { selected: version }] of selected) {
     if (version.counts.conclusive === 0) continue
-    const id = version.target.id
-    if (resultMap.has(id)) throw new Error(`Ambiguous analysis terminal ${id}: multiple selected target kinds`)
-    resultMap.set(id, {
+    if (resultMap.has(key)) throw new Error(`Ambiguous analysis terminal ${key}: multiple selected targets`)
+    resultMap.set(key, {
+      sourceId: version.target.id,
       results: version.v1,
       version: version.target.version,
       type: version.target.kind,
@@ -237,7 +239,7 @@ function crossValidate(
   // Warn (but don't throw) for catalog terminals without a reviewed current result.
   for (const [termId, meta] of Object.entries(terminals)) {
     if (meta.historical) continue
-    if (!resultMap.has(termId)) {
+    if (![...resultMap.values()].some((data) => data.sourceId === termId && data.type === meta.kind)) {
       console.warn(`Warning: Terminal '${termId}' has no reviewed current conclusive results`)
     }
   }
@@ -1275,8 +1277,13 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
   // Compute stats for all terminals that have results
   const allStats = new Map<string, TerminalStats>()
   for (const [termId, data] of resultMap) {
-    const meta = terminals[termId]
-    if (!meta) continue
+    const related = Object.values(terminals).filter((terminal) => terminal.headlessBackends?.includes(data.sourceId))
+    const source = terminals[data.sourceId] ?? (related.length === 1 ? related[0] : undefined)
+    if (!source) throw new Error(`Missing catalog terminal ${data.sourceId} for analysis ${termId}`)
+    const meta =
+      termId === data.sourceId && terminals[data.sourceId]
+        ? source
+        : { ...source, slug: termId, label: `${source.label} (${data.type})` }
     const stats = computeTerminalStats(termId, meta, data, features, baselineFeatures, resultMap)
     allStats.set(termId, stats)
   }

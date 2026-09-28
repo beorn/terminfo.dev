@@ -15,6 +15,13 @@ import terminalPaths from "../docs/terminals/[id].paths.ts"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import type { SelectedProjection } from "../docs/data/selected-results.ts"
 
+function writeCatalog(content: string): void {
+  writeFileSync(
+    join(content, "terminals.json"),
+    readFileSync(join(import.meta.dirname, "..", "content", "terminals.json")),
+  )
+}
+
 describe("consumer selection", () => {
   it("does not score unreviewed legacy booleans as current results", () => {
     const warnings: string[] = []
@@ -80,12 +87,13 @@ describe("consumer selection", () => {
     const projection = { current: { "app:kitty@mac": mac, "app:kitty@linux": linux } } as unknown as SelectedProjection
     const content = mkdtempSync(join(tmpdir(), "terminfo-context-selection-"))
     try {
-      expect(() => compatibilityTargets(projection, content)).toThrow(/Ambiguous current kitty/)
+      writeCatalog(content)
+      expect(() => compatibilityTargets(projection, content)).toThrow(/Ambiguous current app:kitty/)
       writeFileSync(
         join(content, "default-contexts.json"),
         JSON.stringify({
           defaultContext: {
-            kitty: {
+            "app:kitty": {
               contextKey: "app:kitty@linux",
               reviewer: "reviewer",
               reason: "controlled Linux context selected for default view",
@@ -95,6 +103,77 @@ describe("consumer selection", () => {
         }),
       )
       expect(compatibilityTargets(projection, content).get("kitty")?.contextKey).toBe("app:kitty@linux")
+    } finally {
+      rmSync(content, { recursive: true, force: true })
+    }
+  })
+
+  it("keeps same-named app and headless runs in distinct compatibility rows", () => {
+    const app = { target: { kind: "app", id: "kitty" } }
+    const headless = { target: { kind: "headless", id: "kitty" } }
+    const library = { target: { kind: "headless", id: "xtermjs" } }
+    const projection = {
+      current: { "app:kitty": app, "headless:kitty": headless, "headless:xtermjs": library },
+      history: { "app:kitty": [app], "headless:kitty": [headless], "headless:xtermjs": [library] },
+    } as unknown as SelectedProjection
+    const content = mkdtempSync(join(tmpdir(), "terminfo-kind-selection-"))
+    try {
+      writeCatalog(content)
+      const rows = compatibilityTargets(projection, content)
+      expect(rows.get("kitty")?.selected.target.kind).toBe("app")
+      expect(rows.get("headless-kitty")?.selected.target.kind).toBe("headless")
+      expect(rows.get("xtermjs")?.selected.target.kind).toBe("headless")
+      delete projection.current["app:kitty"]
+      expect(compatibilityTargets(projection, content).get("headless-kitty")?.contextKey).toBe("headless:kitty")
+    } finally {
+      rmSync(content, { recursive: true, force: true })
+    }
+  })
+
+  it("keeps released headless keys when same-id app runs arrive", () => {
+    const headlessWezterm = { target: { kind: "headless", id: "wezterm" } }
+    const appWezterm = { target: { kind: "app", id: "wezterm" } }
+    const headlessAlacritty = { target: { kind: "headless", id: "alacritty" } }
+    const appAlacritty = { target: { kind: "app", id: "alacritty" } }
+    const projection = {
+      current: {
+        "headless:wezterm": headlessWezterm,
+        "app:wezterm": appWezterm,
+        "headless:alacritty": headlessAlacritty,
+        "app:alacritty": appAlacritty,
+      },
+    } as unknown as SelectedProjection
+    const content = mkdtempSync(join(tmpdir(), "terminfo-released-keys-"))
+    try {
+      writeCatalog(content)
+      const rows = compatibilityTargets(projection, content)
+      expect(rows.get("wezterm")?.selected.target.kind).toBe("headless")
+      expect(rows.get("app-wezterm")?.selected.target.kind).toBe("app")
+      expect(rows.get("alacritty")?.selected.target.kind).toBe("headless")
+      expect(rows.get("app-alacritty")?.selected.target.kind).toBe("app")
+      delete projection.current["headless:wezterm"]
+      expect(compatibilityTargets(projection, content).get("app-wezterm")?.contextKey).toBe("app:wezterm")
+    } finally {
+      rmSync(content, { recursive: true, force: true })
+    }
+  })
+
+  it("refuses a catalog edit that would change a released v1 key's meaning", () => {
+    const content = mkdtempSync(join(tmpdir(), "terminfo-released-rename-"))
+    try {
+      writeCatalog(content)
+      const catalog = JSON.parse(readFileSync(join(content, "terminals.json"), "utf8")) as Record<
+        string,
+        { headlessBackends: string[] }
+      >
+      const wezterm = catalog.wezterm
+      if (!wezterm) throw new Error("Fixture lacks WezTerm")
+      wezterm.headlessBackends = []
+      writeFileSync(join(content, "terminals.json"), JSON.stringify(catalog))
+      const projection = { current: {} } as SelectedProjection
+      expect(() => compatibilityTargets(projection, content)).toThrow(
+        /released key wezterm changed meaning from headless/,
+      )
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
