@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { query, queryMode, queryWithSentinel, withRawMode } from "./tty.ts"
+import { query, queryMode, queryOutcome, queryWithSentinel, queryWithSentinelOutcome, withRawMode } from "./tty.ts"
 
 const originalWrite = process.stdout.write
 
@@ -26,6 +26,61 @@ describe("TTY transaction replies", () => {
       return true
     }) as typeof process.stdout.write
     expect(await query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).toMatchObject(["\x1b[12;34R", "12", "34"])
+  })
+
+  it("retains exact synchronous reply bytes across UTF-8 chunk boundaries", async () => {
+    const chunks = [Buffer.from([0xff, 0xc3]), Buffer.from([0xa9, ...Buffer.from("\x1b[12;34R")])]
+    process.stdout.write = (() => {
+      for (const chunk of chunks) process.stdin.emit("data", chunk)
+      return true
+    }) as typeof process.stdout.write
+    const outcome = await queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)
+    expect(outcome).toEqual({
+      match: ["\x1b[12;34R", "12", "34"],
+      reason: "reply",
+      raw: "\uFFFDé\x1b[12;34R",
+      rawBase64: Buffer.concat(chunks).toString("base64"),
+    })
+  })
+
+  it("distinguishes a synchronous sentinel-only reply from a true timeout with retained bytes", async () => {
+    const sentinelBytes = Buffer.from([0xff, ...Buffer.from("\x1b[?1;2c")])
+    process.stdout.write = (() => {
+      process.stdin.emit("data", sentinelBytes)
+      return true
+    }) as typeof process.stdout.write
+    expect(await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).toEqual({
+      match: null,
+      reason: "sentinel",
+      raw: "\uFFFD\x1b[?1;2c",
+      rawBase64: sentinelBytes.toString("base64"),
+    })
+
+    const timeoutBytes = Buffer.from("\x1b]unrelated")
+    process.stdout.write = (() => {
+      process.stdin.emit("data", timeoutBytes)
+      return true
+    }) as typeof process.stdout.write
+    expect(await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).toEqual({
+      match: null,
+      reason: "timeout",
+      raw: "\x1b]unrelated",
+      rawBase64: timeoutBytes.toString("base64"),
+    })
+  })
+
+  it("removes the listener after a write error and admits the next query", async () => {
+    const listenersBefore = process.stdin.listenerCount("data")
+    process.stdout.write = (() => {
+      throw new Error("write failed")
+    }) as typeof process.stdout.write
+    await expect(queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).rejects.toThrow("write failed")
+    expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
+    process.stdout.write = (() => {
+      reply("\x1b[1;1R")
+      return true
+    }) as typeof process.stdout.write
+    expect((await queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).reason).toBe("reply")
   })
 
   it("ignores a late reply for another mode and retains permanent mode states", async () => {

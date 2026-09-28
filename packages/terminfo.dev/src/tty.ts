@@ -33,8 +33,8 @@ export function withTTYOperation<T>(fn: () => Promise<T>): Promise<T> {
   ttyOperations.set(
     process.stdin,
     current.then(
-      () => {},
-      () => {},
+      () => undefined,
+      () => undefined,
     ),
   )
   return current
@@ -45,8 +45,9 @@ function matchResponse(
   timeoutMs: number,
   write?: () => void,
   sentinel = false,
-): Promise<{ match: string[] | null; reason: "reply" | "sentinel" | "timeout" }> {
+): Promise<QueryOutcome> {
   return new Promise((resolve) => {
+    const chunks: Buffer[] = []
     let buf = ""
 
     const cleanup = () => {
@@ -54,27 +55,27 @@ function matchResponse(
       process.stdin.off("data", onData)
     }
 
+    const finish = (match: string[] | null, reason: QueryOutcome["reason"]) => {
+      cleanup()
+      resolve({ match, reason, raw: buf, rawBase64: Buffer.concat(chunks).toString("base64") })
+    }
+
     const onData = (chunk: Buffer) => {
-      buf += chunk.toString()
+      chunks.push(Buffer.from(chunk))
+      buf = Buffer.concat(chunks).toString()
       const match = buf.match(pattern)
       const end = sentinel ? buf.search(/\x1b\[\?[0-9;]+c/) : -1
       if (end >= 0) {
-        cleanup()
-        resolve(
-          match && (match.index ?? 0) < end
-            ? { match: [...match], reason: "reply" }
-            : { match: null, reason: "sentinel" },
-        )
+        if (match && (match.index ?? 0) < end) finish([...match], "reply")
+        else finish(null, "sentinel")
       } else if (match && !sentinel) {
-        cleanup()
-        resolve({ match: [...match], reason: "reply" })
+        finish([...match], "reply")
       }
     }
 
     const timer = setTimeout(() => {
-      cleanup()
       const match = buf.match(pattern)
-      resolve(match ? { match: [...match], reason: "reply" } : { match: null, reason: "timeout" })
+      finish(match ? [...match] : null, match ? "reply" : "timeout")
     }, timeoutMs)
 
     process.stdin.on("data", onData)
@@ -95,9 +96,7 @@ export function readResponse(pattern: RegExp, timeoutMs: number): Promise<string
  * Send an escape sequence and read the response.
  */
 export async function query(sequence: string, responsePattern: RegExp, timeoutMs = 1000): Promise<string[] | null> {
-  return withTTYOperation(
-    async () => (await matchResponse(responsePattern, timeoutMs, () => process.stdout.write(sequence))).match,
-  )
+  return (await queryOutcome(sequence, responsePattern, timeoutMs)).match
 }
 
 /**
@@ -106,7 +105,17 @@ export async function query(sequence: string, responsePattern: RegExp, timeoutMs
  * terminal has not answered before the end marker. This alone does not prove
  * that a feature is unsupported.
  */
-export type QueryOutcome = { kind: "reply"; match: string[] } | { kind: "sentinel" | "timeout" }
+export type QueryOutcome = {
+  match: string[] | null
+  reason: "reply" | "sentinel" | "timeout"
+  raw: string
+  rawBase64: string
+}
+
+/** Return the response disposition and exact received bytes for a plain query. */
+export async function queryOutcome(sequence: string, responsePattern: RegExp, timeoutMs = 1000): Promise<QueryOutcome> {
+  return withTTYOperation(() => matchResponse(responsePattern, timeoutMs, () => process.stdout.write(sequence)))
+}
 
 /** Preserve the reason for a missing reply; DA1 is only an end marker. */
 export async function queryWithSentinelOutcome(
@@ -116,19 +125,11 @@ export async function queryWithSentinelOutcome(
 ): Promise<QueryOutcome> {
   // DA1 is the requested answer here; a second DA1 cannot distinguish it from a sentinel.
   if (sequence === "\x1b[c") {
-    const match = await query(sequence, responsePattern, timeoutMs)
-    return match ? { kind: "reply", match } : { kind: "timeout" }
+    return queryOutcome(sequence, responsePattern, timeoutMs)
   }
-  return withTTYOperation(async () => {
-    const result = await matchResponse(
-      responsePattern,
-      timeoutMs,
-      () => process.stdout.write(sequence + "\x1b[c"),
-      true,
-    )
-    if (result.match) return { kind: "reply", match: result.match }
-    return { kind: result.reason === "sentinel" ? "sentinel" : "timeout" }
-  })
+  return withTTYOperation(() =>
+    matchResponse(responsePattern, timeoutMs, () => process.stdout.write(sequence + "\x1b[c"), true),
+  )
 }
 
 /**
@@ -149,7 +150,7 @@ export async function queryWithSentinel(
   timeoutMs = 2000,
 ): Promise<string[] | null> {
   const outcome = await queryWithSentinelOutcome(sequence, responsePattern, timeoutMs)
-  return outcome.kind === "reply" ? outcome.match : null
+  return outcome.match
 }
 
 /**
@@ -158,8 +159,8 @@ export async function queryWithSentinel(
  */
 export async function queryCursorPosition(): Promise<[number, number] | null> {
   const match = await query("\x1b[6n", /\x1b\[(\d+);(\d+)R/)
-  if (!match) return null
-  return [parseInt(match[1]!, 10), parseInt(match[2]!, 10)]
+  if (!match?.[1] || !match[2]) return null
+  return [parseInt(match[1], 10), parseInt(match[2], 10)]
 }
 
 /**
@@ -185,7 +186,7 @@ export async function measureRenderedWidth(text: string): Promise<number | null>
 export async function queryMode(modeNumber: number): Promise<"set" | "reset" | "unknown" | null> {
   const match = await queryWithSentinel(`\x1b[?${modeNumber}$p`, new RegExp(`\\x1b\\[\\?${modeNumber};([0-4])\\$y`))
   if (!match) return null
-  const status = parseInt(match[1]!, 10)
+  const status = parseInt(match[1] ?? "", 10)
   switch (status) {
     case 1:
     case 3:
