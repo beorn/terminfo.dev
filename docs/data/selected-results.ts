@@ -1,6 +1,6 @@
 /** Canonical parser, selector, and projection for terminal observations. */
 import { createHash } from "node:crypto"
-import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   OBSERVATION_EVIDENCE,
@@ -43,6 +43,11 @@ export interface LoadedRun {
 
 export interface SelectedCell extends Observation {
   conclusive: boolean
+  record: {
+    rawReply?: string
+    assertions: ProbeAssertion[]
+    screenshot?: { url: string; sha256: string }
+  }
   chain: {
     origin: RunOrigin
     method: Observation["evidence"]
@@ -72,6 +77,7 @@ export interface SelectedVersion {
     label: "old callback result, unverified"
     results: Record<string, UngradedDiagnostic>
   }
+  reviews: Array<Pick<Interpretation, "id" | "reviewer" | "reason" | "sources">>
   counts: {
     catalog: number
     tested: number
@@ -668,6 +674,20 @@ function activeInterpretations(entries: readonly Interpretation[]): Interpretati
   return entries.filter((entry) => !superseded.has(entry.id))
 }
 
+function observationRecord(run: LoadedRun, observation: Observation): SelectedCell["record"] {
+  const { rawReplyRef, screenshotRef } = observation
+  return {
+    ...(rawReplyRef && { rawReply: run.rawReplies[rawReplyRef] }),
+    assertions: run.assertions.filter((assertion) => assertion.featureId === observation.featureId),
+    ...(screenshotRef && {
+      screenshot: {
+        url: `/artifacts/${screenshotRef.slice("sha256:".length)}.png`,
+        sha256: screenshotRef.slice("sha256:".length),
+      },
+    }),
+  }
+}
+
 function projectRun(
   run: LoadedRun,
   interpretations: readonly Interpretation[],
@@ -679,6 +699,7 @@ function projectRun(
   for (const observation of run.observations) {
     cells[observation.featureId] = {
       ...observation,
+      record: observationRecord(run, observation),
       conclusive:
         !run.legacy &&
         observation.evidence !== "consumed" &&
@@ -718,6 +739,7 @@ function projectRun(
     }
     cells[entry.featureId] = {
       ...observation,
+      record: observationRecord(run, observation),
       conclusive:
         !run.legacy &&
         observation.evidence !== "consumed" &&
@@ -768,6 +790,19 @@ function projectRun(
       label: "old callback result, unverified",
       results: run.ungradedDiagnostics,
     },
+    reviews: interpretations
+      .filter(
+        (entry) =>
+          applies(entry, run) &&
+          ((entry.runId === run.runId &&
+            entry.runSha256 === run.sha256 &&
+            (entry.verifiesIdentity || entry.reviewed)) ||
+            (entry.observation &&
+              entry.featureId &&
+              correctedFeatures.has(entry.featureId) &&
+              entry.origin !== "documentation")),
+      )
+      .map(({ id, reviewer, reason, sources }) => ({ id, reviewer, reason, sources })),
     counts: {
       catalog: catalogIds.length,
       tested,
@@ -833,11 +868,13 @@ export function projectResults(
             : "identity-unreviewed"
           : !identityRepliesMatch(run)
             ? "identity-replies-mismatch"
-            : run.origin.kind === "community-issue" && !reviewed
-              ? "community-unreviewed"
-              : !run.suiteComplete
-                ? "suite-incomplete"
-                : null
+            : !/^[0-9a-f]{40}$/.test(run.sourceRevision ?? "")
+              ? "source-uncommitted"
+              : run.origin.kind === "community-issue" && !reviewed
+                ? "community-unreviewed"
+                : !run.suiteComplete
+                  ? "suite-incomplete"
+                  : null
     if (reason) {
       exclusions.push({ runId: run.runId, path: run.path, reason })
       continue
@@ -876,7 +913,12 @@ export function projectResults(
   return { current, versions, history, exclusions }
 }
 
-export function loadSelectedResults(contentDir: string, currentProbeHash: string): SelectedProjection {
+/** When artifactDir is supplied by a build, emit the exact bytes verified by this loader. */
+export function loadSelectedResults(
+  contentDir: string,
+  currentProbeHash: string,
+  options: { artifactDir?: string } = {},
+): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
   const features = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8"))
@@ -915,6 +957,17 @@ export function loadSelectedResults(contentDir: string, currentProbeHash: string
         }
         if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
           fail(runPath, `screenshot artifact is not a PNG at ${artifactPath}`)
+        }
+        if (options.artifactDir) {
+          mkdirSync(options.artifactDir, { recursive: true })
+          const publishedPath = join(options.artifactDir, `${digest}.png`)
+          if (existsSync(publishedPath)) {
+            if (!readFileSync(publishedPath).equals(bytes)) {
+              fail(publishedPath, "existing screenshot artifact differs from verified bytes")
+            }
+          } else {
+            writeFileSync(publishedPath, bytes, { flag: "wx" })
+          }
         }
         verifiedScreenshots.add(ref)
       }

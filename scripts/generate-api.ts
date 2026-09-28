@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
-import type { SelectedVersion } from "../docs/data/selected-results.ts"
+import { parseJsonStrict, type SelectedVersion } from "../docs/data/selected-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -84,19 +84,38 @@ interface ApiData {
 
 // --- Loaders ---
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+
+interface BackendMeta {
+  label?: string
+  url?: string
+}
+
 function loadFeaturesJson(): Record<string, FeatureMeta> {
   const path = join(contentDir, "features.json")
-  const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, any>
-  delete raw.$comment
+  const raw = parseJsonStrict(path, readFileSync(path, "utf-8"))
+  if (!isRecord(raw)) throw new Error(`${path}: expected feature catalog object`)
   const result: Record<string, FeatureMeta> = {}
   for (const [id, val] of Object.entries(raw)) {
+    if (id.startsWith("$")) continue
     if (typeof val === "string") result[id] = { name: val }
-    else result[id] = val as FeatureMeta
+    else {
+      if (!isRecord(val) || typeof val.name !== "string") throw new Error(`${path}: ${id} requires a feature name`)
+      for (const field of ["slug", "url", "group", "body", "probe", "baseline"]) {
+        if (val[field] !== undefined && typeof val[field] !== "string")
+          throw new Error(`${path}: invalid ${id}.${field}`)
+      }
+      if (val.tags !== undefined && (!Array.isArray(val.tags) || !val.tags.every((tag) => typeof tag === "string"))) {
+        throw new Error(`${path}: invalid ${id}.tags`)
+      }
+      result[id] = val as unknown as FeatureMeta
+    }
   }
   return result
 }
 
-function loadBackendMeta(): Record<string, any> {
+function loadBackendMeta(): Record<string, BackendMeta> {
   // Try to load backends.json from @termless/core
   const candidates = [
     join(root, "node_modules", "@termless", "core", "backends.json"),
@@ -104,10 +123,26 @@ function loadBackendMeta(): Record<string, any> {
   ]
   for (const p of candidates) {
     if (existsSync(p)) {
-      return (JSON.parse(readFileSync(p, "utf-8")) as any).backends ?? {}
+      const raw = parseJsonStrict(p, readFileSync(p, "utf-8"))
+      if (!isRecord(raw) || !isRecord(raw.backends)) throw new Error(`${p}: missing backend metadata object`)
+      const result: Record<string, BackendMeta> = {}
+      for (const [id, value] of Object.entries(raw.backends)) {
+        if (!isRecord(value)) throw new Error(`${p}: invalid backend ${id}`)
+        if (
+          (value.label !== undefined && typeof value.label !== "string") ||
+          (value.url !== undefined && typeof value.url !== "string")
+        ) {
+          throw new Error(`${p}: invalid label or URL for ${id}`)
+        }
+        result[id] = {
+          ...(typeof value.label === "string" && { label: value.label }),
+          ...(typeof value.url === "string" && { url: value.url }),
+        }
+      }
+      return result
     }
   }
-  return {}
+  throw new Error(`Missing required backend metadata; searched ${candidates.join(", ")}`)
 }
 
 // --- Label / slug helpers ---
@@ -189,7 +224,7 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
 
   const featuresJson = loadFeaturesJson()
   const backendMeta = loadBackendMeta()
-  const { projection } = loadCurrentResults(contentDir)
+  const { projection } = loadCurrentResults(contentDir, { artifactDir: join(outDir ?? publicDir, "artifacts") })
   const byTarget = compatibilityTargets(projection, contentDir)
   // Catalog metadata stays available, but only reviewed, conclusive observations become v1 result keys.
   const allFeatureIds = new Set(Object.keys(featuresJson))
@@ -198,7 +233,8 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
   const features: ApiData["features"] = {}
   for (const id of [...allFeatureIds].sort()) {
     const meta = featuresJson[id]
-    const category = id.split(".")[0]!
+    const [category] = id.split(".")
+    if (!category) throw new Error(`Invalid feature ID ${id}`)
     features[id] = {
       name: meta?.name ?? id,
       category,
@@ -238,9 +274,7 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
       Object.entries(selected.v1).map(([feature, value]) => [feature, value ? "yes" : "no"]),
     )
     notes[slug] = Object.fromEntries(
-      Object.entries(selected.cells)
-        .filter(([, cell]) => cell.note)
-        .map(([feature, cell]) => [feature, cell.note!]),
+      Object.entries(selected.cells).flatMap(([feature, cell]) => (cell.note ? [[feature, cell.note]] : [])),
     )
     contexts[slug] = {
       contextKey,

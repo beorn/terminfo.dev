@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest"
 import { createHash } from "node:crypto"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
@@ -60,7 +60,7 @@ const run = (runId: string, overrides: Record<string, unknown> = {}) => ({
   suiteId: "suite-2",
   probeHash: "current",
   suiteComplete: true,
-  sourceRevision: "abc123",
+  sourceRevision: "2".repeat(40),
   measuredAt: "2026-09-28T12:00:00.000Z",
   origin: { kind: "collector" },
   rawReplies: { ...identityReplies, "extensions.query": "ACK", "extensions.graphics": "NO", "cursor.position": "" },
@@ -121,6 +121,19 @@ function temporaryContent() {
 }
 
 describe("selected results", () => {
+  it("never admits an uncommitted source revision even with an identity review", () => {
+    const dirty = parseRun(
+      "dirty.json",
+      JSON.stringify(run("dirty", { sourceRevision: `${"2".repeat(40)}+dirty` })),
+      catalog,
+    )
+    const projection = projectResults([dirty], [reviewFor(dirty)], catalog, { currentProbeHash: "current" })
+    expect(projection.current).toEqual({})
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "dirty", reason: "source-uncommitted" }),
+    )
+    expect(projection.history["app:kitty"]?.[0]?.sourceRevision).toContain("+dirty")
+  })
   it("derives completeness from trusted target membership and refuses unknown suites", () => {
     const partial = run("partial", { observations: [observation("extensions.query", "supported", "query")] })
     expect(() => parseRun("partial.json", JSON.stringify(partial), catalog)).toThrow(/suiteComplete.*1.*2/)
@@ -181,10 +194,13 @@ describe("selected results", () => {
         }),
       ),
     )
-    expect(
-      loadSelectedResults(content, "current").history["app:kitty"]?.[0]?.cells["extensions.graphics"]?.chain
-        .screenshotRef,
-    ).toBe(screenshotRef)
+    const output = join(content, "built-artifacts")
+    const cell = loadSelectedResults(content, "current", { artifactDir: output }).history["app:kitty"]?.[0]?.cells[
+      "extensions.graphics"
+    ]
+    expect(cell?.chain.screenshotRef).toBe(screenshotRef)
+    expect(cell?.record.screenshot).toEqual({ url: `/artifacts/${digest}.png`, sha256: digest })
+    expect(readFileSync(join(output, `${digest}.png`))).toEqual(png)
     writeFileSync(artifactPath, Buffer.concat([png, Buffer.from("changed")]))
     expect(() => loadSelectedResults(content, "current")).toThrow(/artifact.*(hash|digest)/)
     rmSync(artifactPath)
@@ -448,6 +464,10 @@ describe("selected results", () => {
       currentProbeHash: "current",
     })
     expect(projection.current["app:kitty"]?.cells["extensions.graphics"]?.outcome).toBe("supported")
+    expect(projection.current["app:kitty"]?.cells["extensions.graphics"]?.record.rawReply).toBe("NO")
+    expect(projection.current["app:kitty"]?.reviews).toContainEqual(
+      expect.objectContaining({ id: correction.id, reviewer: correction.reviewer, reason: correction.reason }),
+    )
     expect(projection.current["headless:kitty"]?.cells["extensions.graphics"]?.outcome).toBe("unsupported")
     expect(app.sha256).toBe(hash)
     expect(JSON.stringify(capture)).toBe(bytes)

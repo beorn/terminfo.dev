@@ -26,8 +26,8 @@ export interface CurrentResults {
   projection: SelectedProjection
 }
 
-export function loadCurrentResults(contentDir: string): CurrentResults {
-  const projection = loadSelectedResults(contentDir, probeHash())
+export function loadCurrentResults(contentDir: string, options: { artifactDir?: string } = {}): CurrentResults {
+  const projection = loadSelectedResults(contentDir, probeHash(), options)
   return { projection }
 }
 
@@ -48,8 +48,9 @@ function loadDefaultContextPolicy(contentDir: string): Record<string, DefaultCon
       !Array.isArray(row.sources) ||
       row.sources.length === 0 ||
       !row.sources.every((source) => typeof source === "string" && source.length > 0)
-    )
+    ) {
       throw new Error(`${path}: ${id} requires contextKey, reviewer, reason and sources`)
+    }
     policy[id] = row as unknown as DefaultContextReview
   }
   return policy
@@ -74,10 +75,11 @@ export function compatibilityTargets(projection: SelectedProjection, contentDir:
       )
     }
     const chosen = review ? group.find((entry) => entry.contextKey === review.contextKey) : group[0]
-    if (!chosen)
+    if (!chosen) {
       throw new Error(
         `${join(contentDir, "default-contexts.json")}: ${id} chooses a noncurrent context ${review?.contextKey}`,
       )
+    }
     byTarget.set(id, { ...chosen, ...(review && { policy: review }) })
   }
   return byTarget
