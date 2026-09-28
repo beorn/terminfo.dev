@@ -2,6 +2,9 @@ export interface ProbeResult {
   pass: boolean
   note?: string
   response?: string
+  /** Explicit measured result; the legacy pass boolean is never promoted. */
+  observation?: Omit<Observation, "featureId" | "rawReplyRef">
+  assertions?: Array<Omit<ProbeAssertion, "featureId" | "rawReplyRef">>
 }
 
 /** A proposition's measured outcome. Missing catalog IDs mean not tested. */
@@ -188,12 +191,21 @@ export interface TermlessContext {
 }
 
 /** Context for real terminal probing (async TTY I/O) */
+export interface TerminalQueryOutcome {
+  match: string[] | null
+  reason: "reply" | "sentinel" | "timeout"
+  raw: string
+  rawBase64: string
+}
+
 export interface TermContext {
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>
   measureRenderedWidth(text: string): Promise<number | null>
   query(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<string[] | null>
   queryWithSentinel(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<string[] | null>
+  queryOutcome(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<TerminalQueryOutcome>
+  queryWithSentinelOutcome(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<TerminalQueryOutcome>
   queryMode(modeNum: number): Promise<"set" | "reset" | "unknown" | null>
   cols: number
 }
@@ -202,4 +214,6 @@ export interface ProbeDefinition {
   id: string
   termless: ((ctx: TermlessContext) => ProbeResult) | null
   term: ((ctx: TermContext) => Promise<ProbeResult>) | null
+  /** Explicit opt-in for recording callback exceptions as observations. */
+  termObservationEvidence?: ObservationEvidence
 }

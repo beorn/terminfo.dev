@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks"
+import type { TerminalQueryOutcome } from "@terminfo/probe-defs"
 
 /**
  * TTY utilities — raw mode, response reading, escape sequence I/O.
@@ -13,6 +14,24 @@ import { AsyncLocalStorage } from "node:async_hooks"
  */
 const ttyOperations = new WeakMap<typeof process.stdin, Promise<void>>()
 const operationContext = new AsyncLocalStorage<{ active: boolean }>()
+export interface TTYQueryTrace {
+  sequence: string
+  reason: QueryOutcome["reason"]
+  raw: string
+  rawBase64: string
+  match: string[] | null
+}
+export type TTYTraceEvent = { kind: "write"; sequence: string } | ({ kind: "query" } & TTYQueryTrace)
+const queryTraceContext = new AsyncLocalStorage<{ queries: TTYQueryTrace[]; events: TTYTraceEvent[] }>()
+
+/** Scope all direct and helper queries to the probe that initiated them. */
+export function withTTYQueryTrace<T>(
+  queries: TTYQueryTrace[],
+  events: TTYTraceEvent[],
+  fn: () => Promise<T>,
+): Promise<T> {
+  return queryTraceContext.run({ queries, events }, fn)
+}
 
 /** Serialize whole terminal operations; queries inside one operation run inline. */
 export function withTTYOperation<T>(fn: () => Promise<T>): Promise<T> {
@@ -45,7 +64,9 @@ function matchResponse(
   timeoutMs: number,
   write?: () => void,
   sentinel = false,
+  sequence = "",
 ): Promise<QueryOutcome> {
+  const trace = queryTraceContext.getStore()
   return new Promise((resolve) => {
     const chunks: Buffer[] = []
     let buf = ""
@@ -57,7 +78,10 @@ function matchResponse(
 
     const finish = (match: string[] | null, reason: QueryOutcome["reason"]) => {
       cleanup()
-      resolve({ match, reason, raw: buf, rawBase64: Buffer.concat(chunks).toString("base64") })
+      const outcome = { match, reason, raw: buf, rawBase64: Buffer.concat(chunks).toString("base64") }
+      trace?.queries.push({ sequence, ...outcome })
+      trace?.events.push({ kind: "query", sequence, ...outcome })
+      resolve(outcome)
     }
 
     const onData = (chunk: Buffer) => {
@@ -105,16 +129,13 @@ export async function query(sequence: string, responsePattern: RegExp, timeoutMs
  * terminal has not answered before the end marker. This alone does not prove
  * that a feature is unsupported.
  */
-export type QueryOutcome = {
-  match: string[] | null
-  reason: "reply" | "sentinel" | "timeout"
-  raw: string
-  rawBase64: string
-}
+export type QueryOutcome = TerminalQueryOutcome
 
 /** Return the response disposition and exact received bytes for a plain query. */
 export async function queryOutcome(sequence: string, responsePattern: RegExp, timeoutMs = 1000): Promise<QueryOutcome> {
-  return withTTYOperation(() => matchResponse(responsePattern, timeoutMs, () => process.stdout.write(sequence)))
+  return withTTYOperation(() =>
+    matchResponse(responsePattern, timeoutMs, () => process.stdout.write(sequence), false, sequence),
+  )
 }
 
 /** Preserve the reason for a missing reply; DA1 is only an end marker. */
@@ -128,7 +149,13 @@ export async function queryWithSentinelOutcome(
     return queryOutcome(sequence, responsePattern, timeoutMs)
   }
   return withTTYOperation(() =>
-    matchResponse(responsePattern, timeoutMs, () => process.stdout.write(sequence + "\x1b[c"), true),
+    matchResponse(
+      responsePattern,
+      timeoutMs,
+      () => process.stdout.write(sequence + "\x1b[c"),
+      true,
+      sequence + "\x1b[c",
+    ),
   )
 }
 

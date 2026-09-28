@@ -8,7 +8,7 @@
  * that run directly on a terminal now run through the multiplexer's PTY layer.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
+import { writeFileSync } from "node:fs"
 import { execSync } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -18,6 +18,7 @@ import {
   readDaemonProbeResponse,
   removeProbeRun,
   requestDaemonProbe,
+  saveDaemonProbeRun,
   shellQuote,
   stopOwnedDaemon,
   type DaemonRegistration,
@@ -25,6 +26,7 @@ import {
   type ProbeRun,
 } from "terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
+import { sourceSuiteEnvironment } from "../versions.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -104,7 +106,8 @@ function whichBinary(name: string): string | null {
  * so the daemon inside the mux detects the mux as the terminal.
  */
 function writeServeScript(run: ProbeRun): void {
-  const serveCmd = `TERMINFO_RUN_ID=${run.id} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
+  const suite = sourceSuiteEnvironment()
+  const serveCmd = `TERMINFO_RUN_ID=${run.id} TERMINFO_PROBE_HASH=${suite.TERMINFO_PROBE_HASH} TERMINFO_SOURCE_REVISION=${suite.TERMINFO_SOURCE_REVISION} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
   writeFileSync(
     run.scriptPath,
     [
@@ -122,48 +125,19 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   muxId: string,
   version: string,
-): Promise<{ total: number; passed: number } | null> {
+): Promise<{ total: number; observed: number } | null> {
   try {
     const res = await requestDaemonProbe(daemon)
 
     const data = await readDaemonProbeResponse(res)
-    const results = data.results
-    const total = Object.keys(results).length
-    const passed = Object.values(results).filter(Boolean).length
-
-    const result = {
-      terminal: muxId,
-      terminalVersion: version,
-      os: data.os ?? detectOS(),
-      osVersion: data.osVersion ?? "",
-      source: "mux",
-      generated: new Date().toISOString(),
-      results,
-      ...(data.notes ? { notes: data.notes } : {}),
-      ...(data.responses ? { responses: data.responses } : {}),
-    }
-
-    mkdirSync(RESULTS_DIR, { recursive: true })
-    const filename = `${muxId}-${version}-${result.os}.json`
-    writeFileSync(join(RESULTS_DIR, filename), JSON.stringify(result, null, 2))
-
-    return { total, passed }
+    const path = saveDaemonProbeRun(data, RESULTS_DIR, { kind: "mux", id: muxId, version })
+    console.log(`  Saved unreviewed raw run ${path}`)
+    const observed = data.observations.length
+    const total = observed + Object.keys(data.ungradedDiagnostics ?? {}).length
+    return { total, observed }
   } catch (err) {
     console.log(`  Probe failed: ${err instanceof Error ? err.message : String(err)}`)
     return null
-  }
-}
-
-function detectOS(): string {
-  switch (process.platform) {
-    case "darwin":
-      return "macos"
-    case "linux":
-      return "linux"
-    case "win32":
-      return "windows"
-    default:
-      return process.platform
   }
 }
 
@@ -171,17 +145,10 @@ function detectOS(): string {
 
 async function runMux(
   mux: MuxDef,
-  opts: { force?: boolean },
+  _opts: { force?: boolean },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   if (!whichBinary(mux.binary)) return { success: false, error: "not installed" }
   const version = mux.version()
-  if (!opts.force) {
-    const resultPath = join(RESULTS_DIR, `${mux.id}-${version}-${detectOS()}.json`)
-    if (existsSync(resultPath)) {
-      const existing = JSON.parse(readFileSync(resultPath, "utf8")) as { results?: Record<string, unknown> }
-      if (Object.keys(existing.results ?? {}).length >= 120) return { success: true, skipped: true }
-    }
-  }
 
   const run = createProbeRun()
   const sessionName = `terminfo-${run.id.slice(0, 16)}`
@@ -199,7 +166,7 @@ async function runMux(
     console.log(`  Probing on port ${daemon.registration.port}...`)
     const result = await probeDaemon(daemon.registration, mux.id, version)
     if (!result) throw new Error("Probe failed")
-    console.log(`  ${result.passed}/${result.total} probes passed`)
+    console.log(`  ${result.observed}/${result.total} explicit observations (unreviewed)`)
     outcome = { success: true }
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }

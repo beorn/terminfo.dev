@@ -58,8 +58,8 @@ export interface VerificationResult {
  */
 export function verifyTerminalIdentity(
   terminal: string,
-  responses?: Record<string, any>,
-  results?: Record<string, any>,
+  responses?: Record<string, string>,
+  results?: Record<string, boolean>,
 ): VerificationResult {
   const normTerminal = terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
   const rule = TERMINAL_IDENTITY_RULES[normTerminal] || TERMINAL_IDENTITY_RULES[terminal.toLowerCase()]
@@ -70,7 +70,12 @@ export function verifyTerminalIdentity(
   }
 
   const da1 = responses?.["device.primary-da"]
-  const xtversion = responses?.["device.xtversion"]
+  const xtversionRaw = responses?.["device.xtversion"]
+  const dcs = xtversionRaw?.startsWith("\x1bP") ? /^\x1bP>\|([^\x1b]+)\x1b\\$/.exec(xtversionRaw) : null
+  if (xtversionRaw?.startsWith("\x1bP") && !dcs) {
+    return { ok: false, checked: true, reason: `Terminal "${terminal}" returned an incomplete XTVERSION DCS frame` }
+  }
+  const xtversion = dcs ? dcs[1] : xtversionRaw
   const xtversionResult = results?.["device.xtversion"]
 
   // Check required XTVERSION

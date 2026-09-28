@@ -8,7 +8,7 @@
  * the full 128-probe set from the serve daemon.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
+import { existsSync, writeFileSync } from "node:fs"
 import { execFileSync, execSync, spawn, type ChildProcess } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -18,6 +18,7 @@ import {
   readDaemonProbeResponse,
   removeProbeRun,
   requestDaemonProbe,
+  saveDaemonProbeRun,
   shellQuote,
   stopOwnedDaemon,
   type DaemonRegistration,
@@ -26,6 +27,7 @@ import {
 } from "terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "terminfo.dev/src/identity-guard.ts"
+import { sourceSuiteEnvironment } from "../versions.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -112,7 +114,8 @@ interface AppLaunch {
 }
 
 function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
-  const serveCmd = `TERMINFO_RUN_ID=${run.id} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
+  const suite = sourceSuiteEnvironment()
+  const serveCmd = `TERMINFO_RUN_ID=${run.id} TERMINFO_PROBE_HASH=${suite.TERMINFO_PROBE_HASH} TERMINFO_SOURCE_REVISION=${suite.TERMINFO_SOURCE_REVISION} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
   writeFileSync(run.scriptPath, `#!/bin/bash\n${serveCmd}\n`, { flag: "wx", mode: 0o700 })
 
   if (app.binaryPath && existsSync(app.binaryPath)) {
@@ -182,40 +185,21 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   appId: string,
   version: string,
-): Promise<{ total: number; passed: number } | null> {
+): Promise<{ total: number; observed: number } | null> {
   try {
     const res = await requestDaemonProbe(daemon)
 
     const data = await readDaemonProbeResponse(res)
-    const results = data.results
-    const total = Object.keys(results).length
-    const passed = Object.values(results).filter(Boolean).length
-
-    // Verify terminal identity using DA1 / XTVERSION guard before saving
-    const identityCheck = verifyTerminalIdentity(appId, data.responses, results)
-    if (!identityCheck.ok) {
-      console.log(`  Terminal identity mismatch for "${appId}": ${identityCheck.reason}`)
-      return null
+    const identityCheck = verifyTerminalIdentity(appId, data.rawReplies)
+    const run = {
+      ...data,
+      rawReplies: { ...data.rawReplies, "collector.identityCheck": JSON.stringify(identityCheck) },
     }
-
-    // Save result with the correct terminal name (not what detect.ts guessed)
-    const result = {
-      terminal: appId,
-      terminalVersion: version,
-      os: "macos",
-      osVersion: data.osVersion ?? "",
-      source: "daemon",
-      generated: new Date().toISOString(),
-      results,
-      ...(data.notes ? { notes: data.notes } : {}),
-      ...(data.responses ? { responses: data.responses } : {}),
-    }
-
-    mkdirSync(RESULTS_DIR, { recursive: true })
-    const filename = `${appId}-${version}-macos.json`
-    writeFileSync(join(RESULTS_DIR, filename), JSON.stringify(result, null, 2))
-
-    return { total, passed }
+    const path = saveDaemonProbeRun(run, RESULTS_DIR, { kind: "app", id: appId, version })
+    console.log(`  Saved unreviewed raw run ${path}`)
+    const observed = run.observations.length
+    const total = observed + Object.keys(run.ungradedDiagnostics ?? {}).length
+    return { total, observed }
   } catch (err) {
     console.log(`  Probe failed: ${err instanceof Error ? err.message : String(err)}`)
     return null
@@ -226,17 +210,10 @@ async function probeDaemon(
 
 async function runApp(
   app: AppDef,
-  opts: { force?: boolean },
+  _opts: { force?: boolean },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   if (!existsSync(app.appPath)) return { success: false, error: "not installed" }
   const version = getAppVersion(app)
-  if (!opts.force) {
-    const resultPath = join(RESULTS_DIR, `${app.id}-${version}-macos.json`)
-    if (existsSync(resultPath)) {
-      const existing = JSON.parse(readFileSync(resultPath, "utf8")) as { results?: Record<string, unknown> }
-      if (Object.keys(existing.results ?? {}).length >= 120) return { success: true, skipped: true }
-    }
-  }
   if (app.id === "warp" && !app.binaryPath) {
     return { success: false, error: "Run `terminfo probe server --start` in Warp manually, then use `probe server`" }
   }
@@ -254,7 +231,7 @@ async function runApp(
     console.log(`  Probing on port ${daemon.registration.port}...`)
     const result = await probeDaemon(daemon.registration, app.id, version)
     if (!result) throw new Error("Probe failed")
-    console.log(`  ${result.passed}/${result.total} probes passed`)
+    console.log(`  ${result.observed}/${result.total} explicit observations (unreviewed)`)
     outcome = { success: true }
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }

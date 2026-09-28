@@ -1,4 +1,4 @@
-export type { ProbeDefinition, ProbeResult, TermlessContext, TermContext } from "./types.ts"
+export type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
 export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, OBSERVATION_EVIDENCE } from "./types.ts"
 export type {
   ObservationOutcome,

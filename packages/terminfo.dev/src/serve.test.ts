@@ -51,6 +51,16 @@ afterEach(async () => {
 })
 
 describe("daemon HTTP boundary", () => {
+  it("refuses v2 collection without a declared source suite", async () => {
+    const { registration } = await startTestDaemon()
+    const response = await fetch(`http://127.0.0.1:${registration.port}/probe`, {
+      headers: { Authorization: `Bearer ${registration.token}` },
+    })
+    expect(response.status).toBe(500)
+    const body: unknown = await response.json()
+    expect(body).toEqual({ error: "Probe daemon request failed" })
+  })
+
   it("requires its private token and refuses cross-origin mutation", async () => {
     const { registration } = await startTestDaemon()
     const url = `http://127.0.0.1:${registration.port}/query`

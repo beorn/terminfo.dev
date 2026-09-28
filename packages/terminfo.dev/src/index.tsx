@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { readDaemonProbeResponse, requestDaemonProbe } from "./daemon-client.ts"
+import { readDaemonProbeResponse, requestDaemonProbe, saveDaemonProbeRun } from "./daemon-client.ts"
 /**
  * terminfo.dev CLI — can your terminal do that?
  *
@@ -21,181 +21,14 @@ import { readDaemonProbeResponse, requestDaemonProbe } from "./daemon-client.ts"
 import React from "react"
 import { Command, uint } from "@silvery/commander"
 import { renderString } from "silvery"
-import { isTTY } from "silvery/ui/cli"
-import { readFileSync } from "node:fs"
-import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
 import { detectTerminal } from "./detect.ts"
 import { ALL_PROBES } from "./probes/unified.ts"
-import { withRawMode, drainStdin } from "./tty.ts"
-import { submitResults } from "./submit.ts"
 import { DetectView } from "./views/DetectView.tsx"
-import { HelpView } from "./views/HelpView.tsx"
-import { TestResults, PostTestStatus, SubmitNudge, SubmitResult } from "./views/TestResults.tsx"
-import type { ProbeResults } from "./types.ts"
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-
-/** Load feature slugs from features.json for OSC 8 hyperlinks */
-function loadFeatureSlugs(): Record<string, string> {
-  const candidates = [
-    join(__dirname, "..", "..", "content", "features.json"), // from cli/src/ -> content/
-    join(__dirname, "..", "..", "..", "content", "features.json"), // fallback
-  ]
-  for (const path of candidates) {
-    try {
-      const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>
-      delete raw.$comment
-      const slugs: Record<string, string> = {}
-      for (const [id, meta] of Object.entries(raw)) {
-        slugs[id] =
-          typeof meta === "object" && meta !== null && "slug" in meta && typeof meta.slug === "string"
-            ? meta.slug
-            : id.replace(/\./g, "/")
-      }
-      return slugs
-    } catch {
-      // try next
-    }
-  }
-  return {}
-}
-
-async function runProbes(): Promise<ProbeResults> {
-  const terminal = detectTerminal()
-  const results: Record<string, boolean> = {}
-  const notes: Record<string, string> = {}
-  const responses: Record<string, string> = {}
-  let passed = 0
-  const total = ALL_PROBES.length
-
-  // Save cursor + scroll position, run probes, restore
-  process.stdout.write("\x1b7") // save cursor (DECSC)
-
-  await withRawMode(async () => {
-    for (const probe of ALL_PROBES) {
-      try {
-        const result = await probe.run()
-        results[probe.id] = result.pass
-        if (result.note) notes[probe.id] = result.note
-        if (result.response) responses[probe.id] = result.response
-        if (result.pass) passed++
-      } catch (err) {
-        results[probe.id] = false
-        notes[probe.id] = `error: ${err instanceof Error ? err.message : String(err)}`
-      }
-    }
-    await drainStdin(100)
-  })
-
-  // Restore terminal state completely
-  process.stdout.write("\x1b8") // restore cursor (DECRC)
-  process.stdout.write("\x1bc") // RIS — full terminal reset
-
-  const probes = ALL_PROBES.map((p) => ({ id: p.id, name: p.name }))
-  return { terminal, results, notes, responses, passed, total, probes }
-}
-
-function formatResultsJson(data: ProbeResults) {
-  return JSON.stringify(
-    {
-      terminal: data.terminal.name,
-      terminalVersion: data.terminal.version,
-      os: data.terminal.os,
-      osVersion: data.terminal.osVersion,
-      source: "community",
-      generated: new Date().toISOString(),
-      results: data.results,
-      notes: data.notes,
-      responses: data.responses,
-    },
-    null,
-    2,
-  )
-}
-
-/** Check terminal status: "new" (not in census), "changed" (results differ), "unchanged" */
-async function checkTerminalStatus(
-  name: string,
-  version: string,
-  os: string,
-  results: Record<string, boolean>,
-): Promise<"new" | "changed" | "unchanged"> {
-  try {
-    const slug = name.toLowerCase().replace(/[^a-z0-9-]/g, "-")
-    const ver = (version || "unknown").replace(/[^a-z0-9.-]/g, "-")
-    const filename = `${slug}-${ver}-${os}.json`
-    const url = `https://raw.githubusercontent.com/beorn/terminfo.dev/main/content/probes-apps/${filename}`
-    const res = await fetch(url, { signal: AbortSignal.timeout(3000) })
-    if (res.status === 404) return "new"
-
-    const existing = (await res.json()) as { results?: Record<string, boolean> }
-    if (!existing.results) return "changed"
-
-    for (const [key, val] of Object.entries(results)) {
-      if (existing.results[key] !== val) return "changed"
-    }
-    for (const key of Object.keys(existing.results)) {
-      if (!(key in results)) return "changed"
-    }
-    return "unchanged"
-  } catch {
-    return "new" // network error — assume new
-  }
-}
-
-/**
- * Prompt user for Y/n via readline.
- * Returns true if user chose yes, false otherwise.
- */
-async function askYesNo(question: string): Promise<boolean> {
-  // Print the prompt ourselves so the user sees it during the drain wait
-  process.stdout.write(`  ${question} `)
-
-  // Drain late-arriving escape sequences in raw mode (e.g. OSC 52 from Kitty
-  // after user clicks through a clipboard permission dialog). The drain loop
-  // discards all bytes that arrive within the quiet window, then we read the
-  // actual user keypress (y/n/Enter) while still in raw mode.
-  return withRawMode(async () => {
-    await drainStdin(100)
-
-    // Read a single keypress
-    return new Promise<boolean>((resolve) => {
-      function onData(chunk: Buffer) {
-        process.stdin.off("data", onData)
-
-        const ch = chunk.toString()
-        // Ignore escape sequences — wait for a real keypress
-        if (ch.startsWith("\x1b")) {
-          process.stdin.on("data", onData)
-          return
-        }
-
-        const key = ch.trim().toLowerCase()
-        // Enter, y, Y → yes; n, N → no
-        const yes = key === "" || key === "y"
-        process.stdout.write(yes ? "Y\n" : "n\n")
-        resolve(yes)
-      }
-
-      process.stdin.on("data", onData)
-    })
-  })
-}
-
-/**
- * Prompt user for text input via readline.
- */
-async function askText(question: string, defaultValue: string): Promise<string> {
-  const { createInterface } = await import("node:readline")
-  return new Promise<string>((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout })
-    const prompt = defaultValue ? `  ${question} [${defaultValue}]: ` : `  ${question}: `
-    rl.question(prompt, (answer) => {
-      rl.close()
-      resolve(answer.trim() || defaultValue)
-    })
-  })
+/** Collect the same explicit v2 run as the daemon endpoint. */
+async function runProbes() {
+  const { collectProbeRun } = await import("./serve.ts")
+  return collectProbeRun()
 }
 
 /** Render a React view to stdout using silvery's renderString. */
@@ -278,23 +111,21 @@ program
         try {
           const res = await requestDaemonProbe(d)
           const data = await readDaemonProbeResponse(res)
-          const passed = Object.values(data.results).filter(Boolean).length
-          const total = Object.keys(data.results).length
-          const pct = Math.round((passed / total) * 100)
-          console.log(`${passed}/${total} (${pct}%)`)
+          const observed = data.observations.length
+          const total = observed + Object.keys(data.ungradedDiagnostics ?? {}).length
+          console.log(`${observed}/${total} explicit observations (unreviewed)`)
 
           const { verifyTerminalIdentity } = await import("./identity-guard.ts")
-          const identityCheck = verifyTerminalIdentity(data.terminal, data.responses, data.results)
-          if (!identityCheck.ok) {
-            throw new Error(`REJECTED: ${identityCheck.reason}`)
-          }
+          const identityCheck = verifyTerminalIdentity(data.target.id, data.rawReplies)
 
-          const { mkdirSync, writeFileSync } = await import("node:fs")
           const dir = "content/probes-apps"
-          mkdirSync(dir, { recursive: true })
-          const name = data.terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
-          const ver = (data.terminalVersion || "unknown").replace(/[^a-z0-9.-]/g, "-")
-          writeFileSync(`${dir}/${name}-${ver}-${data.os}.json`, JSON.stringify(data, null, 2))
+          saveDaemonProbeRun(
+            {
+              ...data,
+              rawReplies: { ...data.rawReplies, "collector.identityCheck": JSON.stringify(identityCheck) },
+            },
+            dir,
+          )
           saved++
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
@@ -312,105 +143,29 @@ program
       return
     }
 
-    // Default: test this terminal inline
+    // Default: collect an unreviewed v2 run in this terminal.
     const data = await runProbes()
     if (opts.json) {
-      console.log(formatResultsJson(data))
+      console.log(JSON.stringify(data, null, 2))
       return
     }
-
-    const slugs = loadFeatureSlugs()
-    await printView(<TestResults data={data} slugs={slugs} />)
-
-    // Check if this terminal is already in the census
-    const status = await checkTerminalStatus(data.terminal.name, data.terminal.version, data.terminal.os, data.results)
-
-    const terminalLabel = `${data.terminal.name}${data.terminal.version ? ` ${data.terminal.version}` : ""}`
-
-    if (status === "unchanged") {
-      await printView(<PostTestStatus status="unchanged" terminalLabel={terminalLabel} />)
-      return
-    }
-
-    // Show submit prompt
-    if (!isTTY()) {
-      await printView(<SubmitNudge isNew={status === "new"} terminalLabel={terminalLabel} />)
-      return
-    }
-
-    await printView(<PostTestStatus status={status} terminalLabel={terminalLabel} />)
-
-    const submitLabel = status === "new" ? "Submit to terminfo.dev? [Y/n]" : "Submit updated results? [Y/n]"
-    const shouldSubmit = await askYesNo(submitLabel)
-
-    if (shouldSubmit) {
-      const url = await submitResults({
-        terminal: data.terminal.name,
-        terminalVersion: data.terminal.version,
-        os: data.terminal.os,
-        osVersion: data.terminal.osVersion,
-        results: data.results,
-        notes: data.notes,
-        responses: data.responses,
-        generated: new Date().toISOString(),
-        cliVersion: "4.0.0",
-        probeCount: ALL_PROBES.length,
-      })
-      if (url) {
-        await printView(<SubmitResult url={url} hasVersion={!!data.terminal.version} />)
-      }
-    }
+    console.log(
+      `${data.target.id} ${data.target.version}: ${data.observations.length}/${ALL_PROBES.length} explicit observations`,
+    )
+    console.log(
+      `Run ${data.runId} is unreviewed${data.suiteComplete ? "" : " and partial"}; use --json for raw evidence.`,
+    )
   })
 
 // ── submit ──
 
 program
   .command("submit")
-  .description("Test all features and submit results to terminfo.dev via GitHub issue")
-  .option("--terminal-name <name>", "Override detected terminal name")
-  .option("--terminal-version <version>", "Override detected terminal version")
-  .action(async (opts) => {
-    const terminal = detectTerminal()
-    let name = opts.terminalName ?? terminal.name
-    let version = opts.terminalVersion ?? terminal.version
-
-    const categoryCount = new Set(ALL_PROBES.map((p) => p.id.split(".")[0])).size
-    await printView(<HelpView terminal={terminal} featureCount={ALL_PROBES.length} categoryCount={categoryCount} />)
-
-    name = await askText("Terminal name", name)
-    version = await askText("Terminal version", version || "unknown")
-    if (version === "unknown") version = ""
-
-    if (!version) {
-      console.log(`\n  No version detected. Try: ${name} --version or check About menu.`)
-      version = await askText("Terminal version", "")
-      if (!version) {
-        console.log("\n  Cannot submit without a version.")
-        throw new Error("Cannot submit without a terminal version")
-      }
-    }
-
-    console.log(`\n  Testing ${name} ${version} on ${terminal.os}...\n`)
-
-    const data = await runProbes()
-    const slugs = loadFeatureSlugs()
-    await printView(<TestResults data={data} slugs={slugs} />)
-
-    const url = await submitResults({
-      terminal: name,
-      terminalVersion: version,
-      os: data.terminal.os,
-      osVersion: data.terminal.osVersion,
-      results: data.results,
-      notes: data.notes,
-      responses: data.responses,
-      generated: new Date().toISOString(),
-      cliVersion: "4.0.0",
-      probeCount: ALL_PROBES.length,
-    })
-    if (url) {
-      await printView(<SubmitResult url={url} hasVersion={!!version} />)
-    }
+  .description("Submit reviewed terminal results")
+  .action(() => {
+    throw new Error(
+      "Submitting a v2 partial run requires a reviewed submission path; use test --json to inspect raw evidence",
+    )
   })
 
 // ── detect ──

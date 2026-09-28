@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlink
 import { createHash } from "node:crypto"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { execSync } from "node:child_process"
+import { execFileSync, execSync } from "node:child_process"
 import { createLogger } from "loggily"
 import { parseVitestJson } from "./parse.ts"
 import { ensureCachedVersion } from "@termless/core"
@@ -129,6 +129,14 @@ export function probeSuiteSnapshot(): ProbeSuiteSnapshot {
 /** Executable suite identity, independent of the backend that runs it. */
 export function probeHash(): string {
   return probeSuiteSnapshot().probeHash
+}
+
+/** Metadata for a source-tree daemon; the daemon rechecks the revision and suite. */
+export function sourceSuiteEnvironment(): { TERMINFO_PROBE_HASH: string; TERMINFO_SOURCE_REVISION: string } {
+  return {
+    TERMINFO_PROBE_HASH: probeHash(),
+    TERMINFO_SOURCE_REVISION: execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" }).trim(),
+  }
 }
 
 // ── Version catalog ──

@@ -11,7 +11,14 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import { findOwnedDaemon, requestDaemonProbe, stopOwnedDaemon } from "./daemon-client.ts"
+import type { ProbeRun as CollectedProbeRun } from "@terminfo/probe-defs"
+import {
+  findOwnedDaemon,
+  readDaemonProbeResponse,
+  requestDaemonProbe,
+  saveDaemonProbeRun,
+  stopOwnedDaemon,
+} from "./daemon-client.ts"
 
 let server: Server | undefined
 let root: string | undefined
@@ -21,6 +28,45 @@ afterEach(async () => {
   vi.restoreAllMocks()
   server = undefined
   root = undefined
+})
+
+it("writes one immutable v2 capture and refuses a mismatched intended version", () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  const run: CollectedProbeRun = {
+    schemaVersion: 2,
+    runId: "1234567890abcdef1234567890abcdef",
+    target: {
+      kind: "app",
+      id: "kitty",
+      version: "0.49.1",
+      os: "macos",
+      osVersion: "15",
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    suiteId: "abcdef123456",
+    probeHash: "abcdef123456",
+    suiteComplete: false,
+    sourceRevision: "a".repeat(40),
+    measuredAt: "2026-09-28T00:00:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: { "device.primary-da": "\x1b[?62;4c" },
+    assertions: [],
+    screenshotRefs: [],
+    observations: [],
+    ungradedDiagnostics: {},
+  }
+  const dir = join(root, "runs")
+  expect(() => saveDaemonProbeRun(run, dir, { kind: "app", id: "kitty", version: "0.48.0" })).toThrow(
+    /Measured version/,
+  )
+  const path = saveDaemonProbeRun(run, dir, { kind: "app", id: "kitty", version: "0.49.1" })
+  const saved = JSON.parse(readFileSync(path, "utf8")) as CollectedProbeRun
+  expect(saved.rawReplies["device.primary-da"]).toBe("\x1b[?62;4c")
+  expect(() => saveDaemonProbeRun(run, dir, { kind: "app", id: "kitty", version: "0.49.1" })).toThrow()
 })
 
 it("selects only the launched run and checks /info before returning its token", async () => {
@@ -169,4 +215,17 @@ it("does not disclose the bearer token to a listener with another run identity",
   }
   await expect(requestDaemonProbe(registration)).rejects.toThrow(/identity.*mismatch/i)
   expect(seen).toEqual([{ path: "/info", authorization: undefined }])
+})
+
+it("refuses the old boolean daemon payload instead of upgrading it to v2 observations", async () => {
+  const legacy = new Response(
+    JSON.stringify({
+      terminal: "kitty",
+      terminalVersion: "0.49.1",
+      os: "macos",
+      osVersion: "25.4",
+      results: { "device.primary-da": true },
+    }),
+  )
+  await expect(readDaemonProbeResponse(legacy)).rejects.toThrow(/v2|schema|boolean/i)
 })

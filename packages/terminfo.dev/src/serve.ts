@@ -19,13 +19,91 @@ import { mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from 
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { randomBytes, timingSafeEqual } from "node:crypto"
+import { execFileSync } from "node:child_process"
+import { dirname } from "node:path"
+import { fileURLToPath } from "node:url"
+import type { ProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
-import { ALL_PROBES } from "./probes/unified.ts"
+import { ALL_PROBES, runProbeBatch } from "./probes/unified.ts"
 
 const s = createStyle()
 
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
+const SOURCE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
+
+function suiteMetadata(): { probeHash: string; sourceRevision: string } {
+  const probeHash = process.env.TERMINFO_PROBE_HASH
+  const sourceRevision = process.env.TERMINFO_SOURCE_REVISION
+  if (!probeHash || !/^[0-9a-f]{12}$/.test(probeHash) || !sourceRevision || !/^[0-9a-f]{40}$/.test(sourceRevision)) {
+    throw new Error(
+      "v2 collection requires TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION from a source-tree launcher",
+    )
+  }
+  const manifestPath = join(SOURCE_ROOT, "content", "suites", `${probeHash}.json`)
+  const manifest: ProbeSuiteManifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ProbeSuiteManifest
+  const actual = ALL_PROBES.map((probe) => probe.id).sort()
+  if (manifest.probeHash !== probeHash || JSON.stringify(manifest.probes.app) !== JSON.stringify(actual)) {
+    throw new Error(`Loaded app probes disagree with suite manifest ${manifestPath}`)
+  }
+  const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: SOURCE_ROOT, encoding: "utf8" }).trim()
+  if (revision !== sourceRevision) throw new Error(`Collector revision differs from TERMINFO_SOURCE_REVISION`)
+  const dirty = execFileSync(
+    "git",
+    [
+      "status",
+      "--porcelain",
+      "--",
+      "packages/probe-defs/src",
+      "packages/terminfo.dev/src",
+      "packages/terminfo.dev/package.json",
+    ],
+    {
+      cwd: SOURCE_ROOT,
+      encoding: "utf8",
+    },
+  ).trim()
+  if (dirty) throw new Error(`Collector source is uncommitted: ${dirty}`)
+  return { probeHash, sourceRevision }
+}
+
+/** The same source-tree collector powers daemon and inline CLI entry points. */
+export async function collectProbeRun(options: { ids?: string[] } = {}): Promise<ProbeRun> {
+  const terminal = detectTerminal()
+  const { probeHash, sourceRevision } = suiteMetadata()
+  const batch = await withRawMode(async () => {
+    const result = await runProbeBatch(options)
+    await drainStdin(1000)
+    return result
+  })
+  return {
+    schemaVersion: 2,
+    runId: randomBytes(16).toString("hex"),
+    target: {
+      kind: "app",
+      id: terminal.name,
+      version: terminal.version || "unknown",
+      os: terminal.os,
+      osVersion: terminal.osVersion,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    suiteId: probeHash,
+    probeHash,
+    suiteComplete: batch.suiteComplete,
+    sourceRevision,
+    measuredAt: new Date().toISOString(),
+    origin: { kind: "collector" },
+    rawReplies: batch.rawReplies,
+    assertions: batch.assertions,
+    screenshotRefs: [],
+    observations: batch.observations,
+    ungradedDiagnostics: batch.ungradedDiagnostics,
+  }
+}
 
 interface DaemonInfo {
   pid: number
@@ -126,47 +204,14 @@ export function startDaemon(port = 0): void {
       }
 
       if (url.pathname === "/probe") {
-        const probes = ALL_PROBES
-        console.log(s.dim(`[${new Date().toISOString()}] Running ${probes.length} probes...`))
-
-        const results: Record<string, boolean> = {}
-        const notes: Record<string, string> = {}
-        const responses: Record<string, string> = {}
-
-        await withRawMode(async () => {
-          for (const probe of probes) {
-            process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-            try {
-              const result = await probe.run()
-              results[probe.id] = result.pass
-              if (result.note) notes[probe.id] = result.note
-              if (result.response) responses[probe.id] = result.response
-            } catch (err) {
-              results[probe.id] = false
-              notes[probe.id] = `error: ${err instanceof Error ? err.message : String(err)}`
-            }
-          }
-          process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-          await drainStdin(1000)
-        })
-
-        const passed = Object.values(results).filter((v) => v).length
-        const total = Object.keys(results).length
-        console.log(`${s.green("+")} ${passed}/${total} (${Math.round((passed / total) * 100)}%)`)
-
-        res.end(
-          JSON.stringify({
-            terminal: terminal.name,
-            terminalVersion: terminal.version,
-            os: terminal.os,
-            osVersion: terminal.osVersion,
-            source: "daemon",
-            generated: new Date().toISOString(),
-            results,
-            notes,
-            responses,
-          }),
+        console.log(s.dim(`[${new Date().toISOString()}] Running ${ALL_PROBES.length} probes...`))
+        const run = await collectProbeRun()
+        console.log(
+          s.dim(
+            `Collected ${run.observations.length}/${ALL_PROBES.length} explicit observations; partial=${!run.suiteComplete}`,
+          ),
         )
+        res.end(JSON.stringify(run))
         return
       }
 
@@ -185,19 +230,7 @@ export function startDaemon(port = 0): void {
           return
         }
 
-        await withRawMode(async () => {
-          process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-          try {
-            const result = await probe.run()
-            process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-            await drainStdin(500)
-            res.end(JSON.stringify({ id: probeId, ...result }))
-          } catch (err) {
-            process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
-            await drainStdin(500)
-            res.end(JSON.stringify({ id: probeId, pass: false, note: String(err) }))
-          }
-        })
+        res.end(JSON.stringify(await collectProbeRun({ ids: [probeId] })))
         return
       }
 

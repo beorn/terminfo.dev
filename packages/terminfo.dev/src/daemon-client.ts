@@ -1,8 +1,9 @@
 /** Shared request boundary for the CLI and admin daemon collectors. */
 import { randomBytes } from "node:crypto"
-import { mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { ProbeRun as CollectedProbeRun, ProbeTarget } from "@terminfo/probe-defs"
 
 export interface DaemonRegistration {
   pid: number
@@ -141,37 +142,73 @@ export async function requestDaemonProbe(daemon: DaemonRegistration): Promise<Re
   return response
 }
 
-export interface DaemonProbePayload {
-  terminal: string
-  terminalVersion: string
-  os: string
-  osVersion: string
-  results: Record<string, boolean>
-  notes?: Record<string, string>
-  responses?: Record<string, string>
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-/** Decode the current legacy daemon wire envelope without inventing an outcome. */
-export async function readDaemonProbeResponse(response: Response): Promise<DaemonProbePayload> {
+/** Reject legacy boolean envelopes; only explicit v2 observations cross this boundary. */
+export async function readDaemonProbeResponse(response: Response): Promise<CollectedProbeRun> {
   const data: unknown = await response.json()
   if (
     !isRecord(data) ||
-    typeof data.terminal !== "string" ||
-    typeof data.terminalVersion !== "string" ||
-    typeof data.os !== "string" ||
-    typeof data.osVersion !== "string" ||
-    !isRecord(data.results) ||
-    !Object.values(data.results).every((value) => typeof value === "boolean") ||
-    (data.notes !== undefined &&
-      (!isRecord(data.notes) || !Object.values(data.notes).every((value) => typeof value === "string"))) ||
-    (data.responses !== undefined &&
-      (!isRecord(data.responses) || !Object.values(data.responses).every((value) => typeof value === "string")))
+    data.schemaVersion !== 2 ||
+    typeof data.runId !== "string" ||
+    !isRecord(data.target) ||
+    typeof data.target.id !== "string" ||
+    typeof data.target.version !== "string" ||
+    !["app", "mux"].includes(String(data.target.kind)) ||
+    data.identity !== "unverified" ||
+    typeof data.probeHash !== "string" ||
+    typeof data.sourceRevision !== "string" ||
+    typeof data.measuredAt !== "string" ||
+    !isRecord(data.rawReplies) ||
+    !Object.values(data.rawReplies).every((value) => typeof value === "string") ||
+    !Array.isArray(data.observations) ||
+    !Array.isArray(data.assertions) ||
+    !Array.isArray(data.screenshotRefs) ||
+    !isRecord(data.ungradedDiagnostics) ||
+    typeof data.suiteComplete !== "boolean" ||
+    Object.hasOwn(data, "results")
   ) {
-    throw new Error("Invalid /probe response: expected terminal identity and boolean results")
+    throw new Error("Invalid /probe response: expected explicit v2 observation schema, not boolean results")
   }
-  return data as unknown as DaemonProbePayload
+  return data as unknown as CollectedProbeRun
+}
+
+/** Preserve one immutable raw capture under its measured identity. */
+export function saveDaemonProbeRun(
+  run: CollectedProbeRun,
+  directory: string,
+  intended?: { kind: ProbeTarget["kind"]; id: string; version: string },
+): string {
+  if (intended && run.target.id !== intended.id && run.target.id !== "unknown") {
+    throw new Error(
+      `Measured terminal ${run.target.id} differs from intended ${intended.id}; refusing to relabel capture`,
+    )
+  }
+  if (intended && run.target.version !== intended.version && run.target.version !== "unknown") {
+    throw new Error(
+      `Measured version ${run.target.version} differs from intended ${intended.version}; refusing to relabel capture`,
+    )
+  }
+  const captured: CollectedProbeRun = intended
+    ? {
+        ...run,
+        target: { ...run.target, kind: intended.kind },
+        rawReplies: {
+          ...run.rawReplies,
+          "collector.intent": JSON.stringify(intended),
+        },
+      }
+    : run
+  for (const value of [captured.target.id, captured.target.version, captured.target.os ?? "unknown", captured.runId]) {
+    if (!/^[a-zA-Z0-9._-]+$/.test(value)) throw new Error(`Unsafe capture filename component: ${value}`)
+  }
+  mkdirSync(directory, { recursive: true })
+  const file = join(
+    directory,
+    `${captured.target.id}-${captured.target.version}-${captured.target.os ?? "unknown"}-${captured.runId}.json`,
+  )
+  writeFileSync(file, `${JSON.stringify(captured, null, 2)}\n`, { flag: "wx" })
+  return file
 }

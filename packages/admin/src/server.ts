@@ -7,10 +7,9 @@
  * bare:    list running daemons
  */
 
-import { mkdirSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { readDaemonProbeResponse, requestDaemonProbe } from "terminfo.dev/src/daemon-client.ts"
+import { readDaemonProbeResponse, requestDaemonProbe, saveDaemonProbeRun } from "terminfo.dev/src/daemon-client.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -79,24 +78,18 @@ export async function handleServer(
     try {
       const res = await requestDaemonProbe(d)
       const data = await readDaemonProbeResponse(res)
-      const passed = Object.values(data.results).filter(Boolean).length
-      const total = Object.keys(data.results).length
-      const pct = Math.round((passed / total) * 100)
-      console.log(`  ${label.padEnd(25)} ${passed}/${total} (${pct}%)`)
+      const observed = data.observations.length
+      const total = observed + Object.keys(data.ungradedDiagnostics ?? {}).length
+      console.log(`  ${label.padEnd(25)} ${observed}/${total} explicit observations (unreviewed)`)
 
-      // Verify terminal identity before saving results
       const { verifyTerminalIdentity } = await import("terminfo.dev/src/identity-guard.ts")
-      const identityCheck = verifyTerminalIdentity(data.terminal, data.responses, data.results)
-      if (!identityCheck.ok) {
-        throw new Error(`REJECTED: ${identityCheck.reason}`)
+      const identityCheck = verifyTerminalIdentity(data.target.id, data.rawReplies)
+      const run = {
+        ...data,
+        rawReplies: { ...data.rawReplies, "collector.identityCheck": JSON.stringify(identityCheck) },
       }
-
-      // Save results
       const dir = join(ROOT, "content", "probes-apps")
-      mkdirSync(dir, { recursive: true })
-      const name = data.terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
-      const ver = (data.terminalVersion || "unknown").replace(/[^a-z0-9.-]/g, "-")
-      writeFileSync(`${dir}/${name}-${ver}-${data.os}.json`, JSON.stringify(data, null, 2))
+      saveDaemonProbeRun(run, dir)
       saved++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

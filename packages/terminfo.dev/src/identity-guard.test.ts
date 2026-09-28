@@ -1,7 +1,28 @@
+/**
+ * @failure Complete XTVERSION frames are rejected or truncated frames are trusted as terminal identity.
+ * @level l1
+ * @consumer App daemon run identity review
+ * @testonly none
+ */
 import { describe, it, expect } from "vitest"
 import { verifyTerminalIdentity } from "./identity-guard.ts"
 
 describe("verifyTerminalIdentity", () => {
+  it("accepts complete XTVERSION DCS bytes and refuses a truncated frame", () => {
+    const da1 = "\x1b[?62;52;c"
+    expect(
+      verifyTerminalIdentity("kitty", {
+        "device.primary-da": da1,
+        "device.xtversion": "\x1bP>|kitty(0.49.1)\x1b\\",
+      }).ok,
+    ).toBe(true)
+    expect(
+      verifyTerminalIdentity("kitty", {
+        "device.primary-da": da1,
+        "device.xtversion": "\x1bP>|kitty(0.49.1)",
+      }).ok,
+    ).toBe(false)
+  })
   it("accepts a valid kitty probe result with XTVERSION and VT220 DA1", () => {
     const responses = {
       "device.primary-da": "\u001b[?62;52;c",
