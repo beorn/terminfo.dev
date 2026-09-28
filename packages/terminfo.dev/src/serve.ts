@@ -19,6 +19,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
+import { randomBytes, timingSafeEqual } from "node:crypto"
 import { detectTerminal } from "./detect.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
 
@@ -47,13 +48,14 @@ interface DaemonInfo {
   os: string
   osVersion: string
   started: string
+  token: string
 }
 
 function register(info: DaemonInfo): string {
-  mkdirSync(DAEMON_DIR, { recursive: true })
+  mkdirSync(DAEMON_DIR, { recursive: true, mode: 0o700 })
   const filename = `${info.terminal}-${info.pid}.json`
   const filepath = join(DAEMON_DIR, filename)
-  writeFileSync(filepath, JSON.stringify(info, null, 2))
+  writeFileSync(filepath, JSON.stringify(info, null, 2), { flag: "wx", mode: 0o600 })
   return filepath
 }
 
@@ -81,13 +83,27 @@ export function listDaemons(): DaemonInfo[] {
 
 export async function startDaemon(port = 0): Promise<void> {
   const terminal = detectTerminal()
+  const token = randomBytes(32).toString("hex")
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
       res.setHeader("Content-Type", "application/json")
-      res.setHeader("Access-Control-Allow-Origin", "*")
 
       const url = new URL(req.url ?? "/", `http://localhost`)
+      const mutatesTTY = url.pathname === "/probe" || url.pathname === "/probe/single" || url.pathname === "/query"
+      if (mutatesTTY) {
+        const supplied = req.headers.authorization?.replace(/^Bearer /, "") ?? ""
+        const expected = Buffer.from(token)
+        const actual = Buffer.from(supplied)
+        const authorized = actual.length === expected.length && timingSafeEqual(actual, expected)
+        const origin = req.headers.origin
+        const sameOrigin = !origin || origin === `http://${req.headers.host}`
+        if (!authorized || !sameOrigin) {
+          res.statusCode = 403
+          res.end(JSON.stringify({ error: "TTY mutation requires this daemon's token and same origin" }))
+          return
+        }
+      }
 
       if (url.pathname === "/info") {
         res.end(
@@ -126,9 +142,6 @@ export async function startDaemon(port = 0): Promise<void> {
           process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
           await drainStdin(1000)
         })
-
-        // Reset terminal after probes
-        process.stdout.write("\x1bc")
 
         const passed = Object.values(results).filter((v) => v).length
         const total = Object.keys(results).length
@@ -178,21 +191,37 @@ export async function startDaemon(port = 0): Promise<void> {
             res.end(JSON.stringify({ id: probeId, pass: false, note: String(err) }))
           }
         })
-        process.stdout.write("\x1bc")
         return
       }
 
       if (url.pathname === "/query" && req.method === "POST") {
         // Execute raw escape sequence commands in this terminal
         // POST body: { commands: [{ write: "\\x1b[6n", read: "\\x1b\\[(\\d+);(\\d+)R", timeout?: 1000 }, ...] }
-        const body = await readBody(req)
         try {
+          const body = await readBody(req)
           const { commands } = JSON.parse(body) as {
             commands: Array<{ write?: string; read?: string; timeout?: number; measure?: string }>
           }
           if (!Array.isArray(commands)) {
             res.statusCode = 400
             res.end(JSON.stringify({ error: "commands must be an array" }))
+            return
+          }
+          if (
+            commands.length > 64 ||
+            commands.some(
+              (cmd) =>
+                typeof cmd !== "object" ||
+                cmd === null ||
+                (cmd.write !== undefined && (typeof cmd.write !== "string" || cmd.write.length > 16384)) ||
+                (cmd.measure !== undefined && (typeof cmd.measure !== "string" || cmd.measure.length > 16384)) ||
+                (cmd.read !== undefined && (typeof cmd.read !== "string" || cmd.read.length > 512)) ||
+                (cmd.timeout !== undefined &&
+                  (!Number.isInteger(cmd.timeout) || cmd.timeout < 1 || cmd.timeout > 5000)),
+            )
+          ) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: "commands exceed count, size, or timeout limits" }))
             return
           }
 
@@ -226,12 +255,10 @@ export async function startDaemon(port = 0): Promise<void> {
             process.stdout.write("\x1b[0m\x1b[2J\x1b[H")
             await drainStdin(500)
           })
-          process.stdout.write("\x1bc")
-
           console.log(s.dim(`[${new Date().toISOString()}] Executed ${commands.length} commands`))
           res.end(JSON.stringify({ terminal: terminal.name, results }))
         } catch (err) {
-          res.statusCode = 400
+          res.statusCode = err instanceof RangeError ? 413 : 400
           res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }))
         }
         return
@@ -250,7 +277,14 @@ export async function startDaemon(port = 0): Promise<void> {
           version: terminal.version,
         }),
       )
-    })()
+    })().catch((err) => {
+      console.error("Probe daemon request failed:", err)
+      if (res.headersSent) res.destroy(err)
+      else {
+        res.statusCode = 500
+        res.end(JSON.stringify({ error: "Probe daemon request failed" }))
+      }
+    })
   })
 
   server.listen(port, "127.0.0.1", () => {
@@ -266,21 +300,20 @@ export async function startDaemon(port = 0): Promise<void> {
       os: terminal.os,
       osVersion: terminal.osVersion,
       started: new Date().toISOString(),
+      token,
     }
 
     const filepath = register(info)
 
-    console.log(s.yellow(`! Security warning: this opens an HTTP server on localhost:${actualPort}`))
-    console.log(s.yellow(`  Any local process can trigger terminal escape sequences via this server.`))
-    console.log(s.yellow(`  Only run this on trusted machines. Stop with Ctrl+C when done.\n`))
+    console.log(s.yellow(`! Probe daemon listening on localhost:${actualPort}; stop with Ctrl+C when done.\n`))
     console.log(`${s.bold("terminfo.dev")} daemon running\n`)
     console.log(`  Terminal:  ${s.bold(terminal.name)} ${terminal.version}`)
     console.log(`  Port:      ${s.bold(String(actualPort))}`)
     console.log(`  Probes:    dynamic (loaded on each request)`)
     console.log(``)
-    console.log(`  Test:   curl http://localhost:${actualPort}/probe`)
+    console.log(`  Test:   use the registered daemon token to authorize /probe`)
     console.log(`  Info:   curl http://localhost:${actualPort}/info`)
-    console.log(`  Single: curl http://localhost:${actualPort}/probe/single?id=sgr.bold`)
+    console.log(`  Single: /probe/single?id=sgr.bold (token required)`)
 
     // Clean up on exit
     const cleanup = () => {
@@ -297,7 +330,13 @@ export async function startDaemon(port = 0): Promise<void> {
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
-    req.on("data", (chunk: Buffer) => chunks.push(chunk))
+    let size = 0
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length
+      if (size > 65536) {
+        reject(new RangeError("Query body exceeds 64 KiB"))
+      } else chunks.push(chunk)
+    })
     req.on("end", () => resolve(Buffer.concat(chunks).toString()))
     req.on("error", reject)
   })
