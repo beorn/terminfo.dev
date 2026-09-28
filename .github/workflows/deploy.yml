@@ -13,6 +13,9 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      site-sha256: ${{ steps.archive.outputs.sha256 }}
+      site-artifact-name: ${{ steps.archive.outputs.artifact-name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,7 +23,7 @@ jobs:
         with:
           bun-version: latest
 
-      - run: bun install
+      - run: bun install --frozen-lockfile
 
       - name: Validate content
         run: bun run validate
@@ -37,6 +40,22 @@ jobs:
       - name: Check for 404s
         run: bun scripts/check-404s.ts
 
+      - name: Archive the validated site
+        id: archive
+        shell: bash
+        run: |
+          tar -C docs/.vitepress/dist -czf site.tar.gz .
+          digest=$(sha256sum site.tar.gz | cut -d ' ' -f 1)
+          echo "sha256=$digest" >> "$GITHUB_OUTPUT"
+          echo "artifact-name=validated-site-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "Validated site SHA-256: \`$digest\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.archive.outputs.artifact-name }}
+          path: site.tar.gz
+          if-no-files-found: error
+
   deploy:
     needs: validate
     runs-on: ubuntu-latest
@@ -44,13 +63,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v5
         with:
-          bun-version: latest
+          name: ${{ needs.validate.outputs.site-artifact-name }}
 
-      - run: bun install
-
-      - run: bunx --bun vitepress build docs
+      - name: Verify and unpack the validated site
+        shell: bash
+        env:
+          EXPECTED_SITE_SHA256: ${{ needs.validate.outputs.site-sha256 }}
+        run: |
+          printf '%s  site.tar.gz\n' "$EXPECTED_SITE_SHA256" | sha256sum --check --strict
+          mkdir -p docs/.vitepress/dist
+          tar -xzf site.tar.gz -C docs/.vitepress/dist
 
       - uses: cloudflare/wrangler-action@v3
         with:
