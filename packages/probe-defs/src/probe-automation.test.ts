@@ -161,6 +161,65 @@ describe("Kitty protocol detection", () => {
     expect((await p.term(terminalContext({}))).pass).toBe(false)
   })
 
+  // OSC 52 previously passed on any substring or on unrelated CPR, and left live clipboard writes behind.
+  // No existing protocol test covers these three callbacks or the collector's no-clipboard policy.
+  test("OSC 52 requires a complete nonce roundtrip in headless mode and never touches a live clipboard", async () => {
+    for (const id of ["extensions.osc52-clipboard", "extensions.osc52-write", "extensions.osc52-read"]) {
+      const p = probe(id)
+      if (!p.termless || !p.term) throw new Error(`${id} needs both callbacks`)
+
+      const sent: string[] = []
+      const headless = p.termless(
+        context({
+          feed(text) {
+            sent.push(text)
+          },
+          feedCapture(text) {
+            expect(text).toBe("\x1b]52;c;?\x07")
+            const encoded = /\x1b\]52;c;([A-Za-z0-9+/=]+)\x07/.exec(sent.join(""))?.[1]
+            if (!encoded) throw new Error("Probe never sent a clipboard nonce")
+            return `\x1b]52;c;${encoded}\x1b\\`
+          },
+        }),
+      )
+      expect(headless.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+
+      for (const reply of [
+        "\x1b[1;1R", // Unrelated CPR cannot prove a clipboard write.
+        "\x1b]52;c;d3Jvbmc=\x07", // A valid but different clipboard value is not the nonce.
+        "\x1b]52;p;d3Jvbmc=\x07", // The primary selection is not c.
+        "\x1b]52;c;not-base64!\x07",
+        "\x1b]52;c;d3Jvbmc=\x1b", // ESC alone is not a complete ST.
+        "",
+      ]) {
+        const result = p.termless(context({ feedCapture: () => reply }))
+        expect(result.observation?.outcome, `${id}: ${JSON.stringify(reply)}`).toBe("inconclusive")
+        expect(result.pass).toBe(false)
+      }
+
+      const liveWrites: string[] = []
+      const live = await p.term(
+        terminalContext({
+          write(text) {
+            liveWrites.push(text)
+          },
+          queryCursorPosition: async () => {
+            throw new Error("OSC 52 live policy must not query")
+          },
+          queryWithSentinel: async () => {
+            throw new Error("OSC 52 live policy must not read clipboard")
+          },
+          queryWithSentinelOutcome: async () => {
+            throw new Error("OSC 52 live policy must not read clipboard")
+          },
+        }),
+      )
+      expect(liveWrites, id).toEqual([])
+      expect(live.observation).toMatchObject({ outcome: "inconclusive", reason: "policy-refused" })
+      expect(live.note).toMatch(/collector|owned clipboard/i)
+    }
+  })
+
   // A rejected query used to skip the pop and leak this probe's keyboard mode into later probes.
   test("Kitty keyboard probes pop their own stack entry after a reply, no reply, or query error", async () => {
     const cases = [

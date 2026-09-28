@@ -1271,7 +1271,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 allows terminal applications to read from and write to the system clipboard. To set the clipboard: <code>ESC ] 52 ; c ; &lt;base64-data&gt; ST</code>. To query it: <code>ESC ] 52 ; c ; ? ST</code>, and the terminal responds with the base64-encoded clipboard contents.\n\nThis is particularly valuable for remote sessions (SSH, tmux, mosh) where the application has no direct access to the local system clipboard. A vim session inside tmux over SSH can yank text to the user's local clipboard without any special tooling.\n\nSecurity is a concern: clipboard read access lets any application running in the terminal silently exfiltrate clipboard contents. Many terminals disable read access by default or prompt the user for confirmation, while still allowing clipboard writes. The <code>c</code> parameter selects the clipboard buffer — <code>c</code> for clipboard, <code>p</code> for primary selection (X11).",
-    "probe": "Set clipboard via <code>OSC 52 ; c ; &lt;base64&gt; BEL</code>, then query with <code>OSC 52 ; c ; ? BEL</code> and verify response contains the data. Confirms read/write clipboard support.",
+    "probe": "In an isolated headless backend, write a fresh nonce with <code>OSC 52;c;... BEL</code>, query <code>OSC 52;c;? BEL</code>, and require a complete, canonical base64 reply containing that exact nonce. Live app collection does not access the clipboard until an owned disposable clipboard and verified restoration are available; its result is inconclusive.",
     "baseline": "modern",
     "sequence": "ESC ] 52 ; c ; base64 BEL"
   },
@@ -2277,7 +2277,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 clipboard write sets the system clipboard content. The sequence <code>ESC ] 52 ; c ; base64-data BEL</code> sets the clipboard to the decoded base64 content. Most modern terminals support clipboard write, though some require explicit opt-in for security (e.g., iTerm2 prompts the user). Write-only support is more common than read support — many terminals allow setting the clipboard but block reading it back to prevent clipboard snooping by malicious programs.",
-    "probe": "Send <code>OSC 52;c;base64-data BEL</code> and verify the terminal remains responsive.",
+    "probe": "In an isolated headless backend, write a fresh nonce and independently read it back through a complete OSC 52 clipboard reply. Consumption or terminal responsiveness alone is insufficient evidence. Live app collection does not write an unowned clipboard and reports an inconclusive result.",
     "baseline": "modern"
   },
   "extensions.osc52-read": {
@@ -2286,7 +2286,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 clipboard read queries the current clipboard content. The sequence <code>ESC ] 52 ; c ; ? BEL</code> requests the terminal to respond with the clipboard data base64-encoded. Fewer terminals support read than write — clipboard read is a security-sensitive operation since a malicious program could silently exfiltrate clipboard contents (passwords, tokens). Terminals that support it often require explicit user opt-in.",
-    "probe": "Set clipboard via OSC 52, then query with <code>OSC 52;c;? BEL</code>. Check for response containing the data.",
+    "probe": "In an isolated headless backend, write a fresh nonce, query with <code>OSC 52;c;? BEL</code>, and require the exact decoded nonce in a complete clipboard reply. Live app collection does not query an unowned clipboard and reports an inconclusive result.",
     "baseline": "rich"
   },
   "extensions.osc1-icon": {

@@ -1,4 +1,5 @@
-import type { ProbeDefinition, ProbeResult, TerminalQueryOutcome } from "./types.ts"
+import { randomUUID } from "node:crypto"
+import type { ProbeDefinition, ProbeResult, TermlessContext, TerminalQueryOutcome } from "./types.ts"
 import { probe } from "./helpers.ts"
 
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
@@ -477,6 +478,68 @@ function clipboardProtocolResult(response: string): ProbeResult {
   }
 }
 
+/** Only an isolated headless backend may receive this disposable OSC 52 nonce. */
+function headlessClipboardRoundtrip(ctx: TermlessContext): ProbeResult {
+  const nonce = `terminfo-osc52-${randomUUID()}`
+  const encoded = btoa(nonce)
+  ctx.feed(`\x1b]52;c;${encoded}\x07`)
+  const response = ctx.feedCapture("\x1b]52;c;?\x07")
+  const frames = response.matchAll(/\x1b\]52;c;([^\x07\x1b]*)(?:\x07|\x1b\\)/g)
+  let sawCompleteFrame = false
+  let sawInvalidFrame = false
+  for (const frame of frames) {
+    sawCompleteFrame = true
+    const data = frame[1] ?? ""
+    try {
+      if (btoa(atob(data)) !== data) {
+        sawInvalidFrame = true
+        continue
+      }
+      if (atob(data) === nonce) {
+        const note = "Isolated backend returned the exact OSC 52 clipboard nonce"
+        return {
+          pass: true,
+          response,
+          note,
+          observation: { outcome: "supported", evidence: "query", note },
+          assertions: [
+            { kind: "positive", expected: "OSC 52 c query returns the exact written nonce", observed: frame[0] },
+          ],
+        }
+      }
+    } catch {
+      sawInvalidFrame = true
+    }
+  }
+  const reason =
+    sawInvalidFrame || (response.length > 0 && !sawCompleteFrame)
+      ? "invalid-reply"
+      : sawCompleteFrame
+        ? "insufficient-evidence"
+        : "no-response"
+  const note =
+    reason === "invalid-reply"
+      ? "No complete, canonical OSC 52 c reply was received from the isolated backend"
+      : reason === "insufficient-evidence"
+        ? "OSC 52 c replied with data other than the written nonce"
+        : "No OSC 52 c query response from the isolated backend"
+  return {
+    pass: false,
+    response,
+    note,
+    observation: { outcome: "inconclusive", reason, evidence: "query", note },
+  }
+}
+
+function liveClipboardNotTested(): ProbeResult {
+  const note = "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent"
+  return {
+    pass: false,
+    note,
+    observation: { outcome: "inconclusive", reason: "policy-refused", evidence: "behavior", note },
+  }
+}
+
 export const extensionsProbes: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
   probe(
@@ -665,67 +728,13 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 52 — clipboard
-  probe(
-    "extensions.osc52-clipboard",
-    (ctx) => {
-      // Set clipboard data, then query it back via feedCapture
-      const testData = btoa("terminfo-test")
-      ctx.feed(`\x1b]52;c;${testData}\x07`)
-      const response = ctx.feedCapture("\x1b]52;c;?\x07")
-      if (response.includes("52;c;")) return { pass: true }
-      // Fallback: check if the sequence was at least consumed (title didn't change)
-      return { pass: false, note: "No OSC 52 query response" }
-    },
-    async (ctx) => {
-      const testData = btoa("terminfo-test")
-      ctx.write(`\x1b]52;c;${testData}\x07`)
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No response after OSC 52" }
-      return { pass: true }
-    },
-  ),
+  probe("extensions.osc52-clipboard", headlessClipboardRoundtrip, () => Promise.resolve(liveClipboardNotTested())),
 
   // OSC 52 write — set clipboard (most terminals support this)
-  probe(
-    "extensions.osc52-write",
-    (ctx) => {
-      // Verify the write sequence is consumed without producing visible output
-      ctx.feed(`\x1b]52;c;${btoa("test")}\x07X`)
-      const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
-    },
-    async (ctx) => {
-      const testData = btoa("terminfo-write-test")
-      ctx.write(`\x1b]52;c;${testData}\x07`)
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No response after OSC 52 write" }
-      return { pass: true }
-    },
-  ),
+  probe("extensions.osc52-write", headlessClipboardRoundtrip, () => Promise.resolve(liveClipboardNotTested())),
 
   // OSC 52 read — query clipboard back (fewer terminals support this)
-  probe(
-    "extensions.osc52-read",
-    (ctx) => {
-      const testData = btoa("terminfo-read-test")
-      ctx.feed(`\x1b]52;c;${testData}\x07`)
-      const response = ctx.feedCapture("\x1b]52;c;?\x07")
-      return {
-        pass: response.includes("52;c;"),
-        note: response.includes("52;c;") ? undefined : "No OSC 52 query response",
-      }
-    },
-    async (ctx) => {
-      const testData = btoa("terminfo-read-test")
-      ctx.write(`\x1b]52;c;${testData}\x07`)
-      const match = await ctx.queryWithSentinel("\x1b]52;c;?\x07", /\x1b\]52;c;([^\x07\x1b]+)[\x07\x1b]/)
-      if (!match) return { pass: false, note: "No OSC 52 read response" }
-      return { pass: true, response: match[1]?.substring(0, 20) }
-    },
-  ),
+  probe("extensions.osc52-read", headlessClipboardRoundtrip, () => Promise.resolve(liveClipboardNotTested())),
 
   // OSC 10 — foreground color query
   oscColorQueryProbe("extensions.osc10-fg-color", 10),
