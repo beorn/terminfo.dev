@@ -4,7 +4,7 @@
  * @consumer Site data and JSON API use the canonical reviewed-run selector.
  * @testonly none
  */
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -17,9 +17,11 @@ import type { SelectedProjection } from "../docs/data/selected-results.ts"
 
 describe("consumer selection", () => {
   it("does not score unreviewed legacy booleans as current results", () => {
-    const site = probesLoader.load()
+    const warnings: string[] = []
+    const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))
     const out = mkdtempSync(join(tmpdir(), "terminfo-api-selection-"))
     try {
+      const site = probesLoader.load()
       const { dataPath } = generateApi(out)
       const api = JSON.parse(readFileSync(dataPath, "utf8")) as {
         terminals: Record<string, { score?: { total: number } }>
@@ -46,7 +48,16 @@ describe("consumer selection", () => {
         expect(analysis["baseline/core"]?.analysis).toContain("awaiting verified measurements")
       }
       expect(terminalPaths.paths().some((page) => page.params.id === "kitty")).toBe(true)
+      expect(warnings).toContainEqual(expect.stringContaining("historical analysis snapshot is not current evidence"))
+      expect(
+        warnings.every(
+          (message) =>
+            message.includes("historical analysis snapshot is not current evidence") ||
+            message.includes("no reviewed current conclusive results"),
+        ),
+      ).toBe(true)
     } finally {
+      warning.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }
   })

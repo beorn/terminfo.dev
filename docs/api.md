@@ -10,27 +10,21 @@ Machine-readable terminal compatibility data -- the terminal equivalent of [MDN 
 
 **`GET /api/v1/data.json`**
 
-Returns the complete compatibility database as a single JSON file.
+Returns the v1 compatibility projection as a single JSON file. Only reviewed, conclusive current results appear. An absent terminal or feature means this response has no qualified result for it; absence is not a negative result. [Measurement methods](/contribute#what-a-probe-can-establish) explain what each observation can establish.
 
 [View raw data](/api/v1/data.json)
 
 ## Badges
 
-Embeddable SVG badges for terminal READMEs:
+Embeddable SVG badges are generated only for terminals with a current reviewed score:
 
 ```markdown
 ![terminfo.dev](https://terminfo.dev/api/v1/badges/ghostty.svg)
 ```
 
-**Preview:**
-
-![Ghostty](/api/v1/badges/ghostty.svg)
-![Kitty](/api/v1/badges/kitty.svg)
-![iTerm2](/api/v1/badges/iterm2.svg)
-
 ### Available Badges
 
-Badge URLs follow the pattern `/api/v1/badges/{slug}.svg` where `{slug}` matches the terminal key in `data.json`.
+Badge URLs follow the pattern `/api/v1/badges/{slug}.svg` where `{slug}` is a scored terminal key in `data.json`. Check the key before linking a badge.
 
 Color coding:
 
@@ -43,7 +37,13 @@ Color coding:
 ```json
 {
   "version": 1,
-  "generated": "2026-03-25T...",
+  "generated": "",
+  "methodology": {
+    "revision": "2026-09-28",
+    "v2": "/api/v2/data.json",
+    "methods": "/contribute#what-a-probe-can-establish",
+    "contexts": {}
+  },
 
   "features": {
     "sgr.bold": {
@@ -55,42 +55,25 @@ Color coding:
     }
   },
 
-  "terminals": {
-    "ghostty": {
-      "name": "Ghostty",
-      "version": "1.3.1",
-      "type": "app",
-      "platforms": ["macos"],
-      "url": "https://ghostty.org",
-      "score": { "total": 110, "pass": 108, "pct": 98 }
-    }
-  },
-
-  "results": {
-    "ghostty": {
-      "sgr.bold": "yes",
-      "sgr.faint": "yes"
-    }
-  },
-
-  "notes": {
-    "ghostty": {
-      "extensions.sixel": "not supported"
-    }
-  }
+  "terminals": {},
+  "results": {},
+  "notes": {}
 }
 ```
 
+This empty-results example matches a build with no selectable reviewed runs. When one is available, `terminals`, `results` and `notes` gain its slug. The existing v1 score object keeps its meaning: `total` is the number of reported yes/no feature results, `pass` counts yes, and `pct` is `pass / total`. Unknown, inconclusive and error observations are omitted, so coverage belongs in v2.
+
 ### Top-level Fields
 
-| Field       | Type     | Description                                                                  |
-| ----------- | -------- | ---------------------------------------------------------------------------- |
-| `version`   | `number` | Schema version (currently `1`)                                               |
-| `generated` | `string` | ISO 8601 timestamp of data generation                                        |
-| `features`  | `object` | Feature definitions keyed by dot-path ID                                     |
-| `terminals` | `object` | Terminal metadata keyed by slug                                              |
-| `results`   | `object` | Support results: `terminal_slug -> feature_id -> "yes" \| "no" \| "partial"` |
-| `notes`     | `object` | Optional notes: `terminal_slug -> feature_id -> note_text`                   |
+| Field         | Type     | Description                                                                  |
+| ------------- | -------- | ---------------------------------------------------------------------------- |
+| `version`     | `number` | Schema version (currently `1`)                                               |
+| `generated`   | `string` | Latest selected measurement time, or empty when none is selected             |
+| `methodology` | `object` | Revision, v2 and methods links, and each v1 row's chosen context and run SHA |
+| `features`    | `object` | Feature definitions keyed by dot-path ID                                     |
+| `terminals`   | `object` | Terminal metadata keyed by slug                                              |
+| `results`     | `object` | Conclusive support results: `terminal_slug -> feature_id -> "yes" \| "no"`   |
+| `notes`       | `object` | Optional notes: `terminal_slug -> feature_id -> note_text`                   |
 
 ### Feature Object
 
@@ -104,16 +87,16 @@ Color coding:
 
 ### Terminal Object
 
-| Field         | Type        | Description                                              |
-| ------------- | ----------- | -------------------------------------------------------- |
-| `name`        | `string`    | Display name                                             |
-| `version`     | `string`    | Tested version                                           |
-| `type`        | `string`    | `"app"` (real terminal) or `"headless"` (parser library) |
-| `platforms`   | `string[]?` | Tested platforms: `macos`, `linux`, `windows`            |
-| `url`         | `string?`   | Terminal homepage                                        |
-| `score.total` | `number`    | Total features tested                                    |
-| `score.pass`  | `number`    | Features passing                                         |
-| `score.pct`   | `number`    | Pass percentage (0-100)                                  |
+| Field         | Type        | Description                                                                      |
+| ------------- | ----------- | -------------------------------------------------------------------------------- |
+| `name`        | `string`    | Display name                                                                     |
+| `version`     | `string`    | Tested version                                                                   |
+| `type`        | `string`    | `"app"` (real terminal) or `"headless"` (parser library); multiplexers are in v2 |
+| `platforms`   | `string[]?` | Tested platforms: `macos`, `linux`, `windows`                                    |
+| `url`         | `string?`   | Terminal homepage                                                                |
+| `score.total` | `number`    | Conclusive yes/no feature results reported in v1                                 |
+| `score.pass`  | `number`    | Features passing                                                                 |
+| `score.pct`   | `number`    | Pass percentage (0-100)                                                          |
 
 ## Usage Examples
 
@@ -122,17 +105,18 @@ Color coding:
 ```javascript
 const data = await fetch("https://terminfo.dev/api/v1/data.json").then((r) => r.json())
 
-// Does Ghostty support kitty keyboard protocol?
-const supports = data.results["ghostty"]?.["extensions.kitty-keyboard"] === "yes"
+// "yes", "no", or undefined when this context has no conclusive result.
+const support = data.results["ghostty"]?.["extensions.kitty-keyboard"]
+if (support === undefined) console.log("No qualified current result")
 ```
 
 ### Find terminals that support a feature
 
 ```javascript
 const truecolorTerminals = Object.entries(data.results)
-  .filter(([_, results]) => results["sgr.truecolor-fg"] === "yes")
-  .map(([slug]) => data.terminals[slug].name)
-// => ["Ghostty", "Kitty", "iTerm2", ...]
+  .filter(([_, results]) => results["sgr.fg.truecolor"] === "yes")
+  .map(([slug]) => data.terminals[slug]?.name)
+  .filter(Boolean)
 ```
 
 ### Get all features in a category
@@ -146,9 +130,20 @@ const sgrFeatures = Object.entries(data.features)
 ### Terminal scorecard
 
 ```javascript
-const { name, score } = data.terminals["ghostty"]
-console.log(`${name}: ${score.pass}/${score.total} (${score.pct}%)`)
+const terminal = data.terminals["ghostty"]
+if (terminal) {
+  const { name, score } = terminal
+  console.log(`${name}: ${score.pass}/${score.total} (${score.pct}%)`)
+} else {
+  console.log("No reviewed current score for Ghostty")
+}
 ```
+
+## Exact-context v2 data
+
+**`GET /api/v2/data.json`** carries the canonical four outcomes (`supported`, `unsupported`, `inconclusive`, `error`) and each observation's method, reason when applicable, and provenance chain. `current` is keyed by exact target context, so an app, its headless parser and a multiplexer remain separate. Each selected version includes `target`, `runId`, `sha256`, `measuredAt`, `suiteId`, `probeHash`, `suiteFreshness`, `suite` (observed and expected probe counts), `cells`, and counts for catalog, tested, not tested, conclusive, supported and unsupported. `versions` keeps selectable versions; `history` keeps older and excluded runs, including ungraded legacy booleans; `exclusions` names why a run was not selected.
+
+v1's `methodology.contexts[slug]` names the exact context, run SHA and target chosen for that compatibility row. If more than one context exists for a terminal ID, the site and v1 require a reviewed default-context policy row with its reviewer, reason and sources. An unresolved collision stops the build rather than merging results. Multiplexer results appear in v2 under `kind: "mux"`; v1's `type` field retains its existing app/headless meaning.
 
 ## Versioning
 

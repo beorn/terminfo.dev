@@ -48,6 +48,7 @@ const fixture = vi.hoisted(() => {
     suiteFreshness: "current",
     sourceRevision: "rev",
     sha256: runSha256,
+    suite: { observed: 2, expected: 2, complete: true },
     cells,
     v1: { "sgr.bold": true, "extensions.sixel": false },
     counts: { catalog: 270, tested: 2, notTested: 268, conclusive: 2, supported: 1, unsupported: 1 },
@@ -57,6 +58,7 @@ const fixture = vi.hoisted(() => {
     ...selected,
     runId: "tmux-reviewed",
     sha256: "b".repeat(64),
+    suite: { observed: 1, expected: 1, complete: true },
     target: { ...target, kind: "mux", id: "tmux", outerTerminal: "kitty", mux: "tmux" },
     cells: {},
     v1: { "sgr.bold": true },
@@ -92,11 +94,14 @@ import { generateAnalysis } from "./generate-analysis.ts"
 
 describe("selected-run consumer parity", () => {
   it("keeps the same run, conclusive counts and measurement time in every consumer", () => {
-    const site = probesLoader.load()
-    const terminal = terminalPaths.paths().find((page) => page.params.id === "kitty")
-    const analysis = generateAnalysis()["terminals/kitty"]
+    const warnings: string[] = []
+    const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))
     const out = mkdtempSync(join(tmpdir(), "terminfo-api-parity-"))
     try {
+      const site = probesLoader.load()
+      const terminal = terminalPaths.paths().find((page) => page.params.id === "kitty")
+      const analyses = generateAnalysis()
+      const analysis = analyses["terminals/kitty"]
       generateApi(out)
       const v1 = JSON.parse(readFileSync(join(out, "api", "v1", "data.json"), "utf8")) as {
         results: Record<string, Record<string, string>>
@@ -114,19 +119,35 @@ describe("selected-run consumer parity", () => {
       expect(terminal?.params).toMatchObject({ generated: fixture.measuredAt, total: "2", yes: "1", no: "1" })
       expect(terminal?.params.runSha256).toBe(fixture.runSha256)
       expect(v1.results.kitty).toEqual({ "sgr.bold": "yes", "extensions.sixel": "no" })
-      expect(v1.terminals.kitty.score).toMatchObject({ total: 2, pass: 1 })
+      expect(v1.terminals.kitty?.score).toMatchObject({ total: 2, pass: 1 })
       expect(v1.methodology.contexts.kitty).toMatchObject({ contextKey: "app:kitty", runSha256: fixture.runSha256 })
-      expect(v2.current["app:kitty"].sha256).toBe(fixture.runSha256)
-      expect(v2.current["mux:tmux"].sha256).toBe(fixture.mux.sha256)
+      expect(v2.current["app:kitty"]?.sha256).toBe(fixture.runSha256)
+      expect(v2.current["mux:tmux"]?.sha256).toBe(fixture.mux.sha256)
       expect(v1.terminals.tmux).toBeUndefined()
       expect(v1.results.tmux).toBeUndefined()
-      expect(v2.current["app:kitty"].counts).toMatchObject({ conclusive: 2, supported: 1, unsupported: 1 })
+      expect(v2.current["app:kitty"]?.counts).toMatchObject({ conclusive: 2, supported: 1, unsupported: 1 })
       expect(analysis).toMatchObject({
         runSha256: fixture.runSha256,
         measuredAt: fixture.measuredAt,
         counts: { conclusive: 2, supported: 1, unsupported: 1 },
       })
+      expect(analyses["features-index"]?.analysis).toContain("<strong>1</strong> feature")
+      expect(analyses["baseline/core"]?.analysis).toContain("<strong>0</strong> of 2")
+      expect(analyses["framework/ink"]?.analysis).toContain("<strong>0</strong> of 2")
+      expect(analyses["sgr/38-2-truecolor-fg"]?.analysis).toContain("awaiting verified measurements")
+      expect(analyses.cursor?.analysis).toContain("awaiting verified measurements")
+      expect(analyses.vt220?.analysis).toContain("awaiting verified measurements")
+      expect(analyses["baseline/modern"]?.analysis).toContain("awaiting verified measurements")
+      expect(warnings).toContainEqual(expect.stringContaining("historical analysis snapshot is not current evidence"))
+      expect(
+        warnings.every(
+          (message) =>
+            message.includes("historical analysis snapshot is not current evidence") ||
+            message.includes("no reviewed current conclusive results"),
+        ),
+      ).toBe(true)
     } finally {
+      warning.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }
   })
