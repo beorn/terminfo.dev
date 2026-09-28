@@ -11,15 +11,14 @@
  *   bun scripts/generate-analysis.ts --dry-run    # Print what would be generated
  *   bun scripts/generate-analysis.ts --validate   # Validate existing against data
  */
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs"
+import { readFileSync, writeFileSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
 const contentDir = join(root, "content")
-const probesAppsDir = join(contentDir, "probes-apps")
-const probesLibsDir = join(contentDir, "probes-libs")
 
 // --- Types ---
 
@@ -74,18 +73,6 @@ interface BaselineMeta {
   forTerminalAuthors: string
 }
 
-interface AppResult {
-  terminal?: string
-  backend?: string
-  terminalVersion?: string
-  version?: string
-  os?: string
-  generated?: string
-  source?: string
-  results: Record<string, boolean>
-  notes?: Record<string, string>
-}
-
 interface TerminalStats {
   name: string
   slug: string
@@ -99,7 +86,9 @@ interface TerminalStats {
   uniquelyMissing: string[]
   missingFeatures: string[]
   version: string
-  type: "app" | "headless"
+  type: "app" | "headless" | "mux"
+  runSha256: string
+  measuredAt: string
 }
 
 interface AnalysisEntry {
@@ -107,6 +96,9 @@ interface AnalysisEntry {
   date: string
   probeCount?: number
   changes: string | null
+  runSha256?: string
+  measuredAt?: string
+  counts?: { conclusive: number; supported: number; unsupported: number }
 }
 
 // --- Assertions ---
@@ -191,104 +183,30 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
   return loadJson<Record<string, { note: string; url?: string; result?: string }>>(path, "annotations")
 }
 
-/** Load probe results from a directory, keyed by terminal/backend name. */
-function loadProbeDir(dir: string): Map<string, AppResult> {
-  if (!existsSync(dir)) return new Map()
-  const files = readdirSync(dir).filter((f) => f.endsWith(".json"))
-  const latest = new Map<string, AppResult>()
-
-  for (const file of files) {
-    const path = join(dir, file)
-    const raw = loadJson<AppResult>(path, `probe result ${file}`)
-    const key = raw.terminal ?? raw.backend
-    assert(key, `Missing terminal/backend in ${file}`)
-    assert(raw.results && typeof raw.results === "object", `Missing results in ${file}`)
-    assert(typeof raw.generated === "string", `Missing generated timestamp in ${file}`)
-
-    // Validate all result values
-    for (const [feature, result] of Object.entries(raw.results)) {
-      assert(typeof result === "boolean", `Invalid result '${result}' for ${feature} in ${file} — expected boolean`)
-    }
-
-    // Keep latest per terminal/backend
-    if (!latest.has(key) || (raw.generated ?? "") > (latest.get(key)!.generated ?? "")) {
-      latest.set(key, raw)
-    }
-  }
-
-  return latest
+interface SelectedAnalysisInput {
+  results: Record<string, boolean>
+  version: string
+  type: "app" | "headless" | "mux"
+  runSha256: string
+  measuredAt: string
 }
 
-// --- Mapping: which terminal names map to which backends ---
-
-function buildTerminalResultMap(
-  terminals: Record<string, TerminalMeta>,
-  appResults: Map<string, AppResult>,
-  libResults: Map<string, AppResult>,
-  annotations: Record<string, { note: string; url?: string; result?: string }>,
-): Map<string, { results: Record<string, boolean>; version: string; type: "app" | "headless" }> {
-  const resultMap = new Map<string, { results: Record<string, boolean>; version: string; type: "app" | "headless" }>()
-
-  for (const [termId, meta] of Object.entries(terminals)) {
-    // Try app results first (direct match by terminal ID)
-    if (appResults.has(termId)) {
-      const app = appResults.get(termId)!
-      resultMap.set(termId, {
-        results: app.results,
-        version: app.terminalVersion ?? app.version ?? "",
-        type: "app",
-      })
-      continue
-    }
-
-    // Try headless backend (manifestBackend)
-    const backendName = meta.manifestBackend
-    if (backendName && libResults.has(backendName)) {
-      const lib = libResults.get(backendName)!
-      // Apply annotation overrides
-      const results = { ...lib.results }
-      for (const [key, ann] of Object.entries(annotations)) {
-        const [backend, ...fp] = key.split(":")
-        if (backend !== backendName) continue
-        const feature = fp.join(":")
-        if (ann.result === "partial")
-          results[feature] = true // partial counts as supported
-        else if (ann.result === "yes") results[feature] = true
-        else if (ann.result === "no") results[feature] = false
-      }
-      resultMap.set(termId, {
-        results,
-        version: lib.version ?? "",
-        type: "headless",
-      })
-      continue
-    }
-
-    // Also try headless backends listed in headlessBackends[]
-    if (meta.headlessBackends) {
-      for (const hb of meta.headlessBackends) {
-        if (libResults.has(hb)) {
-          const lib = libResults.get(hb)!
-          const results = { ...lib.results }
-          for (const [key, ann] of Object.entries(annotations)) {
-            const [backend, ...fp] = key.split(":")
-            if (backend !== hb) continue
-            const feature = fp.join(":")
-            if (ann.result === "partial") results[feature] = true
-            else if (ann.result === "yes") results[feature] = true
-            else if (ann.result === "no") results[feature] = false
-          }
-          resultMap.set(termId, {
-            results,
-            version: lib.version ?? "",
-            type: "headless",
-          })
-          break
-        }
-      }
-    }
+function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
+  const { projection } = loadCurrentResults(contentDir)
+  const selected = compatibilityTargets(projection, contentDir)
+  const resultMap = new Map<string, SelectedAnalysisInput>()
+  for (const { selected: version } of selected.values()) {
+    if (version.counts.conclusive === 0) continue
+    const id = version.target.id
+    if (resultMap.has(id)) throw new Error(`Ambiguous analysis terminal ${id}: multiple selected target kinds`)
+    resultMap.set(id, {
+      results: version.v1,
+      version: version.target.version,
+      type: version.target.kind,
+      runSha256: version.sha256,
+      measuredAt: version.measuredAt,
+    })
   }
-
   return resultMap
 }
 
@@ -349,7 +267,7 @@ function crossValidate(
 function computeTerminalStats(
   termId: string,
   termMeta: TerminalMeta,
-  data: { results: Record<string, boolean>; version: string; type: "app" | "headless" },
+  data: SelectedAnalysisInput,
   features: Record<string, FeatureMeta>,
   baselineFeatures: Record<string, string[]>,
   allTerminalResults: Map<string, { results: Record<string, boolean> }>,
@@ -412,6 +330,8 @@ function computeTerminalStats(
     missingFeatures,
     version: data.version,
     type: data.type,
+    runSha256: data.runSha256,
+    measuredAt: data.measuredAt,
   }
 }
 
@@ -507,9 +427,12 @@ function generateTerminalAnalysis(
 
   return {
     analysis: `<p>${parts.join(". ")}.</p>`,
-    date: new Date().toISOString().slice(0, 10),
+    date: stats.measuredAt.slice(0, 10),
     probeCount: stats.total,
     changes: null,
+    runSha256: stats.runSha256,
+    measuredAt: stats.measuredAt,
+    counts: { conclusive: stats.total, supported: stats.yes, unsupported: stats.no },
   }
 }
 
@@ -1304,10 +1227,7 @@ function loadAllData() {
   const frameworks = loadFrameworks()
   const glossary = loadGlossary()
 
-  const appResults = loadProbeDir(probesAppsDir)
-  const libResults = loadProbeDir(probesLibsDir)
-
-  const resultMap = buildTerminalResultMap(terminals, appResults, libResults, annotations)
+  const resultMap = buildTerminalResultMap()
 
   // Cross-validate
   crossValidate(features, terminals, resultMap, annotations)
@@ -1315,7 +1235,7 @@ function loadAllData() {
   return { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap }
 }
 
-function generateAnalysis(): Record<string, AnalysisEntry> {
+export function generateAnalysis(): Record<string, AnalysisEntry> {
   const { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap } =
     loadAllData()
   const baselineFeatures = buildBaselineFeatureMap(features)
@@ -1449,6 +1369,26 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
   }
 
   // Post-process: auto-link entity mentions in all analysis text
+  for (const [, meta] of Object.entries(terminals)) {
+    if (meta.historical || slugSeen.has(meta.slug)) continue
+    output[`terminals/${meta.slug}`] = {
+      analysis:
+        "<p>Analysis awaiting verified measurements. No conclusive current result is available for this terminal.</p>",
+      date: "",
+      changes: null,
+    }
+  }
+  if (allStats.size === 0) {
+    for (const [key, entry] of Object.entries(output)) {
+      if (key.startsWith("terminals/") && entry.probeCount === 0) continue // historical reference
+      if (key.startsWith("terminals/")) continue // specific unmeasured message above
+      output[key] = {
+        analysis: "<p>Analysis awaiting verified measurements. No conclusive current results are available.</p>",
+        date: "",
+        changes: null,
+      }
+    }
+  }
   for (const [key, entry] of Object.entries(output)) {
     entry.analysis = linkify(entry.analysis, terminals, features, categories, standards, baselines, glossary)
   }
@@ -1458,83 +1398,85 @@ function generateAnalysis(): Record<string, AnalysisEntry> {
 
 // --- CLI ---
 
-const args = process.argv.slice(2)
-const isDryRun = args.includes("--dry-run")
-const isValidate = args.includes("--validate")
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const args = process.argv.slice(2)
+  const isDryRun = args.includes("--dry-run")
+  const isValidate = args.includes("--validate")
 
-try {
-  const analysis = generateAnalysis()
-  const result = {
-    $generated: new Date().toISOString(),
-    ...analysis,
+  try {
+    const analysis = generateAnalysis()
+    const result = {
+      $generated: new Date().toISOString(),
+      ...analysis,
+    }
+
+    const outputPath = join(contentDir, "analysis.json")
+    const entryCount = Object.keys(analysis).length
+    const terminalCount = Object.keys(analysis).filter((k) => k.startsWith("terminals/")).length
+    const baselineCount = Object.keys(analysis).filter((k) => k.startsWith("baseline/")).length
+    const compareCount = Object.keys(analysis).filter((k) => k.startsWith("compare/")).length
+    const frameworkCount = Object.keys(analysis).filter((k) => k.startsWith("framework/")).length
+    const categoryCount = Object.keys(analysis).filter(
+      (k) =>
+        !k.startsWith("terminals/") &&
+        !k.startsWith("baseline/") &&
+        !k.startsWith("compare/") &&
+        !k.startsWith("framework/") &&
+        !k.includes("/"),
+    ).length
+
+    if (isValidate) {
+      // Validate existing analysis.json against current data
+      if (!existsSync(outputPath)) {
+        console.error("No existing analysis.json to validate")
+        process.exit(1)
+      }
+      const existing = JSON.parse(readFileSync(outputPath, "utf-8")) as Record<string, unknown>
+      const existingKeys = Object.keys(existing).filter((k) => k !== "$generated")
+      const newKeys = Object.keys(analysis)
+
+      const missing = newKeys.filter((k) => !existingKeys.includes(k))
+      const extra = existingKeys.filter((k) => !newKeys.includes(k))
+
+      if (missing.length > 0) {
+        console.error(`Missing entries in existing analysis.json: ${missing.join(", ")}`)
+      }
+      if (extra.length > 0) {
+        console.warn(`Extra entries in existing analysis.json: ${extra.join(", ")}`)
+      }
+
+      console.log(`Validation: ${existingKeys.length} existing entries, ${newKeys.length} expected`)
+      console.log(`  ${missing.length} missing, ${extra.length} extra`)
+
+      if (missing.length > 0) process.exit(1)
+      console.log("Validation passed")
+      process.exit(0)
+    }
+
+    if (isDryRun) {
+      console.log(`Would generate ${entryCount} entries:`)
+      console.log(`  ${terminalCount} terminal pages`)
+      console.log(`  ${baselineCount} baseline pages`)
+      console.log(`  ${compareCount} comparison pages`)
+      console.log(`  ${frameworkCount} framework pages`)
+      console.log(`  ${categoryCount} category/standard pages`)
+      console.log()
+      for (const [key, entry] of Object.entries(analysis)) {
+        // Strip HTML for preview
+        const plain = entry.analysis.replace(/<[^>]+>/g, "")
+        console.log(`  ${key}: ${plain.slice(0, 120)}...`)
+      }
+      process.exit(0)
+    }
+
+    // Write output
+    writeFileSync(outputPath, JSON.stringify(result, null, 2) + "\n")
+    console.log(`Generated ${outputPath}`)
+    console.log(
+      `  ${entryCount} entries (${terminalCount} terminals, ${baselineCount} baselines, ${compareCount} comparisons, ${frameworkCount} frameworks, ${categoryCount} categories/standards)`,
+    )
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error)
+    process.exit(1)
   }
-
-  const outputPath = join(contentDir, "analysis.json")
-  const entryCount = Object.keys(analysis).length
-  const terminalCount = Object.keys(analysis).filter((k) => k.startsWith("terminals/")).length
-  const baselineCount = Object.keys(analysis).filter((k) => k.startsWith("baseline/")).length
-  const compareCount = Object.keys(analysis).filter((k) => k.startsWith("compare/")).length
-  const frameworkCount = Object.keys(analysis).filter((k) => k.startsWith("framework/")).length
-  const categoryCount = Object.keys(analysis).filter(
-    (k) =>
-      !k.startsWith("terminals/") &&
-      !k.startsWith("baseline/") &&
-      !k.startsWith("compare/") &&
-      !k.startsWith("framework/") &&
-      !k.includes("/"),
-  ).length
-
-  if (isValidate) {
-    // Validate existing analysis.json against current data
-    if (!existsSync(outputPath)) {
-      console.error("No existing analysis.json to validate")
-      process.exit(1)
-    }
-    const existing = JSON.parse(readFileSync(outputPath, "utf-8")) as Record<string, unknown>
-    const existingKeys = Object.keys(existing).filter((k) => k !== "$generated")
-    const newKeys = Object.keys(analysis)
-
-    const missing = newKeys.filter((k) => !existingKeys.includes(k))
-    const extra = existingKeys.filter((k) => !newKeys.includes(k))
-
-    if (missing.length > 0) {
-      console.error(`Missing entries in existing analysis.json: ${missing.join(", ")}`)
-    }
-    if (extra.length > 0) {
-      console.warn(`Extra entries in existing analysis.json: ${extra.join(", ")}`)
-    }
-
-    console.log(`Validation: ${existingKeys.length} existing entries, ${newKeys.length} expected`)
-    console.log(`  ${missing.length} missing, ${extra.length} extra`)
-
-    if (missing.length > 0) process.exit(1)
-    console.log("Validation passed")
-    process.exit(0)
-  }
-
-  if (isDryRun) {
-    console.log(`Would generate ${entryCount} entries:`)
-    console.log(`  ${terminalCount} terminal pages`)
-    console.log(`  ${baselineCount} baseline pages`)
-    console.log(`  ${compareCount} comparison pages`)
-    console.log(`  ${frameworkCount} framework pages`)
-    console.log(`  ${categoryCount} category/standard pages`)
-    console.log()
-    for (const [key, entry] of Object.entries(analysis)) {
-      // Strip HTML for preview
-      const plain = entry.analysis.replace(/<[^>]+>/g, "")
-      console.log(`  ${key}: ${plain.slice(0, 120)}...`)
-    }
-    process.exit(0)
-  }
-
-  // Write output
-  writeFileSync(outputPath, JSON.stringify(result, null, 2) + "\n")
-  console.log(`Generated ${outputPath}`)
-  console.log(
-    `  ${entryCount} entries (${terminalCount} terminals, ${baselineCount} baselines, ${compareCount} comparisons, ${frameworkCount} frameworks, ${categoryCount} categories/standards)`,
-  )
-} catch (error) {
-  console.error(error instanceof Error ? error.message : error)
-  process.exit(1)
 }

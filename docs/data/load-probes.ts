@@ -9,6 +9,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import probesLoader from "./probes.data"
 import type { ProbeData } from "./probes.data"
+import { generateAnalysis } from "../../scripts/generate-analysis.ts"
 
 export type { ProbeData }
 
@@ -145,26 +146,20 @@ export function tagLabel(tag: string): string {
 export interface AnalysisEntry {
   analysis: string
   date: string
-  changes?: string
+  changes?: string | null
+  runSha256?: string
+  measuredAt?: string
+  counts?: { conclusive: number; supported: number; unsupported: number }
 }
 
 let _analysisCached: Record<string, AnalysisEntry> | null = null
 
-/** Load content/analysis.json — gracefully returns {} if file is missing */
+/** Regenerate analysis from the same selected runs as the matrix. The checked-in snapshot is historical. */
 export function loadAnalysis(): Record<string, AnalysisEntry> {
   if (!_analysisCached) {
     const path = join(__dirname, "..", "..", "content", "analysis.json")
-    if (!existsSync(path)) {
-      _analysisCached = {}
-    } else {
-      try {
-        const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, AnalysisEntry>
-        delete (raw as any).$generated
-        _analysisCached = raw
-      } catch {
-        _analysisCached = {}
-      }
-    }
+    if (existsSync(path)) console.warn(`${path}: historical analysis snapshot is not current evidence; regenerating`)
+    _analysisCached = generateAnalysis()
   }
   return _analysisCached!
 }

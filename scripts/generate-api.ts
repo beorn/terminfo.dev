@@ -2,27 +2,27 @@
  * Generate the terminfo.dev JSON API and SVG badges.
  *
  * Outputs:
- *   docs/public/api/v1/data.json     — complete compatibility database
+ *   docs/public/api/v1/data.json     — conclusive compatibility projection
  *   docs/public/api/v1/badges/*.svg   — per-terminal score badges
+ *   docs/public/api/v2/data.json     — exact-context outcomes and provenance
  *
  * Standalone `bun scripts/generate-api.ts` refreshes tracked docs/public
  * snapshots for local/dev consumers. VitePress buildEnd passes the ignored
  * build outDir so `bun run build` emits fresh deploy artifacts without
  * dirtying the source tree.
  */
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs"
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import type { SelectedVersion } from "../docs/data/selected-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
 const docsDir = join(root, "docs")
 const publicDir = join(docsDir, "public")
 const apiDir = join(publicDir, "api", "v1")
-const badgesDir = join(apiDir, "badges")
 const contentDir = join(root, "content")
-const probesAppsDir = join(contentDir, "probes-apps")
-const probesLibsDir = join(contentDir, "probes-libs")
 
 // --- Types ---
 
@@ -40,6 +40,22 @@ interface FeatureMeta {
 interface ApiData {
   version: number
   generated: string
+  methodology: {
+    revision: string
+    v2: string
+    methods: string
+    contexts: Record<
+      string,
+      {
+        contextKey: string
+        runSha256: string
+        target: SelectedVersion["target"]
+        reviewer?: string
+        reason?: string
+        sources?: string[]
+      }
+    >
+  }
   features: Record<
     string,
     {
@@ -80,12 +96,6 @@ function loadFeaturesJson(): Record<string, FeatureMeta> {
   return result
 }
 
-function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
-  const path = join(contentDir, "annotations.json")
-  if (!existsSync(path)) return {}
-  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, { note: string; url?: string; result?: string }>
-}
-
 function loadBackendMeta(): Record<string, any> {
   // Try to load backends.json from @termless/core
   const candidates = [
@@ -98,102 +108,6 @@ function loadBackendMeta(): Record<string, any> {
     }
   }
   return {}
-}
-
-// --- App results (primary) ---
-
-interface AppResult {
-  terminal: string
-  terminalVersion: string
-  os?: string
-  generated?: string
-  results: Record<string, boolean>
-  notes?: Record<string, string>
-}
-
-function loadAppResults(): {
-  terminals: Map<
-    string,
-    { version: string; platforms: Set<string>; results: Record<string, string>; notes: Record<string, string> }
-  >
-  featureIds: Set<string>
-} {
-  const terminals = new Map<
-    string,
-    { version: string; platforms: Set<string>; results: Record<string, string>; notes: Record<string, string> }
-  >()
-  const featureIds = new Set<string>()
-
-  if (!existsSync(probesAppsDir)) return { terminals, featureIds }
-
-  const files = readdirSync(probesAppsDir).filter((f) => f.endsWith(".json"))
-  // Keep latest per terminal
-  const latest = new Map<string, AppResult>()
-  const platformMap = new Map<string, Set<string>>()
-
-  for (const file of files) {
-    try {
-      const raw = JSON.parse(readFileSync(join(probesAppsDir, file), "utf-8")) as AppResult
-      if (!raw.terminal || !raw.results) continue
-      const key = raw.terminal
-      if (!latest.has(key) || (raw.generated ?? "") > (latest.get(key)!.generated ?? "")) {
-        latest.set(key, raw)
-      }
-      if (raw.os) {
-        if (!platformMap.has(key)) platformMap.set(key, new Set())
-        platformMap.get(key)!.add(raw.os)
-      }
-    } catch {}
-  }
-
-  for (const [name, raw] of latest) {
-    const results: Record<string, string> = {}
-    const notes: Record<string, string> = {}
-    for (const [id, val] of Object.entries(raw.results)) {
-      results[id] = val ? "yes" : "no"
-      featureIds.add(id)
-      if (raw.notes?.[id]) notes[id] = raw.notes[id]!
-    }
-    terminals.set(name, {
-      version: raw.terminalVersion ?? "",
-      platforms: platformMap.get(name) ?? new Set(),
-      results,
-      notes,
-    })
-  }
-
-  return { terminals, featureIds }
-}
-
-// --- Headless results (fallback) ---
-
-function loadHeadlessResults(): {
-  terminals: Map<string, { version: string; results: Record<string, string>; notes: Record<string, string> }>
-  featureIds: Set<string>
-} {
-  const terminals = new Map<
-    string,
-    { version: string; results: Record<string, string>; notes: Record<string, string> }
-  >()
-  const featureIds = new Set<string>()
-
-  const files = readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "unified.json")
-  for (const file of files) {
-    try {
-      const raw = JSON.parse(readFileSync(join(probesLibsDir, file), "utf-8")) as any
-      if (!raw.backend) continue
-      const results: Record<string, string> = {}
-      const notes: Record<string, string> = {}
-      for (const [id, val] of Object.entries(raw.results ?? {})) {
-        results[id] = typeof val === "boolean" ? (val ? "yes" : "no") : ((val as any).support ?? "unknown")
-        featureIds.add(id)
-        if (raw.notes?.[id]) notes[id] = raw.notes[id]
-      }
-      terminals.set(raw.backend, { version: raw.version ?? "", results, notes })
-    } catch {}
-  }
-
-  return { terminals, featureIds }
 }
 
 // --- Label / slug helpers ---
@@ -219,7 +133,7 @@ const appUrls: Record<string, string> = {
   "com.microsoft.VSCode": "https://code.visualstudio.com",
 }
 
-function slugify(name: string, label: string): string {
+function slugify(label: string): string {
   return label
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -274,23 +188,11 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
   mkdirSync(targetBadgesDir, { recursive: true })
 
   const featuresJson = loadFeaturesJson()
-  const annotations = loadAnnotations()
   const backendMeta = loadBackendMeta()
-
-  // Load app results (primary) and headless results (fallback)
-  const app = loadAppResults()
-  const headless = loadHeadlessResults()
-
-  // Map headless → app name collisions
-  const headlessToApp: Record<string, string> = {
-    xtermjs: "com.microsoft.VSCode",
-    "ghostty-native": "ghostty",
-    kitty: "kitty",
-  }
-
-  // Merge all feature IDs. features.json is authoritative for published
-  // feature pages; result files may lag for manual/unprobed features.
-  const allFeatureIds = new Set([...Object.keys(featuresJson), ...app.featureIds, ...headless.featureIds])
+  const { projection } = loadCurrentResults(contentDir)
+  const byTarget = compatibilityTargets(projection, contentDir)
+  // Catalog metadata stays available, but only reviewed, conclusive observations become v1 result keys.
+  const allFeatureIds = new Set(Object.keys(featuresJson))
 
   // Build features map
   const features: ApiData["features"] = {}
@@ -311,66 +213,56 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
   const terminals: ApiData["terminals"] = {}
   const results: ApiData["results"] = {}
   const notes: ApiData["notes"] = {}
+  const contexts: ApiData["methodology"]["contexts"] = {}
 
-  // App terminals first (primary)
-  for (const [name, data] of app.terminals) {
-    const label = appLabels[name] ?? name
-    const slug = slugify(name, label)
-    const pass = Object.values(data.results).filter((v) => v === "yes").length
-    const total = Object.keys(data.results).length
-    const pct = total > 0 ? Math.round((pass / total) * 100) : 0
-
+  for (const { selected, contextKey, policy } of byTarget.values()) {
+    if (selected.counts.conclusive === 0) continue
+    const { kind, id, os } = selected.target
+    const meta = backendMeta[id]
+    const label = kind === "app" ? (appLabels[id] ?? id) : (meta?.label ?? id)
+    const slug = slugify(label)
+    if (terminals[slug]) throw new Error(`Ambiguous API terminal slug ${slug}: multiple selected targets`)
+    const { conclusive: total, supported: pass } = selected.counts
+    const pct = Math.round((pass / total) * 100)
     terminals[slug] = {
       name: label,
-      version: data.version,
-      type: "app",
-      ...(data.platforms.size > 0 && { platforms: [...data.platforms] }),
-      ...(appUrls[name] && { url: appUrls[name] }),
+      version: selected.target.version,
+      type: kind === "headless" ? "headless" : "app",
+      ...(os && { platforms: [os] }),
+      ...(appUrls[id] && { url: appUrls[id] }),
+      ...(!appUrls[id] && meta?.url && { url: meta.url }),
       score: { total, pass, pct },
     }
-    results[slug] = data.results
-    notes[slug] = data.notes
-  }
-
-  // Headless terminals (fallback — skip if app version exists)
-  const appNames = new Set(app.terminals.keys())
-  for (const [name, data] of headless.terminals) {
-    const appName = headlessToApp[name]
-    if (appName && appNames.has(appName)) continue
-    if (appNames.has(name)) continue
-
-    const meta = backendMeta[name]
-    const label = meta?.label ?? name
-    const slug = slugify(name, label)
-
-    // Apply annotation overrides to headless results
-    for (const [key, ann] of Object.entries(annotations)) {
-      const [backend, ...fp] = key.split(":")
-      if (backend !== name) continue
-      const feature = fp.join(":")
-      if (ann.note) data.notes[feature] = ann.note
-      if (ann.result) data.results[feature] = ann.result
+    results[slug] = Object.fromEntries(
+      Object.entries(selected.v1).map(([feature, value]) => [feature, value ? "yes" : "no"]),
+    )
+    notes[slug] = Object.fromEntries(
+      Object.entries(selected.cells)
+        .filter(([, cell]) => cell.note)
+        .map(([feature, cell]) => [feature, cell.note!]),
+    )
+    contexts[slug] = {
+      contextKey,
+      runSha256: selected.sha256,
+      target: selected.target,
+      ...(policy && { reviewer: policy.reviewer, reason: policy.reason, sources: policy.sources }),
     }
-
-    const pass = Object.values(data.results).filter((v) => v === "yes").length
-    const total = Object.keys(data.results).length
-    const pct = total > 0 ? Math.round((pass / total) * 100) : 0
-
-    terminals[slug] = {
-      name: label,
-      version: data.version,
-      type: "headless",
-      ...(meta?.url && { url: meta.url }),
-      score: { total, pass, pct },
-    }
-    results[slug] = data.results
-    notes[slug] = data.notes
   }
 
   // Build the API data object
   const apiData: ApiData = {
     version: 1,
-    generated: new Date().toISOString(),
+    generated:
+      Object.values(projection.current)
+        .map((v) => v.measuredAt)
+        .sort()
+        .at(-1) ?? "",
+    methodology: {
+      revision: "2026-09-28",
+      v2: "/api/v2/data.json",
+      methods: "/contribute#what-a-probe-can-establish",
+      contexts,
+    },
     features,
     terminals,
     results,
@@ -380,6 +272,18 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
   // Write data.json
   const dataPath = join(targetApiDir, "data.json")
   writeFileSync(dataPath, JSON.stringify(apiData, null, 2) + "\n")
+
+  // v2 retains exact context keys and every selected cell's outcome and provenance.
+  const v2Dir = outDir ? join(outDir, "api", "v2") : join(publicDir, "api", "v2")
+  mkdirSync(v2Dir, { recursive: true })
+  writeFileSync(
+    join(v2Dir, "data.json"),
+    JSON.stringify(
+      { version: 2, generated: apiData.generated, methodology: apiData.methodology, features, ...projection },
+      null,
+      2,
+    ) + "\n",
+  )
 
   // Generate badges
   let badgeCount = 0

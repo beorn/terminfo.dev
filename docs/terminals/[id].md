@@ -143,7 +143,8 @@ const breadcrumbParent = (() => {
     <span class="score-no">{{ p.total - p.yes - p.partial }} failed</span>
     <span class="score-total"> of {{ p.total }} features</span>
   </div>
-  <div v-if="testDate" class="score-date">Tested: {{ testDate }}</div>
+  <div v-if="testDate" class="score-date">Tested: {{ testDate }} · {{ p.suiteFreshness }}</div>
+  <div v-if="p.runSha256" class="score-date">Run: <a href="/api/v2/data.json">{{ p.runSha256.slice(0, 12) }}</a></div>
 </div>
 
 <div v-if="p.analysis" class="analysis">
