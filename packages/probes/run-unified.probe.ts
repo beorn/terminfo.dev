@@ -16,56 +16,42 @@ import { createLogger } from "loggily"
 
 const log = createLogger("probes:unified")
 
-const EXCLUDED = new Set(["peekaboo"])
 type BackendFactory = () => Promise<TerminalBackend>
 const backends: [string, BackendFactory][] = []
+const loadErrors: string[] = []
 
 const m = manifest()
-const allNames = Object.keys(m.backends).filter((name) => !EXCLUDED.has(name))
+// peekaboo observes a real OS terminal; it is not a headless emulation engine.
+if (m.backends.peekaboo?.type !== "os") throw new Error("peekaboo must be classified as OS automation")
+const allNames = Object.keys(m.backends).filter((name) => m.backends[name]?.type !== "os")
 
 for (const name of allNames) {
   const pkg = m.backends[name]!.package
   try {
     const mod = await import(pkg)
-    const entry = m.backends[name]!
-    let factory: BackendFactory
-
-    if (entry.type === "wasm") {
-      if (name === "ghostty") {
-        const instance = await mod.initGhostty()
-        const testBackend = mod.createGhosttyBackend(undefined, instance)
-        testBackend.init({ cols: 1, rows: 1 })
-        testBackend.destroy()
-        factory = async () => mod.createGhosttyBackend(undefined, instance)
-      } else if (name === "libvterm") {
-        const b = mod.createLibvtermBackend()
-        b.init({ cols: 1, rows: 1 })
-        b.destroy()
-        factory = async () => mod.createLibvtermBackend()
-      } else {
-        continue
-      }
-    } else if (entry.type === "native") {
-      const loadFn = Object.keys(mod).find((k) => k.startsWith("load"))
-      if (loadFn) mod[loadFn]()
-      const createFn = Object.keys(mod).find((k) => k.startsWith("create"))!
-      factory = async () => mod[createFn]()
-    } else {
-      const createFn = Object.keys(mod).find((k) => k.startsWith("create"))!
-      mod[createFn]()
-      factory = async () => mod[createFn]()
+    if (typeof mod.resolve !== "function") throw new Error(`${pkg} does not export resolve()`)
+    const factory: BackendFactory = async () => mod.resolve()
+    // Verify the actual adapter can initialize before registering its tests.
+    const testBackend = await factory()
+    try {
+      testBackend.init({ cols: 1, rows: 1 })
+      testBackend.getCell(0, 0)
+    } finally {
+      testBackend.destroy()
     }
-
     backends.push([name, factory])
-    log.debug?.(`Added backend: ${name} (${entry.type})`)
+    log.debug?.(`Added backend: ${name} (${m.backends[name]!.type})`)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    log.debug?.(`Skipping ${name} (load failed: ${msg})`)
+    loadErrors.push(`${name} (${pkg}): ${msg}`)
   }
 }
 
-if (backends.length === 0) {
-  console.warn("Warning: No backends available for unified probes")
+if (loadErrors.length > 0 || backends.length !== allNames.length) {
+  throw new Error(
+    `Headless backend load failed for ${loadErrors.length}/${allNames.length} expected engines; ` +
+      `peekaboo is OS automation outside this suite:\n${loadErrors.join("\n")}`,
+  )
 }
 
 // ── Helpers ──
