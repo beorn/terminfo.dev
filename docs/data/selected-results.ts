@@ -207,22 +207,82 @@ function parseRuntimeIdentity(value: unknown, target: ProbeTarget, path: string)
   }
   const adapterVersion = asString(value.adapterVersion, path, "runtimeIdentity.adapterVersion")
   const termlessRevision = asString(value.termlessRevision, path, "runtimeIdentity.termlessRevision")
-  if (value.kind === "js") {
+  const sha256 = (digest: unknown, field: string): string => {
+    const parsed = asString(digest, path, field)
+    if (!/^[0-9a-f]{64}$/.test(parsed)) fail(path, `${field} must be SHA256`)
+    return parsed
+  }
+  const loadedBinary = (binary: unknown): { path: string; sha256: string } => {
+    if (!object(binary)) fail(path, "runtimeIdentity.loadedBinary is missing")
     return {
-      kind: "js",
+      path: asString(binary.path, path, "runtimeIdentity.loadedBinary.path"),
+      sha256: sha256(binary.sha256, "runtimeIdentity.loadedBinary.sha256"),
+    }
+  }
+  const cleanTree = (value: unknown): boolean => {
+    if (typeof value !== "boolean") fail(path, "runtimeIdentity.integrity.cleanTree must be boolean")
+    return value
+  }
+  if (value.kind === "js") {
+    if (!object(value.integrity)) fail(path, "runtimeIdentity.integrity is missing")
+    const integrity =
+      value.integrity.kind === "registry"
+        ? {
+            kind: "registry" as const,
+            lockIntegrity: asString(value.integrity.lockIntegrity, path, "runtimeIdentity.integrity.lockIntegrity"),
+          }
+        : value.integrity.kind === "source"
+          ? {
+              kind: "source" as const,
+              repository: asString(value.integrity.repository, path, "runtimeIdentity.integrity.repository"),
+              revision: asString(value.integrity.revision, path, "runtimeIdentity.integrity.revision"),
+              treeOid: asString(value.integrity.treeOid, path, "runtimeIdentity.integrity.treeOid"),
+              cleanTree: cleanTree(value.integrity.cleanTree),
+            }
+          : fail(path, "runtimeIdentity.integrity.kind must be registry or source")
+    if (integrity.kind === "source") {
+      if (
+        !/^[0-9a-f]{40}$/.test(integrity.revision) ||
+        !/^[0-9a-f]{40}$/.test(integrity.treeOid) ||
+        typeof integrity.cleanTree !== "boolean"
+      ) {
+        fail(path, "runtimeIdentity source integrity has invalid revision, treeOid, or cleanTree")
+      }
+    }
+    const runtimeFormat = value.runtimeFormat
+    if (runtimeFormat !== "js" && runtimeFormat !== "wasm") {
+      fail(path, "runtimeIdentity.runtimeFormat must be js or wasm")
+    }
+    const common = {
+      kind: "js" as const,
       engineVersion,
       resolvedPath: asString(value.resolvedPath, path, "runtimeIdentity.resolvedPath"),
-      lockIntegrity: asString(value.lockIntegrity, path, "runtimeIdentity.lockIntegrity"),
+      integrity,
       adapterVersion,
       termlessRevision,
     }
+    if (runtimeFormat === "wasm") return { ...common, runtimeFormat, loadedBinary: loadedBinary(value.loadedBinary) }
+    if (value.loadedBinary !== undefined) fail(path, "pure JS runtimeIdentity cannot claim loadedBinary")
+    return {
+      ...common,
+      runtimeFormat,
+    }
   }
+  const binary = loadedBinary(value.loadedBinary)
+  if (!object(value.provenance)) fail(path, "runtimeIdentity.provenance is missing")
+  const provenance = {
+    sha256: sha256(value.provenance.sha256, "runtimeIdentity.provenance.sha256"),
+    sourceCommit: asString(value.provenance.sourceCommit, path, "runtimeIdentity.provenance.sourceCommit"),
+    buildHash: sha256(value.provenance.buildHash, "runtimeIdentity.provenance.buildHash"),
+    toolchain: asString(value.provenance.toolchain, path, "runtimeIdentity.provenance.toolchain"),
+    lockSha256: sha256(value.provenance.lockSha256, "runtimeIdentity.provenance.lockSha256"),
+  }
+  if (provenance.sha256 !== binary.sha256) fail(path, "native sidecar SHA256 differs from loaded binary")
   return {
     kind: "native",
     engineVersion,
-    loadedBinaryPath: asString(value.loadedBinaryPath, path, "runtimeIdentity.loadedBinaryPath"),
-    sourceCommit: asString(value.sourceCommit, path, "runtimeIdentity.sourceCommit"),
-    buildHash: asString(value.buildHash, path, "runtimeIdentity.buildHash"),
+    loadedBinary: binary,
+    provenance,
     adapterVersion,
     termlessRevision,
   }
@@ -637,7 +697,9 @@ function applies(entry: Interpretation, run: LoadedRun): boolean {
 
 function identityRepliesMatch(run: LoadedRun): boolean {
   if (run.target.kind === "headless") {
-    return !!run.runtimeIdentity && run.runtimeIdentity.engineVersion === run.target.version
+    const receipt = run.runtimeIdentity
+    if (!receipt || receipt.engineVersion !== run.target.version) return false
+    return receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree
   }
   const rule = TERMINAL_IDENTITY_RULES[run.target.id]
   if (!rule || !nonempty(run.rawReplies["device.primary-da"])) return false
@@ -867,7 +929,9 @@ export function projectResults(
             ? "identity-unverified"
             : "identity-unreviewed"
           : !identityRepliesMatch(run)
-            ? "identity-replies-mismatch"
+            ? run.target.kind === "headless"
+              ? "runtime-identity-unverified"
+              : "identity-replies-mismatch"
             : !/^[0-9a-f]{40}$/.test(run.sourceRevision ?? "")
               ? "source-uncommitted"
               : run.origin.kind === "community-issue" && !reviewed

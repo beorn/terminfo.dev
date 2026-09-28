@@ -86,24 +86,47 @@ export type UngradedDiagnostic =
   | { kind: "collector-error"; name: string; message?: string }
 
 /** Captured from the module/binary actually loaded by a headless run. */
+export interface LoadedEngineBinary {
+  path: string
+  sha256: string
+}
+
+export type EngineIntegrity =
+  | { kind: "registry"; lockIntegrity: string }
+  | { kind: "source"; repository: string; revision: string; treeOid: string; cleanTree: boolean }
+
+interface HeadlessRuntimeBase {
+  engineVersion: string
+  adapterVersion: string
+  termlessRevision: string
+}
+
 export type HeadlessRuntimeIdentity =
-  | {
+  | (HeadlessRuntimeBase & {
       kind: "js"
-      engineVersion: string
+      runtimeFormat: "js"
       resolvedPath: string
-      lockIntegrity: string
-      adapterVersion: string
-      termlessRevision: string
-    }
-  | {
+      integrity: EngineIntegrity
+    })
+  | (HeadlessRuntimeBase & {
+      kind: "js"
+      runtimeFormat: "wasm"
+      resolvedPath: string
+      integrity: EngineIntegrity
+      loadedBinary: LoadedEngineBinary
+    })
+  | (HeadlessRuntimeBase & {
       kind: "native"
-      engineVersion: string
-      loadedBinaryPath: string
-      sourceCommit: string
-      buildHash: string
-      adapterVersion: string
-      termlessRevision: string
-    }
+      loadedBinary: LoadedEngineBinary
+      provenance: {
+        /** Sidecar output digest must equal loadedBinary.sha256. */
+        sha256: string
+        sourceCommit: string
+        buildHash: string
+        toolchain: string
+        lockSha256: string
+      }
+    })
 
 /** Raw run records are immutable; review decisions live in Interpretation. */
 export interface ProbeRun {

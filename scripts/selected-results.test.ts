@@ -388,9 +388,10 @@ describe("selected results", () => {
         target: { ...target, kind: "headless" },
         runtimeIdentity: {
           kind: "js",
+          runtimeFormat: "js",
           engineVersion: "0.46.2",
           resolvedPath: "/pkg/kitty/index.js",
-          lockIntegrity: "sha512-example",
+          integrity: { kind: "registry", lockIntegrity: "sha512-example" },
           adapterVersion: "1.0.0",
           termlessRevision: "rev123",
         },
@@ -436,9 +437,10 @@ describe("selected results", () => {
           target: { ...target, kind: "headless" },
           runtimeIdentity: {
             kind: "js",
+            runtimeFormat: "js",
             engineVersion: "0.46.2",
             resolvedPath: "/pkg/kitty/index.js",
-            lockIntegrity: "sha512-example",
+            integrity: { kind: "registry", lockIntegrity: "sha512-example" },
             adapterVersion: "1.0.0",
             termlessRevision: "rev123",
           },
@@ -574,9 +576,10 @@ describe("selected results", () => {
       target: { ...target, kind: "headless" },
       runtimeIdentity: {
         kind: "js",
+        runtimeFormat: "js",
         engineVersion: "0.40.0",
         resolvedPath: "/pkg/kitty/index.js",
-        lockIntegrity: "sha512-example",
+        integrity: { kind: "registry", lockIntegrity: "sha512-example" },
         adapterVersion: "1.0.0",
         termlessRevision: "rev123",
       },
@@ -584,6 +587,67 @@ describe("selected results", () => {
     expect(() => parseRun("headless-mismatch.json", JSON.stringify(value), catalog)).toThrow(
       /headless-mismatch.*engineVersion/,
     )
+  })
+
+  it("keeps a dirty source engine in history even with a matching review", () => {
+    const value = run("dirty-source", {
+      target: { ...target, kind: "headless" },
+      runtimeIdentity: {
+        kind: "js",
+        runtimeFormat: "js",
+        engineVersion: target.version,
+        resolvedPath: "/repo/packages/kitty/index.js",
+        integrity: {
+          kind: "source",
+          repository: "/repo",
+          revision: "a".repeat(40),
+          treeOid: "b".repeat(40),
+          cleanTree: false,
+        },
+        adapterVersion: "0.9.2",
+        termlessRevision: "c".repeat(40),
+      },
+    })
+    const parsed = parseRun("dirty-source.json", JSON.stringify(value), catalog)
+    const projection = projectResults([parsed], [reviewFor(parsed)], catalog, { currentProbeHash: "current" })
+    expect(projection.current["headless:kitty"]).toBeUndefined()
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "dirty-source", reason: "runtime-identity-unverified" }),
+    )
+  })
+
+  it("requires actual WASM bytes and a native sidecar bound to loaded bytes", () => {
+    const wasm = run("wasm-no-binary", {
+      target: { ...target, kind: "headless" },
+      runtimeIdentity: {
+        kind: "js",
+        runtimeFormat: "wasm",
+        engineVersion: target.version,
+        resolvedPath: "/pkg/kitty/index.js",
+        integrity: { kind: "registry", lockIntegrity: "sha512-example" },
+        adapterVersion: "0.9.2",
+        termlessRevision: "c".repeat(40),
+      },
+    })
+    expect(() => parseRun("wasm-no-binary.json", JSON.stringify(wasm), catalog)).toThrow(/loadedBinary/)
+    const native = run("native-hash-mismatch", {
+      target: { ...target, kind: "headless" },
+      runtimeIdentity: {
+        kind: "native",
+        engineVersion: target.version,
+        loadedBinary: { path: "/pkg/kitty/engine.node", sha256: "a".repeat(64) },
+        provenance: {
+          sha256: "b".repeat(64),
+          sourceCommit: "c".repeat(40),
+          buildHash: "d".repeat(64),
+          toolchain: "rustc 1",
+          lockSha256: "e".repeat(64),
+        },
+        adapterVersion: "0.9.2",
+        termlessRevision: "c".repeat(40),
+      },
+    })
+    expect(() => parseRun("native-hash-mismatch.json", JSON.stringify(native), catalog)).toThrow(/sidecar SHA256/)
   })
 
   it("requires a per-probe screenshot reference for pixel evidence", () => {
