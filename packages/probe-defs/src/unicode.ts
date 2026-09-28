@@ -24,17 +24,39 @@ export const unicodeProbes: ProbeDefinition[] = [
   probe(
     "unicode.grapheme-cursor",
     (ctx) => {
-      ctx.feed("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}X")
-      return { pass: ctx.getText().includes("X") }
+      const sample = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}"
+      ctx.feed("\x1b[1;1H\x1b[2K" + sample)
+      const cursor = ctx.getCursor()
+      const cell = ctx.getCell(0, 0)
+      const response = JSON.stringify({ cursor, cell })
+      const pass = cursor.y === 0 && cursor.x === 2 && cell.wide && cell.char.length > 0
+      return {
+        pass,
+        response,
+        observation: { outcome: pass ? "supported" : "unsupported", evidence: "parser-state" },
+        assertions: [
+          { kind: pass ? "positive" : "negative", expected: "ZWJ sample occupies two cells", observed: response },
+        ],
+      }
     },
     async (ctx) => {
       const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
-      if (width === null) return { pass: false, note: "Cannot measure width" }
+      if (width === null) {
+        return {
+          pass: false,
+          note: "Cannot measure width",
+          observation: { outcome: "inconclusive", reason: "no-response", evidence: "behavior" },
+        }
+      }
       return {
         pass: width === 2,
         note: width === 2 ? undefined : `width=${width}, expected 2`,
+        response: String(width),
+        observation: { outcome: width === 2 ? "supported" : "unsupported", evidence: "behavior" },
+        assertions: [{ kind: width === 2 ? "positive" : "negative", expected: "2", observed: String(width) }],
       }
     },
+    "behavior",
   ),
 
   probe(

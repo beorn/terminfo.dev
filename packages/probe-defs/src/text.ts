@@ -1,5 +1,45 @@
-import type { ProbeDefinition } from "./types.ts"
+import type { ObservationEvidence, ProbeDefinition, ProbeResult } from "./types.ts"
 import { probe } from "./helpers.ts"
+
+/** Each tab probe owns its stops; the app runner supplies a disposable terminal fixture. */
+function installTabFixture(write: (sequence: string) => void): void {
+  write("\x1b[3g\x1b[1;9H\x1bH\x1b[1;17H\x1bH\x1b[1;1H")
+}
+
+/** Restore the conventional eight-column fixture, not an unknown pre-existing custom layout. */
+function restoreDefaultTabs(write: (sequence: string) => void, cols: number): void {
+  let sequence = "\x1b[3g"
+  for (let col = 9; col <= cols; col += 8) sequence += `\x1b[1;${col}H\x1bH`
+  write(sequence + "\x1b[1;1H")
+}
+
+function tabPositionResult(
+  position: { row: number; col: number } | null,
+  expectedCol: number,
+  evidence: ObservationEvidence,
+): ProbeResult {
+  if (!position) {
+    return {
+      pass: false,
+      note: "No cursor response",
+      observation: { outcome: "inconclusive", reason: "no-response", evidence },
+    }
+  }
+  const response = JSON.stringify(position)
+  const pass = position.row === 1 && position.col === expectedCol
+  return {
+    pass,
+    response,
+    observation: { outcome: pass ? "supported" : "unsupported", evidence },
+    assertions: [{ kind: pass ? "positive" : "negative", expected: `row 1, col ${expectedCol}`, observed: response }],
+  }
+}
+
+function headlessColumns(feed: (sequence: string) => void, cursor: () => { x: number }): number | null {
+  feed("\x1b[9999G")
+  const cols = cursor().x + 1
+  return cols >= 1 && cols <= 9999 ? cols : null
+}
 
 export const textProbes: ProbeDefinition[] = [
   probe(
@@ -251,27 +291,21 @@ export const textProbes: ProbeDefinition[] = [
   probe(
     "text.hts",
     (ctx) => {
-      ctx.feed("\x1b[3g") // clear all tab stops
-      ctx.feed("\x1b[6G") // move to column 6 (1-based)
-      ctx.feed("\x1bH") // HTS — set tab stop at column 6
-      ctx.feed("\x1b[1G") // move back to column 1
-      ctx.feed("\t") // tab — should advance to column 6
-      return {
-        pass: ctx.getCursor().x === 5,
-        note: ctx.getCursor().x === 5 ? undefined : `cursor at col ${ctx.getCursor().x}, expected 5`,
+      const cols = headlessColumns(ctx.feed, ctx.getCursor)
+      try {
+        ctx.feed("\x1b[3g\x1b[6G\x1bH\x1b[1G\t")
+        return { pass: ctx.getCursor().x === 5 }
+      } finally {
+        if (cols !== null) restoreDefaultTabs(ctx.feed, cols)
       }
     },
     async (ctx) => {
-      ctx.write("\x1b[3g") // clear all tab stops
-      ctx.write("\x1b[1;6H") // move to row 1, col 6
-      ctx.write("\x1bH") // HTS — set tab stop at column 6
-      ctx.write("\x1b[1;1H") // move back to col 1
-      ctx.write("\t") // tab
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 6,
-        note: pos.col === 6 ? undefined : `cursor at col ${pos.col}, expected 6`,
+      try {
+        ctx.write("\x1b[3g\x1b[1;6H\x1bH\x1b[1;1H\t")
+        const pos = await ctx.queryCursorPosition()
+        return { pass: pos?.col === 6, ...(pos ? {} : { note: "No cursor response" }) }
+      } finally {
+        restoreDefaultTabs(ctx.write, ctx.cols)
       }
     },
   ),
@@ -280,70 +314,204 @@ export const textProbes: ProbeDefinition[] = [
   probe(
     "text.tbc",
     (ctx) => {
-      ctx.feed("\x1b[3g") // TBC 3 — clear all tab stops
-      ctx.feed("\t") // tab — should not advance since all stops are cleared
-      return {
-        pass: ctx.getCursor().x === 0,
-        note: ctx.getCursor().x === 0 ? undefined : `cursor at col ${ctx.getCursor().x}, expected 0`,
+      const cols = headlessColumns(ctx.feed, ctx.getCursor)
+      if (cols === null || cols < 17) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            evidence: "parser-state",
+            note: "Tab fixture needs at least 17 columns",
+          },
+        }
+      }
+      try {
+        installTabFixture(ctx.feed)
+        ctx.feed("\t")
+        const before = ctx.getCursor()
+        ctx.feed("\x1b[1;1H\x1b[3g\t")
+        const after = ctx.getCursor()
+        const response = JSON.stringify({ cols, before, after })
+        if (before.x !== 8) {
+          return {
+            pass: false,
+            response,
+            observation: {
+              outcome: "inconclusive",
+              evidence: "parser-state",
+              note: "Could not establish the initial tab stop",
+            },
+          }
+        }
+        // ECMA-48 specifies TBC clearing, but not HT's destination with no
+        // remaining stop. Staying put cannot establish the named behavior.
+        const pass = after.y === 0 && after.x === cols - 1
+        const unchanged = after.y === 0 && after.x === 8
+        return {
+          pass,
+          response,
+          observation: {
+            outcome: pass ? "supported" : unchanged ? "unsupported" : "inconclusive",
+            evidence: "parser-state",
+          },
+          ...(pass || unchanged
+            ? {
+                assertions: [
+                  {
+                    kind: pass ? ("positive" as const) : ("negative" as const),
+                    expected: `initial col 9; after TBC col ${cols}`,
+                    observed: response,
+                  },
+                ],
+              }
+            : {}),
+        }
+      } finally {
+        restoreDefaultTabs(ctx.feed, cols)
       }
     },
     async (ctx) => {
-      ctx.write("\x1b[1;1H") // move to col 1
-      ctx.write("\x1b[3g") // TBC 3 — clear all tab stops
-      ctx.write("\t") // tab — should not advance
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+      if (ctx.cols < 17) {
+        return {
+          pass: false,
+          observation: { outcome: "inconclusive", evidence: "behavior", note: "Tab fixture needs at least 17 columns" },
+        }
+      }
+      try {
+        installTabFixture(ctx.write)
+        ctx.write("\t")
+        const before = await ctx.queryCursorPosition()
+        ctx.write("\x1b[1;1H\x1b[3g\t")
+        const after = await ctx.queryCursorPosition()
+        if (!before || !after) {
+          return {
+            pass: false,
+            note: "No cursor response",
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "behavior" },
+          }
+        }
+        const response = JSON.stringify({ cols: ctx.cols, before, after })
+        if (before.col !== 9) {
+          return {
+            pass: false,
+            response,
+            observation: {
+              outcome: "inconclusive",
+              evidence: "behavior",
+              note: "Could not establish the initial tab stop",
+            },
+          }
+        }
+        const pass = after.row === 1 && after.col === ctx.cols
+        const unchanged = after.row === 1 && after.col === 9
+        return {
+          pass,
+          response,
+          observation: {
+            outcome: pass ? "supported" : unchanged ? "unsupported" : "inconclusive",
+            evidence: "behavior",
+          },
+          ...(pass || unchanged
+            ? {
+                assertions: [
+                  {
+                    kind: pass ? ("positive" as const) : ("negative" as const),
+                    expected: `initial col 9; after TBC col ${ctx.cols}`,
+                    observed: response,
+                  },
+                ],
+              }
+            : {}),
+        }
+      } finally {
+        restoreDefaultTabs(ctx.write, ctx.cols)
       }
     },
+    "behavior",
   ),
 
   // CHT — cursor horizontal forward tab
   probe(
     "text.cht",
     (ctx) => {
-      // With default 8-col tab stops, CHT 2 from col 0 → col 16
-      ctx.feed("\x1b[2I")
-      return {
-        pass: ctx.getCursor().x === 16,
-        note: ctx.getCursor().x === 16 ? undefined : `cursor at col ${ctx.getCursor().x}, expected 16`,
+      const cols = headlessColumns(ctx.feed, ctx.getCursor)
+      if (cols === null || cols < 21) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            evidence: "parser-state",
+            note: "Tab fixture needs at least 21 columns",
+          },
+        }
+      }
+      try {
+        installTabFixture(ctx.feed)
+        ctx.feed("\x1b[2I")
+        const cursor = ctx.getCursor()
+        return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "parser-state")
+      } finally {
+        restoreDefaultTabs(ctx.feed, cols)
       }
     },
     async (ctx) => {
-      ctx.write("\x1b[1;1H") // move to col 1
-      ctx.write("\x1b[2I") // CHT 2 — forward 2 tab stops
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 17,
-        note: pos.col === 17 ? undefined : `cursor at col ${pos.col}, expected 17`,
+      if (ctx.cols < 21) {
+        return {
+          pass: false,
+          observation: { outcome: "inconclusive", evidence: "behavior", note: "Tab fixture needs at least 21 columns" },
+        }
+      }
+      try {
+        installTabFixture(ctx.write)
+        ctx.write("\x1b[2I")
+        return tabPositionResult(await ctx.queryCursorPosition(), 17, "behavior")
+      } finally {
+        restoreDefaultTabs(ctx.write, ctx.cols)
       }
     },
+    "behavior",
   ),
 
   // CBT — cursor backward tab
   probe(
     "text.cbt",
     (ctx) => {
-      ctx.feed("\x1b[21G") // move to column 21 (1-based), 0-based col 20
-      ctx.feed("\x1b[Z") // CBT 1 — back 1 tab stop → col 16 (0-based)
-      return {
-        pass: ctx.getCursor().x === 16,
-        note: ctx.getCursor().x === 16 ? undefined : `cursor at col ${ctx.getCursor().x}, expected 16`,
+      const cols = headlessColumns(ctx.feed, ctx.getCursor)
+      if (cols === null || cols < 21) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            evidence: "parser-state",
+            note: "Tab fixture needs at least 21 columns",
+          },
+        }
+      }
+      try {
+        installTabFixture(ctx.feed)
+        ctx.feed("\x1b[1;21H\x1b[Z")
+        const cursor = ctx.getCursor()
+        return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "parser-state")
+      } finally {
+        restoreDefaultTabs(ctx.feed, cols)
       }
     },
     async (ctx) => {
-      ctx.write("\x1b[1;21H") // move to col 21 (1-based)
-      ctx.write("\x1b[Z") // CBT 1 — back 1 tab stop
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 17,
-        note: pos.col === 17 ? undefined : `cursor at col ${pos.col}, expected 17`,
+      if (ctx.cols < 21) {
+        return {
+          pass: false,
+          observation: { outcome: "inconclusive", evidence: "behavior", note: "Tab fixture needs at least 21 columns" },
+        }
+      }
+      try {
+        installTabFixture(ctx.write)
+        ctx.write("\x1b[1;21H\x1b[Z")
+        return tabPositionResult(await ctx.queryCursorPosition(), 17, "behavior")
+      } finally {
+        restoreDefaultTabs(ctx.write, ctx.cols)
       }
     },
+    "behavior",
   ),
 
   probe(

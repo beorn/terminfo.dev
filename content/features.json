@@ -1558,12 +1558,12 @@
     "probe": "Write an Ambiguous-width character (e.g., U+00A7 Section Sign), measure cursor displacement."
   },
   "unicode.grapheme-cursor": {
-    "name": "Grapheme Cluster Cursor Movement",
+    "name": "ZWJ Emoji Sample Display Width",
     "slug": "grapheme-cursor",
     "tags": ["unicode"],
     "baseline": "unicode",
-    "body": "Cursor movement (CUF/CUB) should respect grapheme cluster boundaries. Moving the cursor back over a ZWJ emoji sequence should skip the entire sequence, not individual codepoints. Many terminals still move by codepoint rather than grapheme cluster.\n\nGrapheme-aware cursor movement is a modern Unicode expectation layered on top of a terminal model built for fixed cells. ZWJ emoji, combining marks, and skin-tone modifiers are multiple code points but one user-perceived character. Cursor movement by code point splits those clusters and leaves the grid in a visibly broken state.",
-    "probe": "Write an emoji ZWJ sequence, move cursor back by 1, verify cursor position.",
+    "body": "This result measures the display width of one family emoji ZWJ sequence (👨‍👩‍👧). The probe writes that sample and checks that it occupies two terminal cells, using cursor displacement in an app or cursor and cell state in a headless parser.\n\nThe probe does not send CUF or CUB and does not establish how either cursor control treats grapheme boundaries. It also does not establish conformance for other emoji or grapheme sequences.",
+    "probe": "Write the family emoji ZWJ sample and measure its two-cell display width; do not infer CUF/CUB behavior.",
     "url": "https://unicode.org/reports/tr29/#Grapheme_Cluster_Boundaries"
   },
   "unicode.wrap-boundary": {
@@ -1670,8 +1670,8 @@
     "slug": "tbc-clear-tab-stop",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
     "tags": ["ecma-48", "vt100"],
-    "body": "TBC (Tab Clear) clears tab stops. <code>CSI 0 g</code> clears the tab stop at the current cursor position; <code>CSI 3 g</code> clears all tab stops. After clearing all tab stops, tab characters have no effect (cursor does not advance). TBC is used together with HTS to set up custom tab stop patterns for formatted output.",
-    "probe": "Clear all tab stops with <code>\\x1b[3g</code>, send a tab from column 0 — verify cursor does not advance (stays at column 0), confirming all tab stops were cleared.",
+    "body": "TBC (Tab Clear) clears tab stops. <code>CSI 0 g</code> clears the stop at the current cursor position; <code>CSI 3 g</code> clears all character tab stops. With the probe's known stop cleared, a subsequent tab no longer lands there. On the tested real-terminal path it reaches the right margin. The probe restores a conventional eight-column tab fixture afterward; it cannot reconstruct unknown custom stops.",
+    "probe": "Set a known tab stop, verify that HT reaches it, clear all stops with <code>CSI 3 g</code>, then measure HT against the actual screen width. Restore conventional eight-column stops afterward.",
     "baseline": "core",
     "sequence": "CSI Ps g"
   },
@@ -1681,7 +1681,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
     "tags": ["ecma-48"],
     "body": "CHT (Cursor Horizontal Forward Tab) advances the cursor forward by N tab stops. The sequence is <code>CSI Ps I</code> where Ps is the number of tab stops to advance (default 1). Unlike a simple tab character (HT, 0x09) which advances by one tab stop, CHT can jump multiple tab stops in a single sequence. With default 8-column tab stops, <code>CSI 2 I</code> from column 0 would advance to column 16.",
-    "probe": "From column 0, send <code>\\x1b[2I</code> (CHT 2) with default 8-column tab stops, verify cursor advanced to column 16 (two tab stops forward).",
+    "probe": "Install known stops at columns 9 and 17 in a disposable fixture, then send <code>CSI 2 I</code> from column 1 and measure column 17. Restore conventional stops afterward.",
     "baseline": "core",
     "sequence": "CSI Ps I"
   },
@@ -1691,7 +1691,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
     "tags": ["ecma-48"],
     "body": "CBT (Cursor Backward Tab) moves the cursor backward by N tab stops. The sequence is <code>CSI Ps Z</code> where Ps is the number of tab stops to move back (default 1). If the cursor is between two tab stops, CBT moves it to the previous tab stop. CBT is useful for navigating columnar data in reverse. If there are no more tab stops to the left, the cursor moves to column 1.",
-    "probe": "Position cursor at column 20, send <code>\\x1b[Z</code> (CBT 1) with default 8-column tab stops, verify cursor moved back to column 16.",
+    "probe": "Install known stops at columns 9 and 17 in a disposable fixture, position at column 21, then send <code>CSI Z</code> and measure column 17. Restore conventional stops afterward.",
     "baseline": "core",
     "sequence": "CSI Ps Z"
   },
