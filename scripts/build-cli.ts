@@ -2,7 +2,8 @@
 /** Bundle the publishable CLI with the one trusted suite declaration. */
 
 import { execFileSync } from "node:child_process"
-import { mkdirSync, renameSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
@@ -47,8 +48,22 @@ async function main(): Promise<void> {
   const temporary = `${destination}.tmp-${process.pid}`
   const [output] = result.outputs
   if (!output) throw new Error("CLI bundle succeeded without an output")
-  writeFileSync(temporary, Buffer.from(await output.arrayBuffer()))
+  const bundle = Buffer.from(await output.arrayBuffer())
+  writeFileSync(temporary, bundle)
   renameSync(temporary, destination)
+  const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex")
+  const manifestBytes = readFileSync(join(ROOT, "content", "suites", `${manifest.probeHash}.json`))
+  const receipt = {
+    schemaVersion: 1,
+    probeHash: manifest.probeHash,
+    collectorRevision,
+    manifestSha256: sha256(manifestBytes),
+    bundleSha256: sha256(bundle),
+  }
+  const receiptPath = join(dist, "terminfo.bundle.receipt.json")
+  const receiptTemporary = `${receiptPath}.tmp-${process.pid}`
+  writeFileSync(receiptTemporary, `${JSON.stringify(receipt, null, 2)}\n`)
+  renameSync(receiptTemporary, receiptPath)
   console.log(`CLI bundle ready: ${destination} (${manifest.probeHash}, ${collectorRevision})`)
 }
 

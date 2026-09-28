@@ -22,12 +22,21 @@ compose_receipt() {
       error("host image identity is missing")
     elif ($c.executable.sha256 | type) != "string" or ($c.sourceArtifact.sha256 | type) != "string" then
       error("container executable or archive identity is missing")
+    elif ($h.runnerArtifact.frozenRunnerSha256 | type) != "string" or
+         ($h.runnerArtifact.buildReceiptSha256 | type) != "string" or
+         $c.collector.frozenRunnerSha256 != $h.runnerArtifact.frozenRunnerSha256 or
+         $c.collector.buildReceiptSha256 != $h.runnerArtifact.buildReceiptSha256 then
+      error("container collector bytes disagree with host runner receipt")
+    elif ($c.probeRun.runId | type) != "string" or ($c.probeRun.sha256 | type) != "string" then
+      error("container v2 probe run identity is missing")
     elif ($c.display.glxinfo | type) != "string" or ($c.display.geometry | type) != "string" then
       error("container display receipt is missing")
     else
       $h + {
         executable:$c.executable,
         sourceArtifact:($h.sourceArtifact + $c.sourceArtifact),
+        collector:$c.collector,
+        probeRun:$c.probeRun,
         display:$c.display,
         capture:$c.capture,
         receiptInputs:{hostSha256:$hostSha,containerSha256:$containerSha}
@@ -68,6 +77,18 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "Frozen runner import smoke failed" >&2
     cat /out/import-smoke.err >&2
     exit 2
+  }
+  runner_dir=$(dirname "$TERMINFO_RUNNER")
+  build_receipt="$runner_dir/terminfo.bundle.receipt.json"
+  [[ -r "$build_receipt" ]] || { echo "Frozen CLI build receipt is missing" >&2; exit 2; }
+  runner_sha=$(sha256sum "$TERMINFO_RUNNER" | cut -d ' ' -f 1)
+  receipt_sha=$(sha256sum "$build_receipt" | cut -d ' ' -f 1)
+  jq -e --arg runner "$runner_sha" --arg receipt "$receipt_sha" \
+    '.runnerArtifact.frozenRunnerSha256 == $runner and .runnerArtifact.buildReceiptSha256 == $receipt and
+     .runnerArtifact.build.probeHash == .runtime.suiteHash and
+     .runnerArtifact.build.collectorRevision == .runtime.sourceRevision' \
+    /out/host-measured.json >/dev/null || {
+    echo "Frozen collector differs from host build receipt" >&2; exit 2;
   }
   sha256sum "$KITTY_BINARY" | tee /out/executable.sha256
   sha256sum "$KITTY_SOURCE_ARCHIVE" | tee /out/source-archive.sha256
@@ -121,7 +142,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   "$KITTY_BINARY" --config NONE --class terminfo-kitty-container-daemon \
     -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600 \
     -o font_family='DejaVu Sans Mono' -o font_size=16 \
-    bun "$TERMINFO_RUNNER" probe server --start >/out/daemon.log 2>&1 &
+    bun "$TERMINFO_RUNNER" test --serve >/out/daemon.log 2>&1 &
   daemon_pid=$!
   daemon_dir="$HOME/.terminfo-dev/daemons"
   for _ in $(seq 1 150); do
@@ -163,6 +184,21 @@ if [[ "${1:-}" == "--inside" ]]; then
   jq -e '.results[0].response | contains("0.49.1")' /out/xtversion-observation.json >/dev/null || {
     echo "XTVERSION did not return Kitty 0.49.1; run invalid" >&2; exit 2;
   }
+  curl --fail-with-body --silent --show-error --max-time 120 \
+    -H "Authorization: Bearer $token" "http://127.0.0.1:$port/probe" > /out/v2-run.json
+  jq -e --slurpfile build "$build_receipt" '
+    .schemaVersion == 2 and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
+    .target.kind == "app" and .target.id == "kitty" and
+    .identity == "unverified" and .origin.kind == "collector" and
+    .probeHash == $build[0].probeHash and .suiteId == $build[0].probeHash and
+    .sourceRevision == $build[0].collectorRevision and
+    (.suiteComplete | type == "boolean") and (.rawReplies | type == "object") and
+    (.assertions | type == "array") and (.observations | type == "array") and
+    (has("results") | not)' /out/v2-run.json >/dev/null || {
+    echo "Daemon returned an invalid or mismatched v2 probe run; raw response retained" >&2; exit 2;
+  }
+  probe_run_id=$(jq -er .runId /out/v2-run.json)
+  probe_run_sha=$(sha256sum /out/v2-run.json | cut -d ' ' -f 1)
 
   "$KITTY_BINARY" --config NONE --class terminfo-kitty-container-fixture \
     -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600 \
@@ -186,8 +222,8 @@ if [[ "${1:-}" == "--inside" ]]; then
   png_sha=$(sha256sum /out/fixture.png | cut -d ' ' -f 1)
   mv /out/fixture.png "/out/$png_sha.png"
   sha256sum /out/fixture.xwd "/out/$png_sha.png" > /out/capture-hashes.txt
-  jq -n --arg run "$TERMINFO_RUN_ID" --arg png "$png_sha.png" \
-    '{status:"raw-unreviewed-history",runId:$run,png:$png,context:"linux-x86_64-xvfb-llvmpipe"}' \
+  jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --arg png "$png_sha.png" \
+    '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,png:$png,context:"linux-x86_64-xvfb-llvmpipe"}' \
     > /out/observed.json
   read -r executable_sha executable_path < /out/executable.sha256
   read -r source_sha source_path < /out/source-archive.sha256
@@ -196,12 +232,16 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg executablePath "$executable_path" --arg executableSha "$executable_sha" \
     --arg executableVersion "$(cat /out/executable-version.txt)" \
     --arg sourcePath "$source_path" --arg sourceSha "$source_sha" \
+    --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
+    --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" \
     --arg png "$png_sha.png" --arg pngSha "$png_sha" --arg xwdSha "$xwd_sha" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
     '{runId:$run,
       executable:{path:$executablePath,version:$executableVersion,sha256:$executableSha},
       sourceArtifact:{path:$sourcePath,sha256:$sourceSha},
+      collector:{frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha},
+      probeRun:{path:"v2-run.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
       capture:{xwd:"fixture.xwd",xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}}' \
     > /out/container-receipt.json
@@ -225,18 +265,45 @@ mkdir "$run_dir/prep" "$run_dir/raw"
 prep="$run_dir/prep"
 raw="$run_dir/raw"
 
-# The offline frozen install checks that the current lock and cached package
-# bytes can resolve the same workspace before the Bun bundle is frozen.
+# Resolve the declared workspace, then freeze the single CLI producer's output
+# with its public package imports into the content-addressed image input.
 (
   cd "$code_root"
-  AT_IN_ALLOW_SUBMODULE_DRIFT=1 @in -- bun install --frozen-lockfile --offline --ignore-scripts
+  AT_IN_ALLOW_SUBMODULE_DRIFT=1 @in -- bun install --frozen-lockfile --ignore-scripts
+  AT_IN_ALLOW_SUBMODULE_DRIFT=1 @in -- bun vendor/terminfo.dev/scripts/build-cli.ts
+  mkdir -p "$prep/bundle"
   AT_IN_ALLOW_SUBMODULE_DRIFT=1 @in -- bun build \
-    vendor/terminfo.dev/packages/admin/src/index.ts --target=bun --outdir "$prep/bundle"
+    vendor/terminfo.dev/packages/terminfo.dev/dist/terminfo.bundle.mjs \
+    --target=bun --outdir "$prep/bundle"
+  mv "$prep/bundle/terminfo.bundle.js" "$prep/bundle/index.js"
 ) > "$prep/bundle-build.log" 2>&1 || {
   cat "$prep/bundle-build.log" >&2
   echo "Offline frozen runner build failed; preserved at $run_dir" >&2
   exit 2
 }
+cli_bundle="$vendor_root/packages/terminfo.dev/dist/terminfo.bundle.mjs"
+cli_receipt="$vendor_root/packages/terminfo.dev/dist/terminfo.bundle.receipt.json"
+[[ -s "$cli_bundle" && -s "$cli_receipt" && -s "$prep/bundle/index.js" ]] || {
+  echo "CLI producer or frozen runner output is missing; preserved at $run_dir" >&2; exit 2;
+}
+jq -e '
+  .schemaVersion == 1 and (.probeHash | type == "string" and test("^[0-9a-f]{12}$")) and
+  (.collectorRevision | type == "string" and test("^[0-9a-f]{40}$")) and
+  (.manifestSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+  (.bundleSha256 | type == "string" and test("^[0-9a-f]{64}$"))' \
+  "$cli_receipt" >/dev/null || { echo "Invalid CLI producer receipt" >&2; exit 2; }
+suite_hash=$(jq -er .probeHash "$cli_receipt")
+source_revision=$(jq -er .collectorRevision "$cli_receipt")
+cli_bundle_sha=$(sha256sum "$cli_bundle" | cut -d ' ' -f 1)
+manifest_sha=$(sha256sum "$vendor_root/content/suites/$suite_hash.json" | cut -d ' ' -f 1)
+[[ "$cli_bundle_sha" == "$(jq -er .bundleSha256 "$cli_receipt")" &&
+   "$manifest_sha" == "$(jq -er .manifestSha256 "$cli_receipt")" &&
+   "$source_revision" == "$(git -C "$vendor_root" rev-parse HEAD)" ]] || {
+  echo "CLI bytes, suite declaration, or source revision differ from producer receipt" >&2; exit 2;
+}
+cp "$cli_receipt" "$prep/bundle/terminfo.bundle.receipt.json"
+frozen_runner_sha=$(sha256sum "$prep/bundle/index.js" | cut -d ' ' -f 1)
+build_receipt_sha=$(sha256sum "$prep/bundle/terminfo.bundle.receipt.json" | cut -d ' ' -f 1)
 cp "$script_dir/linux-container-run.sh" "$prep/bundle/linux-container-run.sh"
 (
   cd "$prep"
@@ -244,18 +311,11 @@ cp "$script_dir/linux-container-run.sh" "$prep/bundle/linux-container-run.sh"
 )
 bundle_sha=$(nix hash path --type sha256 --sri "$prep/bundle")
 bundle_tar_sha=$(sha256sum "$prep/runner-bundle.tar" | cut -d ' ' -f 1)
-source_revision=$(git -C "$vendor_root" rev-parse HEAD)
-[[ -z "$(git -C "$vendor_root" status --porcelain)" ]] || source_revision="$source_revision+dirty"
+source_status=clean
+[[ -z "$(git -C "$vendor_root" status --porcelain)" ]] || source_status=dirty
 root_revision=$(git -C "$code_root" rev-parse HEAD)
 nix_lock_revision=$(jq -er '.nodes.nixpkgs.locked.rev' "$code_root/flake.lock")
 root_lock_sha=$(sha256sum "$code_root/bun.lock" | cut -d ' ' -f 1)
-suite_hash=$(
-  cd "$vendor_root"
-  {
-    printf '%s\n' packages/terminfo.dev/src/probes/unified.ts
-    rg --files packages/probe-defs/src | rg '\.ts$' | rg -v '\.(test|spec)\.ts$'
-  } | sort | while IFS= read -r path; do printf '%s\0' "$path"; cat "$path"; done | sha256sum | cut -d ' ' -f 1
-)
 (
   cd "$code_root"
   TERMINFO_LINUX_RUNNER_DIR="$prep/bundle" TERMINFO_LINUX_RUNNER_SHA256="$bundle_sha" \
@@ -276,13 +336,17 @@ jq -n \
   --arg arch "$image_arch" --arg nix "$nix_lock_revision" --arg source "$source_revision" \
   --arg root "$root_revision" --arg suite "$suite_hash" --arg bundle "$bundle_tar_sha" \
   --arg bundleNar "$bundle_sha" --arg lock "$root_lock_sha" \
+  --arg runnerSha "$frozen_runner_sha" --arg receiptSha "$build_receipt_sha" \
+  --arg sourceStatus "$source_status" --slurpfile build "$cli_receipt" \
   --arg url 'https://github.com/kovidgoyal/kitty/releases/download/v0.49.1/kitty-0.49.1-x86_64.txz' \
   --arg runnerUrl "file://$prep/runner-bundle.tar" \
   '{runId:$run, declaredTarget:{kind:"app",id:"kitty",version:"0.49.1",os:"linux"},
     sourceArtifact:{url:$url},
-    runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,rootBunLockSha256:$lock},
+    runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
+      frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
+      build:$build[0],rootBunLockSha256:$lock},
     runtime:{imageId:$image,imageTarSha256:$tar,arch:$arch,nixLockRevision:$nix,
-      sourceRevision:$source,rootRevision:$root,suiteHash:$suite},
+      sourceRevision:$source,sourceTreeStatus:$sourceStatus,rootRevision:$root,suiteHash:$suite},
     status:"raw-unreviewed-history"}' > "$raw/host-measured.json"
 
 container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-only \
@@ -319,6 +383,11 @@ fi
 }
 jq -e --arg run "$run_id" '.runId == $run' "$raw/observed.json" >/dev/null || {
   echo "Raw observation run ID differs from host run ID" >&2; exit 2;
+}
+probe_sha=$(sha256sum "$raw/v2-run.json" | cut -d ' ' -f 1)
+jq -e --arg run "$(jq -er .probeRunId "$raw/observed.json")" --arg sha "$probe_sha" \
+  '.probeRun.runId == $run and .probeRun.sha256 == $sha' "$raw/container-receipt.json" >/dev/null || {
+  echo "Raw v2 run differs from container receipt" >&2; exit 2;
 }
 source_sha=$(jq -er .sourceArtifact.sha256 "$raw/container-receipt.json")
 source_sri=$(nix hash convert --hash-algo sha256 --to sri "$source_sha")

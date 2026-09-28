@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
 let dir: string
 
-function compose(containerRunId = "a".repeat(32), writeContainer = true) {
+function compose(containerRunId = "a".repeat(32), writeContainer = true, containerRunnerSha = "runner-hash") {
   const host = join(dir, "host.json")
   const container = join(dir, "container.json")
   const output = join(dir, "run-receipt.json")
@@ -24,6 +24,7 @@ function compose(containerRunId = "a".repeat(32), writeContainer = true) {
     JSON.stringify({
       runId: "a".repeat(32),
       sourceArtifact: { url: "https://example.invalid/kitty.txz" },
+      runnerArtifact: { frozenRunnerSha256: "runner-hash", buildReceiptSha256: "receipt-hash" },
       runtime: { imageId: "sha256:image", imageTarSha256: "tar-hash" },
     }),
   )
@@ -34,6 +35,8 @@ function compose(containerRunId = "a".repeat(32), writeContainer = true) {
         runId: containerRunId,
         executable: { path: "/nix/store/kitty", version: "kitty 0.49.1", sha256: "executable-hash" },
         sourceArtifact: { path: "/kitty-source/kitty.txz", sha256: "archive-hash" },
+        collector: { frozenRunnerSha256: containerRunnerSha, buildReceiptSha256: "receipt-hash" },
+        probeRun: { path: "v2-run.json", runId: "b".repeat(32), sha256: "probe-hash" },
         display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
         capture: { xwdSha256: "xwd-hash", pngSha256: "png-hash" },
       }),
@@ -66,6 +69,8 @@ describe("container run receipt composition", () => {
       executable: { sha256: string }
       receiptInputs: { hostSha256: string; containerSha256: string }
       sourceArtifact: { url: string; path: string; sha256: string }
+      collector: { frozenRunnerSha256: string }
+      probeRun: { runId: string; sha256: string }
     }
     expect(receipt.runtime.imageId).toBe("sha256:image")
     expect(receipt.executable.sha256).toBe("executable-hash")
@@ -76,6 +81,8 @@ describe("container run receipt composition", () => {
       path: "/kitty-source/kitty.txz",
       sha256: "archive-hash",
     })
+    expect(receipt.collector.frozenRunnerSha256).toBe("runner-hash")
+    expect(receipt.probeRun).toEqual({ path: "v2-run.json", runId: "b".repeat(32), sha256: "probe-hash" })
   })
 
   it("refuses a missing container half before writing a run receipt", () => {
@@ -89,6 +96,13 @@ describe("container run receipt composition", () => {
     const { result, output } = compose("b".repeat(32))
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain("runId mismatch")
+    expect(existsSync(output)).toBe(false)
+  })
+
+  it("refuses collector bytes that differ from the host-measured image input", () => {
+    const { result, output } = compose("a".repeat(32), true, "different-runner")
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("container collector bytes disagree")
     expect(existsSync(output)).toBe(false)
   })
 })
