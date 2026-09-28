@@ -10,8 +10,24 @@ import type { HeadlessRuntimeIdentity } from "@terminfo/probe-defs"
 
 const TERMINFO_ROOT = realpathSync(resolve(import.meta.dir, "../.."))
 const CODE_ROOT = realpathSync(resolve(TERMINFO_ROOT, "../.."))
-const TERMLESS_ROOT = realpathSync(join(CODE_ROOT, "vendor", "termless"))
-const VTERM_ROOT = realpathSync(join(CODE_ROOT, "vendor", "vterm"))
+
+function ownedCheckout(path: string, name: string): string {
+  try {
+    return realpathSync(path)
+  } catch (cause) {
+    throw new Error(`Local headless v2 collection requires the owned ${name} checkout at ${path}`, { cause })
+  }
+}
+
+const TERMLESS_ROOT = ownedCheckout(join(CODE_ROOT, "vendor", "termless"), "Termless")
+const VTERM_ROOT = ownedCheckout(join(CODE_ROOT, "vendor", "vterm"), "vterm")
+const UPSTREAM_PACKAGES: Record<string, string> = {
+  xtermjs: "@xterm/headless",
+  ghostty: "ghostty-web",
+  vt100: "vt100.js",
+  vt220: "vt220.js",
+  vterm: "vterm.js",
+}
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -98,7 +114,9 @@ function loadedAddon(adapterDirectory: string): { path: string; sha256: string }
       `Expected one loaded native addon in ${adapterDirectory}; found ${paths.length}: ${paths.join(", ")}`,
     )
   }
-  const path = realpathSync(paths[0]!)
+  const [loadedPath] = paths
+  if (!loadedPath) throw new Error(`Native addon cache lost the loaded path in ${adapterDirectory}`)
+  const path = realpathSync(loadedPath)
   return { path, sha256: sha256(readFileSync(path)) }
 }
 
@@ -117,16 +135,23 @@ function sidecarIdentity(
     typeof receipt.sourceCommit !== "string" ||
     typeof receipt.buildHash !== "string" ||
     typeof receipt.toolchain !== "string" ||
-    typeof receipt.lockSha256 !== "string"
+    typeof receipt.lockSha256 !== "string" ||
+    typeof receipt.nativeTreeOid !== "string"
   ) {
     throw new Error(`Native addon receipt missing or does not match loaded binary: ${receiptPath}`)
   }
-  if (typeof receipt.nativeTreeOid === "string") {
-    const packagePath = relative(TERMLESS_ROOT, adapterDirectory)
-    const currentTreeOid = git(TERMLESS_ROOT, "rev-parse", `HEAD:${packagePath}/native`)
-    if (receipt.nativeTreeOid !== currentTreeOid) {
-      throw new Error(`Native addon receipt source tree differs from current adapter: ${receiptPath}`)
-    }
+  const packagePath = relative(TERMLESS_ROOT, adapterDirectory)
+  const currentTreeOid = git(TERMLESS_ROOT, "rev-parse", `HEAD:${packagePath}/native`)
+  if (receipt.nativeTreeOid !== currentTreeOid) {
+    throw new Error(`Native addon receipt source tree differs from current adapter: ${receiptPath}`)
+  }
+  const lockPath = join(
+    adapterDirectory,
+    "native",
+    packagePath.endsWith("ghostty-native") ? ".ghostty-src/flake.lock" : "Cargo.lock",
+  )
+  if (receipt.lockSha256 !== sha256(readFileSync(lockPath))) {
+    throw new Error(`Native addon receipt lock differs from current build inputs: ${receiptPath}`)
   }
   return {
     kind: "native",
@@ -145,6 +170,9 @@ function sidecarIdentity(
 }
 
 function kittyIdentity(adapterVersion: string, termlessRevision: string): HeadlessRuntimeIdentity {
+  if (process.platform !== "linux" || process.arch !== "x64") {
+    throw new Error("Pinned Kitty headless identity is available only on x86_64 Linux")
+  }
   const explicit = process.env.KITTY_BINARY
   if (!explicit || !explicit.startsWith("/")) throw new Error("Kitty headless run requires an explicit KITTY_BINARY")
   const path = realpathSync(explicit)
@@ -157,12 +185,29 @@ function kittyIdentity(adapterVersion: string, termlessRevision: string): Headle
     execFileSync("nix", ["path-info", "--json", "--json-format", "1", storePath], { encoding: "utf8" }),
   )
   const storeInfo = record(info) ? info[storePath] : undefined
-  if (!record(storeInfo) || typeof storeInfo.narHash !== "string" || !storeInfo.narHash.startsWith("sha256-")) {
+  if (
+    !record(storeInfo) ||
+    typeof storeInfo.narHash !== "string" ||
+    !storeInfo.narHash.startsWith("sha256-") ||
+    typeof storeInfo.deriver !== "string"
+  ) {
     throw new Error(`No Nix closure hash for loaded Kitty ${storePath}`)
   }
+  const derivation: unknown = JSON.parse(
+    execFileSync("nix", ["derivation", "show", storeInfo.deriver], { encoding: "utf8" }),
+  )
+  const derivations = record(derivation) && record(derivation.derivations) ? derivation.derivations : undefined
+  const drv = derivations ? Object.values(derivations)[0] : undefined
+  const sourcePath = record(drv) && record(drv.env) ? drv.env.src : undefined
+  if (typeof sourcePath !== "string" || !sourcePath.startsWith("/nix/store/")) {
+    throw new Error(`No source archive in Kitty Nix derivation ${storeInfo.deriver}`)
+  }
+  const sourceArchiveSha256 = sha256(readFileSync(sourcePath))
   const binarySha256 = sha256(readFileSync(path))
   const lockSha256 = sha256(readFileSync(join(CODE_ROOT, "flake.lock")))
-  const buildHash = sha256(JSON.stringify({ storePath, narHash: storeInfo.narHash, binarySha256, lockSha256 }))
+  const buildHash = sha256(
+    JSON.stringify({ storePath, narHash: storeInfo.narHash, sourceArchiveSha256, binarySha256, lockSha256 }),
+  )
   return {
     kind: "native",
     engineVersion: version,
@@ -173,7 +218,7 @@ function kittyIdentity(adapterVersion: string, termlessRevision: string): Headle
       sha256: binarySha256,
       sourceCommit: termlessRevision,
       buildHash,
-      toolchain: `Nix ${storePath}; narHash ${storeInfo.narHash}; kitty +runpy`,
+      toolchain: `Nix ${storePath}; narHash ${storeInfo.narHash}; source ${sourcePath} sha256 ${sourceArchiveSha256}; kitty +runpy`,
       lockSha256,
     },
   }
@@ -207,37 +252,20 @@ export async function headlessRuntimeIdentity(
   if (!inside(adapter.path, TERMLESS_ROOT)) {
     throw new Error(`${adapterSpecifier} resolved outside owned Termless: ${adapter.path}`)
   }
+  const adapterRelative = relative(TERMLESS_ROOT, adapter.directory)
+  const dirtyAdapter = git(TERMLESS_ROOT, "status", "--porcelain", "--", adapterRelative)
+  if (dirtyAdapter) throw new Error(`${adapterSpecifier} has uncommitted adapter source:\n${dirtyAdapter}`)
   const termlessRevision = git(TERMLESS_ROOT, "rev-parse", "HEAD")
   if (name === "kitty") return kittyIdentity(adapter.version, termlessRevision)
   if (adapterType === "native") return sidecarIdentity(adapter.directory, adapter.version, termlessRevision)
 
-  const upstream =
-    name === "libvterm"
-      ? adapter
-      : resolvedPackage(
-          (
-            {
-              xtermjs: "@xterm/headless",
-              ghostty: "ghostty-web",
-              vt100: "vt100.js",
-              vt220: "vt220.js",
-              vterm: "vterm.js",
-            } as Record<string, string>
-          )[name] ??
-            (() => {
-              throw new Error(`No upstream package identity for ${name}`)
-            })(),
-          adapter.path,
-        )
+  const upstreamSpecifier = name === "libvterm" ? adapterSpecifier : UPSTREAM_PACKAGES[name]
+  if (!upstreamSpecifier) throw new Error(`No upstream package identity for ${name}`)
+  const upstream = name === "libvterm" ? adapter : resolvedPackage(upstreamSpecifier, adapter.path)
   const integrity =
     inside(upstream.path, TERMLESS_ROOT) || inside(upstream.path, VTERM_ROOT)
       ? sourceIntegrity(upstream.path, upstream.directory)
-      : registryIntegrity(
-          name === "libvterm"
-            ? adapterSpecifier
-            : ({ xtermjs: "@xterm/headless", ghostty: "ghostty-web" } as Record<string, string>)[name]!,
-          upstream.version,
-        )
+      : registryIntegrity(upstreamSpecifier, upstream.version)
   const base = {
     kind: "js" as const,
     adapterVersion: adapter.version,
@@ -250,8 +278,13 @@ export async function headlessRuntimeIdentity(
       name === "ghostty"
         ? join(adapter.directory, "src", "backend.ts")
         : join(adapter.directory, "src", "wasm-bindings.ts")
-    const getter = await import(pathToFileURL(source).href)
-    const binary = name === "ghostty" ? getter.loadedGhosttyWasm() : getter.loadedLibvtermWasm()
+    const getter: unknown = await import(pathToFileURL(source).href)
+    const getterName = name === "ghostty" ? "loadedGhosttyWasm" : "loadedLibvtermWasm"
+    if (!record(getter) || typeof getter[getterName] !== "function") {
+      throw new Error(`${name} loader does not expose ${getterName}()`)
+    }
+    const loadedWasm = getter[getterName] as () => unknown
+    const binary = loadedWasm()
     if (!record(binary) || typeof binary.path !== "string" || typeof binary.sha256 !== "string") {
       throw new Error(`${name} loader did not expose the loaded WASM bytes`)
     }

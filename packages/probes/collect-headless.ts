@@ -1,4 +1,5 @@
 /** Collect private v2 headless runs from the same Termless adapters as the diagnostic suite. */
+/* oxlint-disable typescript/no-deprecated -- Current Termless resolve() adapters expose TerminalBackend lifecycle; Emulator does not yet replace that loader. */
 
 import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
@@ -21,9 +22,32 @@ import { checkCurrentSuiteManifest } from "../../scripts/suite-manifest.ts"
 import { headlessRuntimeIdentity } from "./headless-identity.ts"
 
 const ROOT = resolve(import.meta.dir, "../..")
-const TERMLESS_ROOT = realpathSync(resolve(ROOT, "../termless"))
+let TERMLESS_ROOT: string
+try {
+  TERMLESS_ROOT = realpathSync(resolve(ROOT, "../termless"))
+} catch (cause) {
+  throw new Error(`Local headless v2 collection requires the owned Termless checkout beside ${ROOT}`, { cause })
+}
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
+
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function loadedBackend(value: unknown, specifier: string): TerminalBackend {
+  if (
+    !record(value) ||
+    typeof value.init !== "function" ||
+    typeof value.feed !== "function" ||
+    typeof value.getCell !== "function" ||
+    typeof value.reset !== "function" ||
+    typeof value.destroy !== "function"
+  ) {
+    throw new Error(`${specifier} resolve() did not return a Termless backend`)
+  }
+  return value as unknown as TerminalBackend
+}
 
 function context(backend: TerminalBackend): TermlessContext {
   return {
@@ -99,8 +123,14 @@ function recordResult(batch: Batch, id: string, result: ProbeResult): void {
   const validAssertions = (result.assertions ?? []).filter(
     (assertion) => assertion.kind === expectedKind && assertion.expected.length > 0 && assertion.observed.length > 0,
   )
+  const bindingInvalid =
+    !bound ||
+    validAssertions.length === 0 ||
+    (result.assertions ?? []).some((assertion) => assertion.kind !== expectedKind) ||
+    (explicit.evidence === "parser-state" &&
+      !validAssertions.some((assertion) => assertion.observed === result.response))
   if (
-    (conclusive && (!bound || validAssertions.length === 0)) ||
+    (conclusive && bindingInvalid) ||
     ((explicit.outcome === "error" || explicit.outcome === "inconclusive") && !explicit.reason)
   ) {
     batch.observations.push({
@@ -108,7 +138,7 @@ function recordResult(batch: Batch, id: string, result: ProbeResult): void {
       outcome: "error",
       reason: "collector-error",
       evidence: explicit.evidence,
-      note: `Callback result lacks ${conclusive ? "bound raw state and assertion" : "an inconclusive/error reason"}`,
+      note: `Callback result lacks ${conclusive ? "matching raw state and assertion" : "an inconclusive/error reason"}`,
     })
     return
   }
@@ -202,7 +232,8 @@ export async function collectHeadlessRuns(
   const failures: HeadlessCollection["failures"] = []
 
   for (const name of requested) {
-    const entry = backends[name]!
+    const entry = backends[name]
+    if (!entry) throw new Error(`Manifest lost expected headless backend ${name}`)
     let backend: TerminalBackend | undefined
     try {
       if (name === "kitty" && !process.env.KITTY_BINARY) {
@@ -213,9 +244,12 @@ export async function collectHeadlessRuns(
       if (adapterRelative.startsWith("../") || adapterRelative === ".." || adapterRelative.startsWith("/")) {
         throw new Error(`${entry.package} resolved outside owned Termless: ${adapterPath}`)
       }
-      const mod = await import(pathToFileURL(adapterPath).href)
-      if (typeof mod.resolve !== "function") throw new Error(`${entry.package} does not export resolve()`)
-      const loaded: TerminalBackend = await mod.resolve()
+      const mod: unknown = await import(pathToFileURL(adapterPath).href)
+      if (!record(mod) || typeof mod.resolve !== "function") {
+        throw new Error(`${entry.package} does not export resolve()`)
+      }
+      const resolveBackend = mod.resolve as () => Promise<unknown>
+      const loaded = loadedBackend(await resolveBackend(), entry.package)
       backend = loaded
       loaded.init({ cols: 80, rows: 24 })
       loaded.getCell(0, 0)
