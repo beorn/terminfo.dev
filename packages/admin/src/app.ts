@@ -28,6 +28,12 @@ import {
 import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "terminfo.dev/src/identity-guard.ts"
 import { sourceSuiteEnvironment } from "../versions.ts"
+import {
+  captureTerminalAppReceipt,
+  closeOwnedTerminalWindow,
+  launchTerminalWindow,
+  type OwnedTerminalWindow,
+} from "./terminal-app-receipt.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -111,6 +117,7 @@ function getAppVersion(app: AppDef): string {
 interface AppLaunch {
   proc: ChildProcess | null
   windowId?: number
+  terminalWindow?: OwnedTerminalWindow
 }
 
 function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
@@ -146,26 +153,17 @@ end tell`,
   }
 
   if (app.id === "terminal-app") {
-    const output = execFileSync(
-      "osascript",
-      [
-        "-e",
-        `tell application "Terminal"
-  set t to do script ${JSON.stringify(run.scriptPath)}
-  return id of window of t
-end tell`,
-      ],
-      { encoding: "utf8", timeout: 15_000 },
-    ).trim()
-    const windowId = Number(output)
-    if (!Number.isInteger(windowId)) throw new Error(`Terminal did not return the launched window ID: ${output}`)
-    return { proc: null, windowId }
+    return { proc: null, terminalWindow: launchTerminalWindow(run.scriptPath) }
   }
 
   throw new Error(`${app.name} requires manually starting the probe server`)
 }
 
 function stopLaunchedApp(app: AppDef, launch: AppLaunch): void {
+  if (launch.terminalWindow) {
+    closeOwnedTerminalWindow(launch.terminalWindow)
+    return
+  }
   if (launch.proc) {
     launch.proc.kill("SIGTERM")
     return
@@ -185,25 +183,26 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   appId: string,
   version: string,
-): Promise<{ total: number; observed: number } | null> {
-  try {
-    const res = await requestDaemonProbe(daemon)
-
-    const data = await readDaemonProbeResponse(res)
-    const identityCheck = verifyTerminalIdentity(appId, data.rawReplies)
-    const run = {
-      ...data,
-      rawReplies: { ...data.rawReplies, "collector.identityCheck": JSON.stringify(identityCheck) },
-    }
-    const path = saveDaemonProbeRun(run, RESULTS_DIR, { kind: "app", id: appId, version })
-    console.log(`  Saved unreviewed raw run ${path}`)
-    const observed = run.observations.length
-    const total = observed + Object.keys(run.ungradedDiagnostics ?? {}).length
-    return { total, observed }
-  } catch (err) {
-    console.log(`  Probe failed: ${err instanceof Error ? err.message : String(err)}`)
-    return null
+  terminalWindow?: OwnedTerminalWindow,
+): Promise<{ total: number; observed: number }> {
+  const res = await requestDaemonProbe(daemon)
+  const data = await readDaemonProbeResponse(res)
+  const identityCheck = verifyTerminalIdentity(appId, data.rawReplies)
+  const appLaunch = terminalWindow ? captureTerminalAppReceipt(terminalWindow, daemon.pid, version) : null
+  const run = {
+    ...data,
+    ...(appLaunch && { origin: { ...data.origin, appLaunch: appLaunch.receipt } }),
+    rawReplies: {
+      ...data.rawReplies,
+      "collector.identityCheck": JSON.stringify(identityCheck),
+      ...(appLaunch && { "collector.appLaunchTrace": JSON.stringify(appLaunch.trace) }),
+    },
   }
+  const path = saveDaemonProbeRun(run, RESULTS_DIR, { kind: "app", id: appId, version })
+  console.log(`  Saved unreviewed raw run ${path}`)
+  const observed = run.observations.length
+  const total = observed + Object.keys(run.ungradedDiagnostics ?? {}).length
+  return { total, observed }
 }
 
 // ── Run one app ──
@@ -229,8 +228,7 @@ async function runApp(
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR, app.id)
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
     console.log(`  Probing on port ${daemon.registration.port}...`)
-    const result = await probeDaemon(daemon.registration, app.id, version)
-    if (!result) throw new Error("Probe failed")
+    const result = await probeDaemon(daemon.registration, app.id, version, launch.terminalWindow)
     console.log(`  ${result.observed}/${result.total} explicit observations (unreviewed)`)
     outcome = { success: true }
   } catch (err) {
