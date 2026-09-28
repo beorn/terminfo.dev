@@ -3,6 +3,49 @@ set -euo pipefail
 
 # The same file is copied into the content-addressed runner input and serves
 # as the container entry point. This is execution tooling, not a probe engine.
+compose_receipt() {
+  local host=$1 container=$2 output=$3
+  [[ -r "$host" ]] || { echo "Missing host-measured receipt: $host" >&2; return 2; }
+  [[ -r "$container" ]] || { echo "Missing container receipt: $container" >&2; return 2; }
+  [[ ! -e "$output" ]] || { echo "Refusing to replace existing run receipt: $output" >&2; return 2; }
+  local host_sha container_sha
+  host_sha=$(sha256sum "$host" | cut -d ' ' -f 1)
+  container_sha=$(sha256sum "$container" | cut -d ' ' -f 1)
+  jq -e -n --slurpfile host "$host" --slurpfile container "$container" \
+    --arg hostSha "$host_sha" --arg containerSha "$container_sha" '
+    ($host[0]) as $h | ($container[0]) as $c |
+    if ($h.runId | type) != "string" or ($c.runId | type) != "string" then
+      error("missing runId in host or container receipt")
+    elif $h.runId != $c.runId then
+      error("runId mismatch between host and container receipts")
+    elif ($h.runtime.imageId | type) != "string" or ($h.runtime.imageTarSha256 | type) != "string" then
+      error("host image identity is missing")
+    elif ($c.executable.sha256 | type) != "string" or ($c.sourceArtifact.sha256 | type) != "string" then
+      error("container executable or archive identity is missing")
+    elif ($c.display.glxinfo | type) != "string" or ($c.display.geometry | type) != "string" then
+      error("container display receipt is missing")
+    else
+      $h + {
+        executable:$c.executable,
+        sourceArtifact:($h.sourceArtifact + $c.sourceArtifact),
+        display:$c.display,
+        capture:$c.capture,
+        receiptInputs:{hostSha256:$hostSha,containerSha256:$containerSha}
+      }
+    end
+  ' > "$output.partial" || {
+    echo "Receipt composition failed; partial output retained at $output.partial" >&2
+    return 2
+  }
+  mv "$output.partial" "$output"
+}
+
+# The launcher uses this same function after Docker exits. Shell-level checks
+# can source it with owned temporary receipts without starting an image.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
 if [[ "${1:-}" == "--inside" ]]; then
   shift
   [[ -n "${TERMINFO_RUN_ID:-}" && -n "${TERMINFO_RUNNER:-}" && -n "${KITTY_BINARY:-}" && -n "${KITTY_SOURCE_ARCHIVE:-}" ]] || {
@@ -10,8 +53,12 @@ if [[ "${1:-}" == "--inside" ]]; then
     exit 2
   }
   [[ "$(id -u)" != 0 ]] || { echo "Refusing root container user" >&2; exit 2; }
-  [[ -r /out/launch-input.json && -w /out ]] || { echo "Missing writable single-run output mount" >&2; exit 2; }
-  [[ "${TERMINFO_IMAGE_ID:-}" == "$(jq -er .runtime.imageId /out/launch-input.json)" ]] || {
+  [[ -r /out/host-measured.json && -w /out ]] || { echo "Missing writable single-run output mount" >&2; exit 2; }
+  [[ "$TERMINFO_RUN_ID" == "$(jq -er .runId /out/host-measured.json)" ]] || {
+    echo "Container run ID disagrees with host receipt" >&2
+    exit 2
+  }
+  [[ "${TERMINFO_IMAGE_ID:-}" == "$(jq -er .runtime.imageId /out/host-measured.json)" ]] || {
     echo "Loaded image ID disagrees with host receipt" >&2
     exit 2
   }
@@ -142,6 +189,22 @@ if [[ "${1:-}" == "--inside" ]]; then
   jq -n --arg run "$TERMINFO_RUN_ID" --arg png "$png_sha.png" \
     '{status:"raw-unreviewed-history",runId:$run,png:$png,context:"linux-x86_64-xvfb-llvmpipe"}' \
     > /out/observed.json
+  read -r executable_sha executable_path < /out/executable.sha256
+  read -r source_sha source_path < /out/source-archive.sha256
+  xwd_sha=$(sha256sum /out/fixture.xwd | cut -d ' ' -f 1)
+  jq -n --arg run "$TERMINFO_RUN_ID" \
+    --arg executablePath "$executable_path" --arg executableSha "$executable_sha" \
+    --arg executableVersion "$(cat /out/executable-version.txt)" \
+    --arg sourcePath "$source_path" --arg sourceSha "$source_sha" \
+    --arg png "$png_sha.png" --arg pngSha "$png_sha" --arg xwdSha "$xwd_sha" \
+    --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
+    --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
+    '{runId:$run,
+      executable:{path:$executablePath,version:$executableVersion,sha256:$executableSha},
+      sourceArtifact:{path:$sourcePath,sha256:$sourceSha},
+      display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
+      capture:{xwd:"fixture.xwd",xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}}' \
+    > /out/container-receipt.json
   exit 0
 fi
 
@@ -215,12 +278,12 @@ jq -n \
   --arg bundleNar "$bundle_sha" --arg lock "$root_lock_sha" \
   --arg url 'https://github.com/kovidgoyal/kitty/releases/download/v0.49.1/kitty-0.49.1-x86_64.txz' \
   --arg runnerUrl "file://$prep/runner-bundle.tar" \
-  '{runId:$run, executable:{path:"/nix/store/.../bin/kitty",version:"0.49.1",sha256:null},
-    sourceArtifact:{url:$url,sha256:null},
+  '{runId:$run, declaredTarget:{kind:"app",id:"kitty",version:"0.49.1",os:"linux"},
+    sourceArtifact:{url:$url},
     runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,rootBunLockSha256:$lock},
     runtime:{imageId:$image,imageTarSha256:$tar,arch:$arch,nixLockRevision:$nix,
       sourceRevision:$source,rootRevision:$root,suiteHash:$suite},
-    status:"raw-unreviewed-history"}' > "$raw/launch-input.json"
+    status:"raw-unreviewed-history"}' > "$raw/host-measured.json"
 
 container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-only \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 2g --cpus 2 \
@@ -251,19 +314,17 @@ if [[ "$exit_code" != 0 || ! -f "$raw/observed.json" ]]; then
   cat "$prep/container-stderr.log" >&2
   exit 2
 fi
-read -r executable_sha executable_path < "$raw/executable.sha256"
-read -r source_sha source_path < "$raw/source-archive.sha256"
-[[ -n "$executable_sha" && -n "$executable_path" && -n "$source_sha" && -n "$source_path" ]] || {
-  echo "Runtime executable or source archive hash missing" >&2; exit 2;
+[[ -r "$raw/container-receipt.json" ]] || {
+  echo "Container exited without its runtime receipt; run invalid" >&2; exit 2;
 }
+jq -e --arg run "$run_id" '.runId == $run' "$raw/observed.json" >/dev/null || {
+  echo "Raw observation run ID differs from host run ID" >&2; exit 2;
+}
+source_sha=$(jq -er .sourceArtifact.sha256 "$raw/container-receipt.json")
 source_sri=$(nix hash convert --hash-algo sha256 --to sri "$source_sha")
 [[ "$source_sri" == 'sha256-jP1o7UhNmjLk44mr/+Gg7G4PvXvlyeocT6Qbnq1K95E=' ]] || {
   echo "Runtime Kitty source archive differs from the flake pin: $source_sri" >&2
   exit 2
 }
-jq --arg path "$executable_path" --arg executable "$executable_sha" \
-  --arg source "$source_sha" --arg sourcePath "$source_path" \
-  '.executable.path=$path | .executable.sha256=$executable |
-   .sourceArtifact.sha256=$source | .sourceArtifact.path=$sourcePath' \
-  "$raw/launch-input.json" > "$raw/run-receipt.json"
+compose_receipt "$raw/host-measured.json" "$raw/container-receipt.json" "$raw/run-receipt.json"
 echo "$run_dir"
