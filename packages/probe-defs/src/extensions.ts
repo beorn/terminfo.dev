@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TerminalQueryOutcome } from "./types.ts"
 import { probe } from "./helpers.ts"
 
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
@@ -77,44 +77,144 @@ function osc720ScrollProbe(): ProbeDefinition["termless"] {
 
 /** Kitty keyboard flag probe — push flags, query, check specific bit. */
 function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: number): ProbeDefinition {
-  return probe(
+  const definition = probe(
     id,
-    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
+    (ctx) => {
+      try {
+        return keyboardFlagsResult(ctx.feedCapture(`\x1b[>${pushValue}u\x1b[?u`), flagBit)
+      } finally {
+        ctx.feed("\x1b[<u")
+      }
+    },
     async (ctx) => {
       try {
-        const match = await ctx.queryWithSentinel(`\x1b[>${pushValue}u\x1b[?u`, /\x1b\[\?(\d+)u/)
-        if (!match?.[1]) return { pass: false, note: "No kitty keyboard response" }
-        const flags = parseInt(match[1], 10)
-        return { pass: (flags & flagBit) !== 0, response: `flags=${flags}` }
+        const reply = await ctx.queryWithSentinelOutcome(`\x1b[>${pushValue}u\x1b[?u`, /\x1b\[\?(\d+)u/)
+        if (!reply.match) return unansweredQuery(reply, "No Kitty keyboard reply; key events were not tested")
+        return keyboardFlagsResult(reply.match[0] ?? "", flagBit)
       } finally {
         ctx.write("\x1b[<u") // pop the mode pushed for this probe, even if the query fails
       }
     },
   )
+  return { ...definition, termObservationEvidence: "query" }
+}
+
+function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeResult {
+  return {
+    pass: false,
+    response: reply.raw,
+    note,
+    observation: {
+      outcome: "inconclusive",
+      evidence: "query",
+      reason: reply.reason === "timeout" ? "timeout" : "no-response",
+      note,
+    },
+  }
+}
+
+function keyboardFlagsResult(response: string, flagBits: number): ProbeResult {
+  const match = /\x1b\[\?(\d+)u/.exec(response)
+  if (!match?.[1]) {
+    return unansweredQuery(
+      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
+      "No Kitty keyboard reply; key events were not tested",
+    )
+  }
+  const flags = Number(match[1])
+  const pass = (flags & flagBits) === flagBits
+  const note = `Queried enhancement flags=${flags}; actual key press, repeat and release events were not tested`
+  return {
+    pass,
+    response,
+    note,
+    observation: { outcome: pass ? "supported" : "unsupported", evidence: "query", note },
+    assertions: [
+      {
+        kind: pass ? "positive" : "negative",
+        expected: `Acknowledged flags include mask ${flagBits}`,
+        observed: `flags=${flags}`,
+      },
+    ],
+  }
+}
+
+function graphicsQueryResult(response: string, imageId: number): ProbeResult {
+  const match = new RegExp(`\\x1b_Gi=${imageId};([^\\x1b]+)\\x1b\\\\`).exec(response)
+  if (!match) {
+    return unansweredQuery(
+      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
+      "No matching graphics query reply; image rendering was not tested",
+    )
+  }
+  const pass = match[1] === "OK"
+  const note = pass
+    ? "Graphics query accepted RGB pixel data; visible rendering was not tested"
+    : `Graphics query returned ${match[1]}; no support conclusion`
+  return {
+    pass,
+    response,
+    note,
+    observation: {
+      outcome: pass ? "supported" : "inconclusive",
+      evidence: "query",
+      ...(!pass && { reason: "invalid-reply" as const }),
+      note,
+    },
+    ...(pass && {
+      assertions: [{ kind: "positive" as const, expected: `Graphics reply i=${imageId};OK`, observed: match[0] }],
+    }),
+  }
 }
 
 function textSizingResult(
   before: { row: number; col: number },
   width: { row: number; col: number },
   scale: { row: number; col: number },
+  evidence: "behavior" | "parser-state",
 ): ProbeResult {
   const widthWorks = width.row === before.row && width.col === before.col + 2
   const scaleWorks = scale.row === width.row && scale.col === width.col + 2
+  const pass = widthWorks && scaleWorks
+  const note = `Cursor advance: width ${widthWorks ? "verified" : "not verified"}; scale ${scaleWorks ? "verified" : "not verified"}. Glyph appearance needs a visual check.`
+  const response = JSON.stringify({ before, width, scale })
   return {
-    pass: widthWorks && scaleWorks,
-    note: `Cursor advance: width ${widthWorks ? "verified" : "not verified"}; scale ${scaleWorks ? "verified" : "not verified"}. Glyph appearance needs a visual check.`,
-    response: JSON.stringify({ before, width, scale }),
+    pass,
+    note,
+    response,
+    observation: { outcome: pass ? "supported" : "unsupported", evidence, note },
+    assertions: [
+      {
+        kind: pass ? "positive" : "negative",
+        expected: "Each OSC 66 width/scale sequence advances two columns without changing row",
+        observed: response,
+      },
+    ],
   }
 }
 
 function clipboardProtocolResult(response: string): ProbeResult {
   const match = /\x1b\[\?5522;([0-4])\$y/.exec(response)
-  if (!match) return { pass: false, note: "No DECRPM response for mode 5522", response }
+  if (!match) {
+    return unansweredQuery(
+      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
+      "No DECRPM response for mode 5522",
+    )
+  }
   const supported = match[1] !== "0" && match[1] !== "4"
+  const note = supported ? "Protocol recognized; clipboard access permissions not tested" : "Mode 5522 not supported"
   return {
     pass: supported,
-    note: supported ? "Protocol recognized; clipboard access permissions not tested" : "Mode 5522 not supported",
+    note,
     response,
+    observation: { outcome: supported ? "supported" : "unsupported", evidence: "query", note },
+    assertions: [
+      {
+        kind: supported ? "positive" : "negative",
+        expected: "DECRPM 5522 has Ps=1, 2 or 3; Ps=0 or 4 explicitly rejects support",
+        observed: response,
+      },
+    ],
   }
 }
 
@@ -139,21 +239,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // Kitty keyboard protocol
-  probe(
-    "extensions.kitty-keyboard",
-    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
-    async (ctx) => {
-      // Push mode 1 + query atomically — some terminals only respond to
-      // CSI ? u after a mode has been pushed (no response when stack is empty)
-      try {
-        const match = await ctx.queryWithSentinel("\x1b[>1u\x1b[?u", /\x1b\[\?(\d+)u/)
-        if (!match?.[1]) return { pass: false, note: "No kitty keyboard response" }
-        return { pass: true, response: `flags=${match[1]}` }
-      } finally {
-        ctx.write("\x1b[<u") // pop the mode pushed for this probe, even if the query fails
-      }
-    },
-  ),
+  kittyKeyboardFlagProbe("extensions.kitty-keyboard", 1, 1),
 
   // Kitty keyboard: individual progressive enhancement flags
   // Each probe pushes+queries in a single write to avoid race conditions,
@@ -162,25 +248,24 @@ export const extensionsProbes: ProbeDefinition[] = [
   kittyKeyboardFlagProbe("extensions.kitty-keyboard.report-events", 3, 2), // Flag 2: REPORT_EVENTS
   kittyKeyboardFlagProbe("extensions.kitty-keyboard.report-alternate", 5, 4), // Flag 4: REPORT_ALTERNATE
   kittyKeyboardFlagProbe("extensions.kitty-keyboard.report-all-keys", 9, 8), // Flag 8: REPORT_ALL_KEYS
-  kittyKeyboardFlagProbe("extensions.kitty-keyboard.report-text", 17, 16), // Flag 16: REPORT_TEXT
+  kittyKeyboardFlagProbe("extensions.kitty-keyboard.report-text", 25, 24), // REPORT_TEXT requires REPORT_ALL_KEYS.
 
-  // Kitty graphics protocol — behavioral check (like sixel probe)
-  // APC responses arrive slower than DA1, so sentinel-based detection fails.
-  // Instead: transmit+display image, check if cursor moved (image rendered).
+  // The specified query action replies before the DA1 sentinel and stores no image.
+  // A cursor movement is never evidence that pixels were rendered.
   probe(
     "extensions.kitty-graphics",
-    (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
+    (ctx) => graphicsQueryResult(ctx.feedCapture("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"), 31),
     async (ctx) => {
-      const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      ctx.write("\x1b[1;1H")
-      ctx.write(`\x1b_Ga=T,f=100,s=1,v=1,t=d;${payload}\x1b\\`)
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 300)
-      })
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after kitty graphics" }
-      return { pass: pos.row > 1 || pos.col > 1, note: pos.row > 1 || pos.col > 1 ? undefined : "Image didn't render" }
+      const reply = await ctx.queryWithSentinelOutcome(
+        "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\",
+        /\x1b_Gi=31;([^\x1b]+)\x1b\\/,
+      )
+      if (!reply.match) {
+        return unansweredQuery(reply, "No matching graphics query reply; image rendering was not tested")
+      }
+      return graphicsQueryResult(reply.match[0] ?? "", 31)
     },
+    "query",
   ),
 
   // Kitty graphics sub-probes — behavioral checks via cursor position + responsiveness
@@ -817,20 +902,42 @@ export const extensionsProbes: ProbeDefinition[] = [
         { row: before.y, col: before.x },
         { row: width.y, col: width.x },
         { row: scale.y, col: scale.x },
+        "parser-state",
       )
     },
     async (ctx) => {
       // The protocol defines detection by cursor movement, not an OSC query.
       ctx.write("\x1b[1;1H\x1b[2K\r")
       const before = await ctx.queryCursorPosition()
-      if (!before) return { pass: false, note: "No baseline cursor response" }
+      if (!before) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            evidence: "behavior",
+            reason: "no-response",
+            note: "No baseline cursor response",
+          },
+        }
+      }
       ctx.write("\x1b]66;w=2; \x07")
       const width = await ctx.queryCursorPosition()
       ctx.write("\x1b]66;s=2; \x07")
       const scale = await ctx.queryCursorPosition()
-      if (!width || !scale) return { pass: false, note: "Missing cursor response for text sizing" }
-      return textSizingResult(before, width, scale)
+      if (!width || !scale) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            evidence: "behavior",
+            reason: "no-response",
+            note: "Missing cursor response for text sizing",
+          },
+        }
+      }
+      return textSizingResult(before, width, scale, "behavior")
     },
+    "behavior",
   ),
 
   // OSC 5522 — advanced clipboard (Kitty protocol, MIME-aware paste events)
@@ -838,9 +945,11 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc5522-clipboard",
     (ctx) => clipboardProtocolResult(ctx.feedCapture("\x1b[?5522$p")),
     async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[?5522$p", /\x1b\[\?5522;([0-4])\$y/)
-      return clipboardProtocolResult(match?.[0] ?? "")
+      const reply = await ctx.queryWithSentinelOutcome("\x1b[?5522$p", /\x1b\[\?5522;([0-4])\$y/)
+      if (!reply.match) return unansweredQuery(reply, "No DECRPM response for mode 5522")
+      return clipboardProtocolResult(reply.match[0] ?? "")
     },
+    "query",
   ),
 
   // OSC 1 — icon name

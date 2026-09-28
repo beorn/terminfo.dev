@@ -103,6 +103,7 @@ describe("Kitty protocol detection", () => {
         }),
       )
       expect(term.pass).toBe(expected)
+      expect(term.observation).toMatchObject({ outcome: expected ? "supported" : "unsupported", evidence: "behavior" })
       expect(written).toContain("\x1b]66;w=2; \x07")
       expect(written).toContain("\x1b]66;s=2; \x07")
       index = 0
@@ -114,8 +115,15 @@ describe("Kitty protocol detection", () => {
         }),
       )
       expect(headless.pass).toBe(expected)
+      expect(headless.observation).toMatchObject({
+        outcome: expected ? "supported" : "unsupported",
+        evidence: "parser-state",
+      })
     }
-    expect((await p.term(terminalContext({ queryCursorPosition: async () => null }))).pass).toBe(false)
+    expect((await p.term(terminalContext({ queryCursorPosition: async () => null }))).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+    })
   })
 
   test("OSC 5522 detects protocol support with DECRQM, without reading the clipboard", async () => {
@@ -137,10 +145,17 @@ describe("Kitty protocol detection", () => {
         terminalContext({
           queryWithSentinel: async (sequence, pattern) =>
             sequence === "\x1b[?5522$p" ? response.match(pattern) : null,
+          queryWithSentinelOutcome: async (sequence, pattern) => ({
+            match: sequence === "\x1b[?5522$p" ? response.match(pattern) : null,
+            reason: "reply",
+            raw: response,
+            rawBase64: btoa(response),
+          }),
         }),
       )
       expect(term.pass).toBe(expected)
       expect(term.response).toBe(response)
+      expect(term.observation).toMatchObject({ outcome: expected ? "supported" : "unsupported", evidence: "query" })
     }
     expect((await p.term(terminalContext({}))).pass).toBe(false)
   })
@@ -153,7 +168,7 @@ describe("Kitty protocol detection", () => {
       ["extensions.kitty-keyboard.report-events", 3],
       ["extensions.kitty-keyboard.report-alternate", 5],
       ["extensions.kitty-keyboard.report-all-keys", 9],
-      ["extensions.kitty-keyboard.report-text", 17],
+      ["extensions.kitty-keyboard.report-text", 25],
       ["input.csi-u", 1],
     ] as const
 
@@ -172,6 +187,17 @@ describe("Kitty protocol detection", () => {
             if (outcome === "error") throw failure
             return outcome === "reply" ? ["\x1b[?31u", "31"] : null
           },
+          queryWithSentinelOutcome: async (sequence) => {
+            writes.push(sequence)
+            if (outcome === "error") throw failure
+            const raw = outcome === "reply" ? "\x1b[?31u" : ""
+            return {
+              match: outcome === "reply" ? [raw, "31"] : null,
+              reason: outcome === "reply" ? "reply" : "sentinel",
+              raw,
+              rawBase64: btoa(raw),
+            }
+          },
           queryCursorPosition: async () => {
             if (outcome === "error") throw failure
             return outcome === "reply" ? { row: 1, col: 1 } : null
@@ -186,6 +212,49 @@ describe("Kitty protocol detection", () => {
         ])
       }
     }
+  })
+
+  test("keyboard queries distinguish acknowledged flags from missing replies", async () => {
+    const p = probe("extensions.kitty-keyboard.report-text")
+    if (!p.term) throw new Error("missing keyboard callback")
+    for (const [flags, outcome] of [
+      [25, "supported"],
+      [9, "unsupported"],
+    ] as const) {
+      const raw = `\x1b[?${flags}u`
+      const result = await p.term(
+        terminalContext({
+          queryWithSentinelOutcome: async (sequence, pattern) => {
+            const push = /\x1b\[>(\d+)u/.exec(sequence)
+            expect(Number(push?.[1]) & 24).toBe(24) // Associated text requires all-keys mode too.
+            return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
+          },
+        }),
+      )
+      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+      expect(result.assertions?.[0]?.observed).toContain(String(flags))
+    }
+    const timeout = await p.term(terminalContext({}))
+    expect(timeout.observation).toMatchObject({ outcome: "inconclusive", reason: "timeout" })
+  })
+
+  test("graphics detection uses the protocol query and never infers pixels from cursor movement", async () => {
+    const p = probe("extensions.kitty-graphics")
+    if (!p.term) throw new Error("missing graphics callback")
+    const result = await p.term(
+      terminalContext({
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          expect(sequence).toContain("a=q")
+          const id = /(?:G|,)i=(\d+)/.exec(sequence)?.[1]
+          expect(id).toBeDefined()
+          const raw = `\x1b_Gi=${id};OK\x1b\\`
+          return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
+        },
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    const silent = await p.term(terminalContext({ queryCursorPosition: async () => ({ row: 9, col: 9 }) }))
+    expect(silent.observation).toMatchObject({ outcome: "inconclusive", reason: "timeout" })
   })
 })
 
