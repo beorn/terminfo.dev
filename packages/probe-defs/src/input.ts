@@ -1,5 +1,6 @@
 import type { ProbeDefinition } from "./types.ts"
 import { probe } from "./helpers.ts"
+import { kittyKeyboardFlagProbe } from "./extensions.ts"
 
 /** Mouse input probe — enable mode, check getMode (termless) or cursor response (term), disable. */
 function mouseInputProbe(id: string, modeCode: number, modeName: string, label: string): ProbeDefinition {
@@ -40,22 +41,8 @@ export const inputProbes: ProbeDefinition[] = [
     },
   ),
 
-  probe(
-    "input.csi-u",
-    (ctx) => ({ pass: ctx.capabilities.kittyKeyboard === true }),
-    async (ctx) => {
-      ctx.write("\x1b[>1u") // push CSI u level 1
-      try {
-        const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? undefined : "No cursor response after enabling CSI u mode",
-        }
-      } finally {
-        ctx.write("\x1b[<u") // pop the mode pushed for this probe, even if the query fails
-      }
-    },
-  ),
+  // Negotiation only; actual key encoding requires an input-event observation.
+  kittyKeyboardFlagProbe("input.csi-u", 1, 1),
 
   mouseInputProbe("input.pixel-mouse", 1016, "pixelMouse", "pixel mouse"),
   mouseInputProbe("input.urxvt-mouse", 1015, "mouseTracking", "urxvt mouse"),

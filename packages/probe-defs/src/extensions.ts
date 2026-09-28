@@ -76,7 +76,7 @@ function osc720ScrollProbe(): ProbeDefinition["termless"] {
 }
 
 /** Kitty keyboard flag probe — push flags, query, check specific bit. */
-function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: number): ProbeDefinition {
+export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: number): ProbeDefinition {
   const definition = probe(
     id,
     (ctx) => {
@@ -163,6 +163,40 @@ function graphicsQueryResult(response: string, imageId: number): ProbeResult {
     },
     ...(pass && {
       assertions: [{ kind: "positive" as const, expected: `Graphics reply i=${imageId};OK`, observed: match[0] }],
+    }),
+  }
+}
+
+/** A query establishes recognition; this does not test changed colors or pixels. */
+function kittyForegroundResult(response: string): ProbeResult {
+  const match = /\x1b\]21;([^\x07\x1b]*)(?:\x07|\x1b\\)/.exec(response)
+  if (!match) {
+    return unansweredQuery(
+      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
+      "No OSC 21 reply; color rendering was not tested",
+    )
+  }
+  const values = match[1]?.split(";").filter((field) => field.startsWith("foreground=")) ?? []
+  const value = values.length === 1 ? values[0]?.slice("foreground=".length) : undefined
+  // Kitty replies with RGB. An empty value explicitly means a dynamic/undefined color.
+  // Other encodings are left inconclusive rather than labelled unsupported.
+  const pass = value === "" || (value !== undefined && /^rgb:[a-f\d]{1,4}\/[a-f\d]{1,4}\/[a-f\d]{1,4}$/i.test(value))
+  const note = pass
+    ? "Foreground query recognized; setting colors and visible rendering were not tested"
+    : "OSC 21 replied without one verifiable foreground value; no support conclusion"
+  return {
+    pass,
+    response,
+    note,
+    observation: { outcome: pass ? "supported" : "inconclusive", evidence: "query", note },
+    ...(pass && {
+      assertions: [
+        {
+          kind: "positive" as const,
+          expected: "OSC 21 foreground query returns RGB or an explicitly undefined value",
+          observed: match[0],
+        },
+      ],
     }),
   }
 }
@@ -1170,20 +1204,44 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
   ),
 
-  // OSC 99 — Kitty desktop notifications
+  // Query capabilities without displaying a notification or requiring desktop access.
   probe(
     "extensions.osc99-kitty-notify",
-    null, // Headless: no way to detect notification support (silently consumed)
+    null, // Desktop notification delivery is outside a headless parser's scope.
     async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]99;i=1:d=0:p=body;test\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 99" }
+      const id = globalThis.crypto.randomUUID()
+      const reply = await ctx.queryWithSentinelOutcome(
+        `\x1b]99;i=${id}:p=?;\x1b\\`,
+        new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`),
+      )
+      if (!reply.match) return unansweredQuery(reply, "No matching notification query reply; OS display was not tested")
+      const payloadFields = reply.match[1]?.split(":").filter((field) => field.startsWith("p=")) ?? []
+      const pass = payloadFields.length === 1 && payloadFields[0]?.slice(2).split(",").includes("title") === true
+      const note = pass
+        ? "Notification capabilities acknowledge title payloads; OS display, activation and close events were not tested"
+        : "Notification reply does not advertise the required title payload; no support conclusion"
       return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+        pass,
+        response: reply.match[0],
+        note,
+        observation: {
+          outcome: pass ? "supported" : "inconclusive",
+          evidence: "query",
+          ...(!pass && { reason: "invalid-reply" as const }),
+          note,
+        },
+        ...(pass && {
+          assertions: [
+            {
+              kind: "positive" as const,
+              expected: `OSC 99 echoes i=${id}, p=? and advertises p=title`,
+              observed: reply.match[0] ?? "",
+            },
+          ],
+        }),
       }
     },
+    "query",
   ),
 
   // OSC 777 — rxvt-unicode notifications
@@ -1266,29 +1324,19 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
   ),
 
-  // OSC 21 — Kitty key=value color protocol (replacement for OSC 10-19)
+  // OSC 21 — require the actual foreground reply, never a subsequent CPR.
   probe(
     "extensions.osc21-kitty-color",
-    (ctx) => {
-      // Try to query foreground via OSC 21 — backends that recognize the protocol
-      // respond with another OSC 21 framed payload.
-      const response = ctx.feedCapture("\x1b]21;foreground=?\x07")
-      const pass = /\x1b\]21;/.test(response)
-      return { pass, note: pass ? undefined : "No OSC 21 response" }
-    },
+    (ctx) => kittyForegroundResult(ctx.feedCapture("\x1b]21;foreground=?\x1b\\")),
     async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b]21;foreground=?\x07", /\x1b\]21;([^\x07\x1b]*)[\x07\x1b]/)
-      if (match) return { pass: true, response: match[1] }
-      // Fallback: write+verify cursor unchanged (sequence consumed)
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]21;foreground=?\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 21" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? "Consumed (no query response)" : `cursor at col ${pos.col}`,
-      }
+      const reply = await ctx.queryWithSentinelOutcome(
+        "\x1b]21;foreground=?\x1b\\",
+        /\x1b\]21;([^\x07\x1b]*)(?:\x07|\x1b\\)/,
+      )
+      if (!reply.match) return unansweredQuery(reply, "No OSC 21 reply; color rendering was not tested")
+      return kittyForegroundResult(reply.match[0] ?? "")
     },
+    "query",
   ),
 
   // OSC 30001 — Kitty color stack push

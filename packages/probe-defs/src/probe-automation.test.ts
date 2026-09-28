@@ -206,10 +206,7 @@ describe("Kitty protocol detection", () => {
 
         if (outcome === "error") await expect(p.term(ctx)).rejects.toBe(failure)
         else expect((await p.term(ctx)).pass, `${id}: ${outcome}`).toBe(outcome === "reply")
-        expect(writes, `${id}: ${outcome}`).toEqual([
-          `\x1b[>${flags}u${id === "input.csi-u" ? "" : "\x1b[?u"}`,
-          "\x1b[<u",
-        ])
+        expect(writes, `${id}: ${outcome}`).toEqual([`\x1b[>${flags}u\x1b[?u`, "\x1b[<u"])
       }
     }
   })
@@ -236,6 +233,86 @@ describe("Kitty protocol detection", () => {
     }
     const timeout = await p.term(terminalContext({}))
     expect(timeout.observation).toMatchObject({ outcome: "inconclusive", reason: "timeout" })
+  })
+
+  test("CSI-u recognition requires acknowledged flags, not a responsive cursor", async () => {
+    const p = probe("input.csi-u")
+    if (!p.term || !p.termless) throw new Error("CSI-u needs both callbacks")
+    for (const [raw, outcome] of [
+      ["\x1b[?1u", "supported"],
+      ["\x1b[?0u", "unsupported"],
+      ["", "inconclusive"],
+    ] as const) {
+      const result = await p.term(
+        terminalContext({
+          queryWithSentinelOutcome: async (_sequence, pattern) => ({
+            match: raw.match(pattern),
+            reason: raw ? "reply" : "sentinel",
+            raw,
+            rawBase64: btoa(raw),
+          }),
+        }),
+      )
+      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+      expect(p.termless(context({ feedCapture: () => raw })).observation?.outcome).toBe(outcome)
+    }
+  })
+
+  test("notification detection checks the echoed query identifier and advertised title payload", async () => {
+    const p = probe("extensions.osc99-kitty-notify")
+    if (!p.term) throw new Error("missing notification callback")
+    for (const [replyKind, outcome] of [
+      ["valid", "supported"],
+      ["wrong-id", "inconclusive"],
+      ["missing-title", "inconclusive"],
+      ["silence", "inconclusive"],
+    ] as const) {
+      const result = await p.term(
+        terminalContext({
+          write: () => {
+            throw new Error("Support detection must not display a notification")
+          },
+          queryWithSentinelOutcome: async (sequence, pattern) => {
+            const id = /\x1b\]99;i=([^:;]+):p=\?;/.exec(sequence)?.[1]
+            if (!id) throw new Error("Missing notification capability query")
+            const raw =
+              replyKind === "silence"
+                ? ""
+                : `\x1b]99;i=${replyKind === "wrong-id" ? "unrelated" : id}:p=?;p=${replyKind === "missing-title" ? "body" : "title,body"}:o=always\x1b\\`
+            return { match: raw.match(pattern), reason: "sentinel", raw, rawBase64: btoa(raw) }
+          },
+        }),
+      )
+      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+      if (outcome === "supported") expect(result.assertions?.[0]?.observed).toContain("title,body")
+    }
+  })
+
+  test("OSC 21 validates the requested foreground reply and never falls back to cursor consumption", async () => {
+    const p = probe("extensions.osc21-kitty-color")
+    if (!p.term || !p.termless) throw new Error("OSC 21 needs both callbacks")
+    // The protocol explicitly permits an empty value for a dynamic/undefined color.
+    for (const [body, outcome] of [
+      ["foreground=rgb:ff/00/00", "supported"],
+      ["foreground=", "supported"],
+      ["background=rgb:ff/00/00", "inconclusive"],
+      ["foreground=garbage", "inconclusive"],
+      [null, "inconclusive"],
+    ] as const) {
+      const raw = body === null ? "" : `\x1b]21;${body}\x1b\\`
+      const result = await p.term(
+        terminalContext({
+          queryWithSentinelOutcome: async (_sequence, pattern) => ({
+            match: raw.match(pattern),
+            reason: raw ? "reply" : "sentinel",
+            raw,
+            rawBase64: btoa(raw),
+          }),
+        }),
+      )
+      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+      expect(p.termless(context({ feedCapture: () => raw })).observation?.outcome).toBe(outcome)
+    }
   })
 
   test("graphics detection uses the protocol query and never infers pixels from cursor movement", async () => {
