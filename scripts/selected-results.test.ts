@@ -571,6 +571,62 @@ describe("selected results", () => {
     ).toBe(candidate.runId)
   })
 
+  it("selects a reviewed Terminal.app run only with DA2 family and an exact launch receipt", () => {
+    const appLaunch = {
+      bundlePath: "/System/Applications/Utilities/Terminal.app",
+      cfBundleShortVersionString: "2.15",
+      cfBundleVersion: "455",
+      executablePath: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+      executableSha256: "a".repeat(64),
+      sourceArtifact: { path: "/System/Library/Assets/com.apple.Terminal.pkg", sha256: "b".repeat(64) },
+    }
+    const candidate = (runId: string, changes: Record<string, unknown> = {}) =>
+      parseRun(
+        `${runId}.json`,
+        JSON.stringify(
+          run(runId, {
+            target: { ...target, id: "terminal-app", version: "2.15" },
+            rawReplies: {
+              "device.primary-da": "\x1b[?1;2c",
+              "device.secondary-da": "\x1b[>1;95;0c",
+              "extensions.query": "ACK",
+              "extensions.graphics": "NO",
+            },
+            origin: { kind: "collector", appLaunch },
+            ...changes,
+          }),
+        ),
+        catalog,
+      )
+    const accepted = candidate("terminal-receipt")
+    expect(
+      projectResults([accepted], [reviewFor(accepted)], catalog, { currentProbeHash: "current" }).current[
+        "app:terminal-app"
+      ]?.runId,
+    ).toBe("terminal-receipt")
+    for (const invalid of [
+      candidate("missing-receipt", { origin: { kind: "collector" } }),
+      candidate("version-mismatch", {
+        origin: { kind: "collector", appLaunch: { ...appLaunch, cfBundleShortVersionString: "2.14" } },
+      }),
+      candidate("wrong-family", { rawReplies: { ...accepted.rawReplies, "device.secondary-da": "\x1b[>0;95;0c" } }),
+      candidate("unexpected-xtversion", {
+        rawReplies: { ...accepted.rawReplies, "device.xtversion": "\x1bP>|kitty(0.49.1)\x1b\\" },
+      }),
+    ]) {
+      expect(
+        projectResults([invalid], [reviewFor(invalid)], catalog, { currentProbeHash: "current" }).current[
+          "app:terminal-app"
+        ],
+      ).toBeUndefined()
+    }
+    expect(() =>
+      candidate("unmeasured-binary", {
+        origin: { kind: "collector", appLaunch: { ...appLaunch, executableSha256: "missing" } },
+      }),
+    ).toThrow(/executableSha256/)
+  })
+
   it("refuses a headless runtime receipt whose loaded engine version conflicts with target", () => {
     const value = run("headless-mismatch", {
       target: { ...target, kind: "headless" },

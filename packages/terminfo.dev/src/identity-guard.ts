@@ -10,6 +10,7 @@ export interface TerminalIdentityRule {
   terminal: string
   da1Pattern?: RegExp
   da1ForbiddenPattern?: RegExp
+  da2Pattern?: RegExp
   xtversionPattern?: RegExp
   requireXtversion?: boolean
   forbidXtversion?: boolean
@@ -20,7 +21,7 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
     terminal: "kitty",
     da1Pattern: /\?62;/,
     da1ForbiddenPattern: /\?1;2c/,
-    xtversionPattern: /^kitty\(/i,
+    xtversionPattern: /^kitty\(\d+(?:\.\d+){1,3}(?:[-+][a-zA-Z0-9.-]+)?\)$/i,
     requireXtversion: true,
   },
   ghostty: {
@@ -43,6 +44,7 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
   "terminal-app": {
     terminal: "terminal-app",
     da1Pattern: /\?1;2c/,
+    da2Pattern: /^\x1b\[>1;95;0c(?:\x1b\[\?[0-9;]+c)?$/,
     forbidXtversion: true,
   },
 }
@@ -51,6 +53,26 @@ export interface VerificationResult {
   ok: boolean
   reason?: string
   checked: boolean
+}
+
+const COMPLETE_XTVERSION = /^\x1bP>\|([^\x1b]+)\x1b\\(?:\x1b\[\?[0-9;]+c)?$/
+
+/** Use only a complete measured Kitty reply; a detected version must agree with it. */
+export function resolveMeasuredAppVersion(
+  terminal: string,
+  detectedVersion: string,
+  responses: Record<string, string>,
+): string {
+  if (terminal !== "kitty") return detectedVersion || "unknown"
+  const frame = responses["device.xtversion"]
+  const payload = frame ? COMPLETE_XTVERSION.exec(frame)?.[1] : undefined
+  if (!payload) return detectedVersion || "unknown"
+  const version = /^kitty\((\d+(?:\.\d+){1,3}(?:[-+][a-zA-Z0-9.-]+)?)\)$/i.exec(payload)?.[1]
+  if (!version) throw new Error(`Kitty identity mismatch: measured XTVERSION ${payload}`)
+  if (detectedVersion && detectedVersion !== version) {
+    throw new Error(`Kitty version mismatch: detected ${detectedVersion}, measured ${version}`)
+  }
+  return version
 }
 
 /**
@@ -71,9 +93,7 @@ export function verifyTerminalIdentity(
 
   const da1 = responses?.["device.primary-da"]
   const xtversionRaw = responses?.["device.xtversion"]
-  const dcs = xtversionRaw?.startsWith("\x1bP")
-    ? /^\x1bP>\|([^\x1b]+)\x1b\\(?:\x1b\[\?[0-9;]+c)?$/.exec(xtversionRaw)
-    : null
+  const dcs = xtversionRaw?.startsWith("\x1bP") ? COMPLETE_XTVERSION.exec(xtversionRaw) : null
   if (xtversionRaw?.startsWith("\x1bP") && !dcs) {
     return { ok: false, checked: true, reason: `Terminal "${terminal}" returned an incomplete XTVERSION DCS frame` }
   }
@@ -93,13 +113,7 @@ export function verifyTerminalIdentity(
 
   // Check forbidden XTVERSION
   if (rule.forbidXtversion) {
-    if (
-      xtversion &&
-      xtversion !== "No XTVERSION response" &&
-      typeof xtversion === "string" &&
-      xtversion.length > 0 &&
-      xtversionResult !== false
-    ) {
+    if (xtversion && xtversion !== "No XTVERSION response") {
       return {
         ok: false,
         checked: true,
@@ -131,13 +145,19 @@ export function verifyTerminalIdentity(
   }
 
   // Check required DA1 pattern
-  if (rule.da1Pattern && typeof da1 === "string") {
-    if (!rule.da1Pattern.test(da1)) {
-      return {
-        ok: false,
-        checked: true,
-        reason: `Terminal "${terminal}" DA1 mismatch: expected ${rule.da1Pattern}, got "${da1}"`,
-      }
+  if (rule.da1Pattern && !rule.da1Pattern.test(da1 ?? "")) {
+    return {
+      ok: false,
+      checked: true,
+      reason: `Terminal "${terminal}" DA1 mismatch: expected ${rule.da1Pattern}, got "${da1 ?? ""}"`,
+    }
+  }
+
+  if (rule.da2Pattern && !rule.da2Pattern.test(responses?.["device.secondary-da"] ?? "")) {
+    return {
+      ok: false,
+      checked: true,
+      reason: `Terminal "${terminal}" DA2 mismatch: expected ${rule.da2Pattern}`,
     }
   }
 

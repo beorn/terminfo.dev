@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { describe, it, expect } from "vitest"
-import { verifyTerminalIdentity } from "./identity-guard.ts"
+import { resolveMeasuredAppVersion, verifyTerminalIdentity } from "./identity-guard.ts"
 
 describe("verifyTerminalIdentity", () => {
   it("accepts complete XTVERSION DCS bytes and refuses a truncated frame", () => {
@@ -107,13 +107,20 @@ describe("verifyTerminalIdentity", () => {
     expect(itermRes.reason).toContain("DA1 mismatch")
   })
 
-  it("accepts terminal-app without XTVERSION and with VT100 DA1", () => {
+  it("accepts Terminal.app only with its complete DA2 family reply", () => {
     const termRes = verifyTerminalIdentity(
       "terminal-app",
-      { "device.primary-da": "\u001b[?1;2c" },
+      { "device.primary-da": "\u001b[?1;2c", "device.secondary-da": "\u001b[>1;95;0c" },
       { "device.xtversion": false },
     )
     expect(termRes.ok).toBe(true)
+    expect(verifyTerminalIdentity("terminal-app", { "device.primary-da": "\u001b[?1;2c" }).ok).toBe(false)
+    expect(
+      verifyTerminalIdentity("terminal-app", {
+        "device.primary-da": "\u001b[?1;2c",
+        "device.secondary-da": "\u001b[>0;95;0c",
+      }).ok,
+    ).toBe(false)
   })
 
   it("rejects terminal-app if an XTVERSION response is returned", () => {
@@ -140,5 +147,21 @@ describe("verifyTerminalIdentity", () => {
     const res = verifyTerminalIdentity("unknown-terminal", { "device.primary-da": "\u001b[?1;2c" })
     expect(res.ok).toBe(true)
     expect(res.checked).toBe(false)
+  })
+
+  it("resolves Kitty's version from the complete captured frame and refuses declared conflict", () => {
+    const replies = {
+      "device.primary-da": "\x1b[?62;52;c",
+      "device.xtversion": "\x1bP>|kitty(0.49.1)\x1b\\\x1b[?62;52;c",
+    }
+    expect(resolveMeasuredAppVersion("kitty", "", replies)).toBe("0.49.1")
+    expect(resolveMeasuredAppVersion("kitty", "0.49.1", replies)).toBe("0.49.1")
+    expect(() => resolveMeasuredAppVersion("kitty", "0.48.0", replies)).toThrow(/version mismatch/)
+    expect(resolveMeasuredAppVersion("kitty", "", { ...replies, "device.xtversion": "\x1bP>|kitty(0.49.1)" })).toBe(
+      "unknown",
+    )
+    expect(() =>
+      resolveMeasuredAppVersion("kitty", "0.49.1", { ...replies, "device.xtversion": "\x1bP>|xterm(0.49.1)\x1b\\" }),
+    ).toThrow(/identity mismatch/)
   })
 })

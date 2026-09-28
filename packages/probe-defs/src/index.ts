@@ -8,6 +8,7 @@ export type {
   ProbeTarget,
   ProbeSuiteManifest,
   RunOrigin,
+  AppLaunchReceipt,
   ProbeAssertion,
   UngradedDiagnostic,
   HeadlessRuntimeIdentity,

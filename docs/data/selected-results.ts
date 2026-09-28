@@ -12,6 +12,7 @@ import {
   type ProbeRun,
   type ProbeTarget,
   type RunOrigin,
+  type AppLaunchReceipt,
   type HeadlessRuntimeIdentity,
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
@@ -443,6 +444,45 @@ export function parseSuiteManifest(path: string, source: string): ProbeSuiteMani
   return { probeHash, sourceRevision: value.sourceRevision, generatedAt: value.generatedAt, adapterVersion, probes }
 }
 
+function parseAppLaunchReceipt(
+  value: unknown,
+  originKind: RunOrigin["kind"],
+  targetKind: ProbeTarget["kind"],
+  path: string,
+): AppLaunchReceipt | undefined {
+  if (value === undefined) return undefined
+  if (originKind !== "collector" || targetKind !== "app" || !object(value)) {
+    fail(path, "appLaunch requires an app collector run")
+  }
+  const bundlePath = asString(value.bundlePath, path, "appLaunch.bundlePath")
+  const cfBundleShortVersionString = asString(
+    value.cfBundleShortVersionString,
+    path,
+    "appLaunch.cfBundleShortVersionString",
+  )
+  const cfBundleVersion = asString(value.cfBundleVersion, path, "appLaunch.cfBundleVersion")
+  const executablePath = asString(value.executablePath, path, "appLaunch.executablePath")
+  if (!bundlePath.startsWith("/") || !executablePath.startsWith("/")) {
+    fail(path, "appLaunch bundle and executable paths must be absolute")
+  }
+  if (!/^[a-f0-9]{64}$/.test(String(value.executableSha256))) {
+    fail(path, "invalid appLaunch.executableSha256")
+  }
+  if (!object(value.sourceArtifact)) fail(path, "missing appLaunch.sourceArtifact")
+  const sourcePath = asString(value.sourceArtifact.path, path, "appLaunch.sourceArtifact.path")
+  if (!sourcePath.startsWith("/") || !/^[a-f0-9]{64}$/.test(String(value.sourceArtifact.sha256))) {
+    fail(path, "invalid appLaunch.sourceArtifact")
+  }
+  return {
+    bundlePath,
+    cfBundleShortVersionString,
+    cfBundleVersion,
+    executablePath,
+    executableSha256: value.executableSha256 as string,
+    sourceArtifact: { path: sourcePath, sha256: value.sourceArtifact.sha256 as string },
+  }
+}
+
 export function parseRun(
   path: string,
   source: string,
@@ -464,6 +504,12 @@ export function parseRun(
     if (!object(raw.origin) || !["collector", "community-issue", "manual-capture"].includes(String(raw.origin.kind))) {
       fail(path, "invalid origin")
     }
+    const appLaunch = parseAppLaunchReceipt(
+      raw.origin.appLaunch,
+      raw.origin.kind as RunOrigin["kind"],
+      target.kind,
+      path,
+    )
     if (!object(raw.rawReplies) || !Object.values(raw.rawReplies).every((v) => typeof v === "string")) {
       fail(path, "invalid rawReplies")
     }
@@ -535,6 +581,7 @@ export function parseRun(
       origin: {
         kind: raw.origin.kind as RunOrigin["kind"],
         ...(typeof raw.origin.url === "string" && { url: raw.origin.url }),
+        ...(appLaunch && { appLaunch }),
       },
       rawReplies: raw.rawReplies as Record<string, string>,
       assertions,
@@ -706,6 +753,10 @@ function identityRepliesMatch(run: LoadedRun): boolean {
   const results = Object.fromEntries(run.observations.map((o) => [o.featureId, o.outcome === "supported"]))
   const verification = verifyTerminalIdentity(run.target.id, run.rawReplies, results)
   if (!verification.checked || !verification.ok) return false
+  if (rule.forbidXtversion) {
+    const receipt = run.origin.appLaunch
+    return !!receipt && run.target.version !== "unknown" && receipt.cfBundleShortVersionString === run.target.version
+  }
   if (rule.requireXtversion && !nonempty(run.rawReplies["device.xtversion"])) return false
   const versionReply = run.rawReplies["device.xtversion"]
   if (!versionReply) return false

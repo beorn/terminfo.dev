@@ -58,6 +58,17 @@ export interface ProbeTarget {
 export interface RunOrigin {
   kind: "collector" | "community-issue" | "manual-capture"
   url?: string
+  /** Captured by the process-owning app launcher, separate from terminal replies. */
+  appLaunch?: AppLaunchReceipt
+}
+
+export interface AppLaunchReceipt {
+  bundlePath: string
+  cfBundleShortVersionString: string
+  cfBundleVersion: string
+  executablePath: string
+  executableSha256: string
+  sourceArtifact: { path: string; sha256: string }
 }
 
 /** Immutable declaration of the probes available in one suite revision. */

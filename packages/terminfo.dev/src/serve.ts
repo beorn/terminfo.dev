@@ -24,6 +24,7 @@ import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
+import { resolveMeasuredAppVersion } from "./identity-guard.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch } from "./probes/unified.ts"
 
@@ -104,7 +105,7 @@ export async function collectProbeRun(options: { ids?: string[] } = {}): Promise
     target: {
       kind: "app",
       id: terminal.name,
-      version: terminal.version || "unknown",
+      version: resolveMeasuredAppVersion(terminal.name, terminal.version, batch.rawReplies),
       os: terminal.os,
       osVersion: terminal.osVersion,
       outerTerminal: null,
