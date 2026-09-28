@@ -4,6 +4,127 @@ export interface ProbeResult {
   response?: string
 }
 
+/** A proposition's measured outcome. Missing catalog IDs mean not tested. */
+export const OBSERVATION_OUTCOMES = ["supported", "unsupported", "inconclusive", "error"] as const
+export type ObservationOutcome = (typeof OBSERVATION_OUTCOMES)[number]
+
+export const OBSERVATION_REASONS = [
+  "no-response",
+  "timeout",
+  "permission",
+  "policy-refused",
+  "collector-error",
+  "invalid-reply",
+] as const
+export type ObservationReason = (typeof OBSERVATION_REASONS)[number]
+
+/** Method of observing a claim, independent of the run's source origin. */
+export const OBSERVATION_EVIDENCE = [
+  "query",
+  "behavior",
+  "parser-state",
+  "pixels",
+  "interaction",
+  "consumed",
+  "legacy",
+] as const
+export type ObservationEvidence = (typeof OBSERVATION_EVIDENCE)[number]
+
+export interface Observation {
+  featureId: string
+  outcome: ObservationOutcome
+  reason?: ObservationReason
+  evidence: ObservationEvidence
+  rawReplyRef?: string
+  screenshotRef?: string
+  note?: string
+}
+
+export interface ProbeTarget {
+  kind: "app" | "headless" | "mux"
+  id: string
+  version: string
+  os: string | null
+  osVersion: string | null
+  outerTerminal: string | null
+  mux: string | null
+  config: string | null
+  permissions: string | null
+}
+
+export interface RunOrigin {
+  kind: "collector" | "community-issue" | "manual-capture"
+  url?: string
+}
+
+export interface ProbeAssertion {
+  featureId: string
+  kind: "positive" | "negative"
+  rawReplyRef?: string
+  note?: string
+}
+
+/** Captured from the module/binary actually loaded by a headless run. */
+export type HeadlessRuntimeIdentity =
+  | {
+      kind: "js"
+      engineVersion: string
+      resolvedPath: string
+      lockIntegrity: string
+      adapterVersion: string
+      termlessRevision: string
+    }
+  | {
+      kind: "native"
+      engineVersion: string
+      loadedBinaryPath: string
+      sourceCommit: string
+      buildHash: string
+      adapterVersion: string
+      termlessRevision: string
+    }
+
+/** Raw run records are immutable; review decisions live in Interpretation. */
+export interface ProbeRun {
+  schemaVersion: 2
+  runId: string
+  target: ProbeTarget
+  identity: "verified" | "unverified" | "disputed"
+  runtimeIdentity?: HeadlessRuntimeIdentity
+  suiteId: string
+  probeHash: string
+  suiteComplete: boolean
+  sourceRevision: string
+  measuredAt: string
+  origin: RunOrigin
+  rawReplies: Record<string, string>
+  assertions: ProbeAssertion[]
+  screenshotRefs: string[]
+  observations: Observation[]
+}
+
+export interface Interpretation {
+  id: string
+  /** A review of identity or community origin must name the exact immutable run. */
+  runId?: string
+  /** SHA256 of the exact raw run bytes; a review cannot move to another capture. */
+  runSha256?: string
+  reviewer: string
+  reason: string
+  scope: {
+    target: Pick<ProbeTarget, "kind" | "id">
+    versions: [string, string]
+    suites: [string, string]
+  }
+  sources: string[]
+  supersedes: string[]
+  featureId?: string
+  observation?: Observation
+  reviewed?: boolean
+  verifiesIdentity?: boolean
+  origin?: "documentation"
+}
+
 /** Context for headless backends (synchronous cell-state access) */
 export interface TermlessContext {
   feed(text: string): void
@@ -16,6 +137,7 @@ export interface TermlessContext {
     bold: boolean
     dim: boolean
     italic: boolean
+    // oxlint-disable-next-line typescript/no-explicit-any -- Existing Termless cell contract; observation schema does not change it.
     underline: any
     underlineColor?: { r: number; g: number; b: number } | null
     strikethrough: boolean

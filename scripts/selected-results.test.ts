@@ -1,0 +1,300 @@
+/**
+ * @failure A missing, malformed, stale, or disputed run silently becomes a positive/negative terminal claim.
+ * @level l2
+ * @consumer Site, API, analysis, and reviewed census import.
+ * @testonly none
+ */
+import { describe, expect, it } from "vitest"
+import { createHash } from "node:crypto"
+import { parseInterpretations, parseRun, projectResults } from "../docs/data/selected-results.ts"
+
+const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
+const target = {
+  kind: "app" as const,
+  id: "kitty",
+  version: "0.46.2",
+  os: "macos",
+  osVersion: "25.4.0",
+  outerTerminal: null,
+  mux: null,
+  config: null,
+  permissions: null,
+}
+const identityReplies = { "device.primary-da": "\u001b[?62;52;c", "device.xtversion": "kitty(0.46.2)" }
+const observation = (
+  featureId: string,
+  outcome: "supported" | "unsupported" | "inconclusive" | "error",
+  evidence: "query" | "behavior",
+  reason?: "timeout",
+) => ({ featureId, outcome, evidence, ...(reason && { reason }), rawReplyRef: featureId })
+const run = (runId: string, overrides: Record<string, unknown> = {}) => ({
+  schemaVersion: 2,
+  runId,
+  target,
+  identity: "verified",
+  suiteId: "suite-2",
+  probeHash: "current",
+  suiteComplete: true,
+  sourceRevision: "abc123",
+  measuredAt: "2026-09-28T12:00:00.000Z",
+  origin: { kind: "collector" },
+  rawReplies: { ...identityReplies, "extensions.query": "ACK", "extensions.graphics": "NO", "cursor.position": "" },
+  assertions: [{ featureId: "extensions.graphics", kind: "negative", rawReplyRef: "extensions.graphics" }],
+  screenshotRefs: [],
+  observations: [
+    observation("extensions.query", "supported", "query"),
+    observation("extensions.graphics", "unsupported", "behavior"),
+  ],
+  ...overrides,
+})
+const reviewFor = (value: ReturnType<typeof parseRun>) => ({
+  id: `review-${value.runId}`,
+  runId: value.runId,
+  runSha256: value.sha256,
+  reviewer: "reviewer",
+  reason: "checked captured identity",
+  scope: {
+    target: { kind: value.target.kind, id: value.target.id },
+    versions: [value.target.version, value.target.version] as [string, string],
+    suites: [value.suiteId, value.suiteId] as [string, string],
+  },
+  sources: [value.path],
+  supersedes: [],
+  verifiesIdentity: true,
+  reviewed: true,
+})
+
+describe("selected results", () => {
+  it("rejects invalid required input and unsupported claims without an asserted negative", () => {
+    expect(() => parseRun("broken.json", "{", catalog)).toThrow(/broken\.json/)
+    expect(() =>
+      parseRun(
+        "duplicate.json",
+        '{"terminal":"kitty","terminalVersion":"1","results":{"cursor.position":true,"cursor.position":false}}',
+        catalog,
+      ),
+    ).toThrow(/duplicate.*cursor\.position/)
+    expect(() =>
+      parseRun(
+        "unknown.json",
+        JSON.stringify(run("unknown", { observations: [observation("no.such.feature", "supported", "query")] })),
+        catalog,
+      ),
+    ).toThrow(/no\.such\.feature/)
+    expect(() =>
+      parseRun(
+        "negative.json",
+        JSON.stringify(
+          run("negative", { observations: [observation("extensions.graphics", "unsupported", "behavior", "timeout")] }),
+        ),
+        catalog,
+      ),
+    ).toThrow(/negative/)
+  })
+
+  it("selects verified identity, current suite, latest measurement and runId within an exact target", () => {
+    const runs = [
+      run("older-version-newer-time", {
+        target: { ...target, version: "0.40.0" },
+        rawReplies: {
+          ...identityReplies,
+          "device.xtversion": "kitty(0.40.0)",
+          "extensions.query": "ACK",
+          "extensions.graphics": "NO",
+        },
+        measuredAt: "2026-10-01T00:00:00.000Z",
+      }),
+      run("old-suite", { probeHash: "old", measuredAt: "2026-10-02T00:00:00.000Z" }),
+      run("unverified", { identity: "unverified", measuredAt: "2026-10-03T00:00:00.000Z" }),
+      run("a"),
+      run("z"),
+      run("headless", {
+        target: { ...target, kind: "headless" },
+        runtimeIdentity: {
+          kind: "js",
+          engineVersion: "0.46.2",
+          resolvedPath: "/pkg/kitty/index.js",
+          lockIntegrity: "sha512-example",
+          adapterVersion: "1.0.0",
+          termlessRevision: "rev123",
+        },
+      }),
+    ].map((value) => parseRun(`${value.runId}.json`, JSON.stringify(value), catalog))
+    const projection = projectResults(runs, runs.filter((r) => r.runId !== "unverified").map(reviewFor), catalog, {
+      currentProbeHash: "current",
+    })
+    expect(projection.current["app:kitty"]?.runId).toBe("z")
+    expect(projection.current["headless:kitty"]?.runId).toBe("headless")
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "unverified", reason: "identity-unverified" }),
+    )
+    expect(projection.versions["app:kitty"]).toHaveLength(2)
+    expect(projection.current["app:kitty"]?.counts).toMatchObject({
+      catalog: 3,
+      tested: 2,
+      notTested: 1,
+      conclusive: 2,
+    })
+  })
+
+  it("scopes reviewed corrections and leaves raw run bytes unchanged", () => {
+    const bytes = JSON.stringify(run("kitty-app"))
+    const hash = createHash("sha256").update(bytes).digest("hex")
+    const app = parseRun("app.json", bytes, catalog)
+    const headless = parseRun(
+      "headless.json",
+      JSON.stringify(
+        run("kitty-headless", {
+          target: { ...target, kind: "headless" },
+          runtimeIdentity: {
+            kind: "js",
+            engineVersion: "0.46.2",
+            resolvedPath: "/pkg/kitty/index.js",
+            lockIntegrity: "sha512-example",
+            adapterVersion: "1.0.0",
+            termlessRevision: "rev123",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const correction = {
+      id: "review-1",
+      reviewer: "reviewer",
+      reason: "controlled replay",
+      scope: {
+        target: { kind: "app" as const, id: "kitty" },
+        versions: ["0.46.2", "0.46.2"] as [string, string],
+        suites: ["suite-2", "suite-2"] as [string, string],
+      },
+      sources: ["capture://1"],
+      supersedes: [],
+      featureId: "extensions.graphics",
+      observation: observation("extensions.graphics", "supported", "behavior"),
+    }
+    const projection = projectResults([app, headless], [reviewFor(app), reviewFor(headless), correction], catalog, {
+      currentProbeHash: "current",
+    })
+    expect(projection.current["app:kitty"]?.cells["extensions.graphics"]?.outcome).toBe("supported")
+    expect(projection.current["headless:kitty"]?.cells["extensions.graphics"]?.outcome).toBe("unsupported")
+    expect(app.sha256).toBe(hash)
+    expect(JSON.stringify(run("kitty-app"))).toBe(bytes)
+  })
+
+  it("keeps legacy booleans ungraded and omits unknown causes from v1", () => {
+    const legacy = parseRun(
+      "legacy.json",
+      JSON.stringify({
+        terminal: "kitty",
+        terminalVersion: "0.46.2",
+        os: "macos",
+        osVersion: "25.4.0",
+        generated: "2026-04-06T16:53:04.733Z",
+        results: { "cursor.position": true, "extensions.graphics": false },
+      }),
+      catalog,
+    )
+    const timeout = parseRun(
+      "timeout.json",
+      JSON.stringify(
+        run("timeout", { observations: [observation("extensions.query", "inconclusive", "query", "timeout")] }),
+      ),
+      catalog,
+    )
+    const projection = projectResults([legacy, timeout], [reviewFor(timeout)], catalog, { currentProbeHash: "current" })
+    expect(projection.history["app:kitty"]?.find((r) => r.runId === legacy.runId)?.counts.conclusive).toBe(0)
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: legacy.runId, reason: "identity-unverified" }),
+    )
+    expect(projection.current["app:kitty"]?.cells["extensions.query"]?.outcome).toBe("inconclusive")
+    expect(projection.current["app:kitty"]?.v1["extensions.query"]).toBeUndefined()
+    const correction = {
+      id: "legacy-note",
+      reviewer: "reviewer",
+      reason: "later source",
+      scope: {
+        target: { kind: "app" as const, id: "kitty" },
+        versions: ["0.46.2", "0.46.2"] as [string, string],
+        suites: ["legacy", "legacy"] as [string, string],
+      },
+      sources: ["capture://later"],
+      supersedes: [],
+      featureId: "extensions.graphics",
+      observation: { featureId: "extensions.graphics", outcome: "supported" as const, evidence: "behavior" as const },
+    }
+    const correctedHistory = projectResults([legacy], [correction], catalog, { currentProbeHash: "current" }).history[
+      "app:kitty"
+    ]?.[0]
+    expect(correctedHistory?.counts.conclusive).toBe(0)
+    expect(correctedHistory?.v1["extensions.graphics"]).toBeUndefined()
+  })
+
+  it("requires a source and exact run ID before a review verifies identity", () => {
+    const broad = {
+      id: "review-broad",
+      reviewer: "reviewer",
+      reason: "looks plausible",
+      scope: { target: { kind: "app", id: "kitty" }, versions: ["0.46.2", "0.46.2"], suites: ["legacy", "legacy"] },
+      sources: ["capture://1"],
+      supersedes: [],
+      verifiesIdentity: true,
+    }
+    expect(() => parseInterpretations("interpretations.json", JSON.stringify([broad]), catalog)).toThrow(/exact runId/)
+    const invalidCorrection = {
+      ...broad,
+      verifiesIdentity: false,
+      featureId: "extensions.graphics",
+      observation: {
+        featureId: "extensions.graphics",
+        outcome: "unsupported",
+        evidence: "behavior",
+        reason: "timeout",
+      },
+    }
+    expect(() => parseInterpretations("interpretations.json", JSON.stringify([invalidCorrection]), catalog)).toThrow(
+      /conclusive.*reason/,
+    )
+  })
+
+  it("requires matching run SHA and a measured identity reply before selection", () => {
+    const candidate = parseRun("kitty.json", JSON.stringify(run("kitty-verified")), catalog)
+    expect(
+      projectResults([candidate], [], catalog, { currentProbeHash: "current" }).current["app:kitty"],
+    ).toBeUndefined()
+    expect(
+      projectResults([candidate], [{ ...reviewFor(candidate), runSha256: "0".repeat(64) }], catalog, {
+        currentProbeHash: "current",
+      }).current["app:kitty"],
+    ).toBeUndefined()
+    expect(
+      projectResults([candidate], [reviewFor(candidate)], catalog, { currentProbeHash: "current" }).current["app:kitty"]
+        ?.runId,
+    ).toBe(candidate.runId)
+  })
+
+  it("refuses a headless runtime receipt whose loaded engine version conflicts with target", () => {
+    const value = run("headless-mismatch", {
+      target: { ...target, kind: "headless" },
+      runtimeIdentity: {
+        kind: "js",
+        engineVersion: "0.40.0",
+        resolvedPath: "/pkg/kitty/index.js",
+        lockIntegrity: "sha512-example",
+        adapterVersion: "1.0.0",
+        termlessRevision: "rev123",
+      },
+    })
+    expect(() => parseRun("headless-mismatch.json", JSON.stringify(value), catalog)).toThrow(
+      /headless-mismatch.*engineVersion/,
+    )
+  })
+
+  it("requires a per-probe screenshot reference for pixel evidence", () => {
+    const withoutImage = run("pixels-no-image", {
+      observations: [{ featureId: "extensions.graphics", outcome: "supported", evidence: "pixels" }],
+    })
+    expect(() => parseRun("pixels-no-image.json", JSON.stringify(withoutImage), catalog)).toThrow(
+      /pixels-no-image.*screenshotRef/,
+    )
+  })
+})

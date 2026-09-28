@@ -1,4 +1,17 @@
 export type { ProbeDefinition, ProbeResult, TermlessContext, TermContext } from "./types.ts"
+export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, OBSERVATION_EVIDENCE } from "./types.ts"
+export type {
+  ObservationOutcome,
+  ObservationReason,
+  ObservationEvidence,
+  Observation,
+  ProbeTarget,
+  RunOrigin,
+  ProbeAssertion,
+  HeadlessRuntimeIdentity,
+  ProbeRun,
+  Interpretation,
+} from "./types.ts"
 export {
   sgrProbe,
   cursorProbe,
