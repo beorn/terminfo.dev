@@ -28,13 +28,13 @@
     "bin",
     "dist"
   ],
-  "scripts": {
-    "build": "bun ../../scripts/build-cli.ts",
-    "prepack": "bun run build"
-  },
   "type": "module",
   "publishConfig": {
     "access": "public"
+  },
+  "scripts": {
+    "build": "bun ../../scripts/build-cli.ts",
+    "prepack": "bun run build"
   },
   "dependencies": {
     "@silvery/ansi": "^0.19.0",
