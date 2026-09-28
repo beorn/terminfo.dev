@@ -315,6 +315,66 @@ describe("Kitty protocol detection", () => {
     }
   })
 
+  test("graphics upload and placement require their own acknowledgements and clean up only the allocated image", async () => {
+    for (const kind of ["transmit", "display"]) {
+      const p = probe(`extensions.kitty-graphics.${kind}`)
+      if (!p.term || !p.termless) throw new Error("missing graphics callback")
+      const silent = await p.term(terminalContext({}))
+      expect(silent.pass).toBe(false) // A normal CPR must not turn an ignored APC into support.
+      expect(silent.observation?.outcome).toBe("inconclusive")
+      for (const outcome of ["accepted", "rejected", "wrong-id"] as const) {
+        const writes: string[] = []
+        const responseTo = (sequence: string): string => {
+          if (sequence.includes("a=t,")) {
+            const number = /,I=(\d+)/.exec(sequence)?.[1]
+            if (!number) throw new Error("Upload must request a fresh image rather than overwrite a fixed image ID")
+            return `\x1b_Gi=745,I=${outcome === "wrong-id" ? "0" : number};${outcome === "rejected" ? "EINVAL:invalid image" : "OK"}\x1b\\`
+          }
+          if (sequence.includes("a=p,")) return "\x1b_Gi=745;OK\x1b\\"
+          throw new Error(`Unexpected graphics request ${JSON.stringify(sequence)}`)
+        }
+        const result = await p.term(
+          terminalContext({
+            write: (sequence) => {
+              writes.push(sequence)
+            },
+            queryWithSentinelOutcome: async (sequence, pattern) => {
+              const raw = responseTo(sequence)
+              return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
+            },
+          }),
+        )
+        expect(result.observation).toMatchObject({
+          outcome: outcome === "accepted" ? "supported" : "inconclusive",
+          evidence: "query",
+        })
+        if (outcome === "accepted") expect(writes.join("")).toContain("a=d,d=I,i=745")
+        else expect(writes).toEqual([]) // No acknowledged ownership; never delete an unrelated image.
+        expect(p.termless(context({ feedCapture: responseTo })).observation?.outcome).toBe(result.observation?.outcome)
+      }
+    }
+    const display = probe("extensions.kitty-graphics.display")
+    if (!display.term) throw new Error("missing display callback")
+    const writes: string[] = []
+    const failure = new Error("placement query failed")
+    await expect(
+      display.term(
+        terminalContext({
+          write: (sequence) => {
+            writes.push(sequence)
+          },
+          queryWithSentinelOutcome: async (sequence, pattern) => {
+            if (sequence.includes("a=p,")) throw failure
+            const number = /,I=(\d+)/.exec(sequence)?.[1]
+            const raw = `\x1b_Gi=745,I=${number};OK\x1b\\`
+            return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
+          },
+        }),
+      ),
+    ).rejects.toBe(failure)
+    expect(writes.join("")).toContain("a=d,d=I,i=745")
+  })
+
   test("graphics detection uses the protocol query and never infers pixels from cursor movement", async () => {
     const p = probe("extensions.kitty-graphics")
     if (!p.term) throw new Error("missing graphics callback")

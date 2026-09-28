@@ -139,7 +139,11 @@ function keyboardFlagsResult(response: string, flagBits: number): ProbeResult {
   }
 }
 
-function graphicsQueryResult(response: string, imageId: number): ProbeResult {
+function graphicsQueryResult(
+  response: string,
+  imageId: number,
+  acceptedNote = "Graphics query accepted RGB pixel data; visible rendering was not tested",
+): ProbeResult {
   const match = new RegExp(`\\x1b_Gi=${imageId};([^\\x1b]+)\\x1b\\\\`).exec(response)
   if (!match) {
     return unansweredQuery(
@@ -148,9 +152,7 @@ function graphicsQueryResult(response: string, imageId: number): ProbeResult {
     )
   }
   const pass = match[1] === "OK"
-  const note = pass
-    ? "Graphics query accepted RGB pixel data; visible rendering was not tested"
-    : `Graphics query returned ${match[1]}; no support conclusion`
+  const note = pass ? acceptedNote : `Graphics query returned ${match[1]}; no support conclusion`
   return {
     pass,
     response,
@@ -165,6 +167,105 @@ function graphicsQueryResult(response: string, imageId: number): ProbeResult {
       assertions: [{ kind: "positive" as const, expected: `Graphics reply i=${imageId};OK`, observed: match[0] }],
     }),
   }
+}
+
+function imageTransferRequest(imageNumber: number): string {
+  // I requests a new image; a fixed i would overwrite somebody else's image.
+  return `\x1b_Ga=t,f=24,s=1,v=1,t=d,I=${imageNumber};/wAA\x1b\\`
+}
+
+function allocatedImageResult(response: string, imageNumber: number): { imageId: number | null; result: ProbeResult } {
+  const match = new RegExp(`\\x1b_Gi=(\\d+),I=${imageNumber};([^\\x1b]+)\\x1b\\\\`).exec(response)
+  const imageId = match ? Number(match[1]) : 0
+  if (!match || imageId < 1 || imageId > 0xffffffff) {
+    return {
+      imageId: null,
+      result: unansweredQuery(
+        { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
+        "No matching image allocation reply; no image ownership or transmission conclusion",
+      ),
+    }
+  }
+  const pass = match[2] === "OK"
+  const note = pass
+    ? "RGB image transmission acknowledged; display was not tested"
+    : `Image transmission returned ${match[2]}; no support conclusion`
+  return {
+    imageId: pass ? imageId : null,
+    result: {
+      pass,
+      response,
+      note,
+      observation: {
+        outcome: pass ? "supported" : "inconclusive",
+        evidence: "query",
+        ...(!pass && { reason: "invalid-reply" as const }),
+        note,
+      },
+      ...(pass && {
+        assertions: [
+          {
+            kind: "positive" as const,
+            expected: `A fresh image ID and I=${imageNumber};OK acknowledge the transmitted RGB pixel`,
+            observed: match[0],
+          },
+        ],
+      }),
+    },
+  }
+}
+
+function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition {
+  const newNumber = () => (Number.parseInt(globalThis.crypto.randomUUID().slice(0, 8), 16) % 0xfffffffe) + 1
+  return probe(
+    id,
+    (ctx) => {
+      const imageNumber = newNumber()
+      let imageId: number | null = null
+      try {
+        const uploaded = allocatedImageResult(ctx.feedCapture(imageTransferRequest(imageNumber)), imageNumber)
+        imageId = uploaded.imageId
+        if (!imageId || !display) return uploaded.result
+        const response = ctx.feedCapture(`\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`)
+        return graphicsQueryResult(response, imageId, "Image placement acknowledged; visible pixels were not tested")
+      } finally {
+        if (imageId) ctx.feed(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`)
+      }
+    },
+    async (ctx) => {
+      const imageNumber = newNumber()
+      let imageId: number | null = null
+      try {
+        const reply = await ctx.queryWithSentinelOutcome(
+          imageTransferRequest(imageNumber),
+          new RegExp(`\\x1b_Gi=(\\d+),I=${imageNumber};([^\\x1b]+)\\x1b\\\\`),
+        )
+        if (!reply.match)
+          return unansweredQuery(
+            reply,
+            "No matching image allocation reply; no image ownership or transmission conclusion",
+          )
+        const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
+        imageId = uploaded.imageId
+        if (!imageId || !display) return uploaded.result
+        const placement = await ctx.queryWithSentinelOutcome(
+          `\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`,
+          new RegExp(`\\x1b_Gi=${imageId};([^\\x1b]+)\\x1b\\\\`),
+        )
+        if (!placement.match)
+          return unansweredQuery(placement, "No matching placement reply; visible pixels were not tested")
+        return graphicsQueryResult(
+          placement.match[0] ?? "",
+          imageId,
+          "Image placement acknowledged; visible pixels were not tested",
+        )
+      } finally {
+        // Free only the image the terminal explicitly allocated for this probe.
+        if (imageId) ctx.write(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`)
+      }
+    },
+    "query",
+  )
 }
 
 /** A query establishes recognition; this does not test changed colors or pixels. */
@@ -302,45 +403,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     "query",
   ),
 
-  // Kitty graphics sub-probes — behavioral checks via cursor position + responsiveness
-  probe(
-    "extensions.kitty-graphics.transmit",
-    (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
-    async (ctx) => {
-      const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=999;${payload}\x1b\\`)
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 300)
-      })
-      const pos = await ctx.queryCursorPosition()
-      ctx.write(`\x1b_Ga=d,d=i,i=999\x1b\\`)
-      return { pass: pos !== null, note: pos ? undefined : "No response after transmit" }
-    },
-  ),
-
-  probe(
-    "extensions.kitty-graphics.display",
-    (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
-    async (ctx) => {
-      const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=998,q=1;${payload}\x1b\\`)
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 200)
-      })
-      ctx.write("\x1b[1;1H")
-      ctx.write(`\x1b_Ga=p,i=998\x1b\\`)
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 300)
-      })
-      const pos = await ctx.queryCursorPosition()
-      ctx.write(`\x1b_Ga=d,d=i,i=998\x1b\\`)
-      if (!pos) return { pass: false, note: "No response after display" }
-      return {
-        pass: pos.row > 1 || pos.col > 1,
-        note: pos.row > 1 || pos.col > 1 ? undefined : "Display didn't render",
-      }
-    },
-  ),
+  // Transmission and placement acknowledgements are separate from rendered pixels.
+  kittyImageTransferProbe("extensions.kitty-graphics.transmit", false),
+  kittyImageTransferProbe("extensions.kitty-graphics.display", true),
 
   probe(
     "extensions.kitty-graphics.animation",
