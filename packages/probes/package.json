@@ -5,7 +5,18 @@
   "type": "module",
   "dependencies": {
     "@terminfo/probe-defs": "workspace:*",
-    "@termless/core": "^0.6.0",
+    "@termless/alacritty": "workspace:*",
+    "@termless/core": "workspace:*",
+    "@termless/ghostty": "workspace:*",
+    "@termless/ghostty-native": "workspace:*",
+    "@termless/kitty": "workspace:*",
+    "@termless/libvterm": "workspace:*",
+    "@termless/vt100": "workspace:*",
+    "@termless/vt100-rust": "workspace:*",
+    "@termless/vt220": "workspace:*",
+    "@termless/vterm": "workspace:*",
+    "@termless/wezterm": "workspace:*",
+    "@termless/xtermjs": "workspace:*",
     "loggily": "^0.8.0"
   },
   "devDependencies": {
