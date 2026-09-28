@@ -1,32 +1,91 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext } from "./types.ts"
+import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermlessContext, TermContext } from "./types.ts"
+
+/** Keep the serialized state alongside the exact assertion that used it. */
+function parserStateResult(pass: boolean | null, expected: string, state: object, note?: string): ProbeResult {
+  const response = JSON.stringify(state)
+  return {
+    pass: pass === true,
+    response,
+    ...(note && { note }),
+    observation: {
+      outcome: pass === null ? "inconclusive" : pass ? "supported" : "unsupported",
+      evidence: "parser-state",
+      ...(note && { note }),
+    },
+    ...(pass !== null && {
+      assertions: [{ kind: pass ? "positive" : "negative", expected, observed: response }],
+    }),
+  }
+}
+
+function measuredResult(
+  actual: string | null,
+  expected: string,
+  evidence: ObservationEvidence,
+  noResponseNote: string,
+): ProbeResult {
+  if (actual === null) {
+    return {
+      pass: false,
+      note: noResponseNote,
+      observation: { outcome: "inconclusive", reason: "no-response", evidence, note: noResponseNote },
+    }
+  }
+  const pass = actual === expected
+  return {
+    pass,
+    response: actual,
+    ...(pass ? {} : { note: `got ${actual}, expected ${expected}` }),
+    observation: { outcome: pass ? "supported" : "unsupported", evidence },
+    assertions: [{ kind: pass ? "positive" : "negative", expected, observed: actual }],
+  }
+}
 
 /**
  * SGR probe — feed SGR sequence + "X", verify cell attribute (termless) or cursor position (term).
  *
- * Termless: check that the SGR sequence is parsed and applied to the cell.
- * Term: check that the SGR sequence is consumed (cursor advances by 1 char, not printed literally).
+ * Termless: check actual cell state. A null predicate means the backend does not expose the attribute.
+ * Term: cursor advance only proves the sequence was consumed, not that its style rendered.
  */
 export function sgrProbe(
   id: string,
   sequence: string,
-  check: (cell: ReturnType<TermlessContext["getCell"]>) => boolean,
+  check: (cell: ReturnType<TermlessContext["getCell"]>) => boolean | null,
 ): ProbeDefinition {
   return {
     id,
+    termObservationEvidence: "consumed",
     termless(ctx) {
       ctx.feed(sequence + "X")
       const cell = ctx.getCell(0, 0)
-      return { pass: check(cell) }
+      return parserStateResult(
+        cell.char === "X" ? check(cell) : null,
+        `${id}: attribute applied to the rendered X cell`,
+        cell,
+        cell.char === "X" ? undefined : "No rendered X cell to evaluate",
+      )
     },
     async term(ctx) {
       ctx.write("\x1b[1;1H\x1b[2K") // clear line
       ctx.write(sequence + "X\x1b[0m")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
+      if (!pos) {
+        return {
+          pass: false,
+          note: "No cursor response",
+          observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+        }
+      }
       // Cursor should be at col 2 (wrote 1 char "X")
       return {
         pass: pos.col === 2,
         note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
+        response: `${pos.row};${pos.col}`,
+        observation: {
+          outcome: "inconclusive",
+          evidence: "consumed",
+          note: "Cursor advance does not verify SGR styling",
+        },
       }
     },
   }
@@ -44,34 +103,25 @@ export function cursorProbe(
 ): ProbeDefinition {
   return {
     id,
+    termObservationEvidence: "query",
     termless(ctx) {
       ctx.feed(setup + move)
       const cursor = ctx.getCursor()
       // Termless is 0-based
-      return {
-        pass: cursor.x === expected.col && cursor.y === expected.row,
-        note:
-          cursor.x === expected.col && cursor.y === expected.row
-            ? undefined
-            : `got ${cursor.y};${cursor.x}, expected ${expected.row};${expected.col}`,
-      }
+      return parserStateResult(
+        cursor.x === expected.col && cursor.y === expected.row,
+        `cursor row=${expected.row}, col=${expected.col} (0-based) after ${JSON.stringify(move)}`,
+        cursor,
+      )
     },
     async term(ctx) {
       ctx.write(setup)
       ctx.write(move)
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
       // Term is 1-based
       const expRow = expected.row + 1
       const expCol = expected.col + 1
-      return {
-        pass: pos.row === expRow && pos.col === expCol,
-        note:
-          pos.row === expRow && pos.col === expCol
-            ? undefined
-            : `got ${pos.row};${pos.col}, expected ${expRow};${expCol}`,
-        response: `${pos.row};${pos.col}`,
-      }
+      return measuredResult(pos ? `${pos.row};${pos.col}` : null, `${expRow};${expCol}`, "query", "No cursor response")
     },
   }
 }
@@ -105,44 +155,48 @@ export function modeProbe(
 }
 
 /**
- * Behavioral mode probe — enable mode, verify terminal is responsive, disable.
- * Uses DECRPM first (term), falls back to behavioral test.
+ * DECRPM mode probe. Responsiveness after enabling a mode does not prove that mode,
+ * and blindly disabling it could change a mode the user already had enabled.
  */
 export function behavioralModeProbe(
   id: string,
-  enableSeq: string,
-  disableSeq: string,
+  _enableSeq: string,
+  _disableSeq: string,
   modeNum: number,
   termlessFn: ((ctx: TermlessContext) => ProbeResult) | null,
-  termBehaviorFn?: (ctx: TermContext) => Promise<ProbeResult>,
+  _termBehaviorFn?: (ctx: TermContext) => Promise<ProbeResult>,
 ): ProbeDefinition {
   return {
     id,
+    termObservationEvidence: "query",
     termless: termlessFn,
     async term(ctx) {
-      // Try DECRPM first
-      const decrpmResult = await ctx.queryMode(modeNum)
-      if (decrpmResult !== null && decrpmResult !== "unknown") {
-        return {
-          pass: true,
-          note: `DECRPM: mode ${decrpmResult}`,
-          response: decrpmResult,
-        }
-      }
-      // Fall back to behavioral test
-      ctx.write(enableSeq)
-      const result = termBehaviorFn ? await termBehaviorFn(ctx) : await defaultBehaviorTest(ctx)
-      ctx.write(disableSeq)
-      return result
+      return decrpmResult(await ctx.queryMode(modeNum), modeNum)
     },
   }
 }
 
-async function defaultBehaviorTest(ctx: TermContext): Promise<ProbeResult> {
-  const pos = await ctx.queryCursorPosition()
+function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum: number): ProbeResult {
+  if (state === null) {
+    return {
+      pass: false,
+      note: "No DECRPM response",
+      observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+    }
+  }
+  const recognized = state !== "unknown"
   return {
-    pass: pos !== null,
-    note: pos ? "Behavioral: responsive after enable" : "No response",
+    pass: recognized,
+    note: recognized ? `DECRPM mode ${modeNum}: ${state}` : `DECRPM mode ${modeNum}: not recognized`,
+    response: state,
+    observation: { outcome: recognized ? "supported" : "unsupported", evidence: "query" },
+    assertions: [
+      {
+        kind: recognized ? "positive" : "negative",
+        expected: `DECRPM mode ${modeNum} recognized (set or reset)`,
+        observed: state,
+      },
+    ],
   }
 }
 
@@ -223,6 +277,7 @@ export function probe(
   id: string,
   termless: ((ctx: TermlessContext) => ProbeResult) | null,
   term: ((ctx: TermContext) => Promise<ProbeResult>) | null,
+  termObservationEvidence?: ObservationEvidence,
 ): ProbeDefinition {
-  return { id, termless, term }
+  return { id, termless, term, ...(termObservationEvidence && { termObservationEvidence }) }
 }

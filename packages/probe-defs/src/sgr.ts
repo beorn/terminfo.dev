@@ -28,7 +28,7 @@ export const sgrProbes: ProbeDefinition[] = [
 
   sgrProbe("sgr.strikethrough", "\x1b[9m", (cell) => cell.strikethrough === true),
 
-  sgrProbe("sgr.overline", "\x1b[53m", (cell) => cell.overline === true || cell.overline === undefined),
+  sgrProbe("sgr.overline", "\x1b[53m", (cell) => (cell.overline === undefined ? null : cell.overline === true)),
 
   // ── Underline color ──
 
