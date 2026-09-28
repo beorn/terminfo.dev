@@ -25,6 +25,7 @@ import { execSync } from "node:child_process"
 import { createLogger } from "loggily"
 import { parseVitestJson } from "./parse.ts"
 import { ensureCachedVersion } from "@termless/core"
+import { ALL_PROBES, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const log = createLogger("probes")
 
@@ -33,6 +34,8 @@ const REPO_ROOT = join(__dirname, "..", "..")
 const RESULTS_DIR = join(REPO_ROOT, "content", "probes-libs")
 const PROBES_DIR = join(REPO_ROOT, "packages", "probes")
 const PROBE_DEFS_DIR = join(REPO_ROOT, "packages", "probe-defs", "src")
+const ADAPTER_PACKAGE_PATH = "packages/terminfo.dev/package.json"
+const ADAPTER_SOURCE_PATHS = ["packages/terminfo.dev/src/probes/unified.ts", "packages/terminfo.dev/src/tty.ts"]
 const VERSIONS_PATH = join(REPO_ROOT, "versions.json")
 // Cache dir handled by ensureCachedVersion() in backends.ts
 
@@ -67,42 +70,65 @@ function errorMessage(error: unknown): string {
 
 // ── Probe hash ──
 
-/**
- * Compute the executable suite hash from the runner, setup, and imported
- * definitions. This identifies the suite, not any backend that runs it.
- */
-export function probeHash(): string {
+export interface ProbeSuiteSnapshot {
+  probeHash: string
+  adapterVersion: string
+  probes: ProbeSuiteManifest["probes"]
+  /** Paths whose committed bytes define this suite declaration. */
+  sourcePaths: string[]
+}
+
+/** Compute suite identity and applicable membership from the same live inputs. */
+export function probeSuiteSnapshot(): ProbeSuiteSnapshot {
   const hash = createHash("md5")
 
-  // Hash all probe files
   const probeFiles = readdirSync(PROBES_DIR)
     .filter((f) => f.endsWith(".probe.ts"))
     .sort()
-  for (const f of probeFiles) {
-    hash.update(f)
-    hash.update(readFileSync(join(PROBES_DIR, f)))
-  }
-
-  // The unified runner imports these definitions through @terminfo/probe-defs.
-  // A changed definition must invalidate every cached backend result.
   const definitionFiles = readdirSync(PROBE_DEFS_DIR)
     .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".spec.ts"))
     .sort()
-  for (const f of definitionFiles) {
-    hash.update(f)
-    hash.update(readFileSync(join(PROBE_DEFS_DIR, f)))
+  const sourcePaths = [
+    ...probeFiles.map((f) => `packages/probes/${f}`),
+    ...definitionFiles.map((f) => `packages/probe-defs/src/${f}`),
+    "packages/probes/setup.ts",
+    "packages/probes/vitest.config.ts",
+    ...ADAPTER_SOURCE_PATHS,
+    ADAPTER_PACKAGE_PATH,
+  ]
+  for (const relativePath of sourcePaths) {
+    if (relativePath === ADAPTER_PACKAGE_PATH) continue
+    hash.update(relativePath)
+    hash.update(readFileSync(join(REPO_ROOT, relativePath)))
   }
 
-  // Hash the backends infrastructure (changes here affect results)
-  const backendsFile = join(PROBES_DIR, "setup.ts")
-  hash.update("setup.ts")
-  hash.update(readFileSync(backendsFile))
+  const adapterPackage: unknown = JSON.parse(readFileSync(join(REPO_ROOT, ADAPTER_PACKAGE_PATH), "utf8"))
+  if (!isRecord(adapterPackage) || typeof adapterPackage.version !== "string" || !adapterPackage.version) {
+    throw new Error(`Invalid adapter version in ${ADAPTER_PACKAGE_PATH}`)
+  }
+  const adapterVersion = adapterPackage.version
+  hash.update("adapterVersion")
+  hash.update(adapterVersion)
 
-  const configFile = join(PROBES_DIR, "vitest.config.ts")
-  hash.update("vitest.config.ts")
-  hash.update(readFileSync(configFile))
+  const ids = ALL_PROBES.map((probe) => probe.id)
+  if (new Set(ids).size !== ids.length) throw new Error("Duplicate probe IDs in ALL_PROBES")
+  const app = ALL_PROBES.filter((probe) => probe.term !== null)
+    .map((probe) => probe.id)
+    .sort()
+  const headless = ALL_PROBES.filter((probe) => probe.termless !== null)
+    .map((probe) => probe.id)
+    .sort()
+  return {
+    probeHash: hash.digest("hex").slice(0, 12),
+    adapterVersion,
+    probes: { app, headless, mux: [...app] },
+    sourcePaths,
+  }
+}
 
-  return hash.digest("hex").slice(0, 12)
+/** Executable suite identity, independent of the backend that runs it. */
+export function probeHash(): string {
+  return probeSuiteSnapshot().probeHash
 }
 
 // ── Version catalog ──

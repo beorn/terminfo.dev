@@ -3,7 +3,7 @@
  * @level l1
  * @consumer Headless probe cache and selected-run suite identity
  * @testonly none
- * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/
+ * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/ vendor/terminfo.dev/packages/terminfo.dev/src/
  */
 import { expect, test, vi } from "vitest"
 
@@ -15,14 +15,12 @@ vi.mock("node:fs", async (importOriginal) => {
     readFileSync(path: string, encoding?: BufferEncoding) {
       if (encoding) return fs.readFileSync(path, encoding)
       const bytes = fs.readFileSync(path)
-      return path.endsWith(`/packages/probe-defs/src/${changed.file}`)
-        ? Buffer.concat([bytes, Buffer.from("\n// changed")])
-        : bytes
+      return changed.file && path.endsWith(changed.file) ? Buffer.concat([bytes, Buffer.from("\n// changed")]) : bytes
     },
   }
 })
 
-import { probeHash } from "./versions.ts"
+import { probeHash, probeSuiteSnapshot } from "./versions.ts"
 
 test("suite hash changes when either imported mode or extension definitions change", () => {
   const baseline = probeHash()
@@ -31,4 +29,20 @@ test("suite hash changes when either imported mode or extension definitions chan
     expect(probeHash()).not.toBe(baseline)
   }
   changed.file = ""
+})
+
+test("suite identity includes the real-terminal adapter source and applicable probe membership", () => {
+  const baseline = probeHash()
+  for (const file of ["packages/terminfo.dev/src/probes/unified.ts", "packages/terminfo.dev/src/tty.ts"]) {
+    changed.file = file
+    expect(probeHash()).not.toBe(baseline)
+  }
+  changed.file = ""
+  const snapshot = probeSuiteSnapshot()
+  expect(snapshot.probes.app).toHaveLength(256)
+  expect(snapshot.probes.headless).toHaveLength(245)
+  expect(snapshot.probes.mux).toEqual(snapshot.probes.app)
+  expect(snapshot.probes.app).toContain("extensions.kitty-keyboard")
+  expect(snapshot.probes.app).toEqual([...snapshot.probes.app].sort())
+  expect(snapshot.sourcePaths).toContain("packages/terminfo.dev/src/tty.ts")
 })
