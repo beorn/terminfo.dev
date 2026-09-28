@@ -6,6 +6,7 @@ next: false
 
 <script setup>
 import { useData } from 'vitepress'
+import { data } from './data/probes.data'
 const { params } = useData()
 const p = params.value
 
@@ -31,28 +32,6 @@ const crossLinks = {
   ],
 }
 const relatedPages = crossLinks[p.id] ?? []
-
-function icon(result) {
-  if (result === 'yes') return '✓'
-  if (result === 'partial') return '~'
-  if (result === 'no') return '✗'
-  return '?'
-}
-
-function cls(result) {
-  if (result === 'yes') return 'cell-yes'
-  if (result === 'partial') return 'cell-partial'
-  if (result === 'no') return 'cell-no'
-  return 'cell-unknown'
-}
-
-function tooltip(result, note) {
-  if (note) return note
-  if (result === 'yes') return 'supported'
-  if (result === 'partial') return 'partial support'
-  if (result === 'no') return 'not supported'
-  return 'Not tested — no probe data for this terminal'
-}
 
 function featureTooltip(f) {
   const parts = [f.name]
@@ -138,10 +117,9 @@ function platformIcons(b) {
       <td class="feature-name" :data-tooltip="featureTooltip(f)">
         <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
       </td>
-      <td v-for="b in appBackends" :key="b.name"
-          :class="cls(f.results[b.name]?.result)"
-          :data-tooltip="tooltip(f.results[b.name]?.result, f.results[b.name]?.note)">
-        <a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.results[b.name]?.result) }}</a>
+      <td v-for="b in appBackends" :key="b.name">
+        <ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="b.label"
+          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
       </td>
     </tr>
   </tbody>
@@ -153,7 +131,7 @@ function platformIcons(b) {
 
 ## Headless Backends
 
-<p class="headless-note">Parser correctness tested via <a href="https://termless.dev">Termless</a>. A <span class="cell-yes-inline">✓</span> means the parser accepts the sequence, not that it renders correctly.</p>
+<p class="headless-note">Headless results describe the recorded parser observation. Open a result to see its method and scope.</p>
 
 <div class="matrix-wrapper">
 <table class="matrix matrix-muted">
@@ -170,10 +148,9 @@ function platformIcons(b) {
       <td class="feature-name" :data-tooltip="featureTooltip(f)">
         <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
       </td>
-      <td v-for="b in headlessBackends" :key="b.name"
-          :class="cls(f.results[b.name]?.result)"
-          :data-tooltip="tooltip(f.results[b.name]?.result, f.results[b.name]?.note)">
-        <a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.results[b.name]?.result) }}</a>
+      <td v-for="b in headlessBackends" :key="b.name">
+        <ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="b.label"
+          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
       </td>
     </tr>
   </tbody>

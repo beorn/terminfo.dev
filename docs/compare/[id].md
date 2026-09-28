@@ -6,39 +6,14 @@ next: false
 
 <script setup>
 import { useData } from 'vitepress'
+import { data } from '../data/probes.data'
 const { params } = useData()
 const p = params.value
 
 const categories = JSON.parse(p.categories)
 
-function icon(result) {
-  if (result === 'yes') return '✓'
-  if (result === 'partial') return '~'
-  if (result === 'no') return '✗'
-  return '?'
-}
-
-function cellClass(result) {
-  if (result === 'yes') return 'cell-yes'
-  if (result === 'partial') return 'cell-partial'
-  if (result === 'no') return 'cell-no'
-  return 'cell-unknown'
-}
-
 function diffClass(f) {
-  return f.resultA !== f.resultB ? 'diff-row' : ''
-}
-
-function resultLabel(result) {
-  if (result === 'yes') return 'Supported'
-  if (result === 'partial') return 'Partial support'
-  if (result === 'no') return 'Not supported'
-  return 'Not tested'
-}
-
-function cellTooltip(result, note) {
-  if (note) return note
-  return resultLabel(result)
+  return ((f.resultA === 'yes' && f.resultB === 'no') || (f.resultA === 'no' && f.resultB === 'yes')) ? 'diff-row' : ''
 }
 
 function featureTooltip(f) {
@@ -56,15 +31,13 @@ function termTooltip(label, description, type, url) {
   return parts.join('\n') || label
 }
 
-// Features only terminal A supports (yes/partial) that B doesn't
+// Only opposing conclusive results establish a comparison difference.
 const onlyAFeatures = []
 const onlyBFeatures = []
 for (const cat of categories) {
   for (const f of cat.features) {
-    const aPass = f.resultA === 'yes' || f.resultA === 'partial'
-    const bPass = f.resultB === 'yes' || f.resultB === 'partial'
-    if (aPass && !bPass) onlyAFeatures.push({ ...f, categoryLabel: cat.label })
-    if (bPass && !aPass) onlyBFeatures.push({ ...f, categoryLabel: cat.label })
+    if (f.resultA === 'yes' && f.resultB === 'no') onlyAFeatures.push({ ...f, categoryLabel: cat.label })
+    if (f.resultB === 'yes' && f.resultA === 'no') onlyBFeatures.push({ ...f, categoryLabel: cat.label })
   }
 }
 </script>
@@ -135,8 +108,10 @@ for (const cat of categories) {
   <tbody>
     <tr v-for="f in cat.features" :key="f.id" :class="diffClass(f)">
       <td class="feature-name" :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
-      <td :class="cellClass(f.resultA)" :data-tooltip="cellTooltip(f.resultA, f.noteA)"><a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.resultA) }}</a></td>
-      <td :class="cellClass(f.resultB)" :data-tooltip="cellTooltip(f.resultB, f.noteB)"><a class="cell-link" :href="'/' + f.category + '/' + f.slug">{{ icon(f.resultB) }}</a></td>
+      <td><ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="p.termALabel"
+        :version="data.selectedByBackend[p.termAId]?.selected" :cell="data.selectedByBackend[p.termAId]?.selected.cells[f.id]" /></td>
+      <td><ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="p.termBLabel"
+        :version="data.selectedByBackend[p.termBId]?.selected" :cell="data.selectedByBackend[p.termBId]?.selected.cells[f.id]" /></td>
     </tr>
   </tbody>
 </table>

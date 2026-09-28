@@ -58,13 +58,10 @@ export default {
 
     // Generate all unique pairs (alphabetical slug order for deterministic URLs)
     const pairs = []
-    for (let i = 0; i < terminals.length; i++) {
-      for (let j = i + 1; j < terminals.length; j++) {
+    for (const [index, left] of terminals.entries()) {
+      for (const right of terminals.slice(index + 1)) {
         // Always put alphabetically-first slug as A for deterministic URLs
-        const [a, b] =
-          terminals[i]!.slug.localeCompare(terminals[j]!.slug) <= 0
-            ? [terminals[i]!, terminals[j]!]
-            : [terminals[j]!, terminals[i]!]
+        const [a, b] = left.slug.localeCompare(right.slug) <= 0 ? [left, right] : [right, left]
 
         // Build per-feature results for both terminals
         const catResults = categories.map((cat) => ({
@@ -98,11 +95,9 @@ export default {
         let differ = 0
         for (const cat of catResults) {
           for (const f of cat.features) {
-            const aPass = f.resultA === "yes" || f.resultA === "partial"
-            const bPass = f.resultB === "yes" || f.resultB === "partial"
-            if (aPass && !bPass) onlyA++
-            if (bPass && !aPass) onlyB++
-            if (f.resultA !== f.resultB) differ++
+            if (f.resultA === "yes" && f.resultB === "no") onlyA++
+            if (f.resultB === "yes" && f.resultA === "no") onlyB++
+            if ((f.resultA === "yes" && f.resultB === "no") || (f.resultA === "no" && f.resultB === "yes")) differ++
           }
         }
 
@@ -112,6 +107,8 @@ export default {
         pairs.push({
           params: {
             id: compareId,
+            termAId: a.name,
+            termBId: b.name,
             termASlug: a.slug,
             termBSlug: b.slug,
             termALabel: a.label,

@@ -6,6 +6,7 @@ next: false
 
 <script setup>
 import { useData } from 'vitepress'
+import { data } from '../data/probes.data'
 const { params } = useData()
 const p = params.value
 
@@ -17,20 +18,6 @@ const appResults = backendResults.filter(r => r.type === 'app')
 const headlessResults = backendResults.filter(r => r.type === 'headless')
 const appBackends = backendNames.filter(b => b.type === 'app')
 const headlessBackends = backendNames.filter(b => b.type === 'headless')
-
-function icon(result) {
-  if (result === 'yes') return '✓'
-  if (result === 'partial') return '~'
-  if (result === 'no') return '✗'
-  return '?'
-}
-
-function cls(result) {
-  if (result === 'yes') return 'cell-yes'
-  if (result === 'partial') return 'cell-partial'
-  if (result === 'no') return 'cell-no'
-  return 'cell-unknown'
-}
 
 function termTooltip(r) {
   const parts = [r.label]
@@ -71,12 +58,12 @@ function termTooltip(r) {
 
 <div v-if="p.probeMethod" class="probe-method">
   <strong>How this is tested</strong>
-  <span v-if="p.probeStatus === 'automated'" class="probe-badge probe-automated" title="Fully verified — same probe runs against both headless backends and real terminal apps">automated</span>
-  <span v-else-if="p.probeStatus === 'partial'" class="probe-badge probe-partial" title="Probe checks sequence acceptance, not visual correctness">partial</span>
+  <span v-if="p.probeStatus === 'automated'" class="probe-badge probe-automated" title="Automated probe definition; open a reviewed result to inspect what it recorded">automated</span>
+  <span v-else-if="p.probeStatus === 'partial'" class="probe-badge probe-partial" title="Probe definition covers only part of this feature">partial</span>
   <span v-else-if="p.probeStatus === 'manual'" class="probe-badge probe-manual" title="Not automated — support data is from manual testing or documentation">manual</span>
   <span v-else-if="p.probeStatus === 'unprobed'" class="probe-badge probe-unprobed" title="Tracked but no verification yet — manual verification required">unprobed</span>
   <br><span v-html="p.probeMethod"></span>
-  <p class="probe-note">The same probe runs against headless backends (via <a href="https://termless.dev">Termless</a>) and real terminal apps (via a daemon launched in each terminal). This lets us distinguish parser correctness from rendering correctness.</p>
+  <p class="probe-note">The probe definition describes the intended check. Open a reviewed result to see what was recorded for that target and method.</p>
 </div>
 
 <div v-if="p.analysis" class="analysis">
@@ -107,7 +94,8 @@ function termTooltip(r) {
     <tr v-for="r in appResults" :key="r.name">
       <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
-      <td :class="cls(r.result)" class="result-cell">{{ icon(r.result) }} {{ r.result }}</td>
+      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :feature-name="p.featureName" :target-name="r.label"
+        :version="data.selectedByBackend[r.name]?.selected" :cell="data.selectedByBackend[r.name]?.selected.cells[p.featureId]" display="text" /></td>
       <td class="note-cell">
         {{ r.note }}
         <a v-if="r.url" :href="r.url" target="_blank" rel="noopener" class="upstream-link"> ↗ upstream</a>
@@ -121,7 +109,7 @@ function termTooltip(r) {
 
 ## Headless Backends
 
-<p class="headless-note">Parser correctness only — a <span class="cell-yes-inline">✓</span> means the parser accepts the sequence.</p>
+<p class="headless-note">Headless results describe the recorded parser observation. Open a result to see its method and scope.</p>
 
 <table class="support-table support-table-muted">
   <thead>
@@ -136,7 +124,8 @@ function termTooltip(r) {
     <tr v-for="r in headlessResults" :key="r.name">
       <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
-      <td :class="cls(r.result)" class="result-cell">{{ icon(r.result) }} {{ r.result }}</td>
+      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :feature-name="p.featureName" :target-name="r.label"
+        :version="data.selectedByBackend[r.name]?.selected" :cell="data.selectedByBackend[r.name]?.selected.cells[p.featureId]" display="text" /></td>
       <td class="note-cell">
         {{ r.note }}
         <a v-if="r.url" :href="r.url" target="_blank" rel="noopener" class="upstream-link"> ↗ upstream</a>
@@ -163,7 +152,8 @@ function termTooltip(r) {
   <tbody>
     <tr v-for="sf in subFeatures" :key="sf.id">
       <td><a :href="'/' + p.featureCategory + '/' + sf.slug">{{ sf.name }}</a></td>
-      <td v-for="b in appBackends" :key="b.name" :class="cls(sf.results[b.name] || 'unknown')" class="result-cell">{{ icon(sf.results[b.name] || 'unknown') }}</td>
+      <td v-for="b in appBackends" :key="b.name" class="result-cell"><ResultEvidenceCell :feature-id="sf.id" :feature-name="sf.name" :target-name="b.label"
+        :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[sf.id]" /></td>
     </tr>
   </tbody>
 </table>

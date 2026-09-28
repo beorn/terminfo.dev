@@ -124,41 +124,6 @@ function filteredFeatures(cat) {
   )
 }
 
-function getResult(backend, featureId) {
-  return data.results[backend]?.[featureId] ?? 'unknown'
-}
-
-function getNote(backend, featureId) {
-  return data.notes[backend]?.[featureId] ?? ''
-}
-
-function cellClass(result) {
-  if (result === 'yes') return 'cell-yes'
-  if (result === 'partial') return 'cell-partial'
-  if (result === 'no') return 'cell-no'
-  return 'cell-unknown'
-}
-
-function cellIcon(result) {
-  if (result === 'yes') return '✓'
-  if (result === 'partial') return '~'
-  if (result === 'no') return '✗'
-  return '?'
-}
-
-function cellTooltip(result, backend, featureId) {
-  const ann = data.annotations?.[`${backend}:${featureId}`]
-  const note = ann?.note ?? data.notes[backend]?.[featureId]
-  // If there's a specific note, show it directly (no redundant "Not supported" prefix)
-  if (note) {
-    const parts = [note]
-    if (ann?.url) parts.push(ann.url)
-    return parts.join('\n')
-  }
-  // Otherwise just show status
-  return result === 'yes' ? 'Supported' : result === 'partial' ? 'Partial support' : result === 'no' ? 'Not supported' : 'Not tested — no probe data for this terminal'
-}
-
 function catLabel(cat) {
   return categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1)
 }
@@ -341,10 +306,9 @@ function backendTooltip(name, version) {
       <td class="feature-name" :data-tooltip="featureTooltip(f)">
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
-      <td v-for="b in appBackends" :key="b.name"
-          :class="cellClass(getResult(b.name, f.id))"
-          :data-tooltip="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
-        <a class="cell-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ cellIcon(getResult(b.name, f.id)) }}</a>
+      <td v-for="b in appBackends" :key="b.name">
+        <ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="backendLabel(b.name)"
+          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
       </td>
     </tr>
   </tbody>
@@ -417,10 +381,9 @@ function backendTooltip(name, version) {
       <td class="feature-name" :data-tooltip="featureTooltip(f)">
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
-      <td v-for="b in headlessBackends" :key="b.name"
-          :class="cellClass(getResult(b.name, f.id))"
-          :data-tooltip="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
-        <a class="cell-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ cellIcon(getResult(b.name, f.id)) }}</a>
+      <td v-for="b in headlessBackends" :key="b.name">
+        <ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="backendLabel(b.name)"
+          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
       </td>
     </tr>
   </tbody>
@@ -470,10 +433,9 @@ function backendTooltip(name, version) {
       <td class="feature-name" :data-tooltip="featureTooltip(f)">
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
-      <td v-for="b in muxBackends" :key="b.name"
-          :class="cellClass(getResult(b.name, f.id))"
-          :data-tooltip="cellTooltip(getResult(b.name, f.id), b.name, f.id)">
-        <a class="cell-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ cellIcon(getResult(b.name, f.id)) }}</a>
+      <td v-for="b in muxBackends" :key="b.name">
+        <ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="backendLabel(b.name)"
+          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
       </td>
     </tr>
   </tbody>

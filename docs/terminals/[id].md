@@ -6,25 +6,12 @@ next: false
 
 <script setup>
 import { useData } from 'vitepress'
+import { data } from '../data/probes.data'
 const { params } = useData()
 const p = params.value
 
 const categories = p.categories ? JSON.parse(p.categories) : []
 const versions = p.versions ? JSON.parse(p.versions) : []
-
-function icon(result) {
-  if (result === 'yes') return '✓'
-  if (result === 'partial') return '~'
-  if (result === 'no') return '✗'
-  return '?'
-}
-
-function cls(result) {
-  if (result === 'yes') return 'cell-yes'
-  if (result === 'partial') return 'cell-partial'
-  if (result === 'no') return 'cell-no'
-  return 'cell-unknown'
-}
 
 function featureTooltip(f) {
   const parts = [f.name]
@@ -197,7 +184,8 @@ const breadcrumbParent = (() => {
   <tbody>
     <tr v-for="f in cat.features" :key="f.id">
       <td :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
-      <td :class="cls(f.result)" class="result-cell">{{ icon(f.result) }} {{ f.result }}</td>
+      <td class="result-cell"><ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="p.backendName"
+        :version="data.selectedByBackend[p.backendId]?.selected" :cell="data.selectedByBackend[p.backendId]?.selected.cells[f.id]" display="text" /></td>
       <td class="note-cell">{{ f.note }}</td>
     </tr>
   </tbody>

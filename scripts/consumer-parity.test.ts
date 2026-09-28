@@ -29,6 +29,10 @@ const fixture = vi.hoisted(() => {
       outcome: "supported",
       evidence: "query",
       conclusive: true,
+      record: {
+        rawReply: "\u001b[1;2R",
+        assertions: [{ featureId: "sgr.bold", kind: "positive", expected: "cursor response", observed: "\u001b[1;2R" }],
+      },
       chain: { origin: { kind: "collector" }, method: "query", runId: "kitty-reviewed", runSha256 },
     },
     "extensions.sixel": {
@@ -36,6 +40,11 @@ const fixture = vi.hoisted(() => {
       outcome: "unsupported",
       evidence: "behavior",
       conclusive: true,
+      record: {
+        assertions: [
+          { featureId: "extensions.sixel", kind: "negative", expected: "sixel image", observed: "no image" },
+        ],
+      },
       chain: { origin: { kind: "collector" }, method: "behavior", runId: "kitty-reviewed", runSha256 },
     },
   }
@@ -53,6 +62,9 @@ const fixture = vi.hoisted(() => {
     v1: { "sgr.bold": true, "extensions.sixel": false },
     counts: { catalog: 270, tested: 2, notTested: 268, conclusive: 2, supported: 1, unsupported: 1 },
     ungradedDiagnostics: { evidence: "legacy", label: "old callback result, unverified", results: {} },
+    reviews: [
+      { id: "kitty-review", reviewer: "reviewer", reason: "exact-run identity checked", sources: ["review://kitty"] },
+    ],
   }
   const mux = {
     ...selected,
@@ -60,6 +72,9 @@ const fixture = vi.hoisted(() => {
     sha256: "b".repeat(64),
     suite: { observed: 1, expected: 1, complete: true },
     target: { ...target, kind: "mux", id: "tmux", outerTerminal: "kitty", mux: "tmux" },
+    reviews: [
+      { id: "tmux-review", reviewer: "reviewer", reason: "exact-run identity checked", sources: ["review://tmux"] },
+    ],
     cells: {},
     v1: { "sgr.bold": true },
     counts: { catalog: 270, tested: 1, notTested: 269, conclusive: 1, supported: 1, unsupported: 0 },
