@@ -1,17 +1,10 @@
-import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
 import { parserStateResult, sgrProbe, probe } from "./helpers.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
 function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): boolean {
   return a.r === b.r && a.g === b.g && a.b === b.b
-}
-
-function rgbUnderlineApplied(cell: ReturnType<TermlessContext["getCell"]>): boolean | null {
-  if (cell.underline === undefined || cell.underlineColor === undefined) return null
-  return (
-    Boolean(cell.underline) && cell.underlineColor !== null && sameRgb(cell.underlineColor, requestedUnderlineColor)
-  )
 }
 
 /** A cursor reply proves consumption of the SGR sequence, never the visual attribute. */
@@ -35,6 +28,50 @@ async function consumedSgr(ctx: TermContext, sequence: string): Promise<ProbeRes
       reason: "insufficient-evidence",
       evidence: "consumed",
       note: "Cursor advance does not verify SGR styling",
+    },
+  }
+}
+
+function rgbUnderlineProbe(id: string): ProbeDefinition {
+  const sequence = "\x1b[4m\x1b[58;2;255;0;128m"
+  const original = sgrProbe(id, sequence, () => null)
+  return {
+    ...original,
+    termless(ctx) {
+      // Two default-color controls distinguish an exposed, foreground-following
+      // underline from a backend that simply ignores SGR 58.
+      ctx.feed("\x1b[4m\x1b[59m\x1b[38;2;0;0;255mA\x1b[38;2;0;255;0mB\x1b[58;2;255;0;128mX")
+      const blueControl = ctx.getCell(0, 0)
+      const greenControl = ctx.getCell(0, 1)
+      const target = ctx.getCell(0, 2)
+      const state = { blueControl, greenControl, target }
+      const expected = `${id}: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell`
+      if (
+        blueControl.char !== "A" ||
+        greenControl.char !== "B" ||
+        target.char !== "X" ||
+        !blueControl.underline ||
+        !greenControl.underline ||
+        !target.underline ||
+        target.underlineColor == null
+      ) {
+        return parserStateResult(null, expected, state, "Underlined control, target, or target color was not exposed")
+      }
+      if (greenControl.underlineColor && sameRgb(greenControl.underlineColor, requestedUnderlineColor)) {
+        return parserStateResult(null, expected, state, "Default underline already matches the requested color")
+      }
+      if (sameRgb(target.underlineColor, requestedUnderlineColor)) return parserStateResult(true, expected, state)
+      if (
+        blueControl.fg &&
+        greenControl.fg &&
+        !sameRgb(blueControl.fg, greenControl.fg) &&
+        blueControl.underlineColor &&
+        greenControl.underlineColor &&
+        !sameRgb(blueControl.underlineColor, greenControl.underlineColor)
+      ) {
+        return parserStateResult(false, expected, state)
+      }
+      return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
     },
   }
 }
@@ -70,86 +107,104 @@ export const sgrProbes: ProbeDefinition[] = [
 
   // ── Underline color ──
 
-  sgrProbe("sgr.underline.color", "\x1b[4m\x1b[58;2;255;0;128m", rgbUnderlineApplied),
+  rgbUnderlineProbe("sgr.underline.color"),
 
   // Index values may be theme-specific. Compare two distinct palette controls
   // to their underline colors; one coincidental/default color cannot prove SGR 58.
   probe(
     "sgr.underline-color-indexed",
     (ctx) => {
-      ctx.feed("\x1b[4m\x1b[38;5;4m\x1b[58;5;4mX\x1b[38;5;5m\x1b[58;5;5mY")
-      const index4 = ctx.getCell(0, 0)
-      const index5 = ctx.getCell(0, 1)
+      ctx.feed("\x1b[4;38;5;4m\x1b[59mA\x1b[58;5;5mX\x1b[38;5;5m\x1b[59mB\x1b[58;5;4mY")
+      const default4 = ctx.getCell(0, 0)
+      const target5 = ctx.getCell(0, 1)
+      const default5 = ctx.getCell(0, 2)
+      const target4 = ctx.getCell(0, 3)
       const state = {
-        index4: {
-          char: index4.char,
-          underline: index4.underline as unknown,
-          fg: index4.fg,
-          underlineColor: index4.underlineColor,
-        },
-        index5: {
-          char: index5.char,
-          underline: index5.underline as unknown,
-          fg: index5.fg,
-          underlineColor: index5.underlineColor,
-        },
+        default4,
+        target5,
+        default5,
+        target4,
       }
-      const expected = "SGR 58 index 4/5 underline colors equal the distinct SGR 38 index 4/5 foreground colors"
+      const expected =
+        "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults"
       if (
-        index4.char !== "X" ||
-        index5.char !== "Y" ||
-        index4.underline === undefined ||
-        index5.underline === undefined ||
-        !index4.fg ||
-        !index5.fg ||
-        index4.underlineColor === undefined ||
-        index5.underlineColor === undefined
+        default4.char !== "A" ||
+        target5.char !== "X" ||
+        default5.char !== "B" ||
+        target4.char !== "Y" ||
+        !default4.underline ||
+        !target5.underline ||
+        !default5.underline ||
+        !target4.underline ||
+        !default4.fg ||
+        !default5.fg ||
+        target5.underlineColor == null ||
+        target4.underlineColor == null
       ) {
         return parserStateResult(null, expected, state, "Palette control or underline cell state was not exposed")
       }
-      if (sameRgb(index4.fg, index5.fg)) {
+      if (sameRgb(default4.fg, default5.fg)) {
         return parserStateResult(null, expected, state, "Palette controls resolve to indistinguishable colors")
       }
       const matches =
-        Boolean(index4.underline) &&
-        Boolean(index5.underline) &&
-        index4.underlineColor !== null &&
-        index5.underlineColor !== null &&
-        sameRgb(index4.fg, index4.underlineColor) &&
-        sameRgb(index5.fg, index5.underlineColor)
-      return parserStateResult(matches, expected, state)
+        sameRgb(default5.fg, target5.underlineColor) &&
+        sameRgb(default4.fg, target4.underlineColor) &&
+        (!default4.underlineColor || !sameRgb(default4.underlineColor, target5.underlineColor)) &&
+        (!default5.underlineColor || !sameRgb(default5.underlineColor, target4.underlineColor))
+      if (matches) return parserStateResult(true, expected, state)
+      if (
+        default4.underlineColor &&
+        default5.underlineColor &&
+        !sameRgb(default4.underlineColor, default5.underlineColor)
+      ) {
+        return parserStateResult(false, expected, state)
+      }
+      return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
     },
     (ctx) => consumedSgr(ctx, "\x1b[4m\x1b[58;5;5m"),
     "consumed",
   ),
 
-  sgrProbe("sgr.underline-color-rgb", "\x1b[4m\x1b[58;2;255;0;128m", rgbUnderlineApplied),
+  rgbUnderlineProbe("sgr.underline-color-rgb"),
 
-  // SGR 59 — reset underline color. Set a colored underline on cell 0, then SGR 59
-  // and write to cell 1. Cell 1 should still be underlined but without an explicit
-  // underline color (null or default).
+  // SGR 59 — compare its actual reset value with an earlier reset-state control.
   probe(
     "sgr.underline-color-reset",
     (ctx) => {
-      ctx.feed("\x1b[4m\x1b[58;2;255;0;128mX\x1b[59mY")
-      const before = ctx.getCell(0, 0)
-      const after = ctx.getCell(0, 1)
-      const state = { before, after }
-      const expected = "X has underline rgb(255,0,128); Y remains underlined with default/null color after SGR 59"
+      ctx.feed("\x1b[4m\x1b[59mC\x1b[58;2;255;0;128mX\x1b[59mY")
+      const baseline = ctx.getCell(0, 0)
+      const before = ctx.getCell(0, 1)
+      const after = ctx.getCell(0, 2)
+      const state = { baseline, before, after }
+      const expected = "X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C color"
       if (
+        baseline.char !== "C" ||
         before.char !== "X" ||
         after.char !== "Y" ||
-        before.underline === undefined ||
-        after.underline === undefined ||
+        !baseline.underline ||
+        !before.underline ||
+        !after.underline ||
+        baseline.underlineColor === undefined ||
         before.underlineColor === undefined ||
         after.underlineColor === undefined
       ) {
-        return parserStateResult(null, expected, state, "Before/after underline cell state was not exposed")
+        return parserStateResult(null, expected, state, "Reset control or underline cell state was not exposed")
       }
-      if (!before.underline || !before.underlineColor || !sameRgb(before.underlineColor, requestedUnderlineColor)) {
+      if (
+        !before.underlineColor ||
+        !sameRgb(before.underlineColor, requestedUnderlineColor) ||
+        (baseline.underlineColor && sameRgb(baseline.underlineColor, requestedUnderlineColor))
+      ) {
         return parserStateResult(null, expected, state, "Requested colored underline prerequisite was not observed")
       }
-      return parserStateResult(Boolean(after.underline) && after.underlineColor === null, expected, state)
+      if (after.underlineColor && sameRgb(after.underlineColor, before.underlineColor)) {
+        return parserStateResult(false, expected, state)
+      }
+      if (baseline.underlineColor === null || after.underlineColor === null) {
+        if (baseline.underlineColor === after.underlineColor) return parserStateResult(true, expected, state)
+        return parserStateResult(null, expected, state, "Reset-state color readback changed representation")
+      }
+      return parserStateResult(sameRgb(baseline.underlineColor, after.underlineColor), expected, state)
     },
     (ctx) => consumedSgr(ctx, "\x1b[4m\x1b[58;2;255;0;128m\x1b[59m"),
     "consumed",
