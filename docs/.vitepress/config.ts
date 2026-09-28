@@ -1,8 +1,9 @@
 import { defineConfig } from "vitepress"
-import { readFileSync, readdirSync, existsSync } from "node:fs"
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
+import { buildStamp, createBuildMetadata } from "../../scripts/build-metadata"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
 
 function stripHtml(html: string): string {
@@ -14,6 +15,7 @@ function stripHtml(html: string): string {
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const docsDir = join(__dirname, "..")
+const buildMetadata = createBuildMetadata(join(docsDir, ".."))
 
 // --- Load data for sidebar generation ---
 
@@ -759,6 +761,7 @@ export default defineConfig({
         ],
       },
       { text: "About", link: "/about" },
+      { text: "Changelog", link: "/changelog" },
       { text: "API", link: "/api" },
       { text: "Glossary", link: "/glossary" },
     ],
@@ -768,7 +771,8 @@ export default defineConfig({
 
     footer: {
       message:
-        'Powered by <a href="https://termless.dev">Termless</a> · Built with <a href="https://silvery.dev">Silvery</a> · <a href="https://beorn.codes/flexily">Flexily</a>',
+        'Powered by <a href="https://termless.dev">Termless</a> · Built with <a href="https://silvery.dev">Silvery</a> · <a href="https://beorn.codes/flexily">Flexily</a>' +
+        `<br><a href="/api/v1/build.json">${buildStamp(buildMetadata)}</a>`,
       copyright: 'Built by <a href="https://beorn.codes">Bjørn Stabell</a>',
     },
   },
@@ -779,5 +783,11 @@ export default defineConfig({
     // snapshots; VitePress build owns the ignored deploy artifact.
     const { dataPath, badgeCount } = generateApi(siteConfig.outDir)
     console.log(`[API] Generated ${dataPath} + ${badgeCount} badges`)
+    const metadataJson = JSON.stringify(buildMetadata, null, 2) + "\n"
+    const apiDir = join(siteConfig.outDir, "api", "v1")
+    mkdirSync(apiDir, { recursive: true })
+    writeFileSync(join(siteConfig.outDir, "build.json"), metadataJson)
+    writeFileSync(join(apiDir, "build.json"), metadataJson)
+    console.log(`[Build] Source ${buildMetadata.sourceCommit.slice(0, 10)} · ${buildMetadata.context}`)
   },
 })
