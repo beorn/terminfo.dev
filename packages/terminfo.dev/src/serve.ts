@@ -26,7 +26,9 @@ import type { ProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
 import { resolveMeasuredAppVersion } from "./identity-guard.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
-import { ALL_PROBES, runProbeBatch } from "./probes/unified.ts"
+import { ALL_PROBES, runProbeBatch, type ProbeCapture } from "./probes/unified.ts"
+import { createLinuxCapture } from "./linux-capture.ts"
+import { parseRunProvenance } from "../../../docs/data/selected-results.ts"
 
 const s = createStyle()
 
@@ -94,25 +96,49 @@ function suiteMetadata(): { probeHash: string; sourceRevision: string } {
 export async function collectProbeRun(options: { ids?: string[] } = {}): Promise<ProbeRun> {
   const terminal = detectTerminal()
   const { probeHash, sourceRevision } = suiteMetadata()
+  const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+  const kittyBinary = process.env.KITTY_BINARY
+  let ownedCapture: ProbeCapture | undefined
+  const capture: ProbeCapture | undefined = captureDirectory
+    ? async (checkpoint) => {
+        if (!kittyBinary) throw new Error("Configured Linux capture requires KITTY_BINARY")
+        ownedCapture ??= createLinuxCapture(captureDirectory, kittyBinary)
+        return ownedCapture(checkpoint)
+      }
+    : undefined
   const batch = await withRawMode(async () => {
-    const result = await runProbeBatch(options)
+    const result = await runProbeBatch({ ...options, ...(capture && { capture }) })
     await drainStdin(1000)
     return result
   })
+  const target: ProbeRun["target"] = {
+    kind: "app",
+    id: terminal.name,
+    version: resolveMeasuredAppVersion(terminal.name, terminal.version, batch.rawReplies),
+    os: terminal.os,
+    osVersion: terminal.osVersion,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
+  const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
+  if (captureDirectory && !provenancePath) throw new Error("Controlled Linux capture requires runtime provenance")
+  const provenance = provenancePath
+    ? parseRunProvenance(
+        JSON.parse(readFileSync(provenancePath, "utf8")),
+        target,
+        { probeHash, sourceRevision },
+        provenancePath,
+      )
+    : undefined
+  if (provenancePath && !provenance) throw new Error(`Missing runtime provenance in ${provenancePath}`)
+  if (provenance) target.config = provenance.fixture.config
   return {
     schemaVersion: 2,
     runId: randomBytes(16).toString("hex"),
-    target: {
-      kind: "app",
-      id: terminal.name,
-      version: resolveMeasuredAppVersion(terminal.name, terminal.version, batch.rawReplies),
-      os: terminal.os,
-      osVersion: terminal.osVersion,
-      outerTerminal: null,
-      mux: null,
-      config: null,
-      permissions: null,
-    },
+    target,
+    ...(provenance && { provenance }),
     identity: "unverified",
     suiteId: probeHash,
     probeHash,
@@ -122,7 +148,7 @@ export async function collectProbeRun(options: { ids?: string[] } = {}): Promise
     origin: { kind: "collector" },
     rawReplies: batch.rawReplies,
     assertions: batch.assertions,
-    screenshotRefs: [],
+    screenshotRefs: batch.screenshotRefs,
     observations: batch.observations,
     ungradedDiagnostics: batch.ungradedDiagnostics,
   }

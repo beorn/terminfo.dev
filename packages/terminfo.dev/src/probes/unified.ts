@@ -9,6 +9,7 @@
 import {
   ALL_PROBES as PROBE_DEFS,
   type Observation,
+  type ObservationFrame,
   type ProbeAssertion,
   type TermContext,
   type UngradedDiagnostic,
@@ -79,10 +80,17 @@ export interface ProbeBatch {
   assertions: ProbeAssertion[]
   ungradedDiagnostics: Record<string, UngradedDiagnostic>
   suiteComplete: boolean
+  screenshotRefs: string[]
 }
 
+export type ProbeCapture = (checkpoint: {
+  featureId: string
+  role: ObservationFrame["role"]
+  label: string
+}) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
+
 /** Collect the real callback result, without treating its legacy boolean as an observation. */
-export async function runProbeBatch(options: { ids?: string[] } = {}): Promise<ProbeBatch> {
+export async function runProbeBatch(options: { ids?: string[]; capture?: ProbeCapture } = {}): Promise<ProbeBatch> {
   const expected = PROBE_DEFS.filter((probe) => probe.term !== null)
   const selected = options.ids
     ? options.ids.map((id) => {
@@ -100,18 +108,34 @@ export async function runProbeBatch(options: { ids?: string[] } = {}): Promise<P
     assertions: [],
     ungradedDiagnostics: {},
     suiteComplete: false,
+    screenshotRefs: [],
   }
   for (const probe of selected) {
     const writes: string[] = []
     const queries: TTYQueryTrace[] = []
     const events: TTYTraceEvent[] = []
+    const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
+    let captureAttempted = false
     const context = createTermContext(writes, events)
+    const capture = options.capture
+    if (capture) {
+      context.capture = async (checkpoint) => {
+        captureAttempted = true
+        const result = await capture({ featureId: probe.id, ...checkpoint })
+        if (result.frame.role !== checkpoint.role || !/^sha256:[a-f0-9]{64}$/.test(result.frame.ref)) {
+          throw new Error(`Capture adapter returned an invalid frame for ${probe.id} ${checkpoint.role}`)
+        }
+        captures.push(result)
+        if (!batch.screenshotRefs.includes(result.frame.ref)) batch.screenshotRefs.push(result.frame.ref)
+        return result.frame
+      }
+    }
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
       const result = await withTTYOperation(() => withTTYQueryTrace(queries, events, () => callback(context)))
       if (result.observation) {
-        const rawReplyRef = queries.length ? probe.id : undefined
+        const rawReplyRef = queries.length || captureAttempted ? probe.id : undefined
         batch.observations.push({ featureId: probe.id, ...result.observation, ...(rawReplyRef ? { rawReplyRef } : {}) })
         for (const assertion of result.assertions ?? []) {
           batch.assertions.push({ featureId: probe.id, ...assertion, ...(rawReplyRef ? { rawReplyRef } : {}) })
@@ -127,20 +151,21 @@ export async function runProbeBatch(options: { ids?: string[] } = {}): Promise<P
     } catch (error) {
       const name = error instanceof Error ? error.name : "Error"
       const message = error instanceof Error ? error.message : String(error)
-      if (probe.termObservationEvidence) {
+      const errorEvidence = captureAttempted ? "pixels" : probe.termObservationEvidence
+      if (errorEvidence) {
         batch.observations.push({
           featureId: probe.id,
           outcome: "error",
           reason: "collector-error",
-          evidence: probe.termObservationEvidence,
+          evidence: errorEvidence,
           note: message,
-          ...(queries.length ? { rawReplyRef: probe.id } : {}),
+          ...(queries.length || captureAttempted ? { rawReplyRef: probe.id } : {}),
         })
       } else {
         batch.ungradedDiagnostics[probe.id] = { kind: "collector-error", name, message }
       }
     } finally {
-      const trace = JSON.stringify({ writes, queries, events })
+      const trace = JSON.stringify({ writes, queries, events, ...(captureAttempted ? { captures } : {}) })
       if (probe.id === "device.primary-da" || probe.id === "device.xtversion") {
         batch.rawReplies[probe.id] = queries.map((item) => item.raw).join("")
         batch.rawReplies[`${probe.id}.trace`] = trace

@@ -101,11 +101,10 @@ if [[ "${1:-}" == "--inside" ]]; then
 
   xvfb_pid=
   daemon_pid=
-  fixture_pid=
   cleanup() {
     local status=$?
     trap - EXIT
-    for owned_pid in "$fixture_pid" "$daemon_pid" "$xvfb_pid"; do
+    for owned_pid in "$daemon_pid" "$xvfb_pid"; do
       if [[ -n "$owned_pid" ]] && kill -0 "$owned_pid" 2>/dev/null; then
         if ! kill "$owned_pid"; then
           echo "Could not stop owned process $owned_pid" >&2
@@ -139,6 +138,8 @@ if [[ "${1:-}" == "--inside" ]]; then
     exit 2
   }
 
+  export TERMINFO_CAPTURE_DIRECTORY=/out/artifacts
+  export TERMINFO_RUNTIME_PROVENANCE=/out/runtime-provenance.json
   "$KITTY_BINARY" --config NONE --class terminfo-kitty-container-daemon \
     -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600 \
     -o font_family='DejaVu Sans Mono' -o font_size=16 \
@@ -184,6 +185,31 @@ if [[ "${1:-}" == "--inside" ]]; then
   jq -e '.results[0].response | contains("0.49.1")' /out/xtversion-observation.json >/dev/null || {
     echo "XTVERSION did not return Kitty 0.49.1; run invalid" >&2; exit 2;
   }
+  timeout 10 xdotool search --sync --onlyvisible --pid "$daemon_pid" > /out/windows.txt
+  [[ "$(wc -l < /out/windows.txt)" == 1 ]] || { echo "Ambiguous owned probe window" >&2; exit 2; }
+  read -r window_id </out/windows.txt
+  [[ "$(xdotool getwindowpid "$window_id")" == "$daemon_pid" ]] || {
+    echo "Probe window does not belong to the launched Kitty" >&2; exit 2;
+  }
+  xdotool getwindowgeometry --shell "$window_id" > /out/geometry.txt
+  read -r executable_sha executable_path < /out/executable.sha256
+  read -r source_sha source_path < /out/source-archive.sha256
+  jq -n --slurpfile host /out/host-measured.json \
+    --arg path "$(readlink -f "$KITTY_BINARY")" --arg sha "$executable_sha" \
+    --arg version "$(cat /out/executable-version.txt)" --arg sourceSha "$source_sha" \
+    --arg config '--config NONE; remember_window_size=no; initial_window_width=800; initial_window_height=600; font_family=DejaVu Sans Mono; font_size=16' \
+    --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
+    --rawfile display /out/xdpyinfo.txt --rawfile gl /out/glxinfo.txt '
+    $host[0] as $h | {
+      executable:{path:$path,sha256:$sha,version:$version},
+      sourceArtifact:{url:$h.sourceArtifact.url,sha256:$sourceSha},
+      runtime:{imageId:$h.runtime.imageId,imageTarSha256:$h.runtime.imageTarSha256,
+        arch:$h.runtime.arch,nixLockRevision:$h.runtime.nixLockRevision,
+        sourceRevision:$h.runtime.sourceRevision,cleanTree:($h.runtime.sourceTreeStatus == "clean"),
+        suiteHash:$h.runtime.suiteHash},
+      fixture:{definition:"Shared ProbeDefinition callbacks; capture checkpoints retained in each raw trace",
+        config:$config,font:$font,geometry:$geometry,display:$display,gl:$gl}
+    }' > "$TERMINFO_RUNTIME_PROVENANCE"
   curl --fail-with-body --silent --show-error --max-time 120 \
     -H "Authorization: Bearer $token" "http://127.0.0.1:$port/probe" > /out/v2-run.json
   jq -e --slurpfile build "$build_receipt" '
@@ -200,41 +226,35 @@ if [[ "${1:-}" == "--inside" ]]; then
   probe_run_id=$(jq -er .runId /out/v2-run.json)
   probe_run_sha=$(sha256sum /out/v2-run.json | cut -d ' ' -f 1)
 
-  "$KITTY_BINARY" --config NONE --class terminfo-kitty-container-fixture \
-    -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600 \
-    -o font_family='DejaVu Sans Mono' -o font_size=16 \
-    bash -c 'printf "\033[2J\033[HKitty Linux container fixture\n\033[4:3mCurly underline\033[0m\n"; touch "$HOME/fixture-ready"; sleep 30' \
-    >/out/fixture.log 2>&1 &
-  fixture_pid=$!
-  for _ in $(seq 1 100); do
-    [[ -f "$HOME/fixture-ready" ]] && break
-    kill -0 "$fixture_pid" 2>/dev/null || { cat /out/fixture.log >&2; exit 2; }
-    sleep 0.1
-  done
-  [[ -f "$HOME/fixture-ready" ]] || { echo "Fixture did not become ready" >&2; exit 2; }
-  timeout 10 xdotool search --sync --onlyvisible --class terminfo-kitty-container-fixture > /out/windows.txt
+  # The shared callbacks captured this daemon's own window before sealing the
+  # run. No second fixture window or post-run screenshot can stand in for it.
+  timeout 10 xdotool search --sync --onlyvisible --pid "$daemon_pid" > /out/windows.txt
+  [[ "$(wc -l < /out/windows.txt)" == 1 ]] || { echo "Ambiguous owned capture window" >&2; exit 2; }
   read -r window_id </out/windows.txt
   xdotool getwindowgeometry --shell "$window_id" > /out/geometry.txt
-  sleep 0.3
-  xwd -id "$window_id" -silent > /out/fixture.xwd
-  magick /out/fixture.xwd /out/fixture.png
-  magick identify /out/fixture.png > /out/image-info.txt
-  png_sha=$(sha256sum /out/fixture.png | cut -d ' ' -f 1)
-  mv /out/fixture.png "/out/$png_sha.png"
-  sha256sum /out/fixture.xwd "/out/$png_sha.png" > /out/capture-hashes.txt
-  jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --arg png "$png_sha.png" \
+  png_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' /out/v2-run.json)
+  xwd_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' /out/v2-run.json)
+  [[ -r "/out/artifacts/$png_sha.png" && -r "/out/artifacts/$xwd_sha.xwd" ]] || {
+    echo "Callback capture artifacts are missing" >&2; exit 2;
+  }
+  [[ "$(sha256sum "/out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
+     "$(sha256sum "/out/artifacts/$xwd_sha.xwd" | cut -d ' ' -f 1)" == "$xwd_sha" ]] || {
+    echo "Callback capture digest mismatch" >&2; exit 2;
+  }
+  magick identify "/out/artifacts/$png_sha.png" > /out/image-info.txt
+  sha256sum /out/artifacts/* > /out/capture-hashes.txt
+  jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --arg png "artifacts/$png_sha.png" \
     '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,png:$png,context:"linux-x86_64-xvfb-llvmpipe"}' \
     > /out/observed.json
   read -r executable_sha executable_path < /out/executable.sha256
   read -r source_sha source_path < /out/source-archive.sha256
-  xwd_sha=$(sha256sum /out/fixture.xwd | cut -d ' ' -f 1)
   jq -n --arg run "$TERMINFO_RUN_ID" \
     --arg executablePath "$executable_path" --arg executableSha "$executable_sha" \
     --arg executableVersion "$(cat /out/executable-version.txt)" \
     --arg sourcePath "$source_path" --arg sourceSha "$source_sha" \
     --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
     --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" \
-    --arg png "$png_sha.png" --arg pngSha "$png_sha" --arg xwdSha "$xwd_sha" \
+    --arg png "artifacts/$png_sha.png" --arg pngSha "$png_sha" --arg xwdSha "$xwd_sha" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
     '{runId:$run,
@@ -243,7 +263,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       collector:{frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha},
       probeRun:{path:"v2-run.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
-      capture:{xwd:"fixture.xwd",xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}}' \
+      capture:{xwd:("artifacts/"+$xwdSha+".xwd"),xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}}' \
     > /out/container-receipt.json
   exit 0
 fi
@@ -269,10 +289,10 @@ raw="$run_dir/raw"
 # with its public package imports into the content-addressed image input.
 (
   cd "$code_root"
-  AT_IN_ALLOW_SUBMODULE_DRIFT=1 @in -- bun install --frozen-lockfile --ignore-scripts
-  AT_IN_ALLOW_SUBMODULE_DRIFT=1 @in -- bun vendor/terminfo.dev/scripts/build-cli.ts
+  @in -- bun install --frozen-lockfile --ignore-scripts
+  @in -- bun vendor/terminfo.dev/scripts/build-cli.ts
   mkdir -p "$prep/bundle"
-  AT_IN_ALLOW_SUBMODULE_DRIFT=1 @in -- bun build \
+  @in -- bun build \
     vendor/terminfo.dev/packages/terminfo.dev/dist/terminfo.bundle.mjs \
     --target=bun --outdir "$prep/bundle"
   mv "$prep/bundle/terminfo.bundle.js" "$prep/bundle/index.js"

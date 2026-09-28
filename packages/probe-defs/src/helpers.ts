@@ -67,6 +67,27 @@ export function sgrProbe(
       )
     },
     async term(ctx) {
+      if (ctx.capture) {
+        try {
+          ctx.write("\x1b[0m\x1b[2J\x1b[HX")
+          const control = await ctx.capture({ role: "control", label: "Unstyled X" })
+          ctx.write("\x1b[0m\x1b[2J\x1b[H" + sequence + "X")
+          const target = await ctx.capture({ role: "target", label: id })
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: target.ref,
+              frames: [control, target],
+              note: "Control and target pixels captured; visual interpretation requires review",
+            },
+          }
+        } finally {
+          ctx.write("\x1b[0m")
+        }
+      }
       ctx.write("\x1b[1;1H\x1b[2K") // clear line
       ctx.write(sequence + "X\x1b[0m")
       const pos = await ctx.queryCursorPosition()
