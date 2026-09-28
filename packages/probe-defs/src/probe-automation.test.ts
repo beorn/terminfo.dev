@@ -9,6 +9,7 @@ function probe(id: string) {
 
 function context(overrides: Partial<TermlessContext>): TermlessContext {
   return {
+    cols: 80,
     feed() {},
     feedCapture() {
       return ""
@@ -616,7 +617,11 @@ describe("partial probe automation candidates", () => {
       "extensions.osc633-a",
     ]) {
       const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
-      expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed", reason: "insufficient-evidence" })
+      expect(result.observation).toMatchObject({
+        outcome: "inconclusive",
+        evidence: "consumed",
+        reason: "insufficient-evidence",
+      })
     }
     expect(
       (await probe("extensions.semantic-prompts").term!(terminalContext({ queryCursorPosition: async () => null })))
@@ -624,7 +629,11 @@ describe("partial probe automation candidates", () => {
     ).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
     for (const id of ["extensions.osc133-a", "extensions.osc633-a"]) {
       const result = probe(id).termless!(context({ getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }))
-      expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed", reason: "insufficient-evidence" })
+      expect(result.observation).toMatchObject({
+        outcome: "inconclusive",
+        evidence: "consumed",
+        reason: "insufficient-evidence",
+      })
     }
   })
 
