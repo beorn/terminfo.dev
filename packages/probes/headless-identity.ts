@@ -3,13 +3,12 @@
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, realpathSync } from "node:fs"
-import { createRequire } from "node:module"
 import { dirname, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { HeadlessRuntimeIdentity } from "@terminfo/probe-defs"
 
 const TERMINFO_ROOT = realpathSync(resolve(import.meta.dir, "../.."))
-const CODE_ROOT = realpathSync(resolve(TERMINFO_ROOT, "../.."))
+const VENDOR_ROOT = resolve(TERMINFO_ROOT, "..")
 
 function ownedCheckout(path: string, name: string): string {
   try {
@@ -19,8 +18,9 @@ function ownedCheckout(path: string, name: string): string {
   }
 }
 
-const TERMLESS_ROOT = ownedCheckout(join(CODE_ROOT, "vendor", "termless"), "Termless")
-const VTERM_ROOT = ownedCheckout(join(CODE_ROOT, "vendor", "vterm"), "vterm")
+const TERMLESS_ROOT = ownedCheckout(join(VENDOR_ROOT, "termless"), "Termless")
+const VTERM_ROOT = ownedCheckout(join(VENDOR_ROOT, "vterm"), "vterm")
+const CODE_ROOT = ownedCheckout(resolve(VENDOR_ROOT, ".."), "CODE workspace")
 const UPSTREAM_PACKAGES: Record<string, string> = {
   xtermjs: "@xterm/headless",
   ghostty: "ghostty-web",
@@ -107,8 +107,9 @@ function sourceIntegrity(
 }
 
 function loadedAddon(adapterDirectory: string): { path: string; sha256: string } {
-  const cache = createRequire(import.meta.url).cache
-  const paths = Object.keys(cache).filter((path) => path.endsWith(".node") && inside(path, adapterDirectory))
+  // Termless's Bun adapters already load these addons through require(); inspect
+  // that existing cache without loading a second CommonJS module instance.
+  const paths = Object.keys(require.cache).filter((path) => path.endsWith(".node") && inside(path, adapterDirectory))
   if (paths.length !== 1) {
     throw new Error(
       `Expected one loaded native addon in ${adapterDirectory}; found ${paths.length}: ${paths.join(", ")}`,

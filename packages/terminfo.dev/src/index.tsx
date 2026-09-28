@@ -21,6 +21,7 @@ import { readDaemonProbeResponse, requestDaemonProbe, saveDaemonProbeRun } from 
 import React from "react"
 import { Command, uint } from "@silvery/commander"
 import { renderString } from "silvery"
+import { version as packageVersion } from "../package.json" with { type: "json" }
 import { detectTerminal } from "./detect.ts"
 import { ALL_PROBES } from "./probes/unified.ts"
 import { DetectView } from "./views/DetectView.tsx"
@@ -45,7 +46,7 @@ const program = new Command()
   .description(
     `Can your terminal do that? — test ${ALL_PROBES.length} terminal features and contribute to terminfo.dev`,
   )
-  .version("4.0.0")
+  .version(packageVersion)
 
 program.addHelpSection("Examples:", [
   ["$ npx terminfo.dev test", "Test this terminal"],
