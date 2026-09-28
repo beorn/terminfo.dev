@@ -1,4 +1,4 @@
-import type { ProbeDefinition } from "./types.ts"
+import type { ProbeDefinition, ProbeResult } from "./types.ts"
 import { probe } from "./helpers.ts"
 
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
@@ -83,11 +83,36 @@ function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: number):
     async (ctx) => {
       const match = await ctx.queryWithSentinel(`\x1b[>${pushValue}u\x1b[?u`, /\x1b\[\?(\d+)u/)
       ctx.write("\x1b[<u") // pop
-      if (!match) return { pass: false, note: "No kitty keyboard response" }
-      const flags = parseInt(match[1]!, 10)
+      if (!match?.[1]) return { pass: false, note: "No kitty keyboard response" }
+      const flags = parseInt(match[1], 10)
       return { pass: (flags & flagBit) !== 0, response: `flags=${flags}` }
     },
   )
+}
+
+function textSizingResult(
+  before: { row: number; col: number },
+  width: { row: number; col: number },
+  scale: { row: number; col: number },
+): ProbeResult {
+  const widthWorks = width.row === before.row && width.col === before.col + 2
+  const scaleWorks = scale.row === width.row && scale.col === width.col + 2
+  return {
+    pass: widthWorks && scaleWorks,
+    note: `Cursor advance: width ${widthWorks ? "verified" : "not verified"}; scale ${scaleWorks ? "verified" : "not verified"}. Glyph appearance needs a visual check.`,
+    response: JSON.stringify({ before, width, scale }),
+  }
+}
+
+function clipboardProtocolResult(response: string): ProbeResult {
+  const match = /\x1b\[\?5522;([0-4])\$y/.exec(response)
+  if (!match) return { pass: false, note: "No DECRPM response for mode 5522", response }
+  const supported = match[1] !== "0" && match[1] !== "4"
+  return {
+    pass: supported,
+    note: supported ? "Protocol recognized; clipboard access permissions not tested" : "Mode 5522 not supported",
+    response,
+  }
 }
 
 export const extensionsProbes: ProbeDefinition[] = [
@@ -119,7 +144,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       // CSI ? u after a mode has been pushed (no response when stack is empty)
       const match = await ctx.queryWithSentinel("\x1b[>1u\x1b[?u", /\x1b\[\?(\d+)u/)
       ctx.write("\x1b[<u") // pop
-      if (!match) return { pass: false, note: "No kitty keyboard response" }
+      if (!match?.[1]) return { pass: false, note: "No kitty keyboard response" }
       return { pass: true, response: `flags=${match[1]}` }
     },
   ),
@@ -143,7 +168,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
       ctx.write("\x1b[1;1H")
       ctx.write(`\x1b_Ga=T,f=100,s=1,v=1,t=d;${payload}\x1b\\`)
-      await new Promise((r) => setTimeout(r, 300))
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 300)
+      })
       const pos = await ctx.queryCursorPosition()
       if (!pos) return { pass: false, note: "No cursor response after kitty graphics" }
       return { pass: pos.row > 1 || pos.col > 1, note: pos.row > 1 || pos.col > 1 ? undefined : "Image didn't render" }
@@ -157,7 +184,9 @@ export const extensionsProbes: ProbeDefinition[] = [
     async (ctx) => {
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
       ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=999;${payload}\x1b\\`)
-      await new Promise((r) => setTimeout(r, 300))
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 300)
+      })
       const pos = await ctx.queryCursorPosition()
       ctx.write(`\x1b_Ga=d,d=i,i=999\x1b\\`)
       return { pass: pos !== null, note: pos ? undefined : "No response after transmit" }
@@ -170,10 +199,14 @@ export const extensionsProbes: ProbeDefinition[] = [
     async (ctx) => {
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
       ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=998,q=1;${payload}\x1b\\`)
-      await new Promise((r) => setTimeout(r, 200))
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 200)
+      })
       ctx.write("\x1b[1;1H")
       ctx.write(`\x1b_Ga=p,i=998\x1b\\`)
-      await new Promise((r) => setTimeout(r, 300))
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 300)
+      })
       const pos = await ctx.queryCursorPosition()
       ctx.write(`\x1b_Ga=d,d=i,i=998\x1b\\`)
       if (!pos) return { pass: false, note: "No response after display" }
@@ -190,9 +223,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     async (ctx) => {
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
       ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=997,q=1;${payload}\x1b\\`)
-      await new Promise((r) => setTimeout(r, 200))
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 200)
+      })
       ctx.write(`\x1b_Ga=f,i=997,q=1;${payload}\x1b\\`)
-      await new Promise((r) => setTimeout(r, 200))
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 200)
+      })
       const pos = await ctx.queryCursorPosition()
       ctx.write(`\x1b_Ga=d,d=i,i=997\x1b\\`)
       return { pass: pos !== null, note: pos ? undefined : "No response after animation frame" }
@@ -206,7 +243,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
       ctx.write("\x1b[1;1H")
       ctx.write(`\x1b_Ga=T,f=100,s=1,v=1,t=d,U=1,i=996;${payload}\x1b\\`)
-      await new Promise((r) => setTimeout(r, 300))
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 300)
+      })
       const pos = await ctx.queryCursorPosition()
       ctx.write(`\x1b_Ga=d,d=i,i=996\x1b\\`)
       if (!pos) return { pass: false, note: "No response after U=1" }
@@ -253,8 +292,8 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => ({ pass: ctx.capabilities.reflow === true }),
     async (ctx) => {
       const sizeMatch = await ctx.queryWithSentinel("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/)
-      if (!sizeMatch) return { pass: false, note: "No XTWINOPS 18 response (can't report size)" }
-      const cols = parseInt(sizeMatch[2]!, 10)
+      if (!sizeMatch?.[2]) return { pass: false, note: "No XTWINOPS 18 response (can't report size)" }
+      const cols = parseInt(sizeMatch[2], 10)
       ctx.write("\x1b[1;1H\x1b[2J")
       const longLine = "W".repeat(cols + 5)
       ctx.write(longLine)
@@ -762,38 +801,39 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.osc66-text-sizing",
     (ctx) => {
-      // Check if backend responds to OSC 66 query (not just silently consuming)
-      const response = ctx.feedCapture("\x1b]66;?\x07")
-      const pass = /\x1b\]66;/.test(response)
-      return { pass, note: pass ? undefined : "No OSC 66 query response" }
+      ctx.feed("\x1b[1;1H\x1b[2K\r")
+      const before = { ...ctx.getCursor() }
+      ctx.feed("\x1b]66;w=2; \x07")
+      const width = { ...ctx.getCursor() }
+      ctx.feed("\x1b]66;s=2; \x07")
+      const scale = { ...ctx.getCursor() }
+      return textSizingResult(
+        { row: before.y, col: before.x },
+        { row: width.y, col: width.x },
+        { row: scale.y, col: scale.x },
+      )
     },
     async (ctx) => {
-      // Query current text sizing state
-      const match = await ctx.queryWithSentinel("\x1b]66;?\x07", /\x1b\]66;([^\x07\x1b]*)[\x07\x1b]/)
-      if (match) return { pass: true, response: match[1] }
-      // Fallback: try setting and verify cursor didn't move (consumed)
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]66;s=2\x07")
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b]66;s=1\x07") // reset
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return { pass: pos.col === 1, note: pos.col === 1 ? "Consumed (no query)" : "Not recognized" }
+      // The protocol defines detection by cursor movement, not an OSC query.
+      ctx.write("\x1b[1;1H\x1b[2K\r")
+      const before = await ctx.queryCursorPosition()
+      if (!before) return { pass: false, note: "No baseline cursor response" }
+      ctx.write("\x1b]66;w=2; \x07")
+      const width = await ctx.queryCursorPosition()
+      ctx.write("\x1b]66;s=2; \x07")
+      const scale = await ctx.queryCursorPosition()
+      if (!width || !scale) return { pass: false, note: "Missing cursor response for text sizing" }
+      return textSizingResult(before, width, scale)
     },
   ),
 
   // OSC 5522 — advanced clipboard (Kitty protocol, MIME-aware paste events)
   probe(
     "extensions.osc5522-clipboard",
-    (ctx) => {
-      // OSC 5522 is the kitty clipboard protocol. Query clipboard metadata.
-      const response = ctx.feedCapture("\x1b]5522;?\x07")
-      if (/\x1b\]5522;/.test(response)) return { pass: true, response }
-      return { pass: false, note: "No OSC 5522 response" }
-    },
+    (ctx) => clipboardProtocolResult(ctx.feedCapture("\x1b[?5522$p")),
     async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b]5522;?\x07", /\x1b\]5522;([^\x07\x1b]*)[\x07\x1b]/)
-      if (match) return { pass: true, response: match[1] }
-      return { pass: false, note: "No OSC 5522 response" }
+      const match = await ctx.queryWithSentinel("\x1b[?5522$p", /\x1b\[\?5522;([0-4])\$y/)
+      return clipboardProtocolResult(match?.[0] ?? "")
     },
   ),
 
@@ -1329,8 +1369,8 @@ export const extensionsProbes: ProbeDefinition[] = [
     },
     async (ctx) => {
       const match = await ctx.queryWithSentinel("\x1b[c", /\x1b\[\?([0-9;]+)c/)
-      if (!match) return { pass: false, note: "No DA1 response" }
-      const attrs = match[1]!.split(";")
+      if (!match?.[1]) return { pass: false, note: "No DA1 response" }
+      const attrs = match[1].split(";")
       const pass = attrs.includes("4")
       return { pass, note: pass ? `DA1 attrs: ${match[1]}` : `DA1 attrs: ${match[1]} (no sixel)` }
     },

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { ALL_PROBES, type TermlessContext } from "./index.ts"
+import { ALL_PROBES, type TermlessContext, type TermContext } from "./index.ts"
 
 function probe(id: string) {
   const found = ALL_PROBES.find((p) => p.id === id)
@@ -60,6 +60,89 @@ function context(overrides: Partial<TermlessContext>): TermlessContext {
     ...overrides,
   }
 }
+
+function terminalContext(overrides: Partial<TermContext>): TermContext {
+  return {
+    write() {},
+    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryMode: async () => null,
+    cols: 80,
+    ...overrides,
+  }
+}
+
+/**
+ * @failure Invalid Kitty queries miss support; ignored OSC sequences become false positives.
+ * @level l0
+ * @consumer Unified app and headless probe definitions.
+ * @testonly none
+ */
+describe("Kitty protocol detection", () => {
+  test("OSC 66 measures width and scale rather than treating consumption as support", async () => {
+    const p = probe("extensions.osc66-text-sizing")
+    if (!p.term || !p.termless) throw new Error("OSC 66 needs both probe methods")
+    // CPR 1→3→5 captured from Kitty 0.46.2; ignored OSC leaves all three at 1.
+    for (const [positions, expected] of [
+      [[1, 1, 1], false],
+      [[1, 3, 5], true],
+      [[1, 3, 3], false],
+    ] as const) {
+      const written: string[] = []
+      let index = 0
+      const term = await p.term(
+        terminalContext({
+          write(text) {
+            written.push(text)
+          },
+          queryCursorPosition: async () => ({ row: 1, col: positions[index++] ?? 1 }),
+        }),
+      )
+      expect(term.pass).toBe(expected)
+      expect(written).toContain("\x1b]66;w=2; \x07")
+      expect(written).toContain("\x1b]66;s=2; \x07")
+      index = 0
+      const headless = p.termless(
+        context({
+          getCursor() {
+            return { x: (positions[index++] ?? 1) - 1, y: 0, visible: true, style: "block" }
+          },
+        }),
+      )
+      expect(headless.pass).toBe(expected)
+    }
+    expect((await p.term(terminalContext({ queryCursorPosition: async () => null }))).pass).toBe(false)
+  })
+
+  test("OSC 5522 detects protocol support with DECRQM, without reading the clipboard", async () => {
+    const p = probe("extensions.osc5522-clipboard")
+    if (!p.term || !p.termless) throw new Error("OSC 5522 needs both probe methods")
+    // The protocol explicitly treats Ps=0 and Ps=4 as unsupported.
+    for (const ps of [2, 0, 1, 3, 4]) {
+      const response = `\x1b[?5522;${ps}$y`
+      const expected = ps > 0 && ps < 4
+      const headless = p.termless(
+        context({
+          feedCapture(text) {
+            return text === "\x1b[?5522$p" ? response : ""
+          },
+        }),
+      )
+      expect(headless.pass).toBe(expected)
+      const term = await p.term(
+        terminalContext({
+          queryWithSentinel: async (sequence, pattern) =>
+            sequence === "\x1b[?5522$p" ? response.match(pattern) : null,
+        }),
+      )
+      expect(term.pass).toBe(expected)
+      expect(term.response).toBe(response)
+    }
+    expect((await p.term(terminalContext({}))).pass).toBe(false)
+  })
+})
 
 describe("partial probe automation candidates", () => {
   test("modes.decsclm verifies the DEC private mode through DECRPM", () => {
