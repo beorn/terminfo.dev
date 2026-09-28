@@ -32,7 +32,32 @@ const s = createStyle()
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
 const SOURCE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
 
+/** Bun's CLI build replaces this identifier with a validated immutable receipt. */
+declare const __TERMINFO_BUNDLED_SUITE__: { manifest: ProbeSuiteManifest; collectorRevision: string }
+const bundledSuite = typeof __TERMINFO_BUNDLED_SUITE__ === "undefined" ? null : __TERMINFO_BUNDLED_SUITE__
+
+function assertLoadedAppSuite(manifest: ProbeSuiteManifest, probeHash: string, location: string): void {
+  const actual = ALL_PROBES.map((probe) => probe.id).sort()
+  if (manifest.probeHash !== probeHash || JSON.stringify(manifest.probes.app) !== JSON.stringify(actual)) {
+    throw new Error(`Loaded app probes disagree with suite declaration ${location}`)
+  }
+}
+
 function suiteMetadata(): { probeHash: string; sourceRevision: string } {
+  if (bundledSuite) {
+    const { manifest, collectorRevision } = bundledSuite
+    if (!/^[0-9a-f]{12}$/.test(manifest.probeHash) || !/^[0-9a-f]{40}$/.test(collectorRevision)) {
+      throw new Error("Compiled CLI has invalid suite or collector revision metadata")
+    }
+    assertLoadedAppSuite(manifest, manifest.probeHash, "compiled CLI receipt")
+    if (
+      (process.env.TERMINFO_PROBE_HASH && process.env.TERMINFO_PROBE_HASH !== manifest.probeHash) ||
+      (process.env.TERMINFO_SOURCE_REVISION && process.env.TERMINFO_SOURCE_REVISION !== collectorRevision)
+    ) {
+      throw new Error("Runtime suite metadata disagrees with compiled CLI receipt")
+    }
+    return { probeHash: manifest.probeHash, sourceRevision: collectorRevision }
+  }
   const probeHash = process.env.TERMINFO_PROBE_HASH
   const sourceRevision = process.env.TERMINFO_SOURCE_REVISION
   if (!probeHash || !/^[0-9a-f]{12}$/.test(probeHash) || !sourceRevision || !/^[0-9a-f]{40}$/.test(sourceRevision)) {
@@ -42,10 +67,7 @@ function suiteMetadata(): { probeHash: string; sourceRevision: string } {
   }
   const manifestPath = join(SOURCE_ROOT, "content", "suites", `${probeHash}.json`)
   const manifest: ProbeSuiteManifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ProbeSuiteManifest
-  const actual = ALL_PROBES.map((probe) => probe.id).sort()
-  if (manifest.probeHash !== probeHash || JSON.stringify(manifest.probes.app) !== JSON.stringify(actual)) {
-    throw new Error(`Loaded app probes disagree with suite manifest ${manifestPath}`)
-  }
+  assertLoadedAppSuite(manifest, probeHash, manifestPath)
   const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: SOURCE_ROOT, encoding: "utf8" }).trim()
   if (revision !== sourceRevision) throw new Error(`Collector revision differs from TERMINFO_SOURCE_REVISION`)
   const dirty = execFileSync(

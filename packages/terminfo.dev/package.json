@@ -25,9 +25,13 @@
     "terminfo": "./bin/terminfo.mjs"
   },
   "files": [
-    "src",
-    "bin"
+    "bin",
+    "dist"
   ],
+  "scripts": {
+    "build": "bun ../../scripts/build-cli.ts",
+    "prepack": "bun run build"
+  },
   "type": "module",
   "publishConfig": {
     "access": "public"
@@ -35,7 +39,6 @@
   "dependencies": {
     "@silvery/ansi": "^0.19.0",
     "@silvery/commander": "^0.19.0",
-    "@terminfo/probe-defs": "workspace:*",
     "commander": "^15.0.0",
     "react": "^19.2.7",
     "silvery": "^0.19.0"
