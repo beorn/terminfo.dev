@@ -474,17 +474,157 @@ describe("partial probe automation candidates", () => {
     for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
       const p = probe(id)
       expect(p.termless).toBeTypeOf("function")
+      let current = "rgb:1010/2020/3030"
+      const stack: string[] = []
       const result = p.termless!(
         context({
-          feedCapture(text) {
-            expect(text).toBe(
-              "\x1b]10;rgb:10/20/30\x07\x1b]30001\x07\x1b]10;rgb:aa/bb/cc\x07\x1b]30101\x07\x1b]10;?\x07",
-            )
-            return "\x1b]10;rgb:1010/2020/3030\x1b\\"
+          feed(sequence) {
+            if (sequence.includes("]30001")) stack.push(current)
+            else if (sequence.includes("]30101")) current = stack.pop() ?? current
+            else current = /\x1b\]10;(rgb:[a-f\d/]+)/i.exec(sequence)?.[1] ?? current
+          },
+          feedCapture(sequence) {
+            expect(sequence).toBe("\x1b]10;?\x07")
+            return `\x1b]10;${current}\x1b\\`
           },
         }),
       )
       expect(result.pass).toBe(true)
+      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+      expect(current).toBe("rgb:1010/2020/3030")
+    }
+  })
+
+  // A CPR after an ignored OSC is not a color-stack reply; the original foreground must survive errors too.
+  test("Kitty color-stack probes require a changed and restored foreground without leaking probe color", async () => {
+    for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
+      for (const [original, stackWorks] of [
+        ["rgb:1010/2020/3030", true],
+        ["rgb:1010/2020/3030", false],
+        ["rgb:aaaa/bbbb/cccc", true],
+      ] as const) {
+        let current: string = original
+        const stack: string[] = []
+        const writes: string[] = []
+        const result = await probe(id).term!(
+          terminalContext({
+            write(sequence) {
+              writes.push(sequence)
+              if (sequence.includes("]30001")) {
+                if (stackWorks) stack.push(current)
+              } else if (sequence.includes("]30101")) {
+                if (stackWorks) current = stack.pop() ?? current
+              } else {
+                const set = /\x1b\]10;(rgb:[a-f\d/]+)(?:\x07|\x1b\\)/i.exec(sequence)
+                if (set) current = set[1] ?? current
+              }
+            },
+            queryWithSentinelOutcome: async (sequence, pattern) => {
+              expect(sequence).toBe("\x1b]10;?\x07")
+              const raw = `\x1b]10;${current}\x1b\\`
+              return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
+            },
+          }),
+        )
+        expect(result.observation?.outcome).toBe(stackWorks ? "supported" : "unsupported")
+        expect(current).toBe(original)
+        expect(writes.some((sequence) => sequence.includes("]30001"))).toBe(true)
+        expect(writes.some((sequence) => sequence.includes("]30101"))).toBe(true)
+      }
+
+      const writes: string[] = []
+      let queries = 0
+      await expect(
+        probe(id).term!(
+          terminalContext({
+            write(sequence) {
+              writes.push(sequence)
+            },
+            queryWithSentinelOutcome: async (_sequence, pattern) => {
+              if (++queries === 2) throw new Error("query failed after color change")
+              const raw = "\x1b]10;rgb:1010/2020/3030\x1b\\"
+              return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
+            },
+          }),
+        ),
+      ).rejects.toThrow("query failed after color change")
+      expect(writes.some((sequence) => sequence.includes("]30101"))).toBe(true)
+      expect(writes.some((sequence) => sequence.includes("]10;rgb:1010/2020/3030"))).toBe(true)
+
+      const noReplyWrites: string[] = []
+      const noReply = await probe(id).term!(
+        terminalContext({
+          write: (sequence) => noReplyWrites.push(sequence),
+          queryWithSentinelOutcome: async () => {
+            const raw = "\x1b]10;rgb:1010/2020/3030\x1b\\"
+            return { match: null, reason: "timeout", raw, rawBase64: btoa(raw) }
+          },
+        }),
+      )
+      expect(noReply.observation?.outcome).toBe("inconclusive")
+      expect(noReplyWrites).toEqual([])
+    }
+  })
+
+  test("mode 2031 requires its own DECRPM recognition, not a separate color-scheme query", async () => {
+    const p = probe("modes.color-scheme-reporting")
+    for (const [state, outcome] of [
+      ["set", "supported"],
+      ["reset", "supported"],
+      ["unknown", "unsupported"],
+      [null, "inconclusive"],
+    ] as const) {
+      const result = await p.term!(
+        terminalContext({
+          queryMode: async (mode) => {
+            expect(mode).toBe(2031)
+            return state
+          },
+          queryWithSentinel: async () => ["\x1b[?997;1n", "1"],
+        }),
+      )
+      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+    }
+  })
+
+  test("DSR 996 accepts only complete 997 dark/light replies", async () => {
+    const p = probe("device.dsr-996-color-scheme")
+    for (const [raw, outcome] of [
+      ["\x1b[?997;1n", "supported"],
+      ["\x1b[?997;2n", "supported"],
+      ["\x1b[?997;9n", "inconclusive"],
+      ["\x1b[?997;1", "inconclusive"],
+    ] as const) {
+      const result = await p.term!(
+        terminalContext({
+          queryWithSentinelOutcome: async (sequence, pattern) => {
+            expect(sequence).toBe("\x1b[?996n")
+            return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
+          },
+        }),
+      )
+      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+    }
+  })
+
+  test("semantic prompt OSC consumption and CPR do not claim prompt integration", async () => {
+    for (const id of [
+      "extensions.semantic-prompts",
+      "extensions.osc133-a",
+      "extensions.osc133-d",
+      "extensions.osc-633-vscode",
+      "extensions.osc633-a",
+    ]) {
+      const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed", reason: "insufficient-evidence" })
+    }
+    expect(
+      (await probe("extensions.semantic-prompts").term!(terminalContext({ queryCursorPosition: async () => null })))
+        .observation,
+    ).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+    for (const id of ["extensions.osc133-a", "extensions.osc633-a"]) {
+      const result = probe(id).termless!(context({ getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }))
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed", reason: "insufficient-evidence" })
     }
   })
 

@@ -144,10 +144,10 @@ export const deviceProbes: ProbeDefinition[] = [
   probe(
     "device.term-features",
     null, // not testable in headless
-    async (_ctx) => {
+    (_ctx) => {
       const value = typeof process !== "undefined" ? process.env.TERM_FEATURES : undefined
-      if (!value) return { pass: false, note: "TERM_FEATURES env var not set" }
-      return { pass: true, response: value }
+      if (!value) return Promise.resolve({ pass: false, note: "TERM_FEATURES env var not set" })
+      return Promise.resolve({ pass: true, response: value })
     },
   ),
 
@@ -157,22 +157,66 @@ export const deviceProbes: ProbeDefinition[] = [
     (ctx) => {
       const response = ctx.feedCapture("\x1b[?996n")
       const match = /\x1b\[\?997;([12])n/.exec(response)
-      if (!match) return { pass: false, note: "No DSR ?997 color-scheme response", response }
+      if (!match?.[0]) {
+        return {
+          pass: false,
+          note: "No valid DSR ?997 color-scheme response",
+          response,
+          observation: {
+            outcome: "inconclusive",
+            evidence: "query",
+            reason: response.includes("\x1b[?997;") ? "invalid-reply" : "no-response",
+          },
+        }
+      }
       return {
         pass: true,
         note: match[1] === "1" ? "dark" : "light",
         response,
+        observation: {
+          outcome: "supported",
+          evidence: "query",
+          note: "Current scheme queried; unsolicited change events were not tested",
+        },
+        assertions: [
+          { kind: "positive", expected: "DSR ?996 yields complete DSR ?997;1n or ?997;2n", observed: match[0] },
+        ],
       }
     },
     async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[?996n", /\x1b\[\?997;([12])n/)
-      if (!match) return { pass: false, note: "No DSR ?997 color-scheme response" }
+      const reply = await ctx.queryWithSentinelOutcome("\x1b[?996n", /\x1b\[\?997;([12])n/)
+      const match = reply.match
+      if (!match?.[0]) {
+        return {
+          pass: false,
+          note: "No valid DSR ?997 color-scheme response",
+          response: reply.raw,
+          observation: {
+            outcome: "inconclusive",
+            evidence: "query",
+            reason: reply.raw.includes("\x1b[?997;")
+              ? "invalid-reply"
+              : reply.reason === "timeout"
+                ? "timeout"
+                : "no-response",
+          },
+        }
+      }
       return {
         pass: true,
         note: match[1] === "1" ? "dark" : "light",
         response: match[0],
+        observation: {
+          outcome: "supported",
+          evidence: "query",
+          note: "Current scheme queried; unsolicited change events were not tested",
+        },
+        assertions: [
+          { kind: "positive", expected: "DSR ?996 yields complete DSR ?997;1n or ?997;2n", observed: match[0] },
+        ],
       }
     },
+    "query",
   ),
 
   // XTWINOPS 14 — report window size in pixels: CSI 14 t → CSI 4 ; H ; W t

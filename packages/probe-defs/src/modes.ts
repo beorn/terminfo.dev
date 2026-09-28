@@ -489,26 +489,46 @@ export const modesProbes: ProbeDefinition[] = [
   probe(
     "modes.color-scheme-reporting",
     (ctx) => {
-      // Enable mode 2031, check via getMode
-      ctx.feed("\x1b[?2031h")
-      const enabled = ctx.getMode("colorSchemeReporting")
-      ctx.feed("\x1b[?2031l")
-      return { pass: enabled === true }
+      const initiallyEnabled = ctx.getMode("colorSchemeReporting")
+      try {
+        ctx.feed("\x1b[?2031h")
+        const enabled = ctx.getMode("colorSchemeReporting")
+        return { pass: enabled === true }
+      } finally {
+        ctx.feed(initiallyEnabled ? "\x1b[?2031h" : "\x1b[?2031l")
+      }
     },
     async (ctx) => {
-      // Try DECRPM first
       const result = await ctx.queryMode(2031)
-      if (result !== null && result !== "unknown") {
-        return { pass: true, note: `DECRPM: mode ${result}`, response: result }
+      const recognized = result === "set" || result === "reset"
+      const note =
+        result === null
+          ? "No DECRPM 2031 reply; update events were not tested"
+          : result === "unknown"
+            ? "DECRPM 2031 explicitly unrecognized"
+            : `DECRPM 2031 recognized (${result}); update events were not tested`
+      return {
+        pass: recognized,
+        note,
+        response: result ?? undefined,
+        observation: {
+          outcome: result === null ? "inconclusive" : recognized ? "supported" : "unsupported",
+          evidence: "query",
+          ...(result === null && { reason: "no-response" as const }),
+          note,
+        },
+        ...(result !== null && {
+          assertions: [
+            {
+              kind: recognized ? ("positive" as const) : ("negative" as const),
+              expected: "DECRPM 2031 recognizes color-scheme reporting mode",
+              observed: result,
+            },
+          ],
+        }),
       }
-      // Fallback: try DECDSR 997 (synchronous color scheme query)
-      const match = await ctx.queryWithSentinel("\x1b[?997n", /\x1b\[\?997;(\d+)n/)
-      if (match) {
-        const scheme = match[1] === "1" ? "dark" : match[1] === "2" ? "light" : `unknown(${match[1]})`
-        return { pass: true, note: scheme, response: match[1] }
-      }
-      return { pass: false, note: "No DECRPM or DECDSR 997 response" }
     },
+    "query",
   ),
 
   // XTPUSHSGR — push SGR stack (CSI # {)

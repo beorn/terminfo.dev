@@ -43,13 +43,135 @@ function pointerColorResetProbe(
   }
 }
 
+const foregroundQuery = "\x1b]10;?\x07"
+const foregroundReply = /\x1b\]10;(rgb:[a-f\d]{1,4}\/[a-f\d]{1,4}\/[a-f\d]{1,4})(?:\x07|\x1b\\)/i
+const colorPush = "\x1b]30001\x1b\\"
+const colorPop = "\x1b]30101\x1b\\"
+
+function foregroundValue(response: string): string | null {
+  return foregroundReply.exec(response)?.[1] ?? null
+}
+
+function sameRgb(left: string, right: string): boolean {
+  const channels = (color: string) =>
+    color
+      .slice(4)
+      .split("/")
+      .map((channel) => Math.round((parseInt(channel, 16) / (16 ** channel.length - 1)) * 65535))
+  const actual = channels(left)
+  const expected = channels(right)
+  return actual.every((channel, index) => channel === expected[index])
+}
+
+function probeForeground(before: string): string {
+  return sameRgb(before, "rgb:aa/bb/cc") ? "rgb:12/34/56" : "rgb:aa/bb/cc"
+}
+
+function colorStackResult(before: string, requested: string, changed: string, restored: string): ProbeResult {
+  const changedAsRequested = sameRgb(changed, requested)
+  const restoredOriginal = sameRgb(restored, before)
+  const pass = changedAsRequested && restoredOriginal
+  const response = JSON.stringify({ before, changed, restored })
+  const note = pass
+    ? "Foreground changed and color-stack pop restored its original value"
+    : "Foreground change or stack restoration was not observed"
+  return {
+    pass,
+    response,
+    note,
+    observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior", note },
+    assertions: [
+      {
+        kind: pass ? "positive" : "negative",
+        expected: "Changed foreground and restored original after color-stack pop",
+        observed: response,
+      },
+    ],
+  }
+}
+
+function promptConsumptionResult(consumed: boolean | null): ProbeResult {
+  const note =
+    consumed === null
+      ? "No cursor reply after semantic prompt marker"
+      : consumed
+        ? "Marker was consumed; shell prompt integration was not observed"
+        : "Marker consumption was not confirmed; shell prompt integration was not observed"
+  return {
+    pass: false,
+    note,
+    observation: {
+      outcome: "inconclusive",
+      evidence: consumed === null ? "query" : "consumed",
+      reason: consumed === null ? "no-response" : "insufficient-evidence",
+      note,
+    },
+  }
+}
+
 function colorStackProbe(): ProbeDefinition["termless"] {
   return (ctx) => {
-    const response = ctx.feedCapture(
-      "\x1b]10;rgb:10/20/30\x07\x1b]30001\x07\x1b]10;rgb:aa/bb/cc\x07\x1b]30101\x07\x1b]10;?\x07",
-    )
-    const pass = /\x1b\]10;rgb:1010\/2020\/3030/.test(response)
-    return { pass, note: pass ? undefined : "Color stack did not restore OSC 10 foreground", response }
+    const before = foregroundValue(ctx.feedCapture(foregroundQuery))
+    if (!before) {
+      return {
+        pass: false,
+        note: "No original OSC 10 foreground reply",
+        observation: { outcome: "inconclusive", evidence: "query", reason: "no-response" },
+      }
+    }
+    let pushed = false
+    const requested = probeForeground(before)
+    try {
+      ctx.feed(colorPush)
+      pushed = true
+      ctx.feed(`\x1b]10;${requested}\x07`)
+      const changed = foregroundValue(ctx.feedCapture(foregroundQuery))
+      ctx.feed(colorPop)
+      pushed = false
+      const restored = foregroundValue(ctx.feedCapture(foregroundQuery))
+      if (!changed || !restored) {
+        return {
+          pass: false,
+          note: "No OSC 10 reply after changing or popping color",
+          observation: { outcome: "inconclusive", evidence: "query", reason: "no-response" },
+        }
+      }
+      return colorStackResult(before, requested, changed, restored)
+    } finally {
+      try {
+        if (pushed) ctx.feed(colorPop)
+      } finally {
+        ctx.feed(`\x1b]10;${before}\x07`)
+      }
+    }
+  }
+}
+
+async function colorStackTermProbe(ctx: Parameters<NonNullable<ProbeDefinition["term"]>>[0]): Promise<ProbeResult> {
+  const originalReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
+  const before = foregroundValue(originalReply.match?.[0] ?? "")
+  if (!before) return unansweredQuery(originalReply, "No original OSC 10 foreground reply; color stack was not changed")
+  let pushed = false
+  const requested = probeForeground(before)
+  try {
+    ctx.write(colorPush)
+    pushed = true
+    ctx.write(`\x1b]10;${requested}\x07`)
+    const changedReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
+    const changed = foregroundValue(changedReply.match?.[0] ?? "")
+    if (!changed) return unansweredQuery(changedReply, "No OSC 10 reply after changing foreground")
+    ctx.write(colorPop)
+    pushed = false
+    const restoredReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
+    const restored = foregroundValue(restoredReply.match?.[0] ?? "")
+    if (!restored) return unansweredQuery(restoredReply, "No OSC 10 reply after color-stack pop")
+    return colorStackResult(before, requested, changed, restored)
+  } finally {
+    try {
+      if (pushed) ctx.write(colorPop)
+    } finally {
+      ctx.write(`\x1b]10;${before}\x07`)
+    }
   }
 }
 
@@ -240,11 +362,12 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
           imageTransferRequest(imageNumber),
           new RegExp(`\\x1b_Gi=(\\d+),I=${imageNumber};([^\\x1b]+)\\x1b\\\\`),
         )
-        if (!reply.match)
+        if (!reply.match) {
           return unansweredQuery(
             reply,
             "No matching image allocation reply; no image ownership or transmission conclusion",
           )
+        }
         const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
         imageId = uploaded.imageId
         if (!imageId || !display) return uploaded.result
@@ -252,8 +375,9 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
           `\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`,
           new RegExp(`\\x1b_Gi=${imageId};([^\\x1b]+)\\x1b\\\\`),
         )
-        if (!placement.match)
+        if (!placement.match) {
           return unansweredQuery(placement, "No matching placement reply; visible pixels were not tested")
+        }
         return graphicsQueryResult(
           placement.match[0] ?? "",
           imageId,
@@ -503,10 +627,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     async (ctx) => {
       ctx.write("\x1b]133;A\x07")
       const pos = await ctx.queryCursorPosition()
-      return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after OSC 133",
-      }
+      return promptConsumptionResult(pos === null ? null : true)
     },
   ),
 
@@ -633,10 +754,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b]633;C\x07")
       ctx.write("\x1b]633;D;0\x07")
       const pos = await ctx.queryCursorPosition()
-      return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after OSC 633",
-      }
+      return promptConsumptionResult(pos === null ? null : true)
     },
   ),
 
@@ -651,21 +769,13 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.feed("\x1b]133;A\x07X")
       // Verify the OSC sequence was consumed and "X" landed at column 0.
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]133;A\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 133;A" }
-      // Cursor should be at col 2 (wrote 1 char "X" — OSC consumed)
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 133;A may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -675,20 +785,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b]133;B\x07X")
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]133;B\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 133;B" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 133;B may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -698,20 +801,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b]133;C\x07X")
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]133;C\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 133;C" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 133;C may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -721,20 +817,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b]133;D;0\x07X")
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]133;D;0\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 133;D" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 133;D may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -744,20 +833,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b]133;P;Cwd=/tmp\x07X")
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]133;P;Cwd=/tmp\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 133;P" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 133;P may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -770,20 +852,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b]633;A\x07X")
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]633;A\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 633;A" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;A may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -793,20 +868,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b]633;B\x07X")
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]633;B\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 633;B" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;B may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -816,20 +884,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b]633;C\x07X")
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]633;C\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 633;C" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;C may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -839,20 +900,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b]633;D;0\x07X")
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]633;D;0\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 633;D" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;D may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -862,20 +916,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b]633;E;ls -la;nonce123\x07X")
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]633;E;ls -la;nonce123\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 633;E" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;E may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -885,20 +932,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b]633;P;Cwd=/tmp\x07X")
       const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
+      return promptConsumptionResult(cell.char === "X")
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]633;P;Cwd=/tmp\x07X")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 633;P" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2 (OSC 633;P may not be consumed)`,
-      }
+      return promptConsumptionResult(pos === null ? null : pos.col === 2)
     },
   ),
 
@@ -1405,30 +1445,10 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 30001 — Kitty color stack push
-  probe("extensions.osc30001-color-stack-push", colorStackProbe(), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]30001\x07")
-    const pos = await ctx.queryCursorPosition()
-    if (!pos) return { pass: false, note: "No cursor response after OSC 30001" }
-    return {
-      pass: pos.col === 1,
-      note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-    }
-  }),
+  probe("extensions.osc30001-color-stack-push", colorStackProbe(), colorStackTermProbe, "behavior"),
 
   // OSC 30101 — Kitty color stack pop
-  probe("extensions.osc30101-color-stack-pop", colorStackProbe(), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    // Push first so the pop has something to restore — both should be consumed.
-    ctx.write("\x1b]30001\x07")
-    ctx.write("\x1b]30101\x07")
-    const pos = await ctx.queryCursorPosition()
-    if (!pos) return { pass: false, note: "No cursor response after OSC 30101" }
-    return {
-      pass: pos.col === 1,
-      note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-    }
-  }),
+  probe("extensions.osc30101-color-stack-pop", colorStackProbe(), colorStackTermProbe, "behavior"),
 
   // OSC 176 — foot Wayland app-id
   probe(
