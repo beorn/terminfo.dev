@@ -82,6 +82,7 @@ function suiteMetadata(): { probeHash: string; sourceRevision: string } {
       "packages/probe-defs/src",
       "packages/terminfo.dev/src",
       "packages/terminfo.dev/package.json",
+      "docs/data/selected-results.ts",
     ],
     {
       cwd: SOURCE_ROOT,
@@ -98,12 +99,12 @@ export async function collectProbeRun(options: { ids?: string[] } = {}): Promise
   const { probeHash, sourceRevision } = suiteMetadata()
   const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
   const kittyBinary = process.env.KITTY_BINARY
-  let ownedCapture: ProbeCapture | undefined
+  let ownedCapture: Promise<ProbeCapture> | undefined
   const capture: ProbeCapture | undefined = captureDirectory
     ? async (checkpoint) => {
         if (!kittyBinary) throw new Error("Configured Linux capture requires KITTY_BINARY")
         ownedCapture ??= createLinuxCapture(captureDirectory, kittyBinary)
-        return ownedCapture(checkpoint)
+        return (await ownedCapture)(checkpoint)
       }
     : undefined
   const batch = await withRawMode(async () => {

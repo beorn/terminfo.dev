@@ -18,6 +18,7 @@ async function main(): Promise<void> {
     "packages/terminfo.dev/src",
     "packages/terminfo.dev/bin/terminfo.mjs",
     "packages/admin/versions.ts",
+    "docs/data/selected-results.ts",
     "scripts/build-cli.ts",
     "scripts/suite-manifest.ts",
     "bun.lock",
