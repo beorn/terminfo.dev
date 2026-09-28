@@ -4,70 +4,33 @@
 
 If you build an app that runs in a terminal — a CLI tool, a text editor, a dashboard — you need to know what your users' terminals can actually do. Can they display colors? Do they support clickable links? Will emoji render correctly?
 
-Today, there's no reliable way to answer these questions. The traditional `terminfo` database is decades old and has no entries for modern features like keyboard protocols, graphics, or hyperlinks. Most terminals just report themselves as "xterm-256color" regardless of what they actually support.
+Terminal capabilities vary by version, configuration and environment. A protocol may be documented, recognized by a parser, or fully usable in an application; those are different claims.
 
-**terminfo.dev fills this gap.** It's a feature compatibility database — like [caniuse.com](https://caniuse.com) but for terminal emulators instead of web browsers. Every result comes from automated testing: we send real escape sequences to real terminals and record what happens.
+**terminfo.dev is a terminal feature compatibility database.** Its current audit is adding a traceable connection between probe results, recorded evidence and reviewed corrections. The [measurement guide](/contribute#what-a-probe-can-establish) explains what each method can establish and where it stops.
 
 ## Why not terminfo?
 
-The site is named terminfo.dev, but it works differently from the traditional terminfo database.
+The traditional [terminfo database](https://invisible-island.net/ncurses/man/terminfo.5.html), maintained by [Thomas Dickey](https://invisible-island.net/) alongside ncurses, describes terminal capabilities selected through names such as `$TERM`. It remains useful for applications choosing control sequences. It also supports extended capabilities; modern terminal features are not categorically impossible to describe in it.
 
-**[terminfo](https://invisible-island.net/ncurses/terminfo.src.html)** (maintained by [Thomas Dickey](https://invisible-island.net/) alongside ncurses) is a compiled capability database: it maps terminal names to supported features. Applications query it via `$TERM` to discover what the terminal can do. This system works well for established features — but it has fundamental limitations for modern terminal capabilities:
+terminfo.dev asks a complementary question: what did a specific test observe in a specific terminal version and environment? A database entry, a protocol query and a rendered result provide different evidence. None is a substitute for all the others.
 
-- **No vocabulary for modern features.** terminfo has no capability entries for Kitty keyboard protocol, OSC 8 hyperlinks, semantic prompts (OSC 133), synchronized output, or Sixel/Kitty graphics. These features are invisible to terminfo-based applications.
-- **Static, not observed.** terminfo entries describe what a terminal _should_ support, not what it _actually does_. Bugs, version differences, and configuration changes aren't captured.
-- **`$TERM` is unreliable.** Most terminals set `$TERM` to `xterm-256color` regardless of their actual capabilities, because too many applications string-match on "xterm."
+## What Is Being Tested?
 
-terminfo.dev takes a different approach: **probe the terminal directly** and report what actually works. The feature matrix on this site reflects observed behavior, not self-reported capabilities.
+**[Terminal applications](/)** run the probe inside the actual application. Queries and cursor measurements observe protocol behavior; screenshots and input tests are needed for claims about rendering and interaction. An automated reply does not show everything the user sees.
 
-## Three Data Sources
+**[Headless backends](/backends)** run the same feature definitions against emulator engines through [Termless](https://termless.dev). Depending on the adapter, a probe can inspect cells, attributes, cursor state or protocol replies. A headless result applies to that engine and adapter version. It does not establish that the desktop application renders or handles input correctly.
 
-**[Terminal Applications](/)** — tested on real terminals via the `npx terminfo.dev` community CLI or automated app launch probes. Each test sends escape sequences to the actual terminal and verifies behavior via cursor position reports, device attribute queries, and rendered width measurements. These results reflect what users actually experience. Currently 7 terminal apps tested: Ghostty, iTerm2, Kitty, Terminal.app, Warp, VS Code, and Cursor.
+**[Multiplexers](/multiplexers)** run between an application and an outer terminal. Results depend on that whole path, including versions, configuration and passthrough settings. A failure through tmux or Screen is not automatically a failure of the outer terminal.
 
-**[Headless Backends](/backends)** — tested via [Termless](https://termless.dev) against headless terminal emulator libraries. These test parser correctness — whether the library correctly parses and stores the escape sequence. A headless pass means "the parser accepts this" not "this renders correctly." Some features (like blink, cursor shape) may parse correctly but are not exposed through the library's API. Currently 7 headless backends tested (some with multiple versions).
+Controlled runs and community submissions are ways to collect these measurements. They should use the same versioned probe definitions. Older published CLI packages lag the source suite, so their coverage must be identified separately. A community submission needs identity, scope and evidence checks before it can support a published claim.
 
-**[Multiplexer Pass-Through](/multiplexers)** — tested by running probes through terminal multiplexers (tmux, GNU Screen) to measure which features each multiplexer correctly relays vs. strips or mishandles. Currently tmux and GNU Screen tested.
+## Evidence and Corrections
 
-The site shows these as separate sections: real terminal results first (the primary data source), headless backend results second (useful for parser implementors and library authors), and multiplexer results third (useful for users who run tmux or screen).
+The site is being audited for probes that overstate what they establish. In particular, a sequence being consumed is not proof of its effect, and no reply is not sufficient evidence of unsupported behavior. Older results without retained evidence cannot be retrospectively treated as verified.
 
-## How Data Is Collected
+A useful result states the measured outcome, method, terminal or engine identity, probe revision and measurement time. Reviewed corrections must retain the original evidence and explain what changed and why. The [contribution guide](/contribute#reading-results) explains the result vocabulary and how to submit a reproduction or screenshot.
 
-### 1. Community CLI Probes (crowd-sourced)
-
-Anyone can test their actual terminal application:
-
-```bash
-npx terminfo.dev test      # Run the probe suite against your terminal
-npx terminfo.dev submit    # Run probes + submit results
-```
-
-The CLI auto-detects your terminal (Ghostty, iTerm2, Kitty, Terminal.app, WezTerm, etc.) and version, then runs behavioral probes — sending escape sequences and verifying cursor position, mode responses (DECRPM), and OSC query responses. Results are submitted as GitHub issues and integrated into the database.
-
-This is the same crowd-sourced model used by [caniuse.com](https://caniuse.com) for browser compatibility data.
-
-### 2. Headless Library Probes (automated)
-
-[Termless](https://termless.dev) runs automated probes against headless terminal emulator libraries (xterm.js, Ghostty, Alacritty, vterm.js, etc.) in CI. Each probe sends an ANSI escape sequence and reads back the terminal state programmatically. Results marked **partial** (~) indicate features the real terminal supports but the headless API doesn't expose.
-
-### 3. Multiplexer Pass-Through Probes (automated)
-
-Multiplexer probes launch tmux or GNU Screen with a probe daemon inside, then test which features pass through the multiplexer layer correctly. This reveals which escape sequences each multiplexer strips, mishandles, or faithfully relays to the outer terminal.
-
-### Why All Three?
-
-Community probes test **real terminal behavior** — does the actual application handle it? Headless probes test **parser correctness** — does the terminal engine understand the sequence? Multiplexer probes test **pass-through fidelity** — does the multiplexer preserve the feature? The combination gives accurate results: community probes capture what users actually see, headless probes catch parsing bugs and help library authors verify conformance, and multiplexer probes show what breaks when tmux or screen sits in the middle.
-
-## Headless Backends Tested
-
-| Backend            | Engine                       | Description                                                    |
-| ------------------ | ---------------------------- | -------------------------------------------------------------- |
-| **xterm.js**       | @xterm/headless              | The most widely used web terminal emulator (4 versions tested) |
-| **Ghostty Native** | libghostty-vt (Zig)          | Native Ghostty via Zig N-API bindings                          |
-| **vt100.js**       | Pure TypeScript              | Termless's built-in zero-dependency emulator                   |
-| **vterm.js**       | Pure TypeScript              | Full-featured emulator targeting 100% coverage                 |
-| **WezTerm**        | wezterm-term (napi-rs)       | Broadest protocol support: sixel, semantic prompts             |
-| **Alacritty**      | alacritty_terminal (napi-rs) | Rust parser with strong reflow                                 |
-| **Kitty**          | kitty (C, GPL source)        | Kitty's parser built from source                               |
+Our target is complete, trustworthy measurements of the stated scope. Terminals and headless engines make different feature choices; a universal 100% support score is not the goal. Untested features, intentional exclusions and inconclusive measurements need explicit labels.
 
 ## Feature Categories
 
@@ -107,12 +70,12 @@ Features are tagged by their defining standard (13 standards). Each standard pag
 
 ## Limitations
 
-- **Default configuration only.** Results reflect each terminal's out-of-the-box behavior. User configuration (custom keybindings, enabled/disabled features, modified settings) may change what a terminal supports.
-- **Specific versions, not all versions.** Probe results are from particular versions of each terminal and backend. Older or newer versions may differ. The version tested is shown alongside each result.
-- **Terminal applications are not probe targets.** Tools like Carbonyl and Browsh render browser content inside an existing terminal; they consume terminal features rather than providing a terminal-emulator surface of their own. Running a probe inside one of these apps would measure the outer terminal hosting the app, not the app itself.
-- **Visual features cannot be fully automated.** Some capabilities — font rendering quality, glyph width consistency, cursor blink timing, color accuracy — require visual inspection and cannot be verified purely through escape sequence responses.
-- **Single-platform app probes (macOS).** Terminal application probes are currently run on macOS only. Linux and Windows results are available through the community CLI (`npx terminfo.dev submit`) but are not yet part of the automated test matrix.
-- **Headless != rendered.** A headless backend passing a probe means the parser accepts and stores the sequence correctly. It does not guarantee the feature renders correctly in the corresponding terminal application.
+- **Configuration matters.** Keybindings, permissions, fonts and enabled features can affect a result. Historical runs do not all record their configuration; do not assume they used defaults.
+- **Specific versions, not all versions.** Probe results are from particular versions of each terminal and backend. Older or newer versions may differ. Check the terminal page and result context for the measured version.
+- **Programs inside a terminal are a different target.** A terminal emulator provides the surface that ordinary terminal applications consume. Identify which layer a reproduction actually tests.
+- **Visual claims need visual evidence.** Controlled screenshots, pixel checks or recordings can be automated, but protocol replies alone cannot establish glyph appearance, image placement or cursor blink timing.
+- **Platform coverage is incomplete.** Existing automated app records are from macOS. Controlled Linux captures are being added; they do not establish behavior on macOS or Windows. Platform gaps remain untested.
+- **Headless evidence varies.** A cell-state assertion can prove an engine effect; a declared capability or consumed sequence cannot. Neither establishes rendering in the desktop application.
 - **Multiplexer results depend on the outer terminal.** Multiplexer pass-through probes test what the multiplexer relays, but the outer terminal must also support the feature for it to work end-to-end.
 
 ## Changelog
@@ -144,7 +107,7 @@ All probe code is original. No code was copied from these projects.
 
 terminfo.dev is part of a suite of terminal development tools:
 
-- **[Termless](https://termless.dev)** — the headless testing framework that powers all probe results
+- **[Termless](https://termless.dev)** — the framework used for headless engine tests
 - **[Silvery](https://silvery.dev)** — React TUI framework, the primary consumer of compatibility data
 - **[Flexily](https://beorn.codes/flexily)** — layout engine used by Silvery
 - **[Loggily](https://loggily.dev)** — structured logging used across all tools
@@ -154,7 +117,7 @@ terminfo.dev is part of a suite of terminal development tools:
 
 Created by [Bjørn Stabell](https://beorn.codes). terminfo.dev grew from the need to understand which terminal features could be safely relied upon when building [Silvery](https://silvery.dev) and other interactive terminal applications.
 
-The data is generated by automated testing via [Termless](https://termless.dev) — no self-reported capabilities, no guesswork. Every result comes from sending real escape sequences and observing real responses.
+See [how probes work and what they can establish](/contribute#what-a-probe-can-establish) before relying on a result for an application decision.
 
 ---
 
