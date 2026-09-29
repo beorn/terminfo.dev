@@ -14,7 +14,25 @@ import type {
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
-function context(backend: TerminalBackend): TermlessContext {
+/** Capture one query, including adapters that parse pending input on state reads. */
+export function feedCapture(backend: TerminalBackend, text: string): string {
+  // Pending input belongs to the previous listener, not this query.
+  backend.getCursor()
+  let response = ""
+  const previous = backend.onResponse
+  backend.onResponse = (bytes) => {
+    response += decoder.decode(bytes)
+  }
+  try {
+    backend.feed(encoder.encode(text))
+    backend.getCursor()
+  } finally {
+    backend.onResponse = previous
+  }
+  return response
+}
+
+export function createTermlessContext(backend: TerminalBackend): TermlessContext {
   let cols: number
   try {
     cols = backend.getRow(0).length
@@ -31,17 +49,7 @@ function context(backend: TerminalBackend): TermlessContext {
       backend.feed(encoder.encode(text))
     },
     feedCapture(text) {
-      let response = ""
-      const previous = backend.onResponse
-      backend.onResponse = (bytes) => {
-        response += decoder.decode(bytes)
-      }
-      try {
-        backend.feed(encoder.encode(text))
-      } finally {
-        backend.onResponse = previous
-      }
-      return response
+      return feedCapture(backend, text)
     },
     getCell(row, col) {
       const cell = backend.getCell(row, col)
@@ -156,7 +164,7 @@ export function collectBatch(
   definitions: readonly ProbeDefinition[],
 ): Batch {
   const batch: Batch = { rawReplies: {}, observations: [], assertions: [], ungradedDiagnostics: {} }
-  const ctx = context(backend)
+  const ctx = createTermlessContext(backend)
   for (const probe of definitions) {
     if (!probe.termless) continue
     process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)

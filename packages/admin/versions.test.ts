@@ -34,6 +34,7 @@ test("suite hash changes when either imported mode or extension definitions chan
 test("suite identity changes with executable collection, ownership, capture and identity source", () => {
   const baseline = probeHash()
   for (const file of [
+    "packages/probes/headless-batch.ts",
     "packages/terminfo.dev/src/probes/unified.ts",
     "packages/terminfo.dev/src/tty.ts",
     "packages/terminfo.dev/src/linux-clipboard.ts",

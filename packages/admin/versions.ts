@@ -14,6 +14,7 @@ const PROBE_DEFS_DIR = join(REPO_ROOT, "packages", "probe-defs", "src")
 const ADAPTER_PACKAGE_PATH = "packages/terminfo.dev/package.json"
 // Include the collector's executed local imports: ownership and identity affect the observation too.
 const ADAPTER_SOURCE_PATHS = [
+  "packages/probes/headless-batch.ts",
   "packages/terminfo.dev/src/probes/unified.ts",
   "packages/terminfo.dev/src/tty.ts",
   "packages/terminfo.dev/src/linux-clipboard.ts",
@@ -65,7 +66,6 @@ export function probeSuiteSnapshot(): ProbeSuiteSnapshot {
   const sourcePaths = [
     ...probeFiles.map((f) => `packages/probes/${f}`),
     ...definitionFiles.map((f) => `packages/probe-defs/src/${f}`),
-    "packages/probes/setup.ts",
     "packages/probes/vitest.config.ts",
     ...ADAPTER_SOURCE_PATHS,
     ADAPTER_PACKAGE_PATH,

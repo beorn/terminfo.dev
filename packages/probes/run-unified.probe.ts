@@ -4,12 +4,11 @@
  *
  * Replaces all individual *.probe.ts files with a single runner.
  */
+/* oxlint-disable typescript/no-deprecated -- Existing resolve() adapters implement TerminalBackend until the Emulator migration. */
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "vitest"
 import type { TerminalBackend } from "@termless/core"
 import { ALL_PROBES, type TermlessContext } from "@terminfo/probe-defs"
-
-// ── Re-use backend discovery from setup.ts ──
-// We need the backends array but NOT the describeBackends helper (we'll create our own)
+import { createTermlessContext } from "./headless-batch.ts"
 
 import { manifest } from "@termless/core"
 import { createLogger } from "loggily"
@@ -26,11 +25,14 @@ if (m.backends.peekaboo?.type !== "os") throw new Error("peekaboo must be classi
 const allNames = Object.keys(m.backends).filter((name) => m.backends[name]?.type !== "os")
 
 for (const name of allNames) {
-  const pkg = m.backends[name]!.package
+  const entry = m.backends[name]
+  if (!entry) throw new Error(`Missing backend manifest entry for ${name}`)
+  const pkg = entry.package
   try {
-    const mod = await import(pkg)
-    if (typeof mod.resolve !== "function") throw new Error(`${pkg} does not export resolve()`)
-    const factory: BackendFactory = async () => mod.resolve()
+    const mod = (await import(pkg)) as { resolve?: () => TerminalBackend | Promise<TerminalBackend> }
+    const resolve = mod.resolve
+    if (typeof resolve !== "function") throw new Error(`${pkg} does not export resolve()`)
+    const factory: BackendFactory = () => Promise.resolve(resolve())
     // Verify the actual adapter can initialize before registering its tests.
     const testBackend = await factory()
     try {
@@ -40,7 +42,7 @@ for (const name of allNames) {
       testBackend.destroy()
     }
     backends.push([name, factory])
-    log.debug?.(`Added backend: ${name} (${m.backends[name]!.type})`)
+    log.debug?.(`Added backend: ${name} (${entry.type})`)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     loadErrors.push(`${name} (${pkg}): ${msg}`)
@@ -54,81 +56,17 @@ if (loadErrors.length > 0 || backends.length !== allNames.length) {
   )
 }
 
-// ── Helpers ──
-
-const enc = new TextEncoder()
-const dec = new TextDecoder()
-
-function createTermlessContext(b: TerminalBackend): TermlessContext {
-  let cols: number
-  try {
-    cols = b.getRow(0).length
-  } catch (cause) {
-    throw new Error(`${b.name} has no initialized row 0 grid for headless probes`, { cause })
-  }
-  if (!Number.isSafeInteger(cols) || cols < 1) {
-    throw new Error(`${b.name} returned invalid initialized grid width ${cols}`)
-  }
-  if (cols !== 80) throw new Error(`${b.name} initialized ${cols} columns; requested 80`)
-  return {
-    cols,
-    feed(text: string) {
-      b.feed(enc.encode(text))
-    },
-    feedCapture(text: string) {
-      let response = ""
-      const prev = b.onResponse
-      b.onResponse = (data) => {
-        response += dec.decode(data)
-      }
-      b.feed(enc.encode(text))
-      b.onResponse = prev
-      return response
-    },
-    getCell(row, col) {
-      const cell = b.getCell(row, col)
-      if (b.capabilities.osc8Hyperlinks) {
-        if (cell.hyperlink === undefined)
-          throw new Error(`${b.name} declares OSC 8 link metadata but omitted it at ${row},${col}`)
-        return cell
-      }
-      const { hyperlink: _unreported, ...withoutLink } = cell
-      return withoutLink
-    },
-    getCursor() {
-      return b.getCursor()
-    },
-    getMode(mode) {
-      return b.getMode(mode as any)
-    },
-    getText() {
-      return b.getText()
-    },
-    getScrollback() {
-      return b.getScrollback()
-    },
-    getTitle() {
-      return b.getTitle()
-    },
-    reset() {
-      b.reset()
-    },
-    get capabilities() {
-      return b.capabilities
-    },
-  }
-}
-
 // ── Run all probes against all backends ──
 
 // Group probes by category (prefix before first dot)
 const categories = new Map<string, typeof ALL_PROBES>()
 for (const p of ALL_PROBES) {
-  const cat = p.id.split(".").slice(0, -1).join(".")
   // Use the top-level category (e.g., "sgr", "cursor", "text", etc.)
-  const topCat = p.id.split(".")[0]!
-  if (!categories.has(topCat)) categories.set(topCat, [])
-  categories.get(topCat)!.push(p)
+  const topCat = p.id.split(".")[0]
+  if (!topCat) throw new Error(`Probe has no category: ${p.id}`)
+  const group = categories.get(topCat) ?? []
+  group.push(p)
+  categories.set(topCat, group)
 }
 
 for (const [backendName, factory] of backends) {

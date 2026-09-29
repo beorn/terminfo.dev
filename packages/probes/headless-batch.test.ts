@@ -8,6 +8,7 @@
 /* oxlint-disable typescript/no-deprecated -- Exercise the production TerminalBackend adapter boundary. */
 import { createXtermBackend } from "@termless/xtermjs"
 import { createVtermBackend } from "@termless/vterm"
+import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
 import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch } from "./headless-batch.ts"
@@ -25,6 +26,37 @@ function definition(
   markers: Pick<ProbeDefinition, "termObservationEvidence" | "termlessObservationEvidence"> = {},
 ): ProbeDefinition {
   return { id, termless, term: null, ...markers }
+}
+
+// AC3: eager and lazy parsers must attribute each query reply to its own capture.
+// The existing batch tests exercise returned conclusions, not delayed parser I/O.
+for (const [name, create, available] of [
+  ["xtermjs", createXtermBackend, true],
+  ["kitty", createKittyBackend, isKittyAvailable()],
+] as const) {
+  test.skipIf(!available)(`${name} captures only current query replies across reset`, () => {
+    const value = create({ cols: 80, rows: 24 })
+    const previous = vi.fn()
+    value.onResponse = previous
+    const replies: string[] = []
+    try {
+      collectBatch(value, name, [
+        definition("capture", (ctx) => {
+          ctx.feed("\x1b[6n") // This reply belongs to the previous listener.
+          replies.push(ctx.feedCapture("\x1b[2;3H\x1b[6n"))
+          replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
+          ctx.reset()
+          replies.push(ctx.feedCapture("\x1b[6n"))
+          return { pass: true }
+        }),
+      ])
+      expect(replies).toEqual(["\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R"])
+      expect(previous.mock.calls.map(([bytes]) => new TextDecoder().decode(bytes)).join("")).toBe("\x1b[1;1R")
+      expect(value.onResponse).toBe(previous)
+    } finally {
+      value.destroy()
+    }
+  })
 }
 
 test("real vterm grades interior-region SU without creating scrollback history", () => {
