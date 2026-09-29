@@ -13,6 +13,68 @@ function restoreDefaultTabs(write: (sequence: string) => void, cols: number): vo
   write(sequence + "\x1b[1;1H")
 }
 
+function tabClearResult(
+  positions: {
+    oldFirst: { row: number; col: number } | null
+    oldSecond: { row: number; col: number } | null
+    oldThird: { row: number; col: number } | null
+    after: { row: number; col: number } | null
+  },
+  cols: number,
+  evidence: ObservationEvidence,
+): ProbeResult {
+  const response = JSON.stringify({ cols, ...positions })
+  const { oldFirst, oldSecond, oldThird, after } = positions
+  if (!oldFirst || !oldSecond || !oldThird || !after) {
+    return {
+      pass: false,
+      response,
+      observation: { outcome: "inconclusive", reason: "no-response", evidence },
+    }
+  }
+  if (
+    oldFirst.row !== 1 ||
+    oldFirst.col !== 9 ||
+    oldSecond.row !== 1 ||
+    oldSecond.col !== 17 ||
+    oldThird.row !== 1 ||
+    oldThird.col !== 25
+  ) {
+    return {
+      pass: false,
+      response,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence,
+        note: "Could not establish owned tab stops at columns 9, 17 and 25",
+      },
+    }
+  }
+  const pass = after.row === 1 && after.col === 33
+  const staleStop = after.row === 1 && [9, 17, 25].includes(after.col)
+  return {
+    pass,
+    response,
+    observation: {
+      outcome: pass ? "supported" : staleStop ? "unsupported" : "inconclusive",
+      ...(pass || staleStop ? {} : { reason: "insufficient-evidence" as const }),
+      evidence,
+    },
+    ...(pass || staleStop
+      ? {
+          assertions: [
+            {
+              kind: pass ? ("positive" as const) : ("negative" as const),
+              expected: "After clearing old stops at columns 9, 17 and 25, tab reaches new stop at column 33",
+              observed: response,
+            },
+          ],
+        }
+      : {}),
+  }
+}
+
 function tabPositionResult(
   position: { row: number; col: number } | null,
   expectedCol: number,
@@ -308,124 +370,67 @@ export const textProbes: ProbeDefinition[] = [
     "text.tbc",
     (ctx) => {
       const cols = ctx.cols
-      if (cols < 17) {
+      if (cols < 34) {
         return {
           pass: false,
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
             evidence: "parser-state",
-            note: "Tab fixture needs at least 17 columns",
+            note: "Tab fixture needs at least 34 columns",
           },
         }
       }
       try {
         installTabFixture(ctx.feed)
+        ctx.feed("\x1b[1;25H\x1bH\x1b[1;1H")
         ctx.feed("\t")
-        const before = ctx.getCursor()
-        ctx.feed("\x1b[1;1H\x1b[3g\t")
+        const oldFirst = ctx.getCursor()
+        ctx.feed("\t")
+        const oldSecond = ctx.getCursor()
+        ctx.feed("\t")
+        const oldThird = ctx.getCursor()
+        ctx.feed("\x1b[3g\x1b[1;33H\x1bH\x1b[1;1H\t")
         const after = ctx.getCursor()
-        const response = JSON.stringify({ cols, before, after })
-        if (before.x !== 8) {
-          return {
-            pass: false,
-            response,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "parser-state",
-              note: "Could not establish the initial tab stop",
-            },
-          }
-        }
-        // ECMA-48 specifies TBC clearing, but not HT's destination with no
-        // remaining stop. Staying put cannot establish the named behavior.
-        const pass = after.y === 0 && after.x === cols - 1
-        const unchanged = after.y === 0 && after.x === 8
-        return {
-          pass,
-          response,
-          observation: {
-            outcome: pass ? "supported" : unchanged ? "unsupported" : "inconclusive",
-            ...(pass || unchanged ? {} : { reason: "insufficient-evidence" as const }),
-            evidence: "parser-state",
+        const position = (cursor: { x: number; y: number }) => ({ row: cursor.y + 1, col: cursor.x + 1 })
+        return tabClearResult(
+          {
+            oldFirst: position(oldFirst),
+            oldSecond: position(oldSecond),
+            oldThird: position(oldThird),
+            after: position(after),
           },
-          ...(pass || unchanged
-            ? {
-                assertions: [
-                  {
-                    kind: pass ? ("positive" as const) : ("negative" as const),
-                    expected: `initial col 9; after TBC col ${cols}`,
-                    observed: response,
-                  },
-                ],
-              }
-            : {}),
-        }
+          cols,
+          "parser-state",
+        )
       } finally {
         restoreDefaultTabs(ctx.feed, cols)
       }
     },
     async (ctx) => {
-      if (ctx.cols < 17) {
+      if (ctx.cols < 34) {
         return {
           pass: false,
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
             evidence: "behavior",
-            note: "Tab fixture needs at least 17 columns",
+            note: "Tab fixture needs at least 34 columns",
           },
         }
       }
       try {
         installTabFixture(ctx.write)
+        ctx.write("\x1b[1;25H\x1bH\x1b[1;1H")
         ctx.write("\t")
-        const before = await ctx.queryCursorPosition()
-        ctx.write("\x1b[1;1H\x1b[3g\t")
+        const oldFirst = await ctx.queryCursorPosition()
+        ctx.write("\t")
+        const oldSecond = await ctx.queryCursorPosition()
+        ctx.write("\t")
+        const oldThird = await ctx.queryCursorPosition()
+        ctx.write("\x1b[3g\x1b[1;33H\x1bH\x1b[1;1H\t")
         const after = await ctx.queryCursorPosition()
-        if (!before || !after) {
-          return {
-            pass: false,
-            note: "No cursor response",
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "behavior" },
-          }
-        }
-        const response = JSON.stringify({ cols: ctx.cols, before, after })
-        if (before.col !== 9) {
-          return {
-            pass: false,
-            response,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "behavior",
-              note: "Could not establish the initial tab stop",
-            },
-          }
-        }
-        const pass = after.row === 1 && after.col === ctx.cols
-        const unchanged = after.row === 1 && after.col === 9
-        return {
-          pass,
-          response,
-          observation: {
-            outcome: pass ? "supported" : unchanged ? "unsupported" : "inconclusive",
-            ...(pass || unchanged ? {} : { reason: "insufficient-evidence" as const }),
-            evidence: "behavior",
-          },
-          ...(pass || unchanged
-            ? {
-                assertions: [
-                  {
-                    kind: pass ? ("positive" as const) : ("negative" as const),
-                    expected: `initial col 9; after TBC col ${ctx.cols}`,
-                    observed: response,
-                  },
-                ],
-              }
-            : {}),
-        }
+        return tabClearResult({ oldFirst, oldSecond, oldThird, after }, ctx.cols, "behavior")
       } finally {
         restoreDefaultTabs(ctx.write, ctx.cols)
       }

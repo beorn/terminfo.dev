@@ -71,57 +71,114 @@ function byId(id: string) {
   return { term: probe.term, termless: probe.termless }
 }
 
-test("TBC accepts a measured right-margin tab and restores an eight-column fixture", async () => {
+// vterm.js stays at the current column when no stops exist. The model keeps
+// that behavior so this test catches a probe that mistakes the no-stop HT
+// destination for evidence that TBC cleared its old stops.
+function tabTerminal(ignoreClear = false, ignoreNewStop = false) {
+  let col = 1
+  const stops = new Set(Array.from({ length: 10 }, (_, index) => 9 + index * 8))
   const writes: string[] = []
-  let queries = 0
+  return {
+    writes,
+    get col() {
+      return col
+    },
+    write(sequence: string) {
+      writes.push(sequence)
+      for (const match of sequence.matchAll(/\x1b\[(\d+);(\d+)H|\x1b\[(\d+)g|\x1bH|\t/g)) {
+        if (match[1] && match[2]) col = Number(match[2])
+        else if (match[3] === "3") {
+          if (!ignoreClear) stops.clear()
+        } else if (match[0] === "\x1bH") {
+          if (!ignoreNewStop || col !== 33) stops.add(col)
+        } else if (match[0] === "\t") col = [...stops].filter((stop) => stop > col).sort((a, b) => a - b)[0] ?? col
+      }
+    },
+  }
+}
+
+test("TBC measures old stops removed and a new later stop, including vterm's stationary no-stop HT", async () => {
   const probe = byId("text.tbc")
-  const result = await probe.term(
-    app({
-      write(value) {
-        writes.push(value)
-      },
-      queryCursorPosition: async () => ({ row: 1, col: queries++ === 0 ? 9 : 150 }),
+  for (const ignoredClear of [false, true]) {
+    const terminal = tabTerminal(ignoredClear)
+    const appResult = await probe.term(
+      app({
+        cols: 80,
+        write: terminal.write,
+        queryCursorPosition: async () => ({ row: 1, col: terminal.col }),
+      }),
+    )
+    expect(appResult.observation).toMatchObject({
+      outcome: ignoredClear ? "unsupported" : "supported",
+      evidence: "behavior",
+    })
+    expect(JSON.parse(appResult.response ?? "")).toMatchObject({
+      oldFirst: { col: 9 },
+      oldSecond: { col: 17 },
+      oldThird: { col: 25 },
+      after: { col: ignoredClear ? 9 : 33 },
+    })
+    expect(appResult.assertions).toMatchObject([{ kind: ignoredClear ? "negative" : "positive" }])
+    expect(terminal.writes.join("")).toContain("\x1b[3g\x1b[1;33H\x1bH\x1b[1;1H\t")
+    expect(terminal.writes.at(-1)).toContain("\x1b[1;73H\x1bH")
+
+    const parser = tabTerminal(ignoredClear)
+    const headlessResult = probe.termless(
+      headless({
+        cols: 80,
+        feed: parser.write,
+        getCursor: () => ({ x: parser.col - 1, y: 0, visible: true, style: null }),
+      }),
+    )
+    expect(headlessResult.observation).toMatchObject({
+      outcome: ignoredClear ? "unsupported" : "supported",
+      evidence: "parser-state",
+    })
+    expect(JSON.parse(headlessResult.response ?? "")).toMatchObject({
+      oldFirst: { col: 9 },
+      oldSecond: { col: 17 },
+      oldThird: { col: 25 },
+      after: { col: ignoredClear ? 9 : 33 },
+    })
+    expect(parser.writes.at(-1)).toContain("\x1b[1;73H\x1bH")
+  }
+
+  const noNewStop = tabTerminal(false, true)
+  const noStopResult = probe.termless(
+    headless({
+      feed: noNewStop.write,
+      getCursor: () => ({ x: noNewStop.col - 1, y: 0, visible: true, style: null }),
     }),
   )
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
-  expect(result.assertions).toMatchObject([{ kind: "positive", observed: expect.stringContaining("150") }])
-  expect(writes.join("")).toContain("\x1b[3g")
-  expect(writes.at(-1)).toContain("\x1bH")
-  const ignored = await probe.term(app({ queryCursorPosition: async () => ({ row: 1, col: 9 }) }))
-  expect(ignored.observation).toMatchObject({ outcome: "unsupported", evidence: "behavior" })
-  let stationaryQueries = 0
-  const stationary = await probe.term(
-    app({ queryCursorPosition: async () => ({ row: 1, col: ++stationaryQueries === 1 ? 9 : 1 }) }),
-  )
-  expect(stationary.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "behavior",
-  })
-  expect((await probe.term(app())).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+  expect(noStopResult.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(JSON.parse(noStopResult.response ?? "")).toMatchObject({ after: { col: 1 } })
+  expect(noStopResult.assertions).toBeUndefined()
 })
 
-test("TBC retains vterm's no-stop cursor state as inconclusive", () => {
-  const feeds: string[] = []
-  let read = 0
-  const result = byId("text.tbc").termless(
-    headless({
-      feed(sequence) {
-        feeds.push(sequence)
-      },
-      // Actual vterm.js 0.7.0 observation at 80 columns: first tab x=8,
-      // after TBC with no remaining stops x=0. HT's destination is unspecified.
-      getCursor: () => ({ x: read++ === 0 ? 8 : 0, y: 0, visible: true, style: null }),
-    }),
-  )
-  expect(result.observation).toMatchObject({
+test("TBC leaves failed setup, narrow geometry and absent or malformed cursor evidence inconclusive", async () => {
+  const probe = byId("text.tbc")
+  expect(probe.termless(headless({ cols: 30 })).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "parser-state",
   })
-  expect(JSON.parse(result.response ?? "")).toMatchObject({ cols: 80, before: { x: 8 }, after: { x: 0 } })
+  const malformed = tabTerminal()
+  const result = probe.termless(
+    headless({ feed: malformed.write, getCursor: () => ({ x: 0, y: 1, visible: true, style: null }) }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(result.assertions).toBeUndefined()
-  expect(feeds.at(-1)).toContain("\x1b[1;73H\x1bH")
+  expect(malformed.writes.at(-1)).toContain("\x1b[1;73H\x1bH")
+
+  const missing = tabTerminal()
+  let queries = 0
+  const appResult = await probe.term(
+    app({
+      write: missing.write,
+      queryCursorPosition: async () => (++queries === 4 ? null : { row: 1, col: missing.col }),
+    }),
+  )
+  expect(appResult.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+  expect(missing.writes.at(-1)).toContain("\x1b[1;73H\x1bH")
 })
 
 test("CHT and CBT establish tab stops independent of inherited terminal state", async () => {
