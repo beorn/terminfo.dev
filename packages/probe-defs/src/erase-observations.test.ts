@@ -1,0 +1,153 @@
+/**
+ * @failure Erasure is credited without preserved controls, or a failed cursor setup is blamed on a compliant erase.
+ * @level l1
+ * @consumer Headless and app erase observations projected into terminal support cells.
+ * @testonly none
+ */
+import { expect, test } from "vitest"
+import { eraseProbes } from "./erase.ts"
+import type { TermContext, TermlessContext } from "./types.ts"
+
+const ids = ["erase.line.right", "erase.line.left", "erase.line.all", "erase.character"] as const
+
+function byId(id: (typeof ids)[number]) {
+  const probe = eraseProbes.find((item) => item.id === id)
+  if (!probe?.termless || !probe.term) throw new Error(`missing erase callbacks for ${id}`)
+  return probe
+}
+
+function headless(
+  after: string,
+  adjacentAfter = "KEEP!",
+  missingCell?: number,
+  ignoreCursorSetup = false,
+): TermlessContext {
+  let erased = false
+  let cursorX = 5
+  const before = ["ABCDE", "KEEP!"]
+  const afterRows = [after, adjacentAfter]
+  return {
+    cols: 80,
+    feed(sequence) {
+      if (!ignoreCursorSetup) {
+        if (sequence.includes("\x1b[3G") || sequence.includes("\x1b[1;3H")) cursorX = 2
+        else if (sequence.includes("\x1b[1G")) cursorX = 0
+      }
+      if (/\x1b\[(?:K|0K|1K|2K|3X)/.test(sequence)) erased = true
+    },
+    feedCapture: () => "",
+    getCell(row, col) {
+      const text = (erased ? afterRows : before)[row] ?? ""
+      // A backend that cannot report one cell cannot prove erasure.
+      const char = erased && row === 0 && col === missingCell ? undefined : (text[col] ?? "")
+      return {
+        char: char as string,
+        bold: false,
+        dim: false,
+        italic: false,
+        underline: false,
+        underlineColor: null,
+        strikethrough: false,
+        inverse: false,
+        hidden: false,
+        blink: false,
+        fg: null,
+        bg: null,
+        wide: false,
+      }
+    },
+    getCursor: () => ({ x: cursorX, y: 0, visible: true, style: null }),
+    getMode: () => false,
+    getText: () => "",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset() {},
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "unknown",
+      extensions: new Set(),
+    },
+  }
+}
+
+function app(position: { row: number; col: number } | null): TermContext {
+  return {
+    write() {},
+    queryCursorPosition: async () => position,
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryMode: async () => null,
+    cols: 80,
+  }
+}
+
+test.each([
+  ["erase.line.right", "AB   ", "A    ", "  CDE"],
+  ["erase.line.left", "   DE", "    E", "AB   "],
+  ["erase.line.all", "     ", "   DE", "AB   "],
+  ["erase.character", "   DE", "    E", "AB   "],
+] as const)("%s binds exact erased and preserved cells to its observation", (id, expected, overErase, wrongSide) => {
+  const probe = byId(id)
+  const supported = probe.termless!(headless(expected))
+  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(supported.response).toBeTruthy()
+  expect(supported.assertions).toMatchObject([{ kind: "positive", observed: supported.response }])
+  const raw: unknown = JSON.parse(supported.response ?? "")
+  expect(raw).toMatchObject({ before: "ABCDE".split(""), after: expected.split("") })
+  if (id !== "erase.line.all") {
+    expect(raw).toMatchObject({ cursorBefore: { x: id === "erase.character" ? 0 : 2, y: 0 } })
+  }
+
+  for (const actual of ["ABCDE", overErase, wrongSide]) {
+    if (actual === expected) continue
+    const unsupported = probe.termless!(headless(actual))
+    expect(unsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(unsupported.assertions).toMatchObject([{ kind: "negative", observed: unsupported.response }])
+  }
+
+  const missing = probe.termless!(headless(expected, "KEEP!", 2))
+  expect(missing.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+  })
+  expect(missing.assertions).toBeUndefined()
+})
+
+test.each([
+  ["erase.line.right", "ABCDE"],
+  ["erase.line.left", "     "],
+  ["erase.character", "ABCDE"],
+] as const)("%s does not blame erasure when CHA setup is ignored", (id, actual) => {
+  const result = byId(id).termless!(headless(actual, "KEEP!", undefined, true))
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.assertions).toBeUndefined()
+  const raw: unknown = JSON.parse(result.response ?? "")
+  expect(raw).toMatchObject({ cursorBefore: { x: 5, y: 0 } })
+})
+
+test("EL 2 preserves a neighboring row, while app CPR only reports responsiveness", async () => {
+  const el2 = byId("erase.line.all")
+  expect(el2.termless!(headless("     ", "GONE!")).observation).toMatchObject({
+    outcome: "unsupported",
+    evidence: "parser-state",
+  })
+  for (const id of ids) {
+    expect((await byId(id).term!(app({ row: 1, col: 3 }))).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+    })
+    expect((await byId(id).term!(app(null))).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+    })
+  }
+})

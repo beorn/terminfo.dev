@@ -582,6 +582,20 @@ async function liveClipboardProbe(ctx: TermContext, kind: "write" | "read" | "ro
     if (kind !== "read") {
       const nonce = `terminfo-osc52-${randomUUID()}`
       ctx.write(`\x1b]52;c;${btoa(nonce)}\x07`)
+      // A reply on the same TTY confirms the terminal processed the preceding write.
+      // The independent clipboard read below is still the evidence of its effect.
+      const cursor = await ctx.queryCursorPosition()
+      if (!cursor) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "no-response",
+            evidence: "behavior",
+            note: "No cursor reply after OSC 52 write; clipboard contents were not measured",
+          },
+        }
+      }
       const measured = await fixture.readText()
       if (measured !== nonce) {
         return {
