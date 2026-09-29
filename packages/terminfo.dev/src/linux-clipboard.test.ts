@@ -32,9 +32,9 @@ test.runIf(process.platform === "linux")(
     writeFileSync(receipt, JSON.stringify({ schemaVersion: 1, runId: "a".repeat(32), profile: "allow" }), {
       mode: 0o600,
     })
-    await expect(
-      createLinuxClipboardAdapter(receipt, "a".repeat(32), measuredExecutable, "c".repeat(32), process.stdout),
-    ).rejects.toThrow("Invalid owned clipboard receipt")
+    await expect(createLinuxClipboardAdapter(receipt, "a".repeat(32), measuredExecutable)).rejects.toThrow(
+      "Invalid owned clipboard receipt",
+    )
     writeFileSync(
       receipt,
       JSON.stringify({
@@ -48,9 +48,9 @@ test.runIf(process.platform === "linux")(
         permissions: "",
       }),
     )
-    await expect(
-      createLinuxClipboardAdapter(receipt, "a".repeat(32), measuredExecutable, "c".repeat(32), process.stdout),
-    ).rejects.toThrow("invalid PID")
+    await expect(createLinuxClipboardAdapter(receipt, "a".repeat(32), measuredExecutable)).rejects.toThrow(
+      "invalid PID",
+    )
     writeFileSync(
       receipt,
       JSON.stringify({
@@ -70,9 +70,9 @@ test.runIf(process.platform === "linux")(
         permissions: "clipboard: read=allow,write=allow",
       }),
     )
-    await expect(
-      createLinuxClipboardAdapter(receipt, "b".repeat(32), measuredExecutable, "c".repeat(32), process.stdout),
-    ).rejects.toThrow("does not match this collector run")
+    await expect(createLinuxClipboardAdapter(receipt, "b".repeat(32), measuredExecutable)).rejects.toThrow(
+      "does not match this collector run",
+    )
   },
 )
 
@@ -146,12 +146,13 @@ try {
     },
   }))
   const base = pathToFileURL(root + "/").href
-  const verifier = await import(base + "linux-clipboard.ts")
+  const verifier = await import(base + "owned-terminal.ts")
   const { runProbeBatch } = await import(base + "probes/unified.ts")
   const { openControllingTTY } = await import(base + "tty.ts")
   const executable = { path: kittyExecutable, sha256: digest("owned-kitty-binary") }
   const factory = (out, run = capture, live = executable) =>
-    verifier.createLinuxClipboardAdapter(receiptPath, launch, live, run, out)
+    verifier.createOwnedTerminal({ expectedLaunchRunId: launch, captureRunId: run, out,
+      linux: { receiptPath, executable: live } })
   if (mode === "no-ctty") {
     await assert.rejects(factory(process.stdout), /controlling tty_nr 0/)
   } else {
@@ -203,13 +204,13 @@ try {
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, foreign), false)
     assert.equal(verifier.ownedTerminalVerifiedFor({ ...adapter }, capture, process.stdout), false)
     const owned = await runProbeBatch({ ids: ["reset.ris", "extensions.osc52-write"], captureRunId: capture,
-      clipboard: adapter, out: process.stdout })
+      ownedTerminal: adapter, out: process.stdout })
     assert.match(owned.rawReplies["reset.ris"], /\\u001bc/)
     assert.equal(owned.ungradedDiagnostics["reset.ris"].kind, "legacy-callback")
     assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write").reason, "policy-refused")
     assert.deepEqual(JSON.parse(owned.rawReplies["extensions.osc52-write"]).writes, [])
     for (const [run, out] of [["c".repeat(32), process.stdout], [capture, foreign], [capture, fake]]) {
-      const refused = await runProbeBatch({ ids: ["reset.ris"], captureRunId: run, clipboard: adapter, out })
+      const refused = await runProbeBatch({ ids: ["reset.ris"], captureRunId: run, ownedTerminal: adapter, out })
       assert.equal(refused.observations[0].reason, "policy-refused")
       assert.deepEqual(JSON.parse(refused.rawReplies["reset.ris"]).writes, [])
     }
@@ -225,7 +226,7 @@ try {
     const aliasSize = await aliasAdapter.readGeometry()
     assert.deepEqual([aliasSize.status, aliasSize.rows, aliasSize.cols], ["measured", 31, 73])
     const aliasBatch = await runProbeBatch({ ids: ["reset.ris"], captureRunId: "d".repeat(32),
-      clipboard: aliasAdapter, out: alias })
+      ownedTerminal: aliasAdapter, out: alias })
     assert.match(aliasBatch.rawReplies["reset.ris"], /\\u001bc/)
     await aliasAdapter.dispose()
     await new Promise((resolve) => alias.end(resolve))
@@ -233,7 +234,7 @@ try {
     await assert.rejects(adapter.readGeometry(), /no live bound capture/)
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, process.stdout), false)
     const disposed = await runProbeBatch({ ids: ["reset.ris"], captureRunId: capture,
-      clipboard: adapter, out: process.stdout })
+      ownedTerminal: adapter, out: process.stdout })
     assert.equal(disposed.observations[0].reason, "policy-refused")
     assert.deepEqual(JSON.parse(disposed.rawReplies["reset.ris"]).writes, [])
     await new Promise((resolve) => foreign.end(resolve))

@@ -230,6 +230,54 @@ it("does not disclose the bearer token to a listener with another run identity",
   expect(seen).toEqual([{ path: "/info", authorization: undefined }])
 })
 
+// The Mac owner assertion must arrive before probing; existing token tests do
+// not detect a client silently dropping the assertion and issuing an ordinary GET.
+it("sends the attributed owner assertion only after verifying the private daemon", async () => {
+  const owner = {
+    asserter: "terminfo-admin" as const,
+    launchRunId: "a".repeat(32),
+    workerPid: 222,
+    windowId: 791,
+    tabTty: "/dev/ttys004",
+    intendedVersion: "2.15",
+  }
+  const seen: Array<{ path: string; method: string; authorization: string | undefined; body: string }> = []
+  server = createServer((req, res) => {
+    void (async () => {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) chunks.push(Buffer.from(chunk))
+      seen.push({
+        path: req.url ?? "",
+        method: req.method ?? "",
+        authorization: req.headers.authorization,
+        body: Buffer.concat(chunks).toString(),
+      })
+      res.end(JSON.stringify({ runId: owner.launchRunId, pid: 222, terminal: "terminal-app", terminalVersion: "2.15" }))
+    })().catch((error: unknown) => res.destroy(error instanceof Error ? error : new Error(String(error))))
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const address = server.address()
+  if (!address || typeof address === "string") throw new Error("fixture did not bind")
+  const registration = {
+    runId: owner.launchRunId,
+    pid: 222,
+    port: address.port,
+    token: "b".repeat(64),
+    terminal: "terminal-app",
+    terminalVersion: "2.15",
+  }
+  await requestDaemonProbe(registration, owner)
+  expect(seen.map(({ path, method }) => ({ path, method }))).toEqual([
+    { path: "/info", method: "GET" },
+    { path: "/probe", method: "POST" },
+  ])
+  expect(seen[0]?.authorization).toBeUndefined()
+  expect(seen[1]?.authorization).toBe(`Bearer ${registration.token}`)
+  expect(JSON.parse(seen[1]!.body)).toEqual({ terminalAppOwner: owner })
+  expect(seen[1]!.body).not.toContain(registration.token)
+})
+
 it("refuses the old boolean daemon payload instead of upgrading it to v2 observations", async () => {
   const legacy = new Response(
     JSON.stringify({

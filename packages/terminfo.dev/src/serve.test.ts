@@ -27,13 +27,13 @@ async function startTestDaemon() {
     },
   )
   let filename!: string
-  let registration!: { port: number; token?: string }
+  let registration!: { port: number; token?: string; runId: string; pid: number }
   await vi.waitFor(
     () => {
       const files = readdirSync(join(home!, ".terminfo-dev/daemons"))
       expect(files).toHaveLength(1)
       filename = join(home!, ".terminfo-dev/daemons", files[0]!)
-      registration = JSON.parse(readFileSync(filename, "utf8")) as { port: number; token?: string }
+      registration = JSON.parse(readFileSync(filename, "utf8")) as typeof registration
     },
     { timeout: 2000 },
   )
@@ -51,6 +51,36 @@ afterEach(async () => {
 })
 
 describe("daemon HTTP boundary", () => {
+  // Carrier validation precedes source-suite loading. The old endpoint ignored
+  // these bodies and tried to probe; authentication coverage did not detect that.
+  it("refuses malformed or mismatched owner assertions before collection", async () => {
+    const { registration } = await startTestDaemon()
+    const url = `http://127.0.0.1:${registration.port}/probe`
+    const owner = {
+      asserter: "terminfo-admin",
+      launchRunId: registration.runId,
+      workerPid: registration.pid,
+      windowId: 791,
+      tabTty: "/dev/ttys004",
+      intendedVersion: "2.15",
+    }
+    const headers = { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" }
+    const unauthenticated = await fetch(url, { method: "POST", body: JSON.stringify({ terminalAppOwner: owner }) })
+    expect(unauthenticated.status).toBe(403)
+    for (const body of [
+      "{malformed",
+      JSON.stringify({ terminalAppOwner: null }),
+      JSON.stringify({ terminalAppOwner: { ...owner, launchRunId: "f".repeat(32) } }),
+      JSON.stringify({ terminalAppOwner: { ...owner, workerPid: registration.pid + 1 } }),
+      JSON.stringify({ terminalAppOwner: { ...owner, token: registration.token } }),
+      JSON.stringify({ unexpectedOwner: owner }),
+    ]) {
+      const response = await fetch(url, { method: "POST", headers, body })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ error: "Invalid or mismatched Terminal.app owner assertion" })
+    }
+  })
+
   it("refuses v2 collection without a declared source suite", async () => {
     const { registration } = await startTestDaemon()
     const response = await fetch(`http://127.0.0.1:${registration.port}/probe`, {

@@ -16,7 +16,12 @@ import {
   saveDaemonProbeRun,
   stopOwnedDaemon,
 } from "terminfo.dev/src/daemon-client.ts"
-import { captureTerminalAppReceipt, closeOwnedTerminalWindow, launchTerminalWindow } from "./terminal-app-receipt.ts"
+import {
+  assertOwnedTerminalWindow,
+  captureTerminalAppReceipt,
+  closeOwnedTerminalWindow,
+  launchTerminalWindow,
+} from "./terminal-app-receipt.ts"
 
 vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true), writeFileSync: vi.fn() }))
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn(), execSync: vi.fn(() => "2.15\n"), spawn: vi.fn() }))
@@ -37,6 +42,7 @@ vi.mock("terminfo.dev/src/daemon-client.ts", () => ({
   shellQuote: vi.fn((text: string) => `'${text}'`),
 }))
 vi.mock("./terminal-app-receipt.ts", () => ({
+  assertOwnedTerminalWindow: vi.fn(),
   captureTerminalAppReceipt: vi.fn(),
   closeOwnedTerminalWindow: vi.fn(),
   launchTerminalWindow: vi.fn(),
@@ -114,6 +120,18 @@ describe("Terminal.app app collection", () => {
     await handleApp("terminal-app", {})
     expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "terminal-app")
     expect(captureTerminalAppReceipt).toHaveBeenCalledWith(window, 555, "2.15")
+    expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window)
+    expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
+      asserter: "terminfo-admin",
+      launchRunId: "private-run",
+      workerPid: 555,
+      windowId: 14,
+      tabTty: "/dev/ttys003",
+      intendedVersion: "2.15",
+    })
+    const requestOrder = vi.mocked(requestDaemonProbe).mock.invocationCallOrder[0]!
+    expect(vi.mocked(captureTerminalAppReceipt).mock.invocationCallOrder[0]).toBeLessThan(requestOrder)
+    expect(vi.mocked(assertOwnedTerminalWindow).mock.invocationCallOrder[0]).toBeLessThan(requestOrder)
     expect(saveDaemonProbeRun).toHaveBeenCalledOnce()
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0]).toMatchObject({
       origin: { kind: "collector", appLaunch: receipt },
@@ -129,7 +147,19 @@ describe("Terminal.app app collection", () => {
       throw new Error("unsealed snapshot")
     })
     await expect(handleApp("terminal-app", {})).rejects.toThrow(/unsealed snapshot/)
+    expect(requestDaemonProbe).not.toHaveBeenCalled()
     expect(saveDaemonProbeRun).not.toHaveBeenCalled()
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
+  })
+
+  test("a refused window assertion prevents the probe request and raw write", async () => {
+    vi.mocked(assertOwnedTerminalWindow).mockImplementationOnce(() => {
+      throw new Error("owned Terminal tab TTY changed")
+    })
+    await expect(handleApp("terminal-app", {})).rejects.toThrow(/tab TTY changed/)
+    expect(requestDaemonProbe).not.toHaveBeenCalled()
+    expect(saveDaemonProbeRun).not.toHaveBeenCalled()
+    expect(stopOwnedDaemon).toHaveBeenCalledOnce()
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
   })
 })

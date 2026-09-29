@@ -1,12 +1,10 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
-import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync, statSync } from "node:fs"
+import { readFileSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, sep } from "node:path"
-import { isatty, WriteStream } from "node:tty"
 import type { ClipboardFixture, ProbeResult, TermContext } from "@terminfo/probe-defs"
 import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
-import { wasCollectorOpenedControllingTTY } from "./tty.ts"
 
 interface ClipboardReceipt {
   schemaVersion: 1
@@ -39,195 +37,11 @@ export interface LinuxClipboardAdapter {
   readonly config: string
   readonly permissions: string
   readonly summary: string
-  readonly geometryAtGrant: GeometryMeasurement
-  readGeometry(): Promise<GeometryMeasurement>
   withClipboardFixture(
     work: Parameters<NonNullable<TermContext["withClipboardFixture"]>>[0],
     trace: (event: ClipboardTraceEvent) => void,
   ): Promise<ProbeResult>
   dispose(): Promise<void>
-}
-
-export type GeometryMeasurement =
-  | {
-      status: "measured"
-      at: string
-      source: "stty size on a /proc/self/fd reopen of the verified output device"
-      rows: number
-      cols: number
-      stdout: string
-      stderr: string
-    }
-  | {
-      status: "unavailable"
-      at: string
-      source: "stty size on a /proc/self/fd reopen of the verified output device"
-      diagnostic: string
-      stdout: string
-      stderr: string
-    }
-
-/** stty reads a checked /proc reopen of the selected terminal device; it never supplies a fallback size. */
-async function readBoundGeometry(binding: ControllingOutputMatch): Promise<GeometryMeasurement> {
-  const at = new Date().toISOString()
-  const source = "stty size on a /proc/self/fd reopen of the verified output device" as const
-  const unavailable = (diagnostic: string, stdout = "", stderr = ""): GeometryMeasurement => ({
-    status: "unavailable",
-    at,
-    source,
-    diagnostic,
-    stdout,
-    stderr,
-  })
-  return new Promise((resolve) => {
-    let stdout = ""
-    let stderr = ""
-    let diagnostic: string | undefined
-    let settled = false
-    let inputFd: number | undefined
-    try {
-      // Bun cannot pass fd 1 directly as a child's stdin. Reopen only this
-      // verified stream through /proc, without acquiring another controlling TTY.
-      inputFd = openSync(`/proc/self/fd/${binding.selectedFd}`, constants.O_RDONLY | constants.O_NOCTTY)
-      const inputRdev = fstatSync(inputFd).rdev
-      if (!isatty(inputFd)) {
-        closeSync(inputFd)
-        inputFd = undefined
-        resolve(unavailable(`stty reopened selected output fd ${binding.selectedFd} is not a TTY (rdev ${inputRdev})`))
-        return
-      }
-      if (inputRdev !== binding.outputRdev) {
-        closeSync(inputFd)
-        inputFd = undefined
-        resolve(unavailable(`stty input device ${inputRdev} differs from selected output device ${binding.outputRdev}`))
-        return
-      }
-    } catch (error) {
-      if (inputFd !== undefined) closeSync(inputFd)
-      resolve(
-        unavailable(
-          `stty could not reopen selected output fd ${binding.selectedFd}: ${error instanceof Error ? error.message : String(error)}`,
-        ),
-      )
-      return
-    }
-    let child: ChildProcess
-    try {
-      child = spawn("stty", ["size"], { stdio: [inputFd, "pipe", "pipe"] })
-    } catch (error) {
-      closeSync(inputFd)
-      resolve(unavailable(`stty size failed to start: ${error instanceof Error ? error.message : String(error)}`))
-      return
-    }
-    const finish = (code: number | null) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      closeSync(inputFd)
-      if (!diagnostic && code !== 0) diagnostic = `stty size exited ${String(code)}`
-      const match = /^(\d+) (\d+)\n?$/.exec(stdout)
-      const rows = Number(match?.[1])
-      const cols = Number(match?.[2])
-      if (!diagnostic && match && Number.isSafeInteger(rows) && rows > 0 && Number.isSafeInteger(cols) && cols > 0) {
-        resolve({ status: "measured", at, source, rows, cols, stdout, stderr })
-      } else {
-        resolve(unavailable(diagnostic ?? "stty size returned invalid rows and cols", stdout, stderr))
-      }
-    }
-    const append = (current: string, chunk: Buffer): string => {
-      const next = current + chunk.toString("utf8")
-      if (Buffer.byteLength(next) > 256) {
-        diagnostic = "stty size output exceeded 256 bytes"
-        child.kill("SIGKILL")
-      }
-      return next.slice(0, 256)
-    }
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout = append(stdout, chunk)
-    })
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr = append(stderr, chunk)
-    })
-    child.on("error", (error) => {
-      diagnostic = `stty size failed: ${error.message}`
-      finish(null)
-    })
-    child.on("close", finish)
-    const timer = setTimeout(() => {
-      diagnostic = "stty size timed out after 1000 ms"
-      child.kill("SIGKILL")
-      finish(null)
-    }, 1000)
-  })
-}
-
-type ControllingOutputMatch = {
-  matched: "pty" | "dev-tty"
-  selectedFd: number
-  controllingTtyNr: number
-  inputRdev: number
-  outputRdev: number
-}
-type OwnedOutput = { captureRunId: string; out: NodeJS.WriteStream; matched: ControllingOutputMatch["matched"] }
-const verifiedTerminalOwners = new WeakMap<LinuxClipboardAdapter, OwnedOutput>()
-
-/** The clipboard factory is currently the live Linux owner verifier; its adapter proves one capture's disposable terminal. */
-export function ownedTerminalVerifiedFor(
-  adapter: LinuxClipboardAdapter | undefined,
-  captureRunId: string,
-  out: NodeJS.WriteStream,
-): boolean {
-  const owner = adapter && verifiedTerminalOwners.get(adapter)
-  return owner !== undefined && owner.captureRunId === captureRunId && owner.out === out
-}
-
-/** Linux /proc field 7 names the controlling TTY, unlike the /dev/tty alias's own device number. */
-function controllingOutputCase(out: NodeJS.WriteStream): ControllingOutputMatch {
-  const fd = (out as unknown as { fd?: unknown }).fd
-  if (
-    typeof fd !== "number" ||
-    !Number.isSafeInteger(fd) ||
-    fd < 0 ||
-    (out !== process.stdout && !(out instanceof WriteStream))
-  ) {
-    throw new Error(`Owned output is not a real TTY stream (fd ${String(fd)})`)
-  }
-  if (!isatty(0)) throw new Error("Owned input fd 0 is not a TTY")
-  if (!isatty(fd)) throw new Error(`Owned output fd ${fd} is not a TTY`)
-  const stat = readFileSync("/proc/self/stat", "utf8")
-  const fields = stat
-    .slice(stat.lastIndexOf(")") + 2)
-    .trim()
-    .split(/\s+/)
-  const ttyNumber = Number(fields[4])
-  if (!Number.isInteger(ttyNumber) || ttyNumber < -2147483648 || ttyNumber > 2147483647) {
-    throw new Error(`Invalid controlling tty_nr ${String(fields[4])}`)
-  }
-  const controlling = ttyNumber >>> 0
-  const inputDevice = fstatSync(0).rdev
-  if (controlling === 0 || inputDevice !== controlling) {
-    throw new Error(`Owned input device ${inputDevice} differs from controlling tty_nr ${controlling}`)
-  }
-  const outputDevice = fstatSync(fd).rdev
-  if (outputDevice === controlling) {
-    return {
-      matched: "pty",
-      selectedFd: fd,
-      controllingTtyNr: controlling,
-      inputRdev: inputDevice,
-      outputRdev: outputDevice,
-    }
-  }
-  if (wasCollectorOpenedControllingTTY(out) && outputDevice === 1280) {
-    return {
-      matched: "dev-tty",
-      selectedFd: fd,
-      controllingTtyNr: controlling,
-      inputRdev: inputDevice,
-      outputRdev: outputDevice,
-    }
-  }
-  throw new Error(`Owned output device ${outputDevice} differs from controlling tty_nr ${controlling}`)
 }
 
 type Trace = (event: ClipboardTraceEvent) => void
@@ -392,10 +206,7 @@ export async function createLinuxClipboardAdapter(
   receiptPath: string,
   expectedLaunchRunId: string,
   executable: LiveExecutable,
-  captureRunId: string,
-  out: NodeJS.WriteStream,
 ): Promise<LinuxClipboardAdapter> {
-  if (!/^[0-9a-f]{32}$/.test(captureRunId)) throw new Error("Invalid capture run ID for owned terminal")
   if (process.platform !== "linux") throw new Error("Owned clipboard fixture requires Linux")
   const receiptBytes = readFileSync(ownedReceipt(receiptPath))
   const receipt = assertShape(JSON.parse(receiptBytes.toString("utf8")) as unknown)
@@ -408,7 +219,6 @@ export async function createLinuxClipboardAdapter(
   ) {
     throw new Error("Owned clipboard receipt does not match this collector run, display, or terminal")
   }
-  const outputBinding = controllingOutputCase(out)
   const expectedPermissions = {
     default: "clipboard: read=ask,write=allow; OSC52=not-run",
     allow: "clipboard: read=allow,write=allow",
@@ -520,27 +330,11 @@ export async function createLinuxClipboardAdapter(
   if ((await readText(() => {})) !== baseline) {
     throw new Error("Initial owned clipboard readback differs from generated baseline")
   }
-  const geometryAtGrant = await readBoundGeometry(outputBinding)
   const withClipboardFixture = createClipboardTransaction(baseline, { assertOwned, readText, writeText })
   const adapter: LinuxClipboardAdapter = {
     profile: receipt.profile,
     config: receipt.config,
     permissions: receipt.permissions,
-    geometryAtGrant,
-    async readGeometry() {
-      const owner = verifiedTerminalOwners.get(adapter)
-      if (!owner || owner.captureRunId !== captureRunId || owner.out !== out) {
-        throw new Error("Owned geometry read has no live bound capture")
-      }
-      const current = controllingOutputCase(out)
-      if (
-        current.selectedFd !== outputBinding.selectedFd ||
-        current.controllingTtyNr !== outputBinding.controllingTtyNr
-      ) {
-        throw new Error("Owned geometry output binding changed")
-      }
-      return readBoundGeometry(current)
-    },
     summary: JSON.stringify({
       receiptSha256: digest(receiptBytes),
       runId: receipt.runId,
@@ -549,8 +343,6 @@ export async function createLinuxClipboardAdapter(
       permissions: receipt.permissions,
       display: { name: receipt.display.name, xvfbPid: receipt.display.xvfbPid },
       terminal: receipt.terminal,
-      outputBinding,
-      geometryAtGrant,
       selection: {
         helperPid: receipt.selection.helperPid,
         helperExecutableSha256: receipt.selection.helperExecutable.sha256,
@@ -560,7 +352,6 @@ export async function createLinuxClipboardAdapter(
     }),
     withClipboardFixture,
     async dispose() {
-      verifiedTerminalOwners.delete(adapter)
       await Promise.all(
         [...children].map(
           (child) =>
@@ -580,6 +371,5 @@ export async function createLinuxClipboardAdapter(
       )
     },
   }
-  verifiedTerminalOwners.set(adapter, { captureRunId, out, matched: outputBinding.matched })
   return adapter
 }

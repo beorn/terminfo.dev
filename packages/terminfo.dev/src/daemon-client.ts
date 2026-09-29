@@ -6,6 +6,7 @@ import { join } from "node:path"
 import type { ProbeRun as CollectedProbeRun, ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
 import { decodeCollectorRun, decodeExactUtf8 } from "@terminfo/run-parser"
 import { getTrustedSuiteReceipt } from "./serve.ts"
+import { parseTerminalAppOwner, type TerminalAppOwnerAssertion } from "./owned-terminal.ts"
 
 export interface DaemonRegistration {
   pid: number
@@ -126,16 +127,28 @@ export async function stopOwnedDaemon(owned: OwnedDaemon): Promise<void> {
   }
 }
 
-export async function requestDaemonProbe(daemon: DaemonRegistration): Promise<Response> {
+export async function requestDaemonProbe(
+  daemon: DaemonRegistration,
+  terminalAppOwner?: TerminalAppOwnerAssertion,
+): Promise<Response> {
   if (!Number.isInteger(daemon.port) || daemon.port < 1 || daemon.port > 65535) {
     throw new Error(`Invalid daemon port: ${daemon.port}`)
   }
   if (!daemon.token) {
     throw new Error(`Daemon on port ${daemon.port} has no authorization token; restart it with the current CLI`)
   }
+  const owner = terminalAppOwner === undefined ? undefined : parseTerminalAppOwner(terminalAppOwner)
+  if (
+    owner &&
+    (owner.launchRunId !== daemon.runId || owner.workerPid !== daemon.pid || daemon.terminal !== "terminal-app")
+  ) {
+    throw new Error("Terminal.app owner assertion differs from the selected daemon")
+  }
   await verifyDaemonInfo(daemon)
   const response = await fetch(`http://127.0.0.1:${daemon.port}/probe`, {
-    headers: { Authorization: `Bearer ${daemon.token}` },
+    method: owner ? "POST" : "GET",
+    headers: { Authorization: `Bearer ${daemon.token}`, ...(owner && { "Content-Type": "application/json" }) },
+    ...(owner && { body: JSON.stringify({ terminalAppOwner: owner }) }),
     signal: AbortSignal.timeout(120_000),
   })
   if (!response.ok) {

@@ -28,8 +28,8 @@ import {
   type TTYQueryTrace,
   type TTYTraceEvent,
 } from "../tty.ts"
-import type { ClipboardTraceEvent, GeometryMeasurement, LinuxClipboardAdapter } from "../linux-clipboard.ts"
-import { ownedTerminalVerifiedFor } from "../linux-clipboard.ts"
+import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
+import { ownedTerminalVerifiedFor, type GeometryMeasurement, type OwnedTerminal } from "../owned-terminal.ts"
 
 export interface Probe {
   id: string
@@ -154,7 +154,7 @@ export async function runProbeBatch(
   options: {
     ids?: string[]
     capture?: ProbeCapture
-    clipboard?: LinuxClipboardAdapter
+    ownedTerminal?: OwnedTerminal
     captureRunId?: string
     out?: NodeJS.WriteStream
     geometryCorroboration?: GeometryCorroboration
@@ -179,15 +179,15 @@ export async function runProbeBatch(
   const unavailable = (error: unknown): GeometryMeasurement => ({
     status: "unavailable",
     at: new Date().toISOString(),
-    source: "stty size on a /proc/self/fd reopen of the verified output device",
+    source: options.ownedTerminal?.geometrySource ?? "unavailable: no verified output device",
     diagnostic: error instanceof Error ? error.message : String(error),
     stdout: "",
     stderr: "",
   })
   const readGeometry = async (): Promise<GeometryMeasurement> => {
     try {
-      if (!options.clipboard) throw new Error("No owned geometry reader")
-      return await options.clipboard.readGeometry()
+      if (!options.ownedTerminal) throw new Error("No owned geometry reader")
+      return await options.ownedTerminal.readGeometry()
     } catch (error) {
       return unavailable(error)
     }
@@ -199,7 +199,10 @@ export async function runProbeBatch(
     const clipboardEvents: ClipboardTraceEvent[] = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
-    if (probe.termWrites !== "query" && !ownedTerminalVerifiedFor(options.clipboard, options.captureRunId ?? "", out)) {
+    if (
+      probe.termWrites !== "query" &&
+      !ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
+    ) {
       batch.observations.push({
         featureId: probe.id,
         outcome: "inconclusive",
@@ -216,8 +219,8 @@ export async function runProbeBatch(
     if (probe.termNeedsGeometry) {
       geometryCheck = { featureId: probe.id }
       geometryChecks.push(geometryCheck)
-      const geometryOwner = ownedTerminalVerifiedFor(options.clipboard, options.captureRunId ?? "", out)
-      const grant = geometryOwner ? options.clipboard?.geometryAtGrant : undefined
+      const geometryOwner = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
+      const grant = geometryOwner ? options.ownedTerminal?.geometryAtGrant : undefined
       if (grant?.status === "measured") {
         preGeometry = await readGeometry()
         geometryCheck.pre = preGeometry
@@ -256,8 +259,8 @@ export async function runProbeBatch(
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
     })
-    if (options.clipboard && options.clipboard.profile !== "default") {
-      const clipboard = options.clipboard
+    if (options.ownedTerminal?.clipboard && options.ownedTerminal.clipboard.profile !== "default") {
+      const clipboard = options.ownedTerminal.clipboard
       context.withClipboardFixture = (work) =>
         clipboard.withClipboardFixture(work, (event) => clipboardEvents.push(event))
     }
@@ -348,11 +351,11 @@ export async function runProbeBatch(
       }
     }
   }
-  if (options.clipboard && ownedTerminalVerifiedFor(options.clipboard, options.captureRunId ?? "", out)) {
+  if (options.ownedTerminal && ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)) {
     batch.rawReplies["collector.geometry"] = JSON.stringify({
-      source: "stty size on a /proc/self/fd reopen of the verified output device",
-      bindingReceiptRef: "collector.clipboardFixture",
-      grant: options.clipboard.geometryAtGrant ?? null,
+      source: options.ownedTerminal?.geometrySource ?? "unavailable: no verified output device",
+      bindingReceiptRef: "collector.terminalOwnership",
+      grant: options.ownedTerminal.geometryAtGrant ?? null,
       corroboration: options.geometryCorroboration ?? null,
       checks: geometryChecks,
     })

@@ -7,13 +7,15 @@
 import { afterEach, expect, it, vi } from "vitest"
 import { ALL_PROBES, type ProbeRun, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { decodeCollectorRun } from "@terminfo/run-parser"
-import * as terminalOwnership from "../linux-clipboard.ts"
+import * as terminalOwnership from "../owned-terminal.ts"
 import { runProbeBatch } from "./unified.ts"
 
+const linuxGeometrySource = "stty size on a /proc/self/fd reopen of the verified output device" as const
+const darwinGeometrySource = "stty size on a /dev/fd reopen of the verified output device" as const
 const noGeometry = {
   status: "unavailable" as const,
   at: "2026-09-28T00:00:00.000Z",
-  source: "stty size on a /proc/self/fd reopen of the verified output device" as const,
+  source: linuxGeometrySource,
   diagnostic: "No owned size read in fixture",
   stdout: "",
   stderr: "",
@@ -107,8 +109,8 @@ it("records an owned default-profile OSC 52 refusal as unmeasured with an empty 
   expect(JSON.parse(batch.rawReplies["extensions.osc52-write"]!)).toEqual({ writes: [], queries: [], events: [] })
 })
 
-// A caller cannot manufacture ownership by satisfying the adapter's public TypeScript shape.
-it("refuses a structural clipboard adapter even with the same claimed capture ID", async () => {
+// A caller cannot manufacture ownership by satisfying the owner's public TypeScript shape.
+it("refuses a structural terminal owner even with the same claimed capture ID", async () => {
   const writes: string[] = []
   process.stdout.write = ((text: string) => {
     writes.push(text)
@@ -117,16 +119,7 @@ it("refuses a structural clipboard adapter even with the same claimed capture ID
   const batch = await runProbeBatch({
     ids: ["reset.ris"],
     captureRunId: "a".repeat(32),
-    clipboard: {
-      profile: "default",
-      config: "fixture",
-      permissions: "fixture",
-      summary: "{}",
-      geometryAtGrant: noGeometry,
-      readGeometry: async () => noGeometry,
-      dispose: async () => {},
-      withClipboardFixture: async () => ({ pass: true }),
-    },
+    ownedTerminal: geometryOwner(noGeometry),
   })
   expect(writes).toEqual([])
   expect(batch.observations).toMatchObject([
@@ -176,15 +169,32 @@ function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
 
-const measured = (rows: number, cols: number) => ({
+const measured = (
+  rows: number,
+  cols: number,
+  source: typeof linuxGeometrySource | typeof darwinGeometrySource = linuxGeometrySource,
+) => ({
   status: "measured" as const,
   at: "2026-09-28T00:00:00.000Z",
-  source: "stty size on a /proc/self/fd reopen of the verified output device" as const,
+  source,
   rows,
   cols,
   stdout: `${rows} ${cols}\n`,
   stderr: "",
 })
+
+function geometryOwner(
+  geometryAtGrant: typeof noGeometry | ReturnType<typeof measured>,
+  readGeometry: () => Promise<typeof noGeometry | ReturnType<typeof measured>> = async () => geometryAtGrant,
+) {
+  return {
+    geometrySource: geometryAtGrant.source,
+    geometryAtGrant,
+    summary: "{}",
+    readGeometry,
+    dispose: async () => {},
+  }
+}
 
 it("declines a declared callback with missing or conflicting owned geometry before any feature bytes", async () => {
   verifiedBatchFixture()
@@ -195,17 +205,10 @@ it("declines a declared callback with missing or conflicting owned geometry befo
     writes.push(text)
     return true
   }) as typeof process.stdout.write
-  const clipboard = {
-    profile: "default" as const,
-    config: "fixture",
-    permissions: "fixture",
-    summary: "{}",
-    geometryAtGrant: noGeometry,
-    readGeometry: async () => measured(24, 61),
-    dispose: async () => {},
-    withClipboardFixture: async () => ({ pass: true }),
-  }
-  const missing = await runProbeBatch({ ids: ["reset.ris"], clipboard })
+  const missing = await runProbeBatch({
+    ids: ["reset.ris"],
+    ownedTerminal: geometryOwner(noGeometry, async () => measured(24, 61)),
+  })
   expect(missing.observations).toMatchObject([
     { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
   ])
@@ -217,7 +220,9 @@ it("declines a declared callback with missing or conflicting owned geometry befo
   expect(writes).toEqual([])
   const conflict = await runProbeBatch({
     ids: ["reset.ris"],
-    clipboard: { ...clipboard, geometryAtGrant: measured(24, 61) },
+    ownedTerminal: geometryOwner(measured(24, 61, darwinGeometrySource), async () =>
+      measured(24, 61, darwinGeometrySource),
+    ),
     geometryCorroboration: {
       status: "conflict",
       rows: 25,
@@ -236,7 +241,9 @@ it("declines a declared callback with missing or conflicting owned geometry befo
   ])
   expect(writes).toEqual([])
   expect(JSON.parse(conflict.rawReplies["collector.geometry"]!)).toMatchObject({
-    bindingReceiptRef: "collector.clipboardFixture",
+    source: darwinGeometrySource,
+    bindingReceiptRef: "collector.terminalOwnership",
+    grant: { source: darwinGeometrySource },
     corroboration: {
       query: { sequence: "\x1b[18t", outbound: "\x1b[18t\x1b[c", reason: "reply" },
     },
@@ -255,16 +262,7 @@ it("keeps query-only and nongeometry callbacks runnable when owned size is unava
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
     ids: ["modes.bracketed-paste", "reset.decaln"],
-    clipboard: {
-      profile: "default",
-      config: "fixture",
-      permissions: "fixture",
-      summary: "{}",
-      geometryAtGrant: noGeometry,
-      readGeometry: async () => noGeometry,
-      dispose: async () => {},
-      withClipboardFixture: async () => ({ pass: true }),
-    },
+    ownedTerminal: geometryOwner(noGeometry),
   })
   expect(batch.observations.find((item) => item.featureId === "modes.bracketed-paste")).toMatchObject({
     outcome: "supported",
@@ -288,16 +286,7 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
   try {
     const batch = await runProbeBatch({
       ids: ["device.primary-da"],
-      clipboard: {
-        profile: "default",
-        config: "fixture",
-        permissions: "fixture",
-        summary: "{}",
-        geometryAtGrant: measured(24, 61),
-        readGeometry: async () => (++reads === 1 ? measured(24, 61) : measured(31, 73)),
-        dispose: async () => {},
-        withClipboardFixture: async () => ({ pass: true }),
-      },
+      ownedTerminal: geometryOwner(measured(24, 61), async () => (++reads === 1 ? measured(24, 61) : measured(31, 73))),
     })
     expect(batch.observations).toMatchObject([
       {
@@ -378,16 +367,7 @@ it("uses the injected TTY for callback writes, columns, and nested cursor querie
           rawBase64: Buffer.from("\x1b[?62c").toString("base64"),
         },
       },
-      clipboard: {
-        profile: "default",
-        config: "fixture",
-        permissions: "fixture",
-        summary: "{}",
-        geometryAtGrant: measured(24, 12),
-        readGeometry: async () => measured(24, 12),
-        dispose: async () => {},
-        withClipboardFixture: async () => ({ pass: true }),
-      },
+      ownedTerminal: geometryOwner(measured(24, 12)),
     })
   } finally {
     definition.termNeedsGeometry = original
@@ -481,28 +461,29 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
       order.push(`capture-${role}`)
       return { frame: { role, label, capturedAt: Date.now(), ref: `sha256:${"a".repeat(64)}` }, trace: {} }
     },
-    clipboard: {
-      profile: "allow",
-      config: "fixture",
-      permissions: "fixture",
-      summary: "{}",
-      geometryAtGrant: noGeometry,
-      readGeometry: async () => noGeometry,
-      dispose: async () => {},
-      async withClipboardFixture(work, trace) {
-        const at = new Date().toISOString()
-        const result = await work({
-          readText: async () => {
-            const frame = writes.findLast((text) => text.startsWith("\x1b]52;c;"))
-            const nonce = frame ? atob(/\x1b\]52;c;([^\x07]+)\x07/.exec(frame)?.[1] ?? "") : ""
-            trace({ kind: "clipboard-read", at, sha256: "a".repeat(64), length: nonce.length })
-            return nonce
-          },
-          writeText: async () => {},
-        })
-        trace({ kind: "clipboard-restore", at, sha256: "b".repeat(64), length: 8 })
-        trace({ kind: "clipboard-verify", at, sha256: "b".repeat(64), length: 8 })
-        return result
+    ownedTerminal: {
+      ...geometryOwner(noGeometry),
+      clipboard: {
+        profile: "allow",
+        config: "fixture",
+        permissions: "fixture",
+        summary: "{}",
+        dispose: async () => {},
+        async withClipboardFixture(work, trace) {
+          const at = new Date().toISOString()
+          const result = await work({
+            readText: async () => {
+              const frame = writes.findLast((text) => text.startsWith("\x1b]52;c;"))
+              const nonce = frame ? atob(/\x1b\]52;c;([^\x07]+)\x07/.exec(frame)?.[1] ?? "") : ""
+              trace({ kind: "clipboard-read", at, sha256: "a".repeat(64), length: nonce.length })
+              return nonce
+            },
+            writeText: async () => {},
+          })
+          trace({ kind: "clipboard-restore", at, sha256: "b".repeat(64), length: 8 })
+          trace({ kind: "clipboard-verify", at, sha256: "b".repeat(64), length: 8 })
+          return result
+        },
       },
     },
   })
@@ -526,17 +507,18 @@ it("records failed clipboard restoration as collector error rather than retainin
   process.stdout.write = (() => true) as typeof process.stdout.write
   const batch = await runProbeBatch({
     ids: ["extensions.osc52-write"],
-    clipboard: {
-      profile: "allow",
-      config: "fixture",
-      permissions: "fixture",
-      summary: "{}",
-      geometryAtGrant: noGeometry,
-      readGeometry: async () => noGeometry,
-      dispose: async () => {},
-      async withClipboardFixture(_work, trace) {
-        trace({ kind: "clipboard-restore", at: new Date().toISOString(), sha256: "b".repeat(64), length: 8 })
-        throw new Error("Owned clipboard restoration failed")
+    ownedTerminal: {
+      ...geometryOwner(noGeometry),
+      clipboard: {
+        profile: "allow",
+        config: "fixture",
+        permissions: "fixture",
+        summary: "{}",
+        dispose: async () => {},
+        async withClipboardFixture(_work, trace) {
+          trace({ kind: "clipboard-restore", at: new Date().toISOString(), sha256: "b".repeat(64), length: 8 })
+          throw new Error("Owned clipboard restoration failed")
+        },
       },
     },
   })

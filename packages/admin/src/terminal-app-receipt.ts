@@ -87,17 +87,27 @@ end tell`
   return { windowId, tty: launchedTTY }
 }
 
-/** Close only the still-matching single-tab window created for this collection. */
-export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): void {
-  const script = `tell application "Terminal"
+function ownedWindowScript(window: OwnedTerminalWindow, close: boolean): string {
+  if (!Number.isSafeInteger(window.windowId) || window.windowId < 1) throw new Error("Invalid owned Terminal window ID")
+  const tabTty = tty(window.tty)
+  return `tell application "Terminal"
   set matchingWindows to every window whose id is ${window.windowId}
   if (count of matchingWindows) is not 1 then error "owned Terminal window no longer exists uniquely"
   set w to item 1 of matchingWindows
   if (count of tabs of w) is not 1 then error "owned Terminal window has other tabs"
-  if (tty of tab 1 of w) is not ${JSON.stringify(window.tty)} then error "owned Terminal tab TTY changed"
-  close w
+  if (tty of tab 1 of w) is not ${JSON.stringify(tabTty)} then error "owned Terminal tab TTY changed"
+  ${close ? "close w" : "return true"}
 end tell`
-  run("osascript", ["-e", script])
+}
+
+/** Refresh the admin's window assertion before handing the worker a claim. */
+export function assertOwnedTerminalWindow(window: OwnedTerminalWindow): void {
+  run("osascript", ["-e", ownedWindowScript(window, false)])
+}
+
+/** Recheck and close atomically in the same AppleScript operation. */
+export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): void {
+  run("osascript", ["-e", ownedWindowScript(window, true)])
 }
 
 interface RunningTerminal {

@@ -28,7 +28,12 @@ import { resolveMeasuredAppVersion } from "./identity-guard.ts"
 import { withRawMode, drainStdin, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
-import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
+import {
+  createOwnedTerminal,
+  parseTerminalAppOwner,
+  type OwnedTerminal,
+  type TerminalAppOwnerAssertion,
+} from "./owned-terminal.ts"
 import { parseRunProvenance } from "@terminfo/run-parser"
 
 const s = createStyle()
@@ -112,7 +117,14 @@ export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collec
 }
 
 /** The same source-tree collector powers daemon and inline CLI entry points. */
-export async function collectProbeRun(options: { ids?: string[]; out?: NodeJS.WriteStream } = {}): Promise<ProbeRun> {
+export async function collectProbeRun(
+  options: {
+    ids?: string[]
+    out?: NodeJS.WriteStream
+    terminalAppOwner?: TerminalAppOwnerAssertion
+    expectedLaunchRunId?: string
+  } = {},
+): Promise<ProbeRun> {
   const out = options.out ?? process.stdout
   const captureRunId = randomBytes(16).toString("hex")
   const terminal = detectTerminal()
@@ -137,22 +149,31 @@ export async function collectProbeRun(options: { ids?: string[]; out?: NodeJS.Wr
     if (!executable) throw new Error("Configured Linux capture lacks measured executable")
     capture = await createLinuxCapture(captureDirectory, executable)
   }
-  let clipboard: LinuxClipboardAdapter | undefined
+  let ownedTerminal: OwnedTerminal | undefined
+  if (clipboardReceipt && options.terminalAppOwner)
+    throw new Error("Collection cannot have both Linux and Terminal.app owners")
   if (clipboardReceipt) {
     if (!executable) throw new Error("Owned clipboard receipt lacks measured executable")
-    clipboard = await createLinuxClipboardAdapter(
-      clipboardReceipt,
-      process.env.TERMINFO_RUN_ID ?? "",
-      executable,
+    ownedTerminal = await createOwnedTerminal({
       captureRunId,
       out,
-    )
+      expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+      linux: { receiptPath: clipboardReceipt, executable },
+    })
+  } else if (options.terminalAppOwner) {
+    ownedTerminal = await createOwnedTerminal({
+      captureRunId,
+      out,
+      expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+      terminalApp: options.terminalAppOwner,
+    })
   }
+  const clipboard = ownedTerminal?.clipboard
   let batch: Awaited<ReturnType<typeof runProbeBatch>>
   try {
     batch = await withRawMode(async () => {
       let geometryCorroboration: GeometryCorroboration | undefined
-      if (clipboard) {
+      if (ownedTerminal) {
         const response = await queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/, 700)
         const query = {
           sequence: "\x1b[18t" as const,
@@ -164,7 +185,7 @@ export async function collectProbeRun(options: { ids?: string[]; out?: NodeJS.Wr
         if (response.match) {
           const rows = Number(response.match[1])
           const cols = Number(response.match[2])
-          const grant = clipboard.geometryAtGrant
+          const grant = ownedTerminal.geometryAtGrant
           const status =
             !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols)
               ? "malformed"
@@ -182,19 +203,20 @@ export async function collectProbeRun(options: { ids?: string[]; out?: NodeJS.Wr
         }
       }
       const result = await runProbeBatch({
-        ...options,
+        ids: options.ids,
         out,
         captureRunId,
         ...(capture && { capture }),
-        ...(clipboard && { clipboard }),
+        ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),
       })
       await drainStdin(1000)
       return result
     }, out)
   } finally {
-    await clipboard?.dispose()
+    await ownedTerminal?.dispose()
   }
+  if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
   if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
   const target: ProbeRun["target"] = {
     kind: "app",
@@ -337,8 +359,37 @@ export function startDaemon(port = 0): void {
       }
 
       if (url.pathname === "/probe") {
+        let terminalAppOwner: TerminalAppOwnerAssertion | undefined
+        if (req.method === "POST") {
+          try {
+            const body: unknown = JSON.parse(await readBody(req))
+            if (
+              !body ||
+              typeof body !== "object" ||
+              Array.isArray(body) ||
+              Object.keys(body).some((key) => key !== "terminalAppOwner")
+            ) {
+              throw new Error("Invalid probe request shape")
+            }
+            if ("terminalAppOwner" in body) terminalAppOwner = parseTerminalAppOwner(body.terminalAppOwner)
+            if (
+              terminalAppOwner &&
+              (terminalAppOwner.launchRunId !== runId || terminalAppOwner.workerPid !== process.pid)
+            ) {
+              throw new Error("Terminal.app owner assertion differs from this daemon's launch run or PID")
+            }
+          } catch {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: "Invalid or mismatched Terminal.app owner assertion" }))
+            return
+          }
+        } else if (req.method !== "GET") {
+          res.statusCode = 405
+          res.end(JSON.stringify({ error: "Probe collection requires GET or POST" }))
+          return
+        }
         console.log(s.dim(`[${new Date().toISOString()}] Running ${ALL_PROBES.length} probes...`))
-        const run = await collectProbeRun()
+        const run = await collectProbeRun({ terminalAppOwner, expectedLaunchRunId: runId })
         console.log(
           s.dim(
             `Collected ${run.observations.length}/${ALL_PROBES.length} explicit observations; partial=${!run.suiteComplete}`,

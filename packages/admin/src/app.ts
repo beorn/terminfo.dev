@@ -29,6 +29,7 @@ import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "terminfo.dev/src/identity-guard.ts"
 import { sourceSuiteEnvironment } from "../versions.ts"
 import {
+  assertOwnedTerminalWindow,
   captureTerminalAppReceipt,
   closeOwnedTerminalWindow,
   launchTerminalWindow,
@@ -185,10 +186,23 @@ async function probeDaemon(
   version: string,
   terminalWindow?: OwnedTerminalWindow,
 ): Promise<{ total: number; observed: number }> {
-  const res = await requestDaemonProbe(daemon)
+  const appLaunch = terminalWindow ? captureTerminalAppReceipt(terminalWindow, daemon.pid, version) : null
+  if (terminalWindow) assertOwnedTerminalWindow(terminalWindow)
+  const res = await requestDaemonProbe(
+    daemon,
+    terminalWindow
+      ? {
+          asserter: "terminfo-admin",
+          launchRunId: daemon.runId,
+          workerPid: daemon.pid,
+          windowId: terminalWindow.windowId,
+          tabTty: terminalWindow.tty,
+          intendedVersion: version,
+        }
+      : undefined,
+  )
   const data = await readDaemonProbeResponse(res)
   const identityCheck = verifyTerminalIdentity(appId, data.rawReplies)
-  const appLaunch = terminalWindow ? captureTerminalAppReceipt(terminalWindow, daemon.pid, version) : null
   const run = {
     ...data,
     ...(appLaunch && { origin: { ...data.origin, appLaunch: appLaunch.receipt } }),
