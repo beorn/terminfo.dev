@@ -345,7 +345,8 @@
     "url": "https://vt100.net/docs/vt510-rm/DECTCEM.html",
     "tags": ["dec-private-modes", "vt510"],
     "body": "DECTCEM (DEC Text Cursor Enable Mode) controls cursor visibility. Hide cursor: <code>ESC [ ? 25 l</code>. Show cursor: <code>ESC [ ? 25 h</code>. TUI applications typically hide the cursor during rendering to avoid flicker, then restore it at the final cursor position. Universally supported.",
-    "probe": "Send <code>ESC [ ? 25 l</code> (DECTCEM reset) and verify the cursor is no longer visible.",
+    "probe": "Headless: measure initial visibility, establish a shown control, check the hidden state and verify restoration. Missing readback or an invalid control stays inconclusive. This measures parser state; app cursor replies do not verify visible pixels.",
+    "probeStatus": "partial",
     "baseline": "core",
     "sequence": "ESC [ ? 25 l"
   },
@@ -1759,7 +1760,8 @@
     "url": "https://vt100.net/docs/vt510-rm/SCS.html",
     "tags": ["vt100"],
     "body": "The DEC Special Graphics character set provides box-drawing characters. Activate with <code>ESC ( 0</code> (designate G0 as Special Graphics), deactivate with <code>ESC ( B</code> (restore ASCII). When active, ASCII characters like <code>j k l m q x</code> render as box-drawing glyphs (corners, horizontal/vertical lines).\n\nUsed by legacy TUI applications (dialog, mc, ncurses programs) to draw borders and frames. Modern applications typically use Unicode box-drawing characters (U+2500 block) instead, but DEC Special Graphics remains relevant for environments where UTF-8 is not available.",
-    "probe": "Send <code>\\x1b(0</code> to designate DEC Special Graphics, write \"q\", send <code>\\x1b(B</code> to restore ASCII. Verify the cell does not contain literal \"q\" (should be box-drawing U+2500).",
+    "probe": "Headless: qualify ASCII controls and require exactly U+2500 after DEC Special Graphics designation. The app cursor reply does not establish glyph rendering.",
+    "probeStatus": "partial",
     "baseline": "core"
   },
   "charsets.utf8": {
@@ -1767,7 +1769,8 @@
     "slug": "utf8-mode",
     "tags": ["unicode"],
     "body": "Tests whether the terminal correctly handles UTF-8 encoded text. Virtually all modern terminals default to UTF-8 mode. UTF-8 encodes Unicode code points as 1-4 byte sequences, allowing the full range of Unicode characters (emoji, CJK, mathematical symbols, etc.) to be displayed in the terminal.",
-    "probe": "Write é (e-acute, 2-byte UTF-8) and 世 (CJK, 3-byte UTF-8), verify each renders as the correct Unicode character.",
+    "probe": "Headless: retain measured ASCII controls and require the sampled characters é and 世 in their target cells. This samples Unicode cell handling; it does not cover all UTF-8 byte forms or app-rendered pixels.",
+    "probeStatus": "partial",
     "baseline": "core",
     "url": "https://unicode.org/faq/utf_bom.html"
   },
@@ -1778,7 +1781,8 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "SI (Shift In, 0x0F) and SO (Shift Out, 0x0E) switch between G0 and G1 character sets. The G0 and G1 sets can be independently designated using <code>ESC ( X</code> (G0) and <code>ESC ) X</code> (G1), where X selects the character set (B=ASCII, 0=DEC Special Graphics). This mechanism allows applications to quickly toggle between text and line-drawing characters without re-designating the character set each time.",
-    "probe": "Send <code>\\x1b(0</code> to designate G0 as DEC Special Graphics, write 'l', verify the cell renders as a box-drawing character (not literal 'l'). Restore with <code>\\x1b(B</code>."
+    "probe": "Headless: designate G0 as ASCII and G1 as DEC Special Graphics, then use SI/SO to require l, U+250C, l across three target cells with separate ASCII controls. The app callback does not verify G1 switching.",
+    "probeStatus": "partial"
   },
   "charsets.dec-line-drawing": {
     "name": "DEC line drawing character set",
@@ -1787,7 +1791,8 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "The DEC Special Graphics character set (activated via <code>ESC ( 0</code>) maps ASCII characters to box-drawing glyphs. Key mappings: j=\\u2518 (bottom-right corner), k=\\u2510 (top-right corner), l=\\u250C (top-left corner), m=\\u2514 (bottom-left corner), q=\\u2500 (horizontal line), x=\\u2502 (vertical line). These six characters form the basis for drawing boxes and borders in non-Unicode environments. Legacy applications like dialog, mc, and ncurses-based programs rely on this mapping.",
-    "probe": "Send <code>\\x1b(0jklmqx\\x1b(B</code>, verify all six characters rendered as box-drawing glyphs (none are the literal ASCII characters j, k, l, m, q, x)."
+    "probe": "Headless: qualify the ASCII seed and unchanged control, then require exactly ┘┐┌└─│ for jklmqx under DEC Special Graphics. Arbitrary non-ASCII or blank cells do not pass; app pixels remain unmeasured.",
+    "probeStatus": "partial"
   },
   "device.primary-da": {
     "name": "Primary device attributes (DA1)",

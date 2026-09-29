@@ -142,8 +142,33 @@ export const cursorProbes: ProbeDefinition[] = [
   probe(
     "cursor.hide",
     (ctx) => {
-      ctx.feed("\x1b[?25l")
-      return { pass: ctx.getCursor().visible === false }
+      const before = ctx.getCursor().visible
+      const expected = "Cursor parser visibility changes from shown to hidden and its initial state is restored"
+      if (before === null) {
+        return parserStateResult(null, expected, { before }, "Initial cursor visibility readback is unavailable")
+      }
+      let shown: boolean | null = null
+      let hidden: boolean | null = null
+      try {
+        ctx.feed("\x1b[?25h")
+        shown = ctx.getCursor().visible
+        if (shown === true) {
+          ctx.feed("\x1b[?25l")
+          hidden = ctx.getCursor().visible
+        }
+      } finally {
+        ctx.feed(before ? "\x1b[?25h" : "\x1b[?25l")
+      }
+      const restored = ctx.getCursor().visible
+      const qualified = shown === true && hidden !== null && restored === before
+      return parserStateResult(
+        qualified ? hidden === false : null,
+        expected,
+        { before, shown, hidden, restored },
+        qualified
+          ? "Parser visibility state only; display pixels were not captured"
+          : "Shown control, hidden readback or initial-state restoration was not established",
+      )
     },
     async (ctx) => {
       ctx.write("\x1b[?25l") // hide cursor

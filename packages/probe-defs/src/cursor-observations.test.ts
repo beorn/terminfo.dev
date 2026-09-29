@@ -70,6 +70,57 @@ function headless(x: number, y: number, rows = 24, reply = ""): TermlessContext 
   }
 }
 
+test.each([
+  { initial: true, fault: "none", outcome: "supported" },
+  { initial: false, fault: "none", outcome: "supported" },
+  { initial: true, fault: "ignore-hide", outcome: "unsupported" },
+  { initial: false, fault: "ignore-show", outcome: "inconclusive" },
+  { initial: true, fault: "ignore-restore", outcome: "inconclusive" },
+  { initial: true, fault: "missing-target", outcome: "inconclusive" },
+  { initial: null, fault: "none", outcome: "inconclusive" },
+])("cursor visibility qualifies its control and restores $initial after $fault", ({ initial, fault, outcome }) => {
+  const context = headless(0, 0)
+  let visible: boolean | null = initial
+  const writes: string[] = []
+  context.feed = (sequence) => {
+    writes.push(sequence)
+    if (sequence === "\x1b[?25h" && fault !== "ignore-show" && !(fault === "ignore-restore" && writes.length > 1)) {
+      visible = true
+    }
+    if (sequence === "\x1b[?25l" && fault !== "ignore-hide") visible = fault === "missing-target" ? null : false
+  }
+  context.getCursor = () => ({ x: 0, y: 0, visible, style: null })
+  const result = byId("cursor.hide").termless!(context)
+  expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
+  if (outcome === "inconclusive") {
+    expect(result.observation?.reason).toBe("insufficient-evidence")
+    expect(result.assertions).toBeUndefined()
+  } else {
+    expect(result.assertions).toMatchObject([
+      { kind: outcome === "supported" ? "positive" : "negative", observed: result.response },
+    ])
+    expect(JSON.parse(result.response ?? "")).toMatchObject({
+      before: initial,
+      shown: true,
+      hidden: outcome !== "supported",
+    })
+  }
+  if (initial === null) expect(writes).toEqual([])
+  else expect(writes.at(-1)).toBe(initial ? "\x1b[?25h" : "\x1b[?25l")
+  expect(visible).toBe(fault === "ignore-restore" ? false : initial)
+})
+
+test("cursor visibility restores its measured initial state when the hide write throws", () => {
+  const context = headless(0, 0)
+  const writes: string[] = []
+  context.feed = (sequence) => {
+    writes.push(sequence)
+    if (sequence === "\x1b[?25l") throw new Error("hide write failed")
+  }
+  expect(() => byId("cursor.hide").termless!(context)).toThrow("hide write failed")
+  expect(writes.at(-1)).toBe("\x1b[?25h")
+})
+
 test("cursor save/restore records the mismatched position and a missing app reply stays inconclusive", async () => {
   const probe = byId("cursor.ansi-save")
   const headlessContext = headless(0, 0)

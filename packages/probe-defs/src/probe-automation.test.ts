@@ -914,6 +914,251 @@ describe("extensions without a complete behavior oracle", () => {
   })
 })
 
+/**
+ * @failure Charset probes promoted a literal, blank, or arbitrary glyph without a measured ASCII fixture and exact target cells.
+ * @level l0
+ * @consumer Headless charset probe observations.
+ * @testonly none
+ */
+describe("headless charset cell evidence", () => {
+  const cases = [
+    {
+      id: "charsets.dec-special",
+      minCols: 3,
+      before: [..."qqq"],
+      after: [..."q─q"],
+      ignored: [..."qqq"],
+      wrong: [..."q☃q"],
+      trigger: "\x1b(0q",
+      targetCol: 1,
+      required: ["\x1b(0", "\x1b(B"],
+    },
+    {
+      id: "charsets.utf8",
+      minCols: 5,
+      before: [..."Axy?Z"],
+      after: ["A", "é", "世", "", "Z"],
+      ignored: ["A", "x", "y", "?", "Z"],
+      wrong: ["A", "é", "?", "", "Z"],
+      trigger: "世",
+      targetCol: 1,
+      required: ["é", "世"],
+    },
+    {
+      id: "charsets.g0-g1-switching",
+      minCols: 5,
+      before: [..."AlllZ"],
+      after: [..."Al┌lZ"],
+      ignored: [..."AlllZ"],
+      wrong: [..."Al☃lZ"],
+      trigger: "\x0e",
+      targetCol: 1,
+      required: ["\x1b(B", "\x1b)0", "\x0e", "\x0f", "\x1b)B"],
+    },
+    {
+      id: "charsets.dec-line-drawing",
+      minCols: 7,
+      before: [..."jklmqxj"],
+      after: [..."┘┐┌└─│j"],
+      ignored: [..."jklmqxj"],
+      wrong: [..."☃┐┌└─│j"],
+      trigger: "\x1b(0jklmqx",
+      targetCol: 0,
+      required: ["\x1b(0", "\x1b(B"],
+    },
+  ] as const
+
+  test("valid controls bind exact glyph support and ignored-target negatives to raw cells", () => {
+    for (const item of cases) {
+      const callback = probe(item.id).termless
+      if (!callback) throw new Error(`${item.id} needs a headless callback`)
+      for (const [after, outcome] of [
+        [item.after, "supported"],
+        [item.ignored, "unsupported"],
+        [item.wrong, "unsupported"],
+      ] as const) {
+        const writes: string[] = []
+        let applied = false
+        let cursorX = 0
+        let cursorY = 0
+        const base = context({})
+        const result = callback(
+          context({
+            feed(bytes) {
+              writes.push(bytes)
+              const cup = /^\x1b\[(\d+);(\d+)H$/.exec(bytes)
+              if (cup) {
+                cursorY = Number(cup[1]) - 1
+                cursorX = Number(cup[2]) - 1
+              }
+              if (bytes.includes(item.trigger)) applied = true
+            },
+            getCursor() {
+              return { x: cursorX, y: cursorY, visible: true, style: "block" }
+            },
+            getCell(row, col) {
+              return { ...base.getCell(row, col), char: (applied ? after : item.before)[col] ?? "" }
+            },
+          }),
+        )
+        expect(result.observation, item.id).toMatchObject({ outcome, evidence: "parser-state" })
+        expect(JSON.parse(result.response ?? "null"), item.id).toMatchObject({
+          before: item.before,
+          after,
+          setup:
+            item.id === "charsets.utf8"
+              ? [
+                  { x: 1, y: 0 },
+                  { x: 2, y: 0 },
+                ]
+              : [{ x: item.targetCol, y: 0 }],
+        })
+        expect(result.assertions, item.id).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
+        expect(result.assertions?.[0]?.observed, item.id).toBe(result.response)
+        for (const bytes of item.required) expect(writes.join(""), item.id).toContain(bytes)
+        if (item.id !== "charsets.utf8") expect(writes.at(-1), item.id).toBe("\x0f\x1b(B\x1b)B")
+      }
+    }
+  })
+
+  test("bad seed or broken ASCII control is inconclusive, and narrow geometry writes nothing", () => {
+    for (const item of cases) {
+      const callback = probe(item.id).termless
+      if (!callback) throw new Error(`${item.id} needs a headless callback`)
+      for (const badPhase of ["before", "after"] as const) {
+        let applied = false
+        let cursorX = 0
+        const base = context({})
+        const result = callback(
+          context({
+            feed(bytes) {
+              const cup = /^\x1b\[1;(\d+)H$/.exec(bytes)
+              if (cup) cursorX = Number(cup[1]) - 1
+              if (bytes.includes(item.trigger)) applied = true
+            },
+            getCursor() {
+              return { x: cursorX, y: 0, visible: true, style: "block" }
+            },
+            getCell(row, col) {
+              const values: string[] = applied ? [...item.after] : [...item.before]
+              if (badPhase === "before" && !applied) values[0] = "!"
+              if (badPhase === "after" && applied) values[item.id === "charsets.dec-line-drawing" ? 6 : 0] = "!"
+              return { ...base.getCell(row, col), char: values[col] ?? "" }
+            },
+          }),
+        )
+        expect(result.observation, `${item.id} ${badPhase}`).toMatchObject({
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "parser-state",
+        })
+        expect(result.assertions ?? [], item.id).toEqual([])
+      }
+      const writes: string[] = []
+      const narrow = callback(
+        context({
+          cols: item.minCols - 1,
+          feed(bytes) {
+            writes.push(bytes)
+          },
+        }),
+      )
+      expect(writes, item.id).toEqual([])
+      expect(narrow.observation, item.id).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "parser-state",
+      })
+      expect(JSON.parse(narrow.response ?? "null"), item.id).toMatchObject({ cols: item.minCols - 1 })
+    }
+    const switching = probe("charsets.g0-g1-switching").termless
+    if (!switching) throw new Error("G0/G1 needs a headless callback")
+    const writes: string[] = []
+    const base = context({})
+    let cursorX = 0
+    expect(() =>
+      switching(
+        context({
+          feed(bytes) {
+            writes.push(bytes)
+            if (bytes === "\x1b[1;2H") cursorX = 1
+            if (bytes.includes("\x0e")) throw new Error("fixture feed failed")
+          },
+          getCursor() {
+            return { x: cursorX, y: 0, visible: true, style: "block" }
+          },
+          getCell(row, col) {
+            return { ...base.getCell(row, col), char: "AlllZ"[col] ?? "" }
+          },
+        }),
+      ),
+    ).toThrow("fixture feed failed")
+    expect(writes.at(-1)).toBe("\x0f\x1b(B\x1b)B")
+  })
+
+  test("ignored target CUP stops before charset bytes instead of blaming the charset", () => {
+    for (const item of cases) {
+      const callback = probe(item.id).termless
+      if (!callback) throw new Error(`${item.id} needs a headless callback`)
+      const writes: string[] = []
+      const base = context({})
+      const wrongX = item.targetCol === 0 ? 1 : 0
+      const result = callback(
+        context({
+          feed(bytes) {
+            writes.push(bytes)
+          },
+          getCursor() {
+            return { x: wrongX, y: 0, visible: true, style: "block" }
+          },
+          getCell(row, col) {
+            return { ...base.getCell(row, col), char: item.before[col] ?? "" }
+          },
+        }),
+      )
+      expect(result.observation, item.id).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "parser-state",
+      })
+      expect(JSON.parse(result.response ?? "null"), item.id).toMatchObject({ setup: [{ x: wrongX, y: 0 }] })
+      expect(result.assertions ?? [], item.id).toEqual([])
+      expect(writes.join(""), item.id).not.toContain(item.trigger)
+    }
+
+    const utf8 = probe("charsets.utf8").termless
+    if (!utf8) throw new Error("UTF-8 needs a headless callback")
+    const writes: string[] = []
+    const base = context({})
+    let cursorX = 0
+    const second = utf8(
+      context({
+        feed(bytes) {
+          writes.push(bytes)
+          if (bytes === "\x1b[1;2H") cursorX = 1
+          if (bytes === "\x1b[1;3H") cursorX = 1 // second CUP ignored
+        },
+        getCursor() {
+          return { x: cursorX, y: 0, visible: true, style: "block" }
+        },
+        getCell(row, col) {
+          return { ...base.getCell(row, col), char: "Axy?Z"[col] ?? "" }
+        },
+      }),
+    )
+    expect(second.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(JSON.parse(second.response ?? "null")).toMatchObject({
+      setup: [
+        { x: 1, y: 0 },
+        { x: 1, y: 0 },
+      ],
+    })
+    expect(writes.join("")).toContain("é")
+    expect(writes.join("")).not.toContain("世")
+    expect(second.assertions ?? []).toEqual([])
+  })
+})
+
 describe("partial probe automation candidates", () => {
   test("modes.decsclm verifies the DEC private mode through DECRPM", () => {
     const p = probe("modes.decsclm")

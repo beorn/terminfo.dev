@@ -1,14 +1,44 @@
 import type { ProbeDefinition } from "./types.ts"
-import { probe } from "./helpers.ts"
+import { parserStateResult, probe } from "./helpers.ts"
 
 export const charsetsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "charsets.dec-special",
       (ctx) => {
-        ctx.feed("\x1b(0q\x1b(B")
-        const cell = ctx.getCell(0, 0)
-        return { pass: cell.char !== "q" }
+        const expected = "ASCII q controls flank DEC Special Graphics q mapped to U+2500"
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 3) {
+          return parserStateResult(
+            null,
+            expected,
+            { cols: ctx.cols },
+            "Need at least three measured columns for charset controls",
+          )
+        }
+        try {
+          ctx.feed("\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2Kqqq")
+          const before = Array.from({ length: 3 }, (_, col) => ctx.getCell(0, col).char)
+          if (before.join("") !== "qqq") {
+            return parserStateResult(null, expected, { before }, "ASCII seed was not measured before DEC designation")
+          }
+          ctx.feed("\x1b[1;2H")
+          const cursor = ctx.getCursor()
+          const setup = [{ x: cursor.x, y: cursor.y }]
+          if (cursor.x !== 1 || cursor.y !== 0) {
+            return parserStateResult(null, expected, { before, setup }, "Target CUP did not reach DEC graphics cell")
+          }
+          ctx.feed("\x1b(0q\x1b(Bq")
+          const after = Array.from({ length: 3 }, (_, col) => ctx.getCell(0, col).char)
+          const controlsValid = after[0] === "q" && after[2] === "q"
+          return parserStateResult(
+            controlsValid ? after[1] === "─" : null,
+            expected,
+            { before, setup, after },
+            controlsValid ? undefined : "ASCII flank control changed after DEC designation",
+          )
+        } finally {
+          ctx.feed("\x0f\x1b(B\x1b)B")
+        }
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
@@ -41,11 +71,52 @@ export const charsetsProbes: ProbeDefinition[] = [
     ...probe(
       "charsets.utf8",
       (ctx) => {
+        const expected = "Sampled Unicode characters é and 世 occupy their target cells with ASCII controls intact"
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 5) {
+          return parserStateResult(
+            null,
+            expected,
+            { cols: ctx.cols },
+            "Need at least five measured columns for Unicode controls",
+          )
+        }
+        ctx.feed("\x1b[1;1H\x1b[2KAxy?Z")
+        const before = Array.from({ length: 5 }, (_, col) => ctx.getCell(0, col).char)
+        if (before.join("") !== "Axy?Z") {
+          return parserStateResult(null, expected, { before }, "ASCII seed was not measured before Unicode samples")
+        }
+        ctx.feed("\x1b[1;2H")
+        const first = ctx.getCursor()
+        const setup = [{ x: first.x, y: first.y }]
+        if (first.x !== 1 || first.y !== 0) {
+          return parserStateResult(
+            null,
+            expected,
+            { before, setup },
+            "First target CUP did not reach Unicode sample cell",
+          )
+        }
         ctx.feed("\u00e9")
-        const pass1 = ctx.getCell(0, 0).char === "\u00e9"
-        ctx.feed("\x1b[1G\u4e16")
-        const pass2 = ctx.getCell(0, 0).char === "\u4e16"
-        return { pass: pass1 && pass2 }
+        ctx.feed("\x1b[1;3H")
+        const second = ctx.getCursor()
+        setup.push({ x: second.x, y: second.y })
+        if (second.x !== 2 || second.y !== 0) {
+          return parserStateResult(
+            null,
+            expected,
+            { before, setup },
+            "Second target CUP did not reach Unicode sample cell",
+          )
+        }
+        ctx.feed("\u4e16")
+        const after = Array.from({ length: 5 }, (_, col) => ctx.getCell(0, col).char)
+        const controlsValid = after[0] === "A" && after[4] === "Z"
+        return parserStateResult(
+          controlsValid ? after[1] === "é" && after[2] === "世" : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "ASCII control changed after Unicode samples",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
@@ -72,18 +143,48 @@ export const charsetsProbes: ProbeDefinition[] = [
     termNeedsGeometry: true,
   },
 
-  // G0/G1 switching via SI/SO — ESC(0 designates G0 as DEC Special, then test switching
+  // G0/G1 switching via SI/SO with independent ASCII flank controls.
   {
     ...probe(
       "charsets.g0-g1-switching",
       (ctx) => {
-        ctx.feed("\x1b(0") // designate G0 = DEC Special Graphics
-        ctx.feed("l") // should render as ┌ (top-left corner)
-        ctx.feed("\x1b(B") // restore G0 = ASCII
-        const cell = ctx.getCell(0, 0)
-        return {
-          pass: cell.char !== "l",
-          note: cell.char !== "l" ? `rendered as '${cell.char}'` : "rendered as literal 'l', expected box-drawing",
+        const expected = "G0 ASCII l, SO-selected G1 DEC l→U+250C, then SI-selected G0 ASCII l, within A/Z controls"
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 5) {
+          return parserStateResult(
+            null,
+            expected,
+            { cols: ctx.cols },
+            "Need at least five measured columns for G0/G1 controls",
+          )
+        }
+        try {
+          ctx.feed("\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2KAlllZ")
+          const before = Array.from({ length: 5 }, (_, col) => ctx.getCell(0, col).char)
+          if (before.join("") !== "AlllZ") {
+            return parserStateResult(null, expected, { before }, "ASCII seed was not measured before G0/G1 switching")
+          }
+          ctx.feed("\x1b[1;2H")
+          const cursor = ctx.getCursor()
+          const setup = [{ x: cursor.x, y: cursor.y }]
+          if (cursor.x !== 1 || cursor.y !== 0) {
+            return parserStateResult(
+              null,
+              expected,
+              { before, setup },
+              "Target CUP did not reach G0/G1 switching cells",
+            )
+          }
+          ctx.feed("\x1b(B\x1b)0l\x0el\x0fl")
+          const after = Array.from({ length: 5 }, (_, col) => ctx.getCell(0, col).char)
+          const controlsValid = after[0] === "A" && after[4] === "Z"
+          return parserStateResult(
+            controlsValid ? after[1] === "l" && after[2] === "┌" && after[3] === "l" : null,
+            expected,
+            { before, setup, after },
+            controlsValid ? undefined : "ASCII A/Z control changed after G0/G1 switching",
+          )
+        } finally {
+          ctx.feed("\x0f\x1b(B\x1b)B")
         }
       },
       async (ctx) => {
@@ -113,27 +214,48 @@ export const charsetsProbes: ProbeDefinition[] = [
     termNeedsGeometry: true,
   },
 
-  // DEC line drawing — full set of box-drawing chars
+  // DEC line drawing — six box-drawing samples.
   {
     ...probe(
       "charsets.dec-line-drawing",
       (ctx) => {
-        ctx.feed("\x1b(0") // DEC Special Graphics
-        ctx.feed("jklmqx") // ┘┐┌└─│
-        ctx.feed("\x1b(B") // restore ASCII
-        // Verify none of the cells contain the literal ASCII chars
-        const chars = [
-          ctx.getCell(0, 0).char, // j → ┘
-          ctx.getCell(0, 1).char, // k → ┐
-          ctx.getCell(0, 2).char, // l → ┌
-          ctx.getCell(0, 3).char, // m → └
-          ctx.getCell(0, 4).char, // q → ─
-          ctx.getCell(0, 5).char, // x → │
-        ]
-        const allMapped = chars.every((c, i) => c !== "jklmqx"[i])
-        return {
-          pass: allMapped,
-          note: allMapped ? `rendered: ${chars.join("")}` : `some chars not mapped: ${chars.join("")}`,
+        const expected = "DEC jklmqx map exactly to ┘┐┌└─│ while trailing ASCII j remains unchanged"
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 7) {
+          return parserStateResult(
+            null,
+            expected,
+            { cols: ctx.cols },
+            "Need at least seven measured columns for line-drawing controls",
+          )
+        }
+        try {
+          ctx.feed("\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2Kjklmqxj")
+          const before = Array.from({ length: 7 }, (_, col) => ctx.getCell(0, col).char)
+          if (before.join("") !== "jklmqxj") {
+            return parserStateResult(null, expected, { before }, "ASCII seed was not measured before line drawing")
+          }
+          ctx.feed("\x1b[1;1H")
+          const cursor = ctx.getCursor()
+          const setup = [{ x: cursor.x, y: cursor.y }]
+          if (cursor.x !== 0 || cursor.y !== 0) {
+            return parserStateResult(
+              null,
+              expected,
+              { before, setup },
+              "Target CUP did not reach line-drawing start cell",
+            )
+          }
+          ctx.feed("\x1b(0jklmqx\x1b(B")
+          const after = Array.from({ length: 7 }, (_, col) => ctx.getCell(0, col).char)
+          const controlsValid = after[6] === "j"
+          return parserStateResult(
+            controlsValid ? after.slice(0, 6).join("") === "┘┐┌└─│" : null,
+            expected,
+            { before, setup, after },
+            controlsValid ? undefined : "Trailing ASCII j control changed after DEC line drawing",
+          )
+        } finally {
+          ctx.feed("\x0f\x1b(B\x1b)B")
         }
       },
       async (ctx) => {
