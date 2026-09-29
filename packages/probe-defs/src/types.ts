@@ -233,6 +233,8 @@ export interface Interpretation {
   observation?: Observation
   reviewed?: boolean
   verifiesIdentity?: boolean
+  /** Controls evidence shown by the site and API; not a privacy control in this public repository. */
+  presentsEvidence?: boolean
   origin?: "documentation"
 }
 

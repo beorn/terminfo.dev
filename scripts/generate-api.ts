@@ -11,12 +11,14 @@
  * build outDir so `bun run build` emits fresh deploy artifacts without
  * dirtying the source tree.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, lstatSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import type { SelectedVersion } from "../docs/data/selected-results.ts"
+import { readVerifiedScreenshot, type SelectedVersion } from "../docs/data/selected-results.ts"
+import { publicResults } from "../docs/data/public-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -46,6 +48,7 @@ interface ApiData {
     v2: string
     methods: string
     keyPolicy: string
+    notesPolicy: string
     contexts: Record<
       string,
       {
@@ -213,6 +216,93 @@ function generateBadgeSvg(label: string, pass: number, total: number, pct: numbe
 
 // --- Main ---
 
+/** Replace only previously emitted, byte-matching files; unknown surviving artifacts fail by path. */
+function writeEvidence(out: string, documents: ReturnType<typeof publicResults>["documents"]): void {
+  const expected = new Map<string, Buffer>()
+  for (const [url, { bytes, document }] of documents) {
+    expected.set(url.slice(1), Buffer.from(bytes))
+    const refs = [document.record.screenshot?.sha256, ...(document.record.frames ?? []).map((frame) => frame.sha256)]
+    for (const digest of refs) {
+      if (!digest) continue
+      const path = `artifacts/${digest}.png`
+      if (!expected.has(path))
+        expected.set(path, readVerifiedScreenshot(contentDir, `sha256:${digest}`, document.runId))
+    }
+  }
+  const inventoryPath = join(out, "api", "v2", "evidence-files.json")
+  const owned = new Map<string, string>()
+  const isOwnedPath = (path: string) =>
+    /^(?:artifacts\/[a-f0-9]{64}\.png|api\/v2\/evidence\/[a-f0-9]{64}\/[A-Za-z0-9_.%~-]+\.json)$/.test(path)
+  if (existsSync(inventoryPath)) {
+    if (lstatSync(inventoryPath).isSymbolicLink()) throw new Error(`${inventoryPath}: evidence inventory is a symlink`)
+    const prior = parseJsonStrict(inventoryPath, readFileSync(inventoryPath, "utf8"))
+    if (!isRecord(prior) || prior.version !== 1 || !Array.isArray(prior.files))
+      throw new Error(`${inventoryPath}: invalid generated evidence inventory`)
+    for (const row of prior.files) {
+      if (
+        !isRecord(row) ||
+        typeof row.path !== "string" ||
+        !isOwnedPath(row.path) ||
+        typeof row.sha256 !== "string" ||
+        !/^[a-f0-9]{64}$/.test(row.sha256) ||
+        owned.has(row.path)
+      ) {
+        throw new Error(
+          `${inventoryPath}: invalid generated evidence file ${isRecord(row) ? String(row.path) : "record"}`,
+        )
+      }
+      owned.set(row.path, row.sha256)
+    }
+  }
+  const existing = new Map<string, Buffer>()
+  const visit = (relative: string): void => {
+    const path = join(out, relative)
+    if (!existsSync(path)) return
+    if (lstatSync(path).isSymbolicLink()) throw new Error(`${path}: evidence directory is a symlink`)
+    for (const entry of readdirSync(path, { withFileTypes: true })) {
+      const child = `${relative}/${entry.name}`
+      if (entry.isSymbolicLink()) throw new Error(`${join(out, child)}: evidence artifact is a symlink`)
+      if (entry.isDirectory()) visit(child)
+      else if (entry.isFile()) existing.set(child, readFileSync(join(out, child)))
+      else throw new Error(`${join(out, child)}: unexpected evidence artifact type`)
+    }
+  }
+  visit("artifacts")
+  visit("api/v2/evidence")
+  // Check the complete population before performing any replacement or withdrawal.
+  for (const [relative, bytes] of existing) {
+    if (expected.get(relative)?.equals(bytes)) continue
+    if (owned.get(relative) !== createHash("sha256").update(bytes).digest("hex")) {
+      throw new Error(`${join(out, relative)}: unapproved or modified evidence artifact`)
+    }
+  }
+  for (const [relative] of existing) {
+    if (!expected.has(relative)) unlinkSync(join(out, relative))
+  }
+  for (const [relative, bytes] of expected) {
+    const path = join(out, relative)
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, bytes)
+  }
+  mkdirSync(dirname(inventoryPath), { recursive: true })
+  writeFileSync(
+    inventoryPath,
+    JSON.stringify(
+      {
+        version: 1,
+        files: [...expected]
+          .map(([path, bytes]) => ({
+            path,
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+          }))
+          .sort((a, b) => a.path.localeCompare(b.path)),
+      },
+      null,
+      2,
+    ) + "\n",
+  )
+}
+
 export function generateApi(outDir?: string): { dataPath: string; badgeCount: number } {
   const targetApiDir = outDir ? join(outDir, "api", "v1") : apiDir
   const targetBadgesDir = join(targetApiDir, "badges")
@@ -220,8 +310,10 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
 
   const featuresJson = loadFeaturesJson()
   const backendMeta = loadBackendMeta()
-  const { projection } = loadCurrentResults(contentDir, { artifactDir: join(outDir ?? publicDir, "artifacts") })
-  const byTarget = compatibilityTargets(projection, contentDir)
+  const { projection } = loadCurrentResults(contentDir)
+  const published = publicResults(projection, compatibilityTargets(projection, contentDir))
+  const byTarget = new Map(Object.entries(published.selectedByBackend))
+  writeEvidence(outDir ?? publicDir, published.documents)
   // Catalog metadata stays available, but only reviewed, conclusive observations become v1 result keys.
   const allFeatureIds = new Set(Object.keys(featuresJson))
 
@@ -295,6 +387,8 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
       methods: "/contribute#what-a-probe-can-establish",
       keyPolicy:
         "Released v1 keys keep their published target kind; another kind with the same catalog ID uses kind-ID. New collisions keep the app at the bare ID. v2 uses full kind:ID contexts.",
+      notesPolicy:
+        "Collector notes appear only after exact run/feature presentation review; reviewed correction notes remain. Result keys and score meanings are unchanged.",
       contexts,
     },
     features,
@@ -313,7 +407,7 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
   writeFileSync(
     join(v2Dir, "data.json"),
     JSON.stringify(
-      { version: 2, generated: apiData.generated, methodology: apiData.methodology, features, ...projection },
+      { version: 2, generated: apiData.generated, methodology: apiData.methodology, features, ...published.projection },
       null,
       2,
     ) + "\n",

@@ -1,6 +1,6 @@
 /** Reviewed selection and projection for terminal observations. */
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import {
   type Interpretation,
@@ -49,6 +49,10 @@ export interface SelectedCell extends Observation {
     correctionId?: string
     sources?: string[]
   }
+  presentation?: {
+    decision: Pick<Interpretation, "id" | "reviewer" | "reason" | "sources"> & { presentsEvidence: boolean }
+    original: { observation: Observation; record: SelectedCell["record"] }
+  }
 }
 
 export interface SelectedVersion {
@@ -95,6 +99,66 @@ function fail(path: string, message: string): never {
 }
 const asString = (value: unknown, path: string, name: string): string =>
   nonempty(value) ? value : fail(path, `missing ${name}`)
+
+const hasPresentationDecision = (entry: object): boolean => Object.hasOwn(entry, "presentsEvidence")
+
+function validatePresentationShape(entry: Record<string, unknown>, path: string, catalog: ReadonlySet<string>): void {
+  if (!hasPresentationDecision(entry)) return
+  const id = nonempty(entry.id) ? entry.id : "unnamed"
+  if (typeof entry.presentsEvidence !== "boolean") fail(path, `presentation ${id}: invalid presentsEvidence`)
+  for (const field of ["reviewed", "verifiesIdentity", "observation", "origin"]) {
+    if (Object.hasOwn(entry, field)) fail(path, `presentation ${id} cannot set ${field}`)
+  }
+  if (!nonempty(entry.runId)) fail(path, `presentation ${id} requires exact runId`)
+  if (typeof entry.runSha256 !== "string" || !/^[a-f0-9]{64}$/.test(entry.runSha256)) {
+    fail(path, `presentation ${id} requires exact run SHA256`)
+  }
+  if (!nonempty(entry.featureId) || !catalog.has(entry.featureId)) {
+    fail(path, `presentation ${id} requires catalog featureId`)
+  }
+  if (!nonempty(entry.reviewer) || !nonempty(entry.reason)) {
+    fail(path, `presentation ${id} requires reviewer and reason`)
+  }
+  if (!Array.isArray(entry.sources) || entry.sources.length === 0 || !entry.sources.every(nonempty)) {
+    fail(path, `presentation ${id} requires sources`)
+  }
+  if (
+    !object(entry.scope) ||
+    !object(entry.scope.target) ||
+    !["app", "headless", "mux"].includes(String(entry.scope.target.kind)) ||
+    !nonempty(entry.scope.target.id) ||
+    !Array.isArray(entry.scope.versions) ||
+    entry.scope.versions.length !== 2 ||
+    !entry.scope.versions.every(nonempty) ||
+    !Array.isArray(entry.scope.suites) ||
+    entry.scope.suites.length !== 2 ||
+    !entry.scope.suites.every(nonempty)
+  ) {
+    fail(path, `presentation ${id} requires a valid scope`)
+  }
+}
+
+function validatePresentationSupersession(entries: readonly Interpretation[], path: string): void {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]))
+  for (const entry of entries) {
+    for (const priorId of entry.supersedes) {
+      const prior = byId.get(priorId)
+      if (!prior) fail(path, `interpretation ${entry.id} supersedes unknown ${priorId}`)
+      const currentPresentation = hasPresentationDecision(entry)
+      const priorPresentation = hasPresentationDecision(prior)
+      if (
+        (currentPresentation || priorPresentation) &&
+        (!currentPresentation ||
+          !priorPresentation ||
+          entry.runId !== prior.runId ||
+          entry.runSha256 !== prior.runSha256 ||
+          entry.featureId !== prior.featureId)
+      ) {
+        fail(path, `presentation ${entry.id} cannot supersede ${prior.id} outside the same exact run/SHA/feature`)
+      }
+    }
+  }
+}
 
 const TEMPORAL_PIXEL_FEATURES = new Set([
   "sgr.blink",
@@ -149,6 +213,7 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
     ) {
       fail(path, `invalid run SHA256 for ${id}`)
     }
+    validatePresentationShape(entry, path, catalog)
     for (const flag of ["reviewed", "verifiesIdentity"] as const) {
       if (entry[flag] !== undefined && typeof entry[flag] !== "boolean") fail(path, `invalid ${flag} for ${id}`)
     }
@@ -178,11 +243,7 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
       }
     }
   }
-  for (const entry of raw as Interpretation[]) {
-    for (const superseded of entry.supersedes) {
-      if (!ids.has(superseded)) fail(path, `interpretation ${entry.id} supersedes unknown ${superseded}`)
-    }
-  }
+  validatePresentationSupersession(raw as Interpretation[], path)
   return raw as Interpretation[]
 }
 
@@ -384,6 +445,27 @@ function projectRun(
       },
     }
   }
+  for (const entry of interpretations) {
+    if (!hasPresentationDecision(entry) || !applies(entry, run)) continue
+    const featureId = entry.featureId
+    if (!featureId) throw new Error(`presentation ${entry.id}: missing featureId`)
+    const recordedObservation = run.observations.find((observation) => observation.featureId === featureId)
+    const cell = cells[featureId]
+    if (!recordedObservation || !cell) throw new Error(`presentation ${entry.id}: missing original observation`)
+    cell.presentation = {
+      decision: {
+        id: entry.id,
+        reviewer: entry.reviewer,
+        reason: entry.reason,
+        sources: [...entry.sources],
+        presentsEvidence: entry.presentsEvidence as boolean,
+      },
+      original: globalThis.structuredClone({
+        observation: recordedObservation,
+        record: observationRecord(run, recordedObservation),
+      }),
+    }
+  }
   const values = Object.values(cells)
   const tested = values.length
   const conclusive = values.filter((v) => v.conclusive).length
@@ -452,11 +534,35 @@ export function projectResults(
   policy: { currentProbeHash: string },
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
-  const active = activeInterpretations(interpretations)
   const ids = new Set<string>()
+  const byRunId = new Map<string, LoadedRun>()
   for (const run of runs) {
     if (ids.has(run.runId)) throw new Error(`duplicate runId ${run.runId}`)
     ids.add(run.runId)
+    byRunId.set(run.runId, run)
+  }
+  const catalog = new Set(catalogIds)
+  for (const entry of interpretations) {
+    if (!hasPresentationDecision(entry)) continue
+    validatePresentationShape(entry as unknown as Record<string, unknown>, `interpretation ${entry.id}`, catalog)
+    const run = byRunId.get(entry.runId as string)
+    if (!run) throw new Error(`presentation ${entry.id}: runId ${entry.runId} does not name a raw run`)
+    if (entry.runSha256 !== run.sha256) throw new Error(`presentation ${entry.id}: run SHA256 mismatch`)
+    if (!applies(entry, run)) throw new Error(`presentation ${entry.id}: scope does not match exact run`)
+    if (!run.observations.some((observation) => observation.featureId === entry.featureId)) {
+      throw new Error(`presentation ${entry.id}: missing original observation for ${entry.featureId}`)
+    }
+  }
+  validatePresentationSupersession(interpretations, "interpretations")
+  const active = activeInterpretations(interpretations)
+  const presented = new Map<string, string>()
+  for (const entry of active) {
+    if (!hasPresentationDecision(entry)) continue
+    const key = `${entry.runId}\0${entry.featureId}`
+    const prior = presented.get(key)
+    if (prior)
+      throw new Error(`presentation ${entry.id} conflicts with active ${prior} for ${entry.runId}/${entry.featureId}`)
+    presented.set(key, entry.id)
   }
   const contextCounts = new Map<string, Set<string>>()
   for (const run of runs) {
@@ -546,11 +652,27 @@ export function projectResults(
   return { current, versions, history, exclusions }
 }
 
-/** When artifactDir is supplied by a build, emit the exact bytes verified by this loader. */
+/** Read only the exact PNG bytes named by a digest-backed screenshot reference. */
+export function readVerifiedScreenshot(contentDir: string, ref: string, sourcePath: string): Buffer {
+  if (!/^sha256:[a-f0-9]{64}$/.test(ref)) fail(sourcePath, `invalid screenshotRef ${ref}`)
+  const digest = ref.slice("sha256:".length)
+  const artifactPath = join(contentDir, "artifacts", `${digest}.png`)
+  if (!existsSync(artifactPath)) fail(sourcePath, `missing screenshot artifact ${artifactPath}`)
+  const bytes = readFileSync(artifactPath)
+  if (createHash("sha256").update(bytes).digest("hex") !== digest) {
+    fail(sourcePath, `screenshot artifact digest mismatch at ${artifactPath}`)
+  }
+  if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+    fail(sourcePath, `screenshot artifact is not a PNG at ${artifactPath}`)
+  }
+  return bytes
+}
+
+/** Validate all referenced screenshots; the accepted artifactDir option has no write side effect. */
 export function loadSelectedResults(
   contentDir: string,
   currentProbeHash: string,
-  options: { artifactDir?: string } = {},
+  _options: { artifactDir?: string } = {},
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
@@ -581,27 +703,7 @@ export function loadSelectedResults(
       const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
       for (const ref of run.screenshotRefs) {
         if (verifiedScreenshots.has(ref)) continue
-        const digest = ref.slice("sha256:".length)
-        const artifactPath = join(contentDir, "artifacts", `${digest}.png`)
-        if (!existsSync(artifactPath)) fail(runPath, `missing screenshot artifact ${artifactPath}`)
-        const bytes = readFileSync(artifactPath)
-        if (createHash("sha256").update(bytes).digest("hex") !== digest) {
-          fail(runPath, `screenshot artifact digest mismatch at ${artifactPath}`)
-        }
-        if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
-          fail(runPath, `screenshot artifact is not a PNG at ${artifactPath}`)
-        }
-        if (options.artifactDir) {
-          mkdirSync(options.artifactDir, { recursive: true })
-          const publishedPath = join(options.artifactDir, `${digest}.png`)
-          if (existsSync(publishedPath)) {
-            if (!readFileSync(publishedPath).equals(bytes)) {
-              fail(publishedPath, "existing screenshot artifact differs from verified bytes")
-            }
-          } else {
-            writeFileSync(publishedPath, bytes, { flag: "wx" })
-          }
-        }
+        readVerifiedScreenshot(contentDir, ref, runPath)
         verifiedScreenshots.add(ref)
       }
       runs.push(run)

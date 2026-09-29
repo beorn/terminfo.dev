@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, useId } from "vue"
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
-import type { SelectedCell, SelectedVersion } from "../../data/selected-results"
+import type { EvidenceDocument, PublicCell, PublicVersion } from "../../data/public-results"
 
 const props = withDefaults(
   defineProps<{
     featureId: string
     featureName: string
     targetName: string
-    version?: SelectedVersion
-    cell?: SelectedCell
+    version?: PublicVersion
+    cell?: PublicCell
     display?: "compact" | "text"
   }>(),
   { display: "compact" },
@@ -20,6 +20,11 @@ const dialog = ref<HTMLDialogElement | null>(null)
 const previewVisible = ref(false)
 const dialogVisible = ref(false)
 const previewPosition = ref<Record<string, string>>({})
+const evidenceDocument = ref<EvidenceDocument | null>(null)
+const evidenceLoading = ref(false)
+const evidenceError = ref<string | null>(null)
+let evidenceRequest = 0
+let evidenceController: AbortController | null = null
 const id = useId()
 const tooltipId = `${id}-preview`
 const dialogTitleId = `${id}-title`
@@ -43,26 +48,133 @@ const shortLabel = computed(() => {
 })
 const methodLabel = computed(() => (props.cell?.evidence === "none" ? "Not measured" : (props.cell?.evidence ?? "")))
 
-const screenshot = computed(() => props.cell?.record?.screenshot)
-const screenshotUrl = computed(() => (screenshot.value ? withBase(screenshot.value.url) : undefined))
-const frames = computed(() => props.cell?.record?.frames ?? [])
-const previewFrame = computed(() => frames.value.find((frame) => frame.role === "target"))
+const presentation = computed(() => props.cell?.presentation)
+const previewRecord = computed(() => (presentation.value?.state === "presented" ? props.cell?.record : undefined))
+const previewScreenshot = computed(() => previewRecord.value?.screenshot)
+const screenshotUrl = computed(() => (previewScreenshot.value ? withBase(previewScreenshot.value.url) : undefined))
+const previewFrames = computed(() => previewRecord.value?.frames ?? [])
+const previewFrame = computed(() => previewFrames.value.find((frame) => frame.role === "target"))
 const previewImageUrl = computed(() => (previewFrame.value ? withBase(previewFrame.value.url) : screenshotUrl.value))
-const rawReply = computed(() => props.cell?.record?.rawReply)
-const assertions = computed(() => props.cell?.record?.assertions ?? [])
-const hasRawResults = computed(() => rawReply.value !== undefined || assertions.value.length > 0)
+const evidenceRecord = computed(() => evidenceDocument.value?.record)
+const evidenceFrames = computed(() => evidenceRecord.value?.frames ?? [])
+const evidenceScreenshot = computed(() => evidenceRecord.value?.screenshot)
+const evidenceScreenshotUrl = computed(() =>
+  evidenceScreenshot.value ? withBase(evidenceScreenshot.value.url) : undefined,
+)
+const rawReply = computed(() => evidenceRecord.value?.rawReply)
+const assertions = computed(() => evidenceRecord.value?.assertions ?? [])
+const hasRecordedDetail = computed(
+  () =>
+    rawReply.value !== undefined ||
+    assertions.value.length > 0 ||
+    evidenceFrames.value.length > 0 ||
+    evidenceScreenshot.value !== undefined,
+)
+const originalDiffers = computed(() => {
+  const original = evidenceDocument.value?.observation
+  const current = props.cell
+  return Boolean(
+    original &&
+    current &&
+    (original.outcome !== current.outcome ||
+      original.reason !== current.reason ||
+      original.evidence !== current.evidence ||
+      original.note !== current.note),
+  )
+})
 const actionLabel = computed(() => {
   if (!props.cell) return "No evidence in current selection"
-  if (props.cell.evidence === "none") return "View refusal record"
-  if (frames.value.length) return "View captured frames"
+  if (presentation.value?.state === "not-reviewed") return "Original evidence not reviewed for presentation"
+  if (presentation.value?.state === "withdrawn") return "Evidence presentation withdrawn"
+  if (previewFrames.value.length) return "View reviewed captured frames"
   if (screenshotUrl.value) return "View screenshot"
-  return hasRawResults.value ? "View raw results" : "No raw evidence recorded"
+  return "View reviewed evidence"
 })
 const accessibleName = computed(
   () =>
     `${props.featureName} in ${props.targetName}${props.version ? ` ${props.version.target.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
 )
 const rawReplyDisplay = computed(() => (rawReply.value === undefined ? "" : JSON.stringify(rawReply.value)))
+const evidenceIdentity = computed(() => {
+  return JSON.stringify([
+    props.featureId,
+    props.version?.runId,
+    props.version?.sha256,
+    props.version?.target.version,
+    props.cell?.chain,
+    props.cell?.outcome,
+    props.cell?.reason,
+    props.cell?.evidence,
+    props.cell?.note,
+    presentation.value,
+  ])
+})
+
+function invalidateEvidence(): void {
+  evidenceRequest += 1
+  evidenceController?.abort()
+  evidenceController = null
+  evidenceDocument.value = null
+  evidenceLoading.value = false
+  evidenceError.value = null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+async function loadEvidence(): Promise<void> {
+  const approval = presentation.value
+  const version = props.version
+  const cell = props.cell
+  if (approval?.state !== "presented" || !version || !cell) return
+  const identity = evidenceIdentity.value
+  const request = ++evidenceRequest
+  const controller = new AbortController()
+  evidenceController = controller
+  evidenceLoading.value = true
+  evidenceError.value = null
+  evidenceDocument.value = null
+  try {
+    if (!/^[0-9a-f]{64}$/.test(approval.sha256)) throw new Error("Invalid evidence SHA-256 receipt")
+    if (cell.chain.runId !== version.runId || cell.chain.runSha256 !== version.sha256) {
+      throw new Error("Result and run identities disagree")
+    }
+    const response = await fetch(withBase(approval.url), { signal: controller.signal })
+    if (!response.ok) throw new Error(`Evidence request returned HTTP ${response.status}`)
+    const bytes = await response.arrayBuffer()
+    if (!globalThis.crypto?.subtle) throw new Error("SHA-256 verification is unavailable in this browser")
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes)
+    const actualSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+    if (actualSha256 !== approval.sha256) throw new Error("Evidence SHA-256 mismatch")
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+    if (
+      !isRecord(parsed) ||
+      parsed.version !== 1 ||
+      parsed.runId !== version.runId ||
+      parsed.runSha256 !== version.sha256 ||
+      parsed.featureId !== props.featureId ||
+      !isRecord(parsed.observation) ||
+      parsed.observation.featureId !== props.featureId ||
+      !isRecord(parsed.record) ||
+      !Array.isArray(parsed.record.assertions) ||
+      !isRecord(parsed.review) ||
+      parsed.review.id !== approval.review.id
+    ) {
+      throw new Error("Evidence document identity or structure does not match this result")
+    }
+    if (request !== evidenceRequest || !dialogVisible.value || identity !== evidenceIdentity.value) return
+    evidenceDocument.value = parsed as unknown as EvidenceDocument
+  } catch (error) {
+    if (request !== evidenceRequest || !dialogVisible.value || identity !== evidenceIdentity.value) return
+    evidenceError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    if (request === evidenceRequest) {
+      evidenceLoading.value = false
+      evidenceController = null
+    }
+  }
+}
 
 function frameTime(capturedAt: number): string {
   const date = new Date(capturedAt)
@@ -89,10 +201,13 @@ function hidePreview(): void {
 }
 
 async function openDialog(): Promise<void> {
+  if (dialogVisible.value) return
   hidePreview()
   dialogVisible.value = true
   await nextTick()
+  if (!dialogVisible.value) return
   dialog.value?.showModal()
+  void loadEvidence()
 }
 
 function closeDialog(): void {
@@ -101,10 +216,18 @@ function closeDialog(): void {
 
 function onDialogClose(): void {
   dialogVisible.value = false
+  invalidateEvidence()
   nextTick(() => trigger.value?.focus({ preventScroll: true }))
 }
 
+watch(evidenceIdentity, () => {
+  hidePreview()
+  invalidateEvidence()
+  if (dialog.value?.open) dialog.value.close()
+})
+
 onBeforeUnmount(() => {
+  invalidateEvidence()
   if (dialog.value?.open) dialog.value.close()
 })
 </script>
@@ -141,8 +264,9 @@ onBeforeUnmount(() => {
         <span
           >{{ targetName }}<template v-if="version"> · {{ version.target.version }}</template></span
         >
-        <span v-if="cell"
-          >Method: {{ methodLabel }}<template v-if="cell.reason"> · {{ cell.reason }}</template></span
+        <span v-if="cell">Method: {{ methodLabel }} · Reason: {{ cell.reason ?? "Not recorded" }}</span>
+        <span v-if="cell" style="overflow-wrap: anywhere"
+          >Run {{ cell.chain.runId }} · SHA-256 {{ cell.chain.runSha256 }}</span
         >
         <span v-if="cell?.note">{{ cell.note }}</span>
         <img
@@ -150,7 +274,11 @@ onBeforeUnmount(() => {
           :src="previewImageUrl"
           :alt="previewFrame ? `${previewFrame.label} target frame` : `Recorded ${featureName} result`"
         />
-        <span v-if="frames.length">{{ frames.length }} recorded frames · control and target</span>
+        <span v-if="previewFrames.length"
+          >{{ previewFrames.length }} approved recorded frames · control and target</span
+        >
+        <span v-if="presentation?.state === 'withdrawn'">Presentation withdrawn: {{ presentation.review.reason }}</span>
+        <span v-if="presentation?.state === 'presented'">Presentation reviewed: {{ presentation.review.reason }}</span>
         <span>{{ actionLabel }}<template v-if="previewImageUrl"> · open for original image</template></span>
       </div>
 
@@ -178,51 +306,83 @@ onBeforeUnmount(() => {
           >
         </p>
         <p v-if="cell?.note">{{ cell.note }}</p>
-        <p v-if="cell?.reason">Reason: {{ cell.reason }}</p>
-
-        <template v-if="frames.length">
-          <h3>Captured frames</h3>
-          <div class="result-evidence__frames">
-            <figure v-for="(frame, index) in frames" :key="index" class="result-evidence__image">
-              <img :src="withBase(frame.url)" :alt="`${frame.role} frame: ${frame.label}`" />
-              <figcaption>
-                <strong>{{ frame.role === "control" ? "Control" : "Target" }}</strong> · {{ frame.label }}<br />
-                Captured {{ frameTime(frame.capturedAt) }} · SHA-256 {{ frame.sha256 }}
-                <template v-if="frame.sourceRef"><br />Source capture {{ frame.sourceRef }}</template>
-              </figcaption>
-              <a :href="withBase(frame.url)" target="_blank" rel="noopener noreferrer"
-                >Open original {{ frame.role }} image</a
-              >
-            </figure>
-          </div>
-        </template>
-        <template v-else-if="screenshotUrl">
-          <figure class="result-evidence__image">
-            <img :src="screenshotUrl" :alt="`Original recorded image for ${featureName} in ${targetName}`" />
-            <figcaption>Original recorded image · SHA-256 {{ screenshot?.sha256 }}</figcaption>
-          </figure>
-          <p><a :href="screenshotUrl" target="_blank" rel="noopener noreferrer">Open original screenshot</a></p>
-        </template>
+        <p v-if="cell">Reason: {{ cell.reason ?? "Not recorded" }}</p>
 
         <h3>Observation</h3>
         <p v-if="!version">No reviewed current run is selected for this terminal context.</p>
         <p v-else-if="!cell">This feature was not tested by the reviewed current run.</p>
-        <p v-else-if="!previewImageUrl && !hasRawResults">No raw evidence was captured for this observation.</p>
-        <template v-if="rawReply !== undefined">
-          <h4>{{ cell?.evidence === "none" ? "Collector trace" : "Raw reply" }}</h4>
-          <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
+        <template v-else-if="presentation?.state === 'not-reviewed'">
+          <p>Original evidence has not been reviewed for presentation.</p>
         </template>
-        <template v-if="assertions.length">
-          <h4>Bound assertions</h4>
-          <ul class="result-evidence__assertions">
-            <li v-for="(assertion, index) in assertions" :key="index">
-              <strong>{{ assertion.kind }}</strong
-              ><template v-if="assertion.action"> · {{ assertion.action }}</template>
-              <span>Expected: {{ assertion.expected }}</span>
-              <span>Observed: {{ assertion.observed }}</span>
-              <span v-if="assertion.note">{{ assertion.note }}</span>
-            </li>
-          </ul>
+        <template v-else-if="presentation?.state === 'withdrawn'">
+          <p>Evidence presentation was withdrawn: {{ presentation.review.reason }}</p>
+          <p>Reviewed by {{ presentation.review.reviewer }}.</p>
+        </template>
+        <template v-else-if="presentation?.state === 'presented'">
+          <p>Evidence presentation reviewed by {{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
+          <p v-if="evidenceLoading" role="status">Loading and verifying the original evidence…</p>
+          <p v-else-if="evidenceError" role="alert" class="result-evidence__outcome result-evidence__outcome--error">
+            Evidence could not be verified: {{ evidenceError }}
+          </p>
+          <template v-else-if="evidenceDocument">
+            <template v-if="originalDiffers">
+              <h4>Original recorded observation</h4>
+              <p>
+                {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
+                <template v-if="evidenceDocument.observation.reason">
+                  · {{ evidenceDocument.observation.reason }}</template
+                >
+              </p>
+              <p v-if="evidenceDocument.observation.note">{{ evidenceDocument.observation.note }}</p>
+              <p>The current result above includes a reviewed correction.</p>
+            </template>
+
+            <template v-if="evidenceFrames.length">
+              <h4>Captured frames</h4>
+              <div class="result-evidence__frames">
+                <figure v-for="(frame, index) in evidenceFrames" :key="index" class="result-evidence__image">
+                  <img :src="withBase(frame.url)" :alt="`${frame.role} frame: ${frame.label}`" />
+                  <figcaption>
+                    <strong>{{ frame.role === "control" ? "Control" : "Target" }}</strong> · {{ frame.label }}<br />
+                    Captured {{ frameTime(frame.capturedAt) }} · SHA-256 {{ frame.sha256 }}
+                  </figcaption>
+                  <a :href="withBase(frame.url)" target="_blank" rel="noopener noreferrer"
+                    >Open original {{ frame.role }} image</a
+                  >
+                </figure>
+              </div>
+            </template>
+            <template v-else-if="evidenceScreenshotUrl">
+              <figure class="result-evidence__image">
+                <img
+                  :src="evidenceScreenshotUrl"
+                  :alt="`Original recorded image for ${featureName} in ${targetName}`"
+                />
+                <figcaption>Original recorded image · SHA-256 {{ evidenceScreenshot?.sha256 }}</figcaption>
+              </figure>
+              <p>
+                <a :href="evidenceScreenshotUrl" target="_blank" rel="noopener noreferrer">Open original screenshot</a>
+              </p>
+            </template>
+
+            <p v-if="!hasRecordedDetail">No raw evidence was captured for this observation.</p>
+            <template v-if="rawReply !== undefined">
+              <h4>{{ evidenceDocument.observation.evidence === "none" ? "Collector trace" : "Raw reply" }}</h4>
+              <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
+            </template>
+            <template v-if="assertions.length">
+              <h4>Bound assertions</h4>
+              <ul class="result-evidence__assertions">
+                <li v-for="(assertion, index) in assertions" :key="index">
+                  <strong>{{ assertion.kind }}</strong
+                  ><template v-if="assertion.action"> · {{ assertion.action }}</template>
+                  <span>Expected: {{ assertion.expected }}</span>
+                  <span>Observed: {{ assertion.observed }}</span>
+                  <span v-if="assertion.note">{{ assertion.note }}</span>
+                </li>
+              </ul>
+            </template>
+          </template>
         </template>
 
         <h3>Run context</h3>
@@ -249,9 +409,11 @@ onBeforeUnmount(() => {
           <dt>Measured at</dt>
           <dd>{{ version?.measuredAt ?? "Not recorded" }}</dd>
           <dt>Run ID</dt>
-          <dd>{{ version?.runId ?? "Not recorded" }}</dd>
+          <dd>{{ cell?.chain.runId ?? version?.runId ?? "Not recorded" }}</dd>
           <dt>Run SHA-256</dt>
-          <dd>{{ version?.sha256 ?? "Not recorded" }}</dd>
+          <dd>{{ cell?.chain.runSha256 ?? version?.sha256 ?? "Not recorded" }}</dd>
+          <dt>Recorded method</dt>
+          <dd>{{ cell?.chain.method ?? "Not recorded" }}</dd>
           <dt>Suite</dt>
           <dd>
             {{ version?.suiteId ?? "Not recorded"

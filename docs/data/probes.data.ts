@@ -10,8 +10,8 @@ import { readFileSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
-import { compatibilityTargets, loadCurrentResults, type CurrentResult } from "./current-results.ts"
-import type { SelectedProjection } from "./selected-results.ts"
+import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
+import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -77,8 +77,8 @@ export interface ProbeData {
   /** category slug -> display label */
   categoryLabels: Record<string, string>
   generated: string
-  selected: SelectedProjection
-  selectedByBackend: Record<string, CurrentResult>
+  selected: PublicProjection
+  selectedByBackend: Record<string, PublicCurrentResult>
 }
 
 interface FeatureMeta {
@@ -177,7 +177,8 @@ export { data }
 export default {
   load(): ProbeData {
     const { projection } = loadCurrentResults(contentDir)
-    const byTarget = compatibilityTargets(projection, contentDir)
+    const published = publicResults(projection, compatibilityTargets(projection, contentDir))
+    const byTarget = new Map(Object.entries(published.selectedByBackend))
     const featureDescriptions = loadFeatureDescriptions()
     const features: FeatureResult[] = Object.entries(featureDescriptions)
       .filter(([id]) => !id.startsWith("$"))
@@ -255,7 +256,7 @@ export default {
       baselineStats: {},
       categoryLabels: loadCategoryLabels(),
       generated,
-      selected: projection,
+      selected: published.projection,
       selectedByBackend,
     }
     computeBaselines(result)

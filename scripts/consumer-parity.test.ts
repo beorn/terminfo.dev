@@ -5,9 +5,19 @@
  * @testonly none
  */
 import { describe, expect, it, vi } from "vitest"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, existsSync, mkdirSync, writeFileSync, cpSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { SelectedCell } from "../docs/data/selected-results.ts"
+import * as selectedResults from "../docs/data/selected-results.ts"
+import type { EvidenceDocument } from "../docs/data/public-results.ts"
+
+interface CompatibilityData {
+  results: Record<string, Record<string, string>>
+  terminals: Record<string, unknown>
+  notes: Record<string, Record<string, string>>
+}
 
 const fixture = vi.hoisted(() => {
   const runSha256 = "a".repeat(64)
@@ -29,11 +39,19 @@ const fixture = vi.hoisted(() => {
       outcome: "supported",
       evidence: "query",
       conclusive: true,
+      note: "unchecked collector note /home/fixture/private",
       record: {
         rawReply: "\u001b[1;2R",
-        assertions: [{ featureId: "sgr.bold", kind: "positive", expected: "cursor response", observed: "\u001b[1;2R" }],
+        assertions: [
+          { featureId: "sgr.bold", kind: "positive", expected: "PRIVATE_ASSERTION_EXPECTED", observed: "\u001b[1;2R" },
+        ],
       },
-      chain: { origin: { kind: "collector" }, method: "query", runId: "kitty-reviewed", runSha256 },
+      chain: {
+        origin: { kind: "collector", appLaunch: { bundlePath: "/private/fixture/app" } },
+        method: "query",
+        runId: "kitty-reviewed",
+        runSha256,
+      },
     },
     "extensions.sixel": {
       featureId: "extensions.sixel",
@@ -61,7 +79,11 @@ const fixture = vi.hoisted(() => {
     cells,
     v1: { "sgr.bold": true, "extensions.sixel": false },
     counts: { catalog: 270, tested: 2, notTested: 268, conclusive: 2, supported: 1, unsupported: 1 },
-    ungradedDiagnostics: { evidence: "legacy", label: "old callback result, unverified", results: {} },
+    ungradedDiagnostics: {
+      evidence: "legacy",
+      label: "old callback result, unverified",
+      results: { "sgr.bold": { kind: "collector-error", name: "PRIVATE_DIAGNOSTIC" } },
+    },
     reviews: [
       { id: "kitty-review", reviewer: "reviewer", reason: "exact-run identity checked", sources: ["review://kitty"] },
     ],
@@ -101,6 +123,15 @@ const fixture = vi.hoisted(() => {
     runId: "screen-older-reviewed",
     sha256: "c".repeat(64),
     target: { ...screen.target, version: "4.9" },
+    cells: Object.fromEntries(
+      Object.entries(cells).map(([id, cell]) => [
+        id,
+        {
+          ...cell,
+          chain: { ...cell.chain, runId: "screen-older-reviewed", runSha256: "c".repeat(64) },
+        },
+      ]),
+    ),
   }
   return {
     runSha256,
@@ -136,6 +167,140 @@ import { generateApi } from "./generate-api.ts"
 import { generateAnalysis } from "./generate-analysis.ts"
 
 describe("selected-run consumer parity", () => {
+  it("keeps raw evidence and unchecked collector notes out of generated site and API summaries", () => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-"))
+    try {
+      const site = probesLoader.load()
+      generateApi(out)
+      const v1 = readFileSync(join(out, "api", "v1", "data.json"), "utf8")
+      const v2 = readFileSync(join(out, "api", "v2", "data.json"), "utf8")
+      for (const serialized of [JSON.stringify(site), v1, v2]) {
+        for (const marker of [
+          "PRIVATE_ASSERTION_EXPECTED",
+          "PRIVATE_DIAGNOSTIC",
+          "/home/fixture/private",
+          "/private/fixture/app",
+        ]) {
+          expect(serialized).not.toContain(marker)
+        }
+      }
+      expect(site.results.kitty?.["sgr.bold"]).toBe("yes")
+      expect(JSON.parse(v1)).toMatchObject({ results: { kitty: { "sgr.bold": "yes" } } })
+      expect(site.selectedByBackend.kitty?.selected.cells["sgr.bold"]?.chain.runSha256).toBe(fixture.runSha256)
+    } finally {
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
+  it("presents only approved original feature details and withdraws generated files without changing v1 results", () => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-approved-"))
+    const copied = mkdtempSync(join(tmpdir(), "terminfo-presentation-copied-public-"))
+    const cell = fixture.selected.cells["sgr.bold"] as unknown as SelectedCell
+    const original = structuredClone(cell)
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+      "base64",
+    )
+    const digest = createHash("sha256").update(png).digest("hex")
+    const screenshot = { url: `/artifacts/${digest}.png`, sha256: digest }
+    const imageReader = vi.spyOn(selectedResults, "readVerifiedScreenshot").mockImplementation((_content, ref) => {
+      expect(ref).toBe(`sha256:${digest}`)
+      return png
+    })
+    try {
+      cell.presentation = {
+        decision: {
+          id: "present-bold",
+          reviewer: "reviewer",
+          reason: "checked original evidence",
+          sources: ["https://example.org/review"],
+          presentsEvidence: true,
+        },
+        original: {
+          observation: {
+            featureId: "sgr.bold",
+            outcome: original.outcome,
+            evidence: original.evidence,
+            note: original.note,
+          },
+          record: { ...original.record, screenshot },
+        },
+      }
+      cell.chain.correctionId = "correct-bold"
+      cell.note = "Reviewed correction note"
+      cell.record = { rawReply: "CORRECTION_OTHER_FEATURE_RAW", assertions: [] }
+      const site = probesLoader.load()
+      const presented = site.selectedByBackend.kitty?.selected.cells["sgr.bold"]?.presentation
+      expect(presented?.state).toBe("presented")
+      if (presented?.state !== "presented") throw new Error("Missing presented evidence")
+      generateApi(out)
+      const evidenceFile = join(out, presented.url.slice(1))
+      const bytes = readFileSync(evidenceFile)
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(presented.sha256)
+      const document = JSON.parse(bytes.toString("utf8")) as EvidenceDocument
+      expect(document).toMatchObject({
+        runId: fixture.selected.runId,
+        runSha256: fixture.runSha256,
+        featureId: "sgr.bold",
+      })
+      expect(document.record.rawReply).toBe(original.record.rawReply)
+      expect(bytes.toString("utf8")).not.toContain("CORRECTION_OTHER_FEATURE_RAW")
+      expect(document.observation.note).toBe(original.note)
+      expect(JSON.stringify(site)).not.toContain("PRIVATE_ASSERTION_EXPECTED")
+      expect(readFileSync(join(out, screenshot.url.slice(1)))).toEqual(png)
+      const v1Before = JSON.parse(readFileSync(join(out, "api/v1/data.json"), "utf8")) as CompatibilityData
+      expect(v1Before.notes.kitty?.["sgr.bold"]).toBe("Reviewed correction note")
+
+      // A new staged build may start with a previous docs/public snapshot copied into it.
+      cpSync(out, copied, { recursive: true })
+      cell.presentation.decision = {
+        ...cell.presentation.decision,
+        id: "withdraw-bold",
+        reason: "Withdrawn for recheck",
+        presentsEvidence: false,
+      }
+      generateApi(out)
+      generateApi(copied)
+      expect(existsSync(evidenceFile)).toBe(false)
+      expect(existsSync(join(copied, presented.url.slice(1)))).toBe(false)
+      expect(existsSync(join(out, screenshot.url.slice(1)))).toBe(false)
+      expect(existsSync(join(copied, screenshot.url.slice(1)))).toBe(false)
+      const after = probesLoader.load().selectedByBackend.kitty?.selected.cells["sgr.bold"]
+      expect(after?.presentation).toMatchObject({ state: "withdrawn", review: { reason: "Withdrawn for recheck" } })
+      const v1After = JSON.parse(readFileSync(join(out, "api/v1/data.json"), "utf8")) as CompatibilityData
+      expect(v1After.results).toEqual(v1Before.results)
+      expect(v1After.terminals).toEqual(v1Before.terminals)
+      expect(v1After.notes.kitty?.["sgr.bold"]).toBe("Reviewed correction note")
+
+      delete cell.chain.correctionId
+      cell.note = original.note
+      cell.presentation.decision.presentsEvidence = true
+      generateApi(out)
+      expect(JSON.parse(readFileSync(join(out, "api/v1/data.json"), "utf8"))).toMatchObject({
+        notes: { kitty: { "sgr.bold": original.note } },
+      })
+    } finally {
+      imageReader.mockRestore()
+      Object.assign(cell, original)
+      delete cell.presentation
+      rmSync(out, { recursive: true, force: true })
+      rmSync(copied, { recursive: true, force: true })
+    }
+  })
+
+  it("fails by path if copied static evidence was never owned by the generator", () => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-unapproved-artifact-"))
+    const path = join(out, "artifacts", `${"f".repeat(64)}.png`)
+    try {
+      mkdirSync(join(out, "artifacts"))
+      writeFileSync(path, "UNAPPROVED_STATIC_IMAGE")
+      expect(() => generateApi(out)).toThrow(path)
+      expect(readFileSync(path, "utf8")).toBe("UNAPPROVED_STATIC_IMAGE")
+    } finally {
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
   it("keeps the same run, conclusive counts and measurement time in every consumer", () => {
     const warnings: string[] = []
     const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))

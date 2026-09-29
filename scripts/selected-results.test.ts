@@ -6,10 +6,15 @@
  */
 import { afterEach, describe, expect, it } from "vitest"
 import { createHash } from "node:crypto"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { loadSelectedResults, parseInterpretations, projectResults } from "../docs/data/selected-results.ts"
+import {
+  loadSelectedResults,
+  parseInterpretations,
+  projectResults,
+  readVerifiedScreenshot,
+} from "../docs/data/selected-results.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 
@@ -356,7 +361,7 @@ describe("selected results", () => {
       {},
     )
   })
-  it("loads screenshot bytes by digest and refuses a missing or modified artifact", () => {
+  it("verifies screenshot bytes without writing and refuses missing, modified, or non-PNG artifacts", () => {
     const content = temporaryContent()
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
@@ -409,8 +414,18 @@ describe("selected results", () => {
       },
       { role: "target", label: "after", capturedAt: 2, url: `/artifacts/${digest}.png`, sha256: digest },
     ])
-    expect(readFileSync(join(output, `${digest}.png`))).toEqual(png)
-    expect(readFileSync(join(output, `${controlDigest}.png`))).toEqual(controlPng)
+    expect(existsSync(output)).toBe(false)
+    expect(
+      loadSelectedResults(content, "current").history["app:kitty"]?.[0]?.cells["extensions.graphics"],
+    ).toBeDefined()
+    expect(existsSync(output)).toBe(false)
+    expect(readVerifiedScreenshot(content, screenshotRef, "pixels.json")).toEqual(png)
+    expect(readVerifiedScreenshot(content, controlRef, "pixels.json")).toEqual(controlPng)
+    const invalidPng = Buffer.from("not a PNG")
+    const invalidRef = `sha256:${createHash("sha256").update(invalidPng).digest("hex")}`
+    writeFileSync(join(content, "artifacts", `${invalidRef.slice(7)}.png`), invalidPng)
+    expect(() => readVerifiedScreenshot(content, invalidRef, "pixels.json")).toThrow(/not a PNG/)
+    expect(() => readVerifiedScreenshot(content, "../../outside.png", "pixels.json")).toThrow(/invalid screenshotRef/)
     writeFileSync(artifactPath, Buffer.concat([png, Buffer.from("changed")]))
     expect(() => loadSelectedResults(content, "current")).toThrow(/artifact.*(hash|digest)/)
     rmSync(artifactPath)
@@ -1436,6 +1451,150 @@ describe("selected results", () => {
     expect(
       projectResults([measured], [review, revoke], catalog, { currentProbeHash: "current" }).current["app:kitty"],
     ).toBeUndefined()
+  })
+
+  it("presents only the immutable original feature payload across a correction and withdrawal", () => {
+    const measured = parseRun("presentation.json", JSON.stringify(run("presentation")), catalog)
+    const base = {
+      runId: measured.runId,
+      runSha256: measured.sha256,
+      reviewer: "reviewer",
+      reason: "reviewed original feature evidence",
+      scope: reviewFor(measured).scope,
+      sources: ["capture://presentation"],
+      supersedes: [] as string[],
+      featureId: "extensions.graphics",
+    }
+    const decision = { ...base, id: "show-graphics", presentsEvidence: true }
+    const correction = {
+      ...base,
+      id: "correct-graphics",
+      observation: observation("extensions.graphics", "inconclusive", "behavior", "timeout"),
+    }
+    const selected = projectResults([measured], [reviewFor(measured), correction, decision], catalog, {
+      currentProbeHash: "current",
+    }).current["app:kitty"]?.cells["extensions.graphics"]
+    expect(selected?.outcome).toBe("inconclusive")
+    expect(selected?.presentation?.decision).toEqual({
+      id: decision.id,
+      reviewer: decision.reviewer,
+      reason: decision.reason,
+      sources: decision.sources,
+      presentsEvidence: true,
+    })
+    expect(selected?.presentation?.original.observation).toEqual(measured.observations[1])
+    expect(selected?.presentation?.original.record).toEqual({
+      rawReply: "NO",
+      assertions: measured.assertions.filter((assertion) => assertion.featureId === "extensions.graphics"),
+    })
+    expect(selected?.presentation?.original.observation.outcome).toBe("unsupported")
+    const withdrawal = {
+      ...base,
+      id: "withdraw-graphics",
+      reason: "no longer present on the site",
+      supersedes: [decision.id],
+      presentsEvidence: false,
+    }
+    const withdrawn = projectResults([measured], [reviewFor(measured), correction, decision, withdrawal], catalog, {
+      currentProbeHash: "current",
+    })
+    expect(withdrawn.current["app:kitty"]?.cells["extensions.graphics"]?.presentation?.decision).toMatchObject({
+      id: withdrawal.id,
+      reason: withdrawal.reason,
+      presentsEvidence: false,
+    })
+    expect(withdrawn.current["app:kitty"]?.cells["extensions.graphics"]?.presentation?.original.observation).toEqual(
+      measured.observations[1],
+    )
+    expect(withdrawn.current["app:kitty"]?.cells["extensions.query"]?.presentation).toBeUndefined()
+  })
+
+  it("requires exclusive, exact, existing and in-scope presentation bindings by record name", () => {
+    const measured = parseRun("presentation.json", JSON.stringify(run("presentation-bindings")), catalog)
+    const decision = {
+      id: "present-query",
+      runId: measured.runId,
+      runSha256: measured.sha256,
+      reviewer: "reviewer",
+      reason: "reviewed original query",
+      scope: reviewFor(measured).scope,
+      sources: ["capture://query"],
+      supersedes: [],
+      featureId: "extensions.query",
+      presentsEvidence: false,
+    }
+    const parse = (entry: Record<string, unknown>) =>
+      parseInterpretations("interpretations.json", JSON.stringify([entry]), catalog)
+    for (const extra of [
+      { reviewed: false },
+      { verifiesIdentity: false },
+      { observation: null },
+      { origin: "documentation" },
+    ]) {
+      expect(() => parse({ ...decision, ...extra })).toThrow(
+        /present-query.*(reviewed|verifiesIdentity|observation|origin)/,
+      )
+    }
+    expect(() => parse({ ...decision, presentsEvidence: "yes" })).toThrow(/present-query.*presentsEvidence/)
+    expect(() => parse({ ...decision, runId: undefined })).toThrow(/present-query.*runId/)
+    expect(() => parse({ ...decision, runSha256: undefined })).toThrow(/present-query.*run SHA256/)
+    expect(() => parse({ ...decision, featureId: undefined })).toThrow(/present-query.*featureId/)
+    const project = (entry: typeof decision) =>
+      projectResults([measured], [entry], catalog, { currentProbeHash: "current" })
+    expect(() => project({ ...decision, runId: "missing-run" })).toThrow(/present-query.*runId/)
+    expect(() => project({ ...decision, runSha256: "0".repeat(64) })).toThrow(/present-query.*SHA256/)
+    expect(() =>
+      project({ ...decision, scope: { ...decision.scope, versions: ["9.0", "9.0"] as [string, string] } }),
+    ).toThrow(/present-query.*scope/)
+    expect(() => project({ ...decision, featureId: "cursor.position" })).toThrow(/present-query.*observation/)
+  })
+
+  it("refuses duplicate active presentation decisions and cross-decision supersession", () => {
+    const measured = parseRun("presentation.json", JSON.stringify(run("presentation-supersession")), catalog)
+    const review = reviewFor(measured)
+    const decision = {
+      id: "present-query",
+      runId: measured.runId,
+      runSha256: measured.sha256,
+      reviewer: "reviewer",
+      reason: "reviewed query",
+      scope: review.scope,
+      sources: ["capture://query"],
+      supersedes: [] as string[],
+      featureId: "extensions.query",
+      presentsEvidence: true,
+    }
+    const project = (entries: Parameters<typeof projectResults>[1]) =>
+      projectResults([measured], entries, catalog, { currentProbeHash: "current" })
+    for (const presentsEvidence of [true, false]) {
+      expect(() => project([decision, { ...decision, id: "duplicate", presentsEvidence }])).toThrow(
+        /present-query.*duplicate|duplicate.*present-query/,
+      )
+    }
+    expect(() => project([review, { ...decision, id: "cross", supersedes: [review.id] }])).toThrow(
+      /cross.*review-presentation-supersession|cross.*review-presentation|cross.*review/,
+    )
+    expect(() => project([decision, { ...review, id: "cross-back", supersedes: [decision.id] }])).toThrow(
+      /cross-back.*present-query/,
+    )
+    const otherRun = parseRun("other.json", JSON.stringify(run("other-run")), catalog)
+    expect(() =>
+      projectResults(
+        [measured, otherRun],
+        [
+          decision,
+          {
+            ...decision,
+            id: "wrong-target",
+            runId: otherRun.runId,
+            runSha256: otherRun.sha256,
+            supersedes: [decision.id],
+          },
+        ],
+        catalog,
+        { currentProbeHash: "current" },
+      ),
+    ).toThrow(/wrong-target.*present-query/)
   })
 
   it("compares measured instants across time zones", () => {

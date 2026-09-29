@@ -61,7 +61,7 @@ Color coding:
 }
 ```
 
-This empty-results example matches a build with no selectable reviewed runs. When one is available, `terminals`, `results` and `notes` gain its slug. The existing v1 score object keeps its meaning: `total` is the number of reported yes/no feature results, `pass` counts yes, and `pct` is `pass / total`. Unknown, inconclusive and error observations are omitted, so coverage belongs in v2.
+This empty-results example matches a build with no selectable reviewed runs. When one is available, `terminals` and `results` gain its slug; `notes` remains optional per feature. The existing v1 score object keeps its meaning: `total` is the number of reported yes/no feature results, `pass` counts yes, and `pct` is `pass / total`. Unknown, inconclusive and error observations are omitted, so coverage belongs in v2. Collector note text appears only after an exact evidence-presentation review; a reviewed correction note remains available without that decision. The methodology record announces this note correction, and the release packet counts the removed notes per target.
 
 ### Top-level Fields
 
@@ -73,7 +73,7 @@ This empty-results example matches a build with no selectable reviewed runs. Whe
 | `features`    | `object` | Feature definitions keyed by dot-path ID                                     |
 | `terminals`   | `object` | Terminal metadata keyed by slug                                              |
 | `results`     | `object` | Conclusive support results: `terminal_slug -> feature_id -> "yes" \| "no"`   |
-| `notes`       | `object` | Optional notes: `terminal_slug -> feature_id -> note_text`                   |
+| `notes`       | `object` | Optional reviewed notes: `terminal_slug -> feature_id -> note_text`          |
 
 ### Feature Object
 
@@ -141,7 +141,11 @@ if (terminal) {
 
 ## Exact-context v2 data
 
-**`GET /api/v2/data.json`** carries the canonical four outcomes (`supported`, `unsupported`, `inconclusive`, `error`) and each observation's method, reason when applicable, and provenance chain. `current` is keyed by exact target context, so an app, its headless parser and a multiplexer remain separate. Each selected version includes `target`, `runId`, `sha256`, `measuredAt`, `suiteId`, `probeHash`, `suiteFreshness`, `suite` (observed and expected probe counts), `cells`, and counts for catalog, tested, not tested, conclusive, supported and unsupported. `versions` keeps selectable versions; `history` keeps older and excluded runs, including ungraded legacy booleans; `exclusions` names why a run was not selected.
+**`GET /api/v2/data.json`** carries the canonical four outcomes (`supported`, `unsupported`, `inconclusive`, `error`) and each observation's method, reason when applicable, and provenance chain. `current` is keyed by exact target context, so an app, its headless parser and a multiplexer remain separate. Each selected version includes `target`, `runId`, `sha256`, `measuredAt`, `suiteId`, `probeHash`, `suiteFreshness`, `suite` (observed and expected probe counts), `cells`, and counts for catalog, tested, not tested, conclusive, supported and unsupported. `versions` keeps selectable versions; `history` keeps older and excluded runs as metadata summaries, including ungraded legacy observations; `exclusions` names why a run was not selected without publishing internal source paths.
+
+Each v2 cell gives the public outcome, reason when recorded, method and run identity. Its `presentation.state` distinguishes `not-reviewed`, `withdrawn` (with reviewer and reason) and `presented` (with reviewer, reason, evidence URL and SHA-256 digest). A presented cell may include verified image descriptors for the hover preview. Raw replies and assertion bodies are **not** embedded in `data.json`, including its history. For a presented cell, the static document at its `presentation.url` contains the original recorded feature observation, raw reply and bound assertions when captured, approved image descriptors, exact `runId`, `runSha256` and `featureId`, and the presentation review. Clients should verify the document bytes against `presentation.sha256` and check those identities before using its details. A successful document with no raw material means none was captured; a failed fetch, digest or identity check is an evidence error, not missing evidence.
+
+`presentsEvidence` is an editorial decision about what the site and generated API present. It is **not a privacy control**: this is a public repository, so source files and images may be accessible independently of these endpoints. A withdrawn decision removes the generated evidence link and details from the next staged output; it cannot retract copies already downloaded.
 
 v1's `methodology.contexts[slug]` names the exact context, run SHA and target chosen for that compatibility row. If more than one context exists for a terminal ID, the site and v1 require a reviewed default-context policy row with its reviewer, reason and sources. An unresolved collision stops the build rather than merging results. Multiplexer results appear in v2 under `kind: "mux"`; v1's `type` field retains its existing app/headless meaning.
 
