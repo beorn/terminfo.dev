@@ -71,23 +71,34 @@ beforeEach(() => {
 })
 
 describe("owned Terminal.app receipt", () => {
-  test("launch accepts only a new window with a nonempty tab TTY", () => {
+  test("launch selects the one new single-tab window with the returned tab TTY", () => {
+    // The OS reply lists the before IDs, do-script tab TTY, then every post-launch
+    // window's ID, tab count, and sole-tab TTY. It deliberately includes an old
+    // window with the same TTY so a first-match search would borrow it.
     vi.mocked(spawnSync).mockReturnValueOnce({
       status: 0,
-      stdout: "12,13\n14\n/dev/ttys003\n",
+      stdout: "12,13\n/dev/ttys003\n12|1|/dev/ttys003\n13|2|\n14|1|/dev/ttys003\n15|1|/dev/ttys004\n",
       stderr: "",
     } as ReturnType<typeof spawnSync>)
     expect(launchTerminalWindow("/private/run/serve.sh")).toEqual({ windowId: 14, tty: "/dev/ttys003" })
-    vi.mocked(spawnSync).mockReturnValueOnce({
-      status: 0,
-      stdout: "12,13\n13\n/dev/ttys003\n",
-      stderr: "",
-    } as ReturnType<typeof spawnSync>)
-    expect(() => launchTerminalWindow("/private/run/serve.sh")).toThrow(/preexisting window/)
-    vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout: "12,13\n14\n\n", stderr: "" } as ReturnType<
-      typeof spawnSync
-    >)
-    expect(() => launchTerminalWindow("/private/run/serve.sh")).toThrow(/TTY/)
+  })
+
+  test.each([
+    ["preexisting matching tab", "12,13\n/dev/ttys003\n12|1|/dev/ttys003\n14|1|/dev/ttys004\n"],
+    ["new multi-tab window", "12\n/dev/ttys003\n12|1|/dev/ttys001\n14|2|/dev/ttys003\n"],
+    ["new wrong TTY", "12\n/dev/ttys003\n12|1|/dev/ttys001\n14|1|/dev/ttys004\n"],
+    ["two new matching windows", "12\n/dev/ttys003\n12|1|/dev/ttys001\n14|1|/dev/ttys003\n15|1|/dev/ttys003\n"],
+    ["duplicate inventory ID", "12\n/dev/ttys003\n14|1|/dev/ttys003\n14|1|/dev/ttys003\n"],
+  ] as const)("launch refuses %s before claiming window ownership", (_case, stdout) => {
+    vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout, stderr: "" } as ReturnType<typeof spawnSync>)
+    expect(() => launchTerminalWindow("/private/run/serve.sh")).toThrow()
+  })
+
+  test("launch refuses an absent or malformed returned tab TTY", () => {
+    for (const stdout of ["12\n\n14|1|/dev/ttys003\n", "12\n/dev/pts/3\n14|1|/dev/ttys003\n"]) {
+      vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout, stderr: "" } as ReturnType<typeof spawnSync>)
+      expect(() => launchTerminalWindow("/private/run/serve.sh")).toThrow(/TTY/)
+    }
   })
 
   test("cleanup addresses only the launched window and its unchanged sole tab", () => {

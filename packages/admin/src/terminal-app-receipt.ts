@@ -36,25 +36,52 @@ function tty(value: string): string {
 export function launchTerminalWindow(scriptPath: string): OwnedTerminalWindow {
   const script = `tell application "Terminal"
   set AppleScript's text item delimiters to ","
-  set priorIds to (id of every window) as string
+  set priorList to id of every window
+  set priorIds to priorList as string
   set t to do script ${JSON.stringify(scriptPath)}
-  set w to window of t
-  return priorIds & linefeed & ((id of w) as string) & linefeed & (tty of t as string)
+  set launchedTTY to (tty of t) as string
+  set inventory to priorIds & linefeed & launchedTTY
+  repeat with w in every window
+    set windowId to id of w
+    if priorList does not contain windowId then
+      set tabCount to count of tabs of w
+      set onlyTTY to ""
+      if tabCount is 1 then set onlyTTY to (tty of tab 1 of w) as string
+      set inventory to inventory & linefeed & (windowId as string) & "|" & (tabCount as string) & "|" & onlyTTY
+    end if
+  end repeat
+  return inventory
 end tell`
   const output = run("osascript", ["-e", script]).stdout.trimEnd()
   const lines = output.split(/\r?\n/)
-  if (lines.length !== 3) throw new Error(`Terminal launch returned no new-window/TTY proof: ${JSON.stringify(output)}`)
-  const [before, idText, ttyText] = lines
-  const windowId = Number(idText)
-  if (!Number.isSafeInteger(windowId) || windowId < 1) {
-    throw new Error(`Terminal returned invalid window ID: ${JSON.stringify(idText)}`)
-  }
+  if (lines.length < 3)
+    throw new Error(`Terminal launch returned no new-window/TTY inventory: ${JSON.stringify(output)}`)
+  const [before, returnedTTY, ...windows] = lines
+  const launchedTTY = tty(returnedTTY ?? "")
   const priorIds = before?.trim() ? before.split(",").map((value) => Number(value.trim())) : []
-  if (priorIds.some((id) => !Number.isSafeInteger(id) || id < 1)) {
+  if (priorIds.some((id) => !Number.isSafeInteger(id) || id < 1) || new Set(priorIds).size !== priorIds.length) {
     throw new Error("Terminal returned invalid pre-launch window IDs")
   }
-  if (priorIds.includes(windowId)) throw new Error(`Terminal reused preexisting window ${windowId}; refusing ownership`)
-  return { windowId, tty: tty(ttyText ?? "") }
+  const seen = new Set<number>()
+  const matching: number[] = []
+  for (const row of windows) {
+    const match = /^([1-9]\d*)\|([0-9]+)\|(.*)$/.exec(row)
+    const windowId = Number(match?.[1])
+    const tabCount = Number(match?.[2])
+    if (!match || !Number.isSafeInteger(windowId) || !Number.isSafeInteger(tabCount) || seen.has(windowId)) {
+      throw new Error(`Terminal returned invalid or duplicate post-launch window row: ${JSON.stringify(row)}`)
+    }
+    seen.add(windowId)
+    if (priorIds.includes(windowId) || tabCount !== 1 || !match[3]) continue
+    if (tty(match[3]) === launchedTTY) matching.push(windowId)
+  }
+  const [windowId] = matching
+  if (matching.length !== 1 || windowId === undefined) {
+    throw new Error(
+      `Expected exactly one new single-tab Terminal window with returned TTY ${launchedTTY}; found ${matching.length}`,
+    )
+  }
+  return { windowId, tty: launchedTTY }
 }
 
 /** Close only the still-matching single-tab window created for this collection. */
