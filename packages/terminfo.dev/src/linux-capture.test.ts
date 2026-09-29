@@ -4,7 +4,8 @@
  * @consumer Linux Kitty daemon capture and concurrent HTTP clients
  * @testonly none
  */
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
@@ -64,6 +65,11 @@ cat "$TEST_CAPTURE_PNG"`,
   return { directory, started, finished, stdin }
 }
 
+function liveExecutable(sha256?: string) {
+  const path = realpathSync(`/proc/${process.pid}/exe`)
+  return { path, sha256: sha256 ?? createHash("sha256").update(readFileSync(path)).digest("hex") }
+}
+
 afterEach(() => {
   for (const directory of temporary.splice(0)) rmSync(directory, { recursive: true, force: true })
   if (originalPath === undefined) delete process.env.PATH
@@ -86,7 +92,7 @@ test.runIf(process.platform === "linux")(
   "a real delayed capture command leaves the daemon event loop available and pipes XWD to PNG",
   async () => {
     const { directory, started, finished, stdin } = fixture()
-    const capture = await createLinuxCapture(join(directory, "frames"), process.execPath)
+    const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
     const pending = capture({ featureId: "fixture", role: "control", label: "fixture frame" })
     for (let n = 0; n < 100 && !existsSync(started); n++) await new Promise((resolve) => setTimeout(resolve, 10))
     expect(existsSync(started)).toBe(true)
@@ -109,9 +115,19 @@ test.runIf(process.platform === "linux")(
   async () => {
     const { directory } = fixture()
     process.env.TEST_CAPTURE_FAIL = "owner"
-    await expect(createLinuxCapture(join(directory, "frames"), process.execPath)).rejects.toMatchObject({
+    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable())).rejects.toMatchObject({
       code: 17,
       message: expect.stringContaining("owner lookup failed"),
     })
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "a matching process path with the wrong executable digest cannot authorize capture",
+  async () => {
+    const { directory } = fixture()
+    await expect(createLinuxCapture(join(directory, "frames"), liveExecutable("0".repeat(64)))).rejects.toThrow(
+      "executable digest mismatch",
+    )
   },
 )

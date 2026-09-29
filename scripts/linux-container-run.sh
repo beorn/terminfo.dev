@@ -20,7 +20,9 @@ compose_receipt() {
       error("runId mismatch between host and container receipts")
     elif ($h.runtime.imageId | type) != "string" or ($h.runtime.imageTarSha256 | type) != "string" then
       error("host image identity is missing")
-    elif ($c.executable.sha256 | type) != "string" or ($c.sourceArtifact.sha256 | type) != "string" then
+    elif ($c.executable.path | type) != "string" or ($c.executable.sha256 | type) != "string" or
+         ($c.invocation.path | type) != "string" or ($c.invocation.sha256 | type) != "string" or
+         ($c.sourceArtifact.sha256 | type) != "string" then
       error("container executable or archive identity is missing")
     elif ($h.runnerArtifact.frozenRunnerSha256 | type) != "string" or
          ($h.runnerArtifact.buildReceiptSha256 | type) != "string" or
@@ -37,6 +39,7 @@ compose_receipt() {
     else
       $h + {
         executable:$c.executable,
+        invocation:$c.invocation,
         sourceArtifact:($h.sourceArtifact + $c.sourceArtifact),
         collector:$c.collector,
         probeRun:$c.probeRun,
@@ -105,7 +108,8 @@ if [[ "${1:-}" == "--inside" ]]; then
     /out/host-measured.json >/dev/null || {
     echo "Frozen collector differs from host build receipt" >&2; exit 2;
   }
-  sha256sum "$KITTY_BINARY" | tee /out/executable.sha256
+  # This is the declared invocation. Nixpkgs may wrap it and exec another ELF.
+  sha256sum "$KITTY_BINARY" | tee /out/invocation.sha256
   sha256sum "$KITTY_SOURCE_ARCHIVE" | tee /out/source-archive.sha256
   read -r source_sha source_path < /out/source-archive.sha256
   expected_source_sha=$(printf '%s' "${KITTY_SOURCE_SRI#sha256-}" | base64 -d | od -An -tx1 -v | tr -d ' \n')
@@ -267,6 +271,12 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "Collector daemon registration does not identify a live process" >&2; exit 2;
   }
   window_pid=$(xdotool getwindowpid "$window_id")
+  live_executable=$(readlink -f "/proc/$daemon_pid/exe")
+  [[ -f "$live_executable" && -x "$live_executable" ]] || {
+    echo "Owned Kitty PID has no live executable" >&2; exit 2;
+  }
+  live_executable_sha=$(sha256sum "/proc/$daemon_pid/exe" | cut -d ' ' -f 1)
+  printf '%s  %s\n' "$live_executable_sha" "$live_executable" > /out/live-executable.sha256
   jq -n --arg run "$TERMINFO_RUN_ID" --arg profile "$TERMINFO_CLIPBOARD_PROFILE" \
     --arg display "$DISPLAY" --argjson number "$display_number" \
     --arg displayFdPath "$HOME/display-number" --argjson xvfbPid "$xvfb_pid" \
@@ -284,10 +294,9 @@ if [[ "${1:-}" == "--inside" ]]; then
   chmod 600 "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT"
   clipboard_fixture_sha=$(sha256sum "$TERMINFO_CLIPBOARD_FIXTURE_RECEIPT" | cut -d ' ' -f 1)
   xdotool getwindowgeometry --shell "$window_id" > /out/geometry.txt
-  read -r executable_sha executable_path < /out/executable.sha256
   read -r source_sha source_path < /out/source-archive.sha256
   jq -n --slurpfile host /out/host-measured.json \
-    --arg path "$(readlink -f "$KITTY_BINARY")" --arg sha "$executable_sha" \
+    --arg path "$live_executable" --arg sha "$live_executable_sha" \
     --arg version "$(cat /out/executable-version.txt)" --arg sourceSha "$source_sha" \
     --arg config "$kitty_config" \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
@@ -304,12 +313,15 @@ if [[ "${1:-}" == "--inside" ]]; then
     }' > "$TERMINFO_RUNTIME_PROVENANCE"
   curl --fail-with-body --silent --show-error --max-time 120 \
     -H "Authorization: Bearer $token" "http://127.0.0.1:$port/probe" > /out/v2-run.json
-  jq -e --slurpfile build "$build_receipt" '
+  jq -e --slurpfile build "$build_receipt" --arg executablePath "$live_executable" \
+    --arg executableSha "$live_executable_sha" '
     .schemaVersion == 2 and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
     .target.kind == "app" and .target.id == "kitty" and
     .identity == "unverified" and .origin.kind == "collector" and
     .probeHash == $build[0].probeHash and .suiteId == $build[0].probeHash and
     .sourceRevision == $build[0].collectorRevision and
+    .provenance.executable.path == $executablePath and
+    .provenance.executable.sha256 == $executableSha and
     (.suiteComplete | type == "boolean") and (.rawReplies | type == "object") and
     (.assertions | type == "array") and (.observations | type == "array") and
     (has("results") | not)' /out/v2-run.json >/dev/null || {
@@ -338,10 +350,11 @@ if [[ "${1:-}" == "--inside" ]]; then
   jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --arg png "artifacts/$png_sha.png" \
     '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,png:$png,context:"linux-x86_64-xvfb-llvmpipe"}' \
     > /out/observed.json
-  read -r executable_sha executable_path < /out/executable.sha256
+  read -r invocation_sha invocation_path < /out/invocation.sha256
   read -r source_sha source_path < /out/source-archive.sha256
   jq -n --arg run "$TERMINFO_RUN_ID" \
-    --arg executablePath "$executable_path" --arg executableSha "$executable_sha" \
+    --arg executablePath "$live_executable" --arg executableSha "$live_executable_sha" \
+    --arg invocationPath "$invocation_path" --arg invocationSha "$invocation_sha" \
     --arg executableVersion "$(cat /out/executable-version.txt)" \
     --arg sourcePath "$source_path" --arg sourceSha "$source_sha" \
     --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
@@ -352,6 +365,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
     '{runId:$run,
       executable:{path:$executablePath,version:$executableVersion,sha256:$executableSha},
+      invocation:{path:$invocationPath,sha256:$invocationSha},
       sourceArtifact:{path:$sourcePath,sha256:$sourceSha},
       collector:{frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha},
       probeRun:{path:"v2-run.json",runId:$probeRun,sha256:$probeSha},
@@ -538,6 +552,12 @@ probe_sha=$(sha256sum "$raw/v2-run.json" | cut -d ' ' -f 1)
 jq -e --arg run "$(jq -er .probeRunId "$raw/observed.json")" --arg sha "$probe_sha" \
   '.probeRun.runId == $run and .probeRun.sha256 == $sha' "$raw/container-receipt.json" >/dev/null || {
   echo "Raw v2 run differs from container receipt" >&2; exit 2;
+}
+jq -e --slurpfile run "$raw/v2-run.json" \
+  '.executable.path == $run[0].provenance.executable.path and
+   .executable.sha256 == $run[0].provenance.executable.sha256' \
+  "$raw/container-receipt.json" >/dev/null || {
+  echo "Retained v2 run executable differs from measured container ELF" >&2; exit 2;
 }
 source_sha=$(jq -er .sourceArtifact.sha256 "$raw/container-receipt.json")
 source_sri=$(nix hash convert --hash-algo sha256 --to sri "$source_sha")

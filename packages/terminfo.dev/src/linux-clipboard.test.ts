@@ -12,6 +12,7 @@ import { afterEach, expect, test } from "vitest"
 import { createClipboardTransaction, createLinuxClipboardAdapter, type ClipboardTraceEvent } from "./linux-clipboard.ts"
 
 const originalCapture = process.env.TERMINFO_CAPTURE_DIRECTORY
+const measuredExecutable = { path: process.execPath, sha256: "0".repeat(64) }
 const directories: string[] = []
 afterEach(() => {
   for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true })
@@ -29,7 +30,7 @@ test.runIf(process.platform === "linux")(
     writeFileSync(receipt, JSON.stringify({ schemaVersion: 1, runId: "a".repeat(32), profile: "allow" }), {
       mode: 0o600,
     })
-    await expect(createLinuxClipboardAdapter(receipt, "a".repeat(32))).rejects.toThrow(
+    await expect(createLinuxClipboardAdapter(receipt, "a".repeat(32), measuredExecutable)).rejects.toThrow(
       "Invalid owned clipboard receipt",
     )
     writeFileSync(
@@ -45,7 +46,9 @@ test.runIf(process.platform === "linux")(
         permissions: "",
       }),
     )
-    await expect(createLinuxClipboardAdapter(receipt, "a".repeat(32))).rejects.toThrow("invalid PID")
+    await expect(createLinuxClipboardAdapter(receipt, "a".repeat(32), measuredExecutable)).rejects.toThrow(
+      "invalid PID",
+    )
     writeFileSync(
       receipt,
       JSON.stringify({
@@ -65,7 +68,7 @@ test.runIf(process.platform === "linux")(
         permissions: "clipboard: read=allow,write=allow",
       }),
     )
-    await expect(createLinuxClipboardAdapter(receipt, "b".repeat(32))).rejects.toThrow(
+    await expect(createLinuxClipboardAdapter(receipt, "b".repeat(32), measuredExecutable)).rejects.toThrow(
       "does not match this collector run",
     )
   },

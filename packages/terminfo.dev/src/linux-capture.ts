@@ -4,6 +4,28 @@ import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ProbeCapture } from "./probes/unified.ts"
 
+export interface LiveExecutable {
+  path: string
+  sha256: string
+}
+
+/** Bind a launched process to the same actual ELF bytes recorded by the launcher. */
+export function assertLiveExecutable(pid: number, expected: LiveExecutable): void {
+  if (
+    !Number.isSafeInteger(pid) ||
+    pid < 2 ||
+    !expected.path.startsWith("/") ||
+    !/^[0-9a-f]{64}$/.test(expected.sha256)
+  ) {
+    throw new Error("Invalid measured executable identity")
+  }
+  const path = realpathSync(`/proc/${pid}/exe`)
+  if (path !== expected.path) throw new Error(`Live executable path mismatch for PID ${pid}: ${path}`)
+  if (digest(readFileSync(`/proc/${pid}/exe`)) !== expected.sha256) {
+    throw new Error(`Live executable digest mismatch for PID ${pid}`)
+  }
+}
+
 function command(file: string, args: string[], input?: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     let stdinError: Error | undefined
@@ -45,11 +67,14 @@ function retain(directory: string, bytes: Buffer, extension: string): string {
 }
 
 /** Resolve the actual terminal ancestor, never a class label or newest window. */
-function kittyAncestor(executable: string): number {
+function kittyAncestor(executable: LiveExecutable): number {
   let pid = process.pid
   for (let depth = 0; depth < 64 && pid > 1; depth++) {
     const path = realpathSync(`/proc/${pid}/exe`)
-    if (path === executable) return pid
+    if (path === executable.path) {
+      assertLiveExecutable(pid, executable)
+      return pid
+    }
     const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
     const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
     const parent = Number(fields[1])
@@ -58,15 +83,14 @@ function kittyAncestor(executable: string): number {
     }
     pid = parent
   }
-  throw new Error(`Collector PID ${process.pid} has no ancestor running ${executable}`)
+  throw new Error(`Collector PID ${process.pid} has no ancestor running ${executable.path}`)
 }
 
 /** Optional Linux adapter. Once configured, every ownership/capture failure is loud. */
-export async function createLinuxCapture(directory: string, kittyBinary: string): Promise<ProbeCapture> {
+export async function createLinuxCapture(directory: string, executable: LiveExecutable): Promise<ProbeCapture> {
   if (process.platform !== "linux" || !process.env.DISPLAY) {
     throw new Error("Linux capture requires Linux and the owned DISPLAY")
   }
-  const executable = realpathSync(kittyBinary)
   const kittyPid = kittyAncestor(executable)
   const windows = (await command("xdotool", ["search", "--onlyvisible", "--pid", String(kittyPid)]))
     .toString()

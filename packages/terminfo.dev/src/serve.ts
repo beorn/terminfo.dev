@@ -27,8 +27,8 @@ import { detectTerminal } from "./detect.ts"
 import { resolveMeasuredAppVersion } from "./identity-guard.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type ProbeCapture } from "./probes/unified.ts"
-import { createLinuxCapture } from "./linux-capture.ts"
-import { createLinuxClipboardAdapter } from "./linux-clipboard.ts"
+import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
+import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { parseRunProvenance } from "../../../docs/data/selected-results.ts"
 
 const s = createStyle()
@@ -39,6 +39,22 @@ const SOURCE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".
 /** Bun's CLI build replaces this identifier with a validated immutable receipt. */
 declare const __TERMINFO_BUNDLED_SUITE__: { manifest: ProbeSuiteManifest; collectorRevision: string }
 const bundledSuite = typeof __TERMINFO_BUNDLED_SUITE__ === "undefined" ? null : __TERMINFO_BUNDLED_SUITE__
+
+function measuredExecutable(value: unknown): LiveExecutable {
+  if (!value || typeof value !== "object") throw new Error("Runtime provenance has no executable")
+  const executable = (value as { executable?: unknown }).executable
+  if (!executable || typeof executable !== "object") throw new Error("Runtime provenance has no executable")
+  const { path, sha256 } = executable as { path?: unknown; sha256?: unknown }
+  if (
+    typeof path !== "string" ||
+    !path.startsWith("/") ||
+    typeof sha256 !== "string" ||
+    !/^[0-9a-f]{64}$/.test(sha256)
+  ) {
+    throw new Error("Runtime provenance has invalid measured executable")
+  }
+  return { path, sha256 }
+}
 
 function assertLoadedAppSuite(manifest: ProbeSuiteManifest, probeHash: string, location: string): void {
   const actual = ALL_PROBES.map((probe) => probe.id).sort()
@@ -99,19 +115,29 @@ export async function collectProbeRun(options: { ids?: string[] } = {}): Promise
   const terminal = detectTerminal()
   const { probeHash, sourceRevision } = suiteMetadata()
   const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
-  const kittyBinary = process.env.KITTY_BINARY
-  let ownedCapture: Promise<ProbeCapture> | undefined
-  const capture: ProbeCapture | undefined = captureDirectory
-    ? async (checkpoint) => {
-        if (!kittyBinary) throw new Error("Configured Linux capture requires KITTY_BINARY")
-        ownedCapture ??= createLinuxCapture(captureDirectory, kittyBinary)
-        return (await ownedCapture)(checkpoint)
-      }
-    : undefined
   const clipboardReceipt = process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT
-  const clipboard = clipboardReceipt
-    ? await createLinuxClipboardAdapter(clipboardReceipt, process.env.TERMINFO_RUN_ID ?? "")
-    : undefined
+  const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
+  if ((captureDirectory || clipboardReceipt) && !provenancePath) {
+    throw new Error("Controlled Linux collection requires runtime provenance")
+  }
+  if (provenancePath && !captureDirectory && !clipboardReceipt) {
+    throw new Error("Runtime provenance requires owned capture or clipboard")
+  }
+  const provenanceSource: unknown = provenancePath ? JSON.parse(readFileSync(provenancePath, "utf8")) : undefined
+  const executable = provenanceSource ? measuredExecutable(provenanceSource) : undefined
+  if ((captureDirectory || clipboardReceipt) && !executable) {
+    throw new Error("Controlled Linux collection lacks measured executable")
+  }
+  let capture: ProbeCapture | undefined
+  if (captureDirectory) {
+    if (!executable) throw new Error("Configured Linux capture lacks measured executable")
+    capture = await createLinuxCapture(captureDirectory, executable)
+  }
+  let clipboard: LinuxClipboardAdapter | undefined
+  if (clipboardReceipt) {
+    if (!executable) throw new Error("Owned clipboard receipt lacks measured executable")
+    clipboard = await createLinuxClipboardAdapter(clipboardReceipt, process.env.TERMINFO_RUN_ID ?? "", executable)
+  }
   let batch: Awaited<ReturnType<typeof runProbeBatch>>
   try {
     batch = await withRawMode(async () => {
@@ -138,15 +164,8 @@ export async function collectProbeRun(options: { ids?: string[] } = {}): Promise
     config: null,
     permissions: null,
   }
-  const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
-  if (captureDirectory && !provenancePath) throw new Error("Controlled Linux capture requires runtime provenance")
   const provenance = provenancePath
-    ? parseRunProvenance(
-        JSON.parse(readFileSync(provenancePath, "utf8")),
-        target,
-        { probeHash, sourceRevision },
-        provenancePath,
-      )
+    ? parseRunProvenance(provenanceSource, target, { probeHash, sourceRevision }, provenancePath)
     : undefined
   if (provenancePath && !provenance) throw new Error(`Missing runtime provenance in ${provenancePath}`)
   if (provenance) target.config = provenance.fixture.config

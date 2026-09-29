@@ -19,29 +19,6 @@ export function parserStateResult(pass: boolean | null, expected: string, state:
   }
 }
 
-function measuredResult(
-  actual: string | null,
-  expected: string,
-  evidence: ObservationEvidence,
-  noResponseNote: string,
-): ProbeResult {
-  if (actual === null) {
-    return {
-      pass: false,
-      note: noResponseNote,
-      observation: { outcome: "inconclusive", reason: "no-response", evidence, note: noResponseNote },
-    }
-  }
-  const pass = actual === expected
-  return {
-    pass,
-    response: actual,
-    ...(pass ? {} : { note: `got ${actual}, expected ${expected}` }),
-    observation: { outcome: pass ? "supported" : "unsupported", evidence },
-    assertions: [{ kind: pass ? "positive" : "negative", expected, observed: actual }],
-  }
-}
-
 /**
  * SGR probe — feed SGR sequence + "X", verify cell attribute (termless) or cursor position (term).
  *
@@ -124,28 +101,128 @@ export function cursorProbe(
   setup: string,
   move: string,
   expected: { row: number; col: number },
+  setupExpected?: { row: number; col: number },
 ): ProbeDefinition {
+  const inconclusive = (
+    origin: object | null,
+    setupPosition: object | null,
+    final: object | null,
+    evidence: ObservationEvidence,
+    reason: "no-response" | "insufficient-evidence",
+    note: string,
+  ): ProbeResult => ({
+    pass: false,
+    response: JSON.stringify({ origin, setup: setupPosition, final }),
+    note,
+    observation: { outcome: "inconclusive", reason, evidence, note },
+  })
   return {
     id,
     termObservationEvidence: "query",
     termless(ctx) {
-      ctx.feed(setup + move)
-      const cursor = ctx.getCursor()
-      // Termless is 0-based
+      ctx.feed("\x1b[1;1H")
+      const origin = ctx.getCursor()
+      if (origin.x !== 0 || origin.y !== 0) {
+        return inconclusive(
+          origin,
+          null,
+          null,
+          "parser-state",
+          "insufficient-evidence",
+          `Cursor origin measured ${origin.y};${origin.x}, expected 0;0`,
+        )
+      }
+      if (setup) ctx.feed(setup)
+      const setupPosition = setup ? ctx.getCursor() : origin
+      if (setup && !setupExpected) {
+        return inconclusive(
+          origin,
+          setupPosition,
+          null,
+          "parser-state",
+          "insufficient-evidence",
+          "Cursor setup has no expected position",
+        )
+      }
+      const wantedSetup = setupExpected ?? { row: 0, col: 0 }
+      if (setupPosition.x !== wantedSetup.col || setupPosition.y !== wantedSetup.row) {
+        return inconclusive(
+          origin,
+          setupPosition,
+          null,
+          "parser-state",
+          "insufficient-evidence",
+          `Cursor setup measured ${setupPosition.y};${setupPosition.x}, expected ${wantedSetup.row};${wantedSetup.col}`,
+        )
+      }
+      ctx.feed(move)
+      const final = ctx.getCursor()
       return parserStateResult(
-        cursor.x === expected.col && cursor.y === expected.row,
+        final.x === expected.col && final.y === expected.row,
         `cursor row=${expected.row}, col=${expected.col} (0-based) after ${JSON.stringify(move)}`,
-        cursor,
+        { origin, setup: setupPosition, final },
       )
     },
     async term(ctx) {
-      ctx.write(setup)
+      ctx.write("\x1b[1;1H")
+      const origin = await ctx.queryCursorPosition()
+      if (!origin) return inconclusive(null, null, null, "query", "no-response", "No cursor reply at origin")
+      if (origin.row !== 1 || origin.col !== 1) {
+        return inconclusive(
+          origin,
+          null,
+          null,
+          "query",
+          "insufficient-evidence",
+          `Cursor origin measured ${origin.row};${origin.col}, expected 1;1`,
+        )
+      }
+      if (setup) ctx.write(setup)
+      const setupPosition = setup ? await ctx.queryCursorPosition() : origin
+      if (!setupPosition) return inconclusive(origin, null, null, "query", "no-response", "No cursor reply after setup")
+      if (setup && !setupExpected) {
+        return inconclusive(
+          origin,
+          setupPosition,
+          null,
+          "query",
+          "insufficient-evidence",
+          "Cursor setup has no expected position",
+        )
+      }
+      const wantedSetup = setupExpected ?? { row: 0, col: 0 }
+      if (setupPosition.row !== wantedSetup.row + 1 || setupPosition.col !== wantedSetup.col + 1) {
+        return inconclusive(
+          origin,
+          setupPosition,
+          null,
+          "query",
+          "insufficient-evidence",
+          `Cursor setup measured ${setupPosition.row};${setupPosition.col}, expected ${wantedSetup.row + 1};${wantedSetup.col + 1}`,
+        )
+      }
       ctx.write(move)
-      const pos = await ctx.queryCursorPosition()
-      // Term is 1-based
-      const expRow = expected.row + 1
-      const expCol = expected.col + 1
-      return measuredResult(pos ? `${pos.row};${pos.col}` : null, `${expRow};${expCol}`, "query", "No cursor response")
+      const final = await ctx.queryCursorPosition()
+      if (!final) {
+        return inconclusive(origin, setupPosition, null, "query", "no-response", "No cursor reply after movement")
+      }
+      const response = JSON.stringify({ origin, setup: setupPosition, final })
+      const pass = final.row === expected.row + 1 && final.col === expected.col + 1
+      return {
+        pass,
+        response,
+        ...(pass
+          ? {}
+          : { note: `Cursor measured ${final.row};${final.col}, expected ${expected.row + 1};${expected.col + 1}` }),
+        observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+        assertions: [
+          {
+            kind: pass ? "positive" : "negative",
+            expected: `cursor row=${expected.row + 1}, col=${expected.col + 1} after ${JSON.stringify(move)}`,
+            observed: response,
+          },
+        ],
+      }
     },
   }
 }

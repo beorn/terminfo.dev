@@ -4,6 +4,7 @@ import { readFileSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, sep } from "node:path"
 import type { ClipboardFixture, ProbeResult, TermContext } from "@terminfo/probe-defs"
+import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
 
 interface ClipboardReceipt {
   schemaVersion: 1
@@ -204,6 +205,7 @@ function assertKittyClipboardProfile(profile: ClipboardReceipt["profile"], argv:
 export async function createLinuxClipboardAdapter(
   receiptPath: string,
   expectedRunId: string,
+  executable: LiveExecutable,
 ): Promise<LinuxClipboardAdapter> {
   if (process.platform !== "linux") throw new Error("Owned clipboard fixture requires Linux")
   const receiptBytes = readFileSync(ownedReceipt(receiptPath))
@@ -243,11 +245,12 @@ export async function createLinuxClipboardAdapter(
     if (
       basename(processExecutable(receipt.display.xvfbPid)) !== "Xvfb" ||
       !readFileSync(`/proc/${receipt.display.xvfbPid}/cmdline`, "utf8").includes("-displayfd") ||
-      basename(processExecutable(receipt.terminal.pid)) !== "kitty" ||
       !ancestorOfCollector(receipt.terminal.pid)
     ) {
       throw new Error("Owned clipboard Xvfb or Kitty process no longer owns this collector")
     }
+    processExecutable(receipt.terminal.pid)
+    assertLiveExecutable(receipt.terminal.pid, executable)
     assertKittyClipboardProfile(
       receipt.profile,
       readFileSync(`/proc/${receipt.terminal.pid}/cmdline`, "utf8").split("\0").filter(Boolean),

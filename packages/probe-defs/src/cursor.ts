@@ -22,22 +22,22 @@ function reportedPosition(position: { row: number; col: number } | null, row: nu
 
 export const cursorProbes: ProbeDefinition[] = [
   // CUP — cursor absolute position (1-based params → 0-based termless)
-  cursorProbe("cursor.move.absolute", "", "\x1b[5;10H", { row: 4, col: 9 }),
+  cursorProbe("cursor.move.absolute", "", "\x1b[5;10H", { row: 4, col: 9 }, { row: 0, col: 0 }),
 
   // CUP with no args — home
-  cursorProbe("cursor.move.home", "ABC", "\x1b[H", { row: 0, col: 0 }),
+  cursorProbe("cursor.move.home", "ABC", "\x1b[H", { row: 0, col: 0 }, { row: 0, col: 3 }),
 
   // CUF — cursor forward
-  cursorProbe("cursor.move.forward", "", "\x1b[5C", { row: 0, col: 5 }),
+  cursorProbe("cursor.move.forward", "", "\x1b[5C", { row: 0, col: 5 }, { row: 0, col: 0 }),
 
   // CUB — cursor back
-  cursorProbe("cursor.move.back", "ABC", "\x1b[2D", { row: 0, col: 1 }),
+  cursorProbe("cursor.move.back", "ABC", "\x1b[2D", { row: 0, col: 1 }, { row: 0, col: 3 }),
 
   // CUD — cursor down
-  cursorProbe("cursor.move.down", "", "\x1b[3B", { row: 3, col: 0 }),
+  cursorProbe("cursor.move.down", "", "\x1b[3B", { row: 3, col: 0 }, { row: 0, col: 0 }),
 
   // CUU — cursor up
-  cursorProbe("cursor.move.up", "\x1b[5B", "\x1b[2A", { row: 3, col: 0 }),
+  cursorProbe("cursor.move.up", "\x1b[5B", "\x1b[2A", { row: 3, col: 0 }, { row: 5, col: 0 }),
 
   // DECTCEM — cursor hide
   probe(

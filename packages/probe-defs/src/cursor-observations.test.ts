@@ -6,6 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { cursorProbes } from "./cursor.ts"
+import { cursorProbe } from "./helpers.ts"
 import type { TermContext, TermlessContext } from "./types.ts"
 
 function byId(id: string) {
@@ -146,4 +147,135 @@ test("DECOM reports relative CPR but only absolute headless state proves the phy
   }
   await expect(probe.term!(failing)).rejects.toThrow("query failed")
   expect(cleanup.slice(-2)).toEqual(["\x1b[?6l", "\x1b[r"])
+})
+
+test("relative cursor probes establish their own origin after earlier moves", async () => {
+  let row = 7
+  let col = 7
+  const writes: string[] = []
+  const context = app(null)
+  context.write = (sequence) => {
+    writes.push(sequence)
+    if (sequence === "\x1b[1;1H") {
+      row = 1
+      col = 1
+    } else if (sequence === "ABC") {
+      col += 3
+    } else if (sequence === "\x1b[5C") {
+      col += 5
+    } else if (sequence === "\x1b[2D") {
+      col = Math.max(1, col - 2)
+    } else if (sequence === "\x1b[3B") {
+      row += 3
+    } else if (sequence === "\x1b[5B") {
+      row += 5
+    } else if (sequence === "\x1b[2A") {
+      row = Math.max(1, row - 2)
+    }
+  }
+  context.queryCursorPosition = async () => ({ row, col })
+
+  for (const id of ["cursor.move.forward", "cursor.move.back", "cursor.move.down", "cursor.move.up"]) {
+    const before = writes.length
+    const result = await byId(id).term!(context)
+    expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(writes.slice(before)[0], id).toBe("\x1b[1;1H")
+  }
+})
+
+test("cursor movement qualifies setup before grading an ignored target", async () => {
+  let row = 7
+  let col = 7
+  let ignore = "\x1b[1;1H"
+  const ctx = app(null)
+  ctx.write = (sequence) => {
+    if (sequence === ignore) return
+    if (sequence === "\x1b[1;1H") [row, col] = [1, 1]
+    if (sequence === "ABC") col += 3
+    if (sequence === "\x1b[2D") col = Math.max(1, col - 2)
+  }
+  ctx.queryCursorPosition = async () => ({ row, col })
+  const back = byId("cursor.move.back")
+  expect((await back.term!(ctx)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+  })
+
+  ignore = "ABC"
+  expect((await back.term!(ctx)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+  })
+
+  ignore = "\x1b[2D"
+  const failedMove = await back.term!(ctx)
+  expect(failedMove.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(JSON.parse(failedMove.response ?? "")).toMatchObject({
+    origin: { row: 1, col: 1 },
+    setup: { row: 1, col: 4 },
+    final: { row: 1, col: 4 },
+  })
+  expect(failedMove.assertions).toMatchObject([{ kind: "negative", observed: failedMove.response }])
+})
+
+test("missing CPR at origin, setup, or final cannot grade movement", async () => {
+  for (const missingAt of [1, 2, 3]) {
+    let calls = 0
+    const ctx = app({ row: 1, col: 1 })
+    ctx.queryCursorPosition = async () => (++calls === missingAt ? null : { row: 1, col: calls === 1 ? 1 : 4 })
+    const result = await byId("cursor.move.back").term!(ctx)
+    expect(result.observation, String(missingAt)).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+    const raw: unknown = JSON.parse(result.response ?? "")
+    expect(raw, String(missingAt)).toHaveProperty("origin")
+    expect(raw, String(missingAt)).toHaveProperty("setup")
+    expect(raw, String(missingAt)).toHaveProperty("final")
+    expect(result.assertions).toBeUndefined()
+  }
+})
+
+test("four-argument empty setup remains qualified, while unqualified setup is inconclusive", async () => {
+  let row = 7
+  let col = 7
+  const ctx = app(null)
+  ctx.write = (sequence) => {
+    if (sequence === "\x1b[1;1H") [row, col] = [1, 1]
+    if (sequence === "ABC") col += 3
+    if (sequence === "\x1b[5;10H") [row, col] = [5, 10]
+    if (sequence === "\x1b[2D") col = Math.max(1, col - 2)
+  }
+  ctx.queryCursorPosition = async () => ({ row, col })
+  const absolute = cursorProbe("example.absolute", "", "\x1b[5;10H", { row: 4, col: 9 })
+  expect((await absolute.term!(ctx)).observation).toMatchObject({ outcome: "supported" })
+  const unqualified = cursorProbe("example.back", "ABC", "\x1b[2D", { row: 0, col: 1 })
+  expect((await unqualified.term!(ctx)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+  })
+})
+
+test("headless cursor movement rejects ignored origin and setup, then measures an ignored target", () => {
+  let x = 7
+  let y = 7
+  let ignore = "\x1b[1;1H"
+  const ctx = headless(0, 0)
+  ctx.feed = (sequence) => {
+    if (sequence === ignore) return
+    if (sequence === "\x1b[1;1H") [x, y] = [0, 0]
+    if (sequence === "ABC") x += 3
+    if (sequence === "\x1b[2D") x = Math.max(0, x - 2)
+  }
+  ctx.getCursor = () => ({ x, y, visible: true, style: null })
+  const back = byId("cursor.move.back")
+  expect(back.termless!(ctx).observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  ignore = "ABC"
+  expect(back.termless!(ctx).observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  ignore = "\x1b[2D"
+  const result = back.termless!(ctx)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(JSON.parse(result.response ?? "")).toMatchObject({
+    origin: { x: 0, y: 0 },
+    setup: { x: 3, y: 0 },
+    final: { x: 3, y: 0 },
+  })
+  expect(result.assertions).toMatchObject([{ kind: "negative", observed: result.response }])
 })

@@ -341,16 +341,34 @@ test("cursor movement binds measured positions and parser state, never a missing
   const cursor = cursorProbe("cursor.move.absolute", "", "\x1b[5;10H", { row: 4, col: 9 })
   if (!cursor.term || !cursor.termless) throw new Error("missing cursor callback")
 
-  const terminalCursor = await cursor.term(terminal({ queryCursorPosition: async () => ({ row: 5, col: 10 }) }))
+  let terminalPosition = { row: 8, col: 7 }
+  const terminalCursor = await cursor.term(
+    terminal({
+      write(sequence) {
+        if (sequence === "\x1b[1;1H") terminalPosition = { row: 1, col: 1 }
+        if (sequence === "\x1b[5;10H") terminalPosition = { row: 5, col: 10 }
+      },
+      queryCursorPosition: async () => terminalPosition,
+    }),
+  )
   expect(terminalCursor.observation).toMatchObject({ outcome: "supported", evidence: "query" })
   expect(terminalCursor.assertions).toMatchObject([
     { kind: "positive", expected: expect.any(String), observed: expect.any(String) },
   ])
   expect((await cursor.term(terminal())).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
 
-  const parserCursor = cursor.termless(headless({ getCursor: () => ({ x: 9, y: 4, visible: true, style: null }) }))
+  let headlessPosition = { x: 7, y: 8, visible: true, style: null }
+  const parserCursor = cursor.termless(
+    headless({
+      feed(sequence) {
+        if (sequence === "\x1b[1;1H") headlessPosition = { ...headlessPosition, x: 0, y: 0 }
+        if (sequence === "\x1b[5;10H") headlessPosition = { ...headlessPosition, x: 9, y: 4 }
+      },
+      getCursor: () => headlessPosition,
+    }),
+  )
   expect(parserCursor.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
-  expect(JSON.parse(parserCursor.response ?? "")).toMatchObject({ x: 9, y: 4 })
+  expect(JSON.parse(parserCursor.response ?? "")).toMatchObject({ final: { x: 9, y: 4 } })
   expect(parserCursor.assertions).toMatchObject([{ kind: "positive", observed: parserCursor.response }])
 })
 

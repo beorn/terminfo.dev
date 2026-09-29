@@ -39,7 +39,8 @@ function compose(
       container,
       JSON.stringify({
         runId: containerRunId,
-        executable: { path: "/nix/store/kitty", version: "kitty 0.49.1", sha256: "executable-hash" },
+        invocation: { path: "/nix/store/kitty/bin/kitty", sha256: "wrapper-hash" },
+        executable: { path: "/nix/store/kitty/bin/.kitty-wrapped", version: "kitty 0.49.1", sha256: "elf-hash" },
         sourceArtifact: { path: "/kitty-source/kitty.txz", sha256: "archive-hash" },
         collector: { frozenRunnerSha256: containerRunnerSha, buildReceiptSha256: "receipt-hash" },
         probeRun: { path: "v2-run.json", runId: "b".repeat(32), sha256: "probe-hash" },
@@ -74,6 +75,7 @@ describe("container run receipt composition", () => {
     const receipt = JSON.parse(readFileSync(output, "utf8")) as {
       runtime: { imageId: string }
       executable: { sha256: string }
+      invocation: { path: string; sha256: string }
       receiptInputs: { hostSha256: string; containerSha256: string }
       sourceArtifact: { url: string; path: string; sha256: string }
       collector: { frozenRunnerSha256: string }
@@ -81,7 +83,8 @@ describe("container run receipt composition", () => {
       clipboardFixture: { profile: string; sha256: string }
     }
     expect(receipt.runtime.imageId).toBe("sha256:image")
-    expect(receipt.executable.sha256).toBe("executable-hash")
+    expect(receipt.executable.sha256).toBe("elf-hash")
+    expect(receipt.invocation).toEqual({ path: "/nix/store/kitty/bin/kitty", sha256: "wrapper-hash" })
     expect(receipt.receiptInputs.hostSha256).toMatch(/^[0-9a-f]{64}$/)
     expect(receipt.receiptInputs.containerSha256).toMatch(/^[0-9a-f]{64}$/)
     expect(receipt.sourceArtifact).toEqual({
