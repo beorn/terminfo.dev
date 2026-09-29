@@ -681,7 +681,8 @@
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": ["ecma-48", "vt220"],
     "body": "ICH inserts N blank characters at the cursor position, shifting existing characters to the right. The sequence is <code>ESC [ N @</code> (default N=1). Characters pushed past the right margin are lost. Used by editors (vim, emacs) and terminal multiplexers (tmux, screen) for inline text insertion without redrawing the entire line.",
-    "probe": "Write \"ABCDE\", move to col 1, send <code>\\x1b[2@</code> (ICH 2), verify 2 blanks inserted and \"A\" shifted to col 2.",
+    "probe": "Headless: measure seeded cells and cursor position, insert one blank at column 3, and check the shifted text with an unchanged prefix. The app cursor reply does not establish edited cells or rendering.",
+    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC [ N @"
   },
@@ -691,7 +692,8 @@
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": ["ecma-48", "vt220"],
     "body": "DCH deletes N characters at the cursor position, shifting subsequent characters to the left. The sequence is <code>ESC [ N P</code> (default N=1). Blank characters are inserted at the right margin to fill the vacated space. The complement of ICH (insert characters).",
-    "probe": "Write \"ABCDE\", move to col 1, send <code>\\x1b[2P</code> (DCH 2), verify \"C\" is now at col 0.",
+    "probe": "Headless: measure eight seeded cells and cursor position, delete at column 3, and check the known shifted span with an unchanged prefix. This does not check right-margin blank filling. The app cursor reply does not establish edited cells or rendering.",
+    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC [ N P"
   },
@@ -721,7 +723,8 @@
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": ["ecma-48"],
     "body": "REP repeats the preceding graphic character N times. The sequence is <code>ESC [ N b</code> (default N=1). This is a bandwidth optimization — instead of sending the same character hundreds of times (e.g., filling a row with dashes), the application sends the character once followed by REP. Not all terminals implement this sequence.",
-    "probe": "Write \"X\" then send <code>\\x1b[4b</code> (REP 4), verify 5 consecutive X characters (1 original + 4 repeats).",
+    "probe": "Headless: measure the preceding X and cursor position, repeat it three times, and check the repeated cells between unchanged controls. The app cursor reply does not establish edited cells or rendering.",
+    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC [ N b"
   },
