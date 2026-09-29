@@ -9,21 +9,38 @@ export const modesProbes: ProbeDefinition[] = [
   }),
 
   // Alt screen exit
-  probe(
-    "modes.alt-screen.exit",
-    (ctx) => {
-      ctx.feed("\x1b[?1049h\x1b[?1049l")
-      return { pass: ctx.getMode("altScreen") === false }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?1049h") // enter
-      ctx.write("\x1b[3;3H") // move somewhere in alt
-      ctx.write("\x1b[?1049l") // exit
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after exit" }
-      return { pass: true }
-    },
-  ),
+  {
+    ...probe(
+      "modes.alt-screen.exit",
+      (ctx) => {
+        ctx.feed("\x1b[?1049h\x1b[?1049l")
+        return { pass: ctx.getMode("altScreen") === false }
+      },
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 3) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Alt-screen exit fixture needs at least 3x3, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[?1049h") // enter
+        try {
+          ctx.write("\x1b[3;3H") // move somewhere in alt
+        } finally {
+          ctx.write("\x1b[?1049l") // exit the fixture's alt screen
+        }
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No cursor response after exit" }
+        return { pass: true }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // Bracketed paste
   decrpmModeProbe("modes.bracketed-paste", 2004, (ctx) => {
@@ -78,31 +95,48 @@ export const modesProbes: ProbeDefinition[] = [
   }),
 
   // Insert/replace mode (IRM)
-  probe(
-    "modes.insert-replace",
-    (ctx) => {
-      ctx.feed("ABC\x1b[1G\x1b[4hX")
-      const result = ctx.getMode("insertMode") === true
-      const cell0 = ctx.getCell(0, 0).char === "X"
-      const cell1 = ctx.getCell(0, 1).char === "A"
-      ctx.feed("\x1b[4l")
-      return { pass: result && cell0 && cell1 }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("ABCD")
-      ctx.write("\x1b[1;2H") // move to col 2
-      ctx.write("\x1b[4h") // enable insert mode
-      ctx.write("X")
-      ctx.write("\x1b[4l") // disable insert mode
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 3,
-        note: pos.col === 3 ? undefined : `cursor at col ${pos.col}, expected 3`,
-      }
-    },
-  ),
+  {
+    ...probe(
+      "modes.insert-replace",
+      (ctx) => {
+        ctx.feed("ABC\x1b[1G\x1b[4hX")
+        const result = ctx.getMode("insertMode") === true
+        const cell0 = ctx.getCell(0, 0).char === "X"
+        const cell1 = ctx.getCell(0, 1).char === "A"
+        ctx.feed("\x1b[4l")
+        return { pass: result && cell0 && cell1 }
+      },
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 5) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Insert-replace fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("ABCD")
+        ctx.write("\x1b[1;2H") // move to col 2
+        ctx.write("\x1b[4h") // enable insert mode
+        try {
+          ctx.write("X")
+        } finally {
+          ctx.write("\x1b[4l") // disable this fixture's insert mode
+        }
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No cursor response" }
+        return {
+          pass: pos.col === 3,
+          note: pos.col === 3 ? undefined : `cursor at col ${pos.col}, expected 3`,
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // SGR mouse encoding
   decrpmModeProbe("modes.mouse-sgr", 1006, (ctx) => {
@@ -211,35 +245,52 @@ export const modesProbes: ProbeDefinition[] = [
   ),
 
   // ?1048 — save/restore cursor only (no alt screen)
-  probe(
-    "modes.altscreen-1048",
-    (ctx) => {
-      // Position cursor, save with 1048, move, restore, check we're back
-      ctx.feed("\x1b[5;10H") // row 5, col 10 (1-based) — termless 0-based: y=4, x=9
-      ctx.feed("\x1b[?1048h") // save
-      ctx.feed("\x1b[15;20H") // move to row 15, col 20
-      ctx.feed("\x1b[?1048l") // restore
-      const cursor = ctx.getCursor()
-      const pass = cursor.y === 4 && cursor.x === 9
-      return {
-        pass,
-        note: pass ? undefined : `cursor at ${cursor.y};${cursor.x}, expected 4;9 after restore`,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[5;10H") // row 5, col 10
-      ctx.write("\x1b[?1048h") // save
-      ctx.write("\x1b[15;20H") // move
-      ctx.write("\x1b[?1048l") // restore
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after restore" }
-      return {
-        pass: pos.row === 5 && pos.col === 10,
-        note: pos.row === 5 && pos.col === 10 ? undefined : `got ${pos.row};${pos.col}, expected 5;10`,
-        response: `${pos.row};${pos.col}`,
-      }
-    },
-  ),
+  {
+    ...probe(
+      "modes.altscreen-1048",
+      (ctx) => {
+        // Position cursor, save with 1048, move, restore, check we're back
+        ctx.feed("\x1b[5;10H") // row 5, col 10 (1-based) — termless 0-based: y=4, x=9
+        ctx.feed("\x1b[?1048h") // save
+        ctx.feed("\x1b[15;20H") // move to row 15, col 20
+        ctx.feed("\x1b[?1048l") // restore
+        const cursor = ctx.getCursor()
+        const pass = cursor.y === 4 && cursor.x === 9
+        return {
+          pass,
+          note: pass ? undefined : `cursor at ${cursor.y};${cursor.x}, expected 4;9 after restore`,
+        }
+      },
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 15 || ctx.cols < 20) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Cursor-save fixture needs at least 15x20, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[5;10H") // row 5, col 10
+        ctx.write("\x1b[?1048h") // save
+        try {
+          ctx.write("\x1b[15;20H") // move
+        } finally {
+          ctx.write("\x1b[?1048l") // restore this fixture's saved cursor
+        }
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No cursor response after restore" }
+        return {
+          pass: pos.row === 5 && pos.col === 10,
+          note: pos.row === 5 && pos.col === 10 ? undefined : `got ${pos.row};${pos.col}, expected 5;10`,
+          response: `${pos.row};${pos.col}`,
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // ?1007 — alt-scroll mouse wheel
   probe(
