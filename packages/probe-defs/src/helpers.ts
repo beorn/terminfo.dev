@@ -89,6 +89,8 @@ export function sgrProbe(
         },
       }
     },
+
+    termlessObservationEvidence: "parser-state",
   }
 }
 
@@ -235,6 +237,8 @@ export function cursorProbe(
         ],
       }
     },
+
+    termlessObservationEvidence: "parser-state",
   }
 }
 

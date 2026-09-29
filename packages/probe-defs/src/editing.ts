@@ -60,6 +60,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -121,6 +123,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -183,6 +187,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -246,6 +252,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -312,6 +320,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // ── VT420 Rectangular Area Operations (1990) ──
@@ -380,6 +390,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -438,6 +450,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -546,6 +560,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -608,6 +624,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -670,6 +688,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // DECSACE sets the attribute-change extent mode (rectangle vs stream) for
@@ -791,6 +811,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // SR — Shift Right (CSI Ps SP A). Shifts all columns right by Ps positions.
@@ -852,6 +874,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // DECIC — DEC Insert Column (CSI Ps ' }). Inserts Ps blank columns at the
@@ -918,6 +942,8 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // DECDC — DEC Delete Column (CSI Ps ' ~). Deletes Ps columns at the cursor's
@@ -987,5 +1013,7 @@ export const editingProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 ]

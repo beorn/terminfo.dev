@@ -7,7 +7,7 @@
  */
 /* oxlint-disable typescript/no-deprecated -- Exercise the production TerminalBackend adapter boundary. */
 import { createXtermBackend } from "@termless/xtermjs"
-import type { ProbeDefinition } from "@terminfo/probe-defs"
+import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch } from "./headless-batch.ts"
 
@@ -58,6 +58,45 @@ test("attributes headless exceptions only to the headless marker and leaves lega
   })
   expect(batch.rawReplies).toEqual({})
   expect(batch.assertions).toEqual([])
+})
+
+test("routes real registry constructor markers while legacy and multi-method callbacks remain ungraded", () => {
+  const ids = [
+    "sgr.bold",
+    "cursor.move.absolute",
+    "device.primary-da",
+    "extensions.osc133-a",
+    "sgr.reset",
+    "cursor.save-restore",
+    "cursor.cup-scroll-region",
+    "extensions.truecolor",
+    "extensions.osc30001-color-stack-push",
+    "extensions.osc30101-color-stack-pop",
+  ]
+  const definitions = ids.map((id) => {
+    const found = ALL_PROBES.find((probe) => probe.id === id)
+    if (!found) throw new Error(`Missing registry definition ${id}`)
+    return found
+  })
+  const value = backend()
+  vi.spyOn(value, "reset").mockImplementation(() => {
+    throw new Error("Registry setup failed")
+  })
+  const batch = collectBatch(value, "xtermjs", definitions)
+  expect(
+    batch.observations.map(({ featureId, outcome, reason, evidence }) => ({ featureId, outcome, reason, evidence })),
+  ).toEqual([
+    { featureId: "sgr.bold", outcome: "error", reason: "collector-error", evidence: "parser-state" },
+    { featureId: "cursor.move.absolute", outcome: "error", reason: "collector-error", evidence: "parser-state" },
+    { featureId: "device.primary-da", outcome: "error", reason: "collector-error", evidence: "query" },
+    { featureId: "extensions.osc133-a", outcome: "error", reason: "collector-error", evidence: "consumed" },
+    { featureId: "sgr.reset", outcome: "error", reason: "collector-error", evidence: "parser-state" },
+    { featureId: "cursor.save-restore", outcome: "error", reason: "collector-error", evidence: "parser-state" },
+    { featureId: "cursor.cup-scroll-region", outcome: "error", reason: "collector-error", evidence: "parser-state" },
+  ])
+  expect(Object.keys(batch.ungradedDiagnostics).sort()).toEqual(ids.slice(7).sort())
+  expect(batch.assertions).toEqual([])
+  expect(batch.rawReplies).toEqual({})
 })
 
 test("attributes a reset failure to the headless marker before invoking its callback", () => {

@@ -101,6 +101,8 @@ export const unicodeProbes: ProbeDefinition[] = [
       "behavior",
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {

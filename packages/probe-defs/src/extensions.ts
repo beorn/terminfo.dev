@@ -388,7 +388,7 @@ export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: n
       }
     },
   )
-  return { ...definition, termObservationEvidence: "query" }
+  return { ...definition, termObservationEvidence: "query", termlessObservationEvidence: "query" }
 }
 
 function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeResult {
@@ -509,57 +509,60 @@ function allocatedImageResult(response: string, imageNumber: number): { imageId:
 
 function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition {
   const newNumber = () => (Number.parseInt(globalThis.crypto.randomUUID().slice(0, 8), 16) % 0xfffffffe) + 1
-  return probe(
-    id,
-    (ctx) => {
-      const imageNumber = newNumber()
-      let imageId: number | null = null
-      try {
-        const uploaded = allocatedImageResult(ctx.feedCapture(imageTransferRequest(imageNumber)), imageNumber)
-        imageId = uploaded.imageId
-        if (!imageId || !display) return uploaded.result
-        const response = ctx.feedCapture(`\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`)
-        return graphicsQueryResult(response, imageId, "Image placement acknowledged; visible pixels were not tested")
-      } finally {
-        if (imageId) ctx.feed(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`)
-      }
-    },
-    async (ctx) => {
-      const imageNumber = newNumber()
-      let imageId: number | null = null
-      try {
-        const reply = await ctx.queryWithSentinelOutcome(
-          imageTransferRequest(imageNumber),
-          new RegExp(`\\x1b_Gi=(\\d+),I=${imageNumber};([^\\x1b]+)\\x1b\\\\`),
-        )
-        if (!reply.match) {
-          return unansweredQuery(
-            reply,
-            "No matching image allocation reply; no image ownership or transmission conclusion",
+  return {
+    ...probe(
+      id,
+      (ctx) => {
+        const imageNumber = newNumber()
+        let imageId: number | null = null
+        try {
+          const uploaded = allocatedImageResult(ctx.feedCapture(imageTransferRequest(imageNumber)), imageNumber)
+          imageId = uploaded.imageId
+          if (!imageId || !display) return uploaded.result
+          const response = ctx.feedCapture(`\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`)
+          return graphicsQueryResult(response, imageId, "Image placement acknowledged; visible pixels were not tested")
+        } finally {
+          if (imageId) ctx.feed(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`)
+        }
+      },
+      async (ctx) => {
+        const imageNumber = newNumber()
+        let imageId: number | null = null
+        try {
+          const reply = await ctx.queryWithSentinelOutcome(
+            imageTransferRequest(imageNumber),
+            new RegExp(`\\x1b_Gi=(\\d+),I=${imageNumber};([^\\x1b]+)\\x1b\\\\`),
           )
+          if (!reply.match) {
+            return unansweredQuery(
+              reply,
+              "No matching image allocation reply; no image ownership or transmission conclusion",
+            )
+          }
+          const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
+          imageId = uploaded.imageId
+          if (!imageId || !display) return uploaded.result
+          const placement = await ctx.queryWithSentinelOutcome(
+            `\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`,
+            new RegExp(`\\x1b_Gi=${imageId};([^\\x1b]+)\\x1b\\\\`),
+          )
+          if (!placement.match) {
+            return unansweredQuery(placement, "No matching placement reply; visible pixels were not tested")
+          }
+          return graphicsQueryResult(
+            placement.match[0] ?? "",
+            imageId,
+            "Image placement acknowledged; visible pixels were not tested",
+          )
+        } finally {
+          // Free only the image the terminal explicitly allocated for this probe.
+          if (imageId) ctx.write(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`)
         }
-        const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
-        imageId = uploaded.imageId
-        if (!imageId || !display) return uploaded.result
-        const placement = await ctx.queryWithSentinelOutcome(
-          `\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`,
-          new RegExp(`\\x1b_Gi=${imageId};([^\\x1b]+)\\x1b\\\\`),
-        )
-        if (!placement.match) {
-          return unansweredQuery(placement, "No matching placement reply; visible pixels were not tested")
-        }
-        return graphicsQueryResult(
-          placement.match[0] ?? "",
-          imageId,
-          "Image placement acknowledged; visible pixels were not tested",
-        )
-      } finally {
-        // Free only the image the terminal explicitly allocated for this probe.
-        if (imageId) ctx.write(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`)
-      }
-    },
-    "query",
-  )
+      },
+      "query",
+    ),
+    termlessObservationEvidence: "query",
+  }
 }
 
 /** A query establishes recognition; this does not test changed colors or pixels. */
@@ -840,23 +843,26 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // The specified query action replies before the DA1 sentinel and stores no image.
   // A cursor movement is never evidence that pixels were rendered.
-  queryOnly(
-    probe(
-      "extensions.kitty-graphics",
-      (ctx) => graphicsQueryResult(ctx.feedCapture("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"), 31),
-      async (ctx) => {
-        const reply = await ctx.queryWithSentinelOutcome(
-          "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\",
-          /\x1b_Gi=31;([^\x1b]+)\x1b\\/,
-        )
-        if (!reply.match) {
-          return unansweredQuery(reply, "No matching graphics query reply; image rendering was not tested")
-        }
-        return graphicsQueryResult(reply.match[0] ?? "", 31)
-      },
-      "query",
+  {
+    ...queryOnly(
+      probe(
+        "extensions.kitty-graphics",
+        (ctx) => graphicsQueryResult(ctx.feedCapture("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"), 31),
+        async (ctx) => {
+          const reply = await ctx.queryWithSentinelOutcome(
+            "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\",
+            /\x1b_Gi=31;([^\x1b]+)\x1b\\/,
+          )
+          if (!reply.match) {
+            return unansweredQuery(reply, "No matching graphics query reply; image rendering was not tested")
+          }
+          return graphicsQueryResult(reply.match[0] ?? "", 31)
+        },
+        "query",
+      ),
     ),
-  ),
+    termlessObservationEvidence: "query",
+  },
 
   // Transmission and placement acknowledgements are separate from rendered pixels.
   kittyImageTransferProbe("extensions.kitty-graphics.transmit", false),
@@ -1009,6 +1015,8 @@ export const extensionsProbes: ProbeDefinition[] = [
       "consumed",
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // Current wrapping and a declared backend capability do not measure reflow after resize.
@@ -1071,43 +1079,60 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 0 — icon name and title
-  probe(
-    "extensions.osc0-icon-title",
-    (ctx) => {
-      const before = ctx.getTitle()
-      ctx.feed("\x1b]0;My Title\x07")
-      const after = ctx.getTitle()
-      const note = "Title readback does not establish OSC 0 icon-name behavior"
-      return {
-        pass: false,
-        response: JSON.stringify({ before, after }),
-        note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state", note },
-      }
-    },
-    () => {
-      const note = "No icon-name and window-title readback for OSC 0"
-      return Promise.resolve<ProbeResult>({
-        pass: false,
-        note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
-      })
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc0-icon-title",
+      (ctx) => {
+        const before = ctx.getTitle()
+        ctx.feed("\x1b]0;My Title\x07")
+        const after = ctx.getTitle()
+        const note = "Title readback does not establish OSC 0 icon-name behavior"
+        return {
+          pass: false,
+          response: JSON.stringify({ before, after }),
+          note,
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state", note },
+        }
+      },
+      () => {
+        const note = "No icon-name and window-title readback for OSC 0"
+        return Promise.resolve<ProbeResult>({
+          pass: false,
+          note,
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        })
+      },
+    ),
+    termlessObservationEvidence: "parser-state",
+  },
 
   // OSC 52 — clipboard
-  probe(
-    "extensions.osc52-clipboard",
-    headlessClipboardRoundtrip,
-    (ctx) => liveClipboardProbe(ctx, "roundtrip"),
-    "behavior",
-  ),
+  {
+    ...probe(
+      "extensions.osc52-clipboard",
+      headlessClipboardRoundtrip,
+      (ctx) => liveClipboardProbe(ctx, "roundtrip"),
+      "behavior",
+    ),
+    termlessObservationEvidence: "query",
+  },
 
   // OSC 52 write — set clipboard (most terminals support this)
-  probe("extensions.osc52-write", headlessClipboardRoundtrip, (ctx) => liveClipboardProbe(ctx, "write"), "behavior"),
+  {
+    ...probe(
+      "extensions.osc52-write",
+      headlessClipboardRoundtrip,
+      (ctx) => liveClipboardProbe(ctx, "write"),
+      "behavior",
+    ),
+    termlessObservationEvidence: "query",
+  },
 
   // OSC 52 read — query clipboard back (fewer terminals support this)
-  probe("extensions.osc52-read", headlessClipboardRoundtrip, (ctx) => liveClipboardProbe(ctx, "read"), "query"),
+  {
+    ...probe("extensions.osc52-read", headlessClipboardRoundtrip, (ctx) => liveClipboardProbe(ctx, "read"), "query"),
+    termlessObservationEvidence: "query",
+  },
 
   // OSC 10 — foreground color query
   oscColorQueryProbe("extensions.osc10-fg-color", 10),
@@ -1164,184 +1189,217 @@ export const extensionsProbes: ProbeDefinition[] = [
   // proving the OSC sequence was silently consumed (not printed literally).
 
   // OSC 133;A — prompt start (FTCS_PROMPT)
-  probe(
-    "extensions.osc133-a",
-    (ctx) => {
-      ctx.feed("\x1b]133;A\x07X")
-      // Verify the OSC sequence was consumed and "X" landed at column 0.
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]133;A\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc133-a",
+      (ctx) => {
+        ctx.feed("\x1b]133;A\x07X")
+        // Verify the OSC sequence was consumed and "X" landed at column 0.
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]133;A\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 133;B — command start (FTCS_COMMAND_START)
-  probe(
-    "extensions.osc133-b",
-    (ctx) => {
-      ctx.feed("\x1b]133;B\x07X")
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]133;B\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc133-b",
+      (ctx) => {
+        ctx.feed("\x1b]133;B\x07X")
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]133;B\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 133;C — command executed (FTCS_COMMAND_EXECUTED)
-  probe(
-    "extensions.osc133-c",
-    (ctx) => {
-      ctx.feed("\x1b]133;C\x07X")
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]133;C\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc133-c",
+      (ctx) => {
+        ctx.feed("\x1b]133;C\x07X")
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]133;C\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 133;D — command finished with exit code (FTCS_COMMAND_FINISHED)
-  probe(
-    "extensions.osc133-d",
-    (ctx) => {
-      ctx.feed("\x1b]133;D;0\x07X")
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]133;D;0\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc133-d",
+      (ctx) => {
+        ctx.feed("\x1b]133;D;0\x07X")
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]133;D;0\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 133;P — properties (Cwd, CmdLine, etc.)
-  probe(
-    "extensions.osc133-p",
-    (ctx) => {
-      ctx.feed("\x1b]133;P;Cwd=/tmp\x07X")
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]133;P;Cwd=/tmp\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc133-p",
+      (ctx) => {
+        ctx.feed("\x1b]133;P;Cwd=/tmp\x07X")
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]133;P;Cwd=/tmp\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 633 sub-commands — VS Code shell integration markers
   // VS Code's parallel namespace to OSC 133, with VS Code-specific extensions (E, P).
 
   // OSC 633;A — prompt start (mirrors 133;A)
-  probe(
-    "extensions.osc633-a",
-    (ctx) => {
-      ctx.feed("\x1b]633;A\x07X")
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]633;A\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc633-a",
+      (ctx) => {
+        ctx.feed("\x1b]633;A\x07X")
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]633;A\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 633;B — prompt end (mirrors 133;B)
-  probe(
-    "extensions.osc633-b",
-    (ctx) => {
-      ctx.feed("\x1b]633;B\x07X")
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]633;B\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc633-b",
+      (ctx) => {
+        ctx.feed("\x1b]633;B\x07X")
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]633;B\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 633;C — pre-execution (mirrors 133;C)
-  probe(
-    "extensions.osc633-c",
-    (ctx) => {
-      ctx.feed("\x1b]633;C\x07X")
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]633;C\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc633-c",
+      (ctx) => {
+        ctx.feed("\x1b]633;C\x07X")
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]633;C\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 633;D — command finished with exit code (mirrors 133;D)
-  probe(
-    "extensions.osc633-d",
-    (ctx) => {
-      ctx.feed("\x1b]633;D;0\x07X")
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]633;D;0\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc633-d",
+      (ctx) => {
+        ctx.feed("\x1b]633;D;0\x07X")
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]633;D;0\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 633;E — set commandline with verification nonce (unique to OSC 633)
-  probe(
-    "extensions.osc633-e",
-    (ctx) => {
-      ctx.feed("\x1b]633;E;ls -la;nonce123\x07X")
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]633;E;ls -la;nonce123\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc633-e",
+      (ctx) => {
+        ctx.feed("\x1b]633;E;ls -la;nonce123\x07X")
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]633;E;ls -la;nonce123\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 633;P — VS Code-specific properties (Cwd, IsWindows, git status)
-  probe(
-    "extensions.osc633-p",
-    (ctx) => {
-      ctx.feed("\x1b]633;P;Cwd=/tmp\x07X")
-      const cell = ctx.getCell(0, 0)
-      return promptConsumptionResult(cell.char === "X")
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]633;P;Cwd=/tmp\x07X")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : pos.col === 2)
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc633-p",
+      (ctx) => {
+        ctx.feed("\x1b]633;P;Cwd=/tmp\x07X")
+        const cell = ctx.getCell(0, 0)
+        return promptConsumptionResult(cell.char === "X")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]633;P;Cwd=/tmp\x07X")
+        const pos = await ctx.queryCursorPosition()
+        return promptConsumptionResult(pos === null ? null : pos.col === 2)
+      },
+    ),
+    termlessObservationEvidence: "consumed",
+  },
 
   // OSC 9 — desktop notifications
   probe(
@@ -1530,46 +1588,54 @@ export const extensionsProbes: ProbeDefinition[] = [
       "behavior",
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // OSC 5522 — advanced clipboard (Kitty protocol, MIME-aware paste events)
-  queryOnly(
-    probe(
-      "extensions.osc5522-clipboard",
-      (ctx) => clipboardProtocolResult(ctx.feedCapture("\x1b[?5522$p")),
-      async (ctx) => {
-        const reply = await ctx.queryWithSentinelOutcome("\x1b[?5522$p", /\x1b\[\?5522;([0-4])\$y/)
-        if (!reply.match) return unansweredQuery(reply, "No DECRPM response for mode 5522")
-        return clipboardProtocolResult(reply.match[0] ?? "")
-      },
-      "query",
+  {
+    ...queryOnly(
+      probe(
+        "extensions.osc5522-clipboard",
+        (ctx) => clipboardProtocolResult(ctx.feedCapture("\x1b[?5522$p")),
+        async (ctx) => {
+          const reply = await ctx.queryWithSentinelOutcome("\x1b[?5522$p", /\x1b\[\?5522;([0-4])\$y/)
+          if (!reply.match) return unansweredQuery(reply, "No DECRPM response for mode 5522")
+          return clipboardProtocolResult(reply.match[0] ?? "")
+        },
+        "query",
+      ),
     ),
-  ),
+    termlessObservationEvidence: "query",
+  },
 
   // OSC 1 — icon name
-  probe(
-    "extensions.osc1-icon",
-    (ctx) => {
-      const before = ctx.getTitle()
-      ctx.feed("\x1b]1;test-icon\x07")
-      const after = ctx.getTitle()
-      const note = "Title readback does not establish OSC 1 icon-name behavior"
-      return {
-        pass: false,
-        response: JSON.stringify({ before, after }),
-        note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state", note },
-      }
-    },
-    () => {
-      const note = "No icon-name readback for OSC 1"
-      return Promise.resolve<ProbeResult>({
-        pass: false,
-        note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
-      })
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc1-icon",
+      (ctx) => {
+        const before = ctx.getTitle()
+        ctx.feed("\x1b]1;test-icon\x07")
+        const after = ctx.getTitle()
+        const note = "Title readback does not establish OSC 1 icon-name behavior"
+        return {
+          pass: false,
+          response: JSON.stringify({ before, after }),
+          note,
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state", note },
+        }
+      },
+      () => {
+        const note = "No icon-name readback for OSC 1"
+        return Promise.resolve<ProbeResult>({
+          pass: false,
+          note,
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        })
+      },
+    ),
+    termlessObservationEvidence: "parser-state",
+  },
 
   // OSC 4 — color palette query (needs index parameter, can't use generic helper)
   queryOnly(
@@ -1895,21 +1961,24 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 21 — require the actual foreground reply, never a subsequent CPR.
-  queryOnly(
-    probe(
-      "extensions.osc21-kitty-color",
-      (ctx) => kittyForegroundResult(ctx.feedCapture("\x1b]21;foreground=?\x1b\\")),
-      async (ctx) => {
-        const reply = await ctx.queryWithSentinelOutcome(
-          "\x1b]21;foreground=?\x1b\\",
-          /\x1b\]21;([^\x07\x1b]*)(?:\x07|\x1b\\)/,
-        )
-        if (!reply.match) return unansweredQuery(reply, "No OSC 21 reply; color rendering was not tested")
-        return kittyForegroundResult(reply.match[0] ?? "")
-      },
-      "query",
+  {
+    ...queryOnly(
+      probe(
+        "extensions.osc21-kitty-color",
+        (ctx) => kittyForegroundResult(ctx.feedCapture("\x1b]21;foreground=?\x1b\\")),
+        async (ctx) => {
+          const reply = await ctx.queryWithSentinelOutcome(
+            "\x1b]21;foreground=?\x1b\\",
+            /\x1b\]21;([^\x07\x1b]*)(?:\x07|\x1b\\)/,
+          )
+          if (!reply.match) return unansweredQuery(reply, "No OSC 21 reply; color rendering was not tested")
+          return kittyForegroundResult(reply.match[0] ?? "")
+        },
+        "query",
+      ),
     ),
-  ),
+    termlessObservationEvidence: "query",
+  },
 
   // OSC 30001 — Kitty color stack push
   probe("extensions.osc30001-color-stack-push", colorStackProbe(), colorStackTermProbe, "behavior"),
@@ -2094,20 +2163,23 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // XTSMGRAPHICS item 2 reads current Sixel geometry in pixels; item 1 is only color registers.
-  queryOnly(
-    probe(
-      "extensions.sixel-geometry-report",
-      (ctx) => {
-        const raw = ctx.feedCapture("\x1b[?2;1;0S")
-        const frame = /\x1b\[\?2;[0-9;]*S/.exec(raw)?.[0] ?? null
-        return sixelGeometryResult(raw, frame, "no-response")
-      },
-      async (ctx) => {
-        const reply = await ctx.queryWithSentinelOutcome("\x1b[?2;1;0S", /\x1b\[\?2;[0-9;]*S/, 1000)
-        const frame = reply.reason === "reply" ? (reply.match?.[0] ?? null) : null
-        return sixelGeometryResult(reply.raw, frame, reply.reason === "timeout" ? "timeout" : "no-response")
-      },
-      "query",
+  {
+    ...queryOnly(
+      probe(
+        "extensions.sixel-geometry-report",
+        (ctx) => {
+          const raw = ctx.feedCapture("\x1b[?2;1;0S")
+          const frame = /\x1b\[\?2;[0-9;]*S/.exec(raw)?.[0] ?? null
+          return sixelGeometryResult(raw, frame, "no-response")
+        },
+        async (ctx) => {
+          const reply = await ctx.queryWithSentinelOutcome("\x1b[?2;1;0S", /\x1b\[\?2;[0-9;]*S/, 1000)
+          const frame = reply.reason === "reply" ? (reply.match?.[0] ?? null) : null
+          return sixelGeometryResult(reply.raw, frame, reply.reason === "timeout" ? "timeout" : "no-response")
+        },
+        "query",
+      ),
     ),
-  ),
+    termlessObservationEvidence: "query",
+  },
 ]

@@ -65,6 +65,8 @@ export const charsetsProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -141,6 +143,8 @@ export const charsetsProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // G0/G1 switching via SI/SO with independent ASCII flank controls.
@@ -212,6 +216,8 @@ export const charsetsProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // DEC line drawing — six box-drawing samples.
@@ -283,5 +289,7 @@ export const charsetsProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 ]

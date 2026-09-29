@@ -183,6 +183,8 @@ export const eraseProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -210,6 +212,8 @@ export const eraseProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -238,6 +242,8 @@ export const eraseProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -263,6 +269,8 @@ export const eraseProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -288,6 +296,8 @@ export const eraseProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -313,6 +323,8 @@ export const eraseProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -374,6 +386,8 @@ export const eraseProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {

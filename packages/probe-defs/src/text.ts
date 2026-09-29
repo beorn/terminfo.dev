@@ -576,6 +576,8 @@ export const textProbes: ProbeDefinition[] = [
       "behavior",
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // CHT — cursor horizontal forward tab
@@ -627,6 +629,8 @@ export const textProbes: ProbeDefinition[] = [
       "behavior",
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // CBT — cursor backward tab
@@ -678,6 +682,8 @@ export const textProbes: ProbeDefinition[] = [
       "behavior",
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {

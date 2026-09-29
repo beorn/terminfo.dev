@@ -75,7 +75,7 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
     },
     "query",
   )
-  return { ...definition, termWrites: "query" }
+  return { ...definition, termWrites: "query", termlessObservationEvidence: "query" }
 }
 
 export const deviceProbes: ProbeDefinition[] = [
@@ -227,6 +227,8 @@ export const deviceProbes: ProbeDefinition[] = [
       "query",
     ),
     termWrites: "query",
+
+    termlessObservationEvidence: "query",
   },
 
   // XTWINOPS 14 — report window size in pixels: CSI 14 t → CSI 4 ; H ; W t

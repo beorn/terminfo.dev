@@ -139,47 +139,50 @@ export const cursorProbes: ProbeDefinition[] = [
   cursorProbe("cursor.move.up", "\x1b[5B", "\x1b[2A", { row: 3, col: 0 }, { row: 5, col: 0 }),
 
   // DECTCEM — cursor hide
-  probe(
-    "cursor.hide",
-    (ctx) => {
-      const before = ctx.getCursor().visible
-      const expected = "Cursor parser visibility changes from shown to hidden and its initial state is restored"
-      if (before === null) {
-        return parserStateResult(null, expected, { before }, "Initial cursor visibility readback is unavailable")
-      }
-      let shown: boolean | null = null
-      let hidden: boolean | null = null
-      try {
-        ctx.feed("\x1b[?25h")
-        shown = ctx.getCursor().visible
-        if (shown === true) {
-          ctx.feed("\x1b[?25l")
-          hidden = ctx.getCursor().visible
+  {
+    ...probe(
+      "cursor.hide",
+      (ctx) => {
+        const before = ctx.getCursor().visible
+        const expected = "Cursor parser visibility changes from shown to hidden and its initial state is restored"
+        if (before === null) {
+          return parserStateResult(null, expected, { before }, "Initial cursor visibility readback is unavailable")
         }
-      } finally {
-        ctx.feed(before ? "\x1b[?25h" : "\x1b[?25l")
-      }
-      const restored = ctx.getCursor().visible
-      const qualified = shown === true && hidden !== null && restored === before
-      return parserStateResult(
-        qualified ? hidden === false : null,
-        expected,
-        { before, shown, hidden, restored },
-        qualified
-          ? "Parser visibility state only; display pixels were not captured"
-          : "Shown control, hidden readback or initial-state restoration was not established",
-      )
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?25l") // hide cursor
-      const posHidden = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?25h") // show cursor
-      if (!posHidden) return { pass: false, note: "No cursor response while hidden" }
-      const posVisible = await ctx.queryCursorPosition()
-      if (!posVisible) return { pass: false, note: "No cursor response after show" }
-      return { pass: true }
-    },
-  ),
+        let shown: boolean | null = null
+        let hidden: boolean | null = null
+        try {
+          ctx.feed("\x1b[?25h")
+          shown = ctx.getCursor().visible
+          if (shown === true) {
+            ctx.feed("\x1b[?25l")
+            hidden = ctx.getCursor().visible
+          }
+        } finally {
+          ctx.feed(before ? "\x1b[?25h" : "\x1b[?25l")
+        }
+        const restored = ctx.getCursor().visible
+        const qualified = shown === true && hidden !== null && restored === before
+        return parserStateResult(
+          qualified ? hidden === false : null,
+          expected,
+          { before, shown, hidden, restored },
+          qualified
+            ? "Parser visibility state only; display pixels were not captured"
+            : "Shown control, hidden readback or initial-state restoration was not established",
+        )
+      },
+      async (ctx) => {
+        ctx.write("\x1b[?25l") // hide cursor
+        const posHidden = await ctx.queryCursorPosition()
+        ctx.write("\x1b[?25h") // show cursor
+        if (!posHidden) return { pass: false, note: "No cursor response while hidden" }
+        const posVisible = await ctx.queryCursorPosition()
+        if (!posVisible) return { pass: false, note: "No cursor response after show" }
+        return { pass: true }
+      },
+    ),
+    termlessObservationEvidence: "parser-state",
+  },
 
   // DECSCUSR — cursor shape
   probe(
@@ -284,6 +287,8 @@ export const cursorProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "query",
   },
 
   // CSI s / CSI u — ANSI save/restore cursor (distinct from DECSC/DECRC)
@@ -307,6 +312,8 @@ export const cursorProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -329,6 +336,8 @@ export const cursorProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // DECSC/DECRC — cursor save/restore
@@ -352,6 +361,8 @@ export const cursorProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // DECSET 45 — reverse wrap mode
@@ -579,6 +590,8 @@ export const cursorProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // CUU past top of screen — cursor should stop at row 0
@@ -673,6 +686,8 @@ export const cursorProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   // VPA — vertical position absolute
@@ -743,5 +758,7 @@ export const cursorProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 ]
