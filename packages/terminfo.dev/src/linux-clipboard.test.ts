@@ -199,6 +199,12 @@ try {
     assert.equal(stdoutBinding.matched, "pty")
     assert.equal(stdoutBinding.controllingTtyNr, stdoutBinding.inputRdev)
     assert.equal(stdoutBinding.controllingTtyNr, stdoutBinding.outputRdev)
+    const exactOutput = realFs.fstatSync(1, { bigint: true })
+    assert.deepEqual(stdoutBinding.outputDevice, {
+      dev: exactOutput.dev.toString(),
+      rdev: exactOutput.rdev.toString(),
+      ino: exactOutput.ino.toString(),
+    })
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, process.stdout), true)
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, "c".repeat(32), process.stdout), false)
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, foreign), false)

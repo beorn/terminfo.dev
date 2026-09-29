@@ -1,5 +1,5 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
-import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type Stats } from "node:fs"
+import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type BigIntStats } from "node:fs"
 import { isatty, WriteStream } from "node:tty"
 import type { LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
@@ -74,8 +74,12 @@ export interface OwnedTerminal {
   dispose(): Promise<void>
 }
 
-type Device = { dev: number; rdev: number; ino: number }
-const device = (stat: Stats): Device => ({ dev: stat.dev, rdev: stat.rdev, ino: stat.ino })
+type Device = { dev: string; rdev: string; ino: string }
+const device = (stat: BigIntStats): Device => ({
+  dev: stat.dev.toString(),
+  rdev: stat.rdev.toString(),
+  ino: stat.ino.toString(),
+})
 const sameDevice = (left: Device, right: Device): boolean =>
   left.dev === right.dev && left.rdev === right.rdev && left.ino === right.ino
 
@@ -126,30 +130,31 @@ function linuxOutput(out: NodeJS.WriteStream): LinuxBinding {
     throw new Error(`Invalid controlling tty_nr ${String(fields[4])}`)
   }
   const controlling = ttyNumber >>> 0
-  const inputRdev = fstatSync(0).rdev
-  if (controlling === 0 || inputRdev !== controlling) {
-    throw new Error(`Owned input device ${inputRdev} differs from controlling tty_nr ${controlling}`)
+  const inputDevice = device(fstatSync(0, { bigint: true }))
+  if (controlling === 0 || inputDevice.rdev !== String(controlling)) {
+    throw new Error(`Owned input device ${inputDevice.rdev} differs from controlling tty_nr ${controlling}`)
   }
-  const outputDevice = device(fstatSync(fd))
-  if (outputDevice.rdev === controlling) {
+  const inputRdev = controlling
+  const outputDevice = device(fstatSync(fd, { bigint: true }))
+  if (outputDevice.rdev === String(controlling)) {
     return {
       platform: "linux",
       matched: "pty",
       selectedFd: fd,
       controllingTtyNr: controlling,
       inputRdev,
-      outputRdev: outputDevice.rdev,
+      outputRdev: controlling,
       outputDevice,
     }
   }
-  if (wasCollectorOpenedControllingTTY(out) && outputDevice.rdev === 1280) {
+  if (wasCollectorOpenedControllingTTY(out) && outputDevice.rdev === "1280") {
     return {
       platform: "linux",
       matched: "dev-tty",
       selectedFd: fd,
       controllingTtyNr: controlling,
       inputRdev,
-      outputRdev: outputDevice.rdev,
+      outputRdev: 1280,
       outputDevice,
     }
   }
@@ -173,9 +178,9 @@ function darwinOutput(out: NodeJS.WriteStream, assertion: TerminalAppOwnerAssert
   if (`/dev/${controllingTty}` !== assertion.tabTty) {
     throw new Error(`Terminal.app worker TTY /dev/${controllingTty} differs from asserted tab ${assertion.tabTty}`)
   }
-  const inputDevice = device(fstatSync(0))
-  const outputDevice = device(fstatSync(1))
-  const tabDevice = device(statSync(assertion.tabTty))
+  const inputDevice = device(fstatSync(0, { bigint: true }))
+  const outputDevice = device(fstatSync(1, { bigint: true }))
+  const tabDevice = device(statSync(assertion.tabTty, { bigint: true }))
   if (!sameDevice(inputDevice, outputDevice) || !sameDevice(outputDevice, tabDevice)) {
     throw new Error("Terminal.app input, selected stdout and asserted tab PTY device identities differ")
   }
@@ -208,7 +213,7 @@ async function readBoundGeometry(binding: OutputBinding): Promise<GeometryMeasur
     try {
       const path = binding.platform === "linux" ? "/proc/self/fd" : "/dev/fd"
       inputFd = openSync(`${path}/${binding.selectedFd}`, constants.O_RDONLY | constants.O_NOCTTY)
-      const reopened = device(fstatSync(inputFd))
+      const reopened = device(fstatSync(inputFd, { bigint: true }))
       if (!isatty(inputFd) || !sameDevice(reopened, binding.outputDevice)) {
         closeSync(inputFd)
         inputFd = undefined
