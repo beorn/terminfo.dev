@@ -170,11 +170,25 @@ for (const [dir, files] of [
         throw new Error("expected a JSON object")
       }
       const probe = data as ProbeFile["data"]
+      if (probe.schemaVersion !== undefined && probe.schemaVersion !== 2) {
+        throw new Error(`unsupported schemaVersion ${String(probe.schemaVersion)}`)
+      }
       if (
-        probe.schemaVersion !== 2 &&
+        probe.schemaVersion === undefined &&
         (probe.results === null || typeof probe.results !== "object" || Array.isArray(probe.results))
       ) {
         throw new Error("legacy probe results must be a JSON object")
+      }
+      if (probe.schemaVersion === undefined && probe.responses !== undefined) {
+        const responses: unknown = probe.responses
+        if (
+          responses === null ||
+          typeof responses !== "object" ||
+          Array.isArray(responses) ||
+          !Object.values(responses as Record<string, unknown>).every((value) => typeof value === "string")
+        ) {
+          throw new Error("legacy identity responses must be string values in a JSON object")
+        }
       }
       probeFiles.push({ file, dir, data: probe })
     } catch (cause) {
@@ -414,7 +428,7 @@ for (const { dir, data } of probeFiles) {
     if (dir === "probes-libs") continue
     const term = data.terminal || data.backend
     if (!term) continue
-    if (data.schemaVersion !== 2 && data.responses === undefined) {
+    if (data.schemaVersion === undefined && data.responses === undefined) {
       warn(`Probe file "${dir}/${file}" has no captured identity responses (legacy history; unverified)`)
       warnings++
       uncheckedCount++
@@ -699,7 +713,7 @@ heading("Info (summary)")
 
   // v2 runs store observations, not legacy boolean results; this coverage only counts legacy failures.
   for (const { file, dir, data } of probeFiles) {
-    if (data.schemaVersion === 2) continue
+    if (data.schemaVersion !== undefined) continue
     if (!data.results) throw new Error(`Probe file "${dir}/${file}" lost required legacy results after inventory`)
     const backendName = data.terminal ?? data.backend ?? ""
     for (const [featureId, result] of Object.entries(data.results)) {

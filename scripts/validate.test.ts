@@ -1,5 +1,5 @@
 /**
- * @failure Malformed probe JSON is skipped, while legacy files without replies are falsely reported as measured DA1 mismatches.
+ * @failure Malformed probe input is accepted or skipped, while legacy files without replies are falsely reported as measured DA1 mismatches.
  * @level l2
  * @consumer The content-validation CLI used before site publication.
  * @testonly none
@@ -73,6 +73,32 @@ test("validation refuses malformed library probe data with its path", () => {
     expect(wrongReply.status, wrongReply.stdout + wrongReply.stderr).toBe(1)
     expect(wrongReply.stdout).toContain("probes-apps/terminal-app-legacy.json")
     expect(wrongReply.stdout).toContain("DA1 mismatch")
+
+    rmSync(legacyAppPath)
+    writeFileSync(
+      join(root, "content", "probes-libs", "broken.json"),
+      JSON.stringify({ schemaVersion: 3, backend: "xtermjs", results: {} }),
+    )
+    const unsupportedVersion = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
+    expect(unsupportedVersion.error).toBeUndefined()
+    expect(unsupportedVersion.status, unsupportedVersion.stdout + unsupportedVersion.stderr).toBe(1)
+    expect(unsupportedVersion.stdout).toContain("probes-libs/broken.json")
+    expect(unsupportedVersion.stdout).toContain("unsupported schemaVersion 3")
+
+    rmSync(join(root, "content", "probes-libs", "broken.json"))
+    writeFileSync(
+      legacyAppPath,
+      JSON.stringify({
+        terminal: "terminal-app",
+        responses: { "device.primary-da": ["\x1b[?1;2c"], "device.secondary-da": "\x1b[>1;95;0c" },
+        results: { "sgr.bold": true },
+      }),
+    )
+    const nonStringReply = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
+    expect(nonStringReply.error).toBeUndefined()
+    expect(nonStringReply.status, nonStringReply.stdout + nonStringReply.stderr).toBe(1)
+    expect(nonStringReply.stdout).toContain("probes-apps/terminal-app-legacy.json")
+    expect(nonStringReply.stdout).toContain("identity responses must be string values")
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
