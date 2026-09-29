@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { parserStateResult, sgrProbe, probe } from "./helpers.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
@@ -74,6 +74,93 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
       return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
     },
   }
+}
+
+type ResetAttribute = "bold" | "dim" | "italic" | "underline" | "inverse"
+type ResetCell = ReturnType<TermlessContext["getCell"]>
+
+function measuredAttribute(cell: ResetCell, attribute: ResetAttribute): boolean | null {
+  const value: unknown = cell[attribute]
+  if (value === undefined) return null
+  if (attribute === "underline") return value !== false && value !== null && value !== "none"
+  return typeof value === "boolean" ? value : null
+}
+
+function measuredReset(
+  ctx: TermlessContext,
+  id: string,
+  setup: string,
+  reset: string,
+  set: readonly ResetAttribute[],
+  preserve: readonly ResetAttribute[],
+): ProbeResult {
+  ctx.feed(`C${setup}X${reset}Y`)
+  const baseline = ctx.getCell(0, 0)
+  const before = ctx.getCell(0, 1)
+  const after = ctx.getCell(0, 2)
+  const state = { baseline, before, after }
+  const expected = `${id}: measured setup attributes clear on Y and unrelated attributes remain set`
+  if (baseline.char !== "C" || before.char !== "X" || after.char !== "Y") {
+    return parserStateResult(null, expected, state, "Baseline, styled, or reset cell was not exposed")
+  }
+  const attributes = [...new Set([...set, ...preserve])]
+  if (
+    attributes.some((attribute) => measuredAttribute(baseline, attribute) !== false) ||
+    attributes.some((attribute) => measuredAttribute(before, attribute) !== true) ||
+    attributes.some((attribute) => measuredAttribute(after, attribute) === null)
+  ) {
+    return parserStateResult(
+      null,
+      expected,
+      state,
+      "Neutral baseline, styled setup, or reset readback was not measured",
+    )
+  }
+  const cleared = set.every((attribute) => measuredAttribute(after, attribute) === false)
+  const retained = preserve.every((attribute) => measuredAttribute(after, attribute) === true)
+  return parserStateResult(cleared && retained, expected, state)
+}
+
+async function consumedResetSgr(ctx: TermContext, setup: string, reset: string): Promise<ProbeResult> {
+  try {
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write(`${setup}X${reset}Y`)
+    const pos = await ctx.queryCursorPosition()
+    if (!pos) {
+      return {
+        pass: false,
+        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+      }
+    }
+    const advanced = pos.row === 1 && pos.col === 3
+    return {
+      pass: false,
+      response: `${pos.row};${pos.col}`,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: advanced ? "consumed" : "query",
+        note: advanced ? "Cursor advance does not verify SGR reset" : "Cursor did not reach the expected position",
+      },
+    }
+  } finally {
+    ctx.write("\x1b[0m")
+  }
+}
+
+function resetProbe(
+  id: string,
+  setup: string,
+  reset: string,
+  set: readonly ResetAttribute[],
+  preserve: readonly ResetAttribute[] = [],
+): ProbeDefinition {
+  return probe(
+    id,
+    (ctx) => measuredReset(ctx, id, setup, reset, set, preserve),
+    (ctx) => consumedResetSgr(ctx, setup, reset),
+    "consumed",
+  )
 }
 
 export const sgrProbes: ProbeDefinition[] = [
@@ -414,130 +501,15 @@ export const sgrProbes: ProbeDefinition[] = [
 
   // ── Selective resets ──
 
-  probe(
-    "sgr.selective-reset.bold",
-    (ctx) => {
-      ctx.feed("\x1b[1mX\x1b[22mY")
-      const before = ctx.getCell(0, 0)
-      const after = ctx.getCell(0, 1)
-      return {
-        pass:
-          before.char === "X" &&
-          before.bold === true &&
-          after.char === "Y" &&
-          after.bold === false &&
-          after.dim === false,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[1m\x1b[22mX\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-      }
-    },
-  ),
+  resetProbe("sgr.selective-reset.bold", "\x1b[1;2;3m", "\x1b[22m", ["bold", "dim"], ["italic"]),
 
-  probe(
-    "sgr.selective-reset.underline",
-    (ctx) => {
-      ctx.feed("\x1b[4mX\x1b[24mY")
-      const before = ctx.getCell(0, 0)
-      const after = ctx.getCell(0, 1)
-      return {
-        pass:
-          before.char === "X" &&
-          Boolean(before.underline) &&
-          after.char === "Y" &&
-          after.underline !== undefined &&
-          !after.underline,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[4m\x1b[24mX\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-      }
-    },
-  ),
+  resetProbe("sgr.selective-reset.underline", "\x1b[1;4m", "\x1b[24m", ["underline"], ["bold"]),
 
-  probe(
-    "sgr.selective-reset.italic",
-    (ctx) => {
-      ctx.feed("\x1b[3mX\x1b[23mY")
-      const before = ctx.getCell(0, 0)
-      const after = ctx.getCell(0, 1)
-      return { pass: before.char === "X" && before.italic === true && after.char === "Y" && after.italic === false }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[3m\x1b[23mX\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-      }
-    },
-  ),
+  resetProbe("sgr.selective-reset.italic", "\x1b[1;3m", "\x1b[23m", ["italic"], ["bold"]),
 
-  probe(
-    "sgr.selective-reset.inverse",
-    (ctx) => {
-      ctx.feed("\x1b[7mX\x1b[27mY")
-      const before = ctx.getCell(0, 0)
-      const after = ctx.getCell(0, 1)
-      return { pass: before.char === "X" && before.inverse === true && after.char === "Y" && after.inverse === false }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[7m\x1b[27mX\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-      }
-    },
-  ),
+  resetProbe("sgr.selective-reset.inverse", "\x1b[1;7m", "\x1b[27m", ["inverse"], ["bold"]),
 
   // ── Full SGR reset ──
 
-  probe(
-    "sgr.reset",
-    (ctx) => {
-      ctx.feed("\x1b[1;3;4mX\x1b[0mY")
-      const before = ctx.getCell(0, 0)
-      const after = ctx.getCell(0, 1)
-      return {
-        pass:
-          before.char === "X" &&
-          before.bold === true &&
-          before.italic === true &&
-          Boolean(before.underline) &&
-          after.char === "Y" &&
-          after.bold === false &&
-          after.italic === false &&
-          after.underline !== undefined &&
-          !after.underline,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[1m\x1b[0mX\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 2,
-        note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-      }
-    },
-  ),
+  resetProbe("sgr.reset", "\x1b[1;3;4m", "\x1b[0m", ["bold", "italic", "underline"]),
 ]

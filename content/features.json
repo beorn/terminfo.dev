@@ -296,7 +296,7 @@
     "tags": ["ecma-48"],
     "group": "selective-reset",
     "body": "SGR 22 resets both bold (SGR 1) and faint/dim (SGR 2) attributes. The sequence is <code>ESC [ 22 m</code>. There is no way to reset bold without also resetting faint, or vice versa — they share this single reset code.\n\nThis paired reset is one of the awkward corners of SGR. ECMA-48 uses SGR 22 for both bold and faint, so applications cannot clear only one of those attributes portably. Emulators should preserve that shared reset behavior even if their internal style model stores bold and dim separately.",
-    "probe": "Send <code>\\x1b[1m</code>X<code>\\x1b[22m</code>Y, verify the second cell has <code>bold=false</code> and <code>dim=false</code>.",
+    "probe": "In a headless backend, compare neutral C, bold/dim/italic X, and SGR 22 Y: bold and dim must clear while italic remains. Missing style readback is inconclusive; a TTY cursor reply does not verify styling.",
     "baseline": "core"
   },
   "sgr.selective-reset.underline": {
@@ -306,7 +306,7 @@
     "tags": ["ecma-48"],
     "group": "selective-reset",
     "body": "SGR 24 resets all underline styles — single, double, curly, dotted, and dashed. The sequence is <code>ESC [ 24 m</code>.\n\nTargeted resets are important for nested styling: an application can clear an underline without also discarding color, bold, inverse video, or other active SGR attributes. Modern terminals map SGR 24 across both classic ECMA-48 underline and newer styled underline variants, so it is the safe cleanup sequence after curly, dotted, dashed, or colored underline output.",
-    "probe": "Send <code>\\x1b[4m</code>X<code>\\x1b[24m</code>Y, verify the second cell has no underline.",
+    "probe": "In a headless backend, compare neutral C, bold/underlined X, and SGR 24 Y: underline must clear while bold remains. Missing setup readback is inconclusive; a TTY cursor reply does not verify styling.",
     "baseline": "core"
   },
   "sgr.selective-reset.inverse": {
@@ -316,7 +316,7 @@
     "tags": ["ecma-48"],
     "group": "selective-reset",
     "body": "SGR 27 resets the inverse video (SGR 7) attribute, restoring the original foreground/background color relationship. The sequence is <code>ESC [ 27 m</code>.\n\nInverse video was one of the hardware-era highlight mechanisms, long before terminals had theme-aware selection colors. SGR 27 matters because status bars, menus, and cursor renderers often combine inverse video with explicit colors; using SGR 0 would clear every attribute, while SGR 27 restores only the foreground/background relationship.",
-    "probe": "Send <code>\\x1b[7m</code>X<code>\\x1b[27m</code>Y, verify the second cell has <code>inverse=false</code>.",
+    "probe": "In a headless backend, compare neutral C, bold/inverse X, and SGR 27 Y: inverse must clear while bold remains. Missing setup readback is inconclusive; a TTY cursor reply does not verify styling.",
     "baseline": "core"
   },
   "sgr.selective-reset.italic": {
@@ -326,7 +326,7 @@
     "tags": ["ecma-48"],
     "group": "selective-reset",
     "body": "SGR 23 resets the italic (SGR 3) attribute, returning text to upright rendering. The sequence is <code>ESC [ 23 m</code>. This is a targeted reset that does not affect other active attributes like bold, underline, or colors.\n\nItalic reset became more visible once terminal fonts gained real italic variants. A targeted SGR 23 lets syntax highlighters and markdown renderers end emphasis without disturbing color, underline, or bold state. Older terminals that fake or ignore italic should still parse and clear the attribute cleanly.",
-    "probe": "Send <code>\\x1b[3m</code>X<code>\\x1b[23m</code>Y, verify the second cell has <code>italic=false</code>.",
+    "probe": "In a headless backend, compare neutral C, bold/italic X, and SGR 23 Y: italic must clear while bold remains. Missing setup readback is inconclusive; a TTY cursor reply does not verify styling.",
     "baseline": "core"
   },
   "sgr.reset": {
@@ -335,7 +335,7 @@
     "url": "https://vt100.net/docs/vt510-rm/SGR.html",
     "tags": ["ecma-48", "vt100"],
     "body": "SGR 0 resets all text attributes to their defaults: removes bold, faint, italic, underline, blink, inverse, hidden, strikethrough, overline, and resets foreground and background colors. The sequence is <code>ESC [ 0 m</code> or simply <code>ESC [ m</code> (parameter defaults to 0). Universally supported and the most fundamental SGR sequence.",
-    "probe": "Send <code>\\x1b[1;3;4m</code>X<code>\\x1b[0m</code>Y, verify the second cell has bold, italic, and underline all cleared.",
+    "probe": "In a headless backend, compare neutral C, bold/italic/underlined X, and SGR 0 Y: all three measured attributes must clear. Missing setup readback is inconclusive; a TTY cursor reply does not verify styling.",
     "baseline": "core",
     "sequence": "ESC [ 0 m"
   },

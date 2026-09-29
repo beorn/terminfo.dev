@@ -319,10 +319,87 @@ test("indexed SGR 58 rejects a default underline that merely follows the foregro
   expect(result.assertions).toMatchObject([{ kind: "negative", observed: result.response }])
 })
 
-test("legacy SGR reset diagnostics cannot pass when the setup attribute was never observed", () => {
+test("SGR reset results require an observed setup and preserve unrelated attributes", () => {
+  const cases = [
+    {
+      id: "sgr.selective-reset.bold",
+      before: { bold: true, dim: true, italic: true },
+      after: { bold: false, dim: false, italic: true },
+      erasedSentinel: { bold: false, dim: false, italic: false },
+    },
+    {
+      id: "sgr.selective-reset.underline",
+      before: { underline: true, bold: true },
+      after: { underline: false, bold: true },
+      erasedSentinel: { underline: false, bold: false },
+    },
+    {
+      id: "sgr.selective-reset.italic",
+      before: { italic: true, bold: true },
+      after: { italic: false, bold: true },
+      erasedSentinel: { italic: false, bold: false },
+    },
+    {
+      id: "sgr.selective-reset.inverse",
+      before: { inverse: true, bold: true },
+      after: { inverse: false, bold: true },
+      erasedSentinel: { inverse: false, bold: false },
+    },
+    {
+      id: "sgr.reset",
+      before: { bold: true, italic: true, underline: true },
+      after: { bold: false, italic: false, underline: false },
+      erasedSentinel: null,
+    },
+  ] as const
+  for (const { id, before, after, erasedSentinel } of cases) {
+    const probe = sgrProbes.find((item) => item.id === id)
+    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    const termless = probe.termless
+    const read = (style: Partial<typeof baseCell>) =>
+      termless(
+        headless({
+          getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "Y"][col] ?? "", ...[{}, before, style][col] }),
+        }),
+      )
+    const supported = read(after)
+    expect(supported.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(supported.assertions, id).toMatchObject([{ kind: "positive", observed: supported.response }])
+    expect(JSON.parse(supported.response ?? ""), id).toMatchObject({
+      baseline: { char: "C" },
+      before: { char: "X" },
+      after: { char: "Y" },
+    })
+    const ignored = read(before)
+    expect(ignored.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored.assertions, id).toMatchObject([{ kind: "negative", observed: ignored.response }])
+    const unobservedSetup = probe.termless(
+      headless({ getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "Y"][col] ?? "" }) }),
+    )
+    expect(unobservedSetup.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+    })
+    expect(unobservedSetup.assertions, id).toBeUndefined()
+    if (erasedSentinel) {
+      const lost = read(erasedSentinel)
+      expect(lost.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    }
+  }
+})
+
+test("default color callbacks remain ungraded when the color setup is unobserved", () => {
+  for (const id of ["sgr.fg.default", "sgr.bg.default"]) {
+    const probe = sgrProbes.find((item) => item.id === id)
+    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    const result = probe.termless(headless({ getCell: (_row, col) => ({ ...baseCell, char: col === 0 ? "X" : "Y" }) }))
+    expect(result.pass, id).toBe(false)
+    expect(result.observation, id).toBeUndefined()
+  }
+})
+
+test("SGR reset cursor replies remain inconclusive and style cleanup runs on query failure", async () => {
   for (const id of [
-    "sgr.fg.default",
-    "sgr.bg.default",
     "sgr.selective-reset.bold",
     "sgr.selective-reset.underline",
     "sgr.selective-reset.italic",
@@ -330,11 +407,35 @@ test("legacy SGR reset diagnostics cannot pass when the setup attribute was neve
     "sgr.reset",
   ]) {
     const probe = sgrProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`missing ${id} callback`)
-    const result = probe.termless(headless({ getCell: (_row, col) => ({ ...baseCell, char: col === 0 ? "X" : "Y" }) }))
-    expect(result.pass, id).toBe(false)
-    expect(result.observation, id).toBeUndefined() // Still an ungraded legacy callback.
+    if (!probe?.term) throw new Error(`missing ${id} terminal callback`)
+    const writes: string[] = []
+    const result = await probe.term(
+      terminal({
+        write: (text) => writes.push(text),
+        queryCursorPosition: async () => ({ row: 1, col: 3 }),
+      }),
+    )
+    expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.assertions, id).toBeUndefined()
+    expect(writes.at(-1), id).toBe("\x1b[0m")
   }
+  const probe = sgrProbes.find((item) => item.id === "sgr.reset")
+  if (!probe?.term) throw new Error("missing sgr.reset terminal callback")
+  const silence = await probe.term(terminal())
+  expect(silence.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+  expect(silence.assertions).toBeUndefined()
+  const writes: string[] = []
+  await expect(
+    probe.term(
+      terminal({
+        write: (text) => writes.push(text),
+        queryCursorPosition: async () => {
+          throw new Error("TTY read failed")
+        },
+      }),
+    ),
+  ).rejects.toThrow("TTY read failed")
+  expect(writes.at(-1)).toBe("\x1b[0m")
 })
 
 test("cursor movement binds measured positions and parser state, never a missing reply", async () => {
