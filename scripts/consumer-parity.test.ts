@@ -1,5 +1,5 @@
 /**
- * @failure Site, API and analysis disagree about an admitted run, or an unscoped annotation overrides its selected public note.
+ * @failure Site, API and analysis disagree about an admitted run, or an unscoped annotation leaks into selected notes or generated commentary.
  * @level l2
  * @consumer Site matrix, terminal paths, v1/v2 API and generated analysis.
  * @testonly none
@@ -424,6 +424,34 @@ describe("selected-run consumer parity", () => {
     )
     const bold = featurePaths.paths().find((page) => page.params.featureId === "sgr.bold")
     expect(bold?.params).toMatchObject({ yesCount: "2", totalCount: "2" })
+  })
+
+  it("keeps unscoped annotations out of feature analysis while retaining reviewed selected notes", () => {
+    const annotations = JSON.parse(
+      readFileSync(join(import.meta.dirname, "..", "content", "annotations.json"), "utf8"),
+    ) as Record<string, { note: string }>
+    const unscoped = annotations["kitty:extensions.sixel"]?.note
+    if (!unscoped) throw new Error("Missing Kitty sixel annotation fixture")
+    const cell = fixture.selected.cells["extensions.sixel"] as SelectedCell
+    const original = structuredClone(cell)
+    try {
+      const unreviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
+      expect(unreviewed).not.toContain(unscoped)
+      expect(unreviewed).toContain("No conclusive support among")
+      expect(unreviewed).toContain("Not supported by:")
+      cell.note = "Reviewed Kitty sixel observation note"
+      cell.chain.correctionId = "reviewed-sixel"
+      expect(probesLoader.load().selectedByBackend.kitty?.selected.cells["extensions.sixel"]?.note).toBe(
+        "Reviewed Kitty sixel observation note",
+      )
+      const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
+      expect(reviewed).not.toContain(unscoped)
+      expect(reviewed).not.toContain("Reviewed Kitty sixel observation note")
+    } finally {
+      Object.assign(cell, original)
+      if (original.note === undefined) delete cell.note
+      if (original.chain.correctionId === undefined) delete cell.chain.correctionId
+    }
   })
 
   it("uses selected public notes across routes without promoting unscoped annotations", () => {

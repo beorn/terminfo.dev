@@ -715,7 +715,6 @@ function generateFeatureAnalysis(
   featureId: string,
   feature: FeatureMeta,
   allStats: Map<string, TerminalStats>,
-  annotations: Record<string, { note: string; url?: string; result?: string }>,
 ): AnalysisEntry {
   const parts: string[] = []
 
@@ -723,17 +722,14 @@ function generateFeatureAnalysis(
   let supported = 0
   let unsupported = 0
   const unsupportedNames: string[] = []
-  const notesMap: string[] = []
 
-  for (const [termId, stats] of allStats) {
+  for (const stats of allStats.values()) {
     if (!(featureId in stats.results)) continue
     if (stats.results[featureId]) {
       supported++
     } else {
       unsupported++
       unsupportedNames.push(stats.name)
-      const ann = annotations[`${termId}:${featureId}`]
-      if (ann?.note) notesMap.push(`${stats.name}: ${ann.note}`)
     }
   }
 
@@ -770,11 +766,6 @@ function generateFeatureAnalysis(
     parts.push(
       `Part of the <strong>${feature.baseline === "core" ? "Core TUI" : feature.baseline === "modern" ? "Modern TUI" : feature.baseline === "rich" ? "Rich TUI" : "Unicode"}</strong> baseline`,
     )
-  }
-
-  // Notable annotations
-  if (notesMap.length > 0 && notesMap.length <= 3) {
-    parts.push(`Notes: ${notesMap.join("; ")}`)
   }
 
   return {
@@ -1269,8 +1260,7 @@ function loadAllData() {
 }
 
 export function generateAnalysis(): Record<string, AnalysisEntry> {
-  const { features, terminals, categories, standards, baselines, annotations, frameworks, glossary, resultMap } =
-    loadAllData()
+  const { features, terminals, categories, standards, baselines, frameworks, glossary, resultMap } = loadAllData()
   const baselineFeatures = buildBaselineFeatureMap(features)
   const output: Record<string, AnalysisEntry> = {}
 
@@ -1377,7 +1367,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const category = featureId.split(".")[0]
     const slug = featureMeta.slug ?? featureId.replaceAll(".", "-")
     const key = `${category}/${slug}`
-    const entry = generateFeatureAnalysis(featureId, featureMeta, allStats, annotations)
+    const entry = generateFeatureAnalysis(featureId, featureMeta, allStats)
     if (entry.analysis) {
       validateHtml(entry.analysis, key)
       output[key] = entry
