@@ -11,7 +11,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { SelectedCell } from "../docs/data/selected-results.ts"
 import * as selectedResults from "../docs/data/selected-results.ts"
-import type { EvidenceDocument } from "../docs/data/public-results.ts"
+import type { EvidenceDocument, PublicVersion } from "../docs/data/public-results.ts"
 
 interface CompatibilityData {
   results: Record<string, Record<string, string>>
@@ -133,6 +133,15 @@ const fixture = vi.hoisted(() => {
       ]),
     ),
   }
+  const alternateKitty = {
+    ...selected,
+    runId: "kitty-clipboard-reviewed",
+    sha256: "e".repeat(64),
+    target: { ...target, permissions: "clipboard: read=deny,write=allow" },
+    cells: {},
+    v1: {},
+    counts: { catalog: 270, tested: 0, notTested: 270, conclusive: 0, supported: 0, unsupported: 0 },
+  }
   return {
     runSha256,
     measuredAt,
@@ -141,7 +150,13 @@ const fixture = vi.hoisted(() => {
     screen,
     projection: {
       current: { "app:kitty": selected, "mux:tmux": mux, "mux:screen": screen },
-      versions: { "app:kitty": [selected], "mux:tmux": [mux], "mux:screen": [screen, olderScreen] },
+      versions: {
+        "app:kitty": [selected],
+        "app:kitty:clipboard": [alternateKitty],
+        "headless:kitty": [{ ...alternateKitty, target: { ...target, kind: "headless" } }],
+        "mux:tmux": [mux],
+        "mux:screen": [screen, olderScreen],
+      },
       history: { "app:kitty": [selected], "mux:tmux": [mux], "mux:screen": [screen] },
       exclusions: [],
     },
@@ -337,6 +352,13 @@ describe("selected-run consumer parity", () => {
       expect(site.stats.kitty).toMatchObject({ total: 2, yes: 1, no: 1 })
       expect(terminal?.params).toMatchObject({ generated: fixture.measuredAt, total: "2", yes: "1", no: "1" })
       expect(terminal?.params.runSha256).toBe(fixture.runSha256)
+      const alternatives = JSON.parse(terminal!.params.otherRuns!) as PublicVersion[]
+      expect(alternatives.map((run: { runId: string }) => run.runId)).toEqual(["kitty-clipboard-reviewed"])
+      expect(alternatives[0]?.target.permissions).toBe("clipboard: read=deny,write=allow")
+      const screenPage = terminalPaths.paths().find((page) => page.params.backendId === "screen")!
+      const olderRuns = JSON.parse(screenPage.params.otherRuns!) as PublicVersion[]
+      expect(olderRuns.map((run) => run.target.version)).toEqual(["4.9"])
+      expect(terminal?.params.terminalType).toBe("app")
       expect(v1.results.kitty).toEqual({ "sgr.bold": "yes", "extensions.sixel": "no" })
       expect(v1.terminals.kitty?.score).toMatchObject({ total: 2, pass: 1 })
       expect(v1.methodology.contexts.kitty).toMatchObject({ contextKey: "app:kitty", runSha256: fixture.runSha256 })

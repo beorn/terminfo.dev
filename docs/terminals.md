@@ -12,7 +12,7 @@ outline: deep
 
 ## App Terminals
 
-Standalone terminal applications tested on real hardware via automated probing. These results reflect the full stack: parser, renderer, font support, and OS integration.
+These are terminal applications, but a product card does not mean its app has an admitted measurement. Check the badge on each linked result page: **App Terminal** means an app run; **Headless Backend** means only its parser was measured. The current app result is Kitty; linked Ghostty, Alacritty, and WezTerm results are headless.
 
 <div class="term-grid">
 
@@ -21,7 +21,7 @@ Standalone terminal applications tested on real hardware via automated probing. 
     <span class="term-name">Ghostty</span>
     <span class="term-tag">Zig</span>
   </div>
-  <p class="term-desc">GPU-accelerated terminal by Mitchell Hashimoto, with native macOS and Linux interfaces.</p>
+  <p class="term-desc">GPU-accelerated terminal by Mitchell Hashimoto. The linked result measures its headless parser, not the app renderer.</p>
 </a>
 
 <a class="term-card" href="/terminals/kitty">
@@ -29,7 +29,7 @@ Standalone terminal applications tested on real hardware via automated probing. 
     <span class="term-name">Kitty</span>
     <span class="term-tag">C / Python</span>
   </div>
-  <p class="term-desc">GPU-accelerated terminal by Kovid Goyal. Pioneer of the Kitty keyboard and graphics protocols.</p>
+  <p class="term-desc">GPU-accelerated terminal by Kovid Goyal. The linked result is an app measurement; its parser has a separate headless result.</p>
 </a>
 
 <a class="term-card" href="/terminals/iterm2">
@@ -61,7 +61,7 @@ Standalone terminal applications tested on real hardware via automated probing. 
     <span class="term-name">Alacritty</span>
     <span class="term-tag">Rust</span>
   </div>
-  <p class="term-desc">Minimal GPU-accelerated terminal written in Rust.</p>
+  <p class="term-desc">Minimal GPU-accelerated terminal written in Rust. The linked result measures its headless parser.</p>
 </a>
 
 <a class="term-card" href="/terminals/wezterm">
@@ -69,7 +69,7 @@ Standalone terminal applications tested on real hardware via automated probing. 
     <span class="term-name">WezTerm</span>
     <span class="term-tag">Rust</span>
   </div>
-  <p class="term-desc">Terminal emulator with built-in multiplexer, Lua configuration, and SSH domain support.</p>
+  <p class="term-desc">Terminal emulator with built-in multiplexer, Lua configuration, and SSH domain support. The linked result measures its headless parser.</p>
 </a>
 
 <a class="term-card" href="/terminals/vs-code">

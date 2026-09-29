@@ -6,12 +6,24 @@ next: false
 
 <script setup>
 import { useData } from 'vitepress'
+import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
 const { params } = useData()
 const p = params.value
 
 const categories = p.categories ? JSON.parse(p.categories) : []
 const versions = p.versions ? JSON.parse(p.versions) : []
+const defaultRun = data.selectedByBackend[p.backendId]?.selected
+const runs = [defaultRun, ...JSON.parse(p.otherRuns || '[]')].filter(Boolean)
+const runSha = ref(defaultRun?.sha256 || '')
+const selectedRun = computed(() => runs.find(run => run.sha256 === runSha.value))
+const counts = computed(() => selectedRun.value?.counts)
+const score = computed(() => counts.value?.conclusive ? Math.round(counts.value.supported / counts.value.conclusive * 100) : null)
+const inconclusive = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'inconclusive').length)
+const errors = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'error').length)
+function runLabel(run) {
+  return `${run.target.version} · ${run.target.os || 'OS not recorded'} · ${run.target.permissions || 'Permissions not overridden'} · ${run.sha256.slice(0, 8)}`
+}
 
 function featureTooltip(f) {
   const parts = [f.name]
@@ -20,7 +32,7 @@ function featureTooltip(f) {
   return parts.join('\n')
 }
 
-const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) : ''
+const testDate = computed(() => selectedRun.value ? new Date(selectedRun.value.measuredAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) : '')
 const isHistorical = p.historical === 'true'
 
 const typeBadge = (() => {
@@ -54,6 +66,10 @@ const crossLinks = {
   ],
   'kitty': [
     { text: 'Kitty Extensions standard', link: '/kitty-extensions' },
+    { text: 'Kitty headless parser results', link: '/terminals/headless-kitty' },
+  ],
+  'headless-kitty': [
+    { text: 'Kitty application results', link: '/terminals/kitty' },
   ],
 }
 const relatedPages = crossLinks[p.id] ?? []
@@ -111,7 +127,7 @@ const breadcrumbParent = (() => {
 <div v-if="!isHistorical && p.backendDescription" class="backend-info">
   <strong>Backend:</strong> {{ p.backendDescription }}
   <span v-if="p.backendType"> ({{ p.backendType }})</span>
-  <span v-if="p.version"> · v{{ p.version }}</span>
+  <span v-if="selectedRun || p.version"> · v{{ selectedRun?.target.version || p.version }}</span>
 </div>
 
 <p v-if="p.backendCaveat" class="backend-caveat">&#x26A0; {{ p.backendCaveat }}</p>
@@ -122,21 +138,38 @@ const breadcrumbParent = (() => {
   &mdash; this terminal uses the same underlying engine and is not probed separately.
 </p>
 
-<div v-if="!isHistorical && p.runSha256" class="score-card">
-  <div v-if="p.pct" class="score-number">{{ p.pct }}<span class="score-pct">%</span></div>
-  <div v-else class="score-number">No score</div>
-  <div v-if="p.total !== '0'" class="score-detail">
-    <span class="score-yes">{{ p.yes }} passed</span> ·
-    <span v-if="Number(p.partial) > 0" class="score-partial">{{ p.partial }} partial · </span>
-    <span class="score-no">{{ p.total - p.yes - p.partial }} failed</span>
-    <span class="score-total"> of {{ p.total }} features</span>
-  </div>
-  <div v-else class="score-detail">No conclusive results in this reviewed run.</div>
-  <div v-if="testDate" class="score-date">Tested (UTC): {{ testDate }} · {{ p.suiteFreshness }}</div>
-  <div v-if="p.runSha256" class="score-date">Run: <a href="/api/v2/data.json">{{ p.runSha256.slice(0, 12) }}</a></div>
+<div v-if="runs.length > 1" class="run-picker">
+  <label for="reviewed-run">Reviewed version and configuration</label>
+  <select id="reviewed-run" v-model="runSha">
+    <option v-for="run in runs" :key="run.sha256" :value="run.sha256">{{ runLabel(run) }}</option>
+  </select>
+  <p>Each choice keeps its own observations and evidence. The matrix uses the default context.</p>
 </div>
 
-<div v-if="p.analysis" class="analysis">
+<div v-if="!isHistorical && selectedRun" class="score-card">
+  <div v-if="score !== null" class="score-number">{{ score }}<span class="score-pct">%</span></div>
+  <div v-else class="score-number">No score</div>
+  <div v-if="counts.conclusive" class="score-detail">
+    Supported among {{ counts.conclusive }} conclusive observations
+  </div>
+  <div v-else class="score-detail">No conclusive results in this reviewed run.</div>
+  <p class="score-detail">{{ counts.supported }} supported · {{ counts.unsupported }} unsupported · {{ inconclusive }} inconclusive · {{ errors }} errors · {{ counts.notTested }} untested</p>
+  <div v-if="testDate" class="score-date">Tested (UTC): {{ testDate }} · {{ selectedRun.suiteFreshness }}</div>
+  <div class="score-date">Run: <a href="/api/v2/data.json">{{ selectedRun.sha256.slice(0, 12) }}</a></div>
+</div>
+
+<details v-if="selectedRun" class="run-context">
+  <summary>Run environment and configuration</summary>
+  <dl>
+    <dt>Target</dt><dd>{{ selectedRun.target.kind }} · {{ selectedRun.target.id }} {{ selectedRun.target.version }}</dd>
+    <dt>OS</dt><dd>{{ selectedRun.target.os || 'Not recorded' }} {{ selectedRun.target.osVersion || '' }}</dd>
+    <dt>Permissions</dt><dd>{{ selectedRun.target.permissions || 'No explicit override recorded' }}</dd>
+    <dt>Configuration</dt><dd><code>{{ selectedRun.target.config || 'Not recorded' }}</code></dd>
+    <dt>Outer terminal / multiplexer</dt><dd>{{ selectedRun.target.outerTerminal || 'None recorded' }} / {{ selectedRun.target.mux || 'None recorded' }}</dd>
+  </dl>
+</details>
+
+<div v-if="p.analysis && selectedRun?.sha256 === defaultRun?.sha256" class="analysis">
   <div class="analysis-header">
     <span class="analysis-label">Analysis</span>
     <span class="analysis-date">{{ p.analysisDate }}</span>
@@ -145,7 +178,7 @@ const breadcrumbParent = (() => {
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
 </div>
 
-<div v-if="versions.length > 1" class="version-history">
+<div v-if="versions.length > 1 && selectedRun?.sha256 === defaultRun?.sha256" class="version-history">
   <h2 id="version-history">Version History</h2>
   <table class="version-table">
     <thead>
@@ -187,8 +220,8 @@ const breadcrumbParent = (() => {
     <tr v-for="f in cat.features" :key="f.id">
       <td :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
       <td class="result-cell"><ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="p.backendName"
-        :version="data.selectedByBackend[p.backendId]?.selected" :cell="data.selectedByBackend[p.backendId]?.selected.cells[f.id]" display="text" /></td>
-      <td class="note-cell">{{ f.note }}</td>
+        :version="selectedRun" :cell="selectedRun?.cells[f.id]" display="text" /></td>
+      <td class="note-cell">{{ selectedRun?.cells[f.id]?.note || '' }}</td>
     </tr>
   </tbody>
 </table>
@@ -205,6 +238,15 @@ const breadcrumbParent = (() => {
 .backend-page {
   max-width: 800px;
 }
+
+.run-picker { margin: 1.5rem 0; }
+.run-picker label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
+.run-picker select { width: 100%; padding: 0.6rem; border: 1px solid var(--vp-c-divider); border-radius: 6px; background: var(--vp-c-bg); }
+.run-picker p { font-size: 0.85rem; color: var(--vp-c-text-2); }
+.run-context { margin: 1rem 0; }
+.run-context summary { cursor: pointer; font-weight: 600; }
+.run-context dt { font-weight: 600; margin-top: 0.6rem; }
+.run-context dd { margin: 0; overflow-wrap: anywhere; }
 
 .terminal-desc {
   font-size: 1.1em;

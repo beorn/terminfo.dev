@@ -14,16 +14,16 @@ outline: deep
 
 Parser backend probes test whether the **library correctly parses and processes escape sequences**. When a probe sends `ESC[1m` (bold) and the parser's internal state reflects "bold is active," that's a pass. This differs from app terminal testing, which also verifies visual rendering, font support, and OS integration.
 
-A parser pass means **"the parser understands this sequence"** — not "it renders correctly on screen." A real terminal test confirms the full stack: parser, renderer, font fallback, and compositor all working together.
+A parser pass means **"the parser understands this sequence"** — not "it renders correctly on screen." An app probe can measure more of the full stack when its recorded behavior or reviewed pixels establish that effect; a query alone does not prove rendering.
 
 This distinction matters in practice. A library might correctly parse Kitty keyboard protocol sequences but the app embedding it might not wire up the key events. Or a library might handle Sixel parsing but the host application has no image rendering pipeline.
 
 | Dimension       | Parser Backend Test            | App Terminal Test                       |
 | --------------- | ------------------------------ | --------------------------------------- |
 | What runs       | Library parser + state machine | Full terminal application               |
-| What's verified | Internal state changes         | Visual output + behavior                |
+| What's verified | Internal state changes         | The recorded query, behavior, or pixels |
 | Speed           | Milliseconds (in-process)      | Seconds (launches app, sends sequences) |
-| A "pass" means  | Parser accepts the sequence    | Feature works end-to-end                |
+| A "pass" means  | Measured parser behavior       | The specific observed app effect works  |
 | Example         | xterm.js parses `CSI ? 2026 h` | VS Code enables synchronized output     |
 
 ## Why This Matters
@@ -90,12 +90,12 @@ Full terminal applications whose VT parser can be tested headlessly. These are t
   <p class="backend-desc">The termwiz parser from WezTerm's terminal + multiplexer.</p>
 </a>
 
-<a class="backend-card" href="/terminals/kitty">
+<a class="backend-card" href="/terminals/headless-kitty">
   <div class="backend-header">
     <span class="backend-name">Kitty</span>
     <span class="backend-lang">C / Python</span>
   </div>
-  <p class="backend-desc">The parser behind the Kitty keyboard protocol, graphics protocol, and other innovations. Also tested as an app terminal — <a href="/terminals/kitty" class="dual-link">see app results</a>.</p>
+  <p class="backend-desc">The parser behind the Kitty keyboard protocol, graphics protocol, and other innovations. Kitty also has a separate app result.</p>
 </a>
 
 <a class="backend-card" href="/terminals/ghostty">
@@ -103,7 +103,7 @@ Full terminal applications whose VT parser can be tested headlessly. These are t
     <span class="backend-name">Ghostty</span>
     <span class="backend-lang">Zig</span>
   </div>
-  <p class="backend-desc">Ghostty's from-scratch Zig parser, tested independently of the GPU renderer. Also tested as an app terminal — <a href="/terminals/ghostty" class="dual-link">see app results</a>.</p>
+  <p class="backend-desc">Ghostty's from-scratch Zig parser, tested independently of the GPU renderer. No app result is selected.</p>
 </a>
 
 </div>
@@ -129,7 +129,7 @@ Probe: "SGR bold"
 
 ## App Terminal Overlap
 
-The four app parser backends — Alacritty, WezTerm, Kitty, Ghostty — are also tested as full app terminals. When both parser and app results exist, the terminal's page shows both.
+Kitty currently has both an [app result](/terminals/kitty) and a separate [headless parser result](/terminals/headless-kitty). Alacritty, WezTerm, and Ghostty have headless results here; these do not establish app rendering. The linked result page's badge names the measured mode.
 
 The two test types answer different questions:
 

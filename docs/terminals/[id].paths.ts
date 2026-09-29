@@ -108,6 +108,16 @@ export default {
       // Load all version results for this backend
       const versions = versionsForBackend(data, b.name)
       const selected = data.selectedByBackend[b.name]?.selected
+      const otherRuns = selected
+        ? Object.values(data.selected.versions)
+            .flat()
+            .filter(
+              (run) =>
+                run.target.id === selected.target.id &&
+                run.target.kind === selected.target.kind &&
+                run.sha256 !== selected.sha256,
+            )
+        : []
 
       return {
         params: {
@@ -138,6 +148,7 @@ export default {
           pct: stats.pct === null ? "" : String(stats.pct),
           categories: JSON.stringify(categories),
           versions: JSON.stringify(versions),
+          otherRuns: JSON.stringify(otherRuns),
           analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${slug}`])),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
@@ -162,7 +173,7 @@ export default {
     // Classify terminal type from terminals.json metadata
     function getTerminalType(backendName: string): string {
       const selectedKind = data.selectedByBackend[backendName]?.selected.target.kind
-      if (selectedKind === "headless" || selectedKind === "mux") return selectedKind
+      if (selectedKind) return selectedKind
       for (const [, entry] of Object.entries(terminalsData)) {
         if (entry.slug === terminalSlug(backendName, data.meta)) {
           if (entry.historical) return "historical"

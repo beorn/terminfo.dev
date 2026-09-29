@@ -163,7 +163,17 @@ function barWidth(backendName, segment) {
 
 function scoreLabel(backendName) {
   const pct = data.stats[backendName]?.pct
-  return pct == null ? 'No score' : `${pct}%`
+  return pct == null ? 'No conclusive score' : `${pct}% of conclusive`
+}
+
+function coverageLabel(backendName) {
+  const selected = data.selectedByBackend[backendName]?.selected
+  if (!selected) return 'No selected run'
+  const cells = Object.values(selected.cells)
+  const inconclusive = cells.filter(cell => cell.outcome === 'inconclusive').length
+  const errors = cells.filter(cell => cell.outcome === 'error').length
+  const counts = selected.counts
+  return `${counts.supported} supported · ${counts.unsupported} unsupported · ${inconclusive} inconclusive · ${errors} errors · ${counts.notTested} untested`
 }
 
 // Slug helpers for SEO page links — use slug from features.json if available
@@ -219,7 +229,8 @@ function backendTooltip(name, version) {
 <p class="section-subtitle">Measurements from real terminal applications. See <a href="/contribute">how to record available observations from yours</a>.</p>
 
 <div class="platform-filter">
-  <select v-model="platformFilter">
+  <label for="app-platform-filter">Platform:</label>
+  <select id="app-platform-filter" v-model="platformFilter">
     <option value="all">All Platforms</option>
     <option value="macos">macOS</option>
     <option value="linux">Linux</option>
@@ -238,9 +249,7 @@ function backendTooltip(name, version) {
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
     </div>
     <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
-    <span class="summary-counts">
-      {{ data.stats[b.name]?.total ? `${data.stats[b.name].yes} / ${data.stats[b.name].total}` : 'No conclusive results' }}
-    </span>
+    <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet. See <a href="/contribute">how to record a run and prepare an offline contribution draft</a>.</p>
@@ -346,9 +355,7 @@ function backendTooltip(name, version) {
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
     </div>
     <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
-    <span class="summary-counts">
-      {{ data.stats[b.name]?.total ? `${data.stats[b.name].yes} / ${data.stats[b.name].total}` : 'No conclusive results' }}
-    </span>
+    <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
   </div>
 </div>
 
@@ -418,9 +425,7 @@ function backendTooltip(name, version) {
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
     </div>
     <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
-    <span class="summary-counts">
-      {{ data.stats[b.name]?.total ? `${data.stats[b.name].yes} / ${data.stats[b.name].total}` : 'No conclusive results' }}
-    </span>
+    <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
   </div>
 </div>
 
@@ -586,7 +591,11 @@ strips, or mishandles.
 
 /* Platform filter */
 .platform-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 1em;
+  font-size: 0.9em;
 }
 
 .platform-filter select {
@@ -694,7 +703,7 @@ strips, or mishandles.
 }
 
 .summary-pct {
-  width: 8ch;
+  width: 16ch;
   white-space: nowrap;
   font-weight: 600;
   font-size: 0.9em;
@@ -703,7 +712,7 @@ strips, or mishandles.
 }
 
 .summary-counts {
-  width: 12em;
+  width: 19em;
   font-size: 0.8em;
   color: var(--vp-c-text-3);
   text-align: right;

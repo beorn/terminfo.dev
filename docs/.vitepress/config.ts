@@ -246,32 +246,14 @@ function buildSidebar() {
   // Flat list for convenience (used in nav dropdown)
   const allTerminals = [...termAppTerminals, ...termLibraries, ...termMultiplexers]
 
-  // Build popular comparisons from available app terminals
-  const compareItems: Array<{ text: string; link: string }> = []
-  const popularPairs = [
-    ["Ghostty", "Kitty"],
-    ["Ghostty", "iTerm2"],
-    ["Kitty", "WezTerm"],
-    ["VS Code", "Terminal.app"],
-    ["Ghostty", "WezTerm"],
-    ["iTerm2", "Kitty"],
-    ["Ghostty", "Terminal.app"],
-    ["Kitty", "Terminal.app"],
+  // These comparisons have reviewed headless runs on both sides.
+  const compareItems: Array<{ text: string; link: string }> = [
+    { text: "Headless: Ghostty vs Kitty", link: "/compare/headless-ghostty-vs-headless-kitty" },
+    { text: "Headless: libvterm vs vt100 (Rust)", link: "/compare/libvterm-vs-vt100-rust" },
+    { text: "Headless: vt100.js vs vt100 (Rust)", link: "/compare/vt100-js-vs-vt100-rust" },
+    { text: "Headless: vt220.js vs vterm.js", link: "/compare/vt220-js-vs-vterm-js" },
+    { text: "Headless: vt100.js vs vterm.js", link: "/compare/vt100-js-vs-vterm-js" },
   ]
-  const appTerminalSlugs = new Map(appTerminals.map((t) => [t.text, t.link.replace("/terminals/", "")]))
-  for (const [a, b] of popularPairs) {
-    const slugA = appTerminalSlugs.get(a)
-    const slugB = appTerminalSlugs.get(b)
-    if (slugA && slugB) {
-      // Sort slugs alphabetically to match paths.ts URL generation
-      const [sortedSlugA, sortedSlugB, labelA, labelB] =
-        slugA.localeCompare(slugB) <= 0 ? [slugA, slugB, a, b] : [slugB, slugA, b, a]
-      compareItems.push({
-        text: `${labelA} vs ${labelB}`,
-        link: `/compare/${sortedSlugA}-vs-${sortedSlugB}`,
-      })
-    }
-  }
 
   // Load baselines for sidebar
   const baselinesData = JSON.parse(readFileSync(join(docsDir, "..", "content", "baselines.json"), "utf-8")) as Record<
