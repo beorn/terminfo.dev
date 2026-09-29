@@ -1,200 +1,105 @@
-/**
- * Census report rendering — silvery-powered capability matrix.
- *
- * Uses silvery Box/Text flexbox layout — no manual padEnd or dimension constants.
- */
+/** Canonical CLI capability matrix, rendered through the existing Silvery text layout. */
 
 import React from "react"
-import { renderString } from "silvery"
-import { Box, Text } from "silvery"
-import type { CensusData } from "./parse.ts"
-import { backends as allBackendNames, isReady, entry } from "@termless/core"
+import { Box, Text, renderString } from "silvery"
+import type { SelectedCell, SelectedProjection, SelectedVersion } from "../../docs/data/selected-results.ts"
 
-// ── Types ──
+type CurrentColumn = { label: string; contextKey: string; run: SelectedVersion }
+type StateToken = "YES" | "NO" | "INC" | "ERR" | "NT"
 
-interface BackendStatus {
-  name: string
-  type: string
-  upstream: string
-  installed: boolean
-  tested: boolean
-  yes?: number
-  total?: number
+function score(run: SelectedVersion): string {
+  const { supported, conclusive } = run.counts
+  return conclusive === 0
+    ? "no conclusive score"
+    : `${supported}/${conclusive} ${Math.round((supported / conclusive) * 100)}%`
 }
 
-// ── Components ──
-
-function Header({ featureCount, backendCount }: { featureCount: number; backendCount: number }): React.ReactElement {
-  return (
-    <Box marginBottom={1}>
-      <Text bold color="$primary">
-        @termless/census
-      </Text>
-      <Text color="$muted">
-        {" "}
-        — {featureCount} features × {backendCount} backends
-      </Text>
-    </Box>
-  )
-}
-
-function ProgressBar({ pct }: { pct: number }): React.ReactElement {
-  const filled = Math.round(pct / 5)
-  const bar = "█".repeat(filled) + "░".repeat(20 - filled)
-  const color = pct >= 90 ? "$success" : pct >= 70 ? "$warning" : "$error"
-  return <Text color={color}>{bar}</Text>
-}
-
-function BackendLine({ b, labelWidth }: { b: BackendStatus; labelWidth: number }): React.ReactElement {
-  const label = `${b.name} (${b.type})`
-
-  // "XX/YY " is 7 chars — status text for untested backends aligns there
-  const SCORE_WIDTH = 7
-
-  const upstreamSuffix = b.upstream ? <Text color="$muted"> {b.upstream}</Text> : null
-
-  if (!b.installed) {
-    return (
-      <Box marginLeft={2}>
-        <Box width={labelWidth}>
-          <Text color="$muted">{label}</Text>
-        </Box>
-        <Box width={SCORE_WIDTH} />
-        <Text color="$muted">not installed</Text>
-        {upstreamSuffix}
-      </Box>
-    )
+function stateToken(cell: SelectedCell | undefined): StateToken {
+  if (!cell) return "NT"
+  switch (cell.outcome) {
+    case "supported":
+      return "YES"
+    case "unsupported":
+      return "NO"
+    case "inconclusive":
+      return "INC"
+    case "error":
+      return "ERR"
   }
-
-  if (!b.tested) {
-    return (
-      <Box marginLeft={2}>
-        <Box width={labelWidth}>
-          <Text color="$muted">{label}</Text>
-        </Box>
-        <Box width={SCORE_WIDTH} />
-        <Text color="$muted">installed, not tested</Text>
-        {upstreamSuffix}
-      </Box>
-    )
-  }
-
-  const pct = Math.round(((b.yes ?? 0) / (b.total || 1)) * 100)
-
-  return (
-    <Box marginLeft={2}>
-      <Box width={labelWidth}>
-        <Text bold>{label}</Text>
-      </Box>
-      <Text>
-        {String(b.yes).padStart(3)}/{b.total}{" "}
-      </Text>
-      <ProgressBar pct={pct} />
-      <Text> {pct}%</Text>
-      {upstreamSuffix}
-    </Box>
-  )
 }
 
-function SummarySection({ data }: { data: CensusData }): React.ReactElement {
-  const all: BackendStatus[] = allBackendNames().map((name) => {
-    const e = entry(name)
-    const installed = isReady(name)
-    const tested = data.backendNames.includes(name)
-    let yes = 0
-    let total = 0
-    if (tested) {
-      const features = data.results.get(name)!
-      total = features.size
-      for (const r of features.values()) {
-        if (r) yes++
-      }
-    }
-    const upstream = e?.upstream ? `${e.upstream}${e.version ? ` ${e.version}` : ""}` : ""
-    return { name, type: e?.type ?? "unknown", upstream, installed, tested, yes, total }
-  })
-
-  // Sort: tested first, then installed-not-tested, then not installed
-  const statuses = [
-    ...all.filter((b) => b.tested),
-    ...all.filter((b) => b.installed && !b.tested),
-    ...all.filter((b) => !b.installed),
-  ]
-
-  const labelWidth = Math.max(...statuses.map((b) => `${b.name} (${b.type})`.length)) + 2
-
-  return (
-    <Box flexDirection="column">
-      {statuses.map((b) => (
-        <BackendLine key={b.name} b={b} labelWidth={labelWidth} />
-      ))}
-    </Box>
-  )
-}
-
-function MatrixCell({ pass, width }: { pass: boolean; width: number }): React.ReactElement {
+function StateCell({ cell, width }: { cell: SelectedCell | undefined; width: number }): React.ReactElement {
+  const token = stateToken(cell)
+  const color = token === "YES" ? "$success" : token === "NO" ? "$error" : "$muted"
   return (
     <Box width={width} justifyContent="center">
-      <Text color={pass ? "$success" : "$error"}>{pass ? "✓" : "✗"}</Text>
+      <Text color={color}>{token}</Text>
     </Box>
   )
 }
 
-function CategoryMatrix({ data }: { data: CensusData }): React.ReactElement {
-  // Column width derived from longest backend name
-  const colWidth = Math.max(6, ...data.backendNames.map((n) => n.length)) + 2
-  const featureWidth = 30
-
+function CurrentSummary({ column }: { column: CurrentColumn }): React.ReactElement {
+  const { target, counts, cells } = column.run
+  const inconclusive = Object.values(cells).filter((cell) => cell.outcome === "inconclusive").length
+  const errors = Object.values(cells).filter((cell) => cell.outcome === "error").length
   return (
-    <Box flexDirection="column" marginTop={1}>
-      {/* Header row */}
-      <Box marginBottom={1}>
-        <Box width={featureWidth} marginLeft={2}>
-          <Text bold color="$primary">
-            Feature
-          </Text>
-        </Box>
-        {data.backendNames.map((name) => (
-          <Box key={name} width={colWidth} justifyContent="center">
-            <Text bold color="$primary">
-              {name}
-            </Text>
-          </Box>
-        ))}
-      </Box>
+    <Box flexDirection="column" marginBottom={1}>
+      <Text bold>
+        {column.label}: {target.kind}:{target.id} {target.version} — run {column.run.runId}
+      </Text>
+      <Text color="$muted">context {column.contextKey}</Text>
+      <Text>
+        {score(column.run)} · {counts.tested} tested · {counts.notTested} not tested · {counts.supported} supported ·{" "}
+        {counts.unsupported} unsupported · {inconclusive} inconclusive · {errors} error
+      </Text>
+    </Box>
+  )
+}
 
-      {/* Category sections */}
-      {[...data.categories.entries()].map(([cat, ids]) => (
-        <Box key={cat} flexDirection="column" marginBottom={1}>
-          <Box marginLeft={2}>
-            <Text bold>{cat}:</Text>
-          </Box>
-          {ids.map((id) => {
-            const suffix = id.slice(cat.length + 1)
-            return (
-              <Box key={id}>
-                <Box width={featureWidth} marginLeft={4}>
-                  <Text>{suffix}</Text>
-                </Box>
-                {data.backendNames.map((name) => (
-                  <MatrixCell key={name} pass={data.results.get(name)!.get(id) ?? false} width={colWidth} />
-                ))}
+function FeatureMatrix({
+  columns,
+  featureIds,
+  width,
+}: {
+  columns: CurrentColumn[]
+  featureIds: string[]
+  width: number
+}): React.ReactElement {
+  const featureWidth = Math.max(10, ...featureIds.map((id) => id.length)) + 2
+  const columnWidth = 8
+  const columnsPerGroup = Math.max(1, Math.floor((width - featureWidth - 2) / columnWidth))
+  const groups: CurrentColumn[][] = []
+  for (let offset = 0; offset < columns.length; offset += columnsPerGroup) {
+    groups.push(columns.slice(offset, offset + columnsPerGroup))
+  }
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text bold color="$primary">
+        Feature comparison
+      </Text>
+      <Text color="$muted">YES supported · NO unsupported · INC inconclusive · ERR error · NT not tested</Text>
+      {groups.map((group) => (
+        <Box key={group[0]?.label} flexDirection="column" marginBottom={1}>
+          <Box>
+            <Box width={featureWidth}>
+              <Text bold>Feature</Text>
+            </Box>
+            {group.map((column) => (
+              <Box key={column.label} width={columnWidth} justifyContent="center">
+                <Text bold>{column.label}</Text>
               </Box>
-            )
-          })}
-        </Box>
-      ))}
-    </Box>
-  )
-}
-
-function FileOutput({ paths }: { paths: string[] }): React.ReactElement {
-  return (
-    <Box flexDirection="column" marginTop={1}>
-      {paths.map((p) => (
-        <Box key={p} marginLeft={2}>
-          <Text color="$muted">Wrote: </Text>
-          <Text>{p}</Text>
+            ))}
+          </Box>
+          {featureIds.map((id) => (
+            <Box key={id}>
+              <Box width={featureWidth}>
+                <Text>{id}</Text>
+              </Box>
+              {group.map((column) => (
+                <StateCell key={column.label} cell={column.run.cells[id]} width={columnWidth} />
+              ))}
+            </Box>
+          ))}
         </Box>
       ))}
     </Box>
@@ -202,26 +107,66 @@ function FileOutput({ paths }: { paths: string[] }): React.ReactElement {
 }
 
 export function CensusReport({
-  data,
-  writtenFiles,
+  projection,
+  featureIds,
+  width,
 }: {
-  data: CensusData
-  writtenFiles?: string[]
+  projection: SelectedProjection
+  featureIds: string[]
+  width: number
 }): React.ReactElement {
+  const columns = Object.entries(projection.current)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([contextKey, run], index) => ({ label: `C${index + 1}`, contextKey, run }))
+  const ungraded = Object.entries(projection.history).flatMap(([contextKey, runs]) =>
+    runs.filter((run) => Object.keys(run.ungradedDiagnostics.results).length > 0).map((run) => ({ contextKey, run })),
+  )
   return (
     <Box flexDirection="column">
-      <Header featureCount={data.featureIds.length} backendCount={data.backendNames.length} />
-      <SummarySection data={data} />
-      <CategoryMatrix data={data} />
-      {writtenFiles && writtenFiles.length > 0 && <FileOutput paths={writtenFiles} />}
+      <Text bold color="$primary">
+        terminfo report — {featureIds.length} catalog features
+      </Text>
+      <Text bold>Current selected contexts: {columns.length}</Text>
+      {columns.length === 0 && <Text color="$muted">No selected current results</Text>}
+      {columns.map((column) => (
+        <CurrentSummary key={column.contextKey} column={column} />
+      ))}
+      {columns.length > 0 && <FeatureMatrix columns={columns} featureIds={featureIds} width={width} />}
+      <Text bold>Observation reasons and notes</Text>
+      {columns.flatMap((column) =>
+        featureIds.flatMap((id) => {
+          const cell = column.run.cells[id]
+          if (!cell?.reason && !cell?.note) return []
+          return [
+            <Text key={`${column.label}:${id}`}>
+              {column.label} {id}: {cell.reason ?? ""}
+              {cell.note ? ` — ${cell.note}` : ""}
+            </Text>,
+          ]
+        }),
+      )}
+      <Text bold>Ungraded history: {ungraded.length}</Text>
+      {ungraded.map(({ contextKey, run }) => (
+        <Text key={`${contextKey}:${run.runId}`}>
+          {run.target.kind}:{run.target.id} {run.target.version} — run {run.runId}: {run.ungradedDiagnostics.label} (
+          {Object.keys(run.ungradedDiagnostics.results).length} diagnostics)
+        </Text>
+      ))}
+      <Text bold>Excluded runs: {projection.exclusions.length}</Text>
+      {projection.exclusions.map((excluded) => (
+        <Text key={`${excluded.path}:${excluded.runId}`}>
+          {excluded.runId}: {excluded.reason} ({excluded.path})
+        </Text>
+      ))}
     </Box>
   )
 }
 
-/**
- * Render the census report to a string via silvery.
- */
-export async function renderReport(data: CensusData, opts?: { writtenFiles?: string[] }): Promise<string> {
+/** Render the selected comparison to a string via Silvery. */
+export async function renderReport(projection: SelectedProjection, featureIds: string[]): Promise<string> {
   const width = process.stdout.columns || 120
-  return renderString(React.createElement(CensusReport, { data, writtenFiles: opts?.writtenFiles }), { width })
+  const minimumWidth = Math.max(10, ...featureIds.map((id) => id.length)) + 12
+  return renderString(React.createElement(CensusReport, { projection, featureIds, width }), {
+    width: Math.max(width, minimumWidth),
+  })
 }
