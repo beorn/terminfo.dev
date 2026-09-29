@@ -150,7 +150,7 @@ const breadcrumbParent = (() => {
 </div>
 
 <details v-if="selectedRun" class="run-context">
-  <summary>Test run: {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · {{ testDate }} (UTC)</summary>
+  <summary>Test run: {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · {{ testDate }} (UTC)<template v-if="runs.length > 1"> · {{ runs.length }} runs available</template></summary>
 <div v-if="runs.length > 1" class="run-picker">
   <label for="reviewed-run">Version and configuration</label>
   <select id="reviewed-run" v-model="runSha">
