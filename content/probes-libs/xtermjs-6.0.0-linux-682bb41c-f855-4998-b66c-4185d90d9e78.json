@@ -1,0 +1,1656 @@
+{
+  "schemaVersion": 2,
+  "runId": "682bb41c-f855-4998-b66c-4185d90d9e78",
+  "target": {
+    "kind": "headless",
+    "id": "xtermjs",
+    "version": "6.0.0",
+    "os": "linux",
+    "osVersion": "7.0.0-34-generic",
+    "outerTerminal": null,
+    "mux": null,
+    "config": "80x24 default Termless backend",
+    "permissions": null
+  },
+  "identity": "verified",
+  "runtimeIdentity": {
+    "kind": "js",
+    "adapterVersion": "0.9.2",
+    "termlessRevision": "bed5c0d82de183e6539307ee32b2cfbcefc8fd16",
+    "resolvedPath": "/hh/var/wt/@si/terminfo/15323-quality-plateau/node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+    "integrity": {
+      "kind": "registry",
+      "lockIntegrity": "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw=="
+    },
+    "runtimeFormat": "js",
+    "engineVersion": "6.0.0"
+  },
+  "suiteId": "cdd5e8156e3d",
+  "probeHash": "cdd5e8156e3d",
+  "suiteComplete": false,
+  "sourceRevision": "9058a5e778c6cc6d403665b6284592038dbcbf44",
+  "measuredAt": "2026-09-29T00:17:16.802Z",
+  "origin": {
+    "kind": "collector"
+  },
+  "rawReplies": {
+    "extensions.kitty-keyboard": "",
+    "extensions.kitty-keyboard.disambiguate": "",
+    "extensions.kitty-keyboard.report-events": "",
+    "extensions.kitty-keyboard.report-alternate": "",
+    "extensions.kitty-keyboard.report-all-keys": "",
+    "extensions.kitty-keyboard.report-text": "",
+    "extensions.kitty-graphics": "",
+    "extensions.kitty-graphics.transmit": "",
+    "extensions.kitty-graphics.display": "",
+    "extensions.osc66-text-sizing": "{\"before\":{\"row\":0,\"col\":0},\"width\":{\"row\":0,\"col\":0},\"scale\":{\"row\":0,\"col\":0}}",
+    "extensions.osc5522-clipboard": "\u001b[?5522;0$y",
+    "extensions.osc21-kitty-color": "",
+    "sgr.bold": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":true,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.faint": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":true,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.italic": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":true,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.underline.single": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.underline.double": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"double\",\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.underline.curly": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"curly\",\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.underline.dotted": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"dotted\",\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.underline.dashed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"dashed\",\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.blink": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":true,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.inverse": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":true,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.hidden": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":true,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.strikethrough": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":true,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.overline": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+    "sgr.underline.color": "{\"blueControl\":{\"char\":\"A\",\"fg\":{\"r\":0,\"g\":0,\"b\":255},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"greenControl\":{\"char\":\"B\",\"fg\":{\"r\":0,\"g\":255,\"b\":0},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"target\":{\"char\":\"X\",\"fg\":{\"r\":0,\"g\":255,\"b\":0},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":0,\"b\":128},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}}",
+    "sgr.underline-color-indexed": "{\"default4\":{\"char\":\"A\",\"fg\":{\"r\":0,\"g\":0,\"b\":128},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"target5\":{\"char\":\"X\",\"fg\":{\"r\":0,\"g\":0,\"b\":128},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":128,\"g\":0,\"b\":128},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"default5\":{\"char\":\"B\",\"fg\":{\"r\":128,\"g\":0,\"b\":128},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"target4\":{\"char\":\"Y\",\"fg\":{\"r\":128,\"g\":0,\"b\":128},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":0,\"g\":0,\"b\":128},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}}",
+    "sgr.underline-color-rgb": "{\"blueControl\":{\"char\":\"A\",\"fg\":{\"r\":0,\"g\":0,\"b\":255},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"greenControl\":{\"char\":\"B\",\"fg\":{\"r\":0,\"g\":255,\"b\":0},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"target\":{\"char\":\"X\",\"fg\":{\"r\":0,\"g\":255,\"b\":0},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":0,\"b\":128},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}}",
+    "sgr.underline-color-reset": "{\"baseline\":{\"char\":\"C\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"before\":{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":0,\"b\":128},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"after\":{\"char\":\"Y\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}}",
+    "cursor.move.absolute": "{\"col\":9,\"row\":4,\"x\":9,\"y\":4,\"visible\":true,\"style\":\"block\"}",
+    "cursor.move.home": "{\"col\":0,\"row\":0,\"x\":0,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+    "cursor.move.forward": "{\"col\":5,\"row\":0,\"x\":5,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+    "cursor.move.back": "{\"col\":1,\"row\":0,\"x\":1,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+    "cursor.move.down": "{\"col\":0,\"row\":3,\"x\":0,\"y\":3,\"visible\":true,\"style\":\"block\"}",
+    "cursor.move.up": "{\"col\":0,\"row\":3,\"x\":0,\"y\":3,\"visible\":true,\"style\":\"block\"}",
+    "cursor.horizontal-absolute": "{\"col\":2,\"row\":0,\"x\":2,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+    "cursor.next-line": "{\"col\":0,\"row\":2,\"x\":0,\"y\":2,\"visible\":true,\"style\":\"block\"}",
+    "cursor.position-report": "\u001b[3;5R",
+    "cursor.ansi-save": "{\"col\":4,\"row\":2,\"x\":4,\"y\":2,\"visible\":true,\"style\":\"block\"}",
+    "cursor.ansi-restore": "{\"col\":5,\"row\":3,\"x\":5,\"y\":3,\"visible\":true,\"style\":\"block\"}",
+    "cursor.save-restore": "{\"col\":2,\"row\":0,\"x\":2,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+    "cursor.cuu-past-top": "{\"col\":0,\"row\":0,\"x\":0,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+    "cursor.cud-past-bottom": "{\"cursor\":{\"col\":0,\"row\":23,\"x\":0,\"y\":23,\"visible\":true,\"style\":\"block\"},\"rows\":24}",
+    "cursor.vpa": "{\"col\":4,\"row\":9,\"x\":4,\"y\":9,\"visible\":true,\"style\":\"block\"}",
+    "cursor.cpl": "{\"col\":0,\"row\":3,\"x\":0,\"y\":3,\"visible\":true,\"style\":\"block\"}",
+    "cursor.hpa": "{\"col\":4,\"row\":0,\"x\":4,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+    "cursor.cup-scroll-region": "{\"col\":0,\"row\":4,\"x\":0,\"y\":4,\"visible\":true,\"style\":\"block\"}",
+    "text.tbc": "{\"cols\":80,\"before\":{\"col\":8,\"row\":0,\"x\":8,\"y\":0,\"visible\":true,\"style\":\"block\"},\"after\":{\"col\":79,\"row\":0,\"x\":79,\"y\":0,\"visible\":true,\"style\":\"block\"}}",
+    "text.cht": "{\"row\":1,\"col\":17}",
+    "text.cbt": "{\"row\":1,\"col\":17}",
+    "device.primary-da": "\u001b[?1;2c",
+    "device.status-report": "\u001b[0n",
+    "device.secondary-da": "\u001b[>0;276;0c",
+    "device.tertiary-da": "",
+    "device.decrqss": "\u001bP1$r61;1\"p\u001b\\",
+    "device.xtgettcap": "",
+    "device.decrpm": "\u001b[?7;1$y",
+    "device.xtversion": "",
+    "device.dsr-996-color-scheme": "",
+    "input.csi-u": "",
+    "unicode.grapheme-cursor": "{\"cursor\":{\"col\":6,\"row\":0,\"x\":6,\"y\":0,\"visible\":true,\"style\":\"block\"},\"cell\":{\"char\":\"👨‍\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":true,\"continuation\":false,\"hyperlink\":null}}",
+    "extensions.osc52-clipboard": "",
+    "extensions.osc52-write": "",
+    "extensions.osc52-read": ""
+  },
+  "observations": [
+    {
+      "featureId": "extensions.kitty-keyboard",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No Kitty keyboard reply; key events were not tested"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.disambiguate",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No Kitty keyboard reply; key events were not tested"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-events",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No Kitty keyboard reply; key events were not tested"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-alternate",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No Kitty keyboard reply; key events were not tested"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-all-keys",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No Kitty keyboard reply; key events were not tested"
+    },
+    {
+      "featureId": "extensions.kitty-keyboard.report-text",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No Kitty keyboard reply; key events were not tested"
+    },
+    {
+      "featureId": "extensions.kitty-graphics",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No matching graphics query reply; image rendering was not tested"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.transmit",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No matching image allocation reply; no image ownership or transmission conclusion"
+    },
+    {
+      "featureId": "extensions.kitty-graphics.display",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No matching image allocation reply; no image ownership or transmission conclusion"
+    },
+    {
+      "featureId": "extensions.osc8",
+      "outcome": "error",
+      "reason": "collector-error",
+      "evidence": "parser-state",
+      "note": "Callback result lacks matching raw state and assertion"
+    },
+    {
+      "featureId": "extensions.osc133-a",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc133-b",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc133-c",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc133-d",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc133-p",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc633-a",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc633-b",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc633-c",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc633-d",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc633-e",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc633-p",
+      "outcome": "inconclusive",
+      "evidence": "consumed",
+      "reason": "insufficient-evidence",
+      "note": "Marker was consumed; shell prompt integration was not observed"
+    },
+    {
+      "featureId": "extensions.osc66-text-sizing",
+      "outcome": "unsupported",
+      "evidence": "parser-state",
+      "note": "Cursor advance: width not verified; scale not verified. Glyph appearance needs a visual check.",
+      "rawReplyRef": "extensions.osc66-text-sizing"
+    },
+    {
+      "featureId": "extensions.osc5522-clipboard",
+      "outcome": "unsupported",
+      "evidence": "query",
+      "note": "Mode 5522 not supported",
+      "rawReplyRef": "extensions.osc5522-clipboard"
+    },
+    {
+      "featureId": "extensions.osc21-kitty-color",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No OSC 21 reply; color rendering was not tested"
+    },
+    {
+      "featureId": "extensions.osc30001-color-stack-push",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response"
+    },
+    {
+      "featureId": "extensions.osc30101-color-stack-pop",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response"
+    },
+    {
+      "featureId": "sgr.bold",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.bold"
+    },
+    {
+      "featureId": "sgr.faint",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.faint"
+    },
+    {
+      "featureId": "sgr.italic",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.italic"
+    },
+    {
+      "featureId": "sgr.underline.single",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.underline.single"
+    },
+    {
+      "featureId": "sgr.underline.double",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.underline.double"
+    },
+    {
+      "featureId": "sgr.underline.curly",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.underline.curly"
+    },
+    {
+      "featureId": "sgr.underline.dotted",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.underline.dotted"
+    },
+    {
+      "featureId": "sgr.underline.dashed",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.underline.dashed"
+    },
+    {
+      "featureId": "sgr.blink",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.blink"
+    },
+    {
+      "featureId": "sgr.inverse",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.inverse"
+    },
+    {
+      "featureId": "sgr.hidden",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.hidden"
+    },
+    {
+      "featureId": "sgr.strikethrough",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.strikethrough"
+    },
+    {
+      "featureId": "sgr.overline",
+      "outcome": "inconclusive",
+      "reason": "insufficient-evidence",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.overline"
+    },
+    {
+      "featureId": "sgr.underline.color",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.underline.color"
+    },
+    {
+      "featureId": "sgr.underline-color-indexed",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.underline-color-indexed"
+    },
+    {
+      "featureId": "sgr.underline-color-rgb",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.underline-color-rgb"
+    },
+    {
+      "featureId": "sgr.underline-color-reset",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "sgr.underline-color-reset"
+    },
+    {
+      "featureId": "cursor.move.absolute",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.move.absolute"
+    },
+    {
+      "featureId": "cursor.move.home",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.move.home"
+    },
+    {
+      "featureId": "cursor.move.forward",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.move.forward"
+    },
+    {
+      "featureId": "cursor.move.back",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.move.back"
+    },
+    {
+      "featureId": "cursor.move.down",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.move.down"
+    },
+    {
+      "featureId": "cursor.move.up",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.move.up"
+    },
+    {
+      "featureId": "cursor.horizontal-absolute",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.horizontal-absolute"
+    },
+    {
+      "featureId": "cursor.next-line",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.next-line"
+    },
+    {
+      "featureId": "cursor.position-report",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "cursor.position-report"
+    },
+    {
+      "featureId": "cursor.ansi-save",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.ansi-save"
+    },
+    {
+      "featureId": "cursor.ansi-restore",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.ansi-restore"
+    },
+    {
+      "featureId": "cursor.save-restore",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.save-restore"
+    },
+    {
+      "featureId": "cursor.cuu-past-top",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.cuu-past-top"
+    },
+    {
+      "featureId": "cursor.cud-past-bottom",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.cud-past-bottom"
+    },
+    {
+      "featureId": "cursor.vpa",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.vpa"
+    },
+    {
+      "featureId": "cursor.cpl",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.cpl"
+    },
+    {
+      "featureId": "cursor.hpa",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.hpa"
+    },
+    {
+      "featureId": "cursor.cup-scroll-region",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "cursor.cup-scroll-region"
+    },
+    {
+      "featureId": "text.tbc",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "text.tbc"
+    },
+    {
+      "featureId": "text.cht",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "text.cht"
+    },
+    {
+      "featureId": "text.cbt",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "rawReplyRef": "text.cbt"
+    },
+    {
+      "featureId": "device.primary-da",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "device.primary-da"
+    },
+    {
+      "featureId": "device.status-report",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "device.status-report"
+    },
+    {
+      "featureId": "device.secondary-da",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "device.secondary-da"
+    },
+    {
+      "featureId": "device.tertiary-da",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query"
+    },
+    {
+      "featureId": "device.decrqss",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "device.decrqss"
+    },
+    {
+      "featureId": "device.xtgettcap",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query"
+    },
+    {
+      "featureId": "device.decrpm",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "device.decrpm"
+    },
+    {
+      "featureId": "device.xtversion",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query"
+    },
+    {
+      "featureId": "device.dsr-996-color-scheme",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response"
+    },
+    {
+      "featureId": "input.csi-u",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "note": "No Kitty keyboard reply; key events were not tested"
+    },
+    {
+      "featureId": "unicode.grapheme-cursor",
+      "outcome": "unsupported",
+      "evidence": "parser-state",
+      "rawReplyRef": "unicode.grapheme-cursor"
+    },
+    {
+      "featureId": "extensions.osc52-clipboard",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "note": "No OSC 52 c query response from the isolated backend"
+    },
+    {
+      "featureId": "extensions.osc52-write",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "note": "No OSC 52 c query response from the isolated backend"
+    },
+    {
+      "featureId": "extensions.osc52-read",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "note": "No OSC 52 c query response from the isolated backend"
+    }
+  ],
+  "assertions": [
+    {
+      "featureId": "extensions.osc66-text-sizing",
+      "kind": "negative",
+      "expected": "Each OSC 66 width/scale sequence advances two columns without changing row",
+      "observed": "{\"before\":{\"row\":0,\"col\":0},\"width\":{\"row\":0,\"col\":0},\"scale\":{\"row\":0,\"col\":0}}",
+      "rawReplyRef": "extensions.osc66-text-sizing"
+    },
+    {
+      "featureId": "extensions.osc5522-clipboard",
+      "kind": "negative",
+      "expected": "DECRPM 5522 has Ps=1, 2 or 3; Ps=0 or 4 explicitly rejects support",
+      "observed": "\u001b[?5522;0$y",
+      "rawReplyRef": "extensions.osc5522-clipboard"
+    },
+    {
+      "featureId": "sgr.bold",
+      "kind": "positive",
+      "expected": "sgr.bold: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":true,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.bold"
+    },
+    {
+      "featureId": "sgr.faint",
+      "kind": "positive",
+      "expected": "sgr.faint: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":true,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.faint"
+    },
+    {
+      "featureId": "sgr.italic",
+      "kind": "positive",
+      "expected": "sgr.italic: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":true,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.italic"
+    },
+    {
+      "featureId": "sgr.underline.single",
+      "kind": "positive",
+      "expected": "sgr.underline.single: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.underline.single"
+    },
+    {
+      "featureId": "sgr.underline.double",
+      "kind": "positive",
+      "expected": "sgr.underline.double: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"double\",\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.underline.double"
+    },
+    {
+      "featureId": "sgr.underline.curly",
+      "kind": "positive",
+      "expected": "sgr.underline.curly: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"curly\",\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.underline.curly"
+    },
+    {
+      "featureId": "sgr.underline.dotted",
+      "kind": "positive",
+      "expected": "sgr.underline.dotted: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"dotted\",\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.underline.dotted"
+    },
+    {
+      "featureId": "sgr.underline.dashed",
+      "kind": "positive",
+      "expected": "sgr.underline.dashed: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"dashed\",\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.underline.dashed"
+    },
+    {
+      "featureId": "sgr.blink",
+      "kind": "positive",
+      "expected": "sgr.blink: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":true,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.blink"
+    },
+    {
+      "featureId": "sgr.inverse",
+      "kind": "positive",
+      "expected": "sgr.inverse: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":true,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.inverse"
+    },
+    {
+      "featureId": "sgr.hidden",
+      "kind": "positive",
+      "expected": "sgr.hidden: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":true,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.hidden"
+    },
+    {
+      "featureId": "sgr.strikethrough",
+      "kind": "positive",
+      "expected": "sgr.strikethrough: attribute applied to the rendered X cell",
+      "observed": "{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":true,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}",
+      "rawReplyRef": "sgr.strikethrough"
+    },
+    {
+      "featureId": "sgr.underline.color",
+      "kind": "positive",
+      "expected": "sgr.underline.color: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+      "observed": "{\"blueControl\":{\"char\":\"A\",\"fg\":{\"r\":0,\"g\":0,\"b\":255},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"greenControl\":{\"char\":\"B\",\"fg\":{\"r\":0,\"g\":255,\"b\":0},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"target\":{\"char\":\"X\",\"fg\":{\"r\":0,\"g\":255,\"b\":0},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":0,\"b\":128},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}}",
+      "rawReplyRef": "sgr.underline.color"
+    },
+    {
+      "featureId": "sgr.underline-color-indexed",
+      "kind": "positive",
+      "expected": "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults",
+      "observed": "{\"default4\":{\"char\":\"A\",\"fg\":{\"r\":0,\"g\":0,\"b\":128},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"target5\":{\"char\":\"X\",\"fg\":{\"r\":0,\"g\":0,\"b\":128},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":128,\"g\":0,\"b\":128},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"default5\":{\"char\":\"B\",\"fg\":{\"r\":128,\"g\":0,\"b\":128},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"target4\":{\"char\":\"Y\",\"fg\":{\"r\":128,\"g\":0,\"b\":128},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":0,\"g\":0,\"b\":128},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}}",
+      "rawReplyRef": "sgr.underline-color-indexed"
+    },
+    {
+      "featureId": "sgr.underline-color-rgb",
+      "kind": "positive",
+      "expected": "sgr.underline-color-rgb: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell",
+      "observed": "{\"blueControl\":{\"char\":\"A\",\"fg\":{\"r\":0,\"g\":0,\"b\":255},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"greenControl\":{\"char\":\"B\",\"fg\":{\"r\":0,\"g\":255,\"b\":0},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"target\":{\"char\":\"X\",\"fg\":{\"r\":0,\"g\":255,\"b\":0},\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":0,\"b\":128},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}}",
+      "rawReplyRef": "sgr.underline-color-rgb"
+    },
+    {
+      "featureId": "sgr.underline-color-reset",
+      "kind": "positive",
+      "expected": "X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C color",
+      "observed": "{\"baseline\":{\"char\":\"C\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"before\":{\"char\":\"X\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":0,\"b\":128},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null},\"after\":{\"char\":\"Y\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":\"single\",\"underlineColor\":{\"r\":255,\"g\":255,\"b\":255},\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":false,\"continuation\":false,\"hyperlink\":null}}",
+      "rawReplyRef": "sgr.underline-color-reset"
+    },
+    {
+      "featureId": "cursor.move.absolute",
+      "kind": "positive",
+      "expected": "cursor row=4, col=9 (0-based) after \"\\u001b[5;10H\"",
+      "observed": "{\"col\":9,\"row\":4,\"x\":9,\"y\":4,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.move.absolute"
+    },
+    {
+      "featureId": "cursor.move.home",
+      "kind": "positive",
+      "expected": "cursor row=0, col=0 (0-based) after \"\\u001b[H\"",
+      "observed": "{\"col\":0,\"row\":0,\"x\":0,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.move.home"
+    },
+    {
+      "featureId": "cursor.move.forward",
+      "kind": "positive",
+      "expected": "cursor row=0, col=5 (0-based) after \"\\u001b[5C\"",
+      "observed": "{\"col\":5,\"row\":0,\"x\":5,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.move.forward"
+    },
+    {
+      "featureId": "cursor.move.back",
+      "kind": "positive",
+      "expected": "cursor row=0, col=1 (0-based) after \"\\u001b[2D\"",
+      "observed": "{\"col\":1,\"row\":0,\"x\":1,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.move.back"
+    },
+    {
+      "featureId": "cursor.move.down",
+      "kind": "positive",
+      "expected": "cursor row=3, col=0 (0-based) after \"\\u001b[3B\"",
+      "observed": "{\"col\":0,\"row\":3,\"x\":0,\"y\":3,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.move.down"
+    },
+    {
+      "featureId": "cursor.move.up",
+      "kind": "positive",
+      "expected": "cursor row=3, col=0 (0-based) after \"\\u001b[2A\"",
+      "observed": "{\"col\":0,\"row\":3,\"x\":0,\"y\":3,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.move.up"
+    },
+    {
+      "featureId": "cursor.horizontal-absolute",
+      "kind": "positive",
+      "expected": "cursor row=0, col=2 (0-based)",
+      "observed": "{\"col\":2,\"row\":0,\"x\":2,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.horizontal-absolute"
+    },
+    {
+      "featureId": "cursor.next-line",
+      "kind": "positive",
+      "expected": "cursor row=2, col=0 (0-based)",
+      "observed": "{\"col\":0,\"row\":2,\"x\":0,\"y\":2,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.next-line"
+    },
+    {
+      "featureId": "cursor.position-report",
+      "kind": "positive",
+      "expected": "ESC[3;5R",
+      "observed": "\u001b[3;5R",
+      "rawReplyRef": "cursor.position-report"
+    },
+    {
+      "featureId": "cursor.ansi-save",
+      "kind": "positive",
+      "expected": "cursor row=2, col=4 (0-based)",
+      "observed": "{\"col\":4,\"row\":2,\"x\":4,\"y\":2,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.ansi-save"
+    },
+    {
+      "featureId": "cursor.ansi-restore",
+      "kind": "positive",
+      "expected": "cursor row=3, col=5 (0-based)",
+      "observed": "{\"col\":5,\"row\":3,\"x\":5,\"y\":3,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.ansi-restore"
+    },
+    {
+      "featureId": "cursor.save-restore",
+      "kind": "positive",
+      "expected": "cursor row=0, col=2 (0-based)",
+      "observed": "{\"col\":2,\"row\":0,\"x\":2,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.save-restore"
+    },
+    {
+      "featureId": "cursor.cuu-past-top",
+      "kind": "positive",
+      "expected": "cursor row=0, col=0 (0-based)",
+      "observed": "{\"col\":0,\"row\":0,\"x\":0,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.cuu-past-top"
+    },
+    {
+      "featureId": "cursor.cud-past-bottom",
+      "kind": "positive",
+      "expected": "cursor at last initialized row 23, col 0",
+      "observed": "{\"cursor\":{\"col\":0,\"row\":23,\"x\":0,\"y\":23,\"visible\":true,\"style\":\"block\"},\"rows\":24}",
+      "rawReplyRef": "cursor.cud-past-bottom"
+    },
+    {
+      "featureId": "cursor.vpa",
+      "kind": "positive",
+      "expected": "cursor row=9, col=4 (0-based)",
+      "observed": "{\"col\":4,\"row\":9,\"x\":4,\"y\":9,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.vpa"
+    },
+    {
+      "featureId": "cursor.cpl",
+      "kind": "positive",
+      "expected": "cursor row=3, col=0 (0-based)",
+      "observed": "{\"col\":0,\"row\":3,\"x\":0,\"y\":3,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.cpl"
+    },
+    {
+      "featureId": "cursor.hpa",
+      "kind": "positive",
+      "expected": "cursor row=0, col=4 (0-based)",
+      "observed": "{\"col\":4,\"row\":0,\"x\":4,\"y\":0,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.hpa"
+    },
+    {
+      "featureId": "cursor.cup-scroll-region",
+      "kind": "positive",
+      "expected": "cursor row=4, col=0 (0-based)",
+      "observed": "{\"col\":0,\"row\":4,\"x\":0,\"y\":4,\"visible\":true,\"style\":\"block\"}",
+      "rawReplyRef": "cursor.cup-scroll-region"
+    },
+    {
+      "featureId": "text.tbc",
+      "kind": "positive",
+      "expected": "initial col 9; after TBC col 80",
+      "observed": "{\"cols\":80,\"before\":{\"col\":8,\"row\":0,\"x\":8,\"y\":0,\"visible\":true,\"style\":\"block\"},\"after\":{\"col\":79,\"row\":0,\"x\":79,\"y\":0,\"visible\":true,\"style\":\"block\"}}",
+      "rawReplyRef": "text.tbc"
+    },
+    {
+      "featureId": "text.cht",
+      "kind": "positive",
+      "expected": "row 1, col 17",
+      "observed": "{\"row\":1,\"col\":17}",
+      "rawReplyRef": "text.cht"
+    },
+    {
+      "featureId": "text.cbt",
+      "kind": "positive",
+      "expected": "row 1, col 17",
+      "observed": "{\"row\":1,\"col\":17}",
+      "rawReplyRef": "text.cbt"
+    },
+    {
+      "featureId": "device.primary-da",
+      "kind": "positive",
+      "expected": "complete DA1 CSI ? numeric attributes c",
+      "observed": "\u001b[?1;2c",
+      "rawReplyRef": "device.primary-da"
+    },
+    {
+      "featureId": "device.status-report",
+      "kind": "positive",
+      "expected": "complete DSR 5 status 0 (ready) or 3 (malfunction)",
+      "observed": "\u001b[0n",
+      "rawReplyRef": "device.status-report"
+    },
+    {
+      "featureId": "device.secondary-da",
+      "kind": "positive",
+      "expected": "complete DA2 CSI > three numeric fields c",
+      "observed": "\u001b[>0;276;0c",
+      "rawReplyRef": "device.secondary-da"
+    },
+    {
+      "featureId": "device.decrqss",
+      "kind": "positive",
+      "expected": "complete DECRQSS status 1 DECSCL parameters ending \"p and ST",
+      "observed": "\u001bP1$r61;1\"p\u001b\\",
+      "rawReplyRef": "device.decrqss"
+    },
+    {
+      "featureId": "device.decrpm",
+      "kind": "positive",
+      "expected": "complete DECRPM for DECAWM mode 7 with recognized state 1–4",
+      "observed": "\u001b[?7;1$y",
+      "rawReplyRef": "device.decrpm"
+    },
+    {
+      "featureId": "unicode.grapheme-cursor",
+      "kind": "negative",
+      "expected": "ZWJ sample occupies two cells",
+      "observed": "{\"cursor\":{\"col\":6,\"row\":0,\"x\":6,\"y\":0,\"visible\":true,\"style\":\"block\"},\"cell\":{\"char\":\"👨‍\",\"fg\":null,\"bg\":null,\"bold\":false,\"dim\":false,\"italic\":false,\"underline\":false,\"underlineColor\":null,\"strikethrough\":false,\"inverse\":false,\"blink\":false,\"hidden\":false,\"wide\":true,\"continuation\":false,\"hyperlink\":null}}",
+      "rawReplyRef": "unicode.grapheme-cursor"
+    }
+  ],
+  "ungradedDiagnostics": {
+    "extensions.truecolor": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "extensions.kitty-graphics.animation": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "extensions.kitty-graphics.unicode-placeholders": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "extensions.sixel": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "extensions.reflow": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "extensions.semantic-prompts": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "extensions.osc2-title": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "extensions.osc0-icon-title": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "extensions.osc10-fg-color": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 10 response"
+    },
+    "extensions.osc11-bg-color": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 11 response"
+    },
+    "extensions.osc7-cwd": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "extensions.osc-633-vscode": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "extensions.notifications": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "extensions.iterm2-images": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "extensions.osc1337-cellsize": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No ReportCellSize response"
+    },
+    "extensions.osc1337-capabilities": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No Capabilities response"
+    },
+    "extensions.osc1-icon": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "consumed"
+    },
+    "extensions.osc4-palette": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 4 response"
+    },
+    "extensions.osc5-special-color": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 5 response"
+    },
+    "extensions.osc12-cursor-color": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 12 response"
+    },
+    "extensions.osc104-reset-palette": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 4 query response (cannot verify reset)"
+    },
+    "extensions.osc110-reset-fg": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 10 response (cannot verify reset support)"
+    },
+    "extensions.osc111-reset-bg": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 11 response (cannot verify reset support)"
+    },
+    "extensions.osc112-reset-cursor": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 12 response (cannot verify reset support)"
+    },
+    "extensions.osc117-reset-highlight-bg": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "extensions.osc119-reset-highlight-fg": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "extensions.osc17-highlight-bg": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 17 response"
+    },
+    "extensions.osc19-highlight-fg": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 19 response"
+    },
+    "extensions.osc113-reset-pointer-fg": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "OSC 13 query did not report reset default",
+      "response": ""
+    },
+    "extensions.osc114-reset-pointer-bg": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "OSC 14 query did not report reset default",
+      "response": ""
+    },
+    "extensions.osc7770-font-size": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 7770 font-size response",
+      "response": ""
+    },
+    "extensions.osc7777-font-window-size": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 7777 font/window-size response",
+      "response": ""
+    },
+    "extensions.osc701-locale": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 701 locale response",
+      "response": ""
+    },
+    "extensions.osc702-version": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 702 version response",
+      "response": ""
+    },
+    "extensions.osc720-scroll-up": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "viewport did not move up (7→7)"
+    },
+    "extensions.osc776-cell-size": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No OSC 776 cell-size response",
+      "response": ""
+    },
+    "extensions.sixel-da1": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "DA1 response missing attribute 4 (sixel)"
+    },
+    "extensions.sixel-geometry-report": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Sequence consumed; terminal responsive (no sixel geometry response)"
+    },
+    "sgr.fg.standard": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.bg.standard": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.fg.bright": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.bg.bright": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.fg.default": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.bg.default": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.fg.256": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.bg.256": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.fg.truecolor": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.bg.truecolor": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.selective-reset.bold": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.selective-reset.underline": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.selective-reset.italic": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.selective-reset.inverse": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "sgr.reset": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "cursor.hide": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "cursor.shape": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "cursor.reverse-wrap": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "cursor.cup-boundaries": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.basic": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.newline": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.wrap": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.tab": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.wide.emoji": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.wide.cjk": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.overwrite": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.cr": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.backspace": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.index": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.next-line": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.reverse-index-scroll": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.combining": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.hts": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "text.wide.emoji-flags": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "text.wide.emoji-vs16": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "text.wide.emoji-zwj": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.line.right": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.line.left": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.line.all": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.screen.below": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.screen.above": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.screen.all": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.screen.scrollback": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.character": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.selective": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.el-with-attrs": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "erase.ed-scroll-region": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "editing.insert-chars": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "editing.delete-chars": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "editing.insert-lines": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "editing.delete-lines": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "editing.repeat-char": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "editing.decfra": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "cell(0,0)=\"\", expected \"X\""
+    },
+    "editing.decera": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "cell(0,0)=\"A\", expected blank"
+    },
+    "editing.decsera": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "cell(0,0)=\"A\", expected blank"
+    },
+    "editing.deccra": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "dest row=\"\", expected \"HELLO\""
+    },
+    "editing.deccara": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "cell(0,0).inverse=false, expected true"
+    },
+    "editing.decrara": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "cell(0,0).inverse=true after toggle, expected false"
+    },
+    "editing.decsace": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "sequence consumed"
+    },
+    "editing.decrqcra": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "response: \"\"",
+      "response": ""
+    },
+    "editing.sl": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "editing.sr": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "editing.decic": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "editing.decdc": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.alt-screen.enter": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.alt-screen.exit": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.bracketed-paste": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.application-cursor": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.auto-wrap": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.mouse-tracking": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.focus-tracking": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.reverse-video": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "modes.synchronized-output": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.origin": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.insert-replace": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.mouse-sgr": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "modes.mouse-all": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.application-keypad": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.left-right-margin": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "modes.altscreen-47": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.altscreen-1047": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.altscreen-1048": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "modes.alt-scroll-1007": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "DECRPM: mode not set (\"\\u001b[?1007;0$y\")",
+      "response": "\u001b[?1007;0$y"
+    },
+    "modes.utf8-mouse-1005": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "DECRPM: mode not set (\"\\u001b[?1005;4$y\")",
+      "response": "\u001b[?1005;4$y"
+    },
+    "modes.deccolm": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "DECRPM: mode not set (\"\\u001b[?3;0$y\")",
+      "response": "\u001b[?3;0$y"
+    },
+    "modes.decsclm": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "DECRPM: mode not set (\"\\u001b[?4;0$y\")",
+      "response": "\u001b[?4;0$y"
+    },
+    "modes.color-scheme-reporting": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "modes.xtpushsgr": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Sequence consumed; terminal responsive"
+    },
+    "modes.xtpopsgr": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Sequence consumed; terminal responsive"
+    },
+    "modes.xtsave": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Sequence consumed; terminal responsive"
+    },
+    "modes.xtrestore": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Sequence consumed; terminal responsive"
+    },
+    "modes.xtpushcolors": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Sequence consumed; terminal responsive"
+    },
+    "modes.xtpopcolors": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Sequence consumed; terminal responsive"
+    },
+    "device.xtwinops-14": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "response": "\u001b[4;408;640t"
+    },
+    "device.xtwinops-16": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "Response: \"\"",
+      "response": ""
+    },
+    "device.xtwinops-18": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "response": "\u001b[8;24;80t"
+    },
+    "device.xtwinops-20": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No response to icon label query"
+    },
+    "device.xtwinops-21": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "No response to title query"
+    },
+    "device.xtwinops-22": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Push succeeded; title changed after push"
+    },
+    "device.xtwinops-23": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Sequence consumed; terminal responsive"
+    },
+    "device.xtreportcolors": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Sequence consumed; terminal responsive (no XTREPORTCOLORS response)"
+    },
+    "device.xtgetxres": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "Sequence consumed; terminal responsive (no XTGETXRES response)"
+    },
+    "input.modify-other-keys": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "input.pixel-mouse": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "input.urxvt-mouse": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "input.x10-mouse": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "input.modify-other-keys-3": {
+      "kind": "legacy-callback",
+      "pass": false,
+      "note": "modifyOtherKeys not supported"
+    },
+    "input.button-event-mouse": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "reset.sgr": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "reset.ris": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "reset.soft": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "reset.decaln": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "reset.method": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "scrollback.accumulate": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "scrollback.total-lines": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "scrollback.scroll-up": {
+      "kind": "legacy-callback",
+      "pass": false
+    },
+    "scrollback.reverse-index": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "scrollback.scroll-down": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "scrollback.set-region": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "scrollback.alt-screen": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "scrollback.decstbm": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "scrollback.decstbm-reset": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "charsets.dec-special": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "charsets.utf8": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "charsets.g0-g1-switching": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "rendered as '┌'"
+    },
+    "charsets.dec-line-drawing": {
+      "kind": "legacy-callback",
+      "pass": true,
+      "note": "rendered: ┘┐┌└─│"
+    },
+    "unicode.east-asian-ambiguous": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "unicode.wrap-boundary": {
+      "kind": "legacy-callback",
+      "pass": true
+    },
+    "unicode.tab-stops": {
+      "kind": "legacy-callback",
+      "pass": true
+    }
+  },
+  "screenshotRefs": []
+}

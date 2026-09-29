@@ -62,6 +62,8 @@ Capture only the test window and check that attachments contain no private text.
 
 Controlled runs and community submissions should use the same versioned probe definitions. Older published CLI packages lag the source suite, so record the version and measured scope rather than assuming the counts match. The community census is not a separate standard of terminal support. Submission alone does not verify a result.
 
+**Reports from the old 111-probe suite need fresh measurements.** We retain those reports as history, but their booleans cannot establish current support. We will rerun accessible terminals ourselves and link the verified results, naming any version or configuration differences. Where we need a contributor's setup, we will provide an exact version and command after the corrected CLI has been verified and released. Keep the original report linked to the new results; missing features are not failures.
+
 The audit trail should let a reader follow a result to its source submission or controlled run, exact terminal or engine identity, probe revision, measurement time, raw replies or image, and any reviewed correction. Captured originals must be retained; corrections explain their scope, reason, sources and reviewer. Missing historical evidence cannot be recovered from a boolean. A page rebuild is not a new measurement.
 
 See [About](/about) for the distinction between terminal apps, headless engines and multiplexers.
