@@ -235,6 +235,7 @@ export async function collectHeadlessRuns(
         const detail =
           lines.find((line) => line.includes("panicked at")) ??
           lines.find((line) => /^(?:Error|error):/.test(line)) ??
+          lines.find((line) => line.startsWith("ENOENT:")) ??
           lines.at(-1) ??
           "no stderr"
         failures.push({

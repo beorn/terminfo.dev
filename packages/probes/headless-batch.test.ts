@@ -1,8 +1,8 @@
 /**
- * @failure Headless exceptions borrow an app marker, or a mismarked returned observation enters a graded batch.
+ * @failure Headless exceptions borrow an app marker, mismarked observations enter a graded batch, or a missing worker artifact is hidden by a stack line.
  * @level l1
  * @consumer Production headless batch collector
- * @reach imports headless-batch.ts, @terminfo/probe-defs, @termless/xtermjs, @termless/vterm
+ * @reach imports headless-batch.ts and collect-headless.ts at the production backend/worker boundary
  * @testonly none
  */
 /* oxlint-disable typescript/no-deprecated -- Exercise the production TerminalBackend adapter boundary. */
@@ -10,6 +10,10 @@ import { createXtermBackend } from "@termless/xtermjs"
 import { createVtermBackend } from "@termless/vterm"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
 import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
+import { spawnSync } from "node:child_process"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch } from "./headless-batch.ts"
 
@@ -86,6 +90,40 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
   for (const value of backends.splice(0)) value.destroy()
+})
+
+test("retains Bun's missing artifact cause and path beside the failed worker stderr receipt", () => {
+  // Captured from a real installed libvterm refusal; Bun puts ENOENT before its final stack line.
+  const artifact = "/isolated/termless/packages/libvterm/wasm/libvterm.wasm"
+  const stderr = `77 | const path = realpathSync(new URL("../wasm/libvterm.wasm", import.meta.url))\nENOENT: no such file or directory, lstat '${artifact}'\n    path: "${artifact}",\n      at <anonymous> (/isolated/termless/packages/libvterm/src/wasm-bindings.ts:77:18)\n`
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-headless-error-"))
+  try {
+    // The collector uses Bun's import.meta.dir, so exercise it in a real Bun child.
+    const code = `
+      const { collectHeadlessRuns } = await import(${JSON.stringify(new URL("./collect-headless.ts", import.meta.url).href)})
+      Bun.spawn = () => ({
+        stdout: new Blob([""]).stream(),
+        stderr: new Blob([${JSON.stringify(stderr)}]).stream(),
+        exited: Promise.resolve(1),
+        kill() {},
+      })
+      const collection = await collectHeadlessRuns(["libvterm"], ${JSON.stringify(directory)})
+      console.log(JSON.stringify(collection))
+    `
+    const child = spawnSync(process.execPath, ["-e", code], { encoding: "utf8" })
+    if (child.status !== 0) throw new Error(`Collector subprocess failed: ${child.stderr}`)
+    const collection = JSON.parse(child.stdout) as {
+      runs: string[]
+      failures: Array<{ backend: string; package: string; error: string }>
+    }
+    expect(collection.runs).toEqual([])
+    expect(collection.failures).toMatchObject([{ backend: "libvterm", package: "@termless/libvterm" }])
+    expect(collection.failures[0]?.error).toContain("ENOENT: no such file or directory")
+    expect(collection.failures[0]?.error).toContain(artifact)
+    expect(readFileSync(join(directory, "libvterm.stderr.txt"), "utf8")).toBe(stderr)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 test("attributes headless exceptions only to the headless marker and leaves legacy throws ungraded", () => {
