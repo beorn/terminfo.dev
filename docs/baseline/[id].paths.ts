@@ -73,6 +73,7 @@ export default {
       // Compute per-backend scores for this baseline
       const scores = sortedBackends.map((b) => {
         const bs = data.baselineStats[b.name]?.[id]
+        if (!bs) throw new Error(`Missing ${id} baseline stats for ${b.name}`)
         // Count partial results for this baseline's features
         let partial = 0
         for (const fid of featureIds) {
@@ -87,10 +88,16 @@ export default {
           version: b.version,
           type: b.type ?? "headless",
           platforms: b.platforms ?? [],
-          yes: bs?.yes ?? 0,
+          yes: bs.yes,
           partial,
-          total: bs?.total ?? 0,
-          pct: bs?.pct ?? null,
+          total: bs.total,
+          pct: bs.pct,
+          catalog: bs.catalog,
+          supported: bs.supported,
+          unsupported: bs.unsupported,
+          inconclusive: bs.inconclusive,
+          errors: bs.errors,
+          untested: bs.untested,
         }
       })
 

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { loadProbes, terminalSlug, catLabel, loadPlatformsMeta } from "../data/load-probes"
+import { loadProbes, terminalSlug, loadPlatformsMeta } from "../data/load-probes"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -128,57 +128,6 @@ export default {
       return ids.map((id) => rowForTerminal(id, platformId, kind)).filter((row): row is TerminalRow => row !== null)
     }
 
-    function categorySummaries(rows: TerminalRow[]) {
-      const sources = new Map<string, string>()
-      for (const row of rows) {
-        if (row.sourceBackendId) sources.set(row.sourceBackendId, row.label)
-      }
-
-      return Object.entries(data.categories).map(([category, features]) => {
-        let yes = 0
-        let partial = 0
-        let total = 0
-        const perSource: Array<{ label: string; pct: number; yes: number; total: number }> = []
-
-        for (const [source, label] of sources) {
-          let sourceYes = 0
-          let sourceTotal = 0
-          for (const feature of features) {
-            const result = data.results[source]?.[feature.id]
-            if (!result || result === "unknown") continue
-            sourceTotal++
-            total++
-            if (result === "yes") {
-              yes++
-              sourceYes++
-            } else if (result === "partial") {
-              partial++
-            }
-          }
-          if (sourceTotal > 0) {
-            perSource.push({
-              label,
-              pct: Math.round((sourceYes / sourceTotal) * 100),
-              yes: sourceYes,
-              total: sourceTotal,
-            })
-          }
-        }
-
-        const sorted = perSource.sort((a, b) => b.pct - a.pct || a.label.localeCompare(b.label))
-        return {
-          category,
-          label: catLabel(category),
-          pct: total > 0 ? String(Math.round((yes / total) * 100)) : "",
-          yes: String(yes),
-          partial: String(partial),
-          total: String(total),
-          strongest: sorted[0] ? `${sorted[0].label} (${sorted[0].pct}%)` : "",
-          weakest: sorted.at(-1) ? `${sorted.at(-1)!.label} (${sorted.at(-1)!.pct}%)` : "",
-        }
-      })
-    }
-
     return Object.entries(platforms).map(([id, platform]) => {
       const appRows = rowsFor(platform.appTerminalIds ?? [], id, "app")
       const parserRows = rowsFor(platform.parserBackendIds ?? [], id, "parser")
@@ -197,7 +146,6 @@ export default {
           parserRows: JSON.stringify(parserRows),
           muxRows: JSON.stringify(muxRows),
           gapRows: JSON.stringify(platform.untrackedTerminals ?? []),
-          categoryRows: JSON.stringify(categorySummaries(allRows)),
           notes: JSON.stringify(platform.notes ?? []),
           sources: JSON.stringify(platform.sources ?? []),
           appCount: String(appRows.length),

@@ -272,7 +272,7 @@ function backendTooltip(name, version) {
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}%` }}</span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].yes}/${data.baselineStats[b.name][bl].total} conclusive` }}</span>
       </div>
     </div>
   </a>
@@ -366,6 +366,7 @@ function backendTooltip(name, version) {
     <div class="baseline-header">
       <span class="baseline-icon">{{ bl === 'core' ? '🟢' : bl === 'modern' ? '🔵' : bl === 'rich' ? '🟣' : '🌐' }}</span>
       <span class="baseline-name">{{ bl.charAt(0).toUpperCase() + bl.slice(1) }}</span>
+      <span class="baseline-count">{{ data.baselines[bl]?.length ?? 0 }} features</span>
     </div>
     <div class="baseline-backends">
       <div v-for="b in headlessBackends" :key="b.name" class="baseline-backend">
@@ -373,7 +374,7 @@ function backendTooltip(name, version) {
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}%` }}</span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].yes}/${data.baselineStats[b.name][bl].total} conclusive` }}</span>
       </div>
     </div>
   </a>
@@ -489,9 +490,9 @@ function backendTooltip(name, version) {
     <h3>Glossary</h3>
     <p>CSI, SGR, OSC, DEC... terminal terminology explained.</p>
   </a>
-  <a href="/compare/ghostty-vs-kitty" class="explore-card">
-    <h3>Compare</h3>
-    <p>Side-by-side terminal feature comparison.</p>
+  <a href="/compare/headless-ghostty-vs-headless-kitty" class="explore-card">
+    <h3>Compare headless Ghostty and Kitty</h3>
+    <p>Compare headless parser measurements for Ghostty and Kitty.</p>
   </a>
 </div>
 
@@ -874,11 +875,11 @@ strips, or mishandles.
 }
 
 .baseline-backend-pct {
-  width: 8ch;
-  white-space: nowrap;
+  width: 20ch;
+  white-space: normal;
   text-align: right;
   font-weight: 600;
-  flex-shrink: 0;
+  flex-shrink: 1;
 }
 
 /* Matrix table — page scrolls naturally, only headers stick */

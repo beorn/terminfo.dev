@@ -72,8 +72,8 @@ export interface ProbeData {
   featureDescriptions: Record<string, FeatureMeta>
   /** baseline -> feature ids */
   baselines: Record<string, string[]>
-  /** backend name -> baseline -> { total, yes, pct } */
-  baselineStats: Record<string, Record<string, { total: number; yes: number; pct: number | null }>>
+  /** Backend name -> baseline conclusive score and full catalog coverage. */
+  baselineStats: Record<string, Record<string, BaselineStats>>
   /** category slug -> display label */
   categoryLabels: Record<string, string>
   generated: string
@@ -90,6 +90,18 @@ interface FeatureMeta {
   body?: string
   probe?: string
   baseline?: string
+}
+
+interface BaselineStats {
+  total: number
+  yes: number
+  pct: number | null
+  catalog: number
+  supported: number
+  unsupported: number
+  inconclusive: number
+  errors: number
+  untested: number
 }
 
 function loadFeatureDescriptions(): Record<string, FeatureMeta> {
@@ -280,17 +292,39 @@ function computeBaselines(data: ProbeData): void {
   }
 
   // Compute per-backend baseline stats
-  const baselineStats: Record<string, Record<string, { total: number; yes: number; pct: number | null }>> = {}
+  const baselineStats: Record<string, Record<string, BaselineStats>> = {}
   for (const backend of data.backends) {
-    const backendStats: Record<string, { total: number; yes: number; pct: number | null }> = {}
+    const backendStats: Record<string, BaselineStats> = {}
     baselineStats[backend.name] = backendStats
-    const br = data.results[backend.name] ?? {}
+    const cells = data.selectedByBackend[backend.name]?.selected.cells
+    if (!cells) throw new Error(`Missing selected public cells for ${backend.name}`)
     for (const bl of baselineOrder) {
       const ids = baselines[bl] ?? []
-      const tested = ids.filter((id) => id in br)
-      const total = tested.length
-      const yes = tested.filter((id) => br[id] === "yes").length
-      backendStats[bl] = { total, yes, pct: total > 0 ? Math.round((yes / total) * 100) : null }
+      let supported = 0
+      let unsupported = 0
+      let inconclusive = 0
+      let errors = 0
+      let untested = 0
+      for (const id of ids) {
+        const cell = cells[id]
+        if (!cell) untested++
+        else if (cell.outcome === "error") errors++
+        else if (cell.conclusive && cell.outcome === "supported") supported++
+        else if (cell.conclusive && cell.outcome === "unsupported") unsupported++
+        else inconclusive++
+      }
+      const total = supported + unsupported
+      backendStats[bl] = {
+        total,
+        yes: supported,
+        pct: total > 0 ? Math.round((supported / total) * 100) : null,
+        catalog: ids.length,
+        supported,
+        unsupported,
+        inconclusive,
+        errors,
+        untested,
+      }
     }
   }
 

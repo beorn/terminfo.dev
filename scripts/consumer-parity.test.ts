@@ -417,7 +417,8 @@ describe("selected-run consumer parity", () => {
           [page.params.termAId, page.params.termBId].includes("screen") &&
           [page.params.termAId, page.params.termBId].includes("kitty"),
       )
-    expect(comparison?.params[comparison.params.termAId === "screen" ? "termAPct" : "termBPct"]).toBe("")
+    expect(comparison?.params[comparison.params.termAId === "screen" ? "termATotal" : "termBTotal"]).toBe("0")
+    expect(comparison?.params.comparableScope).toBe("false")
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
     expect(JSON.parse(core?.params.scores ?? "[]")).toContainEqual(
       expect.objectContaining({ name: "screen", total: 0, pct: null }),
@@ -426,7 +427,134 @@ describe("selected-run consumer parity", () => {
     expect(bold?.params).toMatchObject({ yesCount: "2", totalCount: "2" })
   })
 
+  it("limits comparison claims to the same recorded scope and jointly conclusive evidence method", () => {
+    const data = loadProbes()
+    const kitty = data.selectedByBackend.kitty?.selected
+    const screen = data.selectedByBackend.screen?.selected
+    const tmux = data.selectedByBackend.tmux?.selected
+    const bold = kitty?.cells["sgr.bold"]
+    if (!screen || !tmux || !bold) throw new Error("Missing comparison fixture cells")
+
+    const mixed = comparePaths
+      .paths()
+      .find(
+        (page) =>
+          [page.params.termAId, page.params.termBId].includes("screen") &&
+          [page.params.termAId, page.params.termBId].includes("kitty"),
+      )
+    expect(mixed?.params.comparableScope).toBe("false")
+    expect(mixed?.params.differ).toBe("")
+    expect(mixed?.params.termAKind).toBeDefined()
+    expect(mixed?.params.termBKind).toBeDefined()
+
+    const originalScreen = structuredClone(screen)
+    const originalTmux = structuredClone(tmux)
+    try {
+      screen.target.mux = tmux.target.mux
+      screen.cells["sgr.bold"] = { ...structuredClone(bold), outcome: "unsupported", conclusive: true }
+      tmux.cells["sgr.bold"] = { ...structuredClone(bold), outcome: "supported", conclusive: true }
+      screen.cells["extensions.sixel"] = {
+        ...structuredClone(bold),
+        featureId: "extensions.sixel",
+        outcome: "unsupported",
+        evidence: "parser-state",
+      }
+      tmux.cells["extensions.sixel"] = {
+        ...structuredClone(bold),
+        featureId: "extensions.sixel",
+        outcome: "supported",
+        evidence: "query",
+      }
+      const pair = comparePaths
+        .paths()
+        .find(
+          (page) =>
+            [page.params.termAId, page.params.termBId].includes("screen") &&
+            [page.params.termAId, page.params.termBId].includes("tmux"),
+        )
+      expect(pair?.params.comparableScope).toBe("true")
+      expect(pair?.params.jointConclusive).toBe("1")
+      expect(pair?.params.differ).toBe("1")
+      const rows = JSON.parse(pair?.params.categories ?? "[]") as Array<{
+        features: Array<{ id: string; comparable: boolean }>
+      }>
+      const cells = rows.flatMap((category) => category.features)
+      expect(cells.find((cell) => cell.id === "sgr.bold")?.comparable).toBe(true)
+      expect(cells.find((cell) => cell.id === "extensions.sixel")?.comparable).toBe(false)
+
+      screen.target.os = null
+      const unknownOsPair = comparePaths
+        .paths()
+        .find(
+          (page) =>
+            [page.params.termAId, page.params.termBId].includes("screen") &&
+            [page.params.termAId, page.params.termBId].includes("tmux"),
+        )
+      expect(unknownOsPair?.params.comparableScope).toBe("false")
+    } finally {
+      Object.assign(screen, originalScreen)
+      Object.assign(tmux, originalTmux)
+    }
+  })
+
+  it("separates conclusive baseline rate from full catalog coverage", () => {
+    const site = probesLoader.load()
+    const catalog = site.baselines.core?.length ?? 0
+    expect(catalog).toBeGreaterThan(1)
+    expect(site.baselineStats.kitty?.core).toMatchObject({
+      total: 1,
+      yes: 1,
+      pct: 100,
+      catalog,
+      supported: 1,
+      unsupported: 0,
+      inconclusive: 0,
+      errors: 0,
+      untested: catalog - 1,
+    })
+    expect(site.baselineStats.screen?.core).toMatchObject({
+      total: 0,
+      yes: 0,
+      pct: null,
+      catalog,
+      supported: 0,
+      unsupported: 0,
+      inconclusive: 1,
+      errors: 0,
+      untested: catalog - 1,
+    })
+    const core = baselinePaths.paths().find((page) => page.params.id === "core")
+    const scores = JSON.parse(core?.params.scores ?? "[]") as Array<Record<string, unknown>>
+    expect(scores.find((score) => score.name === "kitty")).toMatchObject({
+      version: fixture.selected.target.version,
+      catalog,
+      supported: 1,
+      untested: catalog - 1,
+      pct: 100,
+    })
+    const screenBold = fixture.screen.cells["sgr.bold"] as SelectedCell
+    if (!screenBold) throw new Error("Missing screen error-count fixture cell")
+    const originalScreenBold = structuredClone(screenBold)
+    try {
+      screenBold.outcome = "error"
+      screenBold.reason = "collector-error"
+      expect(probesLoader.load().baselineStats.screen?.core).toMatchObject({
+        total: 0,
+        supported: 0,
+        unsupported: 0,
+        inconclusive: 0,
+        errors: 1,
+        untested: catalog - 1,
+      })
+    } finally {
+      Object.assign(screenBold, originalScreenBold)
+      if (originalScreenBold.reason === undefined) delete screenBold.reason
+    }
+  })
+
   it("keeps unscoped annotations out of feature analysis while retaining reviewed selected notes", () => {
+    const warnings: string[] = []
+    const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))
     const annotations = JSON.parse(
       readFileSync(join(import.meta.dirname, "..", "content", "annotations.json"), "utf8"),
     ) as Record<string, { note: string }>
@@ -447,7 +575,9 @@ describe("selected-run consumer parity", () => {
       const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(reviewed).not.toContain(unscoped)
       expect(reviewed).not.toContain("Reviewed Kitty sixel observation note")
+      expect(warnings.every((message) => message.includes("no reviewed current conclusive results"))).toBe(true)
     } finally {
+      warning.mockRestore()
       Object.assign(cell, original)
       if (original.note === undefined) delete cell.note
       if (original.chain.correctionId === undefined) delete cell.chain.correctionId

@@ -489,7 +489,10 @@ function generateBaselineAnalysis(
   }
 
   if (imperfect.length > 0) {
-    const laggards = imperfect.slice(0, 3).map((s) => `${s.name} (${s.baselineCompliance[baselineName]?.pct ?? 0}%)`)
+    const laggards = imperfect.slice(0, 3).map((s) => {
+      const baseline = s.baselineCompliance[baselineName]
+      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} conclusive baseline features supported)`
+    })
     parts.push(`Known unsupported results: ${laggards.join(", ")}`)
 
     // Find what features the laggards are missing
@@ -510,67 +513,6 @@ function generateBaselineAnalysis(
     if (commonMissing.length > 0) {
       parts.push(`Most commonly unsupported: ${commonMissing.join(", ")}`)
     }
-  }
-
-  return {
-    analysis: `<p>${parts.join(". ")}.</p>`,
-    date: new Date().toISOString().slice(0, 10),
-    changes: null,
-  }
-}
-
-function generateCompareAnalysis(
-  termIdA: string,
-  termIdB: string,
-  statsA: TerminalStats,
-  statsB: TerminalStats,
-  features: Record<string, FeatureMeta>,
-): AnalysisEntry {
-  const parts: string[] = []
-
-  // Each denominator is the terminal's conclusive feature set.
-  parts.push(
-    `<strong>${statsA.name}</strong> has ${statsA.pct}% (${statsA.yes}/${statsA.total}) conclusive support vs <strong>${statsB.name}</strong> at ${statsB.pct}% (${statsB.yes}/${statsB.total})`,
-  )
-
-  const sameScope =
-    Object.keys(statsA.results).length === Object.keys(statsB.results).length &&
-    Object.keys(statsA.results).every((id) => id in statsB.results)
-  if (!sameScope) {
-    parts.push("Measured feature sets differ, so the overall percentages are not directly comparable")
-  } else if (statsA.pct > statsB.pct) {
-    const diff = statsA.pct - statsB.pct
-    parts.push(`${statsA.name} leads by ${diff} percentage point${diff === 1 ? "" : "s"}`)
-  } else if (statsB.pct > statsA.pct) {
-    const diff = statsB.pct - statsA.pct
-    parts.push(`${statsB.name} leads by ${diff} percentage point${diff === 1 ? "" : "s"}`)
-  } else {
-    parts.push("Both terminals are tied in overall score")
-  }
-
-  // Features A has that B doesn't (only documented features)
-  const onlyA = Object.entries(statsA.results)
-    .filter(([id, v]) => v === true && statsB.results[id] === false && features[id])
-    .map(([id]) => id)
-  // Features B has that A doesn't (only documented features)
-  const onlyB = Object.entries(statsB.results)
-    .filter(([id, v]) => v === true && statsA.results[id] === false && features[id])
-    .map(([id]) => id)
-
-  if (onlyA.length > 0) {
-    const names = onlyA.slice(0, 5).map((id) => featureName(features, id))
-    const suffix = onlyA.length > 5 ? ` and ${onlyA.length - 5} more` : ""
-    parts.push(`Only in ${statsA.name}: ${names.join(", ")}${suffix}`)
-  }
-
-  if (onlyB.length > 0) {
-    const names = onlyB.slice(0, 5).map((id) => featureName(features, id))
-    const suffix = onlyB.length > 5 ? ` and ${onlyB.length - 5} more` : ""
-    parts.push(`Only in ${statsB.name}: ${names.join(", ")}${suffix}`)
-  }
-
-  if (onlyA.length === 0 && onlyB.length === 0) {
-    parts.push("No opposing conclusive results on shared features")
   }
 
   return {
@@ -814,7 +756,10 @@ function generateFrameworkAnalysis(
   }
 
   if (incompatible.length > 0 && incompatible.length <= 5) {
-    const laggards = incompatible.map((s) => `${s.name} (${s.baselineCompliance[baselineName]?.pct ?? 0}%)`)
+    const laggards = incompatible.map((s) => {
+      const baseline = s.baselineCompliance[baselineName]
+      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} conclusive baseline features supported)`
+    })
     parts.push(`Known unsupported baseline results: ${laggards.join(", ")}`)
   }
 
@@ -845,21 +790,6 @@ function generateFrameworkAnalysis(
     changes: null,
   }
 }
-
-// --- Popular comparisons ---
-
-const POPULAR_COMPARISONS: [string, string][] = [
-  ["ghostty", "kitty"],
-  ["ghostty", "iterm2"],
-  ["ghostty", "warp"],
-  ["ghostty", "terminal-app"],
-  ["kitty", "iterm2"],
-  ["kitty", "warp"],
-  ["iterm2", "terminal-app"],
-  ["iterm2", "warp"],
-  ["com.microsoft.VSCode", "cursor"],
-  ["warp", "terminal-app"],
-]
 
 // --- Validation of generated HTML ---
 
@@ -1324,29 +1254,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     output[key] = entry
   }
 
-  // 3. Comparison pages (popular pairs only)
-  for (const [idA, idB] of POPULAR_COMPARISONS) {
-    const statsA = allStats.get(idA)
-    const statsB = allStats.get(idB)
-    if (!statsA || !statsB) continue
-
-    // Alphabetical slug ordering for deterministic URLs
-    const slugs = [statsA.slug, statsB.slug].sort()
-    const key = `compare/${slugs[0]}-vs-${slugs[1]}`
-
-    const [orderedA, orderedB] = statsA.slug === slugs[0] ? [statsA, statsB] : [statsB, statsA]
-    const entry = generateCompareAnalysis(
-      slugs[0] === statsA.slug ? idA : idB,
-      slugs[0] === statsA.slug ? idB : idA,
-      orderedA,
-      orderedB,
-      features,
-    )
-    validateHtml(entry.analysis, key)
-    output[key] = entry
-  }
-
-  // 4. Category pages
+  // 3. Category pages
   for (const [catId, catMeta] of Object.entries(categories)) {
     const key = catId
     const entry = generateCategoryAnalysis(catId, catMeta, allStats, features)
@@ -1354,7 +1262,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     output[key] = entry
   }
 
-  // 5. Standard pages
+  // 4. Standard pages
   for (const [stdId, stdMeta] of Object.entries(standards)) {
     const key = stdId
     const entry = generateStandardAnalysis(stdId, stdMeta, allStats, features)
@@ -1362,7 +1270,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     output[key] = entry
   }
 
-  // 6. Feature pages
+  // 5. Feature pages
   for (const [featureId, featureMeta] of Object.entries(features)) {
     const category = featureId.split(".")[0]
     const slug = featureMeta.slug ?? featureId.replaceAll(".", "-")
@@ -1374,7 +1282,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     }
   }
 
-  // 7. Framework pages
+  // 6. Framework pages
   for (const [fwId, fw] of Object.entries(frameworks)) {
     const key = `framework/${fwId}`
     const entry = generateFrameworkAnalysis(fwId, fw, allStats, features, baselines, frameworks)

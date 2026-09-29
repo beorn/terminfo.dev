@@ -35,28 +35,33 @@ function termTooltip(b) {
 }
 
 function barTooltip(s, segment) {
+  const labels = {
+    supported: ['Supported', '✓'],
+    unsupported: ['Unsupported', '✗'],
+    inconclusive: ['Inconclusive', '?'],
+    errors: ['Collector error', '!'],
+    untested: ['Untested', '–'],
+  }
   const items = []
   for (const f of features) {
-    const result = f.results[s.name]?.result
-    if (segment === 'yes' && result === 'yes') {
-      items.push('  ✓ ' + f.name)
-    } else if (segment === 'partial' && result === 'partial') {
-      const note = f.results[s.name]?.note
-      items.push(note ? '  ~ ' + f.name + ': ' + note : '  ~ ' + f.name)
-    }
-  }
-  if (segment === 'fail') {
-    for (const f of features) {
-      const result = f.results[s.name]?.result
-      if (result === 'no' || result === 'unknown' || !result) {
-        const note = f.results[s.name]?.note
-        items.push(note ? '  ✗ ' + f.name + ': ' + note : '  ✗ ' + f.name)
-      }
-    }
+    const cell = data.selectedByBackend[s.name]?.selected.cells[f.id]
+    const status = !cell ? 'untested' : cell.outcome === 'error' ? 'errors'
+      : cell.conclusive && cell.outcome === 'supported' ? 'supported'
+      : cell.conclusive && cell.outcome === 'unsupported' ? 'unsupported' : 'inconclusive'
+    if (status !== segment) continue
+    const note = cell?.note
+    items.push(note ? `  ${labels[segment][1]} ${f.name}: ${note}` : `  ${labels[segment][1]} ${f.name}`)
   }
   if (items.length === 0) return ''
-  const label = segment === 'yes' ? 'Supported' : segment === 'partial' ? 'Partial' : 'Not supported'
-  return label + ' (' + items.length + '):\n' + items.join('\n')
+  return labels[segment][0] + ' (' + items.length + '):\n' + items.join('\n')
+}
+
+function barWidth(s, segment) {
+  return s.catalog ? (s[segment] / s.catalog * 100) + '%' : '0%'
+}
+
+function coverageLabel(s) {
+  return `${s.supported} supported · ${s.unsupported} unsupported · ${s.inconclusive} inconclusive · ${s.errors} errors · ${s.untested} untested / ${s.catalog} features`
 }
 
 function platformIcon(os) {
@@ -102,7 +107,7 @@ function platformIcons(b) {
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
 </div>
 
-## Compliance Scorecard
+## Coverage and results
 
 ### Terminal Applications
 
@@ -110,13 +115,13 @@ function platformIcons(b) {
   <div v-for="s in appScores" :key="s.name" class="summary-row">
     <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
     <span class="summary-platforms" v-html="platformIcons(s)"></span>
-    <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: s.total ? (s.yes / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: s.total ? (s.partial / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
-      <div class="bar-fail" :style="{ width: s.total ? ((s.total - s.yes - s.partial) / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'fail')"></div>
+    <span class="summary-version">{{ s.version }}</span>
+    <div class="summary-bar" :aria-label="coverageLabel(s)">
+      <div v-for="segment in ['supported', 'unsupported', 'inconclusive', 'errors', 'untested']" :key="segment"
+        :class="'bar-' + segment" :style="{ width: barWidth(s, segment) }" :data-tooltip="barTooltip(s, segment)"></div>
     </div>
-    <span class="summary-pct">{{ s.pct == null ? 'No score' : `${s.pct}%` }}</span>
-    <span class="summary-counts">{{ s.total ? `${s.yes} / ${s.total}` : 'No conclusive results' }}</span>
+    <span class="summary-pct">{{ s.pct == null ? 'No conclusive score' : `${s.pct}% of conclusive` }}</span>
+    <span class="summary-counts">{{ coverageLabel(s) }}</span>
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet.</p>
@@ -128,13 +133,13 @@ function platformIcons(b) {
 <div class="summary summary-muted">
   <div v-for="s in headlessScores" :key="s.name" class="summary-row">
     <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
-    <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: s.total ? (s.yes / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: s.total ? (s.partial / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
-      <div class="bar-fail" :style="{ width: s.total ? ((s.total - s.yes - s.partial) / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'fail')"></div>
+    <span class="summary-version">{{ s.version }}</span>
+    <div class="summary-bar" :aria-label="coverageLabel(s)">
+      <div v-for="segment in ['supported', 'unsupported', 'inconclusive', 'errors', 'untested']" :key="segment"
+        :class="'bar-' + segment" :style="{ width: barWidth(s, segment) }" :data-tooltip="barTooltip(s, segment)"></div>
     </div>
-    <span class="summary-pct">{{ s.pct == null ? 'No score' : `${s.pct}%` }}</span>
-    <span class="summary-counts">{{ s.total ? `${s.yes} / ${s.total}` : 'No conclusive results' }}</span>
+    <span class="summary-pct">{{ s.pct == null ? 'No conclusive score' : `${s.pct}% of conclusive` }}</span>
+    <span class="summary-counts">{{ coverageLabel(s) }}</span>
   </div>
 </div>
 
@@ -283,9 +288,10 @@ function platformIcons(b) {
   opacity: 0.85;
 }
 
-.summary-row {
+.baseline-page .summary-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 8px 0;
 }
@@ -304,28 +310,39 @@ function platformIcons(b) {
   align-items: center;
 }
 
-.summary-bar {
-  flex: 1;
+.baseline-page .summary-bar {
+  flex: 1 1 160px;
+  min-width: 100px;
   height: 22px;
   background: var(--vp-c-bg-soft);
   border-radius: 4px;
   display: flex;
 }
 
-.bar-yes {
+.baseline-page .bar-supported,
+.baseline-page .bar-unsupported,
+.baseline-page .bar-inconclusive,
+.baseline-page .bar-errors,
+.baseline-page .bar-untested {
   height: 100%;
-  background: #10b981;
   transition: width 0.3s ease;
 }
 
-.bar-partial {
-  height: 100%;
-  background: #f59e0b;
-  transition: width 0.3s ease;
+.baseline-page .bar-supported { background: #10b981; }
+.baseline-page .bar-unsupported { background: #ef4444; }
+.baseline-page .bar-inconclusive { background: #f59e0b; }
+.baseline-page .bar-errors { background: #a855f7; }
+.baseline-page .bar-untested { background: var(--vp-c-divider); }
+
+.baseline-page .summary-version {
+  color: var(--vp-c-text-3);
+  font-size: 0.8em;
+  flex: 0 0 5em;
+  overflow-wrap: anywhere;
 }
 
-.summary-pct {
-  width: 8ch;
+.baseline-page .summary-pct {
+  width: 15ch;
   white-space: nowrap;
   font-weight: 600;
   font-size: 0.9em;
@@ -333,12 +350,11 @@ function platformIcons(b) {
   flex-shrink: 0;
 }
 
-.summary-counts {
-  width: 12em;
+.baseline-page .summary-counts {
+  flex: 1 1 26em;
   font-size: 0.8em;
   color: var(--vp-c-text-3);
-  text-align: right;
-  flex-shrink: 0;
+  text-align: left;
 }
 
 /* Guidance */

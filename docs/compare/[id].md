@@ -13,7 +13,7 @@ const p = params.value
 const categories = JSON.parse(p.categories)
 
 function diffClass(f) {
-  return ((f.resultA === 'yes' && f.resultB === 'no') || (f.resultA === 'no' && f.resultB === 'yes')) ? 'diff-row' : ''
+  return f.comparable && ((f.resultA === 'yes' && f.resultB === 'no') || (f.resultA === 'no' && f.resultB === 'yes')) ? 'diff-row' : ''
 }
 
 function featureTooltip(f) {
@@ -31,13 +31,13 @@ function termTooltip(label, description, type, url) {
   return parts.join('\n') || label
 }
 
-// Only opposing conclusive results establish a comparison difference.
+// Only opposing results in the jointly conclusive, same-method cohort establish a difference.
 const onlyAFeatures = []
 const onlyBFeatures = []
 for (const cat of categories) {
   for (const f of cat.features) {
-    if (f.resultA === 'yes' && f.resultB === 'no') onlyAFeatures.push({ ...f, categoryLabel: cat.label })
-    if (f.resultB === 'yes' && f.resultA === 'no') onlyBFeatures.push({ ...f, categoryLabel: cat.label })
+    if (f.comparable && f.resultA === 'yes' && f.resultB === 'no') onlyAFeatures.push({ ...f, categoryLabel: cat.label })
+    if (f.comparable && f.resultB === 'yes' && f.resultA === 'no') onlyBFeatures.push({ ...f, categoryLabel: cat.label })
   }
 }
 </script>
@@ -52,7 +52,14 @@ for (const cat of categories) {
 
 # {{ p.termALabel }} vs {{ p.termBLabel }}
 
-<p class="compare-subtitle">Side-by-side terminal feature comparison</p>
+<p class="compare-subtitle">Side-by-side selected terminal observations</p>
+
+<p v-if="p.comparableScope === 'true'" class="compare-scope">
+  Counts use jointly conclusive results from matching recorded contexts, suites and methods. Other environment differences may remain.
+</p>
+<p v-else class="compare-scope compare-scope--limited">
+  Recorded contexts or suites differ or are incomplete. Inspect each result below; no pairwise support difference is claimed.
+</p>
 
 ## Summary
 
@@ -61,31 +68,38 @@ for (const cat of categories) {
     <a :href="'/terminals/' + p.termASlug" class="compare-card-link">
       <h3>{{ p.termALabel }}</h3>
     </a>
-    <div class="compare-score">{{ p.termAPct ? `${p.termAPct}%` : 'No score' }}</div>
-    <div class="compare-detail">{{ p.termATotal !== '0' ? `${p.termAPass}/${p.termATotal} passed` : 'No conclusive results' }}</div>
-    <div v-if="Number(p.termAPartial) > 0" class="compare-partial">{{ p.termAPartial }} partial</div>
+    <p class="compare-context"><strong>{{ p.termAVersion }}</strong> · {{ p.termAKind }} · {{ p.termAOs }} {{ p.termAOsVersion }}</p>
+    <div v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-score">{{ p.supportedA }}/{{ p.jointConclusive }}</div>
+    <div v-if="p.comparableScope === 'true'" class="compare-detail">{{ p.jointConclusive === '0' ? 'No shared features measured conclusively by the same method' : 'supported on shared features measured by the same method' }}</div>
+    <div v-else class="compare-detail">This run: {{ p.termAPass }} supported of {{ p.termATotal }} conclusive observations</div>
+    <details class="compare-run-details"><summary>Run details</summary><dl class="compare-context-details">
+      <dt>Configuration</dt><dd>{{ p.termAConfig }}</dd>
+      <dt>Permissions</dt><dd>{{ p.termAPermissions }}</dd>
+      <dt>Outer terminal</dt><dd>{{ p.termAOuter }}</dd>
+      <dt>Multiplexer</dt><dd>{{ p.termAMux }}</dd>
+      <dt>Suite</dt><dd>{{ p.termASuite }} · {{ p.termASuiteComplete === 'true' ? 'complete' : 'incomplete' }}</dd>
+    </dl></details>
   </div>
   <div class="compare-vs">vs</div>
   <div class="compare-card">
     <a :href="'/terminals/' + p.termBSlug" class="compare-card-link">
       <h3>{{ p.termBLabel }}</h3>
     </a>
-    <div class="compare-score">{{ p.termBPct ? `${p.termBPct}%` : 'No score' }}</div>
-    <div class="compare-detail">{{ p.termBTotal !== '0' ? `${p.termBPass}/${p.termBTotal} passed` : 'No conclusive results' }}</div>
-    <div v-if="Number(p.termBPartial) > 0" class="compare-partial">{{ p.termBPartial }} partial</div>
+    <p class="compare-context"><strong>{{ p.termBVersion }}</strong> · {{ p.termBKind }} · {{ p.termBOs }} {{ p.termBOsVersion }}</p>
+    <div v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-score">{{ p.supportedB }}/{{ p.jointConclusive }}</div>
+    <div v-if="p.comparableScope === 'true'" class="compare-detail">{{ p.jointConclusive === '0' ? 'No shared features measured conclusively by the same method' : 'supported on shared features measured by the same method' }}</div>
+    <div v-else class="compare-detail">This run: {{ p.termBPass }} supported of {{ p.termBTotal }} conclusive observations</div>
+    <details class="compare-run-details"><summary>Run details</summary><dl class="compare-context-details">
+      <dt>Configuration</dt><dd>{{ p.termBConfig }}</dd>
+      <dt>Permissions</dt><dd>{{ p.termBPermissions }}</dd>
+      <dt>Outer terminal</dt><dd>{{ p.termBOuter }}</dd>
+      <dt>Multiplexer</dt><dd>{{ p.termBMux }}</dd>
+      <dt>Suite</dt><dd>{{ p.termBSuite }} · {{ p.termBSuiteComplete === 'true' ? 'complete' : 'incomplete' }}</dd>
+    </dl></details>
   </div>
 </div>
 
-<p class="compare-diff-summary">{{ p.differ }} features differ between these terminals</p>
-
-<div v-if="p.analysis" class="analysis">
-  <div class="analysis-header">
-    <span class="analysis-label">Analysis</span>
-    <span class="analysis-date">{{ p.analysisDate }}</span>
-  </div>
-  <div class="analysis-body" v-html="p.analysis"></div>
-  <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
-</div>
+<p v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-diff-summary">{{ p.differ }} differences among {{ p.jointConclusive }} shared features measured conclusively by the same method</p>
 
 ## Feature Comparison
 
@@ -93,6 +107,7 @@ for (const cat of categories) {
 
 ### {{ cat.label }}
 
+<div class="compare-table-scroll">
 <table class="compare-table">
   <thead>
     <tr>
@@ -115,14 +130,15 @@ for (const cat of categories) {
     </tr>
   </tbody>
 </table>
+</div>
 
 </div>
 
 <div v-if="onlyAFeatures.length > 0">
 
-## Only in {{ p.termALabel }}
+## Supported in {{ p.termALabel }}, unsupported in {{ p.termBLabel }}
 
-<p class="only-in-desc">{{ onlyAFeatures.length }} features supported by {{ p.termALabel }} but not {{ p.termBLabel }}:</p>
+<p class="only-in-desc">{{ onlyAFeatures.length }} comparable observations support this difference:</p>
 
 <ul class="only-list">
   <li v-for="f in onlyAFeatures" :key="f.id">
@@ -135,9 +151,9 @@ for (const cat of categories) {
 
 <div v-if="onlyBFeatures.length > 0">
 
-## Only in {{ p.termBLabel }}
+## Supported in {{ p.termBLabel }}, unsupported in {{ p.termALabel }}
 
-<p class="only-in-desc">{{ onlyBFeatures.length }} features supported by {{ p.termBLabel }} but not {{ p.termALabel }}:</p>
+<p class="only-in-desc">{{ onlyBFeatures.length }} comparable observations support this difference:</p>
 
 <ul class="only-list">
   <li v-for="f in onlyBFeatures" :key="f.id">
@@ -165,6 +181,16 @@ for (const cat of categories) {
   margin-top: -0.5em;
 }
 
+.compare-scope {
+  padding: 0.75em 1em;
+  border-left: 3px solid var(--vp-c-brand-1);
+  background: var(--vp-c-bg-soft);
+}
+
+.compare-scope--limited {
+  border-left-color: var(--vp-c-warning-1);
+}
+
 .compare-summary {
   display: flex;
   align-items: center;
@@ -174,11 +200,43 @@ for (const cat of categories) {
 }
 
 .compare-card {
+  box-sizing: border-box;
   text-align: center;
   padding: 1.5em 2em;
   border-radius: 12px;
   background: var(--vp-c-bg-soft);
   min-width: 200px;
+}
+
+.compare-context {
+  overflow-wrap: anywhere;
+}
+
+.compare-run-details {
+  margin-top: 0.75em;
+  text-align: left;
+  font-size: 0.9em;
+}
+
+.compare-run-details summary {
+  cursor: pointer;
+}
+
+.compare-context-details {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.25em 0.5em;
+  text-align: left;
+  font-size: 0.8em;
+}
+
+.compare-context-details dt {
+  color: var(--vp-c-text-2);
+}
+
+.compare-context-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .compare-card h3 {
@@ -239,6 +297,23 @@ for (const cat of categories) {
   border-collapse: collapse;
   font-size: 0.9em;
   margin: 1em 0;
+}
+
+.compare-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  .compare-summary {
+    flex-direction: column;
+    gap: 0.75em;
+  }
+
+  .compare-card {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 .compare-table th,

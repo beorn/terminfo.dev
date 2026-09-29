@@ -567,8 +567,14 @@ export default defineConfig({
     const params = pageData.params as Record<string, string> | undefined
     if (params) {
       if (rel.startsWith("compare/")) {
-        pageData.title = `${params.termALabel} vs ${params.termBLabel} \u2014 Terminal Feature Comparison`
-        pageData.description = `Compare ${params.termALabel} (${params.termAPct}%) vs ${params.termBLabel} (${params.termBPct}%) terminal feature support. ${params.differ} features differ.`
+        pageData.title = `${params.termALabel} ${params.termAVersion} vs ${params.termBLabel} ${params.termBVersion} \u2014 Selected Terminal Observations`
+        if (params.comparableScope !== "true") {
+          pageData.description = `${params.termALabel} (${params.termAKind}, ${params.termAOs}) and ${params.termBLabel} (${params.termBKind}, ${params.termBOs}) have different or incomplete recorded contexts; inspect their selected observations without a pairwise support claim.`
+        } else if (params.jointConclusive === "0") {
+          pageData.description = `${params.termALabel} (${params.termAKind}, ${params.termAOs}) and ${params.termBLabel} (${params.termBKind}, ${params.termBOs}): no jointly conclusive observations measured by the same method.`
+        } else {
+          pageData.description = `${params.termALabel} (${params.termAKind}, ${params.termAOs}) and ${params.termBLabel} (${params.termBKind}, ${params.termBOs}): ${params.differ} differences among ${params.jointConclusive} jointly conclusive, same-method features.`
+        }
       } else if (rel.startsWith("terminals/")) {
         if (params.historical === "true") {
           pageData.title = `${params.backendName} (${params.year}) \u2014 Historical Terminal`

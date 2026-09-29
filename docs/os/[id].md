@@ -13,7 +13,6 @@ const appRows = p.appRows ? JSON.parse(p.appRows) : []
 const parserRows = p.parserRows ? JSON.parse(p.parserRows) : []
 const muxRows = p.muxRows ? JSON.parse(p.muxRows) : []
 const gapRows = p.gapRows ? JSON.parse(p.gapRows) : []
-const categoryRows = p.categoryRows ? JSON.parse(p.categoryRows) : []
 const notes = p.notes ? JSON.parse(p.notes) : []
 const sources = p.sources ? JSON.parse(p.sources) : []
 
@@ -56,7 +55,7 @@ function evidenceClass(row) {
 </div>
 
 <div class="evidence-note">
-  Scores are shown with their evidence source. Platform-specific app probes are strongest; parser and reference scores are useful compatibility signals but do not prove full renderer, font, input, or compositor behavior on this OS.
+  Percentages show support among conclusive observations for each source run, not coverage of the full feature catalog or a platform-wide score. Open a terminal row for its selected version, OS context, and evidence; the <a href="/">feature matrix</a> shows individual results. Parser and reference rows do not establish full app behavior on this OS.
 </div>
 
 ## App Terminals
@@ -65,7 +64,7 @@ function evidenceClass(row) {
   <thead>
     <tr>
       <th>Terminal</th>
-      <th>Score</th>
+      <th>Conclusive support</th>
       <th>Evidence</th>
       <th>Notes</th>
     </tr>
@@ -83,31 +82,6 @@ function evidenceClass(row) {
   </tbody>
 </table>
 
-## Feature Coverage
-
-<p class="section-intro">Category coverage aggregates the scored entries on this platform page. It is a platform lens over available evidence, not a substitute for missing full-app probes.</p>
-
-<table class="platform-table feature-summary-table">
-  <thead>
-    <tr>
-      <th>Category</th>
-      <th>Pass Rate</th>
-      <th>Signals</th>
-      <th>Strongest</th>
-      <th>Weakest</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr v-for="row in categoryRows" :key="row.category">
-      <td><a :href="'/' + row.category">{{ row.label }}</a></td>
-      <td class="score-cell"><span v-if="row.pct">{{ row.pct }}%</span><span v-else>—</span></td>
-      <td class="note-cell">{{ row.yes }} yes / {{ row.partial }} partial / {{ row.total }} checks</td>
-      <td class="note-cell">{{ row.strongest }}</td>
-      <td class="note-cell">{{ row.weakest }}</td>
-    </tr>
-  </tbody>
-</table>
-
 <template v-if="parserRows.length">
 
 ## Portable Parser Backends
@@ -116,7 +90,7 @@ function evidenceClass(row) {
   <thead>
     <tr>
       <th>Backend</th>
-      <th>Score</th>
+      <th>Conclusive support</th>
       <th>Evidence</th>
       <th>Notes</th>
     </tr>
@@ -141,7 +115,7 @@ function evidenceClass(row) {
   <thead>
     <tr>
       <th>Multiplexer</th>
-      <th>Score</th>
+      <th>Conclusive support</th>
       <th>Evidence</th>
       <th>Notes</th>
     </tr>
@@ -227,8 +201,7 @@ function evidenceClass(row) {
   margin: 0.35em 0 0.5em;
 }
 
-.platform-desc,
-.section-intro {
+.platform-desc {
   color: var(--vp-c-text-2);
   line-height: 1.6;
 }

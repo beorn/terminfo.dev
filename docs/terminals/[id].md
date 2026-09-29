@@ -186,7 +186,7 @@ const breadcrumbParent = (() => {
         <th>Version</th>
         <th>Support</th>
         <th class="version-pct-header">Score</th>
-        <th class="version-counts-header">Features</th>
+        <th class="version-counts-header">Conclusive features</th>
       </tr>
     </thead>
     <tbody>
