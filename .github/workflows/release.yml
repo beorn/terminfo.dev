@@ -32,8 +32,25 @@ jobs:
 
       # Publish the CLI package (terminfo.dev on npm)
       # pnpm publish (not npm publish) — pnpm applies publishConfig.exports overrides
+      # A retroactive tag for a version already on npm skips the publish with a notice instead of
+      # failing E403 (26541). The registry is asked over HTTP: npm refuses in this repo (devEngines bun).
       - name: Publish to npm
-        run: cd packages/terminfo.dev && pnpm publish --access public --no-git-checks
+        run: |
+          cd packages/terminfo.dev
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          status=$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/$name/$version")
+          case "$status" in
+            200)
+              echo "::notice::$name@$version is already on npm; tag $GITHUB_REF_NAME skips the publish"
+              exit 0
+              ;;
+            404) pnpm publish --access public --no-git-checks ;;
+            *)
+              echo "::error::registry answered HTTP $status for $name@$version; cannot tell whether it is published"
+              exit 1
+              ;;
+          esac
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
