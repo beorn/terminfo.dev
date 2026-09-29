@@ -72,12 +72,12 @@ beforeEach(() => {
 
 describe("owned Terminal.app receipt", () => {
   test("launch selects the one new single-tab window with the returned tab TTY", () => {
-    // The OS reply lists the before IDs, do-script tab TTY, then every post-launch
-    // window's ID, tab count, and sole-tab TTY. It deliberately includes an old
-    // window with the same TTY so a first-match search would borrow it.
+    // The OS reply lists the before IDs, do-script tab TTY, then only new
+    // windows' ID, tab count, and sole-tab TTY. Retained closed IDs can vanish
+    // between censuses, so old windows do not appear in the post inventory.
     vi.mocked(spawnSync).mockReturnValueOnce({
       status: 0,
-      stdout: "12,13\n/dev/ttys003\n12|1|/dev/ttys003\n13|2|\n14|1|/dev/ttys003\n15|1|/dev/ttys004\n",
+      stdout: "12,13\n/dev/ttys003\n14|1|/dev/ttys003\n15|1|/dev/ttys004\n",
       stderr: "",
     } as ReturnType<typeof spawnSync>)
     expect(launchTerminalWindow("/private/run/serve.sh")).toEqual({ windowId: 14, tty: "/dev/ttys003" })

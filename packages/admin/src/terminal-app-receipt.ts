@@ -41,9 +41,11 @@ export function launchTerminalWindow(scriptPath: string): OwnedTerminalWindow {
   set t to do script ${JSON.stringify(scriptPath)}
   set launchedTTY to (tty of t) as string
   set inventory to priorIds & linefeed & launchedTTY
-  repeat with w in every window
-    set windowId to id of w
+  set postIds to id of every window
+  repeat with idRef in postIds
+    set windowId to contents of idRef
     if priorList does not contain windowId then
+      set w to window id windowId
       set tabCount to count of tabs of w
       set onlyTTY to ""
       if tabCount is 1 then set onlyTTY to (tty of tab 1 of w) as string
@@ -54,8 +56,9 @@ export function launchTerminalWindow(scriptPath: string): OwnedTerminalWindow {
 end tell`
   const output = run("osascript", ["-e", script]).stdout.trimEnd()
   const lines = output.split(/\r?\n/)
-  if (lines.length < 3)
+  if (lines.length < 3) {
     throw new Error(`Terminal launch returned no new-window/TTY inventory: ${JSON.stringify(output)}`)
+  }
   const [before, returnedTTY, ...windows] = lines
   const launchedTTY = tty(returnedTTY ?? "")
   const priorIds = before?.trim() ? before.split(",").map((value) => Number(value.trim())) : []
