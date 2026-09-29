@@ -282,25 +282,20 @@ printf '\e[L'
 
 :::
 
-### Sixel (1983, Revived) — Inline Graphics {#sixel}
+### Sixel — DEC Inline Graphics {#sixel}
 
-Sixel originated not as a terminal feature but as a **printer protocol** — DEC designed it for the LA50 dot-matrix printer in 1983. When DEC built the VT240 graphics terminal that same year, they repurposed the printer protocol for screen display. The name comes from encoding 6 vertical pixels per character. The format encodes raster images as printable ASCII characters, where each character represents a 1x6 pixel column, and DEC included Sixel support in the VT240 and VT340 terminals for displaying charts and diagrams.
+Sixel is DEC’s raster graphics format. Its data characters encode vertical columns of six pixels, with color-register commands selecting palette entries. The [VT330/VT340 Programmer Pocket Guide](https://vt100.net/dec/ek-vt3xx-hr-002.pdf) documents the format.
 
-Sixel was largely dormant for decades until modern terminals (xterm, foot, WezTerm, mlterm, contour) revived it as a way to display inline images using only standard escape sequences — no terminal-specific protocol required. The Sixel vs. Kitty graphics debate is one of the liveliest in the terminal ecosystem: Sixel is older and more widely supported; Kitty graphics is more capable and purpose-built.
+[xterm patch 294](https://invisible-island.net/xterm/xterm.log.html#xterm_294) added experimental Sixel support on July 5, 2013. This dates one implementation; it does not establish which terminal began a broader revival.
 
 ::: info At a glance
-**Introduced:**
 
-- Inline raster graphics encoded as printable ASCII characters
-- 6-vertical-pixel columns (the "six" in Sixel) for compact encoding
-- A terminal graphics protocol that predates all modern alternatives
+- Raster graphics encoded in a terminal escape-sequence stream.
+- A different image format and placement model from Kitty graphics.
+- Usable over SSH when the terminal and any intermediaries support the path.
+- Rendering needs image evidence; a declaration or cursor response alone is inconclusive.
 
-**Still matters:**
-
-- Widest inline image support among modern terminals (xterm, foot, WezTerm, mlterm)
-- Works over plain SSH with no extra setup — like all pure escape-sequence protocols
-- Active competitor to Kitty graphics in the terminal image display debate
-  :::
+:::
 
 <p class="standard-link"><a class="hover-link" href="/sixel">View Sixel features &rarr;</a></p>
 

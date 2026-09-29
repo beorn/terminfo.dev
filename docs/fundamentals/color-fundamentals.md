@@ -47,7 +47,7 @@ The modern standard: full 16.7M colors via `\e[38;2;<r>;<g>;<b>m` (fg) and `\e[4
 \e[38;2;255;87;34m #FF5722 \e[0m
 ```
 
-Almost every modern terminal supports truecolor (Ghostty, Kitty, iTerm2, WezTerm, Alacritty, Windows Terminal, modern xterm, GNOME Terminal). See [24-bit truecolor](/extensions/24-bit-truecolor) for the per-terminal matrix.
+Many terminal projects document truecolor, but support can depend on the terminal version and any intermediary. See [24-bit truecolor](/extensions/24-bit-truecolor) for selected observations and their evidence method.
 
 ## SGR vs OSC — two different escape families
 

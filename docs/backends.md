@@ -18,17 +18,16 @@ A parser pass means **"the parser understands this sequence"** — not "it rende
 
 This distinction matters in practice. A library might correctly parse Kitty keyboard protocol sequences but the app embedding it might not wire up the key events. Or a library might handle Sixel parsing but the host application has no image rendering pipeline.
 
-| Dimension       | Parser Backend Test            | App Terminal Test                       |
-| --------------- | ------------------------------ | --------------------------------------- |
-| What runs       | Library parser + state machine | Full terminal application               |
-| What's verified | Internal state changes         | The recorded query, behavior, or pixels |
-| Speed           | Milliseconds (in-process)      | Seconds (launches app, sends sequences) |
-| A "pass" means  | Measured parser behavior       | The specific observed app effect works  |
-| Example         | xterm.js parses `CSI ? 2026 h` | VS Code enables synchronized output     |
+| Dimension       | Parser Backend Test                  | App Terminal Test                                |
+| --------------- | ------------------------------------ | ------------------------------------------------ |
+| What runs       | Library parser + state machine       | Full terminal application                        |
+| What's verified | Internal state changes               | The recorded query, behavior, or pixels          |
+| A "pass" means  | Measured parser behavior             | The specific observed app effect works           |
+| Example         | Bold is recorded in a cell attribute | A captured fixture shows a visibly heavier glyph |
 
 ## Why This Matters
 
-If you're building a terminal-based application, the underlying backend determines your feature floor. It doesn't matter that Kitty supports the Kitty keyboard protocol if your app embeds xterm.js and xterm.js doesn't parse it — your users won't get that feature regardless of their outer terminal.
+An embedded terminal's features depend on the library version, its configuration and the host application's integration. For example, [xterm.js added Kitty keyboard support upstream](https://github.com/xtermjs/xterm.js/pull/5600); its [optional `vtExtensions.kittyKeyboard` setting](https://github.com/xtermjs/xterm.js/blob/master/typings/xterm.d.ts) defaults to off. An embedding application must use a supporting version and enable the feature. This does not establish support in any particular VS Code or Cursor release.
 
 Backend testing reveals these constraints:
 

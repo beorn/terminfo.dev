@@ -240,7 +240,7 @@ A single displayed emoji may be one codepoint or a longer grapheme cluster but s
 ### Extensions — The Cutting Edge
 
 ::: tip The Kitty keyboard problem
-Traditional terminals can't distinguish `Ctrl+I` from `Tab` — they're the same byte (`0x09`). The Kitty keyboard protocol fixes this by sending unambiguous key reports with modifier information. It's being adopted across Ghostty, WezTerm, foot, and other modern terminals.
+Traditional terminals can't distinguish `Ctrl+I` from `Tab` — they're the same byte (`0x09`). The Kitty keyboard protocol fixes this by sending unambiguous key reports with modifier information. The Kitty protocol specification lists Ghostty, WezTerm, foot, and other implementations; support for individual enhancement flags and key events depends on version and configuration.
 :::
 
 Modern terminal extensions beyond the traditional VT specification: **Kitty keyboard protocol** (unambiguous key reporting), **Kitty graphics** and **Sixel** (inline images), **OSC 8 hyperlinks** (clickable links in terminal output), **text reflow** on resize, and **semantic prompt markers** (OSC 133). These features vary widely in adoption and represent the frontier of terminal capability.
@@ -249,7 +249,7 @@ Modern terminal extensions beyond the traditional VT specification: **Kitty keyb
 
 ### Graphics — Inline Images
 
-Sixel (1983, revived) and Kitty graphics protocol (2017) enable inline image display in terminals. Graphics support remains fragmented — some terminals intentionally avoid image protocols for security or complexity reasons. Sixel is older and more widely supported; Kitty graphics is more capable and purpose-built.
+Sixel (1983, revived) and Kitty graphics protocol (2017) enable inline image display in terminals. Graphics support remains fragmented — some terminals intentionally avoid image protocols for security or complexity reasons. Sixel predates Kitty graphics, and the two protocols define different image transport and placement behavior. Check the selected terminal version and measured method before relying on either.
 
 <p class="category-link"><a class="hover-link" href="/extensions">View Graphics features &rarr;</a></p>
 

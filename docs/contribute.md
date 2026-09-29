@@ -40,6 +40,8 @@ In an ordinary terminal, the CLI can run reviewed query checks. Checks that chan
 | Interaction       | Recorded input and its resulting events or visible behavior                 | Keyboard, mouse, focus and permissions need the relevant action; enabling a mode is insufficient. |
 | Consumed sequence | A later reply shows that the terminal continued processing input            | This alone cannot distinguish implementing a sequence from silently ignoring it.                  |
 
+A PNG generated from a Termless cell grid illustrates the headless state; it is not a capture of the terminal application. Claims about rendered pixels require a capture of the actual app and a stated visual assertion.
+
 For example, [Kitty's keyboard query](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#detection-of-support-for-this-protocol) reports protocol state; key-event encoding needs input tests. A [graphics query](https://sw.kovidgoyal.net/kitty/graphics-protocol/#querying-support-and-available-transmission-mediums) and an actual image capture answer different questions. The [xterm control-sequence reference](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) defines many of the replies used by these probes.
 
 **No reply is inconclusive.** A feature may be unsupported, blocked by a multiplexer or permission, queried incorrectly, or slower than the collection deadline. A policy refusal is also inconclusive, but means the check was deliberately not run in this environment. An explicit negative reply or failed behavioral assertion is stronger evidence. A collection error describes the test run; it is not a terminal failure.
@@ -57,7 +59,7 @@ Suite completeness and support are different. A complete suite has a recorded ou
 Use `submit RAW --draft FILE` to prepare a local draft and an adjacent content-addressed copy of the exact raw JSON. Review both files before choosing whether to post a GitHub issue; draft creation sends nothing and does not grant consent. A contribution should include:
 
 - The terminal and version, OS version, relevant configuration, font and window size.
-- The CLI version, exact command or small reproduction, and raw output.
+- The CLI version, exact command or small reproduction, raw output, run ID and measurement time. Bind screenshots to that same run, fixture and terminal version.
 - The behavior you expected, what happened, and whether it repeats in a fresh window.
 - For a visual claim, the original screenshot of the test window and the property it demonstrates. A cropped detail can help, but include the full original too.
 - For a timing or input issue, the actions and a short recording or event trace.

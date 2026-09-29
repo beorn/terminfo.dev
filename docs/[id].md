@@ -106,7 +106,7 @@ function platformIcons(b) {
   <thead>
     <tr>
       <th class="feature-col">Feature</th>
-      <th v-for="b in appBackends" :key="b.name" :data-tooltip="termTooltip(b)">
+      <th v-for="b in appBackends" :key="b.name" :title="termTooltip(b)">
         <a :href="'/terminals/' + b.slug">{{ b.label }}</a>
         <span class="th-platforms" v-html="platformIcons(b)"></span>
       </th>
@@ -114,7 +114,7 @@ function platformIcons(b) {
   </thead>
   <tbody>
     <tr v-for="f in features" :key="f.id">
-      <td class="feature-name" :data-tooltip="featureTooltip(f)">
+      <td class="feature-name" :title="featureTooltip(f)">
         <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
       </td>
       <td v-for="b in appBackends" :key="b.name">
@@ -138,14 +138,14 @@ function platformIcons(b) {
   <thead>
     <tr>
       <th class="feature-col">Feature</th>
-      <th v-for="b in headlessBackends" :key="b.name" :data-tooltip="termTooltip(b)">
+      <th v-for="b in headlessBackends" :key="b.name" :title="termTooltip(b)">
         <a :href="'/terminals/' + b.slug">{{ b.label }}</a>
       </th>
     </tr>
   </thead>
   <tbody>
     <tr v-for="f in features" :key="f.id">
-      <td class="feature-name" :data-tooltip="featureTooltip(f)">
+      <td class="feature-name" :title="featureTooltip(f)">
         <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
       </td>
       <td v-for="b in headlessBackends" :key="b.name">
@@ -271,12 +271,13 @@ function platformIcons(b) {
   color: var(--vp-c-text-1);
 }
 
-.matrix-wrapper {
+.category-page .matrix-wrapper {
   margin: 1em 0;
-  overflow: visible;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
-/* Override VitePress default table overflow-x:auto which clips tooltips */
+/* The outer wrapper owns horizontal scrolling; evidence dialogs teleport to body. */
 .matrix-wrapper table {
   display: table;
   overflow: visible;
@@ -376,41 +377,6 @@ function platformIcons(b) {
   background: rgba(139, 92, 246, 0.1);
   color: #8b5cf6;
   font-weight: 700;
-}
-
-/* Tooltips */
-[data-tooltip] {
-  position: relative;
-}
-
-[data-tooltip]:hover {
-  z-index: 50;
-}
-
-[data-tooltip]:hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--vp-c-bg-elv);
-  color: var(--vp-c-text-1);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 0.75em;
-  font-weight: 400;
-  line-height: 1.4;
-  white-space: pre-line;
-  text-align: left;
-  max-width: 80vw;
-  z-index: 100;
-  pointer-events: none;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-
-[data-tooltip=""]:hover::after {
-  display: none;
 }
 
 .no-data-inline {
