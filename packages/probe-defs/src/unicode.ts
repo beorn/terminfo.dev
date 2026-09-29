@@ -1,5 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { probe } from "./helpers.ts"
+import { parserStateResult, probe } from "./helpers.ts"
 
 function validSize(value: number, minimum: number): boolean {
   return Number.isSafeInteger(value) && value >= minimum
@@ -10,16 +10,33 @@ export const unicodeProbes: ProbeDefinition[] = [
     ...probe(
       "unicode.east-asian-ambiguous",
       (ctx) => {
-        if (!validSize(ctx.cols, 3)) {
+        const expected = "ASCII seed/control is preserved; ambiguous symbol advances one or two cells before X"
+        if (!validSize(ctx.cols, 4)) {
           return {
             pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "Need at least four columns for width controls",
+            },
           }
         }
+        ctx.feed("\x1b[1;1H\x1b[2KAQ")
+        const before = Array.from({ length: 2 }, (_, col) => ctx.getCell(0, col).char)
+        if (before.join("") !== "AQ") {
+          return parserStateResult(null, expected, { before }, "ASCII seed was not measured before ambiguous sample")
+        }
+        ctx.feed("\x1b[1;1H")
+        const cursor = ctx.getCursor()
+        const setup = [{ x: cursor.x, y: cursor.y }]
+        if (cursor.x !== 0 || cursor.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "Target CUP did not reach sample start")
+        }
         ctx.feed("●X")
-        const c1 = ctx.getCell(0, 1)
-        const c2 = ctx.getCell(0, 2)
-        return { pass: c1.char === "X" || c2.char === "X" }
+        const after = Array.from({ length: 4 }, (_, col) => ctx.getCell(0, col).char)
+        const pass = after[1] === "X" || after[2] === "X"
+        return parserStateResult(pass, expected, { before, setup, after })
       },
       async (ctx) => {
         if (!validSize(ctx.cols, 3)) {
@@ -34,15 +51,26 @@ export const unicodeProbes: ProbeDefinition[] = [
           }
         }
         const width = await ctx.measureRenderedWidth("●")
-        if (width === null) return { pass: false, note: "Cannot measure width" }
+        if (width === null) {
+          return {
+            pass: false,
+            note: "Cannot measure width",
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "behavior" },
+          }
+        }
+        const pass = width === 1 || width === 2
         return {
-          pass: width === 1 || width === 2,
+          pass,
           note: `width=${width} (ambiguous chars vary by terminal/locale)`,
           response: String(width),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
+          assertions: [{ kind: pass ? "positive" : "negative", expected: "width 1 or 2", observed: String(width) }],
         }
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -52,23 +80,36 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 3)) {
           return {
             pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "Need at least three measured columns",
+            },
           }
         }
         const sample = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}"
-        ctx.feed("\x1b[1;1H\x1b[2K" + sample)
+        ctx.feed("\x1b[1;1H\x1b[2KAB")
+        const before = Array.from({ length: 2 }, (_, col) => ctx.getCell(0, col).char)
+        if (before.join("") !== "AB") {
+          return parserStateResult(null, "ZWJ sample occupies two cells", { before }, "ASCII seed was not measured")
+        }
+        ctx.feed("\x1b[1;1H")
+        const setupCursor = ctx.getCursor()
+        const setup = [{ x: setupCursor.x, y: setupCursor.y }]
+        if (setupCursor.x !== 0 || setupCursor.y !== 0) {
+          return parserStateResult(
+            null,
+            "ZWJ sample occupies two cells",
+            { before, setup },
+            "Target CUP did not reach sample start",
+          )
+        }
+        ctx.feed(sample)
         const cursor = ctx.getCursor()
         const cell = ctx.getCell(0, 0)
-        const response = JSON.stringify({ cursor, cell })
         const pass = cursor.y === 0 && cursor.x === 2 && cell.wide && cell.char.length > 0
-        return {
-          pass,
-          response,
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "parser-state" },
-          assertions: [
-            { kind: pass ? "positive" : "negative", expected: "ZWJ sample occupies two cells", observed: response },
-          ],
-        }
+        return parserStateResult(pass, "ZWJ sample occupies two cells", { before, setup, cursor, cell })
       },
       async (ctx) => {
         if (!validSize(ctx.cols, 3)) {
@@ -112,11 +153,32 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 2) || !validSize(ctx.getScrollback().screenLines, 2)) {
           return {
             pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "Need at least two columns and two screen rows",
+            },
           }
         }
-        ctx.feed("A".repeat(ctx.cols - 1) + "\u4e2d")
-        return { pass: ctx.getCell(1, 0).char === "\u4e2d" }
+        const expected = "Wide CJK character wraps from final column to row 2 while ASCII control is preserved"
+        ctx.feed("\x1b[1;1H\x1b[2J")
+        ctx.feed("A".repeat(ctx.cols))
+        const before = Array.from({ length: ctx.cols }, (_, col) => ctx.getCell(0, col).char)
+        if (before.some((char) => char !== "A")) {
+          return parserStateResult(null, expected, { before }, "ASCII row seed was not measured")
+        }
+        ctx.feed(`\x1b[1;${ctx.cols}H`)
+        const cursor = ctx.getCursor()
+        const setup = [{ x: cursor.x, y: cursor.y }]
+        if (cursor.x !== ctx.cols - 1 || cursor.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "Target CUP did not reach final column")
+        }
+        ctx.feed("\u4e2d")
+        const after = [ctx.getCell(0, ctx.cols - 1).char, ctx.getCell(1, 0).char]
+        const control = ctx.getCell(0, 0).char
+        const pass = control === "A" && after[1] === "\u4e2d"
+        return parserStateResult(pass, expected, { before, setup, control, after })
       },
       async (ctx) => {
         const cols = ctx.cols
@@ -135,14 +197,32 @@ export const unicodeProbes: ProbeDefinition[] = [
         ctx.write("A".repeat(cols - 1))
         ctx.write("\u4e2d") // CJK char (2 cols wide)
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!pos) {
+          return {
+            pass: false,
+            note: "No cursor response",
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        }
+        const pass = pos.row === 2
         return {
-          pass: pos.row === 2,
-          note: pos.row === 2 ? undefined : `cursor at row ${pos.row}, expected 2 (wide char should wrap)`,
+          pass,
+          response: JSON.stringify(pos),
+          note: pass ? undefined : `cursor at row ${pos.row}, expected 2 (wide char should wrap)`,
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "cursor row 2 after wide wrap",
+              observed: JSON.stringify(pos),
+            },
+          ],
         }
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 
   {
@@ -152,13 +232,44 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 10)) {
           return {
             pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "Need at least ten measured columns",
+            },
           }
         }
         try {
-          ctx.feed("\x1b[3g\x1b[1;9H\x1bH\x1b[1;1H")
+          ctx.feed("\x1b[3g\x1b[1;9H\x1bH\x1b[1;1H\x1b[2K")
+          ctx.feed("AB")
+          const before = Array.from({ length: 2 }, (_, col) => ctx.getCell(0, col).char)
+          if (before.join("") !== "AB") {
+            return parserStateResult(
+              null,
+              "A at column 1; B after tab at configured column 9",
+              { before },
+              "ASCII seed was not measured",
+            )
+          }
+          ctx.feed("\x1b[1;1H")
+          const cursor = ctx.getCursor()
+          const setup = [{ x: cursor.x, y: cursor.y }]
+          if (cursor.x !== 0 || cursor.y !== 0) {
+            return parserStateResult(
+              null,
+              "A at column 1; B after tab at configured column 9",
+              { before, setup },
+              "Target CUP did not reach tab sample start",
+            )
+          }
           ctx.feed("A\tB")
-          return { pass: ctx.getCell(0, 8).char === "B" }
+          const after = Array.from({ length: 10 }, (_, col) => ctx.getCell(0, col).char)
+          return parserStateResult(after[8] === "B", "A at column 1; B after tab at configured column 9", {
+            before,
+            setup,
+            after,
+          })
         } finally {
           let restore = "\x1b[3g"
           for (let col = 9; col <= ctx.cols; col += 8) restore += `\x1b[1;${col}H\x1bH`
@@ -181,10 +292,26 @@ export const unicodeProbes: ProbeDefinition[] = [
           ctx.write("\x1b[3g\x1b[1;9H\x1bH\x1b[1;1H\x1b[2K")
           ctx.write("A\tB")
           const pos = await ctx.queryCursorPosition()
-          if (!pos) return { pass: false, note: "No cursor response" }
+          if (!pos) {
+            return {
+              pass: false,
+              note: "No cursor response",
+              observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            }
+          }
+          const pass = pos.col === 10
           return {
-            pass: pos.col === 10,
-            note: pos.col === 10 ? undefined : `cursor at col ${pos.col}, expected 10 (A + tab to 9 + B)`,
+            pass,
+            response: JSON.stringify(pos),
+            note: pass ? undefined : `cursor at col ${pos.col}, expected 10 (A + tab to 9 + B)`,
+            observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
+            assertions: [
+              {
+                kind: pass ? "positive" : "negative",
+                expected: "cursor column 10 after tab",
+                observed: JSON.stringify(pos),
+              },
+            ],
           }
         } finally {
           let restore = "\x1b[3g"
@@ -194,5 +321,7 @@ export const unicodeProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
   },
 ]

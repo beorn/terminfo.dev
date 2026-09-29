@@ -219,3 +219,49 @@ describe("device query observations", () => {
     }
   })
 })
+
+/**
+ * @failure Window operations accepted incomplete replies and later DA1 responsiveness as feature support.
+ * @level l0
+ * @consumer App and headless window-operation observations.
+ * @testonly none
+ */
+describe("window-operation qualification", () => {
+  test("XTWINOPS 14 binds a complete pixel-size frame in both collectors", async () => {
+    const probe = callback("device.xtwinops-14")
+    const frame = "\x1b[4;720;1280t"
+    const app = {
+      queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
+        match: pattern.exec(frame),
+        reason: "reply",
+        raw: frame,
+        rawBase64: Buffer.from(frame).toString("base64"),
+      }),
+    } as unknown as TermContext
+    for (const result of [probe.headless(headless(frame)), await probe.terminal(app)]) {
+      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
+      expect(result.response).toBe(frame)
+    }
+    expect(probe.headless(headless("\x1b[4;720;1280")).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "invalid-reply",
+    })
+  })
+
+  test("a different icon label and DA1 fallback cannot prove XTWINOPS", () => {
+    const icon = callback("device.xtwinops-20")
+    const headlessIcon = {
+      feed: () => undefined,
+      feedCapture: () => "\x1b]Lother-icon\x07",
+    } as unknown as TermlessContext
+    expect(icon.headless(headlessIcon).observation?.outcome).not.toBe("supported")
+
+    const pop = callback("device.xtwinops-23")
+    const headlessPop = {
+      feed: () => undefined,
+      getTitle: () => "new-title",
+    } as unknown as TermlessContext
+    expect(pop.headless(headlessPop).observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  })
+})

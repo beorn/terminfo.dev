@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TerminalQueryOutcome } from "./types.ts"
-import { responseProbe, probe } from "./helpers.ts"
+import { parserStateResult, probe } from "./helpers.ts"
 
 /** These patterns match complete answers to the specific query, not arbitrary consumed output. */
 interface DeviceReply {
@@ -76,6 +76,22 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
     "query",
   )
   return { ...definition, termWrites: "query", termlessObservationEvidence: "query" }
+}
+
+const iconLabelReply: DeviceReply = {
+  id: "device.xtwinops-20",
+  query: "\x1b[20t",
+  valid: /\x1b\]Ltest-icon(?:\x07|\x1b\\)/,
+  malformed: /\x1b\]L/,
+  expected: "CSI 20 t returns the exact icon label set by OSC 1",
+}
+
+const windowTitleReply: DeviceReply = {
+  id: "device.xtwinops-21",
+  query: "\x1b[21t",
+  valid: /\x1b\]ltest-title(?:\x07|\x1b\\)/,
+  malformed: /\x1b\]l/,
+  expected: "CSI 21 t returns the exact window title set by OSC 2",
 }
 
 export const deviceProbes: ProbeDefinition[] = [
@@ -232,247 +248,172 @@ export const deviceProbes: ProbeDefinition[] = [
   },
 
   // XTWINOPS 14 — report window size in pixels: CSI 14 t → CSI 4 ; H ; W t
-  {
-    ...responseProbe(
-      "device.xtwinops-14",
-      "\x1b[14t",
-      /\x1b\[4;(\d+);(\d+)t/,
-      (response) => ({
-        pass: /\x1b\[4;\d+;\d+t/.test(response),
-        note: /\x1b\[4;\d+;\d+t/.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
-        response,
-      }),
-      async (ctx) => {
-        const match = await ctx.query("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/, 1000)
-        if (!match) return { pass: false, note: "No XTWINOPS 14 response" }
-        return { pass: true, response: match[0], note: `${match[1]}x${match[2]} px` }
-      },
-    ),
-    termWrites: "query",
-  },
+  deviceQuery({
+    id: "device.xtwinops-14",
+    query: "\x1b[14t",
+    valid: /\x1b\[4;[1-9][0-9]*;[1-9][0-9]*t/,
+    malformed: /\x1b\[4;/,
+    expected: "CSI 14 t returns a complete CSI 4;positive-height;positive-width t frame",
+  }),
 
   // XTWINOPS 16 — report cell size in pixels: CSI 16 t → CSI 6 ; H ; W t
-  {
-    ...responseProbe(
-      "device.xtwinops-16",
-      "\x1b[16t",
-      /\x1b\[6;(\d+);(\d+)t/,
-      (response) => ({
-        pass: /\x1b\[6;\d+;\d+t/.test(response),
-        note: /\x1b\[6;\d+;\d+t/.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
-        response,
-      }),
-      async (ctx) => {
-        const match = await ctx.query("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/, 1000)
-        if (!match) return { pass: false, note: "No XTWINOPS 16 response" }
-        return { pass: true, response: match[0], note: `${match[1]}x${match[2]} px/cell` }
-      },
-    ),
-    termWrites: "query",
-  },
+  deviceQuery({
+    id: "device.xtwinops-16",
+    query: "\x1b[16t",
+    valid: /\x1b\[6;[1-9][0-9]*;[1-9][0-9]*t/,
+    malformed: /\x1b\[6;/,
+    expected: "CSI 16 t returns a complete CSI 6;positive-height;positive-width t frame",
+  }),
 
   // XTWINOPS 18 — report text area size in chars: CSI 18 t → CSI 8 ; rows ; cols t
-  {
-    ...responseProbe(
-      "device.xtwinops-18",
-      "\x1b[18t",
-      /\x1b\[8;(\d+);(\d+)t/,
-      (response) => ({
-        pass: /\x1b\[8;\d+;\d+t/.test(response),
-        note: /\x1b\[8;\d+;\d+t/.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
-        response,
-      }),
-      async (ctx) => {
-        const match = await ctx.query("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/, 1000)
-        if (!match) return { pass: false, note: "No XTWINOPS 18 response" }
-        return { pass: true, response: match[0], note: `${match[1]} rows x ${match[2]} cols` }
-      },
-    ),
-    termWrites: "query",
-  },
+  deviceQuery({
+    id: "device.xtwinops-18",
+    query: "\x1b[18t",
+    valid: /\x1b\[8;[1-9][0-9]*;[1-9][0-9]*t/,
+    malformed: /\x1b\[8;/,
+    expected: "CSI 18 t returns a complete CSI 8;positive-rows;positive-columns t frame",
+  }),
 
   // XTWINOPS 20 — report icon label: CSI 20 t → OSC L label ST
   // Set icon label via OSC 1, then query with CSI 20 t and verify response.
-  probe(
-    "device.xtwinops-20",
-    (ctx) => {
-      // Set icon label via OSC 1
-      ctx.feed("\x1b]1;test-icon\x07")
-      const response = ctx.feedCapture("\x1b[20t")
-      // Verify response matches OSC L ... ST pattern
-      const oscLMatch = /\x1b\]L([^\x07\x1b]*)(?:\x07|\x1b\\)/.exec(response)
-      if (oscLMatch) {
-        return {
-          pass: true,
-          response,
-          note: `icon label: ${oscLMatch[1]}`,
-        }
-      }
-      // Some backends return a response but in a different format
-      if (response.length > 0) return { pass: true, response, note: "Response received (non-standard format)" }
-      return { pass: false, note: "No response to icon label query" }
-    },
-    async (ctx) => {
-      // Set icon label first so we have something to query
-      ctx.write("\x1b]1;test-icon\x07")
-      const match = await ctx.queryWithSentinel("\x1b[20t", /\x1b\]L([^\x07\x1b]*)(?:\x07|\x1b\\)/, 1000)
-      if (match) return { pass: true, response: match[0], note: `icon label: ${match[1]}` }
-      return { pass: false, note: "No XTWINOPS 20 response (terminal may refuse for security)" }
-    },
-  ),
+  {
+    ...probe(
+      "device.xtwinops-20",
+      (ctx) => {
+        ctx.feed("\x1b]1;test-icon\x07")
+        const raw = ctx.feedCapture(iconLabelReply.query)
+        return deviceReplyResult(iconLabelReply, raw, iconLabelReply.valid.exec(raw)?.[0] ?? null, "sentinel")
+      },
+      async (ctx) => {
+        ctx.write("\x1b]1;test-icon\x07")
+        const reply = await ctx.queryWithSentinelOutcome(iconLabelReply.query, iconLabelReply.valid)
+        return deviceReplyResult(
+          iconLabelReply,
+          reply.raw,
+          reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
+          reply.reason,
+        )
+      },
+    ),
+    termlessObservationEvidence: "query",
+  },
 
   // XTWINOPS 21 — report window title: CSI 21 t → OSC l title ST
   // Set a known title via OSC 2, then query to verify it's reported back.
-  probe(
-    "device.xtwinops-21",
-    (ctx) => {
-      // Set a known title via OSC 2
-      ctx.feed("\x1b]2;test-title\x07")
-      const response = ctx.feedCapture("\x1b[21t")
-      // Verify response matches OSC l ... ST pattern
-      const oscMatch = /\x1b\]l([^\x07\x1b]*)(?:\x07|\x1b\\)/.exec(response)
-      if (oscMatch) {
-        return {
-          pass: true,
-          response,
-          note: `title: ${oscMatch[1]}`,
-        }
-      }
-      // Some backends return a response but in a different format
-      if (response.length > 0) return { pass: true, response, note: "Response received (non-standard format)" }
-      return { pass: false, note: "No response to title query" }
-    },
-    async (ctx) => {
-      // Set a known title so we have something to query
-      ctx.write("\x1b]2;test-title\x07")
-      const match = await ctx.queryWithSentinel("\x1b[21t", /\x1b\]l([^\x07\x1b]*)(?:\x07|\x1b\\)/, 1000)
-      if (match) return { pass: true, response: match[0], note: `title: ${match[1]}` }
-      return { pass: false, note: "No XTWINOPS 21 response (terminal may refuse for security)" }
-    },
-  ),
+  {
+    ...probe(
+      "device.xtwinops-21",
+      (ctx) => {
+        ctx.feed("\x1b]2;test-title\x07")
+        const raw = ctx.feedCapture(windowTitleReply.query)
+        return deviceReplyResult(windowTitleReply, raw, windowTitleReply.valid.exec(raw)?.[0] ?? null, "sentinel")
+      },
+      async (ctx) => {
+        ctx.write("\x1b]2;test-title\x07")
+        const reply = await ctx.queryWithSentinelOutcome(windowTitleReply.query, windowTitleReply.valid)
+        return deviceReplyResult(
+          windowTitleReply,
+          reply.raw,
+          reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
+          reply.reason,
+        )
+      },
+    ),
+    termlessObservationEvidence: "query",
+  },
 
   // XTWINOPS 22 — push title/icon stack: CSI 22 ; 0 t
   // Verify by setting title A, pushing, changing to B, and checking B is active.
-  probe(
-    "device.xtwinops-22",
-    (ctx) => {
-      // Set a known title, push it, then change to a different title
-      ctx.feed("\x1b]2;pushed-title\x07")
-      ctx.feed("\x1b[22;0t") // push
-      ctx.feed("\x1b]2;new-title\x07") // overwrite
-      const title = ctx.getTitle()
-      // If push worked, the current title should be "new-title" (not "pushed-title")
-      // and the pushed title is saved on the stack for later pop.
-      // We verify the push didn't break anything and the new title took effect.
-      if (title === "new-title") {
-        return { pass: true, note: "Push succeeded; title changed after push" }
-      }
-      // Some backends may not support getTitle but still handle the sequence
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: /\x1b\[\?[0-9;]+c/.test(probeResponse),
-        note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
-          ? `Push consumed; title is "${title}"`
-          : "Terminal unresponsive after push",
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b]2;pushed-title\x07")
-      ctx.write("\x1b[22;0t") // push
-      ctx.write("\x1b]2;new-title\x07") // overwrite
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No DSR response after push" }
-      return { pass: true, note: "Push sequence accepted; terminal responsive" }
-    },
-  ),
+  {
+    ...probe(
+      "device.xtwinops-22",
+      (ctx) => {
+        ctx.feed("\x1b]2;pushed-title\x07")
+        const original = ctx.getTitle()
+        ctx.feed("\x1b[22;0t") // push
+        ctx.feed("\x1b]2;new-title\x07") // overwrite
+        const changed = ctx.getTitle()
+        ctx.feed("\x1b[23;0t")
+        const restored = ctx.getTitle()
+        return parserStateResult(
+          original !== "pushed-title" || changed !== "new-title" ? null : restored === "pushed-title",
+          "XTWINOPS 22 preserves the old title on its stack after a different title is set",
+          { original, changed, restored },
+          original !== "pushed-title" || changed !== "new-title" ? "Title setup was not observable" : undefined,
+        )
+      },
+      async (ctx) => {
+        ctx.write("\x1b]2;pushed-title\x07")
+        ctx.write("\x1b[22;0t") // push
+        ctx.write("\x1b]2;new-title\x07") // overwrite
+        const pos = await ctx.queryCursorPosition()
+        return {
+          pass: false,
+          note: pos
+            ? "Cursor answered after title push; title stack was not measured"
+            : "No DSR response after title push",
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "consumed" },
+        }
+      },
+    ),
+    termlessObservationEvidence: "parser-state",
+  },
 
   // XTWINOPS 23 — pop title/icon stack: CSI 23 ; 0 t (no response, partial)
-  probe(
-    "device.xtwinops-23",
-    (ctx) => {
-      // Push first so the pop has something to undo, then verify responsiveness.
-      ctx.feedCapture("\x1b[22;0t")
-      ctx.feedCapture("\x1b[23;0t")
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: /\x1b\[\?[0-9;]+c/.test(probeResponse),
-        note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
-          ? "Sequence consumed; terminal responsive"
-          : "Terminal unresponsive after pop",
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[22;0t") // push first so we have something to pop
-      ctx.write("\x1b[23;0t")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No DSR response after pop" }
-      return { pass: true, note: "Sequence consumed; terminal responsive" }
-    },
-  ),
+  {
+    ...probe(
+      "device.xtwinops-23",
+      (ctx) => {
+        ctx.feed("\x1b]2;pushed-title\x07")
+        const original = ctx.getTitle()
+        ctx.feed("\x1b[22;0t")
+        ctx.feed("\x1b]2;new-title\x07")
+        const changed = ctx.getTitle()
+        ctx.feed("\x1b[23;0t")
+        const restored = ctx.getTitle()
+        return parserStateResult(
+          original !== "pushed-title" || changed !== "new-title" ? null : restored === "pushed-title",
+          "XTWINOPS 23 restores the title saved before a different title was set",
+          { original, changed, restored },
+          original !== "pushed-title" || changed !== "new-title" ? "Title setup was not observable" : undefined,
+        )
+      },
+      async (ctx) => {
+        ctx.write("\x1b[22;0t") // push first so we have something to pop
+        ctx.write("\x1b[23;0t")
+        const pos = await ctx.queryCursorPosition()
+        return {
+          pass: false,
+          note: pos
+            ? "Cursor answered after title pop; restored title was not measured"
+            : "No DSR response after title pop",
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "consumed" },
+        }
+      },
+    ),
+    termlessObservationEvidence: "parser-state",
+  },
 
   // XTREPORTCOLORS — report color/graphics capabilities: CSI # R → CSI Pm # Q
   // Added in xterm patch 400; updated in patches 401/402 (2025).
-  // xterm-only as of 2026 — partial probe verifies the sequence doesn't leak.
-  {
-    ...probe(
-      "device.xtreportcolors",
-      (ctx) => {
-        // If a backend implements XTREPORTCOLORS, the response matches CSI Pm # Q.
-        // Otherwise verify the query is consumed (not printed literally).
-        const response = ctx.feedCapture("\x1b[#R")
-        if (/\x1b\[[0-9;]*#Q/.test(response)) {
-          return { pass: true, response, note: "XTREPORTCOLORS response received" }
-        }
-        const probeResponse = ctx.feedCapture("\x1b[c")
-        return {
-          pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("#R"),
-          note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
-            ? "Sequence consumed; terminal responsive (no XTREPORTCOLORS response)"
-            : "Terminal unresponsive after CSI # R",
-        }
-      },
-      async (ctx) => {
-        const match = await ctx.queryWithSentinel("\x1b[#R", /\x1b\[([0-9;]*)#Q/, 1000)
-        if (match) return { pass: true, response: match[0], note: `Pm=${match[1]}` }
-        // Verify the sequence didn't break the terminal — DSR should still respond.
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No response after CSI # R" }
-        return { pass: false, note: "Sequence consumed but no XTREPORTCOLORS response" }
-      },
-    ),
-    termWrites: "query",
-  },
+  deviceQuery({
+    id: "device.xtreportcolors",
+    query: "\x1b[#R",
+    valid: /\x1b\[[0-9;]*#Q/,
+    malformed: /\x1b\[[0-9;]*#|#Q/,
+    expected: "CSI # R returns a complete CSI Pm # Q frame",
+  }),
 
   // XTGETXRES — query xterm resource value: DCS + Q Pt ST → DCS response
   // Added in xterm; documented in patches 401/402 (2025).
-  // xterm-only as of 2026 — partial probe verifies the sequence doesn't leak.
-  {
-    ...probe(
-      "device.xtgetxres",
-      (ctx) => {
-        // Hex-encoded "xterm" = 7874657271. Send DCS + Q 7874657271 ST.
-        const query = "\x1bP+Q7874657271\x1b\\"
-        const response = ctx.feedCapture(query)
-        if (/\x1bP[01]\+R/.test(response)) {
-          return { pass: true, response, note: "XTGETXRES response received" }
-        }
-        const probeResponse = ctx.feedCapture("\x1b[c")
-        return {
-          pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("+Q"),
-          note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
-            ? "Sequence consumed; terminal responsive (no XTGETXRES response)"
-            : "Terminal unresponsive after DCS + Q",
-        }
-      },
-      async (ctx) => {
-        const match = await ctx.queryWithSentinel("\x1bP+Q7874657271\x1b\\", /\x1bP([01])\+R/)
-        if (match) return { pass: true, response: match[0], note: `XTGETXRES status=${match[1]}` }
-        // Verify the sequence didn't break the terminal — DSR should still respond.
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No response after XTGETXRES" }
-        return { pass: false, note: "Sequence consumed but no XTGETXRES response" }
-      },
-    ),
-    termWrites: "query",
-  },
+  deviceQuery({
+    id: "device.xtgetxres",
+    // "termName" is encoded as two hex digits per character, per XTGETXRES.
+    query: "\x1bP+Q7465726d4e616d65\x1b\\",
+    valid: /\x1bP1\+R7465726d4e616d65=[0-9A-Fa-f]+\x1b\\/i,
+    refusal: /\x1bP0\+R7465726d4e616d65\x1b\\/i,
+    malformed: /\x1bP[01]\+R/,
+    expected: "XTGETXRES returns a complete status-1 termName resource value",
+    refusalExpected: "XTGETXRES explicitly refuses the termName resource",
+  }),
 ]

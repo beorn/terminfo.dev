@@ -75,6 +75,12 @@ test("editing fixtures decline incomplete extents before feature bytes or CPR", 
     const valid = await definition.term(app(minRows, minCols, events))
     expect(events.length, id).toBeGreaterThan(1)
     expect(events.at(-1), id).toBe("CPR")
-    expect(valid.observation, id).toBeUndefined()
+    expect(valid.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      evidence: "query",
+      reason: "insufficient-evidence",
+    })
+    expect(valid.pass, id).toBe(false)
+    expect(valid.response, id).toBe("3;6")
   }
 })

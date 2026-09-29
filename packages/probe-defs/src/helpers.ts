@@ -19,6 +19,46 @@ export function parserStateResult(pass: boolean | null, expected: string, state:
   }
 }
 
+/** Selective erase must remove unprotected cells and retain a protected control. */
+export function selectiveEraseResult(ctx: TermlessContext, sequence: string, rectangular: boolean): ProbeResult {
+  const expected = "DECSCA-protected P survives while selective erase clears ABCD"
+  if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6) {
+    return parserStateResult(null, expected, { cols: ctx.cols }, "Need six measured columns")
+  }
+  try {
+    ctx.feed('\x1b[1;1H\x1b[1"qP\x1b[0"qABCDZ')
+    const before = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col).char)
+    if (before.join("") !== "PABCDZ") {
+      return parserStateResult(null, expected, { before }, "Selective erase seed was not measured")
+    }
+    ctx.feed(sequence)
+    const after = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col).char)
+    const controlsValid = after[0] === "P" && (!rectangular || after[5] === "Z")
+    return parserStateResult(
+      controlsValid ? after.slice(1, rectangular ? 5 : 6).every(isBlank) : null,
+      expected,
+      { before, after },
+      controlsValid ? undefined : "Protection or outside-rectangle control failed; cannot attribute selective erase",
+    )
+  } finally {
+    ctx.feed('\x1b[0"q')
+  }
+}
+
+/** CPR cannot establish changed cells, styling, or scrollback contents. */
+export function unmeasuredCellResult(position: { row: number; col: number } | null, feature: string): ProbeResult {
+  return {
+    pass: false,
+    ...(position && { response: `${position.row};${position.col}` }),
+    note: position ? `Cursor response does not measure ${feature}` : `No cursor response after ${feature}`,
+    observation: {
+      outcome: "inconclusive",
+      reason: position ? "insufficient-evidence" : "no-response",
+      evidence: "query",
+    },
+  }
+}
+
 /**
  * SGR probe — feed SGR sequence + "X", verify cell attribute (termless) or cursor position (term).
  *

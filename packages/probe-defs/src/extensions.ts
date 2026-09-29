@@ -1,9 +1,67 @@
 import { randomUUID } from "node:crypto"
 import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
-import { probe } from "./helpers.ts"
+import { parserStateResult, probe, unmeasuredCellResult } from "./helpers.ts"
 
 function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }
+}
+
+/** Bind a complete reply from this query; a prefix or unrelated output is not a result. */
+function oscReplyResult(raw: string, frame: string | null, expected: string, prefix: RegExp): ProbeResult {
+  if (frame) {
+    return {
+      pass: true,
+      response: raw,
+      observation: { outcome: "supported", evidence: "query" },
+      assertions: [{ kind: "positive", expected, observed: frame }],
+    }
+  }
+  return {
+    pass: false,
+    response: raw,
+    observation: {
+      outcome: "inconclusive",
+      reason: prefix.test(raw) ? "invalid-reply" : "no-response",
+      evidence: "query",
+    },
+  }
+}
+
+function unverifiedEffect(note: string, response?: string): ProbeResult {
+  return {
+    pass: false,
+    ...(response !== undefined && { response }),
+    note,
+    observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "consumed", note },
+  }
+}
+
+function sixelDa1Result(raw: string, frame: string | null): ProbeResult {
+  const match = frame ? /\x1b\[\?([0-9]+(?:;[0-9]+)*)c/.exec(frame) : null
+  if (!match) {
+    return {
+      pass: false,
+      response: raw,
+      observation: {
+        outcome: "inconclusive",
+        reason: raw.includes("\x1b[?") ? "invalid-reply" : "no-response",
+        evidence: "query",
+      },
+    }
+  }
+  const advertised = (match[1]?.split(";") ?? []).includes("4")
+  return {
+    pass: advertised,
+    response: raw,
+    observation: { outcome: advertised ? "supported" : "unsupported", evidence: "query" },
+    assertions: [
+      {
+        kind: advertised ? "positive" : "negative",
+        expected: "Complete DA1 advertises Sixel attribute 4",
+        observed: match[0],
+      },
+    ],
+  }
 }
 
 /** A read of current Sixel geometry; protocol failure and silence never establish a negative. */
@@ -87,44 +145,116 @@ function sixelGeometryResult(raw: string, frame: string | null, missingReason: "
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
 function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
   const querySeq = `\x1b]${oscCode};?\x07`
-  const termlessPattern = new RegExp(`\\x1b\\]${oscCode};`)
-  const termPattern = new RegExp(`\\x1b\\]${oscCode};([^\\x07\\x1b]+)[\\x07\\x1b]`)
-  return queryOnly(
-    probe(
-      id,
-      (ctx) => {
-        const response = ctx.feedCapture(querySeq)
-        const pass = termlessPattern.test(response)
-        return { pass, note: pass ? undefined : `No OSC ${oscCode} response` }
-      },
-      async (ctx) => {
-        const match = await ctx.queryWithSentinel(querySeq, termPattern)
-        if (!match) return { pass: false, note: `No OSC ${oscCode} response` }
-        return { pass: true, response: match[1] }
-      },
+  const pattern = new RegExp(`\\x1b\\]${oscCode};rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4}(?:\\x07|\\x1b\\\\)`, "i")
+  const prefix = new RegExp(`\\x1b\\]${oscCode};`)
+  return {
+    ...queryOnly(
+      probe(
+        id,
+        (ctx) => {
+          const raw = ctx.feedCapture(querySeq)
+          return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, `Complete OSC ${oscCode} color reply`, prefix)
+        },
+        async (ctx) => {
+          const reply = await ctx.queryWithSentinelOutcome(querySeq, pattern)
+          return oscReplyResult(
+            reply.raw,
+            reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
+            `Complete OSC ${oscCode} color reply`,
+            prefix,
+          )
+        },
+        "query",
+      ),
     ),
-  )
-}
-
-function oscQueryProbe(querySeq: string, responsePattern: RegExp, noResponseNote: string): ProbeDefinition["termless"] {
-  return (ctx) => {
-    const response = ctx.feedCapture(querySeq)
-    const pass = responsePattern.test(response)
-    return { pass, note: pass ? undefined : noResponseNote, response }
+    termlessObservationEvidence: "query",
   }
 }
 
-function pointerColorResetProbe(
-  setCode: 13 | 14,
-  resetCode: 113 | 114,
-  defaultPattern: RegExp,
-): ProbeDefinition["termless"] {
+function oscSimpleQueryProbe(
+  id: string,
+  query: string,
+  pattern: RegExp,
+  prefix: RegExp,
+  expected: string,
+): ProbeDefinition {
+  return {
+    ...queryOnly(
+      probe(
+        id,
+        (ctx) => {
+          const raw = ctx.feedCapture(query)
+          return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
+        },
+        async (ctx) => {
+          const reply = await ctx.queryWithSentinelOutcome(query, pattern)
+          return oscReplyResult(
+            reply.raw,
+            reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
+            expected,
+            prefix,
+          )
+        },
+        "query",
+      ),
+    ),
+    termlessObservationEvidence: "query",
+  }
+}
+
+function colorResetProbe(setCode: number, resetCode: number, index?: number): ProbeDefinition["termless"] {
+  const indexPart = index === undefined ? "" : `${index};`
+  const query = `\x1b]${setCode};${indexPart}?\x07`
+  const replyPattern = new RegExp(
+    `\\x1b\\]${setCode};${indexPart}(rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
+    "i",
+  )
   return (ctx) => {
-    ctx.feed(`\x1b]${setCode};rgb:12/34/56\x07`)
-    ctx.feed(`\x1b]${resetCode}\x07`)
-    const response = ctx.feedCapture(`\x1b]${setCode};?\x07`)
-    const pass = defaultPattern.test(response)
-    return { pass, note: pass ? undefined : `OSC ${setCode} query did not report reset default`, response }
+    const originalRaw = ctx.feedCapture(query)
+    const original = replyPattern.exec(originalRaw)?.[1]
+    if (!original) {
+      return oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`, new RegExp(`\\x1b\\]${setCode};`))
+    }
+    const requested = probeForeground(original)
+    let mustReset = false
+    try {
+      ctx.feed(`\x1b]${setCode};${indexPart}${requested}\x07`)
+      mustReset = true
+      const changedRaw = ctx.feedCapture(query)
+      const changed = replyPattern.exec(changedRaw)?.[1]
+      ctx.feed(`\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`)
+      mustReset = false
+      const restoredRaw = ctx.feedCapture(query)
+      const restored = replyPattern.exec(restoredRaw)?.[1]
+      const response = JSON.stringify({ originalRaw, changedRaw, restoredRaw })
+      if (!changed || !restored || !sameRgb(changed, requested)) {
+        return {
+          pass: false,
+          response,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: "Color mutation or readback control was not established",
+          },
+        }
+      }
+      const pass = sameRgb(restored, original)
+      return {
+        pass,
+        response,
+        observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
+        assertions: [
+          {
+            kind: pass ? "positive" : "negative",
+            expected: `OSC ${resetCode} restores the prior OSC ${setCode} color after a verified change`,
+            observed: response,
+          },
+        ],
+      }
+    } finally {
+      if (mustReset) ctx.feed(`\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`)
+    }
   }
 }
 
@@ -146,6 +276,10 @@ function sameRgb(left: string, right: string): boolean {
   const actual = channels(left)
   const expected = channels(right)
   return actual.every((channel, index) => channel === expected[index])
+}
+
+function sameRgbCells(left: { r: number; g: number; b: number }, right: { r: number; g: number; b: number }): boolean {
+  return left.r === right.r && left.g === right.g && left.b === right.b
 }
 
 function probeForeground(before: string): string {
@@ -350,20 +484,17 @@ function osc720ScrollProbe(): ProbeDefinition["termless"] {
     for (let i = 0; i < 30; i++) ctx.feed(`scroll-${i}\r\n`)
     const before = ctx.getScrollback()
     if (before.totalLines <= before.screenLines || before.viewportOffset <= 0) {
-      return {
-        pass: false,
-        note: `No scrollback to scroll (viewport=${before.viewportOffset}, total=${before.totalLines}, screen=${before.screenLines})`,
-      }
+      return parserStateResult(
+        null,
+        "OSC 720 moves the scrollback viewport up",
+        { before },
+        "No scrollback viewport available",
+      )
     }
     ctx.feed("\x1b]720\x07")
     const after = ctx.getScrollback()
     const pass = after.viewportOffset < before.viewportOffset
-    return {
-      pass,
-      note: pass
-        ? `viewport ${before.viewportOffset}→${after.viewportOffset}`
-        : `viewport did not move up (${before.viewportOffset}→${after.viewportOffset})`,
-    }
+    return parserStateResult(pass, "OSC 720 moves the scrollback viewport up", { before, after })
   }
 }
 
@@ -811,23 +942,59 @@ async function liveClipboardProbe(ctx: TermContext, kind: "write" | "read" | "ro
 
 export const extensionsProbes: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
-  probe(
-    "extensions.truecolor",
-    (ctx) => ({ pass: ctx.capabilities.truecolor === true }),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[38;2;255;0;128mX\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 2,
-        note:
+  {
+    ...probe(
+      "extensions.truecolor",
+      (ctx) => {
+        // Use the same independent controls and two RGB samples as sgr.fg.truecolor.
+        const first = { r: 255, g: 128, b: 0 }
+        const second = { r: 17, g: 97, b: 201 }
+        ctx.feed("C\x1b[31mA\x1b[34mB\x1b[38;2;255;128;0mX\x1b[38;2;17;97;201mY")
+        const baseline = ctx.getCell(0, 0)
+        const controlFirst = ctx.getCell(0, 1)
+        const controlSecond = ctx.getCell(0, 2)
+        const targetFirst = ctx.getCell(0, 3)
+        const targetSecond = ctx.getCell(0, 4)
+        const state = { baseline, controlFirst, controlSecond, targetFirst, targetSecond }
+        const expected = "Two distinct direct-RGB foreground samples match their requested values"
+        const same = (a: typeof first | null, b: typeof first) =>
+          a !== null && a !== undefined && a.r === b.r && a.g === b.g && a.b === b.b
+        if (
+          baseline.char !== "C" ||
+          controlFirst.char !== "A" ||
+          controlSecond.char !== "B" ||
+          targetFirst.char !== "X" ||
+          targetSecond.char !== "Y" ||
+          !targetFirst.fg ||
+          !targetSecond.fg
+        ) {
+          return parserStateResult(null, expected, state, "RGB targets or controls were not exposed")
+        }
+        if (!controlSecond.fg || same(controlSecond.fg, first)) {
+          return parserStateResult(null, expected, state, "The preceding color can mimic an ignored RGB request")
+        }
+        if (same(targetFirst.fg, first) && same(targetSecond.fg, second)) {
+          return parserStateResult(true, expected, state)
+        }
+        if (controlFirst.fg && !sameRgbCells(controlFirst.fg, controlSecond.fg)) {
+          return parserStateResult(false, expected, state)
+        }
+        return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b[38;2;255;0;128mX\x1b[0m")
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return unverifiedEffect("No cursor response; RGB color was not measured")
+        return unverifiedEffect(
           pos.col === 2
-            ? undefined
-            : `cursor at col ${pos.col}, expected 2 (truecolor sequence may have been printed literally)`,
-      }
-    },
-  ),
+            ? "SGR was consumed; RGB cell color was not measured"
+            : `Cursor at col ${pos.col}; RGB color was not measured`,
+        )
+      },
+    ),
+    termlessObservationEvidence: "parser-state",
+  },
 
   // Kitty keyboard protocol
   kittyKeyboardFlagProbe("extensions.kitty-keyboard", 1, 1),
@@ -1064,19 +1231,27 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 2 — window title
-  probe(
-    "extensions.osc2-title",
-    (ctx) => {
-      ctx.feed("\x1b]2;Test Title\x07")
-      return { pass: ctx.getTitle().includes("Test Title") }
-    },
-    async (ctx) => {
-      ctx.write("\x1b]2;terminfo-test\x07")
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b]2;\x07") // reset title
-      return { pass: pos !== null }
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc2-title",
+      (ctx) => {
+        ctx.feed("\x1b]2;Test Title\x07")
+        const title = ctx.getTitle()
+        return parserStateResult(title === "Test Title", "OSC 2 sets the exact requested window title", { title })
+      },
+      async (ctx) => {
+        ctx.write("\x1b]2;terminfo-test\x07")
+        const pos = await ctx.queryCursorPosition()
+        ctx.write("\x1b]2;\x07") // reset title
+        return unverifiedEffect(
+          pos
+            ? "Cursor answered; changed window title was not read back"
+            : "No cursor response; window title was not read back",
+        )
+      },
+    ),
+    termlessObservationEvidence: "parser-state",
+  },
 
   // OSC 0 — icon name and title
   {
@@ -1446,45 +1621,21 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 1337 ReportCellSize — query cell dimensions in pixels
-  queryOnly(
-    probe(
-      "extensions.osc1337-cellsize",
-      (ctx) => {
-        const response = ctx.feedCapture("\x1b]1337;ReportCellSize\x07")
-        const match = response.match(/\x1b\]1337;ReportCellSize=(\d+(?:\.\d+)?);(\d+(?:\.\d+)?)/)
-        if (!match) return { pass: false, note: "No ReportCellSize response" }
-        return { pass: true, note: `${match[1]}x${match[2]} pixels` }
-      },
-      async (ctx) => {
-        const match = await ctx.queryWithSentinel(
-          "\x1b]1337;ReportCellSize\x07",
-          /\x1b\]1337;ReportCellSize=(\d+(?:\.\d+)?);(\d+(?:\.\d+)?)[\x07\x1b]/,
-        )
-        if (!match) return { pass: false, note: "No ReportCellSize response" }
-        return { pass: true, note: `${match[1]}x${match[2]} pixels` }
-      },
-    ),
+  oscSimpleQueryProbe(
+    "extensions.osc1337-cellsize",
+    "\x1b]1337;ReportCellSize\x07",
+    /\x1b\]1337;ReportCellSize=[1-9][0-9]*(?:\.[0-9]+)?;[1-9][0-9]*(?:\.[0-9]+)?(?:\x07|\x1b\\)/,
+    /\x1b\]1337;ReportCellSize=/,
+    "Complete OSC 1337 ReportCellSize reply with two positive dimensions",
   ),
 
   // OSC 1337 RequestCapabilities — query terminal capabilities
-  queryOnly(
-    probe(
-      "extensions.osc1337-capabilities",
-      (ctx) => {
-        const response = ctx.feedCapture("\x1b]1337;RequestCapabilities\x07")
-        const match = response.match(/\x1b\]1337;Capabilities=([^\x07\x1b]*)/)
-        if (!match) return { pass: false, note: "No Capabilities response" }
-        return { pass: true, response: match[1] }
-      },
-      async (ctx) => {
-        const match = await ctx.queryWithSentinel(
-          "\x1b]1337;RequestCapabilities\x07",
-          /\x1b\]1337;Capabilities=([^\x07\x1b]*)[\x07\x1b]/,
-        )
-        if (!match) return { pass: false, note: "No Capabilities response" }
-        return { pass: true, response: match[1] }
-      },
-    ),
+  oscSimpleQueryProbe(
+    "extensions.osc1337-capabilities",
+    "\x1b]1337;RequestCapabilities\x07",
+    /\x1b\]1337;Capabilities=[^\x07\x1b]*(?:\x07|\x1b\\)/,
+    /\x1b\]1337;Capabilities=/,
+    "Complete OSC 1337 Capabilities reply",
   ),
 
   // OSC 9;4 — progress bar (ConEmu protocol, adopted by Ghostty, iTerm2, Windows Terminal, etc.)
@@ -1497,12 +1648,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b]9;4;1;50\x07") // set progress to 50%
       const pos = await ctx.queryCursorPosition()
       ctx.write("\x1b]9;4;0\x07") // clear progress
-      if (!pos) return { pass: false, note: "No cursor response" }
-      // If terminal consumed the OSC, cursor should still be at col 1
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
+      return unmeasuredCellResult(pos, "OSC 9;4 progress display")
     },
   ),
 
@@ -1637,179 +1783,120 @@ export const extensionsProbes: ProbeDefinition[] = [
     termlessObservationEvidence: "parser-state",
   },
 
-  // OSC 4 — color palette query (needs index parameter, can't use generic helper)
-  queryOnly(
-    probe(
-      "extensions.osc4-palette",
-      (ctx) => {
-        const response = ctx.feedCapture("\x1b]4;0;?\x07")
-        const pass = /\x1b\]4;0;/.test(response)
-        return { pass, note: pass ? undefined : "No OSC 4 response" }
-      },
-      async (ctx) => {
-        const match = await ctx.queryWithSentinel("\x1b]4;0;?\x07", /\x1b\]4;0;([^\x07\x1b]+)[\x07\x1b]/)
-        if (!match) return { pass: false, note: "No OSC 4 response" }
-        return { pass: true, response: match[1] }
-      },
-    ),
+  // OSC 4 — color palette query for index 0.
+  oscSimpleQueryProbe(
+    "extensions.osc4-palette",
+    "\x1b]4;0;?\x07",
+    /\x1b\]4;0;rgb:[0-9a-f]{1,4}\/[0-9a-f]{1,4}\/[0-9a-f]{1,4}(?:\x07|\x1b\\)/i,
+    /\x1b\]4;0;/,
+    "Complete OSC 4 index-0 color reply",
   ),
 
-  // OSC 5 — special color query (needs index parameter, can't use generic helper)
-  queryOnly(
-    probe(
-      "extensions.osc5-special-color",
-      (ctx) => {
-        const response = ctx.feedCapture("\x1b]5;0;?\x07")
-        const pass = /\x1b\]5;0;/.test(response)
-        return { pass, note: pass ? undefined : "No OSC 5 response" }
-      },
-      async (ctx) => {
-        const match = await ctx.queryWithSentinel("\x1b]5;0;?\x07", /\x1b\]5;0;([^\x07\x1b]+)[\x07\x1b]/)
-        if (!match) return { pass: false, note: "No OSC 5 response" }
-        return { pass: true, response: match[1] }
-      },
-    ),
+  // OSC 5 — special color query for index 0.
+  oscSimpleQueryProbe(
+    "extensions.osc5-special-color",
+    "\x1b]5;0;?\x07",
+    /\x1b\]5;0;rgb:[0-9a-f]{1,4}\/[0-9a-f]{1,4}\/[0-9a-f]{1,4}(?:\x07|\x1b\\)/i,
+    /\x1b\]5;0;/,
+    "Complete OSC 5 index-0 color reply",
   ),
 
   // OSC 12 — cursor color query
   oscColorQueryProbe("extensions.osc12-cursor-color", 12),
 
   // OSC 104 — reset color palette
-  probe(
-    "extensions.osc104-reset-palette",
-    (ctx) => {
-      // Set palette color 0 to red via OSC 4, then reset via OSC 104
-      ctx.feed("\x1b]4;0;rgb:ff/00/00\x07")
-      ctx.feed("\x1b]104;0\x07")
-      // Verify reset was consumed by querying color 0 back
-      const response = ctx.feedCapture("\x1b]4;0;?\x07")
-      // If we get any OSC 4 response, the terminal supports the protocol
-      const pass = /\x1b\]4;/.test(response)
-      return { pass, note: pass ? undefined : "No OSC 4 query response (cannot verify reset)" }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]104\x07") // reset all palette colors
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 104" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
-      }
-    },
-  ),
+  probe("extensions.osc104-reset-palette", colorResetProbe(4, 104, 0), async (ctx) => {
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write("\x1b]104\x07") // reset all palette colors
+    const pos = await ctx.queryCursorPosition()
+    return unverifiedEffect(
+      pos ? "Cursor answered; palette restoration was not measured" : "No cursor response after OSC 104",
+    )
+  }),
 
   // OSC 110 — reset foreground color
-  probe(
-    "extensions.osc110-reset-fg",
-    (ctx) => {
-      ctx.feed("\x1b]110\x07")
-      // Verify by querying foreground color — if OSC 10 responds, the terminal supports color management
-      const response = ctx.feedCapture("\x1b]10;?\x07")
-      const pass = /\x1b\]10;/.test(response)
-      return { pass, note: pass ? undefined : "No OSC 10 response (cannot verify reset support)" }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]110\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 110" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
-      }
-    },
-  ),
+  probe("extensions.osc110-reset-fg", colorResetProbe(10, 110), async (ctx) => {
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write("\x1b]110\x07")
+    const pos = await ctx.queryCursorPosition()
+    return unverifiedEffect(
+      pos ? "Cursor answered; foreground restoration was not measured" : "No cursor response after OSC 110",
+    )
+  }),
 
   // OSC 111 — reset background color
-  probe(
-    "extensions.osc111-reset-bg",
-    (ctx) => {
-      ctx.feed("\x1b]111\x07")
-      const response = ctx.feedCapture("\x1b]11;?\x07")
-      const pass = /\x1b\]11;/.test(response)
-      return { pass, note: pass ? undefined : "No OSC 11 response (cannot verify reset support)" }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]111\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 111" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
-      }
-    },
-  ),
+  probe("extensions.osc111-reset-bg", colorResetProbe(11, 111), async (ctx) => {
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write("\x1b]111\x07")
+    const pos = await ctx.queryCursorPosition()
+    return unverifiedEffect(
+      pos ? "Cursor answered; background restoration was not measured" : "No cursor response after OSC 111",
+    )
+  }),
 
   // OSC 112 — reset cursor color
-  probe(
-    "extensions.osc112-reset-cursor",
-    (ctx) => {
-      ctx.feed("\x1b]112\x07")
-      const response = ctx.feedCapture("\x1b]12;?\x07")
-      const pass = /\x1b\]12;/.test(response)
-      return { pass, note: pass ? undefined : "No OSC 12 response (cannot verify reset support)" }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]112\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 112" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
-      }
-    },
-  ),
+  probe("extensions.osc112-reset-cursor", colorResetProbe(12, 112), async (ctx) => {
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write("\x1b]112\x07")
+    const pos = await ctx.queryCursorPosition()
+    return unverifiedEffect(
+      pos ? "Cursor answered; cursor-color restoration was not measured" : "No cursor response after OSC 112",
+    )
+  }),
 
   // OSC 117 — reset highlight background
-  probe(
-    "extensions.osc117-reset-highlight-bg",
-    (ctx) => {
-      // Verify the reset sequence is consumed without producing visible output
-      ctx.feed("\x1b]117\x07X")
-      const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]117\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 117" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
-      }
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc117-reset-highlight-bg",
+      (ctx) => {
+        // Verify the reset sequence is consumed without producing visible output
+        ctx.feed("\x1b]117\x07X")
+        const cell = ctx.getCell(0, 0)
+        return parserStateResult(
+          null,
+          "OSC 117 restores the highlight background color",
+          { cell },
+          "Printed X does not expose highlight background",
+        )
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]117\x07")
+        const pos = await ctx.queryCursorPosition()
+        return unverifiedEffect(
+          pos ? "Cursor answered; highlight background was not read back" : "No cursor response after OSC 117",
+        )
+      },
+    ),
+    termlessObservationEvidence: "parser-state",
+  },
 
   // OSC 119 — reset highlight foreground
-  probe(
-    "extensions.osc119-reset-highlight-fg",
-    (ctx) => {
-      // Verify the reset sequence is consumed without producing visible output
-      ctx.feed("\x1b]119\x07X")
-      const cell = ctx.getCell(0, 0)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `cell at 0,0 is "${cell.char}", expected "X"`,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]119\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 119" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
-      }
-    },
-  ),
+  {
+    ...probe(
+      "extensions.osc119-reset-highlight-fg",
+      (ctx) => {
+        // Verify the reset sequence is consumed without producing visible output
+        ctx.feed("\x1b]119\x07X")
+        const cell = ctx.getCell(0, 0)
+        return parserStateResult(
+          null,
+          "OSC 119 restores the highlight foreground color",
+          { cell },
+          "Printed X does not expose highlight foreground",
+        )
+      },
+      async (ctx) => {
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("\x1b]119\x07")
+        const pos = await ctx.queryCursorPosition()
+        return unverifiedEffect(
+          pos ? "Cursor answered; highlight foreground was not read back" : "No cursor response after OSC 119",
+        )
+      },
+    ),
+    termlessObservationEvidence: "parser-state",
+  },
 
   // OSC 17 — highlight background color query
   oscColorQueryProbe("extensions.osc17-highlight-bg", 17),
@@ -1827,12 +1914,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]22;pointer\x07")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 22" }
-      // If terminal consumed the OSC, cursor should still be at col 1
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
+      return unmeasuredCellResult(pos, "OSC 22 pointer shape")
     },
   ),
 
@@ -1888,11 +1970,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]777;notify;test;body\x07")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 777" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
+      return unmeasuredCellResult(pos, "OSC 777 notification delivery")
     },
   ),
 
@@ -1904,11 +1982,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]666;test-prop=value\x07")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 666" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
+      return unmeasuredCellResult(pos, "OSC 666 terminal property")
     },
   ),
 
@@ -1920,45 +1994,29 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]3008;type=test\x07")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 3008" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
+      return unmeasuredCellResult(pos, "OSC 3008 systemd context")
     },
   ),
 
   // OSC 113 — reset pointer fg color
-  probe(
-    "extensions.osc113-reset-pointer-fg",
-    pointerColorResetProbe(13, 113, /\x1b\]13;rgb:ffff\/ffff\/ffff/),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]113\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 113" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
-    },
-  ),
+  probe("extensions.osc113-reset-pointer-fg", colorResetProbe(13, 113), async (ctx) => {
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write("\x1b]113\x07")
+    const pos = await ctx.queryCursorPosition()
+    return unverifiedEffect(
+      pos ? "Cursor answered; pointer foreground restoration was not measured" : "No cursor response after OSC 113",
+    )
+  }),
 
   // OSC 114 — reset pointer bg color
-  probe(
-    "extensions.osc114-reset-pointer-bg",
-    pointerColorResetProbe(14, 114, /\x1b\]14;rgb:0000\/0000\/0000/),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]114\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 114" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
-    },
-  ),
+  probe("extensions.osc114-reset-pointer-bg", colorResetProbe(14, 114), async (ctx) => {
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write("\x1b]114\x07")
+    const pos = await ctx.queryCursorPosition()
+    return unverifiedEffect(
+      pos ? "Cursor answered; pointer background restoration was not measured" : "No cursor response after OSC 114",
+    )
+  }),
 
   // OSC 21 — require the actual foreground reply, never a subsequent CPR.
   {
@@ -1994,11 +2052,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]176;terminfo-test\x07")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 176" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
+      return unmeasuredCellResult(pos, "OSC 176 Wayland app-id")
     },
   ),
 
@@ -2010,11 +2064,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]555\x07")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 555" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
+      return unmeasuredCellResult(pos, "OSC 555 screen flash")
     },
   ),
 
@@ -2026,76 +2076,44 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]440;bell.wav\x07")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 440" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
+      return unmeasuredCellResult(pos, "OSC 440 audio playback")
     },
   ),
 
   // OSC 7770 — mintty font size query/set
-  probe(
+  oscSimpleQueryProbe(
     "extensions.osc7770-font-size",
-    oscQueryProbe("\x1b]7770;?\x07", /\x1b\]7770;[0-9]+/, "No OSC 7770 font-size response"),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]7770;?\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 7770" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
-    },
+    "\x1b]7770;?\x07",
+    /\x1b\]7770;[0-9]+(?:\x07|\x1b\\)/,
+    /\x1b\]7770;/,
+    "Complete OSC 7770 font-size reply",
   ),
 
   // OSC 7777 — mintty font + window size (zoom)
-  probe(
+  oscSimpleQueryProbe(
     "extensions.osc7777-font-window-size",
-    oscQueryProbe("\x1b]7777;?\x07", /\x1b\]7777;[0-9]+/, "No OSC 7777 font/window-size response"),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]7777;;\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 7777" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
-    },
+    "\x1b]7777;?\x07",
+    /\x1b\]7777;[0-9]+(?:\x07|\x1b\\)/,
+    /\x1b\]7777;/,
+    "Complete OSC 7777 window-size reply",
   ),
 
   // OSC 701 — rxvt-unicode locale query/set
-  probe(
+  oscSimpleQueryProbe(
     "extensions.osc701-locale",
-    oscQueryProbe("\x1b]701;?\x07", /\x1b\]701;[A-Za-z0-9_.-]+/, "No OSC 701 locale response"),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]701;?\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 701" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
-    },
+    "\x1b]701;?\x07",
+    /\x1b\]701;[A-Za-z0-9_.-]+(?:\x07|\x1b\\)/,
+    /\x1b\]701;/,
+    "Complete OSC 701 locale reply",
   ),
 
   // OSC 702 — rxvt-unicode version query
-  probe(
+  oscSimpleQueryProbe(
     "extensions.osc702-version",
-    oscQueryProbe("\x1b]702\x07", /\x1b\]702;[^\x07\x1b]+/, "No OSC 702 version response"),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]702\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 702" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
-    },
+    "\x1b]702\x07",
+    /\x1b\]702;[^\x07\x1b]+(?:\x07|\x1b\\)/,
+    /\x1b\]702;/,
+    "Complete OSC 702 version reply",
   ),
 
   // OSC 710 — rxvt-unicode set normal font
@@ -2106,61 +2124,50 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]710;fixed\x07")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 710" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
+      return unmeasuredCellResult(pos, "OSC 710 font selection")
     },
   ),
 
   // OSC 720 — rxvt-unicode scroll view up
-  probe("extensions.osc720-scroll-up", osc720ScrollProbe(), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]720\x07")
-    const pos = await ctx.queryCursorPosition()
-    if (!pos) return { pass: false, note: "No cursor response after OSC 720" }
-    return {
-      pass: pos.col === 1,
-      note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-    }
-  }),
+  {
+    ...probe("extensions.osc720-scroll-up", osc720ScrollProbe(), async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("\x1b]720\x07")
+      const pos = await ctx.queryCursorPosition()
+      return unverifiedEffect(
+        pos ? "Cursor answered; scrollback viewport was not measured" : "No cursor response after OSC 720",
+      )
+    }),
+    termlessObservationEvidence: "parser-state",
+  },
 
   // OSC 776 — rxvt-unicode cell size report
-  probe(
+  oscSimpleQueryProbe(
     "extensions.osc776-cell-size",
-    oscQueryProbe("\x1b]776\x07", /\x1b\]776;\d+;\d+;\d+/, "No OSC 776 cell-size response"),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]776\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 776" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
-      }
-    },
+    "\x1b]776\x07",
+    /\x1b\]776;[0-9]+;[0-9]+;[0-9]+(?:\x07|\x1b\\)/,
+    /\x1b\]776;/,
+    "Complete OSC 776 cell-size reply",
   ),
 
   // Sixel support advertised in DA1 response (attribute 4)
-  queryOnly(
-    probe(
-      "extensions.sixel-da1",
-      (ctx) => {
-        const response = ctx.feedCapture("\x1b[c")
-        // DA1 response: CSI ? Ps ; Ps ; ... c — attribute 4 = sixel
-        const pass = /;4[;c]/.test(response)
-        return { pass, note: pass ? undefined : "DA1 response missing attribute 4 (sixel)" }
-      },
-      async (ctx) => {
-        const match = await ctx.queryWithSentinel("\x1b[c", /\x1b\[\?([0-9;]+)c/)
-        if (!match?.[1]) return { pass: false, note: "No DA1 response" }
-        const attrs = match[1].split(";")
-        const pass = attrs.includes("4")
-        return { pass, note: pass ? `DA1 attrs: ${match[1]}` : `DA1 attrs: ${match[1]} (no sixel)` }
-      },
+  {
+    ...queryOnly(
+      probe(
+        "extensions.sixel-da1",
+        (ctx) => {
+          const raw = ctx.feedCapture("\x1b[c")
+          return sixelDa1Result(raw, /\x1b\[\?[0-9]+(?:;[0-9]+)*c/.exec(raw)?.[0] ?? null)
+        },
+        async (ctx) => {
+          const reply = await ctx.queryOutcome("\x1b[c", /\x1b\[\?[0-9]+(?:;[0-9]+)*c/)
+          return sixelDa1Result(reply.raw, reply.reason === "reply" ? (reply.match?.[0] ?? null) : null)
+        },
+        "query",
+      ),
     ),
-  ),
+    termlessObservationEvidence: "query",
+  },
 
   // XTSMGRAPHICS item 2 reads current Sixel geometry in pixels; item 1 is only color registers.
   {

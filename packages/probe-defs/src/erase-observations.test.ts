@@ -6,6 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { eraseProbes } from "./erase.ts"
+import { editingProbes } from "./editing.ts"
 import type { TermContext, TermlessContext } from "./types.ts"
 
 const ids = ["erase.line.right", "erase.line.left", "erase.line.all", "erase.character"] as const
@@ -151,6 +152,8 @@ test.each([
   for (const [measuredRows, measuredCols] of [
     [rows - 1, cols],
     [rows, cols - 1],
+    [NaN, cols],
+    [rows, Infinity],
   ]) {
     const io: string[] = []
     const result = await probe.term({
@@ -379,4 +382,152 @@ test.each([
   )
   expect(ignored.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
   expect(ignored.assertions).toMatchObject([{ kind: "negative", observed: ignored.response }])
+})
+
+// A responsive terminal can ignore erasure entirely. CPR alone cannot establish
+// changed cells, background preservation, or cleared scrollback.
+test("every app erase keeps cursor-only evidence inconclusive", async () => {
+  for (const definition of eraseProbes) {
+    const probe = byId(definition.id)
+    for (const position of [{ row: 5, col: 5 }, null]) {
+      const result = await probe.term(app(position))
+      expect(result.pass, definition.id).toBe(false)
+      expect(result.observation, definition.id).toMatchObject({
+        outcome: "inconclusive",
+        evidence: "query",
+        reason: position ? "insufficient-evidence" : "no-response",
+      })
+      if (position) expect(result.response, definition.id).toBe("5;5")
+    }
+  }
+})
+
+// Selective erase needs both an erased target and a surviving protected cell;
+// an unchanged screen or ordinary erase cannot establish selective behavior.
+test("selective erasure observes protected cells and the unprotected target", () => {
+  for (const [id, sequence, success] of [
+    ["erase.selective", "\x1b[?2J", "P     "],
+    ["editing.decsera", "\x1b[1;1;1;5${", "P    Z"],
+  ]) {
+    const definition = [...eraseProbes, ...editingProbes].find((probe) => probe.id === id)
+    if (!definition?.termless) throw new Error(`Missing ${id}`)
+    for (const [after, expected] of [
+      [success, "supported"],
+      ["PABCDZ", "unsupported"],
+      ["      ", "inconclusive"],
+    ]) {
+      const base = headless("ABCDE")
+      let erased = false
+      const result = definition.termless({
+        ...base,
+        feed(bytes) {
+          if (bytes === sequence) erased = true
+        },
+        getCell(row, col) {
+          return { ...base.getCell(row, col), char: ((erased ? after : "PABCDZ") ?? "")[col] ?? "" }
+        },
+      })
+      expect(result.observation, `${id}: ${after}`).toMatchObject({ outcome: expected, evidence: "parser-state" })
+      if (expected !== "inconclusive") expect(result.assertions?.[0]?.observed).toBe(result.response)
+    }
+  }
+})
+
+// These old probes could pass on an empty history, an unerased colored X, or
+// an unchanged region. Keep each target and its prerequisite independently visible.
+test("scrollback erase requires existing history and measured removal", () => {
+  for (const [history, clears, expected] of [
+    [true, true, "supported"],
+    [true, false, "unsupported"],
+    [false, true, "inconclusive"],
+  ] as const) {
+    const base = headless("ABCDE")
+    let seeded = false
+    let erased = false
+    const result = byId("erase.screen.scrollback").termless({
+      ...base,
+      feed(bytes) {
+        if (bytes.includes("\r\n")) seeded = true
+        if (bytes === "\x1b[3J") erased = true
+      },
+      getScrollback: () => ({
+        viewportOffset: 0,
+        screenLines: 24,
+        totalLines: seeded && history && !(erased && clears) ? 26 : 24,
+      }),
+    })
+    expect(result.observation).toMatchObject({ outcome: expected, evidence: "parser-state" })
+  }
+})
+
+test("background erase measures a blank target with its calibrated background", () => {
+  for (const [char, background, expected] of [
+    [" ", true, "supported"],
+    ["X", true, "unsupported"],
+    [" ", false, "inconclusive"],
+  ] as const) {
+    const base = headless("ABCDE")
+    let erased = false
+    const result = byId("erase.el-with-attrs").termless({
+      ...base,
+      feed(bytes) {
+        if (bytes === "\x1b[K") erased = true
+      },
+      getCell(row, col) {
+        return { ...base.getCell(row, col), char: erased ? char : "X", bg: background ? { r: 0, g: 180, b: 0 } : null }
+      },
+    })
+    expect(result.observation).toMatchObject({ outcome: expected, evidence: "parser-state" })
+  }
+})
+
+test("region erase requires changed cells and a preserved preceding row", () => {
+  for (const [changed, control, expected] of [
+    [true, true, "supported"],
+    [false, true, "unsupported"],
+    [true, false, "inconclusive"],
+  ] as const) {
+    const base = headless("ABCDE")
+    let erased = false
+    const result = byId("erase.ed-scroll-region").termless({
+      ...base,
+      feed(bytes) {
+        if (bytes === "\x1b[J") erased = true
+      },
+      getCursor: () => ({ x: 0, y: 2, visible: true, style: null }),
+      getCell(row, col) {
+        return {
+          ...base.getCell(row, col),
+          char:
+            (row === 0 ? (erased && !control ? "?????" : "KEEP!") : erased && changed ? "     " : "ERASE")[col] ?? "",
+        }
+      },
+    })
+    expect(result.observation).toMatchObject({ outcome: expected, evidence: "parser-state" })
+  }
+})
+
+// Geometry is a prerequisite, not an erase failure. Reject before writing a
+// row fixture that would wrap or be clamped into a different part of the screen.
+test("headless erase fixtures require measured rows and columns before writes", () => {
+  for (const id of [...ids, ...screenIds]) {
+    const probe = byId(id)
+    for (const [cols, rows] of [
+      [5, 24],
+      [NaN, 24],
+      [80, 0],
+      [80, Infinity],
+    ]) {
+      const base = headless("ABCDE")
+      const feeds: string[] = []
+      const result = probe.termless({
+        ...base,
+        cols: cols ?? 0,
+        feed: (bytes) => feeds.push(bytes),
+        getScrollback: () => ({ viewportOffset: 0, totalLines: rows ?? 0, screenLines: rows ?? 0 }),
+      })
+      expect(feeds, `${id} ${cols}x${rows}`).toEqual([])
+      expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    }
+  }
 })

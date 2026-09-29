@@ -1,11 +1,16 @@
 import type { ProbeDefinition } from "./types.ts"
-import { probe, decrpmModeProbe } from "./helpers.ts"
+import { probe, decrpmModeProbe, parserStateResult } from "./helpers.ts"
 
 export const modesProbes: ProbeDefinition[] = [
   // Alt screen enter
   decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) => {
     ctx.feed("\x1b[?1049h")
-    return { pass: ctx.getMode("altScreen") === true }
+    return parserStateResult(
+      null,
+      "Alt-screen entry changes the visible buffer",
+      { mode: ctx.getMode("altScreen") },
+      "Mode metadata does not measure the alternate buffer",
+    )
   }),
 
   // Alt screen exit
@@ -14,7 +19,12 @@ export const modesProbes: ProbeDefinition[] = [
       "modes.alt-screen.exit",
       (ctx) => {
         ctx.feed("\x1b[?1049h\x1b[?1049l")
-        return { pass: ctx.getMode("altScreen") === false }
+        return parserStateResult(
+          null,
+          "Alt-screen exit restores the visible buffer",
+          { mode: ctx.getMode("altScreen") },
+          "Mode metadata does not measure buffer restoration",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 3) {
@@ -35,8 +45,19 @@ export const modesProbes: ProbeDefinition[] = [
           ctx.write("\x1b[?1049l") // exit the fixture's alt screen
         }
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response after exit" }
-        return { pass: true }
+        if (!pos) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        return {
+          pass: false,
+          response: JSON.stringify(pos),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: "Cursor responsiveness after exit does not measure the restored buffer",
+          },
+        }
       },
     ),
     termNeedsGeometry: true,
@@ -45,37 +66,85 @@ export const modesProbes: ProbeDefinition[] = [
   // Bracketed paste
   decrpmModeProbe("modes.bracketed-paste", 2004, (ctx) => {
     ctx.feed("\x1b[?2004h")
-    return { pass: ctx.getMode("bracketedPaste") === true }
+    return parserStateResult(
+      null,
+      "Bracketed paste emits delimited paste events",
+      { mode: ctx.getMode("bracketedPaste") },
+      "Mode metadata does not measure input events",
+    )
   }),
 
   // Application cursor keys
   decrpmModeProbe("modes.application-cursor", 1, (ctx) => {
     ctx.feed("\x1b[?1h")
-    return { pass: ctx.getMode("applicationCursor") === true }
+    return parserStateResult(
+      null,
+      "Application cursor mode changes generated key events",
+      { mode: ctx.getMode("applicationCursor") },
+      "Mode metadata does not measure key events",
+    )
   }),
 
   // Auto wrap
   decrpmModeProbe("modes.auto-wrap", 7, (ctx) => {
-    ctx.feed("X".repeat(80) + "Y")
-    return { pass: ctx.getCell(1, 0).char === "Y" }
+    const expected = "DECAWM wraps Y after a full measured row of X"
+    const rows = ctx.getScrollback().screenLines
+    if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
+      return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Measured grid needs two rows")
+    }
+    const originallyEnabled = ctx.getMode("autoWrap")
+    try {
+      ctx.feed("\x1b[?7h")
+      const enabled = ctx.getMode("autoWrap")
+      if (!enabled)
+        return parserStateResult(null, expected, { originallyEnabled, enabled }, "Auto-wrap setup was not measured")
+      ctx.feed("X".repeat(ctx.cols) + "Y")
+      const last = ctx.getCell(0, ctx.cols - 1)
+      const next = ctx.getCell(1, 0)
+      return parserStateResult(last.char === "X" && next.char === "Y", expected, {
+        rows,
+        cols: ctx.cols,
+        originallyEnabled,
+        enabled,
+        last,
+        next,
+      })
+    } finally {
+      ctx.feed(originallyEnabled ? "\x1b[?7h" : "\x1b[?7l")
+    }
   }),
 
   // Mouse tracking
   decrpmModeProbe("modes.mouse-tracking", 1000, (ctx) => {
     ctx.feed("\x1b[?1000h")
-    return { pass: ctx.getMode("mouseTracking") === true }
+    return parserStateResult(
+      null,
+      "Mouse tracking emits encoded mouse events",
+      { mode: ctx.getMode("mouseTracking") },
+      "Mode metadata does not measure mouse events",
+    )
   }),
 
   // Focus tracking
   decrpmModeProbe("modes.focus-tracking", 1004, (ctx) => {
     ctx.feed("\x1b[?1004h")
-    return { pass: ctx.getMode("focusTracking") === true }
+    return parserStateResult(
+      null,
+      "Focus tracking emits focus events",
+      { mode: ctx.getMode("focusTracking") },
+      "Mode metadata does not measure focus events",
+    )
   }),
 
   // Reverse video
   decrpmModeProbe("modes.reverse-video", 5, (ctx) => {
     ctx.feed("\x1b[?5h")
-    return { pass: ctx.getMode("reverseVideo") === true }
+    return parserStateResult(
+      null,
+      "Reverse video changes rendered colors",
+      { mode: ctx.getMode("reverseVideo") },
+      "Mode metadata does not measure pixels",
+    )
   }),
 
   // Synchronized output
@@ -83,7 +152,12 @@ export const modesProbes: ProbeDefinition[] = [
     ctx.feed("\x1b[?2026h")
     ctx.feed("Hello")
     ctx.feed("\x1b[?2026l")
-    return { pass: ctx.getText().includes("Hello") }
+    return parserStateResult(
+      null,
+      "Synchronized output holds and releases complete frames",
+      { text: ctx.getText() },
+      "Final text does not measure frame timing",
+    )
   }),
 
   // Origin mode
@@ -91,7 +165,12 @@ export const modesProbes: ProbeDefinition[] = [
     ctx.feed("\x1b[?6h")
     const result = ctx.getMode("originMode") === true
     ctx.feed("\x1b[?6l")
-    return { pass: result }
+    return parserStateResult(
+      null,
+      "Origin mode changes cursor addressing within margins",
+      { mode: result },
+      "Mode metadata does not measure addressing",
+    )
   }),
 
   // Insert/replace mode (IRM)
@@ -104,7 +183,11 @@ export const modesProbes: ProbeDefinition[] = [
         const cell0 = ctx.getCell(0, 0).char === "X"
         const cell1 = ctx.getCell(0, 1).char === "A"
         ctx.feed("\x1b[4l")
-        return { pass: result && cell0 && cell1 }
+        return parserStateResult(result && cell0 && cell1, "IRM inserts X before the measured A cell", {
+          mode: result,
+          first: ctx.getCell(0, 0),
+          second: ctx.getCell(0, 1),
+        })
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 5) {
@@ -128,10 +211,18 @@ export const modesProbes: ProbeDefinition[] = [
           ctx.write("\x1b[4l") // disable this fixture's insert mode
         }
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!pos) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
         return {
-          pass: pos.col === 3,
-          note: pos.col === 3 ? undefined : `cursor at col ${pos.col}, expected 3`,
+          pass: false,
+          response: JSON.stringify(pos),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: "Cursor advance does not measure whether X displaced the existing cells",
+          },
         }
       },
     ),
@@ -143,7 +234,12 @@ export const modesProbes: ProbeDefinition[] = [
     ctx.feed("\x1b[?1006h")
     const pass = ctx.getMode("sgrMouse") === true
     ctx.feed("\x1b[?1006l")
-    return { pass }
+    return parserStateResult(
+      null,
+      "SGR mouse mode changes encoded mouse events",
+      { mode: pass },
+      "Mode metadata does not measure mouse events",
+    )
   }),
 
   // All-motion mouse tracking
@@ -151,7 +247,12 @@ export const modesProbes: ProbeDefinition[] = [
     ctx.feed("\x1b[?1003h")
     const pass = ctx.getMode("mouseTracking") === true
     ctx.feed("\x1b[?1003l")
-    return { pass }
+    return parserStateResult(
+      null,
+      "All-motion mouse mode emits movement events",
+      { mode: pass },
+      "Mode metadata does not measure mouse events",
+    )
   }),
 
   // Application keypad
@@ -162,15 +263,26 @@ export const modesProbes: ProbeDefinition[] = [
       const on = ctx.getMode("applicationKeypad") === true
       ctx.feed("\x1b>")
       const off = ctx.getMode("applicationKeypad") === false
-      return { pass: on && off }
+      return parserStateResult(
+        null,
+        "Application keypad mode changes keypad input",
+        { on, off },
+        "Mode metadata does not measure keypad events",
+      )
     },
     async (ctx) => {
       ctx.write("\x1b=") // DECKPAM
       const pos = await ctx.queryCursorPosition()
       ctx.write("\x1b>") // DECKPNM
       return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after DECKPAM",
+        pass: false,
+        ...(pos && { response: JSON.stringify(pos) }),
+        observation: {
+          outcome: "inconclusive",
+          reason: pos ? "insufficient-evidence" : "no-response",
+          evidence: "query",
+          note: "Cursor reply does not measure keypad input encoding",
+        },
       }
     },
   ),
@@ -182,15 +294,26 @@ export const modesProbes: ProbeDefinition[] = [
       ctx.feed("\x1b[?69h")
       const pass = ctx.getMode("leftRightMargin") === true
       ctx.feed("\x1b[?69l")
-      return { pass }
+      return parserStateResult(
+        null,
+        "Left-right margin mode constrains horizontal operations",
+        { mode: pass },
+        "Mode metadata does not measure margins",
+      )
     },
     async (ctx) => {
       ctx.write("\x1b[?69h") // enable DECLRMM
       const pos = await ctx.queryCursorPosition()
       ctx.write("\x1b[?69l") // disable
       return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after DECLRMM",
+        pass: false,
+        ...(pos && { response: JSON.stringify(pos) }),
+        observation: {
+          outcome: "inconclusive",
+          reason: pos ? "insufficient-evidence" : "no-response",
+          evidence: "query",
+          note: "Cursor reply does not measure left/right margin behavior",
+        },
       }
     },
   ),
@@ -203,18 +326,31 @@ export const modesProbes: ProbeDefinition[] = [
       const entered = ctx.getMode("altScreen") === true
       ctx.feed("\x1b[?47l")
       const exited = ctx.getMode("altScreen") === false
-      return {
-        pass: entered && exited,
-        note: !entered ? "altScreen not set" : !exited ? "altScreen not cleared" : undefined,
-      }
+      return parserStateResult(
+        null,
+        "?47 swaps the visible screen buffer",
+        { entered, exited },
+        "Mode metadata does not measure the buffer",
+      )
     },
     async (ctx) => {
       ctx.write("\x1b[?47h") // enter legacy alt screen
       const inAlt = await ctx.queryCursorPosition()
       ctx.write("\x1b[?47l") // exit
       const out = await ctx.queryCursorPosition()
-      if (!inAlt || !out) return { pass: false, note: "No cursor response around ?47" }
-      return { pass: true, note: "Behavioral: ?47 enter/exit accepted" }
+      if (!inAlt || !out) {
+        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+      }
+      return {
+        pass: false,
+        response: JSON.stringify({ inAlt, out }),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "query",
+          note: "Cursor replies do not measure the alternate screen buffer",
+        },
+      }
     },
   ),
 
@@ -226,21 +362,43 @@ export const modesProbes: ProbeDefinition[] = [
       const entered = ctx.getMode("altScreen") === true
       ctx.feed("\x1b[?1047l")
       const exited = ctx.getMode("altScreen") === false
-      return {
-        pass: entered && exited,
-        note: !entered ? "altScreen not set" : !exited ? "altScreen not cleared" : undefined,
-      }
+      return parserStateResult(
+        null,
+        "?1047 swaps and clears the visible alternate buffer",
+        { entered, exited },
+        "Mode metadata does not measure the buffer",
+      )
     },
     async (ctx) => {
       const decrpmResult = await ctx.queryMode(1047)
       if (decrpmResult !== null && decrpmResult !== "unknown") {
-        return { pass: true, note: `DECRPM: mode ${decrpmResult}`, response: decrpmResult }
+        return {
+          pass: false,
+          response: decrpmResult,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: "DECRPM recognition does not measure alternate-buffer clearing",
+          },
+        }
       }
       ctx.write("\x1b[?1047h")
       const inAlt = await ctx.queryCursorPosition()
       ctx.write("\x1b[?1047l")
-      if (!inAlt) return { pass: false, note: "No cursor response after enable" }
-      return { pass: true, note: "Behavioral: ?1047 accepted" }
+      if (!inAlt) {
+        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+      }
+      return {
+        pass: false,
+        response: JSON.stringify(inAlt),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "query",
+          note: "Cursor reply does not measure alternate-buffer clearing",
+        },
+      }
     },
   ),
 
@@ -255,11 +413,9 @@ export const modesProbes: ProbeDefinition[] = [
         ctx.feed("\x1b[15;20H") // move to row 15, col 20
         ctx.feed("\x1b[?1048l") // restore
         const cursor = ctx.getCursor()
-        const pass = cursor.y === 4 && cursor.x === 9
-        return {
-          pass,
-          note: pass ? undefined : `cursor at ${cursor.y};${cursor.x}, expected 4;9 after restore`,
-        }
+        return parserStateResult(cursor.y === 4 && cursor.x === 9, "?1048 restores saved cursor position 5;10", {
+          cursor,
+        })
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 15 || ctx.cols < 20) {
@@ -274,18 +430,54 @@ export const modesProbes: ProbeDefinition[] = [
           }
         }
         ctx.write("\x1b[5;10H") // row 5, col 10
+        const before = await ctx.queryCursorPosition()
+        if (!before || before.row !== 5 || before.col !== 10) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: before ? "insufficient-evidence" : "no-response",
+              evidence: "query",
+              note: "Cursor-save fixture did not establish its start position",
+            },
+          }
+        }
         ctx.write("\x1b[?1048h") // save
+        let displaced: { row: number; col: number } | null = null
         try {
           ctx.write("\x1b[15;20H") // move
+          displaced = await ctx.queryCursorPosition()
+          if (!displaced || displaced.row !== 15 || displaced.col !== 20) {
+            return {
+              pass: false,
+              observation: {
+                outcome: "inconclusive",
+                reason: displaced ? "insufficient-evidence" : "no-response",
+                evidence: "query",
+                note: "Cursor-save fixture did not measure displacement",
+              },
+            }
+          }
         } finally {
           ctx.write("\x1b[?1048l") // restore this fixture's saved cursor
         }
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response after restore" }
+        if (!pos) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        const measured = { before, displaced, after: pos }
+        const pass = pos.row === 5 && pos.col === 10
         return {
-          pass: pos.row === 5 && pos.col === 10,
-          note: pos.row === 5 && pos.col === 10 ? undefined : `got ${pos.row};${pos.col}, expected 5;10`,
-          response: `${pos.row};${pos.col}`,
+          pass,
+          response: JSON.stringify(measured),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "?1048 restores cursor from 15;20 to 5;10",
+              observed: JSON.stringify(measured),
+            },
+          ],
         }
       },
     ),
@@ -299,17 +491,22 @@ export const modesProbes: ProbeDefinition[] = [
     const response = ctx.feedCapture("\x1b[?1007$p")
     ctx.feed("\x1b[?1007l")
     if (response.includes("$y")) {
-      const set = response.includes("1007;1$y")
-      return {
-        pass: set,
-        note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
-        response,
-      }
+      return parserStateResult(
+        null,
+        "Alt-scroll changes wheel behavior",
+        { response },
+        "DECRPM reports a mode state, not a wheel event",
+      )
     }
     // Fallback: verify sequence didn't break the terminal
     ctx.feed("X")
     const ok = ctx.getCell(0, 0).char === "X"
-    return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
+    return parserStateResult(
+      null,
+      "Alt-scroll changes wheel behavior",
+      { responsive: ok },
+      "Parser responsiveness does not measure wheel behavior",
+    )
   }),
 
   // ?1005 — UTF-8 mouse encoding (legacy)
@@ -319,17 +516,22 @@ export const modesProbes: ProbeDefinition[] = [
     const response = ctx.feedCapture("\x1b[?1005$p")
     ctx.feed("\x1b[?1005l")
     if (response.includes("$y")) {
-      const set = response.includes("1005;1$y")
-      return {
-        pass: set,
-        note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
-        response,
-      }
+      return parserStateResult(
+        null,
+        "UTF-8 mouse mode encodes input events",
+        { response },
+        "DECRPM reports a mode state, not an encoded mouse event",
+      )
     }
     // Fallback: verify sequence didn't break the terminal
     ctx.feed("X")
     const ok = ctx.getCell(0, 0).char === "X"
-    return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
+    return parserStateResult(
+      null,
+      "UTF-8 mouse mode encodes input events",
+      { responsive: ok },
+      "Parser responsiveness does not measure mouse input",
+    )
   }),
 
   // ?3 — DECCOLM 80/132 column switch
@@ -339,17 +541,22 @@ export const modesProbes: ProbeDefinition[] = [
     const response = ctx.feedCapture("\x1b[?3$p")
     ctx.feed("\x1b[?3l")
     if (response.includes("$y")) {
-      const set = response.includes("3;1$y")
-      return {
-        pass: set,
-        note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
-        response,
-      }
+      return parserStateResult(
+        null,
+        "DECCOLM switches the measured grid width",
+        { response, cols: ctx.cols },
+        "DECRPM state does not establish a width transition",
+      )
     }
     // Fallback: verify sequence didn't break the terminal
     ctx.feed("X")
     const ok = ctx.getText().includes("X")
-    return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
+    return parserStateResult(
+      null,
+      "DECCOLM switches the measured grid width",
+      { responsive: ok, cols: ctx.cols },
+      "Parser responsiveness does not measure a width transition",
+    )
   }),
 
   // ?4 — DECSCLM smooth scroll mode. This is observable through DECRPM even
@@ -358,12 +565,12 @@ export const modesProbes: ProbeDefinition[] = [
     ctx.feed("\x1b[?4h")
     const response = ctx.feedCapture("\x1b[?4$p")
     ctx.feed("\x1b[?4l")
-    const set = response.includes("?4;1$y")
-    return {
-      pass: set,
-      note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
-      response,
-    }
+    return parserStateResult(
+      null,
+      "DECSCLM changes scroll timing",
+      { response },
+      "DECRPM state does not measure scroll timing",
+    )
   }),
 
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
@@ -376,7 +583,12 @@ export const modesProbes: ProbeDefinition[] = [
         try {
           ctx.feed("\x1b[?2031h")
           const enabled = ctx.getMode("colorSchemeReporting")
-          return { pass: enabled === true }
+          return parserStateResult(
+            null,
+            "Mode 2031 emits color-scheme changes",
+            { enabled },
+            "Mode metadata does not measure update events",
+          )
         } finally {
           ctx.feed(initiallyEnabled ? "\x1b[?2031h" : "\x1b[?2031l")
         }
@@ -423,23 +635,50 @@ export const modesProbes: ProbeDefinition[] = [
     (ctx) => {
       // Capture any output during the push — should be empty.
       const pushOut = ctx.feedCapture("\x1b[#{")
-      if (pushOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(pushOut)}` }
+      if (pushOut.length > 0) {
+        return {
+          pass: false,
+          response: pushOut,
+          observation: {
+            outcome: "inconclusive",
+            reason: "invalid-reply",
+            evidence: "query",
+            note: "Unexpected output during stack operation",
+          },
+        }
+      }
       // Verify the terminal is still responsive by issuing a DA1 query.
       const probeResponse = ctx.feedCapture("\x1b[c")
-      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
       // Pop to leave clean state.
       ctx.feed("\x1b[#}")
       return {
-        pass: ok,
-        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after push",
+        pass: false,
+        response: probeResponse,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "DA1 responsiveness does not measure saved/restored stack state",
+        },
       }
     },
     async (ctx) => {
       ctx.write("\x1b[#{")
       try {
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No DSR response after XTPUSHSGR" }
-        return { pass: true, note: "Sequence consumed; terminal responsive" }
+        if (!pos) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        return {
+          pass: false,
+          response: JSON.stringify(pos),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "Cursor responsiveness does not measure saved/restored state",
+          },
+        }
       } finally {
         ctx.write("\x1b[#}") // pop to clean up
       }
@@ -453,20 +692,47 @@ export const modesProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b[#{")
       const popOut = ctx.feedCapture("\x1b[#}")
-      if (popOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(popOut)}` }
+      if (popOut.length > 0) {
+        return {
+          pass: false,
+          response: popOut,
+          observation: {
+            outcome: "inconclusive",
+            reason: "invalid-reply",
+            evidence: "query",
+            note: "Unexpected output during stack operation",
+          },
+        }
+      }
       const probeResponse = ctx.feedCapture("\x1b[c")
-      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
       return {
-        pass: ok,
-        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after pop",
+        pass: false,
+        response: probeResponse,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "DA1 responsiveness does not measure saved/restored stack state",
+        },
       }
     },
     async (ctx) => {
       ctx.write("\x1b[#{")
       ctx.write("\x1b[#}")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No DSR response after XTPOPSGR" }
-      return { pass: true, note: "Sequence consumed; terminal responsive" }
+      if (!pos) {
+        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+      }
+      return {
+        pass: false,
+        response: JSON.stringify(pos),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "Cursor responsiveness does not measure saved/restored state",
+        },
+      }
     },
   ),
 
@@ -475,22 +741,49 @@ export const modesProbes: ProbeDefinition[] = [
     "modes.xtsave",
     (ctx) => {
       const saveOut = ctx.feedCapture("\x1b[?7s")
-      if (saveOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(saveOut)}` }
+      if (saveOut.length > 0) {
+        return {
+          pass: false,
+          response: saveOut,
+          observation: {
+            outcome: "inconclusive",
+            reason: "invalid-reply",
+            evidence: "query",
+            note: "Unexpected output during stack operation",
+          },
+        }
+      }
       const probeResponse = ctx.feedCapture("\x1b[c")
-      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
       // Restore to leave clean state.
       ctx.feed("\x1b[?7r")
       return {
-        pass: ok,
-        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after XTSAVE",
+        pass: false,
+        response: probeResponse,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "DA1 responsiveness does not measure saved/restored stack state",
+        },
       }
     },
     async (ctx) => {
       ctx.write("\x1b[?7s")
       try {
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No DSR response after XTSAVE" }
-        return { pass: true, note: "Sequence consumed; terminal responsive" }
+        if (!pos) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        return {
+          pass: false,
+          response: JSON.stringify(pos),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "Cursor responsiveness does not measure saved/restored state",
+          },
+        }
       } finally {
         ctx.write("\x1b[?7r") // restore to clean up
       }
@@ -503,20 +796,47 @@ export const modesProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b[?7s")
       const restoreOut = ctx.feedCapture("\x1b[?7r")
-      if (restoreOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(restoreOut)}` }
+      if (restoreOut.length > 0) {
+        return {
+          pass: false,
+          response: restoreOut,
+          observation: {
+            outcome: "inconclusive",
+            reason: "invalid-reply",
+            evidence: "query",
+            note: "Unexpected output during stack operation",
+          },
+        }
+      }
       const probeResponse = ctx.feedCapture("\x1b[c")
-      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
       return {
-        pass: ok,
-        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after XTRESTORE",
+        pass: false,
+        response: probeResponse,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "DA1 responsiveness does not measure saved/restored stack state",
+        },
       }
     },
     async (ctx) => {
       ctx.write("\x1b[?7s")
       ctx.write("\x1b[?7r")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No DSR response after XTRESTORE" }
-      return { pass: true, note: "Sequence consumed; terminal responsive" }
+      if (!pos) {
+        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+      }
+      return {
+        pass: false,
+        response: JSON.stringify(pos),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "Cursor responsiveness does not measure saved/restored state",
+        },
+      }
     },
   ),
 
@@ -525,22 +845,49 @@ export const modesProbes: ProbeDefinition[] = [
     "modes.xtpushcolors",
     (ctx) => {
       const pushOut = ctx.feedCapture("\x1b[#P")
-      if (pushOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(pushOut)}` }
+      if (pushOut.length > 0) {
+        return {
+          pass: false,
+          response: pushOut,
+          observation: {
+            outcome: "inconclusive",
+            reason: "invalid-reply",
+            evidence: "query",
+            note: "Unexpected output during stack operation",
+          },
+        }
+      }
       const probeResponse = ctx.feedCapture("\x1b[c")
-      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
       // Pop to leave clean state.
       ctx.feed("\x1b[#Q")
       return {
-        pass: ok,
-        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after push",
+        pass: false,
+        response: probeResponse,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "DA1 responsiveness does not measure saved/restored stack state",
+        },
       }
     },
     async (ctx) => {
       ctx.write("\x1b[#P")
       try {
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No DSR response after XTPUSHCOLORS" }
-        return { pass: true, note: "Sequence consumed; terminal responsive" }
+        if (!pos) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        return {
+          pass: false,
+          response: JSON.stringify(pos),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "Cursor responsiveness does not measure saved/restored state",
+          },
+        }
       } finally {
         ctx.write("\x1b[#Q") // pop to clean up
       }
@@ -553,20 +900,47 @@ export const modesProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b[#P")
       const popOut = ctx.feedCapture("\x1b[#Q")
-      if (popOut.length > 0) return { pass: false, note: `Unexpected output: ${JSON.stringify(popOut)}` }
+      if (popOut.length > 0) {
+        return {
+          pass: false,
+          response: popOut,
+          observation: {
+            outcome: "inconclusive",
+            reason: "invalid-reply",
+            evidence: "query",
+            note: "Unexpected output during stack operation",
+          },
+        }
+      }
       const probeResponse = ctx.feedCapture("\x1b[c")
-      const ok = /\x1b\[\?[0-9;]+c/.test(probeResponse)
       return {
-        pass: ok,
-        note: ok ? "Sequence consumed; terminal responsive" : "Terminal unresponsive after pop",
+        pass: false,
+        response: probeResponse,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "DA1 responsiveness does not measure saved/restored stack state",
+        },
       }
     },
     async (ctx) => {
       ctx.write("\x1b[#P")
       ctx.write("\x1b[#Q")
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No DSR response after XTPOPCOLORS" }
-      return { pass: true, note: "Sequence consumed; terminal responsive" }
+      if (!pos) {
+        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+      }
+      return {
+        pass: false,
+        response: JSON.stringify(pos),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "Cursor responsiveness does not measure saved/restored state",
+        },
+      }
     },
   ),
 ]

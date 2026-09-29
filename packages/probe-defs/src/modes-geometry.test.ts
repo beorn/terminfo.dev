@@ -20,7 +20,14 @@ const stateFixtures = [
   { id: "modes.xtpushcolors", enter: "\x1b[#P", restore: "\x1b[#Q" },
 ] as const
 
-function app(rows: number, cols: number, events: string[], failWrite?: number, failQuery = false): TermContext {
+function app(
+  rows: number,
+  cols: number,
+  events: string[],
+  failWrite?: number,
+  failQuery = false,
+  cursorReplies: Array<{ row: number; col: number }> = [{ row: 5, col: 10 }],
+): TermContext {
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in mode fixture`)
   }
@@ -35,7 +42,7 @@ function app(rows: number, cols: number, events: string[], failWrite?: number, f
     queryCursorPosition: async () => {
       events.push("CPR")
       if (failQuery) throw new Error("injected CPR failure")
-      return { row: 5, col: 10 }
+      return cursorReplies.shift() ?? { row: 5, col: 10 }
     },
     measureRenderedWidth: async () => unexpected("measureRenderedWidth"),
     query: async () => unexpected("query"),
@@ -46,7 +53,7 @@ function app(rows: number, cols: number, events: string[], failWrite?: number, f
   }
 }
 
-test("direct mode fixtures decline invalid or undersized geometry before bytes or queries", async () => {
+test("direct mode fixtures decline invalid geometry and classify only measured valid observations", async () => {
   for (const { id, rows, cols } of fixtures) {
     const definition = modesProbes.find((probe) => probe.id === id)
     if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
@@ -69,10 +76,29 @@ test("direct mode fixtures decline invalid or undersized geometry before bytes o
     }
     expect(definition.termNeedsGeometry, id).toBe(true)
     const events: string[] = []
-    const result = await definition.term(app(rows, cols, events))
+    const cursorReplies =
+      id === "modes.altscreen-1048"
+        ? [
+            { row: 5, col: 10 },
+            { row: 15, col: 20 },
+            { row: 5, col: 10 },
+          ]
+        : undefined
+    const result = await definition.term(app(rows, cols, events, undefined, false, cursorReplies))
     expect(events.length, id).toBeGreaterThan(1)
     expect(events.at(-1), id).toBe("CPR")
-    expect(result.observation, id).toBeUndefined()
+    if (id === "modes.altscreen-1048") {
+      expect(events, id).toEqual(["\x1b[5;10H", "CPR", "\x1b[?1048h", "\x1b[15;20H", "CPR", "\x1b[?1048l", "CPR"])
+      expect(result.pass, id).toBe(true)
+      expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    } else {
+      expect(result.pass, id).toBe(false)
+      expect(result.observation, id).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+      })
+    }
   }
 })
 
@@ -81,14 +107,21 @@ test("direct mode fixtures attempt only their entered-state cleanup after a late
     const definition = modesProbes.find((probe) => probe.id === id)
     if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
     const events: string[] = []
-    await expect(definition.term(app(rows, cols, events, failedWrite)), id).rejects.toThrow("injected write failure")
+    await expect(
+      definition.term(app(rows, cols, events, failedWrite, false, [{ row: 5, col: 10 }])),
+      id,
+    ).rejects.toThrow("injected write failure")
     expect(events.at(-1), id).toBe(restore)
-    expect(events, id).not.toContain("CPR")
+    if (id === "modes.altscreen-1048") {
+      expect(events, id).toEqual(["\x1b[5;10H", "CPR", "\x1b[?1048h", "\x1b[15;20H", restore])
+    } else {
+      expect(events, id).not.toContain("CPR")
+    }
   }
 })
 
 test.each(stateFixtures)(
-  "$id restores its own checkpoint after CPR rejects and preserves the valid legacy path",
+  "$id restores its own checkpoint after CPR rejects and keeps the valid path inconclusive",
   async ({ id, enter, restore }) => {
     const definition = modesProbes.find((probe) => probe.id === id)
     if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
@@ -99,7 +132,12 @@ test.each(stateFixtures)(
     const validEvents: string[] = []
     const result = await definition.term(app(1, 1, validEvents))
     expect(validEvents).toEqual([enter, "CPR", restore])
-    expect(result.pass).toBe(true)
-    expect(result.observation).toBeUndefined()
+    expect(result.pass).toBe(false)
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "consumed",
+    })
+    expect(result.assertions).toBeUndefined()
   },
 )

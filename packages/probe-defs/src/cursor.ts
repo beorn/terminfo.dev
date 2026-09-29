@@ -172,13 +172,32 @@ export const cursorProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
-        ctx.write("\x1b[?25l") // hide cursor
-        const posHidden = await ctx.queryCursorPosition()
-        ctx.write("\x1b[?25h") // show cursor
-        if (!posHidden) return { pass: false, note: "No cursor response while hidden" }
-        const posVisible = await ctx.queryCursorPosition()
-        if (!posVisible) return { pass: false, note: "No cursor response after show" }
-        return { pass: true }
+        if (!ctx.capture) {
+          const note = "No cursor pixel readback for visibility"
+          return {
+            pass: false,
+            note,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+          }
+        }
+        const control = await ctx.capture({ role: "control", label: "Visible cursor" })
+        try {
+          ctx.write("\x1b[?25l")
+          const target = await ctx.capture({ role: "target", label: "Hidden cursor" })
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: target.ref,
+              frames: [control, target],
+              note: "Cursor pixels captured; visibility difference requires review",
+            },
+          }
+        } finally {
+          ctx.write("\x1b[?25h")
+        }
       },
     ),
     termlessObservationEvidence: "parser-state",
@@ -190,15 +209,39 @@ export const cursorProbes: ProbeDefinition[] = [
     (ctx) => {
       ctx.feed("\x1b[6 q")
       const style = ctx.getCursor().style
-      return { pass: style === "beam" || style === null }
+      return parserStateResult(
+        style === null ? null : style === "beam",
+        "DECSCUSR reports a beam cursor after CSI 6 SP q",
+        { style },
+        style === null ? "Cursor style readback is unavailable" : undefined,
+      )
     },
     async (ctx) => {
-      ctx.write("\x1b[5 q") // blinking bar
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[0 q") // restore default
-      return {
-        pass: pos !== null,
-        note: pos ? undefined : "No response after DECSCUSR",
+      if (!ctx.capture) {
+        const note = "No cursor pixel readback for shape"
+        return {
+          pass: false,
+          note,
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        }
+      }
+      const control = await ctx.capture({ role: "control", label: "Default cursor shape" })
+      try {
+        ctx.write("\x1b[5 q") // blinking bar
+        const target = await ctx.capture({ role: "target", label: "Bar cursor shape" })
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "pixels",
+            screenshotRef: target.ref,
+            frames: [control, target],
+            note: "Cursor pixels captured; shape difference requires review",
+          },
+        }
+      } finally {
+        ctx.write("\x1b[0 q")
       }
     },
   ),
@@ -369,17 +412,37 @@ export const cursorProbes: ProbeDefinition[] = [
   probe(
     "cursor.reverse-wrap",
     (ctx) => {
-      ctx.feed("\x1b[?7h") // enable auto-wrap
-      ctx.feed("\x1b[?45h") // enable reverse wrap
-      // Write to end of first row, wrap to second row, then backspace
-      const cols = 80
-      ctx.feed("A".repeat(cols)) // fills row 0, wraps to row 1
-      ctx.feed("\x08") // backspace — should reverse-wrap to end of row 0
-      const cursor = ctx.getCursor()
-      ctx.feed("\x1b[?45l")
-      return {
-        pass: cursor.y === 0 && cursor.x === cols - 1,
-        note: cursor.y === 0 ? undefined : `cursor at ${cursor.x},${cursor.y}, expected ${cols - 1},0`,
+      const cols = ctx.cols
+      const rows = ctx.getScrollback().screenLines
+      const expected = "Backspace reverses a wrap across the measured row width"
+      if (!Number.isSafeInteger(cols) || cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
+        return parserStateResult(
+          null,
+          expected,
+          { rows, cols },
+          "Measured grid needs two rows and at least two columns",
+        )
+      }
+      const originallyAutoWrap = ctx.getMode("autoWrap")
+      try {
+        ctx.feed("\x1b[?7h") // enable auto-wrap
+        ctx.feed("\x1b[?45h") // enable reverse wrap
+        ctx.feed("\x1b[H")
+        const start = ctx.getCursor()
+        if (start.y !== 0 || start.x !== 0) {
+          return parserStateResult(null, expected, { cols, start }, "Home-position control was not measured")
+        }
+        ctx.feed("A".repeat(cols) + "B") // B forces a deferred wrap into row 1
+        const wrapped = ctx.getCursor()
+        if (wrapped.y !== 1 || wrapped.x !== 1) {
+          return parserStateResult(null, expected, { cols, start, wrapped }, "Second-row displacement was not measured")
+        }
+        ctx.feed("\x08\x08") // first reaches col 0; second must reverse-wrap
+        const cursor = ctx.getCursor()
+        return parserStateResult(cursor.y === 0 && cursor.x === cols - 1, expected, { cols, start, wrapped, cursor })
+      } finally {
+        ctx.feed("\x1b[?45l")
+        ctx.feed(originallyAutoWrap ? "\x1b[?7h" : "\x1b[?7l")
       }
     },
     async (ctx) => {
@@ -387,8 +450,14 @@ export const cursorProbes: ProbeDefinition[] = [
       try {
         const pos = await ctx.queryCursorPosition()
         return {
-          pass: pos !== null,
-          note: pos ? undefined : "No cursor response after enabling reverse wrap",
+          pass: false,
+          ...(pos && { response: JSON.stringify(pos) }),
+          observation: {
+            outcome: "inconclusive",
+            reason: pos ? "insufficient-evidence" : "no-response",
+            evidence: "query",
+            note: "Cursor reply after enabling reverse wrap does not measure backward-wrap movement",
+          },
         }
       } finally {
         ctx.write("\x1b[?45l") // disable reverse wrap after the query, including errors

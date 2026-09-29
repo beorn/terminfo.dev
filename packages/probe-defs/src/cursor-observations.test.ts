@@ -70,6 +70,54 @@ function headless(x: number, y: number, rows = 24, reply = ""): TermlessContext 
   }
 }
 
+test("cursor shape without style readback and reverse-wrap CPR remain ungraded", async () => {
+  const shape = byId("cursor.shape").termless!(headless(0, 0))
+  expect(shape.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "parser-state",
+  })
+  expect(shape.assertions).toBeUndefined()
+
+  const appShape = await byId("cursor.shape").term!(app({ row: 1, col: 1 }))
+  expect(appShape.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+  expect(appShape.assertions).toBeUndefined()
+
+  const reverse = await byId("cursor.reverse-wrap").term!(app({ row: 1, col: 80 }))
+  expect(reverse.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+  expect(reverse.assertions).toBeUndefined()
+})
+
+test("reverse-wrap needs two rows and a measured wrap before backspace", () => {
+  const probe = byId("cursor.reverse-wrap")
+  const writes: string[] = []
+  const context = { ...headless(3, 0, 1), cols: 4 }
+  context.feed = (sequence) => {
+    writes.push(sequence)
+  }
+  expect(probe.termless!(context).observation).toMatchObject({ outcome: "inconclusive" })
+  expect(writes).toEqual([])
+
+  const twoRows = { ...headless(3, 0, 2), cols: 4 }
+  twoRows.getCursor = () => ({ x: 3, y: 0, visible: true, style: null })
+  expect(probe.termless!(twoRows).observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+})
+
+test("reverse-wrap retains support after a measured second-row displacement", () => {
+  const probe = byId("cursor.reverse-wrap")
+  const context = { ...headless(0, 0, 2), cols: 4 }
+  let position = { x: 0, y: 0 }
+  context.feed = (sequence) => {
+    if (sequence === "\x1b[H") position = { x: 0, y: 0 }
+    if (sequence === "AAAAB") position = { x: 1, y: 1 }
+    if (sequence === "\x08\x08") position = { x: 3, y: 0 }
+  }
+  context.getCursor = () => ({ ...position, visible: true, style: null })
+  const result = probe.termless!(context)
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
+})
+
 test.each([
   { initial: true, fault: "none", outcome: "supported" },
   { initial: false, fault: "none", outcome: "supported" },

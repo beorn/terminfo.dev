@@ -1,5 +1,25 @@
-import type { ProbeDefinition } from "./types.ts"
-import { parserStateResult, probe, isBlank } from "./helpers.ts"
+import type { ProbeDefinition, ProbeResult } from "./types.ts"
+import { parserStateResult, probe, isBlank, unmeasuredCellResult, selectiveEraseResult } from "./helpers.ts"
+
+// DECRQCRA is a reply capability probe, not a checksum-correctness oracle.
+function checksumResult(response: string): ProbeResult {
+  const supported = /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/.test(response)
+  return {
+    pass: supported,
+    response,
+    note: "Checks framed reply and request id; checksum arithmetic is not verified",
+    observation: {
+      outcome: supported ? "supported" : "inconclusive",
+      evidence: "query",
+      ...(!supported && { reason: response ? ("invalid-reply" as const) : ("no-response" as const) }),
+    },
+    ...(supported && {
+      assertions: [
+        { kind: "positive", expected: "Complete four-digit checksum reply for request 1", observed: response },
+      ],
+    }),
+  }
+}
 
 export const editingProbes: ProbeDefinition[] = [
   {
@@ -52,11 +72,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;2H") // Move to col 2
         ctx.write("\x1b[1@") // ICH 1
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
-        return {
-          pass: pos.col === 2,
-          note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -115,11 +131,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;2H") // Move to col 2
         ctx.write("\x1b[1P") // DCH 1
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
-        return {
-          pass: pos.col === 2,
-          note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -179,11 +191,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[3;5H") // Move to row 3, col 5
         ctx.write("\x1b[1L") // IL 1
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
-        return {
-          pass: pos.row === 3,
-          note: pos.row === 3 ? undefined : `cursor at row ${pos.row}, expected 3`,
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -244,11 +252,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[3;5H") // Move to row 3, col 5
         ctx.write("\x1b[1M") // DL 1
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
-        return {
-          pass: pos.row === 3,
-          note: pos.row === 3 ? undefined : `cursor at row ${pos.row}, expected 3`,
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -312,11 +316,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("X") // write X (cursor at col 2)
         ctx.write("\x1b[4b") // REP 4
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
-        return {
-          pass: pos.col === 6,
-          note: pos.col === 6 ? undefined : `cursor at col ${pos.col}, expected 6`,
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -383,10 +383,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H")
         ctx.write("\x1b[88;1;1;3;5$x") // DECFRA fill 'X'
         const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? "sequence consumed" : "no cursor response",
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -443,10 +440,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H")
         ctx.write("\x1b[1;1;3;5$z") // DECERA
         const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? "sequence consumed" : "no cursor response",
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -457,22 +451,7 @@ export const editingProbes: ProbeDefinition[] = [
   {
     ...probe(
       "editing.decsera",
-      (ctx) => {
-        // DECSERA selectively erases unprotected characters in a rectangle.
-        // Write text, then selective-erase — without DECSCA protection, all chars
-        // should be erased (same as DECERA for unprotected content).
-        ctx.feed("AAAAA\r\nBBBBB\r\nCCCCC\x1b[1;1H")
-        ctx.feed("\x1b[1;1;3;5${") // DECSERA rows 1-3 cols 1-5
-        // Verify all cells erased (none are protected)
-        for (let row = 0; row < 3; row++) {
-          for (let col = 0; col < 5; col++) {
-            if (!isBlank(ctx.getCell(row, col).char)) {
-              return { pass: false, note: `cell(${row},${col})="${ctx.getCell(row, col).char}", expected blank` }
-            }
-          }
-        }
-        return { pass: true }
-      },
+      (ctx) => selectiveEraseResult(ctx, "\x1b[1;1;1;5${", true),
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
           return {
@@ -488,10 +467,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H")
         ctx.write("\x1b[1;1;3;5${") // DECSERA
         const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? "sequence consumed" : "no cursor response",
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -553,10 +529,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H")
         ctx.write("\x1b[1;1;2;5;1;5;10$v") // DECCRA
         const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? "sequence consumed" : "no cursor response",
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -617,10 +590,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H")
         ctx.write("\x1b[1;1;3;5;7$r") // DECCARA
         const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? "sequence consumed" : "no cursor response",
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -681,10 +651,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H")
         ctx.write("\x1b[1;1;3;5;7$t") // DECRARA
         const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? "sequence consumed" : "no cursor response",
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -692,31 +659,25 @@ export const editingProbes: ProbeDefinition[] = [
     termlessObservationEvidence: "parser-state",
   },
 
-  // DECSACE sets the attribute-change extent mode (rectangle vs stream) for
-  // DECCARA/DECRARA. It's a pure mode-set with no query mechanism — there's no
-  // DECRPM equivalent, no response, and no observable cell-state change. The only
-  // way to verify it would be to run a DECCARA after setting each mode and compare
-  // results, but that tests DECCARA+DECSACE jointly, not DECSACE alone. Keeping
-  // this probe partial: we verify the sequence is consumed without literal leak.
+  // Consumption alone cannot establish attribute-change extent. A future
+  // fixture can compare DECCARA effects or query DECSACE through DECRQSS.
   probe(
     "editing.decsace",
     (ctx) => {
       ctx.feed("\x1b[1;1H\x1b[2*x") // DECSACE select rectangle extent
       const text = ctx.getText()
-      const noLeak = !text.includes("*x")
       return {
-        pass: noLeak,
-        note: noLeak ? "sequence consumed" : "literal leak detected",
+        pass: false,
+        response: JSON.stringify({ text }),
+        note: "Sequence consumption does not measure attribute-change extent",
+        observation: { outcome: "inconclusive", evidence: "consumed", reason: "insufficient-evidence" },
       }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H")
       ctx.write("\x1b[2*x") // DECSACE
       const pos = await ctx.queryCursorPosition()
-      return {
-        pass: pos !== null,
-        note: pos ? "sequence consumed" : "no cursor response",
-      }
+      return unmeasuredCellResult(pos, "edited cells or attributes")
     },
   ),
 
@@ -727,23 +688,11 @@ export const editingProbes: ProbeDefinition[] = [
       // DCS Pid ! ~ D...D ST where D...D is the hex checksum.
       // Write known content so the checksum is non-trivial.
       ctx.feed("ABCDE\x1b[1;1H")
-      const response = ctx.feedCapture("\x1b[1;1;1;1;5*y") // Pid=1, page=1, row 1 cols 1-5
-      // Response format: DCS Pid ! ~ xxxx ST  (xxxx = hex digits)
-      const match = /\x1bP(\d+)!~([0-9A-Fa-f]+)\x1b\\/.test(response)
-      return {
-        pass: match,
-        note: match ? undefined : `response: ${JSON.stringify(response)}`,
-        response,
-      }
+      return checksumResult(ctx.feedCapture("\x1b[1;1;1;1;1;5*y")) // id, page, top, left, bottom, right
     },
     async (ctx) => {
-      // Query checksum of cell 1,1
-      const result = await ctx.query("\x1b[1;1;1;1;1;1*y", /\x1bP(\d+)!~([0-9A-Fa-f]+)\x1b\\/, 2000)
-      return {
-        pass: result !== null,
-        note: result ? "checksum response received" : "no DECRQCRA response",
-        response: result ? result[0] : undefined,
-      }
+      const reply = await ctx.queryOutcome("\x1b[1;1;1;1;1;1*y", /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/, 2000)
+      return checksumResult(reply.raw)
     },
   ),
 
@@ -804,10 +753,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("1234567")
         ctx.write("\x1b[2 @") // SL 2
         const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? "sequence consumed" : "no cursor response",
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -867,10 +813,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("1234567")
         ctx.write("\x1b[2 A") // SR 2
         const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? "sequence consumed" : "no cursor response",
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -935,10 +878,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[3;3H")
         ctx.write("\x1b[2'}") // DECIC 2
         const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? "sequence consumed" : "no cursor response",
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,
@@ -1006,10 +946,7 @@ export const editingProbes: ProbeDefinition[] = [
         ctx.write("\x1b[3;3H")
         ctx.write("\x1b[2'~") // DECDC 2
         const pos = await ctx.queryCursorPosition()
-        return {
-          pass: pos !== null,
-          note: pos ? "sequence consumed" : "no cursor response",
-        }
+        return unmeasuredCellResult(pos, "edited cells or attributes")
       },
     ),
     termNeedsGeometry: true,

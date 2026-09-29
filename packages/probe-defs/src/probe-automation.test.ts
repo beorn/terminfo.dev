@@ -1160,7 +1160,7 @@ describe("headless charset cell evidence", () => {
 })
 
 describe("partial probe automation candidates", () => {
-  test("modes.decsclm verifies the DEC private mode through DECRPM", () => {
+  test("modes.decsclm keeps DECRPM recognition distinct from measured scroll timing", () => {
     const p = probe("modes.decsclm")
     expect(p.termless).toBeTypeOf("function")
 
@@ -1177,7 +1177,14 @@ describe("partial probe automation candidates", () => {
       }),
     )
 
-    expect(result.pass).toBe(true)
+    expect(result.pass).toBe(false)
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "parser-state",
+    })
+    expect(JSON.parse(result.response ?? "null")).toEqual({ response: "\x1b[?4;1$y" })
+    expect(result.assertions).toBeUndefined()
     expect(seen).toEqual(["\x1b[?4h", "\x1b[?4$p", "\x1b[?4l"])
   })
 
@@ -1198,17 +1205,23 @@ describe("partial probe automation candidates", () => {
     expect(result.response).toBe("\x1b[?997;1n")
   })
 
-  test("OSC 113/114 reset probes verify pointer color reset through query responses", () => {
+  test("OSC 113/114 reset probes require original, changed, and restored color replies", () => {
     const cases = [
       {
         id: "extensions.osc113-reset-pointer-fg",
         expected: "\x1b]13;?\x07",
-        response: "\x1b]13;rgb:ffff/ffff/ffff\x1b\\",
+        set: 13,
+        original: "\x1b]13;rgb:1010/2020/3030\x1b\\",
+        changed: "\x1b]13;rgb:aaaa/bbbb/cccc\x1b\\",
+        reset: "\x1b]113\x07",
       },
       {
         id: "extensions.osc114-reset-pointer-bg",
         expected: "\x1b]14;?\x07",
-        response: "\x1b]14;rgb:0000/0000/0000\x1b\\",
+        set: 14,
+        original: "\x1b]14;rgb:1010/2020/3030\x1b\\",
+        changed: "\x1b]14;rgb:aaaa/bbbb/cccc\x1b\\",
+        reset: "\x1b]114\x07",
       },
     ]
 
@@ -1217,6 +1230,7 @@ describe("partial probe automation candidates", () => {
       expect(p.termless).toBeTypeOf("function")
       const feed: string[] = []
       const capture: string[] = []
+      const replies = [c.original, c.changed, c.original]
       const result = p.termless!(
         context({
           feed(text) {
@@ -1224,13 +1238,16 @@ describe("partial probe automation candidates", () => {
           },
           feedCapture(text) {
             capture.push(text)
-            return c.response
+            return replies.shift() ?? ""
           },
         }),
       )
       expect(result.pass).toBe(true)
-      expect(capture).toEqual([c.expected])
-      expect(feed.length).toBeGreaterThan(0)
+      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+      expect(result.assertions).toMatchObject([{ kind: "positive" }])
+      expect(capture).toEqual([c.expected, c.expected, c.expected])
+      expect(feed).toEqual([`\x1b]${c.set};rgb:aa/bb/cc\x07`, c.reset])
+      expect(replies).toEqual([])
     }
   })
 

@@ -74,6 +74,43 @@ test("accumulate uses measured rows and does not infer 24 after CSI silence", as
   expect(writes.filter((s) => s.startsWith("line-"))).toHaveLength(47)
 })
 
+test("cursor replies do not qualify app scrollback contents or region behavior", async () => {
+  for (const id of [
+    "scrollback.accumulate",
+    "scrollback.total-lines",
+    "scrollback.scroll-up",
+    "scrollback.reverse-index",
+    "scrollback.scroll-down",
+    "scrollback.set-region",
+    "scrollback.alt-screen",
+    "scrollback.decstbm",
+    "scrollback.decstbm-reset",
+  ]) {
+    const definition = scrollbackProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing ${id} app callback`)
+    const context: TermContext = {
+      rows: 12,
+      cols: 61,
+      write() {},
+      queryCursorPosition: async () => ({ row: 5, col: 5 }),
+      measureRenderedWidth: async () => null,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryMode: async () => null,
+    }
+    const result = await definition.term(context)
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(result.assertions ?? [], id).toEqual([])
+    expect(result.response, id).toBeTruthy()
+  }
+})
+
 test("DECSTBM reset uses measured row count beyond 999 and declines a short grid before writes", async () => {
   const probe = scrollbackProbes.find((entry) => entry.id === "scrollback.decstbm-reset")
   if (!probe?.term) throw new Error("missing scrollback.decstbm-reset app callback")
@@ -249,6 +286,81 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
   })
   expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
   expect(writes).toEqual([])
+})
+
+test("SU cannot claim support when the setup lines already scrolled TOP away", () => {
+  const probe = scrollbackProbes.find((item) => item.id === "scrollback.scroll-up")
+  if (!probe?.termless) throw new Error("missing scroll-up callback")
+  let lines = 0
+  const result = probe.termless(
+    headless({
+      getScrollback: () => ({ viewportOffset: 0, totalLines: 4, screenLines: 4 }),
+      feed: (sequence) => {
+        if (sequence === "line\r\n") lines++
+      },
+      getCell: () => ({ char: lines >= 3 ? " " : "T" }) as ReturnType<TermlessContext["getCell"]>,
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("SU retains support when TOP survives setup and CSI S alone moves it", () => {
+  const probe = scrollbackProbes.find((item) => item.id === "scrollback.scroll-up")
+  if (!probe?.termless) throw new Error("missing scroll-up callback")
+  let scrolled = false
+  const result = probe.termless(
+    headless({
+      getScrollback: () => ({ viewportOffset: 0, totalLines: 4, screenLines: 4 }),
+      feed: (sequence) => {
+        if (sequence === "\x1b[S") scrolled = true
+      },
+      getCell: () => ({ char: scrolled ? " " : "T" }) as ReturnType<TermlessContext["getCell"]>,
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
+})
+
+test("DECSTBM needs an inner-row movement control, not just a surviving top row", () => {
+  const probe = scrollbackProbes.find((item) => item.id === "scrollback.decstbm")
+  if (!probe?.termless) throw new Error("missing decstbm callback")
+  const result = probe.termless(
+    headless({
+      getCell: (row) => ({ char: row === 0 ? "F" : "I" }) as ReturnType<TermlessContext["getCell"]>,
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("DECSTBM retains support when only the inner marker scrolls", () => {
+  const probe = scrollbackProbes.find((item) => item.id === "scrollback.decstbm")
+  if (!probe?.termless) throw new Error("missing decstbm callback")
+  let scrolled = false
+  const result = probe.termless(
+    headless({
+      feed: (sequence) => {
+        if (sequence.includes("\x1b[10;1HZ")) scrolled = true
+      },
+      getCell: (row) => ({ char: row === 0 ? "F" : scrolled ? " " : "I" }) as ReturnType<TermlessContext["getCell"]>,
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
+})
+
+test("DECSTBM reset does not qualify when earlier region confinement was not established", () => {
+  const probe = scrollbackProbes.find((item) => item.id === "scrollback.decstbm-reset")
+  if (!probe?.termless) throw new Error("missing decstbm-reset callback")
+  let reads = 0
+  const result = probe.termless(
+    headless({
+      getScrollback: () => ({ viewportOffset: 0, screenLines: 12, totalLines: reads++ === 0 ? 12 : 40 }),
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  expect(result.assertions).toBeUndefined()
 })
 
 test("alternate-screen entry write failure still sends the exit sequence", async () => {

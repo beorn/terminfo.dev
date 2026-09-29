@@ -1,5 +1,5 @@
 import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
-import { probe } from "./helpers.ts"
+import { isBlank, parserStateResult, probe, unmeasuredCellResult } from "./helpers.ts"
 
 /** Each tab probe owns its stops; the app runner supplies a disposable terminal fixture. */
 function installTabFixture(write: (sequence: string) => void): void {
@@ -119,8 +119,16 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.basic",
       (ctx) => {
+        ctx.feed("\x1b[2J\x1b[H")
+        const before = ctx.getText()
         ctx.feed("Hello")
-        return { pass: ctx.getText().includes("Hello") }
+        const after = ctx.getText()
+        return parserStateResult(
+          before.includes("Hello") ? null : after.includes("Hello"),
+          "Hello appears after a measured empty control",
+          { before, after },
+          before.includes("Hello") ? "Control already contained Hello" : undefined,
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 6)
@@ -128,11 +136,7 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H\x1b[2K") // clear line, move to 1;1
         ctx.write("Hello")
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
-        return {
-          pass: pos.col === 6,
-          note: pos.col === 6 ? undefined : `cursor at col ${pos.col}, expected 6`,
-        }
+        return unmeasuredCellResult(pos, "rendered Hello text")
       },
     ),
     termNeedsGeometry: true,
@@ -142,19 +146,51 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.newline",
       (ctx) => {
+        ctx.feed("\x1b[2J\x1b[H")
+        const before = [ctx.getCell(0, 0), ctx.getCell(1, 0)]
         ctx.feed("A\r\nB")
-        return { pass: ctx.getCell(0, 0).char === "A" && ctx.getCell(1, 0).char === "B" }
+        const first = ctx.getCell(0, 0)
+        const second = ctx.getCell(1, 0)
+        const ready = before.every((cell) => isBlank(cell.char))
+        return parserStateResult(
+          ready ? first.char === "A" && second.char === "B" : null,
+          "CRLF places B below A",
+          { before, first, second },
+          ready ? undefined : "Control cells were not blank",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 4, 5)
         if (refusal) return refusal
         ctx.write("\x1b[3;5H") // move to row 3, col 5
+        const before = await ctx.queryCursorPosition()
         ctx.write("\n") // LF
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!before || !pos)
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        if (before.row !== 3 || before.col !== 5)
+          return {
+            pass: false,
+            response: JSON.stringify({ before, pos }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "Could not establish starting cursor position",
+            },
+          }
+        const pass = pos.row === 4 && pos.col === 5
         return {
-          pass: pos.row === 4,
-          note: pos.row === 4 ? undefined : `cursor at row ${pos.row}, expected 4`,
+          pass,
+          response: JSON.stringify({ before, pos }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "LF advances from row 3 to row 4",
+              observed: JSON.stringify({ before, pos }),
+            },
+          ],
         }
       },
     ),
@@ -171,8 +207,18 @@ export const textProbes: ProbeDefinition[] = [
             observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
           }
         }
+        ctx.feed("\x1b[2J\x1b[H")
+        const before = [ctx.getCell(0, ctx.cols - 1), ctx.getCell(1, 0)]
         ctx.feed("X".repeat(ctx.cols + 1))
-        return { pass: ctx.getCell(1, 0).char === "X" }
+        const last = ctx.getCell(0, ctx.cols - 1)
+        const next = ctx.getCell(1, 0)
+        const ready = before.every((cell) => isBlank(cell.char))
+        return parserStateResult(
+          ready ? last.char === "X" && next.char === "X" : null,
+          "The next X wraps to the measured second row",
+          { cols: ctx.cols, before, last, next },
+          ready ? undefined : "Control cells were not blank",
+        )
       },
       async (ctx) => {
         const cols = ctx.cols
@@ -191,11 +237,7 @@ export const textProbes: ProbeDefinition[] = [
         const line = "W".repeat(cols) + "X"
         ctx.write(line)
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
-        return {
-          pass: pos.row === 2 && pos.col === 2,
-          note: pos.row === 2 && pos.col === 2 ? undefined : `cursor at ${pos.row};${pos.col}, expected 2;2`,
-        }
+        return unmeasuredCellResult(pos, "wrapped text cells")
       },
     ),
     termNeedsGeometry: true,
@@ -213,7 +255,8 @@ export const textProbes: ProbeDefinition[] = [
         }
         try {
           ctx.feed("\x1b[3g\x1b[1;9H\x1bH\x1b[1;1H\tX")
-          return { pass: ctx.getCell(0, 8).char === "X" }
+          const cell = ctx.getCell(0, 8)
+          return parserStateResult(cell.char === "X", "HT moves X to the owned stop at column 9", { cell })
         } finally {
           restoreDefaultTabs(ctx.feed, ctx.cols)
         }
@@ -225,11 +268,7 @@ export const textProbes: ProbeDefinition[] = [
           ctx.write("\x1b[3g\x1b[1;9H\x1bH\x1b[1;1H")
           ctx.write("\t")
           const pos = await ctx.queryCursorPosition()
-          if (!pos) return { pass: false, note: "No cursor response" }
-          return {
-            pass: pos.col === 9,
-            note: pos.col === 9 ? undefined : `cursor at col ${pos.col}, expected 9`,
-          }
+          return unmeasuredCellResult(pos, "tab-stop placement of X")
         } finally {
           restoreDefaultTabs(ctx.write, ctx.cols)
         }
@@ -242,17 +281,47 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.wide.emoji",
       (ctx) => {
+        ctx.feed("AA")
+        const ascii = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
+        ctx.feed("\x1b[1;1H\x1b[2K")
         ctx.feed("\u{1f389}")
-        return { pass: ctx.getCell(0, 0).wide === true }
+        const cell = ctx.getCell(0, 0)
+        const ready = ascii[0]?.char === "A" && ascii[1]?.char === "A" && cell.char === "🎉"
+        return parserStateResult(
+          ready ? cell.wide === true : null,
+          "Emoji occupies a wide parser cell",
+          { ascii, cell },
+          ready ? undefined : "ASCII control or emoji cell was not exposed",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
-        const width = await ctx.measureRenderedWidth("\u{1F600}")
-        if (width === null) return { pass: false, note: "Cannot measure width" }
+        const ascii = await ctx.measureRenderedWidth("AA")
+        const width = await ctx.measureRenderedWidth("\u{1f389}")
+        if (ascii !== 2 || width === null)
+          return {
+            pass: false,
+            response: JSON.stringify({ ascii, width }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "ASCII width control or emoji width was unavailable",
+            },
+          }
+        const pass = width === 2
         return {
-          pass: width === 2,
-          note: width === 2 ? undefined : `width=${width}, expected 2`,
+          pass,
+          response: JSON.stringify({ ascii, width }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "🎉 occupies two columns after ASCII calibration",
+              observed: JSON.stringify({ ascii, width }),
+            },
+          ],
         }
       },
     ),
@@ -263,17 +332,47 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.wide.cjk",
       (ctx) => {
+        ctx.feed("AA")
+        const ascii = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
+        ctx.feed("\x1b[1;1H\x1b[2K")
         ctx.feed("\u4e2d")
-        return { pass: ctx.getCell(0, 0).wide === true }
+        const cell = ctx.getCell(0, 0)
+        const ready = ascii[0]?.char === "A" && ascii[1]?.char === "A" && cell.char === "中"
+        return parserStateResult(
+          ready ? cell.wide === true : null,
+          "CJK sample occupies a wide parser cell",
+          { ascii, cell },
+          ready ? undefined : "ASCII control or CJK cell was not exposed",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u4e2d")
-        if (width === null) return { pass: false, note: "Cannot measure width" }
+        if (ascii !== 2 || width === null)
+          return {
+            pass: false,
+            response: JSON.stringify({ ascii, width }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "ASCII width control or CJK width was unavailable",
+            },
+          }
+        const pass = width === 2
         return {
-          pass: width === 2,
-          note: width === 2 ? undefined : `width=${width}, expected 2`,
+          pass,
+          response: JSON.stringify({ ascii, width }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "中 occupies two columns after ASCII calibration",
+              observed: JSON.stringify({ ascii, width }),
+            },
+          ],
         }
       },
     ),
@@ -284,8 +383,18 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.overwrite",
       (ctx) => {
-        ctx.feed("AB\x1b[1GC")
-        return { pass: ctx.getCell(0, 0).char === "C" }
+        ctx.feed("AB")
+        const before = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
+        ctx.feed("\x1b[1GC")
+        const first = ctx.getCell(0, 0)
+        const second = ctx.getCell(0, 1)
+        const ready = before[0]?.char === "A" && before[1]?.char === "B"
+        return parserStateResult(
+          ready ? first.char === "C" && second.char === "B" : null,
+          "C overwrites A while B remains",
+          { before, first, second },
+          ready ? undefined : "AB control was not measured",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
@@ -295,11 +404,7 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;2H") // move back to col 2
         ctx.write("X") // overwrite B
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
-        return {
-          pass: pos.col === 3,
-          note: pos.col === 3 ? undefined : `cursor at col ${pos.col}, expected 3`,
-        }
+        return unmeasuredCellResult(pos, "overwritten B cell")
       },
     ),
     termNeedsGeometry: true,
@@ -309,20 +414,52 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.cr",
       (ctx) => {
-        ctx.feed("AB\rC")
-        return { pass: ctx.getCell(0, 0).char === "C" && ctx.getCell(0, 1).char === "B" }
+        ctx.feed("AB")
+        const before = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
+        ctx.feed("\rC")
+        const first = ctx.getCell(0, 0)
+        const second = ctx.getCell(0, 1)
+        const ready = before[0]?.char === "A" && before[1]?.char === "B"
+        return parserStateResult(
+          ready ? first.char === "C" && second.char === "B" : null,
+          "CR returns C to the first column while B remains",
+          { before, first, second },
+          ready ? undefined : "AB control was not measured",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("AB")
+        const before = await ctx.queryCursorPosition()
         ctx.write("\r") // CR
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!before || !pos)
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        if (before.row !== 1 || before.col !== 3)
+          return {
+            pass: false,
+            response: JSON.stringify({ before, pos }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "Could not establish cursor at 1;3 before CR",
+            },
+          }
+        const pass = pos.row === 1 && pos.col === 1
         return {
-          pass: pos.col === 1,
-          note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+          pass,
+          response: JSON.stringify({ before, pos }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "CR moves cursor from 1;3 to 1;1",
+              observed: JSON.stringify({ before, pos }),
+            },
+          ],
         }
       },
     ),
@@ -333,19 +470,51 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.backspace",
       (ctx) => {
-        ctx.feed("AB\x08C")
-        return { pass: ctx.getCell(0, 0).char === "A" && ctx.getCell(0, 1).char === "C" }
+        ctx.feed("AB")
+        const before = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
+        ctx.feed("\x08C")
+        const first = ctx.getCell(0, 0)
+        const second = ctx.getCell(0, 1)
+        const ready = before[0]?.char === "A" && before[1]?.char === "B"
+        return parserStateResult(
+          ready ? first.char === "A" && second.char === "C" : null,
+          "Backspace lets C overwrite B while A remains",
+          { before, first, second },
+          ready ? undefined : "AB control was not measured",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 5)
         if (refusal) return refusal
         ctx.write("\x1b[1;5H") // Move to col 5
+        const before = await ctx.queryCursorPosition()
         ctx.write("\b") // BS
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!before || !pos)
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        if (before.row !== 1 || before.col !== 5)
+          return {
+            pass: false,
+            response: JSON.stringify({ before, pos }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "Could not establish cursor at 1;5 before BS",
+            },
+          }
+        const pass = pos.row === 1 && pos.col === 4
         return {
-          pass: pos.col === 4,
-          note: pos.col === 4 ? undefined : `cursor at col ${pos.col}, expected 4`,
+          pass,
+          response: JSON.stringify({ before, pos }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "BS moves from 1;5 to 1;4",
+              observed: JSON.stringify({ before, pos }),
+            },
+          ],
         }
       },
     ),
@@ -356,19 +525,50 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.index",
       (ctx) => {
-        ctx.feed("A\x1bD")
-        return { pass: ctx.getCursor().y === 1 }
+        ctx.feed("A")
+        const before = ctx.getCursor()
+        ctx.feed("\x1bD")
+        const after = ctx.getCursor()
+        const ready = before.y === 0 && before.x === 1
+        return parserStateResult(
+          ready ? after.y === 1 && after.x === 1 : null,
+          "IND advances the parser cursor one row",
+          { before, after },
+          ready ? undefined : "Starting cursor position was not measured",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 4, 5)
         if (refusal) return refusal
         ctx.write("\x1b[3;5H") // move to row 3, col 5
+        const before = await ctx.queryCursorPosition()
         ctx.write("\x1bD") // IND
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!before || !pos)
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        if (before.row !== 3 || before.col !== 5)
+          return {
+            pass: false,
+            response: JSON.stringify({ before, pos }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "Could not establish starting cursor position",
+            },
+          }
+        const pass = pos.row === 4 && pos.col === 5
         return {
-          pass: pos.row === 4 && pos.col === 5,
-          note: pos.row === 4 && pos.col === 5 ? undefined : `got ${pos.row};${pos.col}, expected 4;5`,
+          pass,
+          response: JSON.stringify({ before, pos }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "IND advances cursor from 3;5 to 4;5",
+              observed: JSON.stringify({ before, pos }),
+            },
+          ],
         }
       },
     ),
@@ -379,19 +579,50 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.next-line",
       (ctx) => {
-        ctx.feed("ABC\x1bE")
-        return { pass: ctx.getCursor().y === 1 && ctx.getCursor().x === 0 }
+        ctx.feed("ABC")
+        const before = ctx.getCursor()
+        ctx.feed("\x1bE")
+        const after = ctx.getCursor()
+        const ready = before.y === 0 && before.x === 3
+        return parserStateResult(
+          ready ? after.y === 1 && after.x === 0 : null,
+          "NEL advances the parser cursor to row 2 column 1",
+          { before, after },
+          ready ? undefined : "Starting cursor position was not measured",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 4, 5)
         if (refusal) return refusal
         ctx.write("\x1b[3;5H") // move to row 3, col 5
+        const before = await ctx.queryCursorPosition()
         ctx.write("\x1bE") // NEL
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!before || !pos)
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        if (before.row !== 3 || before.col !== 5)
+          return {
+            pass: false,
+            response: JSON.stringify({ before, pos }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "Could not establish starting cursor position",
+            },
+          }
+        const pass = pos.row === 4 && pos.col === 1
         return {
-          pass: pos.row === 4 && pos.col === 1,
-          note: pos.row === 4 && pos.col === 1 ? undefined : `got ${pos.row};${pos.col}, expected 4;1`,
+          pass,
+          response: JSON.stringify({ before, pos }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "NEL advances cursor from 3;5 to 4;1",
+              observed: JSON.stringify({ before, pos }),
+            },
+          ],
         }
       },
     ),
@@ -412,14 +643,17 @@ export const textProbes: ProbeDefinition[] = [
           ctx.feed("\x1b[1;5r") // Set scroll region to lines 1-5
           ctx.feed("\x1b[H") // Move to top (row 0)
           ctx.feed("MARKER")
+          const before = ctx.getCell(0, 0)
           ctx.feed("\x1b[H") // Back to top
           ctx.feed("\x1bM") // Reverse index at top — should scroll region down
           // MARKER should have moved from row 0 to row 1
           const cell = ctx.getCell(1, 0)
-          return {
-            pass: cell.char === "M",
-            note: cell.char === "M" ? undefined : `row 1 char='${cell.char}', expected 'M' (MARKER shifted down)`,
-          }
+          return parserStateResult(
+            before.char === "M" ? cell.char === "M" : null,
+            "RI moves the measured MARKER to row 2",
+            { before, cell },
+            before.char === "M" ? undefined : "MARKER control was not measured",
+          )
         } finally {
           ctx.feed("\x1b[r") // reset scroll region
         }
@@ -432,11 +666,7 @@ export const textProbes: ProbeDefinition[] = [
           ctx.write("\x1b[3;1H") // move to row 3 (top of region)
           ctx.write("\x1bM") // RI — reverse index at top of region
           const pos = await ctx.queryCursorPosition()
-          if (!pos) return { pass: false, note: "No cursor response after RI in region" }
-          return {
-            pass: pos.row === 3,
-            note: pos.row === 3 ? undefined : `cursor at row ${pos.row}, expected 3`,
-          }
+          return unmeasuredCellResult(pos, "RI scrolling of region contents")
         } finally {
           ctx.write("\x1b[r") // reset scroll region
         }
@@ -449,17 +679,48 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.combining",
       (ctx) => {
+        ctx.feed("AB")
+        const ascii = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
+        ctx.feed("\x1b[1;1H\x1b[2K")
         ctx.feed("e\u0301X")
-        return { pass: ctx.getCell(0, 1).char === "X" }
+        const first = ctx.getCell(0, 0)
+        const second = ctx.getCell(0, 1)
+        const ready = ascii[0]?.char === "A" && ascii[1]?.char === "B" && first.char.includes("e")
+        return parserStateResult(
+          ready ? second.char === "X" : null,
+          "Combining accent keeps X in the next parser cell",
+          { ascii, first, second },
+          ready ? undefined : "ASCII control or combining sample was not measured",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        const ascii = await ctx.measureRenderedWidth("A")
         const width = await ctx.measureRenderedWidth("e\u0301")
-        if (width === null) return { pass: false, note: "Cannot measure width" }
+        if (ascii !== 1 || width === null)
+          return {
+            pass: false,
+            response: JSON.stringify({ ascii, width }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "ASCII width control or combining width was unavailable",
+            },
+          }
+        const pass = width === 1
         return {
-          pass: width === 1,
-          note: width === 1 ? undefined : `width=${width}, expected 1`,
+          pass,
+          response: JSON.stringify({ ascii, width }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "e plus accent occupies one column after ASCII calibration",
+              observed: JSON.stringify({ ascii, width }),
+            },
+          ],
         }
       },
     ),
@@ -473,7 +734,10 @@ export const textProbes: ProbeDefinition[] = [
       (ctx) => {
         try {
           ctx.feed("\x1b[3g\x1b[6G\x1bH\x1b[1G\t")
-          return { pass: ctx.getCursor().x === 5 }
+          const cursor = ctx.getCursor()
+          return parserStateResult(cursor.x === 5 && cursor.y === 0, "HTS makes the tab advance to column 6", {
+            cursor,
+          })
         } finally {
           restoreDefaultTabs(ctx.feed, ctx.cols)
         }
@@ -493,7 +757,7 @@ export const textProbes: ProbeDefinition[] = [
         try {
           ctx.write("\x1b[3g\x1b[1;6H\x1bH\x1b[1;1H\t")
           const pos = await ctx.queryCursorPosition()
-          return { pass: pos?.col === 6, ...(pos ? {} : { note: "No cursor response" }) }
+          return unmeasuredCellResult(pos, "new tab-stop behavior without a calibrated prior stop")
         } finally {
           restoreDefaultTabs(ctx.write, ctx.cols)
         }
@@ -690,17 +954,48 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.wide.emoji-flags",
       (ctx) => {
+        ctx.feed("AA")
+        const ascii = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
+        ctx.feed("\x1b[1;1H\x1b[2K")
         ctx.feed("\u{1F1FA}\u{1F1F8}X")
-        return { pass: ctx.getCell(0, 0).wide === true }
+        const cell = ctx.getCell(0, 0)
+        const next = ctx.getCell(0, 2)
+        const ready = ascii[0]?.char === "A" && ascii[1]?.char === "A" && cell.char.includes("🇺") && next.char === "X"
+        return parserStateResult(
+          ready ? cell.wide === true : null,
+          "Flag sample occupies one wide parser cell before X",
+          { ascii, cell, next },
+          ready ? undefined : "ASCII, flag, or X control cells were not exposed",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 4)
         if (refusal) return refusal
+        const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F1FA}\u{1F1F8}")
-        if (width === null) return { pass: false, note: "Cannot measure width" }
+        if (ascii !== 2 || width === null)
+          return {
+            pass: false,
+            response: JSON.stringify({ ascii, width }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "ASCII width control or flag width was unavailable",
+            },
+          }
+        const pass = width === 2
         return {
-          pass: width === 2,
-          note: width === 2 ? undefined : `width=${width}, expected 2`,
+          pass,
+          response: JSON.stringify({ ascii, width }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "Flag sample occupies two columns after ASCII calibration",
+              observed: JSON.stringify({ ascii, width }),
+            },
+          ],
         }
       },
     ),
@@ -711,17 +1006,48 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.wide.emoji-vs16",
       (ctx) => {
+        ctx.feed("AA")
+        const ascii = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
+        ctx.feed("\x1b[1;1H\x1b[2K")
         ctx.feed("\u263A\uFE0FX")
-        return { pass: ctx.getCell(0, 0).wide === true }
+        const cell = ctx.getCell(0, 0)
+        const next = ctx.getCell(0, 2)
+        const ready = ascii[0]?.char === "A" && ascii[1]?.char === "A" && cell.char.includes("☺") && next.char === "X"
+        return parserStateResult(
+          ready ? cell.wide === true : null,
+          "VS16 sample occupies one wide parser cell before X",
+          { ascii, cell, next },
+          ready ? undefined : "ASCII, VS16, or X control cells were not exposed",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u263A\uFE0F")
-        if (width === null) return { pass: false, note: "Cannot measure width" }
+        if (ascii !== 2 || width === null)
+          return {
+            pass: false,
+            response: JSON.stringify({ ascii, width }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "ASCII width control or VS16 width was unavailable",
+            },
+          }
+        const pass = width === 2
         return {
-          pass: width === 2,
-          note: width === 2 ? undefined : `width=${width}, expected 2`,
+          pass,
+          response: JSON.stringify({ ascii, width }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "VS16 sample occupies two columns after ASCII calibration",
+              observed: JSON.stringify({ ascii, width }),
+            },
+          ],
         }
       },
     ),
@@ -732,17 +1058,48 @@ export const textProbes: ProbeDefinition[] = [
     ...probe(
       "text.wide.emoji-zwj",
       (ctx) => {
+        ctx.feed("AA")
+        const ascii = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
+        ctx.feed("\x1b[1;1H\x1b[2K")
         ctx.feed("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}X")
-        return { pass: ctx.getText().includes("X") }
+        const cell = ctx.getCell(0, 0)
+        const next = ctx.getCell(0, 2)
+        const ready = ascii[0]?.char === "A" && ascii[1]?.char === "A" && cell.char.includes("👨") && next.char === "X"
+        return parserStateResult(
+          ready ? cell.wide === true : null,
+          "ZWJ sample occupies one wide parser cell before X",
+          { ascii, cell, next },
+          ready ? undefined : "ASCII, ZWJ, or X control cells were not exposed",
+        )
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 4)
         if (refusal) return refusal
-        const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}")
-        if (width === null) return { pass: false, note: "Cannot measure width" }
+        const ascii = await ctx.measureRenderedWidth("AA")
+        const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
+        if (ascii !== 2 || width === null)
+          return {
+            pass: false,
+            response: JSON.stringify({ ascii, width }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "ASCII width control or ZWJ width was unavailable",
+            },
+          }
+        const pass = width === 2
         return {
-          pass: width === 2,
-          note: width === 2 ? undefined : `width=${width}, expected 2`,
+          pass,
+          response: JSON.stringify({ ascii, width }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "ZWJ sample occupies two columns after ASCII calibration",
+              observed: JSON.stringify({ ascii, width }),
+            },
+          ],
         }
       },
     ),

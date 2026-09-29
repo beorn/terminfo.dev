@@ -260,11 +260,12 @@ describe("TTY transaction replies", () => {
 
   it("routes nested query, sentinel, and width traffic through one injected TTY", async () => {
     const writes: string[] = []
+    const cursorReplies = ["\x1b[1;3R", "\x1b[2;1R", "\x1b[1;2R", "\x1b[1;3R", "\x1b[1;4R"]
     const out = {
       columns: 12,
       write(chunk: string) {
         writes.push(chunk)
-        if (chunk === "\x1b[6n") reply("\x1b[1;3R")
+        if (chunk === "\x1b[6n") reply(cursorReplies.shift() ?? "")
         if (chunk === "\x1b[?2026$p\x1b[c") reply("\x1b[?2026;1$y\x1b[?62;4c")
         return true
       },
@@ -278,7 +279,71 @@ describe("TTY transaction replies", () => {
       expect((await queryWithSentinelOutcome("\x1b[?2026$p", /\x1b\[\?2026;([0-4])\$y/, 20)).reason).toBe("reply")
       expect(await measureRenderedWidth("界")).toBe(2)
     }, out)
-    expect(writes).toEqual(["\x1b[6n", "\x1b[?2026$p\x1b[c", "\x1b7\x1b[1G界", "\x1b[6n", "\x1b8"])
+    expect(cursorReplies).toEqual([])
+    expect(writes).toEqual([
+      "\x1b[6n",
+      "\x1b[?2026$p\x1b[c",
+      "\x1b7",
+      "\x1b[2;1H",
+      "\x1b[6n",
+      "\x1b[1;1HA",
+      "\x1b[6n",
+      "\x1b[1;1H界",
+      "\x1b[6n",
+      "A",
+      "\x1b[6n",
+      "\x1b8",
+    ])
+  })
+
+  it("declines a wrapped sample even when its final column resembles a valid width", async () => {
+    const writes: string[] = []
+    let lastControl = ""
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        writes.push(chunk)
+        if (chunk !== "\x1b[6n") lastControl = chunk
+        else if (lastControl === "\x1b[2;1H") reply("\x1b[2;1R")
+        else if (lastControl === "\x1b[1;1HA") reply("\x1b[1;2R")
+        else reply("\x1b[2;3R")
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    expect(await withTTYOperation(() => measureRenderedWidth("界"), out)).toBeNull()
+    expect(writes.at(-1)).toBe("\x1b8")
+  })
+
+  it("declines a sample at the last column when its pending wrap mimics a narrower width", async () => {
+    const writes: string[] = []
+    let lastControl = ""
+    const out = {
+      columns: 3,
+      write(chunk: string) {
+        writes.push(chunk)
+        if (chunk !== "\x1b[6n") lastControl = chunk
+        else if (lastControl === "\x1b[2;1H") reply("\x1b[2;1R")
+        else if (lastControl === "\x1b[1;1HA") reply("\x1b[1;2R")
+        else if (lastControl === "A") reply("\x1b[2;2R")
+        else reply("\x1b[1;3R")
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    expect(await withTTYOperation(() => measureRenderedWidth("界"), out)).toBeNull()
+    expect(writes.at(-1)).toBe("\x1b8")
+  })
+
+  it("restores cursor and declines a width when the setup grid cannot be verified", async () => {
+    const writes: string[] = []
+    const out = {
+      write(chunk: string) {
+        writes.push(chunk)
+        if (chunk === "\x1b[6n") reply("\x1b[1;1R")
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    expect(await withTTYOperation(() => measureRenderedWidth("界"), out)).toBeNull()
+    expect(writes).toEqual(["\x1b7", "\x1b[2;1H", "\x1b[6n", "\x1b8"])
   })
 
   it("releases an injected stream after an error so a later default query uses stdout", async () => {

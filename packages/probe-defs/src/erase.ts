@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
-import { probe, isBlank } from "./helpers.ts"
+import { probe, isBlank, parserStateResult, unmeasuredCellResult, selectiveEraseResult } from "./helpers.ts"
 
 type ErasedCell = string | null
 
@@ -19,6 +19,15 @@ function eraseRowResult(
   adjacentRow = false,
   expectedCursorX?: number,
 ): ProbeResult {
+  const rows = ctx.getScrollback().screenLines
+  if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(rows) || rows < (adjacentRow ? 2 : 1)) {
+    return parserStateResult(
+      null,
+      "Complete erase row fixture",
+      { cols: ctx.cols, rows },
+      "Measured geometry cannot fit the erase fixture",
+    )
+  }
   ctx.feed(setup)
   const before = rowCells(ctx, 0)
   const neighborBefore = adjacentRow ? rowCells(ctx, 1) : undefined
@@ -62,20 +71,6 @@ function eraseRowResult(
   }
 }
 
-function appErasePositionResult(position: { row: number; col: number } | null): ProbeResult {
-  return {
-    pass: false,
-    note: position
-      ? `CPR ${position.row};${position.col} shows responsiveness, not erased cells`
-      : "No cursor response after erase",
-    observation: {
-      outcome: "inconclusive",
-      reason: position ? "insufficient-evidence" : "no-response",
-      evidence: "query",
-    },
-  }
-}
-
 /** ED0/1/2 must change the requested cells while preserving the opposite side. */
 function eraseScreenResult(
   ctx: TermlessContext,
@@ -84,7 +79,7 @@ function eraseScreenResult(
 ): ProbeResult {
   const initialScrollback = ctx.getScrollback()
   const lines = initialScrollback.screenLines
-  if (!Number.isInteger(lines) || lines < 3) {
+  if (!Number.isSafeInteger(lines) || lines < 3 || !Number.isSafeInteger(ctx.cols) || ctx.cols < 6) {
     return {
       pass: false,
       response: JSON.stringify({ initialScrollback }),
@@ -92,7 +87,7 @@ function eraseScreenResult(
         outcome: "inconclusive",
         reason: "insufficient-evidence",
         evidence: "parser-state",
-        note: "Screen fixture needs at least three measured rows",
+        note: "Screen fixture needs at least three measured rows and six columns",
       },
     }
   }
@@ -163,7 +158,7 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.line.right",
       (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[K", ["A", "B", "blank", "blank", "blank"], false, 2),
       async (ctx) => {
-        if (ctx.rows < 1 || ctx.cols < 6) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
           return {
             pass: false,
             observation: {
@@ -179,7 +174,7 @@ export const eraseProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;3H") // Move to col 3
         ctx.write("\x1b[0K") // EL 0 — erase to right
         const pos = await ctx.queryCursorPosition()
-        return appErasePositionResult(pos)
+        return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
     ),
     termNeedsGeometry: true,
@@ -192,7 +187,7 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.line.left",
       (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[1K", ["blank", "blank", "blank", "D", "E"], false, 2),
       async (ctx) => {
-        if (ctx.rows < 1 || ctx.cols < 6) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
           return {
             pass: false,
             observation: {
@@ -208,7 +203,7 @@ export const eraseProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;3H") // Move to col 3
         ctx.write("\x1b[1K") // EL 1 — erase to left
         const pos = await ctx.queryCursorPosition()
-        return appErasePositionResult(pos)
+        return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
     ),
     termNeedsGeometry: true,
@@ -222,7 +217,7 @@ export const eraseProbes: ProbeDefinition[] = [
       (ctx) =>
         eraseRowResult(ctx, "ABCDE\r\nKEEP!\x1b[1;3H", "\x1b[2K", ["blank", "blank", "blank", "blank", "blank"], true),
       async (ctx) => {
-        if (ctx.rows < 1 || ctx.cols < 6) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
           return {
             pass: false,
             observation: {
@@ -238,7 +233,7 @@ export const eraseProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;3H") // Move to col 3
         ctx.write("\x1b[2K") // EL 2 — erase entire line
         const pos = await ctx.queryCursorPosition()
-        return appErasePositionResult(pos)
+        return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
     ),
     termNeedsGeometry: true,
@@ -251,7 +246,7 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.screen.below",
       (ctx) => eraseScreenResult(ctx, "\x1b[0J", ["AAAAA", "BB   ", "     "]),
       async (ctx) => {
-        if (ctx.rows < 5 || ctx.cols < 5) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
           return {
             pass: false,
             observation: {
@@ -265,7 +260,7 @@ export const eraseProbes: ProbeDefinition[] = [
         ctx.write("\x1b[5;5H") // Move to known position
         ctx.write("\x1b[0J") // ED 0 — erase below
         const pos = await ctx.queryCursorPosition()
-        return appErasePositionResult(pos)
+        return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
     ),
     termNeedsGeometry: true,
@@ -278,7 +273,7 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.screen.above",
       (ctx) => eraseScreenResult(ctx, "\x1b[1J", ["     ", "   BB", "CCCCC"]),
       async (ctx) => {
-        if (ctx.rows < 5 || ctx.cols < 5) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
           return {
             pass: false,
             observation: {
@@ -292,7 +287,7 @@ export const eraseProbes: ProbeDefinition[] = [
         ctx.write("\x1b[5;5H") // Move to known position
         ctx.write("\x1b[1J") // ED 1 — erase above
         const pos = await ctx.queryCursorPosition()
-        return appErasePositionResult(pos)
+        return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
     ),
     termNeedsGeometry: true,
@@ -305,7 +300,7 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.screen.all",
       (ctx) => eraseScreenResult(ctx, "\x1b[2J", ["     ", "     ", "     "]),
       async (ctx) => {
-        if (ctx.rows < 5 || ctx.cols < 5) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
           return {
             pass: false,
             observation: {
@@ -319,7 +314,7 @@ export const eraseProbes: ProbeDefinition[] = [
         ctx.write("\x1b[5;5H") // Move to known position
         ctx.write("\x1b[2J") // ED 2 — erase entire screen
         const pos = await ctx.queryCursorPosition()
-        return appErasePositionResult(pos)
+        return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
     ),
     termNeedsGeometry: true,
@@ -331,13 +326,30 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.screen.scrollback",
       (ctx) => {
-        for (let i = 0; i < 30; i++) ctx.feed(`line ${i}\r\n`)
+        const expected = "ED3 removes measured scrollback while keeping screen geometry"
+        const initial = ctx.getScrollback()
+        const rows = initial.screenLines
+        if (!Number.isSafeInteger(rows) || rows < 1 || rows > 1000) {
+          return parserStateResult(null, expected, { initial }, "Need a measured screen size for history setup")
+        }
+        ctx.feed("\r\n".repeat(rows + 2))
+        const before = ctx.getScrollback()
+        if (!Number.isSafeInteger(before.totalLines) || before.totalLines <= rows || before.screenLines !== rows) {
+          return parserStateResult(null, expected, { initial, before }, "No measured scrollback to erase")
+        }
         ctx.feed("\x1b[3J")
-        const scroll = ctx.getScrollback()
-        return { pass: scroll.totalLines <= scroll.screenLines }
+        const after = ctx.getScrollback()
+        const measured =
+          Number.isSafeInteger(after.totalLines) && after.totalLines >= rows && after.screenLines === rows
+        return parserStateResult(
+          measured ? after.totalLines === rows : null,
+          expected,
+          { before, after },
+          measured ? undefined : "Scrollback readback or geometry changed unexpectedly",
+        )
       },
       async (ctx) => {
-        if (ctx.rows < 5 || ctx.cols < 5) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
           return {
             pass: false,
             observation: {
@@ -351,11 +363,7 @@ export const eraseProbes: ProbeDefinition[] = [
         ctx.write("\x1b[5;5H") // Move to known position
         ctx.write("\x1b[3J") // ED 3 — erase scrollback
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response after ED 3" }
-        return {
-          pass: pos.row === 5 && pos.col === 5,
-          note: pos.row === 5 && pos.col === 5 ? undefined : `cursor at ${pos.row};${pos.col}, expected 5;5`,
-        }
+        return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
     ),
     termNeedsGeometry: true,
@@ -366,7 +374,7 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.character",
       (ctx) => eraseRowResult(ctx, "ABCDE\x1b[1G", "\x1b[3X", ["blank", "blank", "blank", "D", "E"], false, 0),
       async (ctx) => {
-        if (ctx.rows < 1 || ctx.cols < 6) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
           return {
             pass: false,
             observation: {
@@ -382,7 +390,7 @@ export const eraseProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;2H") // Move to col 2
         ctx.write("\x1b[2X") // ECH 2
         const pos = await ctx.queryCursorPosition()
-        return appErasePositionResult(pos)
+        return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
     ),
     termNeedsGeometry: true,
@@ -393,18 +401,9 @@ export const eraseProbes: ProbeDefinition[] = [
   {
     ...probe(
       "erase.selective",
-      (ctx) => {
-        ctx.feed("ABCDE")
-        ctx.feed("\x1b[H") // back to top-left
-        ctx.feed("\x1b[?2J") // DECSED — selective erase display
-        const cell = ctx.getCell(0, 0)
-        return {
-          pass: isBlank(cell.char),
-          note: isBlank(cell.char) ? undefined : `cell='${cell.char}', expected empty`,
-        }
-      },
+      (ctx) => selectiveEraseResult(ctx, "\x1b[?2J", false),
       async (ctx) => {
-        if (ctx.rows < 1 || ctx.cols < 6) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
           return {
             pass: false,
             observation: {
@@ -419,8 +418,7 @@ export const eraseProbes: ProbeDefinition[] = [
         ctx.write("ABCDE")
         ctx.write("\x1b[?2J") // DECSED
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response after DECSED" }
-        return { pass: true }
+        return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
     ),
     termNeedsGeometry: true,
@@ -431,21 +429,33 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.el-with-attrs",
       (ctx) => {
-        ctx.feed("\x1b[42m") // set green background
-        ctx.feed("XXXXX")
-        ctx.feed("\x1b[1G") // move to col 0
-        ctx.feed("\x1b[K") // EL 0 — erase to right
-        const cell = ctx.getCell(0, 0)
-        // Erased cells should have the green background color
-        const hasBg = cell.bg !== null && cell.bg.g > 100
-        ctx.feed("\x1b[0m") // reset
-        return {
-          pass: hasBg,
-          note: hasBg ? undefined : `bg=${JSON.stringify(cell.bg)}, expected green`,
+        const expected = "EL erases X while preserving its measured non-default background"
+        try {
+          ctx.feed("\x1b[42m\x1b[1;1HXXXXX\x1b[1;1H")
+          const before = ctx.getCell(0, 0)
+          if (before.char !== "X" || before.bg == null) {
+            return parserStateResult(null, expected, { before }, "Colored X setup was not measured")
+          }
+          ctx.feed("\x1b[K")
+          const after = ctx.getCell(0, 0)
+          const measured = typeof after.char === "string" && after.bg != null
+          return parserStateResult(
+            measured
+              ? isBlank(after.char) &&
+                  after.bg?.r === before.bg.r &&
+                  after.bg?.g === before.bg.g &&
+                  after.bg?.b === before.bg.b
+              : null,
+            expected,
+            { before, after },
+            measured ? undefined : "Erased cell background metadata unavailable",
+          )
+        } finally {
+          ctx.feed("\x1b[0m")
         }
       },
       async (ctx) => {
-        if (ctx.rows < 1 || ctx.cols < 6) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
           return {
             pass: false,
             observation: {
@@ -463,11 +473,7 @@ export const eraseProbes: ProbeDefinition[] = [
           ctx.write("\x1b[1;1H")
           ctx.write("\x1b[K") // EL 0
           const pos = await ctx.queryCursorPosition()
-          if (!pos) return { pass: false, note: "No cursor response" }
-          return {
-            pass: pos.col === 1,
-            note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
-          }
+          return unmeasuredCellResult(pos, "erased cells or scrollback")
         } finally {
           ctx.write("\x1b[0m")
         }
@@ -476,31 +482,42 @@ export const eraseProbes: ProbeDefinition[] = [
     termNeedsGeometry: true,
   },
 
-  // ED inside scroll region should not affect lines outside the region
+  // ED0 preserves rows preceding the cursor, including above a scrolling region.
   {
     ...probe(
       "erase.ed-scroll-region",
       (ctx) => {
-        // Write text on row 0 (outside future scroll region)
-        ctx.feed("KEEP_THIS\r\n")
-        // Write text on rows 1-5
-        for (let i = 1; i <= 5; i++) ctx.feed(`row${i}\r\n`)
-        // Set scroll region to rows 3-10 (1-based)
-        ctx.feed("\x1b[3;10r")
-        // Move cursor inside scroll region and erase below
-        ctx.feed("\x1b[3;1H")
-        ctx.feed("\x1b[J") // ED 0 — erase below
-        // Row 0 should still have "KEEP_THIS"
-        const cell = ctx.getCell(0, 0)
-        const pass = cell.char === "K"
-        ctx.feed("\x1b[r") // reset scroll region
-        return {
-          pass,
-          note: pass ? undefined : `row 0 char='${cell.char}', expected 'K'`,
+        const expected = "ED0 erases measured cells below the cursor and preserves the preceding row"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(rows) || rows < 10 || !Number.isSafeInteger(ctx.cols) || ctx.cols < 10) {
+          return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Need a measured 10x10 fixture")
+        }
+        try {
+          ctx.feed("\x1b[1;1HKEEP!\x1b[3;1HERASE\x1b[3;10r\x1b[3;1H")
+          const before = { control: rowCells(ctx, 0), target: rowCells(ctx, 2), cursor: ctx.getCursor() }
+          if (
+            before.control.join("") !== "KEEP!" ||
+            before.target.join("") !== "ERASE" ||
+            before.cursor.x !== 0 ||
+            before.cursor.y !== 2
+          ) {
+            return parserStateResult(null, expected, { before }, "Erase region seed or cursor setup failed")
+          }
+          ctx.feed("\x1b[J")
+          const after = { control: rowCells(ctx, 0), target: rowCells(ctx, 2) }
+          const valid = after.control.join("") === "KEEP!" && after.target.every((char) => char !== null)
+          return parserStateResult(
+            valid ? after.target.every((char) => char !== null && isBlank(char)) : null,
+            expected,
+            { before, after },
+            valid ? undefined : "Preceding row or cell metadata was not preserved",
+          )
+        } finally {
+          ctx.feed("\x1b[r")
         }
       },
       async (ctx) => {
-        if (ctx.rows < 10 || ctx.cols < 10) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 10 || ctx.cols < 10) {
           return {
             pass: false,
             observation: {
@@ -519,8 +536,7 @@ export const eraseProbes: ProbeDefinition[] = [
           ctx.write("\x1b[3;1H") // inside region
           ctx.write("\x1b[J") // ED 0
           const pos = await ctx.queryCursorPosition()
-          if (!pos) return { pass: false, note: "No cursor response" }
-          return { pass: true }
+          return unmeasuredCellResult(pos, "erased cells or scrollback")
         } finally {
           ctx.write("\x1b[r") // Restore the owned fixture to full-screen margins.
         }

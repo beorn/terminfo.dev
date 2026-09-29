@@ -486,3 +486,26 @@ test("DECDC accounts for measured incoming columns 9 and 10 on a wider screen", 
   })
   expect(definition.termless(wide.context).observation).toMatchObject({ outcome: "supported" })
 })
+
+// The old checksum probe accepted another request's response and emitted a
+// five-parameter rectangle request. Bind all six parameters and the reply id.
+test("checksum observations require a complete reply for the issued request", () => {
+  const definition = editingProbes.find((probe) => probe.id === "editing.decrqcra")
+  if (!definition?.termless) throw new Error("Missing checksum probe")
+  for (const raw of ["\x1bP1!~012F\x1b\\", "\x1bP2!~012F\x1b\\", "\x1bP1!~012F", ""]) {
+    const context = staged(cases[0]).context
+    const requests: string[] = []
+    context.feedCapture = (bytes) => {
+      requests.push(bytes)
+      return raw
+    }
+    const result = definition.termless(context)
+    expect(requests).toEqual(["\x1b[1;1;1;1;1;5*y"])
+    expect(result.response).toBe(raw)
+    expect(result.observation).toMatchObject({
+      outcome: raw === "\x1bP1!~012F\x1b\\" ? "supported" : "inconclusive",
+      evidence: "query",
+    })
+    if (result.pass) expect(result.assertions?.[0]).toMatchObject({ kind: "positive", observed: raw })
+  }
+})

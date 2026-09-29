@@ -7,6 +7,7 @@
 import { expect, test } from "vitest"
 import { decrpmModeProbe, cursorProbe, sgrProbe } from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
+import { resetProbes } from "./reset.ts"
 import type { TermContext, TermlessContext } from "./types.ts"
 
 const baseCell = {
@@ -81,6 +82,49 @@ function terminal(overrides: Partial<TermContext> = {}): TermContext {
     ...overrides,
   }
 }
+
+test("app reset observations require a measured effect and leave unmeasurable reset paths inconclusive", async () => {
+  const find = (id: string) => {
+    const definition = resetProbes.find((entry) => entry.id === id)
+    if (!definition?.term) throw new Error(`Missing ${id} app callback`)
+    return definition.term
+  }
+  const sgr = await find("reset.sgr")(
+    terminal({ rows: 24, cols: 80, queryCursorPosition: async () => ({ row: 1, col: 2 }) }),
+  )
+  expect(sgr.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed" })
+  expect(sgr.assertions ?? []).toEqual([])
+
+  const risPositions = [
+    { row: 5, col: 5 },
+    { row: 1, col: 1 },
+  ]
+  const ris = await find("reset.ris")(
+    terminal({ rows: 24, cols: 80, queryCursorPosition: async () => risPositions.shift() ?? null }),
+  )
+  expect(ris.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(ris.assertions).toMatchObject([{ kind: "positive", expected: "RIS homes cursor from 5;5" }])
+
+  const writes: string[] = []
+  const modeReplies = ["reset", "set", "reset"] as const
+  let modeReplyIndex = 0
+  const soft = await find("reset.soft")(
+    terminal({
+      rows: 24,
+      cols: 80,
+      write: (sequence) => writes.push(sequence),
+      queryMode: async () => modeReplies[modeReplyIndex++] ?? null,
+    }),
+  )
+  expect(soft.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(soft.assertions).toMatchObject([{ kind: "positive" }])
+  expect(writes.at(-1)).toBe("\x1b[?1l")
+
+  const methodWrites: string[] = []
+  const method = await find("reset.method")(terminal({ write: (sequence) => methodWrites.push(sequence) }))
+  expect(method.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+  expect(methodWrites).toEqual([])
+})
 
 test("SGR consumption stays inconclusive while headless cell state supports an assertion", async () => {
   const probe = sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold)

@@ -72,6 +72,73 @@ function byId(id: string) {
   return { term: probe.term, termless: probe.termless }
 }
 
+test("text width claims require an ASCII control and the named sample", async () => {
+  for (const id of [
+    "text.wide.emoji",
+    "text.wide.cjk",
+    "text.wide.emoji-flags",
+    "text.wide.emoji-vs16",
+    "text.wide.emoji-zwj",
+  ]) {
+    const probe = byId(id)
+    const samples: string[] = []
+    const measured = await probe.term(
+      app({
+        measureRenderedWidth: async (sample) => {
+          samples.push(sample)
+          return 2
+        },
+      }),
+    )
+    expect(samples[0], id).toBe("AA")
+    expect(samples[1], id).not.toBe("AA")
+    expect(measured.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(measured.assertions, id).toMatchObject([{ kind: "positive" }])
+    const invalid = await probe.term(app({ measureRenderedWidth: async (sample) => (sample === "AA" ? 1 : 2) }))
+    expect(invalid.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(invalid.assertions, id).toBeUndefined()
+  }
+})
+
+test("headless wide sample needs ASCII cell control before a support assertion", () => {
+  const probe = byId("text.wide.emoji")
+  const blank = headless().getCell(0, 0)
+  let phase = "empty"
+  const context = headless({
+    feed(sequence) {
+      if (sequence === "AA") phase = "ascii"
+      else if (sequence === "\x1b[1;1H\x1b[2K") phase = "clear"
+      else if (sequence === "🎉") phase = "sample"
+    },
+    getCell: (_row, col) => ({
+      ...blank,
+      char: phase === "ascii" ? (col < 2 ? "A" : "") : phase === "sample" && col === 0 ? "🎉" : "",
+      wide: phase === "sample" && col === 0,
+    }),
+  })
+  const supported = probe.termless(context)
+  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(supported.assertions).toMatchObject([{ kind: "positive" }])
+  const missing = probe.termless(headless({ getCell: () => ({ ...blank, char: "🎉", wide: true }) }))
+  expect(missing.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(missing.assertions).toBeUndefined()
+})
+
+test("app cursor motion needs a measured start while cell-only text stays ungraded", async () => {
+  const replies = [
+    { row: 3, col: 5 },
+    { row: 4, col: 5 },
+  ]
+  const newline = await byId("text.newline").term(app({ queryCursorPosition: async () => replies.shift() ?? null }))
+  expect(newline.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(newline.assertions).toMatchObject([{ kind: "positive" }])
+  const uncalibrated = await byId("text.newline").term(app({ queryCursorPosition: async () => ({ row: 4, col: 5 }) }))
+  expect(uncalibrated.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  const basic = await byId("text.basic").term(app({ queryCursorPosition: async () => ({ row: 1, col: 6 }) }))
+  expect(basic.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+  expect(basic.assertions).toBeUndefined()
+})
+
 // vterm.js stays at the current column when no stops exist. The model keeps
 // that behavior so this test catches a probe that mistakes the no-stop HT
 // destination for evidence that TBC cleared its old stops.
@@ -238,9 +305,82 @@ test("grapheme ID measures the ZWJ sample width, including headless cell state",
   expect(result.assertions).toMatchObject([{ kind: "positive", expected: "2", observed: "2" }])
   expect((await probe.term(app())).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
 
-  const headlessResult = probe.termless(headless())
+  const sample = "👨‍👩‍👧"
+  const blank = headless().getCell(0, 0)
+  let phase = "empty"
+  const headlessResult = probe.termless(
+    headless({
+      feed(sequence) {
+        if (sequence.endsWith("AB")) phase = "seed"
+        else if (sequence === "\x1b[1;1H") phase = "setup"
+        else if (sequence === sample) phase = "sample"
+      },
+      getCell: (_row, col) =>
+        phase === "seed"
+          ? { ...blank, char: col === 0 ? "A" : col === 1 ? "B" : "", wide: false }
+          : phase === "sample" && col === 0
+            ? { ...blank, char: sample, wide: true }
+            : { ...blank, char: "", wide: false },
+      getCursor: () => ({ x: phase === "sample" ? 2 : 0, y: 0, visible: true, style: null }),
+    }),
+  )
   expect(headlessResult.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
   expect(headlessResult.assertions).toMatchObject([{ kind: "positive", observed: headlessResult.response }])
+})
+
+test("Unicode width and tab callbacks retain measured state and query evidence", async () => {
+  const blank = headless().getCell(0, 0)
+  let ambiguousPhase = "empty"
+  const ambiguous = byId("unicode.east-asian-ambiguous").termless(
+    headless({
+      cols: 4,
+      feed(sequence) {
+        if (sequence.endsWith("AQ")) ambiguousPhase = "seed"
+        else if (sequence === "\x1b[1;1H") ambiguousPhase = "setup"
+        else if (sequence === "●X") ambiguousPhase = "sample"
+      },
+      getCell: (_row, col) => {
+        if (ambiguousPhase === "seed") return { ...blank, char: col === 0 ? "A" : col === 1 ? "Q" : "", wide: false }
+        if (ambiguousPhase === "sample") {
+          return { ...blank, char: col === 0 ? "●" : col === 1 ? "X" : "", wide: col === 0 }
+        }
+        return { ...blank, char: "", wide: false }
+      },
+      getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+    }),
+  )
+  expect(ambiguous.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(JSON.parse(ambiguous.response ?? "")).toMatchObject({ before: ["A", "Q"], after: ["●", "X", "", ""] })
+
+  let tabPhase = "empty"
+  const tab = byId("unicode.tab-stops").termless(
+    headless({
+      cols: 10,
+      feed(sequence) {
+        if (sequence === "AB") tabPhase = "seed"
+        else if (sequence === "\x1b[1;1H") tabPhase = "setup"
+        else if (sequence === "A\tB") tabPhase = "sample"
+      },
+      getCell: (_row, col) => {
+        if (tabPhase === "seed") return { ...blank, char: col === 0 ? "A" : col === 1 ? "B" : "", wide: false }
+        if (tabPhase === "sample") return { ...blank, char: col === 0 ? "A" : col === 8 ? "B" : "", wide: false }
+        return { ...blank, char: "", wide: false }
+      },
+      getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+    }),
+  )
+  expect(tab.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(JSON.parse(tab.response ?? "")).toMatchObject({ before: ["A", "B"], after: { 8: "B" } })
+
+  const appTab = await byId("unicode.tab-stops").term(app({ queryCursorPosition: async () => ({ row: 1, col: 10 }) }))
+  expect(appTab.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+  expect(appTab.response).toBe(JSON.stringify({ row: 1, col: 10 }))
+
+  const appWrap = await byId("unicode.wrap-boundary").term(
+    app({ rows: 2, cols: 4, queryCursorPosition: async () => ({ row: 2, col: 2 }) }),
+  )
+  expect(appWrap.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+  expect(appWrap.response).toBe(JSON.stringify({ row: 2, col: 2 }))
 })
 
 test("direct text and Unicode size readers declare geometry, including tab finally", () => {
@@ -351,10 +491,33 @@ test("remaining text fixtures decline a 1x1 grid before any write or width query
 test("headless wrap uses initialized 61 columns and declines a one-row grid", () => {
   const textWrites: string[] = []
   byId("text.wrap").termless(headless({ cols: 61, feed: (sequence) => textWrites.push(sequence) }))
-  expect(textWrites).toEqual(["X".repeat(62)])
+  expect(textWrites).toEqual(["\x1b[2J\x1b[H", "X".repeat(62)])
   const unicodeWrites: string[] = []
-  byId("unicode.wrap-boundary").termless(headless({ cols: 61, feed: (sequence) => unicodeWrites.push(sequence) }))
-  expect(unicodeWrites).toEqual(["A".repeat(60) + "中"])
+  let phase = "empty"
+  const blank = headless().getCell(0, 0)
+  const unicodeResult = byId("unicode.wrap-boundary").termless(
+    headless({
+      cols: 61,
+      feed(sequence) {
+        unicodeWrites.push(sequence)
+        if (sequence.includes("A".repeat(61))) phase = "seed"
+        else if (sequence === "\x1b[1;61H") phase = "setup"
+        else if (sequence === "中") phase = "sample"
+      },
+      getCell: (row, col) => {
+        if (phase === "seed") return { ...blank, char: "A", wide: false }
+        if (phase === "sample" && row === 0 && col === 0) return { ...blank, char: "A", wide: false }
+        if (phase === "sample" && row === 1 && col === 0) return { ...blank, char: "中", wide: true }
+        if (phase === "sample" && row === 0 && col === 60) return { ...blank, char: "中", wide: true }
+        return { ...blank, char: "", wide: false }
+      },
+      getCursor: () => ({ x: phase === "setup" ? 60 : 0, y: 0, visible: true, style: null }),
+    }),
+  )
+  expect(unicodeResult.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(unicodeWrites).toContainEqual("A".repeat(61))
+  expect(unicodeWrites).toContainEqual("\x1b[1;61H")
+  expect(unicodeWrites).toContainEqual("中")
   const tooShort: string[] = []
   const result = byId("text.wrap").termless(
     headless({
@@ -365,6 +528,20 @@ test("headless wrap uses initialized 61 columns and declines a one-row grid", ()
   )
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(tooShort).toEqual([])
+  const unicodeTooShort: string[] = []
+  const unicodeShortResult = byId("unicode.wrap-boundary").termless(
+    headless({
+      cols: 61,
+      getScrollback: () => ({ viewportOffset: 0, totalLines: 1, screenLines: 1 }),
+      feed: (s) => unicodeTooShort.push(s),
+    }),
+  )
+  expect(unicodeShortResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(unicodeTooShort).toEqual([])
 })
 
 test("tab fixtures and reverse-index region restore after a failed cursor query", async () => {

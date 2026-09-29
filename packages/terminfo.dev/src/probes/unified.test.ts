@@ -300,8 +300,13 @@ it("keeps query-only and nongeometry callbacks runnable when owned size is unava
     outcome: "supported",
     evidence: "query",
   })
-  expect(batch.ungradedDiagnostics["reset.decaln"]).toMatchObject({ kind: "legacy-callback" })
-  expect(writes).toContain("\x1b#8")
+  expect(batch.observations.find((item) => item.featureId === "reset.decaln")).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(batch.ungradedDiagnostics["reset.decaln"]).toBeUndefined()
+  expect(writes).not.toContain("\x1b#8")
   expect(writes).toContain("\x1b[?2004$p\x1b[c")
 })
 
@@ -405,7 +410,12 @@ it("uses the injected TTY for callback writes, columns, and nested cursor querie
     definition.termNeedsGeometry = original
   }
   expect(writes).toEqual(["\x1b[1;1H\x1b[2K", `${"W".repeat(12)}X`, "\x1b[6n"])
-  expect(batch.ungradedDiagnostics["text.wrap"]).toMatchObject({ kind: "legacy-callback", pass: true })
+  expect(batch.observations.find((item) => item.featureId === "text.wrap")).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+  expect(batch.ungradedDiagnostics["text.wrap"]).toBeUndefined()
   expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({ corroboration: { status: "silent" } })
   const trace = JSON.parse(batch.rawReplies["text.wrap"]!) as { writes: string[]; queries: Array<{ sequence: string }> }
   expect(trace.writes).toEqual(writes.slice(0, 2))

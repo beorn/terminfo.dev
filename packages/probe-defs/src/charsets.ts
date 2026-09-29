@@ -57,10 +57,23 @@ export const charsetsProbes: ProbeDefinition[] = [
         ctx.write("q") // should render as horizontal line
         ctx.write("\x1b(B") // Switch back to ASCII
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!pos) {
+          return {
+            pass: false,
+            note: "No cursor response",
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        }
         return {
-          pass: pos.col === 2,
-          note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
+          pass: false,
+          response: JSON.stringify(pos),
+          note: "Cursor movement does not verify charset glyph rendering or mapping",
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "Cursor movement does not verify charset glyph rendering or mapping",
+          },
         }
       },
     ),
@@ -135,10 +148,23 @@ export const charsetsProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\u00e9") // e-acute (2-byte UTF-8, 1 column)
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!pos) {
+          return {
+            pass: false,
+            note: "No cursor response",
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        }
         return {
-          pass: pos.col === 2,
-          note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
+          pass: false,
+          response: JSON.stringify(pos),
+          note: "Cursor movement does not verify charset glyph rendering or mapping",
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "Cursor movement does not verify charset glyph rendering or mapping",
+          },
         }
       },
     ),
@@ -208,10 +234,23 @@ export const charsetsProbes: ProbeDefinition[] = [
         ctx.write("l") // ┌
         ctx.write("\x1b(B") // back to ASCII
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!pos) {
+          return {
+            pass: false,
+            note: "No cursor response",
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        }
         return {
-          pass: pos.col === 2,
-          note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
+          pass: false,
+          response: JSON.stringify(pos),
+          note: "Cursor movement does not verify charset glyph rendering or mapping",
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "Cursor movement does not verify charset glyph rendering or mapping",
+          },
         }
       },
     ),
@@ -281,10 +320,23 @@ export const charsetsProbes: ProbeDefinition[] = [
         ctx.write("jklmqx") // box-drawing chars
         ctx.write("\x1b(B") // back to ASCII
         const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
+        if (!pos) {
+          return {
+            pass: false,
+            note: "No cursor response",
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        }
         return {
-          pass: pos.col === 7,
-          note: pos.col === 7 ? undefined : `cursor at col ${pos.col}, expected 7`,
+          pass: false,
+          response: JSON.stringify(pos),
+          note: "Cursor movement does not verify charset glyph rendering or mapping",
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "Cursor movement does not verify charset glyph rendering or mapping",
+          },
         }
       },
     ),

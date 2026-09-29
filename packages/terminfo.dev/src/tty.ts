@@ -225,14 +225,27 @@ export async function queryCursorPosition(): Promise<[number, number] | null> {
 }
 
 /**
- * Write text, then query cursor position to determine rendered width.
+ * Measure from a verified 1;1 origin, rejecting a sample that wraps to another row.
  */
 export async function measureRenderedWidth(text: string): Promise<number | null> {
   return withTTYOperation(async () => {
-    currentTTYOutput().write("\x1b7\x1b[1G" + text)
+    currentTTYOutput().write("\x1b7")
     try {
+      currentTTYOutput().write("\x1b[2;1H")
+      const secondRow = await queryCursorPosition()
+      if (secondRow?.[0] !== 2 || secondRow[1] !== 1) return null
+
+      currentTTYOutput().write("\x1b[1;1HA")
+      const ascii = await queryCursorPosition()
+      if (ascii?.[0] !== 1 || ascii[1] !== 2) return null
+
+      currentTTYOutput().write("\x1b[1;1H" + text)
       const pos = await queryCursorPosition()
-      return pos ? pos[1] - 1 : null
+      if (pos?.[0] !== 1 || !Number.isSafeInteger(pos[1]) || pos[1] <= 1) return null
+
+      currentTTYOutput().write("A")
+      const next = await queryCursorPosition()
+      return next?.[0] === 1 && next[1] === pos[1] + 1 ? pos[1] - 1 : null
     } finally {
       currentTTYOutput().write("\x1b8")
     }
