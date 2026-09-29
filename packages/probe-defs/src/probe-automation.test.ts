@@ -803,6 +803,117 @@ describe("Kitty protocol detection", () => {
   })
 })
 
+/**
+ * @failure Declared capabilities, title-only changes, and CPR responsiveness became full graphics, notification, icon, CWD, or shell-integration support claims.
+ * @level l0
+ * @consumer Headless and application extension callbacks.
+ * @testonly none
+ */
+describe("extensions without a complete behavior oracle", () => {
+  const declaredIds = [
+    "extensions.kitty-graphics.animation",
+    "extensions.kitty-graphics.unicode-placeholders",
+    "extensions.sixel",
+    "extensions.semantic-prompts",
+    "extensions.osc7-cwd",
+    "extensions.osc-633-vscode",
+    "extensions.notifications",
+    "extensions.iterm2-images",
+  ] as const
+  const noOracleAppIds = [
+    "extensions.kitty-graphics.animation",
+    "extensions.kitty-graphics.unicode-placeholders",
+    "extensions.sixel",
+    "extensions.semantic-prompts",
+    "extensions.osc-633-vscode",
+    "extensions.osc7-cwd",
+    "extensions.notifications",
+    "extensions.iterm2-images",
+    "extensions.osc0-icon-title",
+    "extensions.osc1-icon",
+  ] as const
+
+  test("true and false declarations remain diagnostics, never support conclusions", () => {
+    for (const declared of [true, false]) {
+      const base = context({})
+      const capabilities = {
+        ...base.capabilities,
+        kittyGraphics: declared,
+        sixel: declared,
+        semanticPrompts: declared,
+        extensions: new Set(declared ? ["osc7", "osc9", "iterm2Images"] : []),
+      }
+      for (const id of declaredIds) {
+        const callback = probe(id).termless
+        if (!callback) throw new Error(`${id} needs a headless callback`)
+        const result = callback(context({ capabilities }))
+        expect(result.pass, id).toBe(false)
+        expect(result.observation, id).toMatchObject({
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "legacy",
+        })
+        expect(JSON.parse(result.response ?? "null"), id).toMatchObject({ declared })
+        expect(result.assertions ?? [], id).toEqual([])
+      }
+    }
+  })
+
+  test("a title change cannot establish icon-name support", () => {
+    for (const id of ["extensions.osc0-icon-title", "extensions.osc1-icon"]) {
+      const callback = probe(id).termless
+      if (!callback) throw new Error(`${id} needs a headless callback`)
+      for (const after of ["original", "test-icon My Title"]) {
+        let fed = false
+        const result = callback(
+          context({
+            feed() {
+              fed = true
+            },
+            getTitle() {
+              return fed ? after : "original"
+            },
+          }),
+        )
+        expect(result.pass, id).toBe(false)
+        expect(result.observation, id).toMatchObject({
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "parser-state",
+        })
+        expect(JSON.parse(result.response ?? "null"), id).toEqual({ before: "original", after })
+        expect(result.assertions ?? [], id).toEqual([])
+      }
+    }
+  })
+
+  test("application probes without a readback oracle do not mutate the terminal", async () => {
+    for (const id of noOracleAppIds) {
+      const callback = probe(id).term
+      if (!callback) throw new Error(`${id} needs an application callback`)
+      const writes: string[] = []
+      const result = await callback(
+        terminalContext({
+          write(sequence) {
+            writes.push(sequence)
+          },
+          queryCursorPosition: async () => {
+            throw new Error(`${id} must not use CPR as its oracle`)
+          },
+        }),
+      )
+      expect(writes, id).toEqual([])
+      expect(result.pass, id).toBe(false)
+      expect(result.observation, id).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+      })
+      expect(result.assertions ?? [], id).toEqual([])
+    }
+  })
+})
+
 describe("partial probe automation candidates", () => {
   test("modes.decsclm verifies the DEC private mode through DECRPM", () => {
     const p = probe("modes.decsclm")
@@ -1016,13 +1127,7 @@ describe("partial probe automation candidates", () => {
   })
 
   test("semantic prompt OSC consumption and CPR do not claim prompt integration", async () => {
-    for (const id of [
-      "extensions.semantic-prompts",
-      "extensions.osc133-a",
-      "extensions.osc133-d",
-      "extensions.osc-633-vscode",
-      "extensions.osc633-a",
-    ]) {
+    for (const id of ["extensions.osc133-a", "extensions.osc133-d", "extensions.osc633-a"]) {
       const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
       expect(result.observation).toMatchObject({
         outcome: "inconclusive",
@@ -1033,7 +1138,7 @@ describe("partial probe automation candidates", () => {
     expect(
       (await probe("extensions.semantic-prompts").term!(terminalContext({ queryCursorPosition: async () => null })))
         .observation,
-    ).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+    ).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })
     for (const id of ["extensions.osc133-a", "extensions.osc633-a"]) {
       const result = probe(id).termless!(context({ getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }))
       expect(result.observation).toMatchObject({

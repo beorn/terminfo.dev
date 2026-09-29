@@ -779,54 +779,65 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   probe(
     "extensions.kitty-graphics.animation",
-    (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
-    async (ctx) => {
-      const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      ctx.write(`\x1b_Ga=t,f=100,s=1,v=1,t=d,i=997,q=1;${payload}\x1b\\`)
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 200)
+    (ctx) => {
+      const note = "Declared Kitty graphics capability does not establish timed animation playback"
+      return {
+        pass: false,
+        response: JSON.stringify({ declared: ctx.capabilities.kittyGraphics === true }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
+      }
+    },
+    () => {
+      const note = "No timed frame playback or pixel readback for Kitty animation"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
       })
-      ctx.write(`\x1b_Ga=f,i=997,q=1;${payload}\x1b\\`)
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 200)
-      })
-      const pos = await ctx.queryCursorPosition()
-      ctx.write(`\x1b_Ga=d,d=i,i=997\x1b\\`)
-      return { pass: pos !== null, note: pos ? undefined : "No response after animation frame" }
     },
   ),
 
   probe(
     "extensions.kitty-graphics.unicode-placeholders",
-    (ctx) => ({ pass: ctx.capabilities.kittyGraphics === true }),
-    async (ctx) => {
-      const payload = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-      ctx.write("\x1b[1;1H")
-      ctx.write(`\x1b_Ga=T,f=100,s=1,v=1,t=d,U=1,i=996;${payload}\x1b\\`)
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 300)
+    (ctx) => {
+      const note = "Declared Kitty graphics capability does not establish Unicode placeholder rendering"
+      return {
+        pass: false,
+        response: JSON.stringify({ declared: ctx.capabilities.kittyGraphics === true }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
+      }
+    },
+    () => {
+      const note = "No pixel and placeholder-cell readback for Kitty Unicode placeholders"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
       })
-      const pos = await ctx.queryCursorPosition()
-      ctx.write(`\x1b_Ga=d,d=i,i=996\x1b\\`)
-      if (!pos) return { pass: false, note: "No response after U=1" }
-      return { pass: pos.row > 1 || pos.col > 1, note: pos.row > 1 || pos.col > 1 ? undefined : "U=1 didn't render" }
     },
   ),
 
-  // Sixel (render test)
+  // Sixel — rendering remains unmeasured without pixel readback.
   probe(
     "extensions.sixel",
-    (ctx) => ({ pass: ctx.capabilities.sixel === true }),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H")
-      ctx.write("\x1bPq#0;2;0;0;0~-~\x1b\\") // tiny 1x2 sixel
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after sixel" }
-      const moved = pos.row > 1 || pos.col > 1
+    (ctx) => {
+      const note = "Declared Sixel capability does not establish rendered pixels"
       return {
-        pass: moved,
-        note: moved ? undefined : "Sixel image didn't move cursor",
+        pass: false,
+        response: JSON.stringify({ declared: ctx.capabilities.sixel === true }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
       }
+    },
+    () => {
+      const note = "No pixel readback for Sixel rendering"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      })
     },
   ),
 
@@ -940,11 +951,22 @@ export const extensionsProbes: ProbeDefinition[] = [
   // Semantic prompts (OSC 133)
   probe(
     "extensions.semantic-prompts",
-    (ctx) => ({ pass: ctx.capabilities.semanticPrompts === true }),
-    async (ctx) => {
-      ctx.write("\x1b]133;A\x07")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : true)
+    (ctx) => {
+      const note = "Declared semantic-prompt capability does not establish shell prompt integration"
+      return {
+        pass: false,
+        response: JSON.stringify({ declared: ctx.capabilities.semanticPrompts === true }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
+      }
+    },
+    () => {
+      const note = "No shell prompt integration metadata or behavior readback for OSC 133"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      })
     },
   ),
 
@@ -967,17 +989,24 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.osc0-icon-title",
     (ctx) => {
+      const before = ctx.getTitle()
       ctx.feed("\x1b]0;My Title\x07")
-      return { pass: ctx.getTitle().includes("My Title") }
-    },
-    async (ctx) => {
-      ctx.write("\x1b]0;test-title\x07")
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b]0;\x07") // reset
+      const after = ctx.getTitle()
+      const note = "Title readback does not establish OSC 0 icon-name behavior"
       return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after OSC 0",
+        pass: false,
+        response: JSON.stringify({ before, after }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state", note },
       }
+    },
+    () => {
+      const note = "No icon-name and window-title readback for OSC 0"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      })
     },
   ),
 
@@ -1004,25 +1033,44 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 7 — current working directory
   probe(
     "extensions.osc7-cwd",
-    (ctx) => ({ pass: ctx.capabilities.extensions.has("osc7") }),
-    async (ctx) => {
-      ctx.write("\x1b]7;file:///tmp\x07")
-      const pos = await ctx.queryCursorPosition()
-      return { pass: pos !== null }
+    (ctx) => {
+      const note = "Declared OSC 7 capability does not establish working-directory metadata delivery"
+      return {
+        pass: false,
+        response: JSON.stringify({ declared: ctx.capabilities.extensions.has("osc7") }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
+      }
+    },
+    () => {
+      const note = "No working-directory metadata readback for OSC 7"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      })
     },
   ),
 
   // OSC 633 — VS Code shell integration
   probe(
     "extensions.osc-633-vscode",
-    (ctx) => ({ pass: ctx.capabilities.semanticPrompts === true }),
-    async (ctx) => {
-      ctx.write("\x1b]633;A\x07")
-      ctx.write("\x1b]633;B\x07")
-      ctx.write("\x1b]633;C\x07")
-      ctx.write("\x1b]633;D;0\x07")
-      const pos = await ctx.queryCursorPosition()
-      return promptConsumptionResult(pos === null ? null : true)
+    (ctx) => {
+      const note = "Declared semantic-prompt capability does not establish VS Code OSC 633 shell integration"
+      return {
+        pass: false,
+        response: JSON.stringify({ declared: ctx.capabilities.semanticPrompts === true }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
+      }
+    },
+    () => {
+      const note = "No VS Code shell integration metadata or behavior readback for OSC 633"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      })
     },
   ),
 
@@ -1213,28 +1261,44 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 9 — desktop notifications
   probe(
     "extensions.notifications",
-    (ctx) => ({ pass: ctx.capabilities.extensions.has("osc9") }),
-    async (ctx) => {
-      ctx.write("\x1b]9;Test\x07")
-      const pos = await ctx.queryCursorPosition()
+    (ctx) => {
+      const note = "Declared OSC 9 capability does not establish desktop notification delivery"
       return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after OSC 9",
+        pass: false,
+        response: JSON.stringify({ declared: ctx.capabilities.extensions.has("osc9") }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
       }
+    },
+    () => {
+      const note = "No desktop notification delivery readback for OSC 9"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      })
     },
   ),
 
   // OSC 1337 — iTerm2 inline images
   probe(
     "extensions.iterm2-images",
-    (ctx) => ({ pass: ctx.capabilities.extensions.has("iterm2Images") }),
-    async (ctx) => {
-      ctx.write("\x1b]1337;File=inline=1:AAAA\x07")
-      const pos = await ctx.queryCursorPosition()
+    (ctx) => {
+      const note = "Declared iTerm2 image capability does not establish rendered image pixels"
       return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after OSC 1337",
+        pass: false,
+        response: JSON.stringify({ declared: ctx.capabilities.extensions.has("iterm2Images") }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
       }
+    },
+    () => {
+      const note = "No pixel readback for iTerm2 inline image rendering"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      })
     },
   ),
 
@@ -1401,22 +1465,24 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.osc1-icon",
     (ctx) => {
+      const before = ctx.getTitle()
       ctx.feed("\x1b]1;test-icon\x07")
-      const title = ctx.getTitle()
-      // Some backends set title on OSC 1, some only set icon name (not visible via getTitle)
-      // If title changed or sequence was silently consumed, it passes
-      return { pass: true, note: title.includes("test-icon") ? "title changed" : "consumed" }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]1;terminfo-icon-test\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after OSC 1" }
-      // If cursor is at col 1, sequence was consumed (not printed literally)
+      const after = ctx.getTitle()
+      const note = "Title readback does not establish OSC 1 icon-name behavior"
       return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1 (OSC may have been printed)`,
+        pass: false,
+        response: JSON.stringify({ before, after }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state", note },
       }
+    },
+    () => {
+      const note = "No icon-name readback for OSC 1"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      })
     },
   ),
 

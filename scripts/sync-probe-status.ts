@@ -3,8 +3,9 @@
  * Sync probeStatus in features.json from probe definitions.
  *
  * Logic:
- * - Non-null termless callback → "automated" (default — remove the field)
- * - Null termless callback → "partial"
+ * - Explicit partial/manual/unprobed statuses remain reviewed metadata
+ * - A default/automated feature with null termless callback becomes partial
+ * - Explicit automated with a termless callback uses the default (remove the field)
  * - Features without probe definitions keep their current probeStatus
  *
  * Usage: bun scripts/sync-probe-status.ts [--dry-run]
@@ -20,7 +21,6 @@ const FEATURES_PATH = join(ROOT, "content/features.json")
 const DIM = "\x1b[2m"
 const GREEN = "\x1b[32m"
 const YELLOW = "\x1b[33m"
-const RED = "\x1b[31m"
 const BOLD = "\x1b[1m"
 const RESET = "\x1b[0m"
 
@@ -36,8 +36,8 @@ for (const probe of ALL_PROBES) {
 const raw = readFileSync(FEATURES_PATH, "utf-8")
 const features = JSON.parse(raw) as Record<string, Record<string, unknown>>
 
-let upgraded = 0 // partial → automated (remove probeStatus)
 let downgraded = 0 // automated → partial (set probeStatus)
+let normalized = 0 // explicit automated → implicit default
 let unchanged = 0
 let skipped = 0 // no probe definition (manual/unprobed — keep as-is)
 const changes: string[] = []
@@ -54,29 +54,18 @@ for (const [id, feature] of Object.entries(features)) {
     continue
   }
 
-  const hasTermless = probeTermlessMap.get(id)!
-  const targetStatus = hasTermless ? "automated" : "partial"
-
-  if (currentStatus === targetStatus) {
-    // Already correct — but clean up: if "automated" is explicit, remove it
-    if (feature.probeStatus === "automated") {
-      delete feature.probeStatus
-      changes.push(`${DIM}${id}: removed explicit "automated" (is default)${RESET}`)
-    }
-    unchanged++
-    continue
-  }
-
-  if (targetStatus === "automated" && currentStatus === "partial") {
-    // Upgrade: probe now has termless → remove probeStatus field
-    delete feature.probeStatus
-    upgraded++
-    changes.push(`${GREEN}${id}: partial → automated (termless callback added)${RESET}`)
-  } else if (targetStatus === "partial" && currentStatus === "automated") {
-    // Downgrade: probe has null termless → set partial
+  const hasTermless = probeTermlessMap.get(id) === true
+  if (currentStatus === "automated" && !hasTermless) {
+    // Preserve the old default fallback when no headless callback exists.
     feature.probeStatus = "partial"
     downgraded++
     changes.push(`${YELLOW}${id}: automated → partial (termless callback is null)${RESET}`)
+  } else if (feature.probeStatus === "automated" && hasTermless) {
+    delete feature.probeStatus
+    normalized++
+    changes.push(`${DIM}${id}: removed explicit "automated" (is default)${RESET}`)
+  } else {
+    unchanged++
   }
 }
 
@@ -93,7 +82,7 @@ if (changes.length > 0) {
 }
 
 console.log(
-  `  ${GREEN}${upgraded} upgraded to automated${RESET}, ` +
+  `  ${GREEN}${normalized} normalized to default automated${RESET}, ` +
     `${YELLOW}${downgraded} set to partial${RESET}, ` +
     `${unchanged} unchanged, ` +
     `${DIM}${skipped} skipped (no probe def)${RESET}`,
@@ -101,19 +90,17 @@ console.log(
 
 // Verify counts
 const totalWithProbes = Object.keys(features).filter((k) => k !== "$comment" && probeTermlessMap.has(k)).length
-const automatedCount = Object.keys(features).filter(
-  (k) => k !== "$comment" && probeTermlessMap.has(k) && probeTermlessMap.get(k) === true,
-).length
-const partialCount = Object.keys(features).filter(
-  (k) => k !== "$comment" && probeTermlessMap.has(k) && probeTermlessMap.get(k) === false,
-).length
+const finalStatuses = Object.entries(features)
+  .filter(([id]) => id !== "$comment" && probeTermlessMap.has(id))
+  .map(([, feature]) => feature.probeStatus ?? "automated")
+const count = (status: string) => finalStatuses.filter((value) => value === status).length
 
 console.log(
-  `\n  ${DIM}Final: ${automatedCount} automated, ${partialCount} partial (of ${totalWithProbes} with probes)${RESET}`,
+  `\n  ${DIM}Final: ${count("automated")} automated, ${count("partial")} partial, ${count("manual")} manual, ${count("unprobed")} unprobed (of ${totalWithProbes} with probes)${RESET}`,
 )
 
 // Write
-if (upgraded > 0 || downgraded > 0 || changes.length > 0) {
+if (changes.length > 0) {
   if (dryRun) {
     console.log(`\n  ${YELLOW}--dry-run: no changes written${RESET}`)
   } else {

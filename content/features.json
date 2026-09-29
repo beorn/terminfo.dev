@@ -851,7 +851,8 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "modifyOtherKeys (CSI > 4 ; Pv m) enables extended key reporting that distinguishes modified key combinations that would otherwise be ambiguous. At level 2, keys like Ctrl+I are reported distinctly from Tab, and Ctrl+M from Enter.\n\nmodifyOtherKeys is xterm's opt-in path for less ambiguous keyboard reporting. It predates the Kitty keyboard protocol and is still relevant because many applications learned to parse it first. The tradeoff is compatibility: once enabled, key sequences change shape, so applications must enable it deliberately and restore terminal state on exit.",
-    "probe": "Check if the terminal supports xterm modifyOtherKeys mode for enhanced key reporting."
+    "probe": "Inconclusive until controlled modified-key events are generated and their encoded reports checked. Backend declarations remain diagnostic context.",
+    "probeStatus": "unprobed"
   },
   "input.csi-u": {
     "name": "CSI u Key Encoding",
@@ -868,7 +869,8 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "SGR-Pixels mouse mode (mode 1016) reports mouse coordinates in pixels rather than cells. This enables sub-cell precision for applications that need exact pointer positioning, such as terminal-based drawing tools or image viewers.\n\nPixel mouse mode is the precision extension to SGR mouse reporting. Cell coordinates are enough for text widgets, but drawing tools, image viewers, and high-DPI terminal UIs need sub-cell location. The mode uses the familiar SGR mouse response shape, replacing cell units with pixel units.",
-    "probe": "Enable SGR pixel mouse (<code>CSI ? 1016 h</code>), check <code>getMode(\"pixelMouse\")</code> returns true.",
+    "probe": "Inconclusive until controlled mouse events and their pixel-coordinate reports are checked. A parser mode flag alone does not verify coordinate encoding.",
+    "probeStatus": "unprobed",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.urxvt-mouse": {
@@ -877,7 +879,8 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "urxvt-style mouse reporting (mode 1015) uses decimal encoding for coordinates, extending reporting beyond the 223-column limit of traditional X10 encoding. Less common than SGR mouse (1006) but still supported by some terminals.\n\nURxvt mode was an intermediate answer to xterm's coordinate limit: it kept the mouse idea but reported decimal coordinates. SGR mouse later became the cleaner and more widely adopted version, so mode 1015 is mostly legacy. Testing it still catches parsers that hard-code only the oldest byte-encoded mouse format.",
-    "probe": "Enable urxvt mouse mode (<code>CSI ? 1015 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true. Verifies the backend recognizes this specific mouse encoding.",
+    "probe": "Inconclusive until controlled mouse events and their urxvt-encoded reports are checked. A generic mouse-tracking flag does not verify this encoding.",
+    "probeStatus": "unprobed",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.x10-mouse": {
@@ -886,7 +889,8 @@
     "tags": ["dec-private-modes"],
     "baseline": "modern",
     "body": "X10 compatibility mouse tracking (mode 9) reports only button press events, not releases or motion. This is the oldest mouse tracking mode, limited to coordinates up to 223 and press-only events.\n\nX10 mode is the ancestor of terminal mouse reporting. It came from xterm and reports only button presses using compact byte-encoded coordinates, which creates the classic 223-column limit. Modern applications should prefer SGR mouse, but X10 remains useful for understanding the compatibility stack that later mouse modes extended.",
-    "probe": "Enable X10 mouse mode (<code>CSI ? 9 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true.",
+    "probe": "Inconclusive until controlled button events and their X10 reports are checked. A parser mode flag alone does not verify event encoding.",
+    "probeStatus": "unprobed",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.button-event-mouse": {
@@ -895,7 +899,8 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "Button-event tracking (mode 1002) reports mouse button press, release, and motion while a button is held. More detailed than basic tracking (1000) but less verbose than all-motion tracking (1003).\n\nMode 1002 was one of xterm's steps from click-only reporting toward interactive mouse tracking. It reports drags only while a button is held, which is enough for selection, resize handles, and sliders without the volume of all-motion mode. The later SGR coordinate encoding made the same event model practical on large terminals.",
-    "probe": "Enable button-event mouse tracking (<code>CSI ? 1002 h</code>), check <code>getMode(\"mouseTracking\")</code> returns true.",
+    "probe": "Inconclusive until controlled button and motion events are generated and their reports checked. A parser mode flag alone does not verify button-event tracking.",
+    "probeStatus": "unprobed",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "modes.alt-screen.enter": {
@@ -1232,7 +1237,8 @@
     "url": "https://en.wikipedia.org/wiki/Sixel",
     "tags": ["sixel"],
     "body": "Sixel is a bitmap graphics format developed by DEC for the VT240 terminal in 1983. Each character in a Sixel stream encodes a column of 6 vertical pixels — hence the name. The format uses DCS (Device Control String) sequences: <code>ESC P q &lt;sixel data&gt; ESC \\</code>. Pixel rows are encoded from top to bottom, with <code>$</code> for carriage return and <code>-</code> for newline (advance by 6 pixels).\n\nSixel was largely forgotten after DEC hardware disappeared, but has been revived by modern terminal emulators as a way to display inline images using only standard escape sequences. Applications like <code>img2sixel</code> and <code>chafa</code> convert images to Sixel format for terminal display.\n\nSixel support varies significantly: xterm was the first modern revival, followed by foot, WezTerm, and mlterm. Some terminals limit the color palette or image dimensions. Unlike the Kitty graphics protocol, Sixel has no placement model — images appear at the cursor position and scroll with text.",
-    "probe": "Send a minimal Sixel image payload via DCS and verify the cursor moves (indicating the image was rendered).",
+    "probe": "Inconclusive: no decoded image or rendered pixel observation is collected. A Sixel declaration or cursor movement does not verify rendering.",
+    "probeStatus": "unprobed",
     "baseline": "rich"
   },
   "extensions.osc8": {
@@ -1261,7 +1267,8 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 0 sets both the icon name and window title simultaneously. The sequence is <code>ESC ] 0 ; title ST</code>. In practice, the \"icon name\" is a legacy concept from X11 window managers — most modern terminals treat OSC 0 identically to OSC 2 (window title only).",
-    "probe": "Send <code>\\x1b]0;My Title\\x07</code> (OSC 0), verify <code>getTitle()</code> contains \"My Title\".",
+    "probe": "Headless title changes are retained as partial diagnostic evidence. Icon-name behavior is not read back, so the combined feature remains inconclusive.",
+    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC ] 0 ; title BEL"
   },
@@ -1301,7 +1308,8 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc"],
     "body": "OSC 7 reports the current working directory to the terminal. The sequence is <code>ESC ] 7 ; file://hostname/path ST</code>. Shells emit this after each command so the terminal knows the working directory. Terminals use this to open new tabs/splits in the same directory and to make file paths in output clickable with correct relative path resolution.",
-    "probe": "Send <code>OSC 7 ; file://localhost/path BEL</code> and verify the terminal accepts the current directory report.",
+    "probe": "Inconclusive: no terminal-owned current-directory metadata is read back. A declaration or cursor reply does not verify that the directory was recorded.",
+    "probeStatus": "unprobed",
     "baseline": "modern",
     "sequence": "ESC ] 7 ; file://host/path BEL"
   },
@@ -1322,7 +1330,8 @@
     "url": "https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md",
     "tags": ["osc"],
     "body": "Semantic prompts use OSC 133 markers to tell the terminal where each shell prompt, command input, and command output begins and ends. The markers are: <code>A</code> (prompt start), <code>B</code> (command input start — after prompt, before the user types), <code>C</code> (command output start — after Enter), and <code>D</code> (command finished, with exit code).\n\nWith these markers, terminals can implement features that were previously impossible: click-to-navigate between prompts, select entire command output, scroll by command boundaries, mark failed commands with a red indicator, and provide command completion times. Shell integration scripts (for bash, zsh, fish) emit these markers automatically.\n\nAlso known as shell integration or command decoration. Supported by iTerm2 (which originated the protocol), Ghostty, WezTerm, Kitty, and VS Code's integrated terminal.",
-    "probe": "Send <code>OSC 133 ; A BEL</code> (prompt start marker) and verify the terminal accepts it without error.",
+    "probe": "Inconclusive: no shell-integration metadata or behavior is observed. Backend declarations remain diagnostic context; the app probe does not send markers merely to check terminal responsiveness.",
+    "probeStatus": "unprobed",
     "baseline": "rich",
     "sequence": "ESC ] 133 ; A BEL"
   },
@@ -1332,7 +1341,8 @@
     "tags": ["osc", "vscode-extensions"],
     "baseline": "rich",
     "body": "<p><strong>OSC 633</strong> is VS Code's shell integration protocol, extending <a href=\"/extensions/osc-133-semantic-prompts\" class=\"hover-link\">OSC 133</a> with additional markers for command detection, output boundaries, and shell state. It enables features like command decorations (green/red markers showing success/failure), run-recent-command, and sticky scroll for terminal output.</p>\n<p>The protocol uses escape sequences to mark four boundaries: <strong>prompt start</strong> (A), <strong>command start</strong> (B), <strong>command executed</strong> (C), and <strong>command finished</strong> (D, with exit code). VS Code's built-in shell integration scripts for bash, zsh, fish, and PowerShell emit these markers automatically. The terminal then knows exactly where each prompt, command, and output block begins and ends.</p>\n<p>OSC 633 adds VS Code-specific extensions beyond OSC 133: <strong>property reporting</strong> (P;key=value) for shell state like current directory and shell type, <strong>command line reporting</strong> (E) for the exact command text, and <strong>continuation prompt marking</strong> for multi-line commands. Other terminals (Kitty, WezTerm) support the base OSC 133 protocol but not the VS Code-specific extensions.</p>",
-    "probe": "Send <code>OSC 633 ; A BEL</code> (VS Code prompt start marker) and verify the terminal accepts the sequence. OSC 633 is a superset of OSC 133.",
+    "probe": "Inconclusive: no VS Code shell-integration metadata or behavior is observed. A semantic-prompts declaration does not verify OSC 633, and the app probe does not send markers merely to check terminal responsiveness.",
+    "probeStatus": "unprobed",
     "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
     "sequence": "ESC ] 633 ; A BEL"
   },
@@ -1452,7 +1462,8 @@
     "tags": ["osc"],
     "baseline": "rich",
     "body": "<p><strong>Desktop notifications</strong> allow terminal applications to trigger system notifications. Two competing escape sequences exist: <strong>OSC 9</strong> (iTerm2/ConEmu) sends a simple notification string, while <strong>OSC 777</strong> (rxvt-unicode) supports structured notifications with title and body. Neither is standardized — support varies widely across terminals.</p>\n<p>Common use case: long-running commands that notify when complete. Shells like zsh have plugins that automatically send a notification when a command takes longer than N seconds. The BEL character (0x07) is a simpler alternative — most terminals can be configured to show a visual bell or system notification on BEL.</p>",
-    "probe": "Send <code>OSC 9 ; message BEL</code> and verify the terminal accepts the notification sequence."
+    "probe": "Inconclusive: no desktop notification or permission outcome is observed. The probe does not send a notification merely to check terminal responsiveness.",
+    "probeStatus": "unprobed"
   },
   "extensions.iterm2-images": {
     "name": "iTerm2 Inline Images (OSC 1337)",
@@ -1460,7 +1471,8 @@
     "tags": ["osc"],
     "baseline": "rich",
     "body": "<p><strong>iTerm2 inline images</strong> use the proprietary <strong>OSC 1337</strong> protocol to display images directly in terminal output. The image data is base64-encoded and transmitted inline with the escape sequence. iTerm2 supports PNG, JPEG, GIF, and other formats.</p>\n<p>This protocol predates the Kitty graphics protocol and is simpler but less capable — it lacks features like image placement, animation control, and chunked transfer. Several other terminals (WezTerm, mintty) have adopted the iTerm2 protocol alongside or instead of Kitty graphics. The protocol is documented in iTerm2's documentation but has no formal specification.</p>",
-    "probe": "Check if the terminal responds to iTerm2 capability queries (OSC 1337) indicating inline image support.",
+    "probe": "Inconclusive: no image-decoding or rendering observation is collected. A capability declaration or cursor reply does not verify inline images.",
+    "probeStatus": "unprobed",
     "url": "https://iterm2.com/documentation-images.html"
   },
   "extensions.truecolor": {
@@ -2187,7 +2199,8 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["xterm-extensions"],
     "body": "xterm's modifyOtherKeys mode 3 (patch 398, April 2025) makes ALL keyboard input — including unmodified keys — send escape sequences. Mode 2 only affects modified keys (Ctrl+X, Alt+X), while mode 3 extends this to every keypress. The sequence is <code>CSI > 4 ; 3 m</code>.\n\nMode 3 also extends modifier encoding to cursor-keys, function-keys, keypad-keys, modifier-keys, and special-keys, with subparameters in XTMODKEYS for selective modifier masking. This provides applications with unambiguous key identification similar to the kitty keyboard protocol, but using xterm's native encoding.",
-    "probe": "Send <code>CSI > 4 ; 3 m</code> to enable modifyOtherKeys mode 3, verify terminal is responsive, then disable with <code>CSI > 4 ; 0 m</code>.",
+    "probe": "Inconclusive until controlled key events distinguish mode 3 from mode 2 and their reports are checked. Terminal responsiveness does not establish key encoding.",
+    "probeStatus": "unprobed",
     "baseline": "rich"
   },
   "extensions.kitty-keyboard.disambiguate": {
@@ -2259,7 +2272,8 @@
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#animation",
     "tags": ["kitty-extensions"],
     "body": "The animation frame action (<code>a=f</code>) adds animation frames to a previously transmitted image. Supports frame composition modes (overwrite, blend), per-frame timing, and looping. Not all terminals that support kitty graphics support animation.\n\nAnimation is one of the least portable parts of the Kitty graphics protocol. It assumes the terminal stores image state, composes frames, and schedules timing rather than just painting cells. Applications should detect support and provide a static-image fallback, especially through multiplexers or remote sessions.",
-    "probe": "Transmit a base image, then add an animation frame with <code>a=f</code>. Check response for success (not EINVAL).",
+    "probe": "Inconclusive: no timed sequence of rendered animation frames is collected. Graphics declarations and upload acknowledgements do not verify animation.",
+    "probeStatus": "unprobed",
     "baseline": "rich"
   },
   "extensions.kitty-graphics.unicode-placeholders": {
@@ -2268,7 +2282,8 @@
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#unicode-placeholders",
     "tags": ["kitty-extensions"],
     "body": "Unicode placeholders (<code>U=1</code>) allow images to be placed using special Unicode characters in the text grid rather than absolute positioning. The terminal replaces placeholder characters with image content. This enables images to participate in text reflow, scrolling, and selection — unlike absolutely-positioned images which are fixed to screen coordinates.",
-    "probe": "Transmit a test image with <code>U=1</code> (Unicode placeholder mode). Check response for success.",
+    "probe": "Inconclusive: no controlled placeholder cells and corresponding rendered image are observed. Graphics declarations and cursor movement do not verify Unicode placeholders.",
+    "probeStatus": "unprobed",
     "baseline": "rich"
   },
   "extensions.osc52-write": {
@@ -2295,7 +2310,8 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 1 sets the icon name (without changing the window title). The sequence is <code>ESC ] 1 ; Pt BEL</code> where Pt is the icon name string. This is the companion to OSC 0 (which sets both icon name and title) and OSC 2 (which sets only the title). Originally used by X11 window managers to label minimized windows, icon name is less commonly used in modern terminals but remains part of the xterm protocol. Some terminals treat OSC 1 identically to OSC 0 or ignore the icon name entirely.",
-    "probe": "Send <code>\\x1b]1;test-icon\\x07</code> and verify the terminal remains responsive (icon name accepted without error).",
+    "probe": "Any headless title change is diagnostic only: title text does not establish icon-name behavior. No icon-name readback is available, so the result remains inconclusive.",
+    "probeStatus": "unprobed",
     "baseline": "core",
     "sequence": "ESC ] 1 ; Pt BEL"
   },
