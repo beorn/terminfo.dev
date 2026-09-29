@@ -11,17 +11,21 @@ Help measure what your terminal does. A probe can establish a particular behavio
 npx terminfo.dev
 ```
 
-This shows your detected terminal and available commands. Run `test` to see your scorecard, or `submit` to send results for review through a GitHub issue.
+This shows the available commands. Run `npx terminfo.dev detect` to see the detected terminal. The current source's `test` command records one unreviewed run; `submit RAW --draft FILE` prepares an offline contribution draft. Neither command posts a result. Check the installed CLI's `--version` and `--help`: the corrected package is still being verified and older published versions may differ.
 
 `npx` comes with [Node.js](https://nodejs.org/en/download). Use a fresh terminal window for testing, and record whether tmux, Screen or a remote connection is involved.
 
 ## Other Commands
 
 ```bash
-npx terminfo.dev test --json    # Machine-readable output
+npx terminfo.dev test --json > raw.json                        # One raw run on stdout
+npx terminfo.dev test --output /tmp/terminfo-run.json         # New private file at an absolute path
+npx terminfo.dev submit /tmp/terminfo-run.json --draft /tmp/terminfo-draft.md # Offline draft and adjacent raw attachment
 npx terminfo.dev detect         # Check what terminal was detected
 npx terminfo.dev --version      # Record the CLI version
 ```
+
+For inline `test --json` or `test --output`, stdin must be an interactive terminal; probe controls go to `/dev/tty`, separate from the raw JSON. `--output` refuses an existing file. A draft does not create a GitHub issue or grant publication consent.
 
 ## What a probe can establish
 
@@ -48,7 +52,7 @@ Coverage and support are different. Coverage asks how much of the intended suite
 
 ## Contributing screenshots and reproductions
 
-Use `submit` to contribute through the existing GitHub issue flow. Include:
+Use `submit RAW --draft FILE` to prepare a local draft and an adjacent content-addressed copy of the exact raw JSON. Review both files before choosing whether to post a GitHub issue; draft creation sends nothing and does not grant consent. A contribution should include:
 
 - The terminal and version, OS version, relevant configuration, font and window size.
 - The CLI version, exact command or small reproduction, and raw output.

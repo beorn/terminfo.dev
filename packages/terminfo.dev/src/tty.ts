@@ -269,7 +269,9 @@ export async function drainStdin(ms = 300): Promise<void> {
 export async function withRawMode<T>(fn: () => Promise<T>, out?: NodeJS.WriteStream): Promise<T> {
   return withTTYOperation(async () => {
     const wasRaw = process.stdin.isRaw
-    const wasPaused = process.stdin.isPaused()
+    // isPaused() is false even for an untouched TTY; flowing records whether it
+    // actually had an active reader before this lease resumed it.
+    const wasFlowing = process.stdin.readableFlowing
     if (process.stdin.isTTY) {
       process.stdin.setRawMode(true)
       process.stdin.resume()
@@ -277,10 +279,8 @@ export async function withRawMode<T>(fn: () => Promise<T>, out?: NodeJS.WriteStr
     try {
       return await fn()
     } finally {
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(wasRaw ?? false)
-        if (wasPaused) process.stdin.pause()
-      }
+      if (process.stdin.isTTY) process.stdin.setRawMode(wasRaw ?? false)
+      if (wasFlowing !== true) process.stdin.pause()
     }
   }, out)
 }

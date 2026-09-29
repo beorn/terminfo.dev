@@ -4,16 +4,16 @@ import { readRawDaemonProbeResponse, requestDaemonProbe } from "./daemon-client.
  * terminfo.dev CLI — can your terminal do that?
  *
  * npm-published CLI for end users. Supports inline testing, daemon mode,
- * submission, and terminal detection.
+ * offline contribution drafts, and terminal detection.
  *
  * @example
  * ```bash
  * npx terminfo.dev                     # show help
  * npx terminfo.dev test                # test this terminal
- * npx terminfo.dev test --json         # machine output
+ * npx terminfo.dev test --json > raw.json # one raw run; TTY stdin, controls on /dev/tty
+ * npx terminfo.dev test --output /tmp/terminfo-run.json # private raw file
  * npx terminfo.dev test --serve       # start daemon for remote testing
- * npx terminfo.dev test --all          # test all running daemons
- * npx terminfo.dev submit              # test + submit to terminfo.dev
+ * npx terminfo.dev submit /tmp/terminfo-run.json --draft /tmp/terminfo-draft.md # offline draft + raw attachment
  * npx terminfo.dev detect              # what terminal am I in?
  * ```
  */
@@ -75,8 +75,12 @@ const program = new Command()
 
 program.addHelpSection("Examples:", [
   ["$ npx terminfo.dev test", "Test this terminal"],
-  ["$ npx terminfo.dev test --json", "Machine-readable output"],
-  ["$ npx terminfo.dev submit", "Test + submit to terminfo.dev"],
+  ["$ npx terminfo.dev test --json > raw.json", "One raw run; TTY input, controls on /dev/tty"],
+  ["$ npx terminfo.dev test --output /tmp/terminfo-run.json", "Private raw file at an absolute path"],
+  [
+    "$ npx terminfo.dev submit /tmp/terminfo-run.json --draft /tmp/terminfo-draft.md",
+    "Offline draft and adjacent raw attachment; nothing is sent",
+  ],
   ["$ npx terminfo.dev detect", "What terminal am I in?"],
 ])
 
@@ -86,11 +90,11 @@ program
   .command("test")
   .description("Test this terminal's feature support")
   .argument("[daemon]", "Daemon name to test")
-  .option("--json", "Output results as JSON")
+  .option("--json", "Write one raw JSON run to stdout (inline probes require interactive TTY)")
   .option("--output <file>", "Write exact raw JSON to an absolute file")
   .option("--serve", "Start daemon for remote testing")
   .option("-p, --port <port>", "Port for --serve", uint)
-  .option("--all", "Test all running daemons")
+  .option("--all", "Unavailable: collecting multiple daemons is refused")
   .actionMerged(
     async (opts: {
       daemon?: string
@@ -185,7 +189,7 @@ program
 
 program
   .command("submit")
-  .description("Prepare an offline draft from one unreviewed v2 run")
+  .description("Prepare an offline draft and adjacent raw attachment from one unreviewed v2 run; nothing is sent")
   .argument("<raw>", "Exact raw JSON file from test --output")
   .option("--draft <file>", "Write an offline Markdown draft")
   .actionMerged(async (opts: { raw: string; draft?: string }) => {

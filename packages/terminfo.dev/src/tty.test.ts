@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
+  drainStdin,
   measureRenderedWidth,
   query,
   queryMode,
@@ -29,6 +30,74 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
+  it("restores an untouched input stream after draining, including errors and nested leases", async () => {
+    const stdin = process.stdin
+    const originalTTY = Object.getOwnPropertyDescriptor(stdin, "isTTY")
+    const originalFlowing = Object.getOwnPropertyDescriptor(stdin, "readableFlowing")
+    const originalRawMode = Object.getOwnPropertyDescriptor(stdin, "setRawMode")
+    let flowing: boolean | null = null
+    Object.defineProperty(stdin, "isTTY", { configurable: true, value: true })
+    Object.defineProperty(stdin, "readableFlowing", { configurable: true, get: () => flowing })
+    Object.defineProperty(stdin, "setRawMode", { configurable: true, value: vi.fn() })
+    const resume = vi.spyOn(stdin, "resume").mockImplementation(() => {
+      flowing = true
+      return stdin
+    })
+    const pause = vi.spyOn(stdin, "pause").mockImplementation(() => {
+      flowing = false
+      return stdin
+    })
+    const isPaused = vi.spyOn(stdin, "isPaused").mockReturnValue(false)
+    try {
+      await withRawMode(async () => {
+        await drainStdin(1)
+        expect(flowing).toBe(true)
+      })
+      expect(flowing).toBe(false)
+      expect(pause).toHaveBeenCalledOnce()
+
+      flowing = true
+      pause.mockClear()
+      await withRawMode(async () => {
+        await drainStdin(1)
+      })
+      expect(flowing).toBe(true)
+      expect(pause).not.toHaveBeenCalled()
+
+      flowing = false
+      await expect(
+        withRawMode(async () => {
+          throw new Error("probe failed")
+        }),
+      ).rejects.toThrow("probe failed")
+      expect(flowing).toBe(false)
+      expect(pause).toHaveBeenCalledOnce()
+
+      flowing = null
+      pause.mockClear()
+      await withRawMode(async () => {
+        await withRawMode(async () => {
+          expect(flowing).toBe(true)
+        })
+        expect(flowing).toBe(true)
+      })
+      expect(flowing).toBe(false)
+      expect(pause).toHaveBeenCalledOnce()
+    } finally {
+      resume.mockRestore()
+      pause.mockRestore()
+      isPaused.mockRestore()
+      for (const [name, original] of [
+        ["isTTY", originalTTY],
+        ["readableFlowing", originalFlowing],
+        ["setRawMode", originalRawMode],
+      ] as const) {
+        if (original) Object.defineProperty(stdin, name, original)
+        else Reflect.deleteProperty(stdin, name)
+      }
+    }
+  })
+
   it("has its listener ready before a synchronous terminal reply", async () => {
     process.stdout.write = (() => {
       reply("\x1b[12;34R")
