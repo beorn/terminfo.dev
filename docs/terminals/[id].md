@@ -146,7 +146,7 @@ const breadcrumbParent = (() => {
   </div>
   <div v-else class="score-detail">No conclusive results in this reviewed run.</div>
   <p class="score-detail">{{ counts.supported }} supported · {{ counts.unsupported }} unsupported · {{ inconclusive }} inconclusive · {{ errors }} errors · {{ counts.notTested }} untested</p>
-  <p class="score-detail">{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. Inconclusive does not mean unsupported.</p>
+  <p class="score-detail">{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. Inconclusive means support is still unknown. Each result covers its recorded check, not every behavior of a feature.</p>
 </div>
 
 <details v-if="selectedRun" class="run-context">

@@ -305,6 +305,9 @@ onBeforeUnmount(() => {
           >
         </p>
         <p v-if="cell?.note">{{ cell.note }}</p>
+        <p v-if="cell?.evidence === 'query'">
+          This result covers the recorded query only, not other requests or the protocol's full behavior.
+        </p>
         <p v-if="cell?.reason">Reason: {{ cell.reason }}</p>
 
         <h3>Evidence</h3>
