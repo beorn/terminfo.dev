@@ -2,7 +2,7 @@
 /**
  * Unified pipeline runner for terminfo.dev refresh cycle.
  *
- * Orchestrates: staleness check → explore → radar → probe → validate → build → 404s.
+ * Orchestrates: staleness check → release assessment → explore → radar → headless probe → validate → build → 404s.
  *
  * Usage:
  *   bun scripts/update.ts                    # Same as --status
@@ -89,26 +89,32 @@ function stepStaleness(): StepResult {
   return { name: "staleness", ok }
 }
 
+function stepReleaseWatch(runAt: string): StepResult {
+  header(2, "Assess eligible app releases against reviewed results")
+  const { ok } = runCommand("bun", ["run", "watch-releases", "--json", "--at", runAt])
+  return { name: "release-watch", ok }
+}
+
 function stepExplore(): StepResult {
-  header(2, "Run explore queries")
+  header(3, "Run explore queries")
   const { ok } = runCommand("bun", ["run", "explore"])
   return { name: "explore", ok }
 }
 
 function stepRadar(): StepResult {
-  header(3, "Show radar stats")
+  header(4, "Show radar stats")
   const { ok } = runCommand("bun", ["run", "radar", "stats"])
   return { name: "radar", ok }
 }
 
 async function stepPause(): Promise<StepResult> {
-  header(4, "Review checkpoint")
+  header(5, "Review checkpoint")
   const cont = await pause("Review radar findings. Press Enter to continue, or Ctrl+C to stop.")
   return { name: "pause", ok: cont }
 }
 
 function stepProbe(): StepResult {
-  header(5, "Re-probe headless backends")
+  header(6, "Re-probe headless backends")
   const { ok } = runCommand("bun", ["terminfo", "probe", "termless", "--all", "--force"], {
     cwd: kmRoot,
   })
@@ -116,19 +122,19 @@ function stepProbe(): StepResult {
 }
 
 function stepValidate(): StepResult {
-  header(6, "Validate content")
+  header(7, "Validate content")
   const { ok } = runCommand("bun", ["validate"])
   return { name: "validate", ok }
 }
 
 function stepBuild(): StepResult {
-  header(7, "Build site")
+  header(8, "Build site")
   const { ok } = runCommand("bun", ["run", "build"])
   return { name: "build", ok }
 }
 
 function stepCheck404s(): StepResult {
-  header(8, "Check 404s")
+  header(9, "Check 404s")
   const { ok } = runCommand("bun", ["scripts/check-404s.ts"])
   return { name: "check-404s", ok }
 }
@@ -179,17 +185,19 @@ async function runStep(
   return true
 }
 
-async function flowStatus(): Promise<void> {
+async function flowStatus(runAt: string): Promise<void> {
   const results: StepResult[] = []
   await runStep(stepStaleness, results, true)
+  await runStep(() => stepReleaseWatch(runAt), results, true)
   await runStep(stepRadar, results, true)
   printSummary(results)
 }
 
-async function flowDiscover(): Promise<void> {
+async function flowDiscover(runAt: string): Promise<void> {
   const results: StepResult[] = []
   const noPause = true
   await runStep(stepStaleness, results, noPause)
+  await runStep(() => stepReleaseWatch(runAt), results, noPause)
   await runStep(stepExplore, results, noPause)
   await runStep(stepRadar, results, noPause)
   printSummary(results)
@@ -210,10 +218,13 @@ async function flowValidate(): Promise<void> {
   printSummary(results)
 }
 
-async function flowFull(noPause: boolean): Promise<void> {
+async function flowFull(noPause: boolean, runAt: string): Promise<void> {
   const results: StepResult[] = []
 
   if (!(await runStep(stepStaleness, results, noPause))) return printSummary(results)
+  const release = stepReleaseWatch(runAt)
+  results.push(release)
+  if (!release.ok) return printSummary(results)
   if (!(await runStep(stepExplore, results, noPause))) return printSummary(results)
   if (!(await runStep(stepRadar, results, noPause))) return printSummary(results)
 
@@ -240,22 +251,23 @@ async function flowFull(noPause: boolean): Promise<void> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const noPause = args.includes("--no-pause")
+  const runAt = new Date().toISOString()
 
   console.log(`${BOLD}terminfo.dev update pipeline${RESET}`)
   console.log(`${DIM}site: ${siteRoot}${RESET}`)
   console.log(`${DIM}km:   ${kmRoot}${RESET}`)
 
   if (args.includes("--full")) {
-    await flowFull(noPause)
+    await flowFull(noPause, runAt)
   } else if (args.includes("--discover")) {
-    await flowDiscover()
+    await flowDiscover(runAt)
   } else if (args.includes("--probe")) {
     await flowProbe()
   } else if (args.includes("--validate")) {
     await flowValidate()
   } else {
     // Default: --status
-    await flowStatus()
+    await flowStatus(runAt)
   }
 }
 

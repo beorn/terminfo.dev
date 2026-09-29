@@ -2,8 +2,7 @@
 /**
  * Watch for new releases of tracked terminals.
  *
- * Reads content/probes-apps/ to find the latest probed terminal app version,
- * then scans complete, bounded GitHub/Codeberg feeds for the newest stable
+ * Reads the reviewed default-context app result, then scans complete, bounded GitHub/Codeberg feeds for the newest stable
  * version eligible at the one-calendar-month UTC cutoff.
  *
  * Usage:
@@ -16,15 +15,15 @@
  * Set GITHUB_TOKEN env var for higher rate limits (60 req/hr → 5000 req/hr).
  */
 
-import { readFileSync, readdirSync, writeFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const rootDir = join(__dirname, "..")
 const contentDir = join(rootDir, "content")
 const terminalsPath = join(contentDir, "terminals.json")
-const probesAppsDir = join(contentDir, "probes-apps")
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,12 +49,23 @@ interface ReleaseResult {
   terminal: string
   label: string
   currentVersion: string | null
+  currentEvidence: { contextKey: string; runId: string; sha256: string } | null
   latestVersion: string | null
   latestDate: string | null
   sourceUrl: string | null
+  runAt: string
   cutoff: string
   policy: "monthly" | "latest"
   candidates: ReleaseCandidate[]
+  selectedCandidate: ReleaseCandidate | null
+  disposition:
+    | "new-release"
+    | "no-reviewed-current"
+    | "up-to-date"
+    | "newer-than-eligible"
+    | "comparison-unresolved"
+    | "no-eligible-release"
+    | "source-error"
   isNewer: boolean
   error: string | null
 }
@@ -186,9 +196,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function publicationTime(value: unknown, source: ReleaseSource, tag: string): string | null {
   if (value === null || value === undefined) return null
-  if (typeof value !== "string") throw new Error(source.terminal + ": invalid publication time for " + tag)
-  const parsed = parseUtcInstant(value)
-  return parsed.toISOString()
+  const invalid = (cause?: unknown) => new Error(source.terminal + ": invalid publication time for " + tag, { cause })
+  if (typeof value !== "string") throw invalid()
+  const match = /^(.*)(Z|[+-]\d{2}:\d{2})$/.exec(value)
+  if (!match?.[1] || !match[2]) throw invalid()
+  const zone = match[2]
+  const offsetHour = zone === "Z" ? 0 : Number(zone.slice(1, 3))
+  const offsetMinute = zone === "Z" ? 0 : Number(zone.slice(4, 6))
+  if (offsetHour > 23 || offsetMinute > 59) throw invalid()
+  let local: Date
+  try {
+    // Reuse the strict calendar/clock check, then apply the source's explicit offset.
+    local = parseUtcInstant(`${match[1]}Z`)
+  } catch (error) {
+    throw invalid(error)
+  }
+  const offset = (zone.startsWith("-") ? -1 : 1) * (offsetHour * 60 + offsetMinute)
+  return new Date(local.getTime() - offset * 60_000).toISOString()
 }
 
 function parseCandidate(source: ReleaseSource, raw: unknown): ReleaseCandidate {
@@ -212,8 +236,9 @@ function parseCandidate(source: ReleaseSource, raw: unknown): ReleaseCandidate {
   const excluded: string[] = []
   if (raw.draft === true) excluded.push("draft")
   if (channel !== "stable") excluded.push(channel + " channel")
-  if (publishedAt === null)
+  if (publishedAt === null) {
     excluded.push(source.type === "github-tags" ? "undated tag feed" : "missing publication time")
+  }
   const sourceUrl =
     source.type === "github-tags"
       ? source.apiUrl.replace("api.github.com/repos/", "github.com/").replace(/\/tags$/, "/tree") +
@@ -278,42 +303,14 @@ export function selectEligibleRelease(
     }
     return { ...candidate, excluded }
   })
-  const eligible = withDisposition.filter((candidate) => candidate.excluded.length === 0)
+  const eligible = withDisposition.filter(
+    (candidate): candidate is ReleaseCandidate & { publishedAt: string } =>
+      candidate.excluded.length === 0 && candidate.publishedAt !== null,
+  )
   eligible.sort(
-    (a, b) => compareVersions(b.version, a.version) || Date.parse(b.publishedAt!) - Date.parse(a.publishedAt!),
+    (a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt) || compareVersions(b.version, a.version),
   )
   return { selected: eligible[0] ?? null, candidates: withDisposition }
-}
-
-/**
- * Find the latest probed app version. A Termless backend or library version is
- * a different identity and cannot establish the installed terminal app version.
- */
-function findCurrentVersion(terminalId: string): string | null {
-  const versions: string[] = []
-  const files = readdirSync(probesAppsDir)
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue
-    // File format: terminal-version-platform.json or terminal-version.json
-    if (!file.startsWith(terminalId + "-")) continue
-    const path = join(probesAppsDir, file)
-    let data: unknown
-    try {
-      data = JSON.parse(readFileSync(path, "utf-8"))
-    } catch (error) {
-      throw new Error("Invalid probe result " + path + ": " + String(error))
-    }
-    if (!isRecord(data)) throw new Error("Invalid probe result object " + path)
-    const version = data.terminalVersion ?? data.version
-    if (typeof version !== "string" || version === "") throw new Error("Missing probe version in " + path)
-    versions.push(version)
-  }
-
-  if (versions.length === 0) return null
-
-  // Return the highest version
-  versions.sort(compareVersions)
-  return versions[versions.length - 1]!
 }
 
 // ---------------------------------------------------------------------------
@@ -340,42 +337,77 @@ async function main() {
   if (jsonOutput && updateMode) throw new Error("--json and --update cannot be combined")
   const policy = latestMode ? "latest" : "monthly"
   const cutoff = latestMode ? runAt : calendarMonthCutoff(runAt)
+  const projection = loadCurrentResults(contentDir).projection
+  const currentTargets = compatibilityTargets(projection, contentDir)
 
   const results: ReleaseResult[] = []
 
   // Fetch all release pages for each source, even if API pages are out of date order.
   const promises = RELEASE_SOURCES.map(async (source): Promise<ReleaseResult> => {
+    const current = [...currentTargets.values()].find(
+      ({ selected }) => selected.target.kind === "app" && selected.target.id === source.terminal,
+    )
+    const currentVersion = current?.selected.target.version ?? null
+    const currentEvidence = current
+      ? { contextKey: current.contextKey, runId: current.selected.runId, sha256: current.selected.sha256 }
+      : null
     try {
-      const currentVersion = findCurrentVersion(source.terminal)
       const selection = selectEligibleRelease(await fetchReleaseFeed(source), cutoff)
       const selected = selection.selected
-      const isNewer =
-        currentVersion !== null && selected !== null && compareVersions(currentVersion, selected.version) < 0
+      let disposition: ReleaseResult["disposition"]
+      let error: string | null = null
+      if (currentVersion === null) disposition = "no-reviewed-current"
+      else if (selected === null) disposition = "no-eligible-release"
+      else {
+        const matches = selection.candidates.filter(
+          (candidate) => candidate.version === normalizeVersion(currentVersion),
+        )
+        const measuredRelease = matches.length === 1 ? matches[0] : undefined
+        if (!measuredRelease?.publishedAt || !selected.publishedAt) {
+          disposition = "comparison-unresolved"
+          error = `${source.terminal}: reviewed version ${currentVersion} has no unique dated release in the source feed; comparison requires review`
+        } else {
+          // Release numbering can change schemes; compare the source's publication chronology.
+          const order =
+            Date.parse(selected.publishedAt) - Date.parse(measuredRelease.publishedAt) ||
+            compareVersions(selected.version, measuredRelease.version)
+          disposition = order > 0 ? "new-release" : order < 0 ? "newer-than-eligible" : "up-to-date"
+        }
+      }
+      const isNewer = disposition === "new-release"
 
       return {
         terminal: source.terminal,
         label: source.label,
         currentVersion,
+        currentEvidence,
         latestVersion: selected?.version ?? null,
         latestDate: selected?.publishedAt ?? null,
         sourceUrl: selected?.sourceUrl ?? null,
+        runAt: runAt.toISOString(),
         cutoff: cutoff.toISOString(),
         policy,
         candidates: selection.candidates,
+        selectedCandidate: selected,
+        disposition,
         isNewer,
-        error: null,
+        error,
       }
     } catch (err) {
       return {
         terminal: source.terminal,
         label: source.label,
-        currentVersion: null,
+        currentVersion,
+        currentEvidence,
         latestVersion: null,
         latestDate: null,
         sourceUrl: null,
+        runAt: runAt.toISOString(),
         cutoff: cutoff.toISOString(),
         policy,
         candidates: [],
+        selectedCandidate: null,
+        disposition: "source-error",
         isNewer: false,
         error: err instanceof Error ? err.message : String(err),
       }
@@ -409,16 +441,18 @@ async function main() {
     let status: string
     if (r.error) {
       status = `⚠ ${r.error}`
+    } else if (r.disposition === "no-reviewed-current") {
+      status = `⚠ no reviewed current app measurement; probe/review needed`
     } else if (r.latestVersion === null) {
       const reasons = [...new Set(r.candidates.flatMap((candidate) => candidate.excluded))]
       status = `⚠ no eligible dated stable release (${reasons.join(", ") || "empty feed"})`
-    } else if (r.currentVersion === null) {
-      status = `  (not tracked locally)`
     } else if (r.isNewer) {
-      status = `← NEW`
+      status = `← NEW release candidate for reviewed default context`
       hasNew = true
+    } else if (r.disposition === "newer-than-eligible") {
+      status = `✓ reviewed default context has a release newer than the eligible candidate`
     } else {
-      status = `✓ up to date`
+      status = `✓ reviewed default context up to date with eligible release`
     }
 
     console.log(`  ${label}  current: ${cur}  eligible: ${lat}  ${status}`)
@@ -428,12 +462,14 @@ async function main() {
   const failures = results.filter((r) => r.error)
   if (failures.length > 0) {
     process.exitCode = 1
-    if (updateMode) throw new Error("Refusing catalog update: " + failures.length + " release source(s) failed")
+    if (updateMode) throw new Error("Refusing catalog update: " + failures.length + " release assessment(s) failed")
   }
 
   // This is only a catalog hint. A real probe and review remain separate.
   if (updateMode) {
-    const newReleases = results.filter((r) => r.isNewer && r.latestVersion && r.latestDate && r.sourceUrl)
+    const newReleases = results.filter((r): r is ReleaseResult & { latestDate: string } =>
+      Boolean(r.isNewer && r.latestVersion && r.latestDate && r.sourceUrl),
+    )
     if (newReleases.length === 0) {
       console.log("  No eligible new releases to record in terminals.json.")
       console.log()
@@ -449,7 +485,7 @@ async function main() {
       if (!isRecord(terminal)) throw new Error("Missing catalog terminal " + r.terminal)
       terminal.latestRelease = {
         version: r.latestVersion,
-        date: r.latestDate!.slice(0, 10),
+        date: r.latestDate.slice(0, 10),
         sourceUrl: r.sourceUrl,
         cutoff: r.cutoff,
         policy: r.policy,

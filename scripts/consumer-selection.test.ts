@@ -1,5 +1,5 @@
 /**
- * @failure Legacy booleans or a malformed required run become current site/API scores.
+ * @failure Unreviewed runs become current scores, or refresh skips its release assessment and errors.
  * @level l2
  * @consumer Site data and JSON API use the canonical reviewed-run selector.
  * @testonly none
@@ -68,16 +68,54 @@ describe("consumer selection", () => {
       // The refresh command must preserve its child check's failure status.
       copyFileSync(join(source, "scripts", "update.ts"), join(root, "scripts", "update.ts"))
       writeFileSync(join(root, "scripts", "radar.ts"), 'console.log("radar fixture completed")\n')
+      writeFileSync(join(root, "scripts", "explore.ts"), 'console.log("explore fixture completed")\n')
+      writeFileSync(
+        join(root, "scripts", "watch-releases.ts"),
+        `
+        import { writeFileSync } from "node:fs"
+        writeFileSync("${join(root, "watch-args.json")}", JSON.stringify(process.argv.slice(2)))
+        console.log(JSON.stringify([{ terminal: "kitty", disposition: "no-reviewed-current" }]))
+        if (process.env.WATCH_FAIL === "1") process.exitCode = 1
+      `,
+      )
       writeFileSync(
         join(root, "package.json"),
         JSON.stringify({
-          scripts: { sitefile: "bun scripts/sitefile.ts", radar: "bun scripts/radar.ts" },
+          scripts: {
+            sitefile: "bun scripts/sitefile.ts",
+            radar: "bun scripts/radar.ts",
+            explore: "bun scripts/explore.ts",
+            "watch-releases": "bun scripts/watch-releases.ts",
+          },
         }),
       )
+      const started = Date.now()
       const update = spawnSync(process.execPath, [join(root, "scripts", "update.ts"), "--status"], { encoding: "utf8" })
+      const finished = Date.now()
       expect(update.stdout).toContain("radar fixture completed")
+      expect(update.stdout).toContain("PASS\u001b[0m  release-watch")
+      const watchArgs = JSON.parse(readFileSync(join(root, "watch-args.json"), "utf8")) as string[]
+      expect(watchArgs.slice(0, 2)).toEqual(["--json", "--at"])
+      const runAt = watchArgs[2]
+      expect(runAt).toBeDefined()
+      expect(new Date(runAt!).toISOString()).toBe(runAt)
+      expect(Date.parse(runAt!)).toBeGreaterThanOrEqual(started)
+      expect(Date.parse(runAt!)).toBeLessThanOrEqual(finished)
       expect(update.stdout).toContain("1 step(s) failed")
       expect(update.status).toBe(1)
+      const discover = spawnSync(process.execPath, [join(root, "scripts", "update.ts"), "--discover"], {
+        encoding: "utf8",
+      })
+      expect(discover.stdout).toContain("PASS\u001b[0m  release-watch")
+      expect(discover.stdout).toContain("explore fixture completed")
+      expect(discover.status).toBe(1)
+      const failedFull = spawnSync(process.execPath, [join(root, "scripts", "update.ts"), "--full", "--no-pause"], {
+        encoding: "utf8",
+        env: { ...process.env, WATCH_FAIL: "1" },
+      })
+      expect(failedFull.status).toBe(1)
+      expect(failedFull.stdout).toContain("FAIL\u001b[0m  release-watch")
+      expect(failedFull.stdout).not.toContain("Re-probe headless backends")
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
