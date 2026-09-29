@@ -1,10 +1,20 @@
 /**
- * @failure A synchronous capture command blocks the daemon event loop, and a failed image command is silently accepted.
+ * @failure Capture blocks the daemon, changes its selected window, or retains a frame after losing the window owner.
  * @level l2
  * @consumer Linux Kitty daemon capture and concurrent HTTP clients
+ * @reach fs-walk <fixture-only: inspect only the owned temporary capture output directory>
  * @testonly none
  */
-import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -25,13 +35,14 @@ function fixture() {
   temporary.push(directory)
   const started = join(directory, "started")
   const finished = join(directory, "finished")
+  const release = join(directory, "release")
   const stdin = join(directory, "stdin")
   const png = join(directory, "sample.png")
   writeFileSync(png, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]))
   executable(
     join(directory, "xdotool"),
     `case "$1" in
-  search) printf '42\\n' ;;
+  search) printf '%s\\n' "$TEST_CAPTURE_WINDOWS" ;;
   getwindowpid)
     if [ "${"$"}TEST_CAPTURE_FAIL" = owner ]; then printf 'owner lookup failed\\n' >&2; exit 17; fi
     printf '%s\\n' "$TEST_CAPTURE_OWNER_PID"
@@ -43,9 +54,9 @@ esac`,
   executable(
     join(directory, "xwd"),
     `printf started > "$TEST_CAPTURE_STARTED"
-sleep 1
+while [ ! -e "$TEST_CAPTURE_RELEASE" ]; do sleep 0.01; done
 printf finished > "$TEST_CAPTURE_FINISHED"
-printf 'xwd-input'`,
+printf 'xwd-window-%s' "$2"`,
   )
   executable(
     join(directory, "magick"),
@@ -57,12 +68,14 @@ cat "$TEST_CAPTURE_PNG"`,
   process.env.PATH = `${directory}:${originalPath ?? ""}`
   process.env.DISPLAY = ":test"
   process.env.TEST_CAPTURE_OWNER_PID = String(process.pid)
+  process.env.TEST_CAPTURE_WINDOWS = "42"
   process.env.TEST_CAPTURE_STARTED = started
   process.env.TEST_CAPTURE_FINISHED = finished
+  process.env.TEST_CAPTURE_RELEASE = release
   process.env.TEST_CAPTURE_STDIN = stdin
   process.env.TEST_CAPTURE_PNG = png
   process.env.TEST_CAPTURE_FAIL = ""
-  return { directory, started, finished, stdin }
+  return { directory, started, finished, release, stdin }
 }
 
 function liveExecutable(sha256?: string) {
@@ -78,8 +91,10 @@ afterEach(() => {
   else process.env.DISPLAY = originalDisplay
   for (const key of [
     "TEST_CAPTURE_OWNER_PID",
+    "TEST_CAPTURE_WINDOWS",
     "TEST_CAPTURE_STARTED",
     "TEST_CAPTURE_FINISHED",
+    "TEST_CAPTURE_RELEASE",
     "TEST_CAPTURE_STDIN",
     "TEST_CAPTURE_PNG",
     "TEST_CAPTURE_FAIL",
@@ -89,10 +104,12 @@ afterEach(() => {
 })
 
 test.runIf(process.platform === "linux")(
-  "a real delayed capture command leaves the daemon event loop available and pipes XWD to PNG",
+  "a delayed capture keeps the original window and leaves the daemon event loop available",
   async () => {
-    const { directory, started, finished, stdin } = fixture()
+    const { directory, started, finished, release, stdin } = fixture()
     const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    // A new search would now select a different window; capture must keep its original target.
+    process.env.TEST_CAPTURE_WINDOWS = "99"
     const pending = capture({ featureId: "fixture", role: "control", label: "fixture frame" })
     for (let n = 0; n < 100 && !existsSync(started); n++) await new Promise((resolve) => setTimeout(resolve, 10))
     expect(existsSync(started)).toBe(true)
@@ -104,9 +121,31 @@ test.runIf(process.platform === "linux")(
     expect(eventLoopTicked).toBe(true)
     expect(existsSync(finished)).toBe(false)
 
+    writeFileSync(release, "continue")
     const result = await pending
     expect(result.frame.ref).toMatch(/^sha256:[a-f0-9]{64}$/)
-    expect(readFileSync(stdin, "utf8")).toBe("xwd-input")
+    expect(readFileSync(stdin, "utf8")).toBe("xwd-window-42")
+  },
+)
+
+test.runIf(process.platform === "linux").each(["before", "during"] as const)(
+  "owner loss %s capture rejects the frame without retaining image artifacts",
+  async (when) => {
+    const { directory, started, release } = fixture()
+    const frames = join(directory, "frames")
+    const capture = await createLinuxCapture(frames, liveExecutable())
+    if (when === "before") process.env.TEST_CAPTURE_OWNER_PID = "1"
+    const pending = capture({ featureId: "fixture", role: "target", label: "owned frame" })
+    const rejected = expect(pending).rejects.toThrow("no longer belongs to Kitty")
+    if (when === "during") {
+      for (let n = 0; n < 500 && !existsSync(started); n++) await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(existsSync(started)).toBe(true)
+      process.env.TEST_CAPTURE_OWNER_PID = "1"
+      writeFileSync(release, "continue")
+    }
+    await rejected
+    expect(existsSync(started)).toBe(when === "during")
+    expect(readdirSync(frames)).toEqual([])
   },
 )
 
