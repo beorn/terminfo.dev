@@ -1,65 +1,20 @@
 /**
- * Status command — show config, cache, backends, and results overview.
+ * Status command — show installed backends, reviewed current results, and saved archives.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { existsSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { backends as allBackendNames, isReady, entry } from "@termless/core"
 import { probeHash, loadVersionsCatalog } from "../versions.ts"
-import { fromPerBackendFiles, type CensusData } from "../parse.ts"
+import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
 const LIBS_DIR = join(ROOT, "content", "probes-libs")
 const APPS_DIR = join(ROOT, "content", "probes-apps")
+const MUX_DIR = join(ROOT, "content", "probes-mux")
 const PROBES_DIR = join(ROOT, "packages", "probes")
-
-function loadSavedResults(dir: string): CensusData | null {
-  if (!existsSync(dir)) return null
-  const files = readdirSync(dir).filter((f) => f.endsWith(".json"))
-  if (files.length === 0) return null
-
-  const perBackend: Array<{
-    backend: string
-    version: string
-    generated: string
-    results: Record<string, boolean>
-    notes?: Record<string, string>
-  }> = []
-
-  for (const file of files) {
-    try {
-      const data = JSON.parse(readFileSync(join(dir, file), "utf-8")) as any
-      if (data.backend && data.results) perBackend.push(data as (typeof perBackend)[0])
-    } catch {}
-  }
-
-  if (perBackend.length === 0) return null
-
-  const latest = new Map<string, (typeof perBackend)[0]>()
-  for (const e of perBackend) {
-    const existing = latest.get(e.backend)
-    if (!existing || e.generated > existing.generated) latest.set(e.backend, e)
-  }
-
-  return fromPerBackendFiles([...latest.values()])
-}
-
-function isCacheValid(dir: string, currentHash: string): boolean {
-  if (!existsSync(dir)) return false
-  const files = readdirSync(dir).filter((f) => f.endsWith(".json"))
-  if (files.length === 0) return false
-  for (const file of files) {
-    try {
-      const data = JSON.parse(readFileSync(join(dir, file), "utf-8")) as any
-      if (data.probeHash !== currentHash) return false
-    } catch {
-      return false
-    }
-  }
-  return true
-}
 
 function shortPath(p: string): string {
   const cwd = process.cwd()
@@ -82,27 +37,23 @@ export async function handleStatus(): Promise<void> {
 
   const libFiles = existsSync(LIBS_DIR) ? readdirSync(LIBS_DIR).filter((f) => f.endsWith(".json")) : []
   const appFiles = existsSync(APPS_DIR) ? readdirSync(APPS_DIR).filter((f) => f.endsWith(".json")) : []
-
-  let catalog: ReturnType<typeof loadVersionsCatalog> | null = null
+  const muxFiles = existsSync(MUX_DIR) ? readdirSync(MUX_DIR).filter((f) => f.endsWith(".json")) : []
+  let catalog: ReturnType<typeof loadVersionsCatalog>
   try {
     catalog = loadVersionsCatalog()
-  } catch {}
-
-  const libData = loadSavedResults(LIBS_DIR)
-  const appData = loadSavedResults(APPS_DIR)
+  } catch (cause) {
+    throw new Error(`Cannot load versions catalog ${join(ROOT, "versions.json")}`, { cause })
+  }
+  const projection = loadCurrentResults(join(ROOT, "content")).projection
+  const current = Object.entries(projection.current).sort(([left], [right]) => left.localeCompare(right))
+  const headless = current.filter(([, run]) => run.target.kind === "headless")
+  const apps = current.filter(([, run]) => run.target.kind === "app")
+  const muxes = current.filter(([, run]) => run.target.kind === "mux")
+  const headlessFeatures = new Set(headless.flatMap(([, run]) => Object.keys(run.cells)))
 
   console.log("\nterminfo.dev status\n")
   console.log(`  Probe hash:       ${hash}`)
   console.log(`  Probe files:      ${probeFiles.length} (${probeFiles.join(", ")})`)
-
-  if (libData) {
-    console.log(`  Lib features:     ${libData.featureIds.length}`)
-    console.log(`  Lib backends:     ${libData.backendNames.length} (${libData.backendNames.join(", ")})`)
-  }
-
-  if (appData) {
-    console.log(`  App terminals:    ${appData.backendNames.length} (${appData.backendNames.join(", ")})`)
-  }
 
   console.log("\n  Termless backends:")
   for (const name of [...installed, ...available]) {
@@ -112,37 +63,39 @@ export async function handleStatus(): Promise<void> {
     console.log(`    ${ready ? "+" : "-"} ${`${name} (${e?.type ?? "?"})`.padEnd(26)} ${upstream}`)
   }
 
-  console.log("\n  Results:")
-  console.log(`    Libs:  ${libFiles.length} files in ${shortPath(LIBS_DIR)}/`)
-  console.log(`    Apps:  ${appFiles.length} files in ${shortPath(APPS_DIR)}/`)
-  console.log(`    Cache: ${isCacheValid(LIBS_DIR, hash) ? "valid" : "stale (re-run needed)"}`)
-
-  if (catalog) {
-    console.log("\n  Versions (from versions.json):")
-    for (const [name, config] of Object.entries(catalog.backends)) {
-      console.log(`    ${name.padEnd(16)} ${config.versions.join(", ")}`)
-    }
+  console.log("\n  Current reviewed results:")
+  console.log(`    Contexts: ${current.length} (${headless.length} headless, ${apps.length} app, ${muxes.length} mux)`)
+  console.log(`    Headless observed feature IDs: ${headlessFeatures.size}`)
+  for (const [key, run] of current) {
+    const cells = Object.values(run.cells)
+    const inconclusive = cells.filter((cell) => cell.outcome === "inconclusive").length
+    const errors = cells.filter((cell) => cell.outcome === "error").length
+    console.log(
+      `    ${key} ${run.target.version} (${run.runId}): ${run.counts.tested} tested, ${run.counts.notTested} not tested, ${run.counts.conclusive} conclusive (${run.counts.supported} supported, ${run.counts.unsupported} unsupported), ${inconclusive} inconclusive, ${errors} error`,
+    )
   }
+  console.log(`    Excluded archived runs: ${projection.exclusions.length}`)
 
-  if (libData) {
-    console.log("\n  Categories:")
-    for (const [cat, ids] of libData.categories) {
-      console.log(`    ${cat.padEnd(16)} ${ids.length} features`)
-    }
+  console.log("\n  Saved archive files:")
+  console.log(`    Archive libs: ${libFiles.length} files in ${shortPath(LIBS_DIR)}/`)
+  console.log(`    Archive apps: ${appFiles.length} files in ${shortPath(APPS_DIR)}/`)
+  console.log(`    Archive mux:  ${muxFiles.length} files in ${shortPath(MUX_DIR)}/`)
+
+  console.log("\n  Versions (from versions.json):")
+  for (const [name, config] of Object.entries(catalog.backends)) {
+    console.log(`    ${name.padEnd(16)} ${config.versions.join(", ")}`)
   }
 
   // List running daemons
-  try {
-    const { listDaemons } = await import("terminfo.dev/src/serve.ts")
-    const daemons = listDaemons()
-    if (daemons.length > 0) {
-      console.log("\n  Running daemons:")
-      for (const d of daemons) {
-        const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
-        console.log(`    ${label.padEnd(25)} port ${d.port}`)
-      }
+  const { listDaemons } = await import("terminfo.dev/src/serve.ts")
+  const daemons = listDaemons()
+  if (daemons.length > 0) {
+    console.log("\n  Running daemons:")
+    for (const d of daemons) {
+      const label = `${d.terminal}${d.terminalVersion ? ` ${d.terminalVersion}` : ""}`
+      console.log(`    ${label.padEnd(25)} port ${d.port}`)
     }
-  } catch {}
+  }
 
   console.log("")
 }
