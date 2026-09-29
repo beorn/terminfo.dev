@@ -11,6 +11,7 @@ import {
   type RunOrigin,
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
+  isNonMeasuringEvidence,
 } from "@terminfo/probe-defs"
 import {
   type LoadedRun,
@@ -286,8 +287,7 @@ function projectRun(
       record: observationRecord(run, observation),
       conclusive:
         !run.legacy &&
-        observation.evidence !== "consumed" &&
-        observation.evidence !== "legacy" &&
+        !isNonMeasuringEvidence(observation.evidence) &&
         (observation.outcome === "supported" || observation.outcome === "unsupported"),
       chain: {
         origin: run.origin,
@@ -370,8 +370,7 @@ function projectRun(
       record: observationRecord(run, observation),
       conclusive:
         !run.legacy &&
-        observation.evidence !== "consumed" &&
-        observation.evidence !== "legacy" &&
+        !isNonMeasuringEvidence(observation.evidence) &&
         (observation.outcome === "supported" || observation.outcome === "unsupported"),
       chain: {
         origin: run.origin,

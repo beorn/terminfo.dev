@@ -113,6 +113,8 @@ export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collec
 
 /** The same source-tree collector powers daemon and inline CLI entry points. */
 export async function collectProbeRun(options: { ids?: string[]; out?: NodeJS.WriteStream } = {}): Promise<ProbeRun> {
+  const out = options.out ?? process.stdout
+  const captureRunId = randomBytes(16).toString("hex")
   const terminal = detectTerminal()
   const { manifest, collectorRevision: sourceRevision } = getTrustedSuiteReceipt()
   const probeHash = manifest.probeHash
@@ -138,19 +140,27 @@ export async function collectProbeRun(options: { ids?: string[]; out?: NodeJS.Wr
   let clipboard: LinuxClipboardAdapter | undefined
   if (clipboardReceipt) {
     if (!executable) throw new Error("Owned clipboard receipt lacks measured executable")
-    clipboard = await createLinuxClipboardAdapter(clipboardReceipt, process.env.TERMINFO_RUN_ID ?? "", executable)
+    clipboard = await createLinuxClipboardAdapter(
+      clipboardReceipt,
+      process.env.TERMINFO_RUN_ID ?? "",
+      executable,
+      captureRunId,
+      out,
+    )
   }
   let batch: Awaited<ReturnType<typeof runProbeBatch>>
   try {
     batch = await withRawMode(async () => {
       const result = await runProbeBatch({
         ...options,
+        out,
+        captureRunId,
         ...(capture && { capture }),
-        ...(clipboard && clipboard.profile !== "default" && { clipboard }),
+        ...(clipboard && { clipboard }),
       })
       await drainStdin(1000)
       return result
-    }, options.out)
+    }, out)
   } finally {
     await clipboard?.dispose()
   }
@@ -179,7 +189,7 @@ export async function collectProbeRun(options: { ids?: string[]; out?: NodeJS.Wr
   }
   return {
     schemaVersion: 2,
-    runId: randomBytes(16).toString("hex"),
+    runId: captureRunId,
     target,
     ...(provenance && { provenance }),
     identity: "unverified",

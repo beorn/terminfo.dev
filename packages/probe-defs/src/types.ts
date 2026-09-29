@@ -32,8 +32,20 @@ export const OBSERVATION_EVIDENCE = [
   "interaction",
   "consumed",
   "legacy",
+  /** No terminal measurement: the collector declined to run the callback. */
+  "none",
 ] as const
 export type ObservationEvidence = (typeof OBSERVATION_EVIDENCE)[number]
+
+/** These methods cannot by themselves establish a support result. */
+export const NON_MEASURING_EVIDENCE: ReadonlySet<ObservationEvidence> = new Set<ObservationEvidence>([
+  "consumed",
+  "legacy",
+  "none",
+])
+export function isNonMeasuringEvidence(evidence: ObservationEvidence): boolean {
+  return NON_MEASURING_EVIDENCE.has(evidence)
+}
 
 export interface Observation {
   featureId: string
@@ -305,6 +317,8 @@ export interface ProbeDefinition {
   id: string
   termless: ((ctx: TermlessContext) => ProbeResult) | null
   term: ((ctx: TermContext) => Promise<ProbeResult>) | null
+  /** Only an explicitly reviewed report request may run without a disposable terminal. */
+  termWrites?: "query"
   /** Explicit opt-in for recording callback exceptions as observations. */
   termObservationEvidence?: ObservationEvidence
 }

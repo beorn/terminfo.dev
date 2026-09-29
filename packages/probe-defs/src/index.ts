@@ -6,7 +6,13 @@ export type {
   TerminalQueryOutcome,
   ClipboardFixture,
 } from "./types.ts"
-export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, OBSERVATION_EVIDENCE } from "./types.ts"
+export {
+  OBSERVATION_OUTCOMES,
+  OBSERVATION_REASONS,
+  OBSERVATION_EVIDENCE,
+  NON_MEASURING_EVIDENCE,
+  isNonMeasuringEvidence,
+} from "./types.ts"
 export type {
   ObservationOutcome,
   ObservationReason,

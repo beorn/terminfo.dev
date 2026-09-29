@@ -2,7 +2,7 @@
 
 [terminfo.dev](https://terminfo.dev) records what particular terminal implementations did under particular tests. Its feature descriptions, protocol references and measurements answer different questions. A reply to a cursor query, for example, cannot establish that truecolor text rendered correctly.
 
-Run `npx terminfo.dev test` to inspect your terminal. The [contribution guide](docs/contribute.md) explains the methods, limits and submission flow. The published npm CLI and website may use older probe suites than this checkout; record the CLI version and suite identity with a result.
+Run `npx terminfo.dev test` to record available observations from your terminal. In an ordinary terminal, state-changing checks are recorded as inconclusive unless a verified disposable test environment is available. The [contribution guide](docs/contribute.md) explains the methods, limits and submission flow. The published npm CLI and website may use older probe suites than this checkout; record the CLI version and suite identity with a result.
 
 ## Which things are measured?
 

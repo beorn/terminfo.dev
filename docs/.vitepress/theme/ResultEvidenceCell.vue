@@ -41,6 +41,7 @@ const shortLabel = computed(() => {
   if (status.value.text === "Probe error") return "Error"
   return status.value.text
 })
+const methodLabel = computed(() => (props.cell?.evidence === "none" ? "Not measured" : (props.cell?.evidence ?? "")))
 
 const screenshot = computed(() => props.cell?.record?.screenshot)
 const screenshotUrl = computed(() => (screenshot.value ? withBase(screenshot.value.url) : undefined))
@@ -52,6 +53,7 @@ const assertions = computed(() => props.cell?.record?.assertions ?? [])
 const hasRawResults = computed(() => rawReply.value !== undefined || assertions.value.length > 0)
 const actionLabel = computed(() => {
   if (!props.cell) return "No evidence in current selection"
+  if (props.cell.evidence === "none") return "View refusal record"
   if (frames.value.length) return "View captured frames"
   if (screenshotUrl.value) return "View screenshot"
   return hasRawResults.value ? "View raw results" : "No raw evidence recorded"
@@ -140,7 +142,7 @@ onBeforeUnmount(() => {
           >{{ targetName }}<template v-if="version"> · {{ version.target.version }}</template></span
         >
         <span v-if="cell"
-          >Method: {{ cell.evidence }}<template v-if="cell.reason"> · {{ cell.reason }}</template></span
+          >Method: {{ methodLabel }}<template v-if="cell.reason"> · {{ cell.reason }}</template></span
         >
         <span v-if="cell?.note">{{ cell.note }}</span>
         <img
@@ -170,7 +172,10 @@ onBeforeUnmount(() => {
         </div>
 
         <p class="result-evidence__outcome" :class="`result-evidence__outcome--${status.tone}`">
-          {{ status.text }}<template v-if="cell"> · {{ cell.evidence }} method</template>
+          {{ status.text
+          }}<template v-if="cell">
+            · {{ methodLabel }}<template v-if="cell.evidence !== 'none'"> method</template></template
+          >
         </p>
         <p v-if="cell?.note">{{ cell.note }}</p>
         <p v-if="cell?.reason">Reason: {{ cell.reason }}</p>
@@ -204,7 +209,7 @@ onBeforeUnmount(() => {
         <p v-else-if="!cell">This feature was not tested by the reviewed current run.</p>
         <p v-else-if="!previewImageUrl && !hasRawResults">No raw evidence was captured for this observation.</p>
         <template v-if="rawReply !== undefined">
-          <h4>Raw reply</h4>
+          <h4>{{ cell?.evidence === "none" ? "Collector trace" : "Raw reply" }}</h4>
           <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
         </template>
         <template v-if="assertions.length">

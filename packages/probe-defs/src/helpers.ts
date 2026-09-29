@@ -239,6 +239,7 @@ export function modeProbe(
 ): ProbeDefinition {
   return {
     id,
+    termWrites: "query",
     termless(ctx) {
       ctx.feed(enableSeq)
       return { pass: ctx.getMode(modeName) === true }
@@ -269,6 +270,7 @@ export function behavioralModeProbe(
 ): ProbeDefinition {
   return {
     id,
+    termWrites: "query",
     termObservationEvidence: "query",
     termless: termlessFn,
     async term(ctx) {

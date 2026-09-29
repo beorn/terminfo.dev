@@ -47,7 +47,7 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
   const responsePattern = spec.refusal
     ? new RegExp(`${spec.valid.source}|${spec.refusal.source}`, spec.valid.flags)
     : spec.valid
-  return probe(
+  const definition = probe(
     spec.id,
     (ctx) => deviceReplyResult(spec, ctx.feedCapture(spec.query), "sentinel"),
     async (ctx) => {
@@ -58,6 +58,7 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
     },
     "query",
   )
+  return { ...definition, termWrites: "query" }
 }
 
 export const deviceProbes: ProbeDefinition[] = [
@@ -141,123 +142,135 @@ export const deviceProbes: ProbeDefinition[] = [
   ),
 
   // DSR ?996 — color-scheme query: CSI ? 996 n → CSI ? 997 ; Ps n
-  probe(
-    "device.dsr-996-color-scheme",
-    (ctx) => {
-      const response = ctx.feedCapture("\x1b[?996n")
-      const match = /\x1b\[\?997;([12])n/.exec(response)
-      if (!match?.[0]) {
+  {
+    ...probe(
+      "device.dsr-996-color-scheme",
+      (ctx) => {
+        const response = ctx.feedCapture("\x1b[?996n")
+        const match = /\x1b\[\?997;([12])n/.exec(response)
+        if (!match?.[0]) {
+          return {
+            pass: false,
+            note: "No valid DSR ?997 color-scheme response",
+            response,
+            observation: {
+              outcome: "inconclusive",
+              evidence: "query",
+              reason: response.includes("\x1b[?997;") ? "invalid-reply" : "no-response",
+            },
+          }
+        }
         return {
-          pass: false,
-          note: "No valid DSR ?997 color-scheme response",
+          pass: true,
+          note: match[1] === "1" ? "dark" : "light",
           response,
           observation: {
-            outcome: "inconclusive",
+            outcome: "supported",
             evidence: "query",
-            reason: response.includes("\x1b[?997;") ? "invalid-reply" : "no-response",
+            note: "Current scheme queried; unsolicited change events were not tested",
           },
+          assertions: [
+            { kind: "positive", expected: "DSR ?996 yields complete DSR ?997;1n or ?997;2n", observed: match[0] },
+          ],
         }
-      }
-      return {
-        pass: true,
-        note: match[1] === "1" ? "dark" : "light",
-        response,
-        observation: {
-          outcome: "supported",
-          evidence: "query",
-          note: "Current scheme queried; unsolicited change events were not tested",
-        },
-        assertions: [
-          { kind: "positive", expected: "DSR ?996 yields complete DSR ?997;1n or ?997;2n", observed: match[0] },
-        ],
-      }
-    },
-    async (ctx) => {
-      const reply = await ctx.queryWithSentinelOutcome("\x1b[?996n", /\x1b\[\?997;([12])n/)
-      const match = reply.match
-      if (!match?.[0]) {
+      },
+      async (ctx) => {
+        const reply = await ctx.queryWithSentinelOutcome("\x1b[?996n", /\x1b\[\?997;([12])n/)
+        const match = reply.match
+        if (!match?.[0]) {
+          return {
+            pass: false,
+            note: "No valid DSR ?997 color-scheme response",
+            response: reply.raw,
+            observation: {
+              outcome: "inconclusive",
+              evidence: "query",
+              reason: reply.raw.includes("\x1b[?997;")
+                ? "invalid-reply"
+                : reply.reason === "timeout"
+                  ? "timeout"
+                  : "no-response",
+            },
+          }
+        }
         return {
-          pass: false,
-          note: "No valid DSR ?997 color-scheme response",
-          response: reply.raw,
+          pass: true,
+          note: match[1] === "1" ? "dark" : "light",
+          response: match[0],
           observation: {
-            outcome: "inconclusive",
+            outcome: "supported",
             evidence: "query",
-            reason: reply.raw.includes("\x1b[?997;")
-              ? "invalid-reply"
-              : reply.reason === "timeout"
-                ? "timeout"
-                : "no-response",
+            note: "Current scheme queried; unsolicited change events were not tested",
           },
+          assertions: [
+            { kind: "positive", expected: "DSR ?996 yields complete DSR ?997;1n or ?997;2n", observed: match[0] },
+          ],
         }
-      }
-      return {
-        pass: true,
-        note: match[1] === "1" ? "dark" : "light",
-        response: match[0],
-        observation: {
-          outcome: "supported",
-          evidence: "query",
-          note: "Current scheme queried; unsolicited change events were not tested",
-        },
-        assertions: [
-          { kind: "positive", expected: "DSR ?996 yields complete DSR ?997;1n or ?997;2n", observed: match[0] },
-        ],
-      }
-    },
-    "query",
-  ),
+      },
+      "query",
+    ),
+    termWrites: "query",
+  },
 
   // XTWINOPS 14 — report window size in pixels: CSI 14 t → CSI 4 ; H ; W t
-  responseProbe(
-    "device.xtwinops-14",
-    "\x1b[14t",
-    /\x1b\[4;(\d+);(\d+)t/,
-    (response) => ({
-      pass: /\x1b\[4;\d+;\d+t/.test(response),
-      note: /\x1b\[4;\d+;\d+t/.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
-      response,
-    }),
-    async (ctx) => {
-      const match = await ctx.query("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/, 1000)
-      if (!match) return { pass: false, note: "No XTWINOPS 14 response" }
-      return { pass: true, response: match[0], note: `${match[1]}x${match[2]} px` }
-    },
-  ),
+  {
+    ...responseProbe(
+      "device.xtwinops-14",
+      "\x1b[14t",
+      /\x1b\[4;(\d+);(\d+)t/,
+      (response) => ({
+        pass: /\x1b\[4;\d+;\d+t/.test(response),
+        note: /\x1b\[4;\d+;\d+t/.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
+        response,
+      }),
+      async (ctx) => {
+        const match = await ctx.query("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/, 1000)
+        if (!match) return { pass: false, note: "No XTWINOPS 14 response" }
+        return { pass: true, response: match[0], note: `${match[1]}x${match[2]} px` }
+      },
+    ),
+    termWrites: "query",
+  },
 
   // XTWINOPS 16 — report cell size in pixels: CSI 16 t → CSI 6 ; H ; W t
-  responseProbe(
-    "device.xtwinops-16",
-    "\x1b[16t",
-    /\x1b\[6;(\d+);(\d+)t/,
-    (response) => ({
-      pass: /\x1b\[6;\d+;\d+t/.test(response),
-      note: /\x1b\[6;\d+;\d+t/.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
-      response,
-    }),
-    async (ctx) => {
-      const match = await ctx.query("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/, 1000)
-      if (!match) return { pass: false, note: "No XTWINOPS 16 response" }
-      return { pass: true, response: match[0], note: `${match[1]}x${match[2]} px/cell` }
-    },
-  ),
+  {
+    ...responseProbe(
+      "device.xtwinops-16",
+      "\x1b[16t",
+      /\x1b\[6;(\d+);(\d+)t/,
+      (response) => ({
+        pass: /\x1b\[6;\d+;\d+t/.test(response),
+        note: /\x1b\[6;\d+;\d+t/.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
+        response,
+      }),
+      async (ctx) => {
+        const match = await ctx.query("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/, 1000)
+        if (!match) return { pass: false, note: "No XTWINOPS 16 response" }
+        return { pass: true, response: match[0], note: `${match[1]}x${match[2]} px/cell` }
+      },
+    ),
+    termWrites: "query",
+  },
 
   // XTWINOPS 18 — report text area size in chars: CSI 18 t → CSI 8 ; rows ; cols t
-  responseProbe(
-    "device.xtwinops-18",
-    "\x1b[18t",
-    /\x1b\[8;(\d+);(\d+)t/,
-    (response) => ({
-      pass: /\x1b\[8;\d+;\d+t/.test(response),
-      note: /\x1b\[8;\d+;\d+t/.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
-      response,
-    }),
-    async (ctx) => {
-      const match = await ctx.query("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/, 1000)
-      if (!match) return { pass: false, note: "No XTWINOPS 18 response" }
-      return { pass: true, response: match[0], note: `${match[1]} rows x ${match[2]} cols` }
-    },
-  ),
+  {
+    ...responseProbe(
+      "device.xtwinops-18",
+      "\x1b[18t",
+      /\x1b\[8;(\d+);(\d+)t/,
+      (response) => ({
+        pass: /\x1b\[8;\d+;\d+t/.test(response),
+        note: /\x1b\[8;\d+;\d+t/.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
+        response,
+      }),
+      async (ctx) => {
+        const match = await ctx.query("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/, 1000)
+        if (!match) return { pass: false, note: "No XTWINOPS 18 response" }
+        return { pass: true, response: match[0], note: `${match[1]} rows x ${match[2]} cols` }
+      },
+    ),
+    termWrites: "query",
+  },
 
   // XTWINOPS 20 — report icon label: CSI 20 t → OSC L label ST
   // Set icon label via OSC 1, then query with CSI 20 t and verify response.
@@ -381,60 +394,66 @@ export const deviceProbes: ProbeDefinition[] = [
   // XTREPORTCOLORS — report color/graphics capabilities: CSI # R → CSI Pm # Q
   // Added in xterm patch 400; updated in patches 401/402 (2025).
   // xterm-only as of 2026 — partial probe verifies the sequence doesn't leak.
-  probe(
-    "device.xtreportcolors",
-    (ctx) => {
-      // If a backend implements XTREPORTCOLORS, the response matches CSI Pm # Q.
-      // Otherwise verify the query is consumed (not printed literally).
-      const response = ctx.feedCapture("\x1b[#R")
-      if (/\x1b\[[0-9;]*#Q/.test(response)) {
-        return { pass: true, response, note: "XTREPORTCOLORS response received" }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("#R"),
-        note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
-          ? "Sequence consumed; terminal responsive (no XTREPORTCOLORS response)"
-          : "Terminal unresponsive after CSI # R",
-      }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[#R", /\x1b\[([0-9;]*)#Q/, 1000)
-      if (match) return { pass: true, response: match[0], note: `Pm=${match[1]}` }
-      // Verify the sequence didn't break the terminal — DSR should still respond.
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No response after CSI # R" }
-      return { pass: false, note: "Sequence consumed but no XTREPORTCOLORS response" }
-    },
-  ),
+  {
+    ...probe(
+      "device.xtreportcolors",
+      (ctx) => {
+        // If a backend implements XTREPORTCOLORS, the response matches CSI Pm # Q.
+        // Otherwise verify the query is consumed (not printed literally).
+        const response = ctx.feedCapture("\x1b[#R")
+        if (/\x1b\[[0-9;]*#Q/.test(response)) {
+          return { pass: true, response, note: "XTREPORTCOLORS response received" }
+        }
+        const probeResponse = ctx.feedCapture("\x1b[c")
+        return {
+          pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("#R"),
+          note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
+            ? "Sequence consumed; terminal responsive (no XTREPORTCOLORS response)"
+            : "Terminal unresponsive after CSI # R",
+        }
+      },
+      async (ctx) => {
+        const match = await ctx.queryWithSentinel("\x1b[#R", /\x1b\[([0-9;]*)#Q/, 1000)
+        if (match) return { pass: true, response: match[0], note: `Pm=${match[1]}` }
+        // Verify the sequence didn't break the terminal — DSR should still respond.
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No response after CSI # R" }
+        return { pass: false, note: "Sequence consumed but no XTREPORTCOLORS response" }
+      },
+    ),
+    termWrites: "query",
+  },
 
   // XTGETXRES — query xterm resource value: DCS + Q Pt ST → DCS response
   // Added in xterm; documented in patches 401/402 (2025).
   // xterm-only as of 2026 — partial probe verifies the sequence doesn't leak.
-  probe(
-    "device.xtgetxres",
-    (ctx) => {
-      // Hex-encoded "xterm" = 7874657271. Send DCS + Q 7874657271 ST.
-      const query = "\x1bP+Q7874657271\x1b\\"
-      const response = ctx.feedCapture(query)
-      if (/\x1bP[01]\+R/.test(response)) {
-        return { pass: true, response, note: "XTGETXRES response received" }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("+Q"),
-        note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
-          ? "Sequence consumed; terminal responsive (no XTGETXRES response)"
-          : "Terminal unresponsive after DCS + Q",
-      }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1bP+Q7874657271\x1b\\", /\x1bP([01])\+R/)
-      if (match) return { pass: true, response: match[0], note: `XTGETXRES status=${match[1]}` }
-      // Verify the sequence didn't break the terminal — DSR should still respond.
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No response after XTGETXRES" }
-      return { pass: false, note: "Sequence consumed but no XTGETXRES response" }
-    },
-  ),
+  {
+    ...probe(
+      "device.xtgetxres",
+      (ctx) => {
+        // Hex-encoded "xterm" = 7874657271. Send DCS + Q 7874657271 ST.
+        const query = "\x1bP+Q7874657271\x1b\\"
+        const response = ctx.feedCapture(query)
+        if (/\x1bP[01]\+R/.test(response)) {
+          return { pass: true, response, note: "XTGETXRES response received" }
+        }
+        const probeResponse = ctx.feedCapture("\x1b[c")
+        return {
+          pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("+Q"),
+          note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
+            ? "Sequence consumed; terminal responsive (no XTGETXRES response)"
+            : "Terminal unresponsive after DCS + Q",
+        }
+      },
+      async (ctx) => {
+        const match = await ctx.queryWithSentinel("\x1bP+Q7874657271\x1b\\", /\x1bP([01])\+R/)
+        if (match) return { pass: true, response: match[0], note: `XTGETXRES status=${match[1]}` }
+        // Verify the sequence didn't break the terminal — DSR should still respond.
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No response after XTGETXRES" }
+        return { pass: false, note: "Sequence consumed but no XTGETXRES response" }
+      },
+    ),
+    termWrites: "query",
+  },
 ]

@@ -486,50 +486,53 @@ export const modesProbes: ProbeDefinition[] = [
 
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
   // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty
-  probe(
-    "modes.color-scheme-reporting",
-    (ctx) => {
-      const initiallyEnabled = ctx.getMode("colorSchemeReporting")
-      try {
-        ctx.feed("\x1b[?2031h")
-        const enabled = ctx.getMode("colorSchemeReporting")
-        return { pass: enabled === true }
-      } finally {
-        ctx.feed(initiallyEnabled ? "\x1b[?2031h" : "\x1b[?2031l")
-      }
-    },
-    async (ctx) => {
-      const result = await ctx.queryMode(2031)
-      const recognized = result === "set" || result === "reset"
-      const note =
-        result === null
-          ? "No DECRPM 2031 reply; update events were not tested"
-          : result === "unknown"
-            ? "DECRPM 2031 explicitly unrecognized"
-            : `DECRPM 2031 recognized (${result}); update events were not tested`
-      return {
-        pass: recognized,
-        note,
-        response: result ?? undefined,
-        observation: {
-          outcome: result === null ? "inconclusive" : recognized ? "supported" : "unsupported",
-          evidence: "query",
-          ...(result === null && { reason: "no-response" as const }),
+  {
+    ...probe(
+      "modes.color-scheme-reporting",
+      (ctx) => {
+        const initiallyEnabled = ctx.getMode("colorSchemeReporting")
+        try {
+          ctx.feed("\x1b[?2031h")
+          const enabled = ctx.getMode("colorSchemeReporting")
+          return { pass: enabled === true }
+        } finally {
+          ctx.feed(initiallyEnabled ? "\x1b[?2031h" : "\x1b[?2031l")
+        }
+      },
+      async (ctx) => {
+        const result = await ctx.queryMode(2031)
+        const recognized = result === "set" || result === "reset"
+        const note =
+          result === null
+            ? "No DECRPM 2031 reply; update events were not tested"
+            : result === "unknown"
+              ? "DECRPM 2031 explicitly unrecognized"
+              : `DECRPM 2031 recognized (${result}); update events were not tested`
+        return {
+          pass: recognized,
           note,
-        },
-        ...(result !== null && {
-          assertions: [
-            {
-              kind: recognized ? ("positive" as const) : ("negative" as const),
-              expected: "DECRPM 2031 recognizes color-scheme reporting mode",
-              observed: result,
-            },
-          ],
-        }),
-      }
-    },
-    "query",
-  ),
+          response: result ?? undefined,
+          observation: {
+            outcome: result === null ? "inconclusive" : recognized ? "supported" : "unsupported",
+            evidence: "query",
+            ...(result === null && { reason: "no-response" as const }),
+            note,
+          },
+          ...(result !== null && {
+            assertions: [
+              {
+                kind: recognized ? ("positive" as const) : ("negative" as const),
+                expected: "DECRPM 2031 recognizes color-scheme reporting mode",
+                observed: result,
+              },
+            ],
+          }),
+        }
+      },
+      "query",
+    ),
+    termWrites: "query",
+  },
 
   // XTPUSHSGR — push SGR stack (CSI # {)
   // Sequence consumed without producing output. Verify terminal stays responsive afterward.

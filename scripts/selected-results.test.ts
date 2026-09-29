@@ -142,6 +142,87 @@ describe("selected results", () => {
     }
   })
 
+  it("retains a declined callback as non-measuring and rejects forged none evidence", () => {
+    const emptyTrace = JSON.stringify({ writes: [], queries: [], events: [] })
+    const recorded = {
+      featureId: "extensions.query",
+      outcome: "inconclusive" as const,
+      reason: "policy-refused" as const,
+      evidence: "none" as const,
+      rawReplyRef: "extensions.query",
+    }
+    const declined = run("declined", {
+      probeHash: "query",
+      suiteComplete: true,
+      assertions: [],
+      rawReplies: { ...identityReplies, "extensions.query": emptyTrace },
+      observations: [recorded],
+    })
+    const parsed = parseRun("declined.json", JSON.stringify(declined), catalog)
+    const selected = projectResults([parsed], [reviewFor(parsed)], catalog, { currentProbeHash: "query" }).current[
+      "app:kitty"
+    ]
+    expect(selected?.cells["extensions.query"]).toMatchObject({
+      outcome: "inconclusive",
+      reason: "policy-refused",
+      evidence: "none",
+      conclusive: false,
+    })
+    expect(selected?.counts.conclusive).toBe(0)
+    expect(selected?.v1["extensions.query"]).toBeUndefined()
+    const corrected = projectResults(
+      [parsed],
+      [
+        reviewFor(parsed),
+        {
+          id: "review-decline",
+          reviewer: "reviewer",
+          reason: "confirmed callback was declined",
+          scope: {
+            target: { kind: "app" as const, id: "kitty" },
+            versions: ["0.46.2", "0.46.2"] as [string, string],
+            suites: [parsed.suiteId, parsed.suiteId] as [string, string],
+          },
+          sources: [parsed.path],
+          supersedes: [],
+          featureId: "extensions.query",
+          observation: recorded,
+        },
+      ],
+      catalog,
+      { currentProbeHash: "query" },
+    ).current["app:kitty"]
+    expect(corrected?.cells["extensions.query"]?.conclusive).toBe(false)
+    expect(corrected?.counts.conclusive).toBe(0)
+    expect(corrected?.v1["extensions.query"]).toBeUndefined()
+
+    const reject = (observation: Record<string, unknown>, trace = emptyTrace) =>
+      parseRun(
+        "forged-none.json",
+        JSON.stringify({
+          ...declined,
+          rawReplies: { ...identityReplies, "extensions.query": trace },
+          observations: [observation],
+        }),
+        catalog,
+      )
+    for (const outcome of ["supported", "unsupported"]) {
+      expect(() => reject({ ...recorded, outcome, reason: undefined })).toThrow(/conclusive.*none/)
+    }
+    expect(() => reject({ ...recorded, reason: "timeout" })).toThrow(/none.*policy-refused/)
+    expect(() => reject({ ...recorded, rawReplyRef: undefined })).toThrow(/none.*rawReplyRef/)
+    const image = `sha256:${"a".repeat(64)}`
+    expect(() => reject({ ...recorded, screenshotRef: image })).toThrow(/none.*screenshotRef/)
+    expect(() => reject({ ...recorded, frames: [] })).toThrow(/none.*frames/)
+    for (const trace of [
+      JSON.stringify({ writes: ["\x1bc"], queries: [], events: [] }),
+      JSON.stringify({ writes: [], queries: [{ sequence: "\x1b[c" }], events: [] }),
+      JSON.stringify({ writes: [], queries: [], events: [{ kind: "write" }] }),
+    ]) {
+      expect(() => reject(recorded, trace)).toThrow(/none.*zero-byte trace/)
+    }
+  })
+
   it("decodes exact current collector bytes without promoting legacy or a mismatched source", () => {
     const collectorRevision = "a".repeat(40)
     const value = run("public", {

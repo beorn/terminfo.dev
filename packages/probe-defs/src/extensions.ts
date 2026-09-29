@@ -2,23 +2,29 @@ import { randomUUID } from "node:crypto"
 import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
 import { probe } from "./helpers.ts"
 
+function queryOnly(definition: ProbeDefinition): ProbeDefinition {
+  return { ...definition, termWrites: "query" }
+}
+
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
 function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
   const querySeq = `\x1b]${oscCode};?\x07`
   const termlessPattern = new RegExp(`\\x1b\\]${oscCode};`)
   const termPattern = new RegExp(`\\x1b\\]${oscCode};([^\\x07\\x1b]+)[\\x07\\x1b]`)
-  return probe(
-    id,
-    (ctx) => {
-      const response = ctx.feedCapture(querySeq)
-      const pass = termlessPattern.test(response)
-      return { pass, note: pass ? undefined : `No OSC ${oscCode} response` }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel(querySeq, termPattern)
-      if (!match) return { pass: false, note: `No OSC ${oscCode} response` }
-      return { pass: true, response: match[1] }
-    },
+  return queryOnly(
+    probe(
+      id,
+      (ctx) => {
+        const response = ctx.feedCapture(querySeq)
+        const pass = termlessPattern.test(response)
+        return { pass, note: pass ? undefined : `No OSC ${oscCode} response` }
+      },
+      async (ctx) => {
+        const match = await ctx.queryWithSentinel(querySeq, termPattern)
+        if (!match) return { pass: false, note: `No OSC ${oscCode} response` }
+        return { pass: true, response: match[1] }
+      },
+    ),
   )
 }
 
@@ -536,7 +542,7 @@ function liveClipboardNotTested(): ProbeResult {
   return {
     pass: false,
     note,
-    observation: { outcome: "inconclusive", reason: "policy-refused", evidence: "behavior", note },
+    observation: { outcome: "inconclusive", reason: "policy-refused", evidence: "none", note },
   }
 }
 
@@ -671,20 +677,22 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // The specified query action replies before the DA1 sentinel and stores no image.
   // A cursor movement is never evidence that pixels were rendered.
-  probe(
-    "extensions.kitty-graphics",
-    (ctx) => graphicsQueryResult(ctx.feedCapture("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"), 31),
-    async (ctx) => {
-      const reply = await ctx.queryWithSentinelOutcome(
-        "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\",
-        /\x1b_Gi=31;([^\x1b]+)\x1b\\/,
-      )
-      if (!reply.match) {
-        return unansweredQuery(reply, "No matching graphics query reply; image rendering was not tested")
-      }
-      return graphicsQueryResult(reply.match[0] ?? "", 31)
-    },
-    "query",
+  queryOnly(
+    probe(
+      "extensions.kitty-graphics",
+      (ctx) => graphicsQueryResult(ctx.feedCapture("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"), 31),
+      async (ctx) => {
+        const reply = await ctx.queryWithSentinelOutcome(
+          "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\",
+          /\x1b_Gi=31;([^\x1b]+)\x1b\\/,
+        )
+        if (!reply.match) {
+          return unansweredQuery(reply, "No matching graphics query reply; image rendering was not tested")
+        }
+        return graphicsQueryResult(reply.match[0] ?? "", 31)
+      },
+      "query",
+    ),
   ),
 
   // Transmission and placement acknowledgements are separate from rendered pixels.
@@ -1137,41 +1145,45 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 1337 ReportCellSize — query cell dimensions in pixels
-  probe(
-    "extensions.osc1337-cellsize",
-    (ctx) => {
-      const response = ctx.feedCapture("\x1b]1337;ReportCellSize\x07")
-      const match = response.match(/\x1b\]1337;ReportCellSize=(\d+(?:\.\d+)?);(\d+(?:\.\d+)?)/)
-      if (!match) return { pass: false, note: "No ReportCellSize response" }
-      return { pass: true, note: `${match[1]}x${match[2]} pixels` }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel(
-        "\x1b]1337;ReportCellSize\x07",
-        /\x1b\]1337;ReportCellSize=(\d+(?:\.\d+)?);(\d+(?:\.\d+)?)[\x07\x1b]/,
-      )
-      if (!match) return { pass: false, note: "No ReportCellSize response" }
-      return { pass: true, note: `${match[1]}x${match[2]} pixels` }
-    },
+  queryOnly(
+    probe(
+      "extensions.osc1337-cellsize",
+      (ctx) => {
+        const response = ctx.feedCapture("\x1b]1337;ReportCellSize\x07")
+        const match = response.match(/\x1b\]1337;ReportCellSize=(\d+(?:\.\d+)?);(\d+(?:\.\d+)?)/)
+        if (!match) return { pass: false, note: "No ReportCellSize response" }
+        return { pass: true, note: `${match[1]}x${match[2]} pixels` }
+      },
+      async (ctx) => {
+        const match = await ctx.queryWithSentinel(
+          "\x1b]1337;ReportCellSize\x07",
+          /\x1b\]1337;ReportCellSize=(\d+(?:\.\d+)?);(\d+(?:\.\d+)?)[\x07\x1b]/,
+        )
+        if (!match) return { pass: false, note: "No ReportCellSize response" }
+        return { pass: true, note: `${match[1]}x${match[2]} pixels` }
+      },
+    ),
   ),
 
   // OSC 1337 RequestCapabilities — query terminal capabilities
-  probe(
-    "extensions.osc1337-capabilities",
-    (ctx) => {
-      const response = ctx.feedCapture("\x1b]1337;RequestCapabilities\x07")
-      const match = response.match(/\x1b\]1337;Capabilities=([^\x07\x1b]*)/)
-      if (!match) return { pass: false, note: "No Capabilities response" }
-      return { pass: true, response: match[1] }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel(
-        "\x1b]1337;RequestCapabilities\x07",
-        /\x1b\]1337;Capabilities=([^\x07\x1b]*)[\x07\x1b]/,
-      )
-      if (!match) return { pass: false, note: "No Capabilities response" }
-      return { pass: true, response: match[1] }
-    },
+  queryOnly(
+    probe(
+      "extensions.osc1337-capabilities",
+      (ctx) => {
+        const response = ctx.feedCapture("\x1b]1337;RequestCapabilities\x07")
+        const match = response.match(/\x1b\]1337;Capabilities=([^\x07\x1b]*)/)
+        if (!match) return { pass: false, note: "No Capabilities response" }
+        return { pass: true, response: match[1] }
+      },
+      async (ctx) => {
+        const match = await ctx.queryWithSentinel(
+          "\x1b]1337;RequestCapabilities\x07",
+          /\x1b\]1337;Capabilities=([^\x07\x1b]*)[\x07\x1b]/,
+        )
+        if (!match) return { pass: false, note: "No Capabilities response" }
+        return { pass: true, response: match[1] }
+      },
+    ),
   ),
 
   // OSC 9;4 — progress bar (ConEmu protocol, adopted by Ghostty, iTerm2, Windows Terminal, etc.)
@@ -1246,15 +1258,17 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 5522 — advanced clipboard (Kitty protocol, MIME-aware paste events)
-  probe(
-    "extensions.osc5522-clipboard",
-    (ctx) => clipboardProtocolResult(ctx.feedCapture("\x1b[?5522$p")),
-    async (ctx) => {
-      const reply = await ctx.queryWithSentinelOutcome("\x1b[?5522$p", /\x1b\[\?5522;([0-4])\$y/)
-      if (!reply.match) return unansweredQuery(reply, "No DECRPM response for mode 5522")
-      return clipboardProtocolResult(reply.match[0] ?? "")
-    },
-    "query",
+  queryOnly(
+    probe(
+      "extensions.osc5522-clipboard",
+      (ctx) => clipboardProtocolResult(ctx.feedCapture("\x1b[?5522$p")),
+      async (ctx) => {
+        const reply = await ctx.queryWithSentinelOutcome("\x1b[?5522$p", /\x1b\[\?5522;([0-4])\$y/)
+        if (!reply.match) return unansweredQuery(reply, "No DECRPM response for mode 5522")
+        return clipboardProtocolResult(reply.match[0] ?? "")
+      },
+      "query",
+    ),
   ),
 
   // OSC 1 — icon name
@@ -1281,33 +1295,37 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 4 — color palette query (needs index parameter, can't use generic helper)
-  probe(
-    "extensions.osc4-palette",
-    (ctx) => {
-      const response = ctx.feedCapture("\x1b]4;0;?\x07")
-      const pass = /\x1b\]4;0;/.test(response)
-      return { pass, note: pass ? undefined : "No OSC 4 response" }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b]4;0;?\x07", /\x1b\]4;0;([^\x07\x1b]+)[\x07\x1b]/)
-      if (!match) return { pass: false, note: "No OSC 4 response" }
-      return { pass: true, response: match[1] }
-    },
+  queryOnly(
+    probe(
+      "extensions.osc4-palette",
+      (ctx) => {
+        const response = ctx.feedCapture("\x1b]4;0;?\x07")
+        const pass = /\x1b\]4;0;/.test(response)
+        return { pass, note: pass ? undefined : "No OSC 4 response" }
+      },
+      async (ctx) => {
+        const match = await ctx.queryWithSentinel("\x1b]4;0;?\x07", /\x1b\]4;0;([^\x07\x1b]+)[\x07\x1b]/)
+        if (!match) return { pass: false, note: "No OSC 4 response" }
+        return { pass: true, response: match[1] }
+      },
+    ),
   ),
 
   // OSC 5 — special color query (needs index parameter, can't use generic helper)
-  probe(
-    "extensions.osc5-special-color",
-    (ctx) => {
-      const response = ctx.feedCapture("\x1b]5;0;?\x07")
-      const pass = /\x1b\]5;0;/.test(response)
-      return { pass, note: pass ? undefined : "No OSC 5 response" }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b]5;0;?\x07", /\x1b\]5;0;([^\x07\x1b]+)[\x07\x1b]/)
-      if (!match) return { pass: false, note: "No OSC 5 response" }
-      return { pass: true, response: match[1] }
-    },
+  queryOnly(
+    probe(
+      "extensions.osc5-special-color",
+      (ctx) => {
+        const response = ctx.feedCapture("\x1b]5;0;?\x07")
+        const pass = /\x1b\]5;0;/.test(response)
+        return { pass, note: pass ? undefined : "No OSC 5 response" }
+      },
+      async (ctx) => {
+        const match = await ctx.queryWithSentinel("\x1b]5;0;?\x07", /\x1b\]5;0;([^\x07\x1b]+)[\x07\x1b]/)
+        if (!match) return { pass: false, note: "No OSC 5 response" }
+        return { pass: true, response: match[1] }
+      },
+    ),
   ),
 
   // OSC 12 — cursor color query
@@ -1476,43 +1494,47 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // Query capabilities without displaying a notification or requiring desktop access.
-  probe(
-    "extensions.osc99-kitty-notify",
-    null, // Desktop notification delivery is outside a headless parser's scope.
-    async (ctx) => {
-      const id = globalThis.crypto.randomUUID()
-      const reply = await ctx.queryWithSentinelOutcome(
-        `\x1b]99;i=${id}:p=?;\x1b\\`,
-        new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`),
-      )
-      if (!reply.match) return unansweredQuery(reply, "No matching notification query reply; OS display was not tested")
-      const payloadFields = reply.match[1]?.split(":").filter((field) => field.startsWith("p=")) ?? []
-      const pass = payloadFields.length === 1 && payloadFields[0]?.slice(2).split(",").includes("title") === true
-      const note = pass
-        ? "Notification capabilities acknowledge title payloads; OS display, activation and close events were not tested"
-        : "Notification reply does not advertise the required title payload; no support conclusion"
-      return {
-        pass,
-        response: reply.match[0],
-        note,
-        observation: {
-          outcome: pass ? "supported" : "inconclusive",
-          evidence: "query",
-          ...(!pass && { reason: "invalid-reply" as const }),
+  queryOnly(
+    probe(
+      "extensions.osc99-kitty-notify",
+      null, // Desktop notification delivery is outside a headless parser's scope.
+      async (ctx) => {
+        const id = globalThis.crypto.randomUUID()
+        const reply = await ctx.queryWithSentinelOutcome(
+          `\x1b]99;i=${id}:p=?;\x1b\\`,
+          new RegExp(`\\x1b\\]99;i=${id}:p=\\?;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)`),
+        )
+        if (!reply.match) {
+          return unansweredQuery(reply, "No matching notification query reply; OS display was not tested")
+        }
+        const payloadFields = reply.match[1]?.split(":").filter((field) => field.startsWith("p=")) ?? []
+        const pass = payloadFields.length === 1 && payloadFields[0]?.slice(2).split(",").includes("title") === true
+        const note = pass
+          ? "Notification capabilities acknowledge title payloads; OS display, activation and close events were not tested"
+          : "Notification reply does not advertise the required title payload; no support conclusion"
+        return {
+          pass,
+          response: reply.match[0],
           note,
-        },
-        ...(pass && {
-          assertions: [
-            {
-              kind: "positive" as const,
-              expected: `OSC 99 echoes i=${id}, p=? and advertises p=title`,
-              observed: reply.match[0] ?? "",
-            },
-          ],
-        }),
-      }
-    },
-    "query",
+          observation: {
+            outcome: pass ? "supported" : "inconclusive",
+            evidence: "query",
+            ...(!pass && { reason: "invalid-reply" as const }),
+            note,
+          },
+          ...(pass && {
+            assertions: [
+              {
+                kind: "positive" as const,
+                expected: `OSC 99 echoes i=${id}, p=? and advertises p=title`,
+                observed: reply.match[0] ?? "",
+              },
+            ],
+          }),
+        }
+      },
+      "query",
+    ),
   ),
 
   // OSC 777 — rxvt-unicode notifications
@@ -1596,18 +1618,20 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 21 — require the actual foreground reply, never a subsequent CPR.
-  probe(
-    "extensions.osc21-kitty-color",
-    (ctx) => kittyForegroundResult(ctx.feedCapture("\x1b]21;foreground=?\x1b\\")),
-    async (ctx) => {
-      const reply = await ctx.queryWithSentinelOutcome(
-        "\x1b]21;foreground=?\x1b\\",
-        /\x1b\]21;([^\x07\x1b]*)(?:\x07|\x1b\\)/,
-      )
-      if (!reply.match) return unansweredQuery(reply, "No OSC 21 reply; color rendering was not tested")
-      return kittyForegroundResult(reply.match[0] ?? "")
-    },
-    "query",
+  queryOnly(
+    probe(
+      "extensions.osc21-kitty-color",
+      (ctx) => kittyForegroundResult(ctx.feedCapture("\x1b]21;foreground=?\x1b\\")),
+      async (ctx) => {
+        const reply = await ctx.queryWithSentinelOutcome(
+          "\x1b]21;foreground=?\x1b\\",
+          /\x1b\]21;([^\x07\x1b]*)(?:\x07|\x1b\\)/,
+        )
+        if (!reply.match) return unansweredQuery(reply, "No OSC 21 reply; color rendering was not tested")
+        return kittyForegroundResult(reply.match[0] ?? "")
+      },
+      "query",
+    ),
   ),
 
   // OSC 30001 — Kitty color stack push
@@ -1773,50 +1797,54 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // Sixel support advertised in DA1 response (attribute 4)
-  probe(
-    "extensions.sixel-da1",
-    (ctx) => {
-      const response = ctx.feedCapture("\x1b[c")
-      // DA1 response: CSI ? Ps ; Ps ; ... c — attribute 4 = sixel
-      const pass = /;4[;c]/.test(response)
-      return { pass, note: pass ? undefined : "DA1 response missing attribute 4 (sixel)" }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[c", /\x1b\[\?([0-9;]+)c/)
-      if (!match?.[1]) return { pass: false, note: "No DA1 response" }
-      const attrs = match[1].split(";")
-      const pass = attrs.includes("4")
-      return { pass, note: pass ? `DA1 attrs: ${match[1]}` : `DA1 attrs: ${match[1]} (no sixel)` }
-    },
+  queryOnly(
+    probe(
+      "extensions.sixel-da1",
+      (ctx) => {
+        const response = ctx.feedCapture("\x1b[c")
+        // DA1 response: CSI ? Ps ; Ps ; ... c — attribute 4 = sixel
+        const pass = /;4[;c]/.test(response)
+        return { pass, note: pass ? undefined : "DA1 response missing attribute 4 (sixel)" }
+      },
+      async (ctx) => {
+        const match = await ctx.queryWithSentinel("\x1b[c", /\x1b\[\?([0-9;]+)c/)
+        if (!match?.[1]) return { pass: false, note: "No DA1 response" }
+        const attrs = match[1].split(";")
+        const pass = attrs.includes("4")
+        return { pass, note: pass ? `DA1 attrs: ${match[1]}` : `DA1 attrs: ${match[1]} (no sixel)` }
+      },
+    ),
   ),
 
   // Sixel geometry report — CSI ? Pi ; Pa ; Pv S → CSI ? Pi ; ... S
   // Added in xterm patch 402 (2025-06-22). xterm-only as of 2026.
   // Partial probe verifies the sequence is consumed without leaking literal characters.
-  probe(
-    "extensions.sixel-geometry-report",
-    (ctx) => {
-      // Read color register count: Pi=1, Pa=1 (read), Pv=0
-      const response = ctx.feedCapture("\x1b[?1;1;0S")
-      if (/\x1b\[\?1;[0-9;]+S/.test(response)) {
-        return { pass: true, response, note: "Sixel geometry response received" }
-      }
-      // Verify sequence consumed (not printed literally) and terminal responsive
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("?1;1;0S"),
-        note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
-          ? "Sequence consumed; terminal responsive (no sixel geometry response)"
-          : "Terminal unresponsive after CSI ? 1 ; 1 ; 0 S",
-      }
-    },
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[?1;1;0S", /\x1b\[\?1;([0-9;]+)S/, 1000)
-      if (match) return { pass: true, response: match[0], note: `geometry: ${match[1]}` }
-      // Verify the sequence didn't break the terminal — DSR should still respond.
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No response after sixel geometry query" }
-      return { pass: false, note: "Sequence consumed but no sixel geometry response" }
-    },
+  queryOnly(
+    probe(
+      "extensions.sixel-geometry-report",
+      (ctx) => {
+        // Read color register count: Pi=1, Pa=1 (read), Pv=0
+        const response = ctx.feedCapture("\x1b[?1;1;0S")
+        if (/\x1b\[\?1;[0-9;]+S/.test(response)) {
+          return { pass: true, response, note: "Sixel geometry response received" }
+        }
+        // Verify sequence consumed (not printed literally) and terminal responsive
+        const probeResponse = ctx.feedCapture("\x1b[c")
+        return {
+          pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("?1;1;0S"),
+          note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
+            ? "Sequence consumed; terminal responsive (no sixel geometry response)"
+            : "Terminal unresponsive after CSI ? 1 ; 1 ; 0 S",
+        }
+      },
+      async (ctx) => {
+        const match = await ctx.queryWithSentinel("\x1b[?1;1;0S", /\x1b\[\?1;([0-9;]+)S/, 1000)
+        if (match) return { pass: true, response: match[0], note: `geometry: ${match[1]}` }
+        // Verify the sequence didn't break the terminal — DSR should still respond.
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No response after sixel geometry query" }
+        return { pass: false, note: "Sequence consumed but no sixel geometry response" }
+      },
+    ),
   ),
 ]

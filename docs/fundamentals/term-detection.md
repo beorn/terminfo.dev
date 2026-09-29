@@ -74,14 +74,14 @@ The trade-off is that XTVERSION requires the application to maintain a mapping f
 
 ## Runtime Probing
 
-Runtime probing is the approach that terminfo.dev takes — and it's the most reliable method for determining what a terminal actually supports. Instead of trusting a database entry, an environment variable, or a self-reported identity, runtime probing sends the actual escape sequence and checks whether the terminal handles it correctly.
+Runtime probing asks what a terminal did in a specified test. A measured reply or effect can answer that test's question more directly than an environment variable or a database entry, but only for the behavior actually observed.
 
-The simplest form of runtime probing uses cursor position: the application saves the cursor position, writes test content (for example, a wide emoji character), queries the cursor position again, and checks whether the cursor moved the expected distance. If the terminal correctly handled the emoji as two columns wide, the cursor will be at the right position. If not, the application knows the terminal doesn't support that feature. More sophisticated probes use DECRPM queries, OSC response parsing, and DA1 sentinels.
+A width test can write a sample character and measure the cursor position afterward. The measured distance says how wide that sample was in that environment; a missing reply is inconclusive. Writing test content changes the terminal, so this check needs a verified disposable test environment. Other probes use DECRPM queries, OSC response parsing, and DA1 sentinels.
 
-This is what [Termless](https://termless.dev) does with headless backends — it instantiates a terminal emulator in-process, writes escape sequences, and reads back the terminal state programmatically. It's also what the `npx terminfo.dev` CLI does with real terminals — it sends probes over the PTY and reads the responses. The results are ground truth: not what a database says should work, not what an environment variable claims, but what the terminal actually did when presented with the sequence. This behavioral approach is why terminfo.dev can track features that terminfo has no vocabulary for.
+[Termless](https://termless.dev) instantiates a headless emulator and reads back its parser state. In an ordinary terminal, the `npx terminfo.dev` CLI runs reviewed queries and records state-changing checks as inconclusive unless a verified disposable test environment is available. A query reply establishes only the property it reports; rendering and interaction require their own observations.
 
 ::: info Why terminfo.dev probes directly instead of using terminfo
-The terminfo database has no capability entries for most modern features — Kitty keyboard protocol, OSC 8 hyperlinks, styled underlines, synchronized output, semantic prompts, Sixel graphics, clipboard access, and dozens more are invisible to terminfo. Even for features it does track, the database reflects what a terminal _should_ support based on its `$TERM` value, not what it _actually_ does. Runtime probing gives ground truth: send the sequence, check the result. That's why every data point on this site comes from an actual probe, not a database lookup. See [Why not terminfo?](/about#why-not-terminfo) for the full rationale.
+Terminfo describes capabilities associated with a `$TERM` entry, including [user-defined extensions in ncurses](https://invisible-island.net/ncurses/man/user_caps.5.html). Those descriptions do not record what happened in a particular test. Runtime observations complement them; unanswered or refused checks give no support conclusion. See [Why not terminfo?](/about#why-not-terminfo) for the full rationale.
 :::
 
 ## Comparing Detection Methods
@@ -94,7 +94,7 @@ The terminfo database has no capability entries for most modern features — Kit
 | **DA1**           | Medium — useful as sentinel          | Terminal class, not specific features | Fast (~ms)              | Yes               | Yes                      |
 | **DECRPM**        | High — definitive answer             | Mode-toggled features only            | Fast (~ms)              | Yes               | Yes                      |
 | **XTVERSION**     | High — exact identity                | All features (via lookup table)       | Fast (~ms)              | Yes               | May report mux instead   |
-| **Runtime probe** | Highest — ground truth               | Any observable behavior               | Slow (~100ms per probe) | Yes               | Yes                      |
+| **Runtime probe** | Depends on the measured claim        | Only executed checks                  | Varies                  | Often             | Depends on the path      |
 
 ## Secondary Environment Hints
 

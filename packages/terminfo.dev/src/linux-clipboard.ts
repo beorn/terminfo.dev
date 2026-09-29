@@ -1,10 +1,12 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
-import { readFileSync, realpathSync, statSync } from "node:fs"
+import { fstatSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, sep } from "node:path"
+import { isatty, WriteStream } from "node:tty"
 import type { ClipboardFixture, ProbeResult, TermContext } from "@terminfo/probe-defs"
 import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
+import { wasCollectorOpenedControllingTTY } from "./tty.ts"
 
 interface ClipboardReceipt {
   schemaVersion: 1
@@ -42,6 +44,75 @@ export interface LinuxClipboardAdapter {
     trace: (event: ClipboardTraceEvent) => void,
   ): Promise<ProbeResult>
   dispose(): Promise<void>
+}
+
+type ControllingOutputMatch = {
+  matched: "pty" | "dev-tty"
+  selectedFd: number
+  controllingTtyNr: number
+  inputRdev: number
+  outputRdev: number
+}
+type OwnedOutput = { captureRunId: string; out: NodeJS.WriteStream; matched: ControllingOutputMatch["matched"] }
+const verifiedTerminalOwners = new WeakMap<LinuxClipboardAdapter, OwnedOutput>()
+
+/** The clipboard factory is currently the live Linux owner verifier; its adapter proves one capture's disposable terminal. */
+export function ownedTerminalVerifiedFor(
+  adapter: LinuxClipboardAdapter | undefined,
+  captureRunId: string,
+  out: NodeJS.WriteStream,
+): boolean {
+  const owner = adapter && verifiedTerminalOwners.get(adapter)
+  return owner !== undefined && owner.captureRunId === captureRunId && owner.out === out
+}
+
+/** Linux /proc field 7 names the controlling TTY, unlike the /dev/tty alias's own device number. */
+function controllingOutputCase(out: NodeJS.WriteStream): ControllingOutputMatch {
+  const fd = (out as unknown as { fd?: unknown }).fd
+  if (
+    typeof fd !== "number" ||
+    !Number.isSafeInteger(fd) ||
+    fd < 0 ||
+    (out !== process.stdout && !(out instanceof WriteStream))
+  ) {
+    throw new Error(`Owned output is not a real TTY stream (fd ${String(fd)})`)
+  }
+  if (!isatty(0)) throw new Error("Owned input fd 0 is not a TTY")
+  if (!isatty(fd)) throw new Error(`Owned output fd ${fd} is not a TTY`)
+  const stat = readFileSync("/proc/self/stat", "utf8")
+  const fields = stat
+    .slice(stat.lastIndexOf(")") + 2)
+    .trim()
+    .split(/\s+/)
+  const ttyNumber = Number(fields[4])
+  if (!Number.isInteger(ttyNumber) || ttyNumber < -2147483648 || ttyNumber > 2147483647) {
+    throw new Error(`Invalid controlling tty_nr ${String(fields[4])}`)
+  }
+  const controlling = ttyNumber >>> 0
+  const inputDevice = fstatSync(0).rdev
+  if (controlling === 0 || inputDevice !== controlling) {
+    throw new Error(`Owned input device ${inputDevice} differs from controlling tty_nr ${controlling}`)
+  }
+  const outputDevice = fstatSync(fd).rdev
+  if (outputDevice === controlling) {
+    return {
+      matched: "pty",
+      selectedFd: fd,
+      controllingTtyNr: controlling,
+      inputRdev: inputDevice,
+      outputRdev: outputDevice,
+    }
+  }
+  if (wasCollectorOpenedControllingTTY(out) && outputDevice === 1280) {
+    return {
+      matched: "dev-tty",
+      selectedFd: fd,
+      controllingTtyNr: controlling,
+      inputRdev: inputDevice,
+      outputRdev: outputDevice,
+    }
+  }
+  throw new Error(`Owned output device ${outputDevice} differs from controlling tty_nr ${controlling}`)
 }
 
 type Trace = (event: ClipboardTraceEvent) => void
@@ -204,14 +275,17 @@ function assertKittyClipboardProfile(profile: ClipboardReceipt["profile"], argv:
 /** A receipt is authority only after the live private display, process tree and selection agree. */
 export async function createLinuxClipboardAdapter(
   receiptPath: string,
-  expectedRunId: string,
+  expectedLaunchRunId: string,
   executable: LiveExecutable,
+  captureRunId: string,
+  out: NodeJS.WriteStream,
 ): Promise<LinuxClipboardAdapter> {
+  if (!/^[0-9a-f]{32}$/.test(captureRunId)) throw new Error("Invalid capture run ID for owned terminal")
   if (process.platform !== "linux") throw new Error("Owned clipboard fixture requires Linux")
   const receiptBytes = readFileSync(ownedReceipt(receiptPath))
   const receipt = assertShape(JSON.parse(receiptBytes.toString("utf8")) as unknown)
   if (
-    receipt.runId !== expectedRunId ||
+    receipt.runId !== expectedLaunchRunId ||
     process.env.DISPLAY !== receipt.display.name ||
     process.env.TERMINFO_CLIPBOARD_PROFILE !== receipt.profile ||
     receipt.terminal.collectorPid !== process.pid ||
@@ -219,6 +293,7 @@ export async function createLinuxClipboardAdapter(
   ) {
     throw new Error("Owned clipboard receipt does not match this collector run, display, or terminal")
   }
+  const outputBinding = controllingOutputCase(out)
   const expectedPermissions = {
     default: "clipboard: read=ask,write=allow; OSC52=not-run",
     allow: "clipboard: read=allow,write=allow",
@@ -343,6 +418,7 @@ export async function createLinuxClipboardAdapter(
       permissions: receipt.permissions,
       display: { name: receipt.display.name, xvfbPid: receipt.display.xvfbPid },
       terminal: receipt.terminal,
+      outputBinding,
       selection: {
         helperPid: receipt.selection.helperPid,
         helperExecutableSha256: receipt.selection.helperExecutable.sha256,
@@ -352,6 +428,7 @@ export async function createLinuxClipboardAdapter(
     }),
     withClipboardFixture,
     async dispose() {
+      verifiedTerminalOwners.delete(adapter)
       await Promise.all(
         [...children].map(
           (child) =>
@@ -371,5 +448,6 @@ export async function createLinuxClipboardAdapter(
       )
     },
   }
+  verifiedTerminalOwners.set(adapter, { captureRunId, out, matched: outputBinding.matched })
   return adapter
 }

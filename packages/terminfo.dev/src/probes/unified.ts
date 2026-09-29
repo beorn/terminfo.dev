@@ -29,6 +29,7 @@ import {
   type TTYTraceEvent,
 } from "../tty.ts"
 import type { ClipboardTraceEvent, LinuxClipboardAdapter } from "../linux-clipboard.ts"
+import { ownedTerminalVerifiedFor } from "../linux-clipboard.ts"
 
 export interface Probe {
   id: string
@@ -122,7 +123,13 @@ function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selecte
 
 /** Collect the real callback result, without treating its legacy boolean as an observation. */
 export async function runProbeBatch(
-  options: { ids?: string[]; capture?: ProbeCapture; clipboard?: LinuxClipboardAdapter; out?: NodeJS.WriteStream } = {},
+  options: {
+    ids?: string[]
+    capture?: ProbeCapture
+    clipboard?: LinuxClipboardAdapter
+    captureRunId?: string
+    out?: NodeJS.WriteStream
+  } = {},
 ): Promise<ProbeBatch> {
   const out = options.out ?? process.stdout
   const { expected, selected } = selectAppProbes(options.ids)
@@ -141,8 +148,20 @@ export async function runProbeBatch(
     const clipboardEvents: ClipboardTraceEvent[] = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
+    if (probe.termWrites !== "query" && !ownedTerminalVerifiedFor(options.clipboard, options.captureRunId ?? "", out)) {
+      batch.observations.push({
+        featureId: probe.id,
+        outcome: "inconclusive",
+        reason: "policy-refused",
+        evidence: "none",
+        note: "Collector refused before sending bytes because disposable terminal ownership was not verified",
+        rawReplyRef: probe.id,
+      })
+      batch.rawReplies[probe.id] = JSON.stringify({ writes, queries, events })
+      continue
+    }
     const context = createTermContext({ out, writes, events })
-    if (options.clipboard) {
+    if (options.clipboard && options.clipboard.profile !== "default") {
       const clipboard = options.clipboard
       context.withClipboardFixture = (work) =>
         clipboard.withClipboardFixture(work, (event) => clipboardEvents.push(event))
@@ -165,7 +184,10 @@ export async function runProbeBatch(
       const callback = probe.term
       const result = await withTTYOperation(() => withTTYQueryTrace(queries, events, () => callback(context)), out)
       if (result.observation) {
-        const rawReplyRef = queries.length || captureAttempted || clipboardEvents.length ? probe.id : undefined
+        const rawReplyRef =
+          queries.length || captureAttempted || clipboardEvents.length || result.observation.evidence === "none"
+            ? probe.id
+            : undefined
         batch.observations.push({ featureId: probe.id, ...result.observation, ...(rawReplyRef ? { rawReplyRef } : {}) })
         for (const assertion of result.assertions ?? []) {
           batch.assertions.push({ featureId: probe.id, ...assertion, ...(rawReplyRef ? { rawReplyRef } : {}) })

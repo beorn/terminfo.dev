@@ -4,17 +4,160 @@
  * @consumer Real-terminal app, daemon, and inline probe batch
  * @testonly none
  */
-import { afterEach, expect, it } from "vitest"
+import { afterEach, expect, it, vi } from "vitest"
+import { ALL_PROBES, type ProbeRun, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { decodeCollectorRun } from "@terminfo/run-parser"
+import * as terminalOwnership from "../linux-clipboard.ts"
 import { runProbeBatch } from "./unified.ts"
+
+// An unowned inline batch must refuse before a callback can send RIS or paint the user's TTY.
+it("refuses an unowned mutating callback without sending terminal bytes", async () => {
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: ["reset.ris"], captureRunId: "a".repeat(32) })
+  expect(writes).toEqual([])
+  expect(batch.observations).toMatchObject([
+    { featureId: "reset.ris", outcome: "inconclusive", reason: "policy-refused", evidence: "none" },
+  ])
+  expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toMatchObject({ writes: [], queries: [], events: [] })
+
+  // A policy refusal must survive the real public/admin parser, not just this batch object.
+  const probeHash = "f".repeat(12)
+  const sourceRevision = "e".repeat(40)
+  const manifest: ProbeSuiteManifest = {
+    probeHash,
+    sourceRevision,
+    generatedAt: "2026-09-28T00:00:00.000Z",
+    adapterVersion: "test",
+    probes: { app: ALL_PROBES.filter((probe) => probe.term).map((probe) => probe.id), headless: [], mux: [] },
+  }
+  const run: ProbeRun = {
+    schemaVersion: 2,
+    runId: "a".repeat(32),
+    target: {
+      kind: "app",
+      id: "kitty",
+      version: "0.49.1",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    suiteId: probeHash,
+    probeHash,
+    suiteComplete: false,
+    sourceRevision,
+    measuredAt: "2026-09-28T00:00:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: batch.rawReplies,
+    assertions: batch.assertions,
+    screenshotRefs: [],
+    observations: batch.observations,
+    ungradedDiagnostics: batch.ungradedDiagnostics,
+  }
+  expect(
+    decodeCollectorRun("test-run.json", JSON.stringify(run), manifest, sourceRevision).run.observations,
+  ).toMatchObject([{ featureId: "reset.ris", outcome: "inconclusive", reason: "policy-refused" }])
+})
+
+it("records an owned default-profile OSC 52 refusal as unmeasured with an empty bound trace", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: ["extensions.osc52-write"], captureRunId: "a".repeat(32) })
+  expect(writes).toEqual([])
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: "extensions.osc52-write",
+      outcome: "inconclusive",
+      reason: "policy-refused",
+      evidence: "none",
+      rawReplyRef: "extensions.osc52-write",
+    },
+  ])
+  expect(batch.assertions).toEqual([])
+  expect(JSON.parse(batch.rawReplies["extensions.osc52-write"]!)).toEqual({ writes: [], queries: [], events: [] })
+})
+
+// A caller cannot manufacture ownership by satisfying the adapter's public TypeScript shape.
+it("refuses a structural clipboard adapter even with the same claimed capture ID", async () => {
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["reset.ris"],
+    captureRunId: "a".repeat(32),
+    clipboard: {
+      profile: "default",
+      config: "fixture",
+      permissions: "fixture",
+      summary: "{}",
+      dispose: async () => {},
+      withClipboardFixture: async () => ({ pass: true }),
+    },
+  })
+  expect(writes).toEqual([])
+  expect(batch.observations).toMatchObject([
+    { featureId: "reset.ris", outcome: "inconclusive", reason: "policy-refused" },
+  ])
+})
+
+it("lets reviewed DECRPM queries run while refusing cursor and title-writing callbacks", async () => {
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    if (text === "\x1b[?2004$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?2004;2$y"))
+    if (text === "\x1b[?2031$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?2031;2$y"))
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["modes.bracketed-paste", "modes.color-scheme-reporting", "cursor.move.absolute", "device.xtwinops-20"],
+  })
+  expect(writes).toEqual(["\x1b[?2004$p\x1b[c", "\x1b[?2031$p\x1b[c"])
+  expect(batch.observations.find((item) => item.featureId === "modes.bracketed-paste")).toMatchObject({
+    outcome: "supported",
+    evidence: "query",
+  })
+  expect(batch.observations.find((item) => item.featureId === "modes.color-scheme-reporting")).toMatchObject({
+    outcome: "supported",
+    evidence: "query",
+  })
+  for (const id of ["cursor.move.absolute", "device.xtwinops-20"]) {
+    expect(batch.observations.find((item) => item.featureId === id)).toMatchObject({
+      outcome: "inconclusive",
+      reason: "policy-refused",
+    })
+    expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ writes: [], queries: [], events: [] })
+  }
+})
 
 const originalWrite = process.stdout.write
 afterEach(() => {
+  vi.restoreAllMocks()
   process.stdout.write = originalWrite
   process.stdin.removeAllListeners("data")
 })
 
+// These callback/capture contract tests exercise the post-authorization batch path;
+// unmocked tests above independently prove a forged adapter cannot authorize it.
+function verifiedBatchFixture() {
+  vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
+}
+
 // The public inline runner must put both callback writes and nested CPR queries on its selected TTY.
 it("uses the injected TTY for callback writes, columns, and nested cursor queries", async () => {
+  verifiedBatchFixture()
   const writes: string[] = []
   const out = {
     columns: 12,
@@ -102,6 +245,7 @@ it("records an opted-in query callback exception as collector error, never suppo
 
 // A live fixture must bind its independent X11 events to the same feature trace, after pixel checkpoints.
 it("runs owned OSC 52 after pixels and retains timestamped independent clipboard operations", async () => {
+  verifiedBatchFixture()
   const writes: string[] = []
   const order: string[] = []
   process.stdout.write = ((text: string) => {
@@ -155,6 +299,7 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
 })
 
 it("records failed clipboard restoration as collector error rather than retaining callback success", async () => {
+  verifiedBatchFixture()
   process.stdout.write = (() => true) as typeof process.stdout.write
   const batch = await runProbeBatch({
     ids: ["extensions.osc52-write"],
@@ -184,6 +329,7 @@ it("records failed clipboard restoration as collector error rather than retainin
 // AC1/AC3: images belong to the callback's run before it is sealed. Existing
 // transport tests only observe replies and cannot detect a detached screenshot.
 it("retains same-callback control and target frames without declaring visual support", async () => {
+  verifiedBatchFixture()
   const writes: string[] = []
   process.stdout.write = ((value: string) => {
     writes.push(value)
@@ -228,6 +374,7 @@ it("retains same-callback control and target frames without declaring visual sup
 })
 
 it("records an installed capture adapter failure as an error rather than quietly dropping pixels", async () => {
+  verifiedBatchFixture()
   process.stdout.write = ((value: string) => {
     if (value.includes("\x1b[6n")) process.stdin.emit("data", Buffer.from("\x1b[1;2R"))
     return true

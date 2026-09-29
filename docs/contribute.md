@@ -13,7 +13,7 @@ npx terminfo.dev
 
 This shows the available commands. Run `npx terminfo.dev detect` to see the detected terminal. The current source's `test` command records one unreviewed run; `submit RAW --draft FILE` prepares an offline contribution draft. Neither command posts a result. Check the installed CLI's `--version` and `--help`: the corrected package is still being verified and older published versions may differ.
 
-`npx` comes with [Node.js](https://nodejs.org/en/download). Use a fresh terminal window for testing, and record whether tmux, Screen or a remote connection is involved.
+`npx` comes with [Node.js](https://nodejs.org/en/download). A fresh terminal window keeps test output separate but does not by itself make that window a disposable test environment. Record whether tmux, Screen or a remote connection is involved.
 
 ## Other Commands
 
@@ -26,6 +26,8 @@ npx terminfo.dev --version      # Record the CLI version
 ```
 
 For inline `test --json` or `test --output`, stdin must be an interactive terminal; probe controls go to `/dev/tty`, separate from the raw JSON. `--output` refuses an existing file. A draft does not create a GitHub issue or grant publication consent.
+
+In an ordinary terminal, the CLI can run reviewed query checks. Checks that change terminal state require a verified disposable test environment. Without one, the CLI records them as **inconclusive (policy-refused)** before those checks write anything; it does not report them as unsupported. You do not need to loosen terminal permissions. Default clipboard access stays off.
 
 ## What a probe can establish
 
@@ -40,7 +42,7 @@ For inline `test --json` or `test --output`, stdin must be an interactive termin
 
 For example, [Kitty's keyboard query](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#detection-of-support-for-this-protocol) reports protocol state; key-event encoding needs input tests. A [graphics query](https://sw.kovidgoyal.net/kitty/graphics-protocol/#querying-support-and-available-transmission-mediums) and an actual image capture answer different questions. The [xterm control-sequence reference](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) defines many of the replies used by these probes.
 
-**No reply is inconclusive.** A feature may be unsupported, blocked by a multiplexer or permission, queried incorrectly, or slower than the collection deadline. An explicit negative reply or failed behavioral assertion is stronger evidence. A collection error describes the test run; it is not a terminal failure.
+**No reply is inconclusive.** A feature may be unsupported, blocked by a multiplexer or permission, queried incorrectly, or slower than the collection deadline. A policy refusal is also inconclusive, but means the check was deliberately not run in this environment. An explicit negative reply or failed behavioral assertion is stronger evidence. A collection error describes the test run; it is not a terminal failure.
 
 ## Reading results
 

@@ -9,7 +9,7 @@ import { readRawDaemonProbeResponse, requestDaemonProbe } from "./daemon-client.
  * @example
  * ```bash
  * npx terminfo.dev                     # show help
- * npx terminfo.dev test                # test this terminal
+ * npx terminfo.dev test                # record available terminal observations
  * npx terminfo.dev test --json > raw.json # one raw run; TTY stdin, controls on /dev/tty
  * npx terminfo.dev test --output /tmp/terminfo-run.json # private raw file
  * npx terminfo.dev test --serve       # start daemon for remote testing
@@ -19,9 +19,8 @@ import { readRawDaemonProbeResponse, requestDaemonProbe } from "./daemon-client.
  */
 
 import React from "react"
-import { openSync, writeFileSync } from "node:fs"
+import { writeFileSync } from "node:fs"
 import { isAbsolute } from "node:path"
-import { WriteStream } from "node:tty"
 import { Command, uint } from "@silvery/commander"
 import { renderString } from "silvery"
 import { version as packageVersion } from "../package.json" with { type: "json" }
@@ -30,6 +29,7 @@ import { ALL_PROBES } from "./probes/unified.ts"
 import { DetectView } from "./views/DetectView.tsx"
 import { decodeCollectorRun } from "@terminfo/run-parser"
 import { createDraft } from "./submit.ts"
+import { openControllingTTY } from "./tty.ts"
 
 /** Collect the same explicit v2 run as the daemon endpoint. */
 async function runProbes(out?: NodeJS.WriteStream) {
@@ -43,20 +43,6 @@ function outputPath(path: string): string {
   return path
 }
 
-function openControllingTTY(): WriteStream {
-  if (process.platform === "win32") throw new Error("JSON/file collection requires a proved Windows controlling TTY")
-  if (!process.stdin.isTTY) throw new Error("JSON/file collection requires interactive TTY stdin for probe replies")
-  let fd: number
-  try {
-    fd = openSync("/dev/tty", "w")
-  } catch (error) {
-    throw new Error(
-      `Cannot open controlling /dev/tty before probing: ${error instanceof Error ? error.message : String(error)}`,
-    )
-  }
-  return new WriteStream(fd)
-}
-
 /** Render a React view to stdout using silvery's renderString. */
 async function printView(element: React.ReactElement): Promise<void> {
   const width = process.stdout.columns || 80
@@ -68,13 +54,11 @@ async function printView(element: React.ReactElement): Promise<void> {
 
 const program = new Command()
   .name("terminfo")
-  .description(
-    `Can your terminal do that? — test ${ALL_PROBES.length} terminal features and contribute to terminfo.dev`,
-  )
+  .description(`Can your terminal do that? — record available checks across ${ALL_PROBES.length} feature definitions`)
   .version(packageVersion)
 
 program.addHelpSection("Examples:", [
-  ["$ npx terminfo.dev test", "Test this terminal"],
+  ["$ npx terminfo.dev test", "Record available checks; other checks may be refused"],
   ["$ npx terminfo.dev test --json > raw.json", "One raw run; TTY input, controls on /dev/tty"],
   ["$ npx terminfo.dev test --output /tmp/terminfo-run.json", "Private raw file at an absolute path"],
   [
@@ -88,7 +72,7 @@ program.addHelpSection("Examples:", [
 
 program
   .command("test")
-  .description("Test this terminal's feature support")
+  .description("Record terminal observations; state-changing checks require a verified test environment")
   .argument("[daemon]", "Daemon name to test")
   .option("--json", "Write one raw JSON run to stdout (inline probes require interactive TTY)")
   .option("--output <file>", "Write exact raw JSON to an absolute file")
@@ -179,10 +163,10 @@ program
       }
       const data = decoded.run
       console.log(
-        `${data.target.id} ${data.target.version}: ${data.observations.length}/${ALL_PROBES.length} explicit observations`,
+        `${data.target.id} ${data.target.version}: ${data.observations.length}/${ALL_PROBES.length} recorded outcomes (including inconclusive checks)`,
       )
       console.log(
-        `Run ${data.runId} is unreviewed${data.suiteComplete ? "" : " and partial"}; use --json for raw evidence.`,
+        `Run ${data.runId} is unreviewed${data.suiteComplete ? "" : " and partial"}; use --json for raw evidence and any policy refusals.`,
       )
     },
   )

@@ -4,6 +4,7 @@ import {
   OBSERVATION_EVIDENCE,
   OBSERVATION_OUTCOMES,
   OBSERVATION_REASONS,
+  isNonMeasuringEvidence,
   type Observation,
   type ObservationFrame,
   type ProbeAssertion,
@@ -297,6 +298,12 @@ function parseObservation(
   const featureId = asString(value.featureId, path, "observation.featureId")
   if (!catalog.has(featureId)) fail(path, `unknown feature ${featureId}`)
   validateObservationOutcome(value, path, featureId)
+  if (value.evidence === "none" && value.screenshotRef !== undefined) {
+    fail(path, `none evidence for ${featureId} cannot carry screenshotRef`)
+  }
+  if (value.evidence === "none" && value.frames !== undefined) {
+    fail(path, `none evidence for ${featureId} cannot carry frames`)
+  }
   if (value.evidence === "pixels" && (value.outcome === "supported" || value.outcome === "unsupported")) {
     fail(path, `collector pixels for ${featureId} must remain inconclusive until reviewed Interpretation`)
   }
@@ -347,10 +354,37 @@ export function validateObservation(
   if (rawReplyRef && !Object.hasOwn(rawReplies, rawReplyRef)) {
     fail(path, `missing raw reply ${rawReplyRef} for ${featureId}`)
   }
-  if (outcome !== "supported" && outcome !== "unsupported") return
-  if (evidence === "consumed" || evidence === "legacy") {
+  if ((outcome === "supported" || outcome === "unsupported") && isNonMeasuringEvidence(evidence)) {
     fail(path, `conclusive ${featureId} cannot use ${evidence} evidence`)
   }
+  if (evidence === "none") {
+    if (outcome !== "inconclusive" || observation.reason !== "policy-refused") {
+      fail(path, `none evidence for ${featureId} requires inconclusive policy-refused outcome`)
+    }
+    if (observation.screenshotRef !== undefined || observation.frames !== undefined) {
+      fail(path, `none evidence for ${featureId} cannot carry screenshotRef or frames`)
+    }
+    if (!rawReplyRef || rawReplyRef !== featureId) {
+      fail(path, `none evidence for ${featureId} requires its own rawReplyRef`)
+    }
+    const rawTrace = rawReplies[rawReplyRef]
+    if (typeof rawTrace !== "string") fail(path, `none evidence for ${featureId} requires its own raw trace`)
+    const trace = parseJsonStrict(`${path}: ${featureId} none trace`, rawTrace)
+    if (
+      !object(trace) ||
+      Object.keys(trace).sort().join(",") !== "events,queries,writes" ||
+      !Array.isArray(trace.writes) ||
+      trace.writes.length !== 0 ||
+      !Array.isArray(trace.queries) ||
+      trace.queries.length !== 0 ||
+      !Array.isArray(trace.events) ||
+      trace.events.length !== 0 ||
+      assertions.some((entry) => entry.featureId === featureId)
+    ) {
+      fail(path, `none evidence for ${featureId} requires a zero-byte trace without assertions`)
+    }
+  }
+  if (outcome !== "supported" && outcome !== "unsupported") return
   if (evidence === "pixels") return
   const kind = outcome === "supported" ? "positive" : "negative"
   const assertion = assertions.find(

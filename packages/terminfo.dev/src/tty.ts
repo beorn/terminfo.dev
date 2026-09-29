@@ -1,4 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
+import { openSync } from "node:fs"
+import { WriteStream } from "node:tty"
 import type { TerminalQueryOutcome } from "@terminfo/probe-defs"
 
 /**
@@ -14,6 +16,29 @@ import type { TerminalQueryOutcome } from "@terminfo/probe-defs"
  */
 const ttyOperations = new WeakMap<typeof process.stdin, Promise<void>>()
 const operationContext = new AsyncLocalStorage<{ active: boolean; out: NodeJS.WriteStream }>()
+const collectorOpenedControllingOutputs = new WeakSet<NodeJS.WriteStream>()
+
+/** Open the controlling terminal for CLI runs whose stdout carries JSON. */
+export function openControllingTTY(): WriteStream {
+  if (process.platform === "win32") throw new Error("JSON/file collection requires a proved Windows controlling TTY")
+  if (!process.stdin.isTTY) throw new Error("JSON/file collection requires interactive TTY stdin for probe replies")
+  let fd: number
+  try {
+    fd = openSync("/dev/tty", "w")
+  } catch (error) {
+    throw new Error(
+      `Cannot open controlling /dev/tty before probing: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  const out = new WriteStream(fd)
+  collectorOpenedControllingOutputs.add(out)
+  return out
+}
+
+/** Only the collector's own /dev/tty opener may use the Linux alias-device case. */
+export function wasCollectorOpenedControllingTTY(out: NodeJS.WriteStream): boolean {
+  return collectorOpenedControllingOutputs.has(out)
+}
 export interface TTYQueryTrace {
   sequence: string
   reason: QueryOutcome["reason"]

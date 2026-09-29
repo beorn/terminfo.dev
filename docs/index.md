@@ -205,7 +205,7 @@ function backendTooltip(name, version) {
 
 ## Terminal Applications {#terminal-applications}
 
-<p class="section-subtitle">Tested on real terminal applications. Run <code>npx terminfo.dev</code> to <a href="/contribute">test yours</a>.</p>
+<p class="section-subtitle">Measurements from real terminal applications. See <a href="/contribute">how to record available observations from yours</a>.</p>
 
 <div class="platform-filter">
   <select v-model="platformFilter">
@@ -232,7 +232,7 @@ function backendTooltip(name, version) {
     </span>
   </div>
 </div>
-<p v-else class="no-data-inline">No app results yet. Run <code>npx terminfo.dev submit</code> to contribute.</p>
+<p v-else class="no-data-inline">No app results yet. See <a href="/contribute">how to record a run and prepare an offline contribution draft</a>.</p>
 
 ## Terminal Baseline 2026 {#baselines}
 
@@ -483,10 +483,10 @@ function backendTooltip(name, version) {
 
 Data comes from three complementary sources:
 
-**Terminal Applications** — tested on real terminals via the `npx terminfo.dev` community CLI.
-Each test sends escape sequences to the actual terminal and verifies behavior via cursor
-position reports, device attribute queries, and rendered width measurements. These results
-reflect what users actually experience.
+**Terminal Applications** — measured in a particular app and environment. On an ordinary terminal,
+the community CLI runs reviewed queries; checks that change terminal state remain inconclusive
+until a verified disposable test environment is available. Rendering and interaction require
+their own evidence, such as screenshots and input tests; a reply alone proves neither.
 
 **Headless Backends** — tested via [Termless](https://termless.dev) against headless terminal
 emulator libraries. These test parser correctness — whether the library correctly parses and
