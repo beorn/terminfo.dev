@@ -343,7 +343,7 @@ export async function runProbeBatch(
         ...(clipboardEvents.length ? { clipboard: clipboardEvents } : {}),
         ...(captureAttempted ? { captures } : {}),
       })
-      if (probe.id === "device.primary-da" || probe.id === "device.xtversion") {
+      if (probe.id === "device.primary-da" || probe.id === "device.secondary-da" || probe.id === "device.xtversion") {
         batch.rawReplies[probe.id] = queries.map((item) => item.raw).join("")
         batch.rawReplies[`${probe.id}.trace`] = trace
       } else {

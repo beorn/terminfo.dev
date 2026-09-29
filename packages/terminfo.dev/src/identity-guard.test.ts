@@ -131,6 +131,16 @@ describe("verifyTerminalIdentity", () => {
     )
     expect(termRes.ok).toBe(false)
     expect(termRes.reason).toContain("does not support XTVERSION")
+    const completeDcs = verifyTerminalIdentity("terminal-app", {
+      "device.primary-da": "\x1b[?1;2c",
+      "device.xtversion": "\x1bP>|xterm(370)\x1b\\\x1b[?1;2c",
+    })
+    expect(completeDcs.reason).toContain("does not support XTVERSION")
+    const truncatedDcs = verifyTerminalIdentity("terminal-app", {
+      "device.primary-da": "\x1b[?1;2c",
+      "device.xtversion": "\x1bP>|xterm(370)",
+    })
+    expect(truncatedDcs.reason).toContain("incomplete XTVERSION DCS frame")
   })
 
   it("marks checked: true when an identity rule exists and passes", () => {

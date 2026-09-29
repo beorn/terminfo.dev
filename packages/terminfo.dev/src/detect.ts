@@ -169,6 +169,22 @@ function detectOS(): string {
 }
 
 function detectOSVersion(): string {
+  if (process.platform === "darwin") {
+    let version: string
+    try {
+      version = execFileSync("/usr/bin/sw_vers", ["-productVersion"], {
+        encoding: "utf8",
+        timeout: 2000,
+        maxBuffer: 128,
+      }).trim()
+    } catch (error) {
+      throw new Error(`sw_vers -productVersion failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (!/^[1-9]\d{0,2}\.(?:0|[1-9]\d{0,2})(?:\.(?:0|[1-9]\d{0,2}))?$/.test(version)) {
+      throw new Error(`sw_vers -productVersion returned invalid macOS version: ${JSON.stringify(version)}`)
+    }
+    return version
+  }
   try {
     return release()
   } catch {
@@ -186,8 +202,12 @@ export async function queryDA2(
   process.stdout.write("\x1b[>0c")
   const match = await readResponse(/\x1b\[>(\d+);(\d+);(\d+)c/, 1000)
   if (!match) return null
+  const [, terminalId, version] = match
+  if (terminalId === undefined || version === undefined) {
+    throw new Error("DA2 response is missing the expected terminal ID or version capture")
+  }
   return {
-    terminalId: parseInt(match[1]!, 10),
-    version: parseInt(match[2]!, 10),
+    terminalId: parseInt(terminalId, 10),
+    version: parseInt(version, 10),
   }
 }

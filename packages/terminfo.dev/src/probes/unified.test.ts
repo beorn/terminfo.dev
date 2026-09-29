@@ -8,6 +8,7 @@ import { afterEach, expect, it, vi } from "vitest"
 import { ALL_PROBES, type ProbeRun, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { decodeCollectorRun } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
+import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { runProbeBatch } from "./unified.ts"
 
 const linuxGeometrySource = "stty size on a /proc/self/fd reopen of the verified output device" as const
@@ -154,6 +155,37 @@ it("lets reviewed DECRPM queries run while refusing cursor and title-writing cal
     })
     expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ writes: [], queries: [], events: [] })
   }
+})
+
+// A real Terminal.app run returned DA1 as the XTVERSION query's sentinel; it was not an XTVERSION reply.
+it("projects Terminal.app identity replies without mistaking the DA1 sentinel for XTVERSION", async () => {
+  const da1 = "\x1b[?1;2c"
+  const da2 = "\x1b[>1;95;0c"
+  const sent: string[] = []
+  process.stdout.write = ((sequence: string) => {
+    sent.push(sequence)
+    if (sequence === "\x1b[c") process.stdin.emit("data", Buffer.from(da1))
+    if (sequence === "\x1b[>c\x1b[c") process.stdin.emit("data", Buffer.from(da2 + da1))
+    if (sequence === "\x1b[>0q\x1b[c") process.stdin.emit("data", Buffer.from(da1))
+    return true
+  }) as typeof process.stdout.write
+
+  const batch = await runProbeBatch({ ids: ["device.primary-da", "device.secondary-da", "device.xtversion"] })
+  expect(sent).toEqual(["\x1b[c", "\x1b[>c\x1b[c", "\x1b[>0q\x1b[c"])
+  expect(batch.observations).toMatchObject([
+    { featureId: "device.primary-da", outcome: "supported" },
+    { featureId: "device.secondary-da", outcome: "supported" },
+    { featureId: "device.xtversion", outcome: "inconclusive", reason: "no-response" },
+  ])
+  expect(verifyTerminalIdentity("terminal-app", batch.rawReplies)).toMatchObject({ ok: true, checked: true })
+  expect(batch.rawReplies["device.secondary-da"]).toBe(da2 + da1)
+  expect(JSON.parse(batch.rawReplies["device.secondary-da.trace"]!)).toMatchObject({
+    queries: [{ reason: "reply", raw: da2 + da1 }],
+  })
+  expect(batch.rawReplies["device.xtversion"]).toBe(da1)
+  expect(JSON.parse(batch.rawReplies["device.xtversion.trace"]!)).toMatchObject({
+    queries: [{ reason: "sentinel", match: null, raw: da1 }],
+  })
 })
 
 const originalWrite = process.stdout.write

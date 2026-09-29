@@ -97,7 +97,9 @@ export function verifyTerminalIdentity(
   if (xtversionRaw?.startsWith("\x1bP") && !dcs) {
     return { ok: false, checked: true, reason: `Terminal "${terminal}" returned an incomplete XTVERSION DCS frame` }
   }
-  const xtversion = dcs ? dcs[1] : xtversionRaw
+  // The collector retains a DA1-only end marker when the XTVERSION query received no reply.
+  const da1SentinelOnly = /^\x1b\[\?[0-9;]+c$/.test(xtversionRaw ?? "")
+  const xtversion = da1SentinelOnly ? undefined : dcs ? dcs[1] : xtversionRaw
   const xtversionResult = results?.["device.xtversion"]
 
   // Check required XTVERSION
