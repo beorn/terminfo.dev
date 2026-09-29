@@ -64,6 +64,19 @@ describe("consumer selection", () => {
         lastProbedVersion: null,
         lastProbedDate: "never",
       })
+      // The refresh command must preserve its child check's failure status.
+      copyFileSync(join(source, "scripts", "update.ts"), join(root, "scripts", "update.ts"))
+      writeFileSync(join(root, "scripts", "radar.ts"), 'console.log("radar fixture completed")\n')
+      writeFileSync(
+        join(root, "package.json"),
+        JSON.stringify({
+          scripts: { sitefile: "bun scripts/sitefile.ts", radar: "bun scripts/radar.ts" },
+        }),
+      )
+      const update = spawnSync(process.execPath, [join(root, "scripts", "update.ts"), "--status"], { encoding: "utf8" })
+      expect(update.stdout).toContain("radar fixture completed")
+      expect(update.stdout).toContain("1 step(s) failed")
+      expect(update.status).toBe(1)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

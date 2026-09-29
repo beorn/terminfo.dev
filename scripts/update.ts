@@ -83,19 +83,19 @@ async function askContinue(stepName: string): Promise<boolean> {
 // Steps
 // ---------------------------------------------------------------------------
 
-async function stepStaleness(): Promise<StepResult> {
+function stepStaleness(): StepResult {
   header(1, "Check staleness")
   const { ok } = runCommand("bun", ["sitefile", "--check"])
   return { name: "staleness", ok }
 }
 
-async function stepExplore(): Promise<StepResult> {
+function stepExplore(): StepResult {
   header(2, "Run explore queries")
   const { ok } = runCommand("bun", ["run", "explore"])
   return { name: "explore", ok }
 }
 
-async function stepRadar(): Promise<StepResult> {
+function stepRadar(): StepResult {
   header(3, "Show radar stats")
   const { ok } = runCommand("bun", ["run", "radar", "stats"])
   return { name: "radar", ok }
@@ -107,7 +107,7 @@ async function stepPause(): Promise<StepResult> {
   return { name: "pause", ok: cont }
 }
 
-async function stepProbe(): Promise<StepResult> {
+function stepProbe(): StepResult {
   header(5, "Re-probe headless backends")
   const { ok } = runCommand("bun", ["terminfo", "probe", "termless", "--all", "--force"], {
     cwd: kmRoot,
@@ -115,19 +115,19 @@ async function stepProbe(): Promise<StepResult> {
   return { name: "probe", ok }
 }
 
-async function stepValidate(): Promise<StepResult> {
+function stepValidate(): StepResult {
   header(6, "Validate content")
   const { ok } = runCommand("bun", ["validate"])
   return { name: "validate", ok }
 }
 
-async function stepBuild(): Promise<StepResult> {
+function stepBuild(): StepResult {
   header(7, "Build site")
   const { ok } = runCommand("bun", ["run", "build"])
   return { name: "build", ok }
 }
 
-async function stepCheck404s(): Promise<StepResult> {
+function stepCheck404s(): StepResult {
   header(8, "Check 404s")
   const { ok } = runCommand("bun", ["scripts/check-404s.ts"])
   return { name: "check-404s", ok }
@@ -152,6 +152,7 @@ function printSummary(results: StepResult[]): void {
   const failed = results.filter((r) => !r.ok && !r.skipped)
   if (failed.length > 0) {
     console.log(`\n${RED}${failed.length} step(s) failed.${RESET}`)
+    process.exitCode = 1
   } else {
     console.log(`\n${GREEN}All steps passed.${RESET}`)
   }
@@ -161,7 +162,11 @@ function printSummary(results: StepResult[]): void {
 // Flows
 // ---------------------------------------------------------------------------
 
-async function runStep(step: () => Promise<StepResult>, results: StepResult[], noPause: boolean): Promise<boolean> {
+async function runStep(
+  step: () => StepResult | Promise<StepResult>,
+  results: StepResult[],
+  noPause: boolean,
+): Promise<boolean> {
   const result = await step()
   results.push(result)
   if (!result.ok && !result.skipped) {
