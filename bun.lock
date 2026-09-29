@@ -16,6 +16,7 @@
         "@terminfo/admin": "workspace:*",
         "@terminfo/probe-defs": "workspace:*",
         "@terminfo/probes": "workspace:*",
+        "@terminfo/run-parser": "workspace:*",
         "@vue/server-renderer": "3.5.43",
         "oxfmt": "0.38.0",
         "terminfo.dev": "workspace:*",
@@ -55,6 +56,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@terminfo/probe-defs": "workspace:*",
+        "@terminfo/run-parser": "workspace:*",
         "@termless/alacritty": "^0.9.1",
         "@termless/core": "^0.9.1",
         "@termless/ghostty": "^0.9.1",
@@ -71,6 +73,17 @@
       },
       "devDependencies": {
         "vitest": "^4.1.10",
+      },
+    },
+    "packages/run-parser": {
+      "name": "@terminfo/run-parser",
+      "version": "0.0.0",
+      "dependencies": {
+        "@terminfo/probe-defs": "workspace:*",
+      },
+      "devDependencies": {
+        "tsdown": "0.22.13",
+        "typescript": "^5.9.3",
       },
     },
     "packages/terminfo.dev": {
@@ -406,6 +419,8 @@
     "@terminfo/probe-defs": ["@terminfo/probe-defs@workspace:packages/probe-defs"],
 
     "@terminfo/probes": ["@terminfo/probes@workspace:packages/probes"],
+
+    "@terminfo/run-parser": ["@terminfo/run-parser@workspace:packages/run-parser"],
 
     "@termless/alacritty": ["@termless/alacritty@0.9.1", "", { "peerDependencies": { "@termless/core": "^0.9.1" } }, "sha512-irQTPHy0xBbOw0pvEsU/S8X3Ur8VeqVcR4epfQMjkzfPHXWc48VEAiodYxK7nYqWHnkDPp46QI4ybLrw/EXnKA=="],
 
