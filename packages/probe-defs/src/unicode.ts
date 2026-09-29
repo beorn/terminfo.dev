@@ -1,18 +1,28 @@
 import type { ProbeDefinition } from "./types.ts"
 import { probe } from "./helpers.ts"
 
+function validSize(value: number, minimum: number): boolean {
+  return Number.isSafeInteger(value) && value >= minimum
+}
+
 export const unicodeProbes: ProbeDefinition[] = [
   {
     ...probe(
       "unicode.east-asian-ambiguous",
       (ctx) => {
+        if (!validSize(ctx.cols, 3)) {
+          return {
+            pass: false,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+          }
+        }
         ctx.feed("●X")
         const c1 = ctx.getCell(0, 1)
         const c2 = ctx.getCell(0, 2)
         return { pass: c1.char === "X" || c2.char === "X" }
       },
       async (ctx) => {
-        if (ctx.cols < 3)
+        if (!validSize(ctx.cols, 3)) {
           return {
             pass: false,
             observation: {
@@ -22,6 +32,7 @@ export const unicodeProbes: ProbeDefinition[] = [
               note: "Fixture needs at least 3 columns",
             },
           }
+        }
         const width = await ctx.measureRenderedWidth("●")
         if (width === null) return { pass: false, note: "Cannot measure width" }
         return {
@@ -38,6 +49,12 @@ export const unicodeProbes: ProbeDefinition[] = [
     ...probe(
       "unicode.grapheme-cursor",
       (ctx) => {
+        if (!validSize(ctx.cols, 3)) {
+          return {
+            pass: false,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+          }
+        }
         const sample = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}"
         ctx.feed("\x1b[1;1H\x1b[2K" + sample)
         const cursor = ctx.getCursor()
@@ -54,7 +71,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
-        if (ctx.cols < 3)
+        if (!validSize(ctx.cols, 3)) {
           return {
             pass: false,
             observation: {
@@ -64,6 +81,7 @@ export const unicodeProbes: ProbeDefinition[] = [
               note: "Fixture needs at least 3 columns",
             },
           }
+        }
         const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
         if (width === null) {
           return {
@@ -89,12 +107,18 @@ export const unicodeProbes: ProbeDefinition[] = [
     ...probe(
       "unicode.wrap-boundary",
       (ctx) => {
-        ctx.feed("A".repeat(79) + "\u4e2d")
+        if (!validSize(ctx.cols, 2) || !validSize(ctx.getScrollback().screenLines, 2)) {
+          return {
+            pass: false,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+          }
+        }
+        ctx.feed("A".repeat(ctx.cols - 1) + "\u4e2d")
         return { pass: ctx.getCell(1, 0).char === "\u4e2d" }
       },
       async (ctx) => {
         const cols = ctx.cols
-        if (ctx.rows < 2 || cols < 2)
+        if (!validSize(ctx.rows, 2) || !validSize(cols, 2)) {
           return {
             pass: false,
             observation: {
@@ -104,6 +128,7 @@ export const unicodeProbes: ProbeDefinition[] = [
               note: `Wide-wrap fixture needs at least 2x2, measured ${ctx.rows}x${cols}`,
             },
           }
+        }
         ctx.write("\x1b[1;1H\x1b[2J")
         ctx.write("A".repeat(cols - 1))
         ctx.write("\u4e2d") // CJK char (2 cols wide)
@@ -122,11 +147,24 @@ export const unicodeProbes: ProbeDefinition[] = [
     ...probe(
       "unicode.tab-stops",
       (ctx) => {
-        ctx.feed("A\tB")
-        return { pass: ctx.getCell(0, 8).char === "B" }
+        if (!validSize(ctx.cols, 10)) {
+          return {
+            pass: false,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+          }
+        }
+        try {
+          ctx.feed("\x1b[3g\x1b[1;9H\x1bH\x1b[1;1H")
+          ctx.feed("A\tB")
+          return { pass: ctx.getCell(0, 8).char === "B" }
+        } finally {
+          let restore = "\x1b[3g"
+          for (let col = 9; col <= ctx.cols; col += 8) restore += `\x1b[1;${col}H\x1bH`
+          ctx.feed(restore + "\x1b[1;1H")
+        }
       },
       async (ctx) => {
-        if (ctx.cols < 10)
+        if (!validSize(ctx.cols, 10)) {
           return {
             pass: false,
             observation: {
@@ -136,13 +174,20 @@ export const unicodeProbes: ProbeDefinition[] = [
               note: "Fixture needs at least 10 columns",
             },
           }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("A\tB")
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No cursor response" }
-        return {
-          pass: pos.col === 10,
-          note: pos.col === 10 ? undefined : `cursor at col ${pos.col}, expected 10 (A + tab to 9 + B)`,
+        }
+        try {
+          ctx.write("\x1b[3g\x1b[1;9H\x1bH\x1b[1;1H\x1b[2K")
+          ctx.write("A\tB")
+          const pos = await ctx.queryCursorPosition()
+          if (!pos) return { pass: false, note: "No cursor response" }
+          return {
+            pass: pos.col === 10,
+            note: pos.col === 10 ? undefined : `cursor at col ${pos.col}, expected 10 (A + tab to 9 + B)`,
+          }
+        } finally {
+          let restore = "\x1b[3g"
+          for (let col = 9; col <= ctx.cols; col += 8) restore += `\x1b[1;${col}H\x1bH`
+          ctx.write(restore + "\x1b[1;1H")
         }
       },
     ),

@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { cursorProbe, parserStateResult, probe } from "./helpers.ts"
 
 function headlessPosition(ctx: TermlessContext, row: number, col: number): ProbeResult {
@@ -6,17 +6,116 @@ function headlessPosition(ctx: TermlessContext, row: number, col: number): Probe
   return parserStateResult(cursor.y === row && cursor.x === col, `cursor row=${row}, col=${col} (0-based)`, cursor)
 }
 
-function reportedPosition(position: { row: number; col: number } | null, row: number, col: number): ProbeResult {
-  if (!position) {
-    return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+function headlessSavedCursor(
+  ctx: TermlessContext,
+  initial: { row: number; col: number },
+  displaced: { row: number; col: number },
+  save: string,
+  restore: string,
+): ProbeResult {
+  ctx.feed(`\x1b[${initial.row};${initial.col}H`)
+  const setup = ctx.getCursor()
+  if (setup.y !== initial.row - 1 || setup.x !== initial.col - 1) {
+    return {
+      pass: false,
+      response: JSON.stringify({ setup }),
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "parser-state",
+        note: "Save fixture initial CUP was not measured at its target",
+      },
+    }
   }
-  const response = JSON.stringify(position)
-  const pass = position.row === row && position.col === col
-  return {
-    pass,
-    response,
-    observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
-    assertions: [{ kind: pass ? "positive" : "negative", expected: `row ${row}, col ${col}`, observed: response }],
+  ctx.feed(save)
+  ctx.feed(`\x1b[${displaced.row};${displaced.col}H`)
+  const displacedPosition = ctx.getCursor()
+  if (displacedPosition.y !== displaced.row - 1 || displacedPosition.x !== displaced.col - 1) {
+    ctx.feed(restore)
+    return {
+      pass: false,
+      response: JSON.stringify({ setup, displaced: displacedPosition }),
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "parser-state",
+        note: "Save fixture displacement was not measured at its target",
+      },
+    }
+  }
+  ctx.feed(restore)
+  const final = ctx.getCursor()
+  return parserStateResult(
+    final.y === initial.row - 1 && final.x === initial.col - 1,
+    `saved cursor returns to row ${initial.row - 1}, col ${initial.col - 1}`,
+    { setup, displaced: displacedPosition, final },
+  )
+}
+
+async function appSavedCursor(
+  ctx: TermContext,
+  initial: { row: number; col: number },
+  displaced: { row: number; col: number },
+  save: string,
+  restore: string,
+): Promise<ProbeResult> {
+  ctx.write(`\x1b[${initial.row};${initial.col}H`)
+  const setup = await ctx.queryCursorPosition()
+  if (!setup || setup.row !== initial.row || setup.col !== initial.col) {
+    return {
+      pass: false,
+      response: JSON.stringify({ setup }),
+      observation: {
+        outcome: "inconclusive",
+        reason: setup ? "insufficient-evidence" : "no-response",
+        evidence: "query",
+        note: "Save fixture initial CUP was not measured at its target",
+      },
+    }
+  }
+  ctx.write(save)
+  let restored = false
+  try {
+    ctx.write(`\x1b[${displaced.row};${displaced.col}H`)
+    const displacedPosition = await ctx.queryCursorPosition()
+    if (!displacedPosition || displacedPosition.row !== displaced.row || displacedPosition.col !== displaced.col) {
+      return {
+        pass: false,
+        response: JSON.stringify({ setup, displaced: displacedPosition }),
+        observation: {
+          outcome: "inconclusive",
+          reason: displacedPosition ? "insufficient-evidence" : "no-response",
+          evidence: "query",
+          note: "Save fixture displacement was not measured at its target",
+        },
+      }
+    }
+    ctx.write(restore)
+    restored = true
+    const final = await ctx.queryCursorPosition()
+    const response = JSON.stringify({ setup, displaced: displacedPosition, final })
+    if (!final) {
+      return {
+        pass: false,
+        response,
+        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+      }
+    }
+    const pass = final.row === initial.row && final.col === initial.col
+    return {
+      pass,
+      response,
+      observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+      assertions: [
+        {
+          kind: pass ? "positive" : "negative",
+          expected: `saved cursor returns to ${initial.row};${initial.col} after measured displacement`,
+          observed: response,
+        },
+      ],
+    }
+  } finally {
+    if (!restored) ctx.write(restore)
   }
 }
 
@@ -77,124 +176,158 @@ export const cursorProbes: ProbeDefinition[] = [
   ),
 
   // CHA — cursor horizontal absolute
-  probe(
-    "cursor.horizontal-absolute",
-    (ctx) => {
-      ctx.feed("ABCDE\x1b[3G")
-      return headlessPosition(ctx, 0, 2)
-    },
-    async (ctx) => {
-      ctx.write("\x1b[3;1H") // move to row 3
-      ctx.write("\x1b[15G") // CHA col 15
-      const pos = await ctx.queryCursorPosition()
-      return reportedPosition(pos, 3, 15)
-    },
-  ),
+  cursorProbe("cursor.horizontal-absolute", "\x1b[3;1H", "\x1b[15G", { row: 2, col: 14 }, { row: 2, col: 0 }),
 
   // CNL — cursor next line
-  probe(
-    "cursor.next-line",
-    (ctx) => {
-      ctx.feed("ABC\x1b[2E")
-      return headlessPosition(ctx, 2, 0)
-    },
-    async (ctx) => {
-      ctx.write("\x1b[3;5H") // move to row 3, col 5
-      ctx.write("\x1b[E") // CNL — next line
-      const pos = await ctx.queryCursorPosition()
-      return reportedPosition(pos, 4, 1)
-    },
-  ),
+  cursorProbe("cursor.next-line", "\x1b[3;5H", "\x1b[E", { row: 3, col: 0 }, { row: 2, col: 4 }),
 
   // DSR 6 — cursor position report
-  probe(
-    "cursor.position-report",
-    (ctx) => {
-      ctx.feed("\x1b[3;5H")
-      const response = ctx.feedCapture("\x1b[6n")
-      if (!response) {
-        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-      }
-      const match = response.startsWith("\x1b[") ? /^([1-9]\d*);([1-9]\d*)R$/.exec(response.slice(2)) : null
-      const row = Number(match?.[1])
-      const col = Number(match?.[2])
-      if (!match || !Number.isSafeInteger(row) || !Number.isSafeInteger(col)) {
+  {
+    ...probe(
+      "cursor.position-report",
+      (ctx) => {
+        ctx.feed("\x1b[3;5H")
+        const response = ctx.feedCapture("\x1b[6n")
+        if (!response) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        const match = response.startsWith("\x1b[") ? /^([1-9]\d*);([1-9]\d*)R$/.exec(response.slice(2)) : null
+        const row = Number(match?.[1])
+        const col = Number(match?.[2])
+        if (!match || !Number.isSafeInteger(row) || !Number.isSafeInteger(col)) {
+          return {
+            pass: false,
+            response,
+            observation: { outcome: "inconclusive", reason: "invalid-reply", evidence: "query" },
+          }
+        }
+        const setup = ctx.getCursor()
+        const measured = JSON.stringify({ setup, report: response })
+        if (setup.y !== 2 || setup.x !== 4) {
+          return {
+            pass: false,
+            response: measured,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "DSR setup CUP was not independently measured at 3;5",
+            },
+          }
+        }
+        const pass = row === 3 && col === 5
+        return {
+          pass,
+          response: measured,
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "ESC[3;5R after independently measured CUP 3;5",
+              observed: measured,
+            },
+          ],
+        }
+      },
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "cursor.position-report fixture needs at least 3x5 measured cells",
+            },
+          }
+        }
+        ctx.write("\x1b[3;5H") // Move to row 3, col 5
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
         return {
           pass: false,
-          response,
-          observation: { outcome: "inconclusive", reason: "invalid-reply", evidence: "query" },
+          response: JSON.stringify({ report: pos }),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: "CPR alone cannot independently qualify its own CUP setup",
+          },
         }
-      }
-      const pass = row === 3 && col === 5
-      return {
-        pass,
-        response,
-        observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
-        assertions: [{ kind: pass ? "positive" : "negative", expected: "ESC[3;5R", observed: response }],
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[3;5H") // Move to row 3, col 5
-      const pos = await ctx.queryCursorPosition()
-      return reportedPosition(pos, 3, 5)
-    },
-  ),
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // CSI s / CSI u — ANSI save/restore cursor (distinct from DECSC/DECRC)
-  probe(
-    "cursor.ansi-save",
-    (ctx) => {
-      ctx.feed("\x1b[3;5H") // position at row 3, col 5 (1-based) → termless 0-based: y=2, x=4
-      ctx.feed("\x1b[s") // ANSI save (CSI s)
-      ctx.feed("\x1b[10;15H") // move elsewhere
-      ctx.feed("\x1b[u") // ANSI restore (CSI u)
-      return headlessPosition(ctx, 2, 4)
-    },
-    async (ctx) => {
-      ctx.write("\x1b[3;5H") // row 3, col 5
-      ctx.write("\x1b[s") // CSI s — save
-      ctx.write("\x1b[10;15H") // move
-      ctx.write("\x1b[u") // CSI u — restore
-      const pos = await ctx.queryCursorPosition()
-      return reportedPosition(pos, 3, 5)
-    },
-  ),
+  {
+    ...probe(
+      "cursor.ansi-save",
+      (ctx) => headlessSavedCursor(ctx, { row: 3, col: 5 }, { row: 10, col: 15 }, "\x1b[s", "\x1b[u"),
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 10 || ctx.cols < 15) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "cursor.ansi-save fixture needs at least 10x15 measured cells",
+            },
+          }
+        }
+        return appSavedCursor(ctx, { row: 3, col: 5 }, { row: 10, col: 15 }, "\x1b[s", "\x1b[u")
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
-  probe(
-    "cursor.ansi-restore",
-    (ctx) => {
-      ctx.feed("\x1b[4;6H") // position at row 4, col 6 (1-based) → termless 0-based: y=3, x=5
-      ctx.feed("\x1b[s") // ANSI save
-      ctx.feed("\x1b[12;18H") // move elsewhere
-      ctx.feed("\x1b[u") // ANSI restore
-      return headlessPosition(ctx, 3, 5)
-    },
-    async (ctx) => {
-      ctx.write("\x1b[4;6H") // row 4, col 6
-      ctx.write("\x1b[s") // save
-      ctx.write("\x1b[12;18H") // move
-      ctx.write("\x1b[u") // CSI u — restore
-      const pos = await ctx.queryCursorPosition()
-      return reportedPosition(pos, 4, 6)
-    },
-  ),
+  {
+    ...probe(
+      "cursor.ansi-restore",
+      (ctx) => headlessSavedCursor(ctx, { row: 4, col: 6 }, { row: 12, col: 18 }, "\x1b[s", "\x1b[u"),
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 12 || ctx.cols < 18) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "cursor.ansi-restore fixture needs at least 12x18 measured cells",
+            },
+          }
+        }
+        return appSavedCursor(ctx, { row: 4, col: 6 }, { row: 12, col: 18 }, "\x1b[s", "\x1b[u")
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // DECSC/DECRC — cursor save/restore
-  probe(
-    "cursor.save-restore",
-    (ctx) => {
-      ctx.feed("AB\x1b7\x1b[5;5H\x1b8")
-      return headlessPosition(ctx, 0, 2)
-    },
-    async (ctx) => {
-      ctx.write("\x1b[3;5H") // Move to row 3, col 5
-      ctx.write("\x1b7") // DECSC — save cursor
-      ctx.write("\x1b[10;10H") // Move somewhere else
-      ctx.write("\x1b8") // DECRC — restore cursor
-      const pos = await ctx.queryCursorPosition()
-      return reportedPosition(pos, 3, 5)
-    },
-  ),
+  {
+    ...probe(
+      "cursor.save-restore",
+      (ctx) => headlessSavedCursor(ctx, { row: 3, col: 5 }, { row: 10, col: 10 }, "\x1b7", "\x1b8"),
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 10 || ctx.cols < 10) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "cursor.save-restore fixture needs at least 10x10 measured cells",
+            },
+          }
+        }
+        return appSavedCursor(ctx, { row: 3, col: 5 }, { row: 10, col: 10 }, "\x1b7", "\x1b8")
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // DECSET 45 — reverse wrap mode
   probe(
@@ -215,11 +348,14 @@ export const cursorProbes: ProbeDefinition[] = [
     },
     async (ctx) => {
       ctx.write("\x1b[?45h") // enable reverse wrap
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?45l") // disable
-      return {
-        pass: pos !== null,
-        note: pos ? undefined : "No cursor response after enabling reverse wrap",
+      try {
+        const pos = await ctx.queryCursorPosition()
+        return {
+          pass: pos !== null,
+          note: pos ? undefined : "No cursor response after enabling reverse wrap",
+        }
+      } finally {
+        ctx.write("\x1b[?45l") // disable reverse wrap after the query, including errors
       }
     },
   ),
@@ -229,17 +365,98 @@ export const cursorProbes: ProbeDefinition[] = [
     ...probe(
       "cursor.cup-boundaries",
       (ctx) => {
-        ctx.feed("\x1b[999;999H")
-        const cursor = ctx.getCursor()
-        // Should clamp to last row (23) and last col (79) for 80x24 terminal
+        const rows = ctx.getScrollback().screenLines
+        const cols = ctx.cols
+        if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 2 || cols < 2) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `CUP edge fixture needs an initialized grid of at least 2x2, measured ${rows}x${cols}`,
+            },
+          }
+        }
+        ctx.feed("\x1b[1;1H")
+        const origin = ctx.getCursor()
+        const originResponse = JSON.stringify({ rows, cols, origin })
+        if (origin.y !== 0 || origin.x !== 0) {
+          return {
+            pass: false,
+            response: originResponse,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "parser-state",
+              note: "CUP home control did not reach 0;0",
+            },
+          }
+        }
+        ctx.feed(`\x1b[${rows};${cols}H`)
+        const edge = ctx.getCursor()
+        const edgeResponse = JSON.stringify({ rows, cols, origin, edge })
+        if (edge.y !== rows - 1 || edge.x !== cols - 1) {
+          return {
+            pass: false,
+            response: edgeResponse,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "parser-state",
+              note: `CUP edge control did not reach ${rows - 1};${cols - 1}`,
+            },
+          }
+        }
+        ctx.feed("\x1b[1;1H")
+        const beforeTarget = ctx.getCursor()
+        const beforeResponse = JSON.stringify({ rows, cols, origin, edge, beforeTarget })
+        if (beforeTarget.y !== 0 || beforeTarget.x !== 0) {
+          return {
+            pass: false,
+            response: beforeResponse,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "parser-state",
+              note: "CUP reset control did not reach 0;0",
+            },
+          }
+        }
+        const targetRow = Math.max(999, rows + 1)
+        const targetCol = Math.max(999, cols + 1)
+        ctx.feed(`\x1b[${targetRow};${targetCol}H`)
+        const final = ctx.getCursor()
+        const response = JSON.stringify({ rows, cols, origin, edge, beforeTarget, final })
+        if (!Number.isSafeInteger(final.y) || !Number.isSafeInteger(final.x)) {
+          return {
+            pass: false,
+            response,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "parser-state",
+              note: "CUP target cursor readback is invalid",
+            },
+          }
+        }
+        const pass = final.y === rows - 1 && final.x === cols - 1
         return {
-          pass: cursor.y === 23 && cursor.x === 79,
-          note: cursor.y === 23 && cursor.x === 79 ? undefined : `got ${cursor.y};${cursor.x}, expected 23;79`,
+          pass,
+          response,
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "parser-state" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: `CUP ${targetRow};${targetCol} clamps to measured ${rows - 1};${cols - 1} after qualified edge`,
+              observed: response,
+            },
+          ],
         }
       },
       async (ctx) => {
         const { rows, cols } = ctx
-        if (rows < 2 || cols < 2)
+        if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 2 || cols < 2) {
           return {
             pass: false,
             observation: {
@@ -249,11 +466,13 @@ export const cursorProbes: ProbeDefinition[] = [
               note: `CUP edge fixture needs at least 2x2, measured ${rows}x${cols}`,
             },
           }
+        }
         ctx.write("\x1b[1;1H")
         const origin = await ctx.queryCursorPosition()
-        if (!origin)
+        if (!origin) {
           return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        if (origin.row !== 1 || origin.col !== 1)
+        }
+        if (origin.row !== 1 || origin.col !== 1) {
           return {
             pass: false,
             response: JSON.stringify({ origin }),
@@ -264,15 +483,17 @@ export const cursorProbes: ProbeDefinition[] = [
               note: "CUP home control did not reach 1;1",
             },
           }
+        }
         ctx.write(`\x1b[${rows};${cols}H`)
         const edge = await ctx.queryCursorPosition()
-        if (!edge)
+        if (!edge) {
           return {
             pass: false,
             response: JSON.stringify({ origin, edge }),
             observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
           }
-        if (edge.row !== rows || edge.col !== cols)
+        }
+        if (edge.row !== rows || edge.col !== cols) {
           return {
             pass: false,
             response: JSON.stringify({ origin, edge }),
@@ -283,15 +504,17 @@ export const cursorProbes: ProbeDefinition[] = [
               note: `CUP edge control did not reach ${rows};${cols}`,
             },
           }
+        }
         ctx.write("\x1b[1;1H")
         const beforeTarget = await ctx.queryCursorPosition()
-        if (!beforeTarget)
+        if (!beforeTarget) {
           return {
             pass: false,
             response: JSON.stringify({ origin, edge, beforeTarget }),
             observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
           }
-        if (beforeTarget.row !== 1 || beforeTarget.col !== 1)
+        }
+        if (beforeTarget.row !== 1 || beforeTarget.col !== 1) {
           return {
             pass: false,
             response: JSON.stringify({ origin, edge, beforeTarget }),
@@ -302,17 +525,19 @@ export const cursorProbes: ProbeDefinition[] = [
               note: "CUP reset control did not reach 1;1",
             },
           }
+        }
         const targetRow = Math.max(999, rows + 1)
         const targetCol = Math.max(999, cols + 1)
         ctx.write(`\x1b[${targetRow};${targetCol}H`)
         const final = await ctx.queryCursorPosition()
         const response = JSON.stringify({ rows, cols, origin, edge, beforeTarget, final })
-        if (!final)
+        if (!final) {
           return {
             pass: false,
             response,
             observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
           }
+        }
         const pass = final.row === rows && final.col === cols
         return {
           pass,
@@ -332,148 +557,166 @@ export const cursorProbes: ProbeDefinition[] = [
   },
 
   // CUU past top of screen — cursor should stop at row 0
-  probe(
-    "cursor.cuu-past-top",
-    (ctx) => {
-      ctx.feed("\x1b[4;1H") // position at row 3 (1-based row 4)
-      ctx.feed("\x1b[999A") // CUU with huge count
-      return headlessPosition(ctx, 0, 0)
-    },
-    async (ctx) => {
-      ctx.write("\x1b[4;1H") // position at row 4
-      ctx.write("\x1b[999A") // CUU past top
-      const pos = await ctx.queryCursorPosition()
-      return reportedPosition(pos, 1, 1)
-    },
-  ),
+  cursorProbe("cursor.cuu-past-top", "\x1b[4;1H", "\x1b[999A", { row: 0, col: 0 }, { row: 3, col: 0 }),
 
   // CUD past bottom of screen — cursor should stop at last row
-  probe(
-    "cursor.cud-past-bottom",
-    (ctx) => {
-      ctx.feed("\x1b[1;1H") // position at row 0
-      ctx.feed("\x1b[999B") // CUD with huge count
-      const rows = ctx.getScrollback().screenLines
-      const cursor = ctx.getCursor()
-      return parserStateResult(
-        rows > 0 ? cursor.y === rows - 1 && cursor.x === 0 : null,
-        `cursor at last initialized row ${rows - 1}, col 0`,
-        { cursor, rows },
-        rows > 0 ? undefined : "Backend screen row count is unavailable",
-      )
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H") // position at row 1
-      ctx.write("\x1b[999B") // CUD past bottom
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) {
-        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-      }
-      return {
-        pass: false,
-        response: JSON.stringify(pos),
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "query",
-          note: "The app fixture did not measure its screen height, so the bottom row is unknown",
-        },
-      }
-    },
-  ),
-
-  // VPA — vertical position absolute
-  probe(
-    "cursor.vpa",
-    (ctx) => {
-      ctx.feed("\x1b[3;5H") // position at row 3, col 5 (1-based)
-      ctx.feed("\x1b[10d") // VPA row 10
-      return headlessPosition(ctx, 9, 4)
-    },
-    async (ctx) => {
-      ctx.write("\x1b[3;5H") // position at row 3, col 5
-      ctx.write("\x1b[10d") // VPA row 10
-      const pos = await ctx.queryCursorPosition()
-      return reportedPosition(pos, 10, 5)
-    },
-  ),
-
-  // CPL — cursor preceding line
-  probe(
-    "cursor.cpl",
-    (ctx) => {
-      ctx.feed("\x1b[6;10H") // position at row 6, col 10 (1-based)
-      ctx.feed("\x1b[2F") // CPL 2 — move up 2 lines, column to 0
-      return headlessPosition(ctx, 3, 0)
-    },
-    async (ctx) => {
-      ctx.write("\x1b[6;10H") // position at row 6, col 10
-      ctx.write("\x1b[2F") // CPL 2
-      const pos = await ctx.queryCursorPosition()
-      return reportedPosition(pos, 4, 1)
-    },
-  ),
-
-  // HPA — horizontal position absolute
-  probe(
-    "cursor.hpa",
-    (ctx) => {
-      ctx.feed("ABCDEFGH\x1b[5`") // HPA col 5
-      return headlessPosition(ctx, 0, 4)
-    },
-    async (ctx) => {
-      ctx.write("\x1b[3;1H") // move to row 3
-      ctx.write("\x1b[15`") // HPA col 15
-      const pos = await ctx.queryCursorPosition()
-      return reportedPosition(pos, 3, 15)
-    },
-  ),
-
-  // CUP with DECSTBM + DECOM — physical cursor is margin-relative, but CPR reports relative coordinates.
-  // DEC VT510: https://vt100.net/mirror/mds-199909/cd3/term/vt510rmb.pdf (DECOM and DSR—CPR)
-  probe(
-    "cursor.cup-scroll-region",
-    (ctx) => {
-      try {
-        ctx.feed("\x1b[5;15r") // set scroll region rows 5-15
-        ctx.feed("\x1b[?6h") // enable DECOM (origin mode)
-        ctx.feed("\x1b[1;1H") // CUP 1;1 — should go to scroll region top (row 4, 0-based)
-        return headlessPosition(ctx, 4, 0)
-      } finally {
-        try {
-          ctx.feed("\x1b[?6l") // disable DECOM
-        } finally {
-          ctx.feed("\x1b[r") // reset scroll region
-        }
-      }
-    },
-    async (ctx) => {
-      try {
-        ctx.write("\x1b[5;15r") // set scroll region rows 5-15
-        ctx.write("\x1b[?6h") // enable DECOM
-        ctx.write("\x1b[1;1H") // CUP 1;1 — relative to scroll region
-        const pos = await ctx.queryCursorPosition()
-        const result = reportedPosition(pos, 1, 1)
-        if (result.observation?.outcome === "supported") {
+  {
+    ...probe(
+      "cursor.cud-past-bottom",
+      (ctx) => {
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(rows) || rows < 1) {
           return {
             pass: false,
-            response: result.response,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "Initialized screen row count is unavailable",
+            },
+          }
+        }
+        ctx.feed("\x1b[1;1H") // position at row 0
+        const origin = ctx.getCursor()
+        if (origin.y !== 0 || origin.x !== 0) {
+          return {
+            pass: false,
+            response: JSON.stringify({ rows, origin }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "parser-state",
+              note: "CUD home control did not reach 0;0",
+            },
+          }
+        }
+        const target = Math.max(999, rows + 1)
+        ctx.feed(`\x1b[${target}B`)
+        const final = ctx.getCursor()
+        return parserStateResult(
+          Number.isSafeInteger(final.y) && Number.isSafeInteger(final.x) ? final.y === rows - 1 && final.x === 0 : null,
+          `CUD ${target} clamps to last initialized row ${rows - 1}, col 0 after qualified home`,
+          { rows, origin, final },
+          "CUD target cursor readback is invalid",
+        )
+      },
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 1) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "cursor.cud-past-bottom fixture needs at least 2x1 measured cells",
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H") // position at row 1
+        const origin = await ctx.queryCursorPosition()
+        if (!origin) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        if (origin.row !== 1 || origin.col !== 1) {
+          return {
+            pass: false,
+            response: JSON.stringify({ origin }),
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "query",
-              note: "Relative CPR 1;1 also occurs if DECOM and margins are ignored; physical row was not observed",
+              note: "CUD home control did not reach 1;1",
             },
           }
         }
-        return result
-      } finally {
-        try {
-          ctx.write("\x1b[?6l") // disable DECOM
-        } finally {
-          ctx.write("\x1b[r") // reset scroll region
+        const target = Math.max(999, ctx.rows + 1)
+        ctx.write(`\x1b[${target}B`) // move past the measured bottom
+        const final = await ctx.queryCursorPosition()
+        if (!final) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
         }
-      }
-    },
-  ),
+        return {
+          pass: false,
+          response: JSON.stringify({ rows: ctx.rows, origin, final, target }),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: "CUD home and final CPR were recorded; this callback does not independently qualify bottom behavior",
+          },
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
+
+  // VPA — vertical position absolute
+  cursorProbe("cursor.vpa", "\x1b[3;5H", "\x1b[10d", { row: 9, col: 4 }, { row: 2, col: 4 }),
+
+  // CPL — cursor preceding line
+  cursorProbe("cursor.cpl", "\x1b[6;10H", "\x1b[2F", { row: 3, col: 0 }, { row: 5, col: 9 }),
+
+  // HPA — horizontal position absolute
+  cursorProbe("cursor.hpa", "\x1b[3;1H", "\x1b[15`", { row: 2, col: 14 }, { row: 2, col: 0 }),
+
+  // CUP with DECSTBM + DECOM — physical cursor is margin-relative, but CPR reports relative coordinates.
+  // DEC VT510: https://vt100.net/mirror/mds-199909/cd3/term/vt510rmb.pdf (DECOM and DSR—CPR)
+  {
+    ...probe(
+      "cursor.cup-scroll-region",
+      (ctx) => {
+        try {
+          ctx.feed("\x1b[5;15r") // set scroll region rows 5-15
+          ctx.feed("\x1b[?6h") // enable DECOM (origin mode)
+          ctx.feed("\x1b[1;1H") // CUP 1;1 — should go to scroll region top (row 4, 0-based)
+          return headlessPosition(ctx, 4, 0)
+        } finally {
+          try {
+            ctx.feed("\x1b[?6l") // disable DECOM
+          } finally {
+            ctx.feed("\x1b[r") // reset scroll region
+          }
+        }
+      },
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 15 || ctx.cols < 1) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "cursor.cup-scroll-region fixture needs at least 15x1 measured cells",
+            },
+          }
+        }
+        try {
+          ctx.write("\x1b[5;15r") // set scroll region rows 5-15
+          ctx.write("\x1b[?6h") // enable DECOM
+          ctx.write("\x1b[1;1H") // CUP 1;1 — relative to scroll region
+          const pos = await ctx.queryCursorPosition()
+          if (!pos) {
+            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          }
+          return {
+            pass: false,
+            response: JSON.stringify({ report: pos }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "Relative CPR does not prove the physical row or independently qualify DECOM and margins",
+            },
+          }
+        } finally {
+          try {
+            ctx.write("\x1b[?6l") // disable DECOM
+          } finally {
+            ctx.write("\x1b[r") // reset scroll region
+          }
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 ]

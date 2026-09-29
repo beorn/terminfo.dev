@@ -11,10 +11,10 @@ import type { TermContext, TermlessContext } from "./types.ts"
 const ids = ["erase.line.right", "erase.line.left", "erase.line.all", "erase.character"] as const
 const screenIds = ["erase.screen.below", "erase.screen.above", "erase.screen.all"] as const
 
-function byId(id: (typeof ids)[number] | (typeof screenIds)[number]) {
+function byId(id: string) {
   const probe = eraseProbes.find((item) => item.id === id)
   if (!probe?.termless || !probe.term) throw new Error(`missing erase callbacks for ${id}`)
-  return probe
+  return { ...probe, term: probe.term, termless: probe.termless }
 }
 
 type ScreenRows = readonly [string, string, string]
@@ -131,6 +131,81 @@ function app(position: { row: number; col: number } | null): TermContext {
     rows: 24,
   }
 }
+
+// Existing cell assertions exercise full-size fixtures; they cannot catch app
+// writes that wrap or clamp before an undersized fixture has been declined.
+test.each([
+  ["erase.line.right", 1, 6],
+  ["erase.line.left", 1, 6],
+  ["erase.line.all", 1, 6],
+  ["erase.screen.below", 5, 5],
+  ["erase.screen.above", 5, 5],
+  ["erase.screen.all", 5, 5],
+  ["erase.screen.scrollback", 5, 5],
+  ["erase.character", 1, 6],
+  ["erase.selective", 1, 6],
+  ["erase.el-with-attrs", 1, 6],
+  ["erase.ed-scroll-region", 10, 10],
+] as const)("%s declines undersized app fixtures before any terminal I/O", async (id, rows, cols) => {
+  const probe = byId(id)
+  for (const [measuredRows, measuredCols] of [
+    [rows - 1, cols],
+    [rows, cols - 1],
+  ]) {
+    const io: string[] = []
+    const result = await probe.term({
+      ...app({ row: 1, col: 1 }),
+      rows: measuredRows!,
+      cols: measuredCols!,
+      write: (sequence) => io.push(sequence),
+      queryCursorPosition: async () => {
+        io.push("CPR")
+        return { row: 1, col: 1 }
+      },
+    })
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(io).toEqual([])
+  }
+  expect(probe.termNeedsGeometry).toBe(true)
+  const writes: string[] = []
+  const result = await probe.term({
+    ...app({ row: 1, col: 1 }),
+    rows,
+    cols,
+    write: (sequence) => writes.push(sequence),
+  })
+  expect(writes.length).toBeGreaterThan(0)
+  expect(result.observation?.evidence).not.toBe("none")
+  expect(result.observation?.outcome).not.toBe("supported")
+})
+
+test.each([
+  ["erase.el-with-attrs", "\x1b[42m", "\x1b[0m"],
+  ["erase.ed-scroll-region", "\x1b[3;10r", "\x1b[r"],
+] as const)("%s restores its changed fixture after a write error", async (id, change, restore) => {
+  const writes: string[] = []
+  let changed = false
+  let failed = false
+  const failure = new Error("fixture write failed")
+  await expect(
+    byId(id).term({
+      ...app({ row: 1, col: 1 }),
+      write(sequence) {
+        writes.push(sequence)
+        if (changed && !failed) {
+          failed = true
+          throw failure
+        }
+        if (sequence === change) changed = true
+      },
+    }),
+  ).rejects.toBe(failure)
+  expect(writes.at(-1)).toBe(restore)
+})
 
 test.each([
   ["erase.line.right", "AB   ", "A    ", "  CDE"],

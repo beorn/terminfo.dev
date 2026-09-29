@@ -158,200 +158,360 @@ function eraseScreenResult(
 }
 
 export const eraseProbes: ProbeDefinition[] = [
-  probe(
-    "erase.line.right",
-    (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[K", ["A", "B", "blank", "blank", "blank"], false, 2),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K") // Clear line
-      ctx.write("ABCDE")
-      ctx.write("\x1b[1;3H") // Move to col 3
-      ctx.write("\x1b[0K") // EL 0 — erase to right
-      const pos = await ctx.queryCursorPosition()
-      return appErasePositionResult(pos)
-    },
-  ),
+  {
+    ...probe(
+      "erase.line.right",
+      (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[K", ["A", "B", "blank", "blank", "blank"], false, 2),
+      async (ctx) => {
+        if (ctx.rows < 1 || ctx.cols < 6) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H\x1b[2K") // Clear line
+        ctx.write("ABCDE")
+        ctx.write("\x1b[1;3H") // Move to col 3
+        ctx.write("\x1b[0K") // EL 0 — erase to right
+        const pos = await ctx.queryCursorPosition()
+        return appErasePositionResult(pos)
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
-  probe(
-    "erase.line.left",
-    (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[1K", ["blank", "blank", "blank", "D", "E"], false, 2),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("ABCDE")
-      ctx.write("\x1b[1;3H") // Move to col 3
-      ctx.write("\x1b[1K") // EL 1 — erase to left
-      const pos = await ctx.queryCursorPosition()
-      return appErasePositionResult(pos)
-    },
-  ),
+  {
+    ...probe(
+      "erase.line.left",
+      (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[1K", ["blank", "blank", "blank", "D", "E"], false, 2),
+      async (ctx) => {
+        if (ctx.rows < 1 || ctx.cols < 6) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("ABCDE")
+        ctx.write("\x1b[1;3H") // Move to col 3
+        ctx.write("\x1b[1K") // EL 1 — erase to left
+        const pos = await ctx.queryCursorPosition()
+        return appErasePositionResult(pos)
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
-  probe(
-    "erase.line.all",
-    (ctx) =>
-      eraseRowResult(ctx, "ABCDE\r\nKEEP!\x1b[1;3H", "\x1b[2K", ["blank", "blank", "blank", "blank", "blank"], true),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("ABCDE")
-      ctx.write("\x1b[1;3H") // Move to col 3
-      ctx.write("\x1b[2K") // EL 2 — erase entire line
-      const pos = await ctx.queryCursorPosition()
-      return appErasePositionResult(pos)
-    },
-  ),
+  {
+    ...probe(
+      "erase.line.all",
+      (ctx) =>
+        eraseRowResult(ctx, "ABCDE\r\nKEEP!\x1b[1;3H", "\x1b[2K", ["blank", "blank", "blank", "blank", "blank"], true),
+      async (ctx) => {
+        if (ctx.rows < 1 || ctx.cols < 6) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("ABCDE")
+        ctx.write("\x1b[1;3H") // Move to col 3
+        ctx.write("\x1b[2K") // EL 2 — erase entire line
+        const pos = await ctx.queryCursorPosition()
+        return appErasePositionResult(pos)
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
-  probe(
-    "erase.screen.below",
-    (ctx) => eraseScreenResult(ctx, "\x1b[0J", ["AAAAA", "BB   ", "     "]),
-    async (ctx) => {
-      ctx.write("\x1b[5;5H") // Move to known position
-      ctx.write("\x1b[0J") // ED 0 — erase below
-      const pos = await ctx.queryCursorPosition()
-      return appErasePositionResult(pos)
-    },
-  ),
+  {
+    ...probe(
+      "erase.screen.below",
+      (ctx) => eraseScreenResult(ctx, "\x1b[0J", ["AAAAA", "BB   ", "     "]),
+      async (ctx) => {
+        if (ctx.rows < 5 || ctx.cols < 5) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[5;5H") // Move to known position
+        ctx.write("\x1b[0J") // ED 0 — erase below
+        const pos = await ctx.queryCursorPosition()
+        return appErasePositionResult(pos)
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
-  probe(
-    "erase.screen.above",
-    (ctx) => eraseScreenResult(ctx, "\x1b[1J", ["     ", "   BB", "CCCCC"]),
-    async (ctx) => {
-      ctx.write("\x1b[5;5H") // Move to known position
-      ctx.write("\x1b[1J") // ED 1 — erase above
-      const pos = await ctx.queryCursorPosition()
-      return appErasePositionResult(pos)
-    },
-  ),
+  {
+    ...probe(
+      "erase.screen.above",
+      (ctx) => eraseScreenResult(ctx, "\x1b[1J", ["     ", "   BB", "CCCCC"]),
+      async (ctx) => {
+        if (ctx.rows < 5 || ctx.cols < 5) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[5;5H") // Move to known position
+        ctx.write("\x1b[1J") // ED 1 — erase above
+        const pos = await ctx.queryCursorPosition()
+        return appErasePositionResult(pos)
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
-  probe(
-    "erase.screen.all",
-    (ctx) => eraseScreenResult(ctx, "\x1b[2J", ["     ", "     ", "     "]),
-    async (ctx) => {
-      ctx.write("\x1b[5;5H") // Move to known position
-      ctx.write("\x1b[2J") // ED 2 — erase entire screen
-      const pos = await ctx.queryCursorPosition()
-      return appErasePositionResult(pos)
-    },
-  ),
+  {
+    ...probe(
+      "erase.screen.all",
+      (ctx) => eraseScreenResult(ctx, "\x1b[2J", ["     ", "     ", "     "]),
+      async (ctx) => {
+        if (ctx.rows < 5 || ctx.cols < 5) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[5;5H") // Move to known position
+        ctx.write("\x1b[2J") // ED 2 — erase entire screen
+        const pos = await ctx.queryCursorPosition()
+        return appErasePositionResult(pos)
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
-  probe(
-    "erase.screen.scrollback",
-    (ctx) => {
-      for (let i = 0; i < 30; i++) ctx.feed(`line ${i}\r\n`)
-      ctx.feed("\x1b[3J")
-      const scroll = ctx.getScrollback()
-      return { pass: scroll.totalLines <= scroll.screenLines }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[5;5H") // Move to known position
-      ctx.write("\x1b[3J") // ED 3 — erase scrollback
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after ED 3" }
-      return {
-        pass: pos.row === 5 && pos.col === 5,
-        note: pos.row === 5 && pos.col === 5 ? undefined : `cursor at ${pos.row};${pos.col}, expected 5;5`,
-      }
-    },
-  ),
+  {
+    ...probe(
+      "erase.screen.scrollback",
+      (ctx) => {
+        for (let i = 0; i < 30; i++) ctx.feed(`line ${i}\r\n`)
+        ctx.feed("\x1b[3J")
+        const scroll = ctx.getScrollback()
+        return { pass: scroll.totalLines <= scroll.screenLines }
+      },
+      async (ctx) => {
+        if (ctx.rows < 5 || ctx.cols < 5) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[5;5H") // Move to known position
+        ctx.write("\x1b[3J") // ED 3 — erase scrollback
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No cursor response after ED 3" }
+        return {
+          pass: pos.row === 5 && pos.col === 5,
+          note: pos.row === 5 && pos.col === 5 ? undefined : `cursor at ${pos.row};${pos.col}, expected 5;5`,
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
-  probe(
-    "erase.character",
-    (ctx) => eraseRowResult(ctx, "ABCDE\x1b[1G", "\x1b[3X", ["blank", "blank", "blank", "D", "E"], false, 0),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("ABCD")
-      ctx.write("\x1b[1;2H") // Move to col 2
-      ctx.write("\x1b[2X") // ECH 2
-      const pos = await ctx.queryCursorPosition()
-      return appErasePositionResult(pos)
-    },
-  ),
+  {
+    ...probe(
+      "erase.character",
+      (ctx) => eraseRowResult(ctx, "ABCDE\x1b[1G", "\x1b[3X", ["blank", "blank", "blank", "D", "E"], false, 0),
+      async (ctx) => {
+        if (ctx.rows < 1 || ctx.cols < 6) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("ABCD")
+        ctx.write("\x1b[1;2H") // Move to col 2
+        ctx.write("\x1b[2X") // ECH 2
+        const pos = await ctx.queryCursorPosition()
+        return appErasePositionResult(pos)
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
-  probe(
-    "erase.selective",
-    (ctx) => {
-      ctx.feed("ABCDE")
-      ctx.feed("\x1b[H") // back to top-left
-      ctx.feed("\x1b[?2J") // DECSED — selective erase display
-      const cell = ctx.getCell(0, 0)
-      return {
-        pass: isBlank(cell.char),
-        note: isBlank(cell.char) ? undefined : `cell='${cell.char}', expected empty`,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("ABCDE")
-      ctx.write("\x1b[?2J") // DECSED
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after DECSED" }
-      return { pass: true }
-    },
-  ),
+  {
+    ...probe(
+      "erase.selective",
+      (ctx) => {
+        ctx.feed("ABCDE")
+        ctx.feed("\x1b[H") // back to top-left
+        ctx.feed("\x1b[?2J") // DECSED — selective erase display
+        const cell = ctx.getCell(0, 0)
+        return {
+          pass: isBlank(cell.char),
+          note: isBlank(cell.char) ? undefined : `cell='${cell.char}', expected empty`,
+        }
+      },
+      async (ctx) => {
+        if (ctx.rows < 1 || ctx.cols < 6) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("ABCDE")
+        ctx.write("\x1b[?2J") // DECSED
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No cursor response after DECSED" }
+        return { pass: true }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // EL with background color — erased cells should inherit current bg
-  probe(
-    "erase.el-with-attrs",
-    (ctx) => {
-      ctx.feed("\x1b[42m") // set green background
-      ctx.feed("XXXXX")
-      ctx.feed("\x1b[1G") // move to col 0
-      ctx.feed("\x1b[K") // EL 0 — erase to right
-      const cell = ctx.getCell(0, 0)
-      // Erased cells should have the green background color
-      const hasBg = cell.bg !== null && cell.bg.g > 100
-      ctx.feed("\x1b[0m") // reset
-      return {
-        pass: hasBg,
-        note: hasBg ? undefined : `bg=${JSON.stringify(cell.bg)}, expected green`,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b[42m") // green bg
-      ctx.write("XXXXX")
-      ctx.write("\x1b[1;1H")
-      ctx.write("\x1b[K") // EL 0
-      ctx.write("\x1b[0m")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
-      }
-    },
-  ),
+  {
+    ...probe(
+      "erase.el-with-attrs",
+      (ctx) => {
+        ctx.feed("\x1b[42m") // set green background
+        ctx.feed("XXXXX")
+        ctx.feed("\x1b[1G") // move to col 0
+        ctx.feed("\x1b[K") // EL 0 — erase to right
+        const cell = ctx.getCell(0, 0)
+        // Erased cells should have the green background color
+        const hasBg = cell.bg !== null && cell.bg.g > 100
+        ctx.feed("\x1b[0m") // reset
+        return {
+          pass: hasBg,
+          note: hasBg ? undefined : `bg=${JSON.stringify(cell.bg)}, expected green`,
+        }
+      },
+      async (ctx) => {
+        if (ctx.rows < 1 || ctx.cols < 6) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H\x1b[2K")
+        try {
+          ctx.write("\x1b[42m") // green bg
+          ctx.write("XXXXX")
+          ctx.write("\x1b[1;1H")
+          ctx.write("\x1b[K") // EL 0
+          const pos = await ctx.queryCursorPosition()
+          if (!pos) return { pass: false, note: "No cursor response" }
+          return {
+            pass: pos.col === 1,
+            note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+          }
+        } finally {
+          ctx.write("\x1b[0m")
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // ED inside scroll region should not affect lines outside the region
-  probe(
-    "erase.ed-scroll-region",
-    (ctx) => {
-      // Write text on row 0 (outside future scroll region)
-      ctx.feed("KEEP_THIS\r\n")
-      // Write text on rows 1-5
-      for (let i = 1; i <= 5; i++) ctx.feed(`row${i}\r\n`)
-      // Set scroll region to rows 3-10 (1-based)
-      ctx.feed("\x1b[3;10r")
-      // Move cursor inside scroll region and erase below
-      ctx.feed("\x1b[3;1H")
-      ctx.feed("\x1b[J") // ED 0 — erase below
-      // Row 0 should still have "KEEP_THIS"
-      const cell = ctx.getCell(0, 0)
-      const pass = cell.char === "K"
-      ctx.feed("\x1b[r") // reset scroll region
-      return {
-        pass,
-        note: pass ? undefined : `row 0 char='${cell.char}', expected 'K'`,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[2J\x1b[H") // clear
-      ctx.write("KEEP_THIS\r\n")
-      for (let i = 1; i <= 5; i++) ctx.write(`row${i}\r\n`)
-      ctx.write("\x1b[3;10r") // scroll region rows 3-10
-      ctx.write("\x1b[3;1H") // inside region
-      ctx.write("\x1b[J") // ED 0
-      ctx.write("\x1b[r") // reset
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return { pass: true }
-    },
-  ),
+  {
+    ...probe(
+      "erase.ed-scroll-region",
+      (ctx) => {
+        // Write text on row 0 (outside future scroll region)
+        ctx.feed("KEEP_THIS\r\n")
+        // Write text on rows 1-5
+        for (let i = 1; i <= 5; i++) ctx.feed(`row${i}\r\n`)
+        // Set scroll region to rows 3-10 (1-based)
+        ctx.feed("\x1b[3;10r")
+        // Move cursor inside scroll region and erase below
+        ctx.feed("\x1b[3;1H")
+        ctx.feed("\x1b[J") // ED 0 — erase below
+        // Row 0 should still have "KEEP_THIS"
+        const cell = ctx.getCell(0, 0)
+        const pass = cell.char === "K"
+        ctx.feed("\x1b[r") // reset scroll region
+        return {
+          pass,
+          note: pass ? undefined : `row 0 char='${cell.char}', expected 'K'`,
+        }
+      },
+      async (ctx) => {
+        if (ctx.rows < 10 || ctx.cols < 10) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Erase fixture needs at least 10x10, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[2J\x1b[H") // clear
+        ctx.write("KEEP_THIS\r\n")
+        for (let i = 1; i <= 5; i++) ctx.write(`row${i}\r\n`)
+        try {
+          ctx.write("\x1b[3;10r") // scroll region rows 3-10
+          ctx.write("\x1b[3;1H") // inside region
+          ctx.write("\x1b[J") // ED 0
+          const pos = await ctx.queryCursorPosition()
+          if (!pos) return { pass: false, note: "No cursor response" }
+          return { pass: true }
+        } finally {
+          ctx.write("\x1b[r") // Restore the owned fixture to full-screen margins.
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 ]

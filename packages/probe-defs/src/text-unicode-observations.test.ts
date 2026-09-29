@@ -303,3 +303,123 @@ test("tab and Unicode size refusals record no feature measurement or writes", as
     expect(writes, id).toEqual([])
   }
 })
+
+test("remaining text fixtures decline a 1x1 grid before any write or width query", async () => {
+  for (const id of [
+    "text.basic",
+    "text.newline",
+    "text.tab",
+    "text.wide.emoji",
+    "text.wide.cjk",
+    "text.overwrite",
+    "text.cr",
+    "text.backspace",
+    "text.index",
+    "text.next-line",
+    "text.reverse-index-scroll",
+    "text.combining",
+    "text.wide.emoji-flags",
+    "text.wide.emoji-vs16",
+    "text.wide.emoji-zwj",
+  ]) {
+    const definition = textProbes.find((probe) => probe.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback ${id}`)
+    const writes: string[] = []
+    expect(definition.termNeedsGeometry, id).toBe(true)
+    const result = await definition.term(
+      app({
+        rows: 1,
+        cols: 1,
+        write: (sequence) => writes.push(sequence),
+        measureRenderedWidth: async () => {
+          throw new Error(`${id} measured width before size guard`)
+        },
+        queryCursorPosition: async () => {
+          throw new Error(`${id} queried before size guard`)
+        },
+      }),
+    )
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(writes, id).toEqual([])
+  }
+})
+
+test("headless wrap uses initialized 61 columns and declines a one-row grid", () => {
+  const textWrites: string[] = []
+  byId("text.wrap").termless(headless({ cols: 61, feed: (sequence) => textWrites.push(sequence) }))
+  expect(textWrites).toEqual(["X".repeat(62)])
+  const unicodeWrites: string[] = []
+  byId("unicode.wrap-boundary").termless(headless({ cols: 61, feed: (sequence) => unicodeWrites.push(sequence) }))
+  expect(unicodeWrites).toEqual(["A".repeat(60) + "中"])
+  const tooShort: string[] = []
+  const result = byId("text.wrap").termless(
+    headless({
+      cols: 61,
+      getScrollback: () => ({ viewportOffset: 0, totalLines: 1, screenLines: 1 }),
+      feed: (s) => tooShort.push(s),
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(tooShort).toEqual([])
+})
+
+test("tab fixtures and reverse-index region restore after a failed cursor query", async () => {
+  for (const id of ["text.tab", "unicode.tab-stops", "text.reverse-index-scroll"]) {
+    const writes: string[] = []
+    await expect(
+      byId(id).term(
+        app({
+          rows: 12,
+          cols: 61,
+          write: (sequence) => writes.push(sequence),
+          queryCursorPosition: async () => {
+            throw new Error("cursor transport failed")
+          },
+        }),
+      ),
+    ).rejects.toThrow("cursor transport failed")
+    if (id === "text.reverse-index-scroll") expect(writes.at(-1)).toBe("\x1b[r")
+    else {
+      expect(writes.join("")).toContain("\x1b[3g")
+      expect(writes.at(-1)).toContain("\x1b[1;57H\x1bH")
+    }
+  }
+})
+
+test("headless tab and reverse-index fixtures restore after parser inspection throws", () => {
+  for (const id of ["text.tab", "unicode.tab-stops", "text.reverse-index-scroll"]) {
+    const feeds: string[] = []
+    expect(() =>
+      byId(id).termless(
+        headless({
+          cols: 61,
+          feed: (sequence) => feeds.push(sequence),
+          getCell: () => {
+            throw new Error("parser inspection failed")
+          },
+        }),
+      ),
+    ).toThrow("parser inspection failed")
+    if (id === "text.reverse-index-scroll") expect(feeds.at(-1)).toBe("\x1b[r")
+    else expect(feeds.at(-1)).toContain("\x1b[1;57H\x1bH")
+  }
+})
+
+test("invalid headless geometry never feeds wrap or tab fixtures", () => {
+  for (const id of ["text.wrap", "text.tab", "unicode.wrap-boundary", "unicode.tab-stops"]) {
+    for (const cols of [Number.NaN, Number.POSITIVE_INFINITY, 61.5]) {
+      const feeds: string[] = []
+      const result = byId(id).termless(headless({ cols, feed: (sequence) => feeds.push(sequence) }))
+      expect(result.observation, `${id} cols=${cols}`).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+      })
+      expect(feeds).toEqual([])
+    }
+  }
+})
