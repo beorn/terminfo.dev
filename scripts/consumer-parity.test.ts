@@ -159,6 +159,7 @@ vi.mock("../docs/data/current-results.ts", () => ({
 }))
 
 import probesLoader from "../docs/data/probes.data.ts"
+import { loadProbes } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
 import comparePaths from "../docs/compare/[id].paths.ts"
 import baselinePaths from "../docs/baseline/[id].paths.ts"
@@ -167,6 +168,16 @@ import { generateApi } from "./generate-api.ts"
 import { generateAnalysis } from "./generate-analysis.ts"
 
 describe("selected-run consumer parity", () => {
+  it("ships current cells without global selection history while routes retain versions", () => {
+    const site = probesLoader.load()
+    expect(Object.hasOwn(site, "selected")).toBe(false)
+    expect(site.selectedByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
+
+    const server = loadProbes()
+    expect(server.selected.versions["mux:screen"]?.map((version) => version.target.version)).toEqual(["5.0", "4.9"])
+    expect(server.selected.history["mux:screen"]?.[0]?.runId).toBe(fixture.screen.runId)
+  })
+
   it("keeps raw evidence and unchecked collector notes out of generated site and API summaries", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-"))
     try {
@@ -322,7 +333,7 @@ describe("selected-run consumer parity", () => {
           { sha256: string; counts: { conclusive: number; supported: number; unsupported: number } }
         >
       }
-      expect(site.selected.current["app:kitty"]?.sha256).toBe(fixture.runSha256)
+      expect(site.selectedByBackend.kitty?.selected.sha256).toBe(fixture.runSha256)
       expect(site.stats.kitty).toMatchObject({ total: 2, yes: 1, no: 1 })
       expect(terminal?.params).toMatchObject({ generated: fixture.measuredAt, total: "2", yes: "1", no: "1" })
       expect(terminal?.params.runSha256).toBe(fixture.runSha256)

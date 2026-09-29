@@ -7,7 +7,7 @@
 import { readFileSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import probesLoader from "./probes.data"
+import { loadFullProbes } from "./probes.data"
 import type { ProbeData } from "./probes.data"
 import { generateAnalysis } from "../../scripts/generate-analysis.ts"
 
@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 let _cached: ProbeData | null = null
 
 export function loadProbes(): ProbeData {
-  if (!_cached) _cached = probesLoader.load()
+  if (!_cached) _cached = loadFullProbes()
   return _cached
 }
 

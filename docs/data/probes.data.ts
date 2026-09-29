@@ -171,96 +171,101 @@ function loadBackendMeta(): Record<string, BackendMeta> {
   return meta
 }
 
-declare const data: ProbeData
+declare const data: Omit<ProbeData, "selected">
 export { data }
 
-export default {
-  load(): ProbeData {
-    const { projection } = loadCurrentResults(contentDir)
-    const published = publicResults(projection, compatibilityTargets(projection, contentDir))
-    const byTarget = new Map(Object.entries(published.selectedByBackend))
-    const featureDescriptions = loadFeatureDescriptions()
-    const features: FeatureResult[] = Object.entries(featureDescriptions)
-      .filter(([id]) => !id.startsWith("$"))
-      .map(([id, meta]) => ({ id, name: meta.name || id, category: id.split(".")[0] ?? id, spec: meta.url }))
-      .sort((a, b) => a.id.localeCompare(b.id))
-    const categories: Record<string, FeatureResult[]> = {}
-    for (const feature of features) (categories[feature.category] ??= []).push(feature)
+export function loadFullProbes(): ProbeData {
+  const { projection } = loadCurrentResults(contentDir)
+  const published = publicResults(projection, compatibilityTargets(projection, contentDir))
+  const byTarget = new Map(Object.entries(published.selectedByBackend))
+  const featureDescriptions = loadFeatureDescriptions()
+  const features: FeatureResult[] = Object.entries(featureDescriptions)
+    .filter(([id]) => !id.startsWith("$"))
+    .map(([id, meta]) => ({ id, name: meta.name || id, category: id.split(".")[0] ?? id, spec: meta.url }))
+    .sort((a, b) => a.id.localeCompare(b.id))
+  const categories: Record<string, FeatureResult[]> = {}
+  for (const feature of features) (categories[feature.category] ??= []).push(feature)
 
-    const terminalPath = join(contentDir, "terminals.json")
-    const terminalContent = JSON.parse(readFileSync(terminalPath, "utf8")) as Record<string, BackendMeta>
-    const meta = loadBackendMeta()
-    for (const [id, terminal] of Object.entries(terminalContent)) {
-      meta[id] = { ...meta[id], ...terminal }
-    }
-    for (const [key, { selected }] of byTarget) {
-      const id = selected.target.id
-      if (key !== id) {
-        meta[key] = {
-          ...meta[id],
-          label: `${meta[id]?.label ?? id} (${selected.target.kind})`,
-          slug: key,
-        }
+  const terminalPath = join(contentDir, "terminals.json")
+  const terminalContent = JSON.parse(readFileSync(terminalPath, "utf8")) as Record<string, BackendMeta>
+  const meta = loadBackendMeta()
+  for (const [id, terminal] of Object.entries(terminalContent)) {
+    meta[id] = { ...meta[id], ...terminal }
+  }
+  for (const [key, { selected }] of byTarget) {
+    const id = selected.target.id
+    if (key !== id) {
+      meta[key] = {
+        ...meta[id],
+        label: `${meta[id]?.label ?? id} (${selected.target.kind})`,
+        slug: key,
       }
     }
-    const annotations = loadAnnotations()
-    const backends: BackendInfo[] = []
-    const results: ProbeData["results"] = {}
-    const notes: ProbeData["notes"] = {}
-    const stats: ProbeData["stats"] = {}
-    const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(byTarget)
-    for (const [key, { selected }] of byTarget) {
-      const { kind, os } = selected.target
-      if (results[key]) throw new Error(`Ambiguous published terminal ${key}: multiple selected targets`)
-      backends.push({
-        name: key,
-        version: selected.target.version,
-        engine: "",
-        type: kind,
-        ...(os && { platforms: [os] }),
-      })
-      results[key] = Object.fromEntries(
-        Object.entries(selected.v1).map(([feature, value]) => [feature, value ? "yes" : "no"]),
-      )
-      notes[key] = Object.fromEntries(
-        Object.entries(selected.cells).flatMap(([feature, cell]) =>
-          Object.hasOwn(selected.v1, feature) && cell.note ? [[feature, cell.note]] : [],
-        ),
-      )
-      const { conclusive, supported, unsupported } = selected.counts
-      stats[key] = {
-        total: conclusive,
-        yes: supported,
-        no: unsupported,
-        partial: 0,
-        pct: conclusive > 0 ? Math.round((supported / conclusive) * 100) : null,
-      }
+  }
+  const annotations = loadAnnotations()
+  const backends: BackendInfo[] = []
+  const results: ProbeData["results"] = {}
+  const notes: ProbeData["notes"] = {}
+  const stats: ProbeData["stats"] = {}
+  const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(byTarget)
+  for (const [key, { selected }] of byTarget) {
+    const { kind, os } = selected.target
+    if (results[key]) throw new Error(`Ambiguous published terminal ${key}: multiple selected targets`)
+    backends.push({
+      name: key,
+      version: selected.target.version,
+      engine: "",
+      type: kind,
+      ...(os && { platforms: [os] }),
+    })
+    results[key] = Object.fromEntries(
+      Object.entries(selected.v1).map(([feature, value]) => [feature, value ? "yes" : "no"]),
+    )
+    notes[key] = Object.fromEntries(
+      Object.entries(selected.cells).flatMap(([feature, cell]) =>
+        Object.hasOwn(selected.v1, feature) && cell.note ? [[feature, cell.note]] : [],
+      ),
+    )
+    const { conclusive, supported, unsupported } = selected.counts
+    stats[key] = {
+      total: conclusive,
+      yes: supported,
+      no: unsupported,
+      partial: 0,
+      pct: conclusive > 0 ? Math.round((supported / conclusive) * 100) : null,
     }
-    backends.sort((a, b) => (stats[b.name]?.yes ?? 0) - (stats[a.name]?.yes ?? 0) || a.name.localeCompare(b.name))
-    const generated =
-      Object.values(projection.current)
-        .map((v) => v.measuredAt)
-        .sort()
-        .at(-1) ?? ""
-    const result: ProbeData = {
-      backends,
-      features,
-      categories,
-      results,
-      notes,
-      stats,
-      meta,
-      annotations,
-      featureDescriptions,
-      baselines: {},
-      baselineStats: {},
-      categoryLabels: loadCategoryLabels(),
-      generated,
-      selected: published.projection,
-      selectedByBackend,
-    }
-    computeBaselines(result)
-    return result
+  }
+  backends.sort((a, b) => (stats[b.name]?.yes ?? 0) - (stats[a.name]?.yes ?? 0) || a.name.localeCompare(b.name))
+  const generated =
+    Object.values(projection.current)
+      .map((v) => v.measuredAt)
+      .sort()
+      .at(-1) ?? ""
+  const result: ProbeData = {
+    backends,
+    features,
+    categories,
+    results,
+    notes,
+    stats,
+    meta,
+    annotations,
+    featureDescriptions,
+    baselines: {},
+    baselineStats: {},
+    categoryLabels: loadCategoryLabels(),
+    generated,
+    selected: published.projection,
+    selectedByBackend,
+  }
+  computeBaselines(result)
+  return result
+}
+
+export default {
+  load(): Omit<ProbeData, "selected"> {
+    const { selected: _selected, ...client } = loadFullProbes()
+    return client
   },
 }
 
