@@ -16,61 +16,61 @@ next: false
 
 When a TUI application starts, it faces a fundamental question: what can this terminal do? Can it render truecolor? Does it support the Kitty keyboard protocol? Will OSC 8 hyperlinks work, or will they spew garbage? The application needs answers before it writes its first escape sequence, because sending an unsupported sequence can corrupt the display or confuse the user.
 
-There is no single reliable mechanism for answering these questions. The traditional approach — reading `$TERM` and looking up capabilities in the terminfo database — was designed for a world where terminals were physical hardware with fixed feature sets. In that world, knowing you had a VT100 told you everything you needed to know. Today, terminal emulators are software that gets updated monthly, adds features via configuration, and often supports capabilities that no database tracks.
+There is no single reliable mechanism for answering these questions. The traditional approach reads `$TERM` and looks up a terminal description in the terminfo database. That description remains useful, but it may not cover an implementation's extensions or changes in configuration, and it does not measure what happens on the current terminal path.
 
 The result is a patchwork of detection methods. Applications check environment variables, query the terminal with escape sequences, consult databases, and sometimes just guess. Each method has trade-offs between reliability, coverage, and speed. Most applications use several methods together, falling back from one to the next.
 
 ## $TERM
 
-The `$TERM` environment variable is the oldest and most widely used detection mechanism. The terminal emulator sets it before launching the shell, and it identifies the terminal type — in theory. Applications pass this value to the terminfo database to look up capabilities: does this terminal support 256 colors? Does it have an alternate screen? What sequence moves the cursor?
+The `$TERM` environment variable names the terminal description an application should use. Applications pass it to terminfo to look up capabilities such as color counts, alternate-screen support, and cursor-movement sequences. A multiplexer may set its own value for programs running inside it. [ncurses terminfo(5)](https://invisible-island.net/ncurses/man/terminfo.5.html)
 
-The problem is that `$TERM` tells you how the terminal wants to be treated, not what it actually is. Many terminals still default to `xterm-256color` — but not all. Kitty ships `xterm-kitty`, Alacritty uses `alacritty`, WezTerm uses `wezterm`, and Ghostty tried using `ghostty` during its beta period (then reverted to `xterm-ghostty` after too many applications broke because they string-match on "xterm" and reject anything else). The ncurses `tput` utility, Python's `curses` module, and countless shell scripts assume `$TERM` starts with "xterm" or is in a small list of known values — which is exactly why so many terminals still fall back to `xterm-256color`.
+The name selects a description; it need not identify the application drawing the window or verify every operation in that description. For example, Kitty documents its `xterm-kitty` entry and how to make that entry available on a remote host. If an entry is absent there, database-based programs cannot use it as intended. [Kitty FAQ](https://sw.kovidgoyal.net/kitty/faq/)
 
-So `$TERM` is a compatibility hint, not a capability oracle. It tells you the baseline the terminal is willing to be treated as — which says nothing about truecolor, nothing about Kitty keyboard protocol, nothing about synchronized output, nothing about hyperlinks. The variable that was designed to solve terminal detection has become part of the problem.
+So `$TERM` is a useful description selector, not an exhaustive capability test. Read the selected entry for what it declares, then use targeted queries or controlled checks when you need evidence about the current path.
 
-::: tip $TERM is a compatibility hint, not a capability oracle
-Many terminals default to `$TERM=xterm-256color`, but others ship their own values: Kitty uses `xterm-kitty`, Alacritty uses `alacritty`, WezTerm uses `wezterm`. Either way, `$TERM` tells you how the terminal wants to be treated — not what it actually supports. Terminals that do ship custom values run into a different problem: remote servers often don't have the matching terminfo entry installed, so SSH sessions break. The "just use your own TERM value" approach doesn't scale when every server needs the terminfo entry pre-installed.
+::: tip $TERM selects a description, not an exhaustive feature test
+Inside a multiplexer, `$TERM` usually describes the multiplexer. Over SSH, a database-based program needs the selected terminfo entry on the remote host. Kitty documents this installation problem and provides ways to copy its entry. [Kitty FAQ](https://sw.kovidgoyal.net/kitty/faq/)
 :::
 
 ## $COLORTERM
 
-`$COLORTERM` is a non-standard environment variable that indicates truecolor (24-bit color) support. When set to `truecolor` or `24bit`, it tells applications they can use full RGB colors via SGR sequences like `ESC[38;2;R;G;Bm`. Most modern terminals set this variable, and libraries like `chalk`, `colorette`, and `termcolor` check it.
+`$COLORTERM` is a convention used to advertise truecolor (24-bit color) support. Values such as `truecolor` or `24bit` are useful hints that an application can try RGB color sequences such as `ESC[38;2;R;G;Bm`; they do not verify the rendered result through every intervening layer.
 
-The variable emerged organically — no standard body defined it. The [termstandard/colors](https://github.com/termstandard/colors) community project documented the convention and encouraged terminal emulators to adopt it. Today it's the most reliable way to detect truecolor support, simply because there was broad enough adoption to make it useful.
+The [termstandard/colors](https://github.com/termstandard/colors) community project documents the convention. It is not the only way to describe direct color: ncurses also documents an extended `RGB` terminfo capability. An environment value can be absent, inherited, or stale. [ncurses user_caps(5)](https://invisible-island.net/ncurses/man/user_caps.5.html)
 
-But `$COLORTERM` is a one-trick pony. It covers exactly one question — "does this terminal support 24-bit color?" — and nothing else. It says nothing about underline styles, cursor shapes, clipboard access, graphics protocols, keyboard protocols, or any of the other features that distinguish modern terminals from each other. And because it's not standardized, there's no equivalent convention for other capabilities. Some terminals set additional custom environment variables (Kitty sets `TERM_PROGRAM=kitty`, WezTerm sets `TERM_PROGRAM=WezTerm`), but there's no universal convention.
+`$COLORTERM` concerns color only. It says nothing about underline styles, cursor shapes, clipboard access, graphics, or keyboard protocols. Other environment variables may hint at the launching application, but they are not a universal capability inventory.
 
 ## terminfo/termcap
 
 The terminfo database (and its predecessor, termcap) is the traditional solution to terminal capability detection. It's a compiled database that maps terminal names (from `$TERM`) to capability strings. When an application calls `tput colors` or uses the ncurses library, it's querying terminfo. The database contains entries for cursor movement sequences, color support, screen clearing, line insertion, and hundreds of other capabilities. It's maintained by Thomas Dickey alongside ncurses and has been the backbone of terminal application development since the 1980s.
 
-The limitation is coverage. terminfo's vocabulary was designed for the features of DEC VT terminals and early xterm. It has capability entries for basic colors, cursor movement, line editing, and screen modes — but no entries for Kitty keyboard protocol, OSC 8 hyperlinks, synchronized output (DEC mode 2026), semantic prompts (OSC 133), Sixel graphics, Kitty graphics, styled underlines (curly, dotted, dashed), OSC 52 clipboard access, or any of the other features that define modern terminal applications. These features are invisible to terminfo.
+The limitation is the coverage of the selected entry and of the application reading it. Standard terminfo names do not describe every newer protocol, but ncurses supports user-defined Boolean, numeric, and string capabilities. Its documented extensions include `RGB` and mouse controls. [ncurses user_caps(5)](https://invisible-island.net/ncurses/man/user_caps.5.html)
 
-This isn't a fixable gap. Adding new capabilities to terminfo requires defining them in the database schema, updating the ncurses source, getting the change accepted upstream, waiting for distributions to pick up the new version, and then waiting for terminal emulators to ship matching entries. That pipeline takes years per capability. Modern terminal features ship in months. The result is that the database perpetually lags behind the terminals it describes, and the most interesting capabilities — the ones that differentiate terminals from each other — are the ones terminfo can't represent.
+Extended names still need a producer, an installed entry, and applications that understand them. Moreover, a terminfo entry describes expected behavior; it does not record what happened in a live check. This is why runtime observations complement the database rather than replace it. [ncurses terminfo(5)](https://invisible-island.net/ncurses/man/terminfo.5.html)
 
 ## DA1 (Primary Device Attributes)
 
 DA1 is an escape sequence query: the application sends `CSI c` (or `CSI 0 c`) and the terminal responds with a list of capability flags. The response format is `CSI ? Ps ; Ps ; ... c`, where each `Ps` is a numeric code indicating a supported feature class. For example, a response of `CSI ? 62 ; 1 ; 2 ; 6 ; 7 ; 8 ; 9 c` says "I'm a VT220-class terminal that supports these attribute groups."
 
-In practice, DA1 is more useful for identifying the terminal than for detecting specific features. The response format dates back to DEC hardware, and the numeric codes map to broad categories (132-column mode, printer port, Sixel graphics, national replacement character sets) rather than individual features. Modern terminals include DA1 responses for compatibility, but the values they report are inconsistent. Some terminals report capabilities they don't actually support; others omit capabilities they do support. The "VT level" number (62 = VT220, 64 = VT420, 65 = VT520) is aspirational at best.
+DA1 reports device-attribute codes, not an exact product identity. The codes describe broad categories such as 132-column mode, a printer port, or Sixel graphics; they do not verify those features' behavior in the current session. [xterm control sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html)
 
-DA1's real value in modern detection is as a **sentinel**. Because nearly every terminal responds to DA1, applications can send an unsupported query followed by a DA1 query. If the terminal doesn't understand the first query, it ignores it — but it still responds to DA1. By checking whether the first query got a response before the DA1 response arrives, the application can infer whether the feature is supported. This "query + DA1 fallback" pattern (used by [terminal-colorsaurus](https://github.com/bash/terminal-colorsaurus) and others) is one of the more reliable runtime detection techniques.
+DA1 can also serve as a **sentinel** after another query. A complete reply correlated to that query establishes only the property the reply reports, whether or not DA1 subsequently answers. If no matching reply arrives before the sentinel or deadline, the result is inconclusive; a missing or ambiguous DA1 reply cannot turn silence into evidence of non-support. [Kitty keyboard protocol detection](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#detection-of-support-for-this-protocol)
 
 ## DECRPM (Mode Report)
 
-DECRPM — DEC Private Mode Report — is the best general-purpose mechanism for probing individual terminal features at runtime. The application sends `CSI ? Pm $ p` (where `Pm` is a private mode number; the request is formally called DECRQM), and the terminal responds with `CSI ? Pm ; Ps $ y`, where `Ps` indicates the mode status: **1** = set, **2** = reset, **3** = permanently set, **4** = permanently reset, **0** = not recognized.
+DECRPM — DEC Private Mode Report — replies to a DECRQM request for one private mode. The application sends `CSI ? Pm $ p` (where `Pm` is the mode number), and the responding layer returns `CSI ? Pm ; Ps $ y`, where `Ps` indicates the reported mode status: **1** = set, **2** = reset, **3** = permanently set, **4** = permanently reset, **0** = not recognized. [xterm control sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html)
 
-This is powerful because many modern features are controlled via DEC private modes. Bracketed paste mode (2004), mouse tracking modes (1000/1002/1003/1006), focus tracking (1004), alternate screen (1049), synchronized output (2026), and grapheme clustering (2027) all have mode numbers. By sending a DECRPM query for each mode, an application can determine at runtime whether the terminal supports it — and it gets back a definitive answer, not a heuristic.
+Many features have private-mode numbers, including bracketed paste (2004), mouse tracking (1000/1002/1003/1006), focus tracking (1004), alternate screen (1049), and synchronized output (2026). A valid correlated reply reports whether the responding layer recognizes the requested mode and its current state. It does not by itself verify rendering or interaction associated with that mode.
 
-The limitation is that not all terminals support DECRPM itself. Older terminals and some lightweight emulators ignore the query entirely, producing no response (which the application must handle with a timeout or a DA1 sentinel). Additionally, DECRPM only covers features that are mode-toggled — it can't detect capabilities like OSC 8 hyperlinks, Kitty graphics, or styled underlines that don't have a corresponding mode number. For those features, other query mechanisms (or direct behavioral probing) are needed. Despite these limitations, DECRPM is the closest thing to a universal feature-detection API that terminals offer.
+No reply is inconclusive: the layer might not implement DECRQM, or the reply might not reach the application. DECRPM also cannot describe features without a corresponding private-mode query, such as OSC 8 hyperlinks or Kitty graphics. Those need other queries or controlled behavioral observations.
 
 ## XTVERSION
 
-XTVERSION is a query sequence (`CSI > 0 q`) that asks the terminal to report its name and version string. The terminal responds with `DCS > | name(version) ST` — for example, `DCS > | Ghostty(1.1.0) ST` or `DCS > | tmux 3.5 ST`. This gives the application the exact identity of the terminal, which can be mapped to a known feature set.
+XTVERSION sends `CSI > 0 q` and, when implemented, returns `DCS > | text ST`. The text is supplied by the responding layer; its spelling and version format are implementation-specific. [xterm control sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html)
 
-XTVERSION was introduced by xterm and has been adopted by most major terminals: Ghostty, Kitty, iTerm2, WezTerm, foot, contour, and tmux all respond. Terminal.app and some older emulators do not. When it works, it's the most precise identification mechanism available — the application knows exactly what terminal and version it's talking to, which means it can look up capabilities in a table rather than probing each one individually.
+The reply may identify an intermediate layer such as tmux rather than the outer graphical terminal. A name and version can guide a compatibility table, but that table predicts expected capabilities; it does not measure the installed configuration or the end-to-end path. [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
 
-The trade-off is that XTVERSION requires the application to maintain a mapping from terminal name+version to capabilities. This is essentially recreating a terminfo-style database, but with finer granularity (per-version rather than per-terminal-type). Libraries like [terminal-colorsaurus](https://github.com/bash/terminal-colorsaurus) and detection routines in fish shell use XTVERSION as a first pass — if the terminal identifies itself, the application can skip the slower per-feature probing. When XTVERSION fails (no response), the application falls back to DECRPM and DA1.
+Using a version table requires maintaining its entries as implementations change. Where the behavior matters, a query or controlled test of that behavior provides narrower, stronger evidence. If no XTVERSION reply arrives, the result is inconclusive.
 
 ## Runtime Probing
 
@@ -86,80 +86,83 @@ Terminfo describes capabilities associated with a `$TERM` entry, including [user
 
 ## Comparing Detection Methods
 
-| Method            | Reliability                          | Coverage                              | Speed            | Requires Response | Works Over SSH           |
-| ----------------- | ------------------------------------ | ------------------------------------- | ---------------- | ----------------- | ------------------------ |
-| **$TERM**         | Low — almost everything lies         | Legacy features only (via terminfo)   | Instant          | No                | Yes                      |
-| **$COLORTERM**    | Medium — widely adopted for color    | Truecolor only                        | Instant          | No                | Depends on forwarding    |
-| **terminfo**      | Medium — accurate for what it tracks | Legacy features only                  | Instant (cached) | No                | Yes (if entry installed) |
-| **DA1**           | Medium — useful as sentinel          | Terminal class, not specific features | Fast (~ms)       | Yes               | Yes                      |
-| **DECRPM**        | High — definitive answer             | Mode-toggled features only            | Fast (~ms)       | Yes               | Yes                      |
-| **XTVERSION**     | High — exact identity                | All features (via lookup table)       | Fast (~ms)       | Yes               | May report mux instead   |
-| **Runtime probe** | Depends on the measured claim        | Only executed checks                  | Varies           | Often             | Depends on the path      |
+| Method            | What it provides                                                  | Important limit                                                       |
+| ----------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **$TERM**         | Name of the selected terminal description                         | May name a multiplexer or compatibility entry; not a live test        |
+| **$COLORTERM**    | Conventional direct-color hint                                    | May be absent or stale; not a color-rendering test                    |
+| **terminfo**      | Capabilities declared by an installed entry, including extensions | Entry and application must understand the capability; not a live test |
+| **DA1**           | Reported device-attribute codes, or a sentinel reply              | Not exact product identity or proof of unrelated behavior             |
+| **DECRPM**        | Reported recognition and state of one private mode                | Only the responding layer and requested mode; not behavioral proof    |
+| **XTVERSION**     | Implementation-supplied name/version text when answered           | May identify an intermediate layer; a lookup predicts behavior        |
+| **Runtime check** | Observation of one executed query or behavior                     | Scope is limited to the actual path and observation                   |
+
+SSH can carry terminal input and output, but it does not guarantee that environment variables are forwarded or that a multiplexer passes a query to the outer terminal. [OpenSSH sshd_config(5)](https://man.openbsd.org/sshd_config); [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
 
 ## Secondary Environment Hints
 
-Beyond `$TERM` and `$COLORTERM`, many terminals set additional environment variables that reveal their identity. These aren't standardized — each terminal chooses its own — but collectively they cover most of the major emulators.
+Beyond `$TERM` and `$COLORTERM`, some terminals set additional environment variables that hint at which application launched the shell. They are not standardized and may be inherited by later processes.
 
-| Variable                    | Set By                                                  | Value                                                                                          |
-| --------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| **`TERM_PROGRAM`**          | Most modern terminals                                   | Terminal name: `iTerm.app`, `WezTerm`, `ghostty`, `Apple_Terminal`, `tmux`                     |
-| **`TERM_PROGRAM_VERSION`**  | Most modern terminals                                   | Version string (e.g., `3.5.2`, `1.1.0`) — useful for feature gating by version                 |
-| **`VTE_VERSION`**           | VTE-based terminals (GNOME Terminal, Tilix, Terminator) | Encoded version number (e.g., `7200` = 0.72.0). Reliable for detecting the VTE family on Linux |
-| **`KITTY_WINDOW_ID`**       | Kitty                                                   | Window identifier. Its presence confirms Kitty — the value itself is rarely useful             |
-| **`WT_SESSION`**            | Windows Terminal                                        | Session GUID. Reliable way to detect Windows Terminal, even under WSL                          |
-| **`GHOSTTY_RESOURCES_DIR`** | Ghostty                                                 | Path to Ghostty's resource bundle. Confirms Ghostty is the host terminal                       |
-| **`ITERM_SESSION_ID`**      | iTerm2                                                  | Session identifier (e.g., `w0t0p0:4A2B3C`). Confirms iTerm2 — also encodes window/tab/pane     |
+| Variable                    | Set By                     | Value                                                                |
+| --------------------------- | -------------------------- | -------------------------------------------------------------------- |
+| **`TERM_PROGRAM`**          | Some terminal applications | Reported application name; may be inherited or overwritten           |
+| **`TERM_PROGRAM_VERSION`**  | Some terminal applications | Reported version; a feature table based on it remains a prediction   |
+| **`VTE_VERSION`**           | VTE-based terminals        | Encoded VTE version; suggests the launching terminal family          |
+| **`KITTY_WINDOW_ID`**       | Kitty                      | Window identifier; suggests a Kitty-launched environment             |
+| **`WT_SESSION`**            | Windows Terminal           | Session identifier; suggests a Windows Terminal-launched environment |
+| **`GHOSTTY_RESOURCES_DIR`** | Ghostty                    | Resource path; suggests a Ghostty-launched environment               |
+| **`ITERM_SESSION_ID`**      | iTerm2                     | Session identifier; suggests an iTerm2-launched environment          |
 
-These variables are fast to check (no round-trip to the terminal) and more specific than `$TERM`. A common pattern is to check `TERM_PROGRAM` first for a quick identification, then fall back to XTVERSION or DECRPM for terminals that don't set it.
+These variables are fast to check, but their presence is not a current-path capability test. A query such as XTVERSION or DECRQM asks the responding layer a narrower question; its reply must still be interpreted within that protocol.
 
-::: warning These variables don't survive multiplexers
-tmux, screen, and SSH sessions typically strip or override these variables. If your application needs to detect the _outer_ terminal from inside tmux, environment variables won't help — you'll need escape-sequence queries like XTVERSION or DA1, which pass through the multiplexer to the real terminal.
+::: warning Intermediate layers change what you can observe
+SSH forwarding is configurable, while `$TERM` is sent with an allocated PTY. A multiplexer may overwrite, retain, or add environment variables and may answer or filter terminal queries. Neither an inherited variable nor a query reply automatically identifies the outer graphical terminal. [OpenSSH ssh_config(5)](https://man.openbsd.org/ssh_config); [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
 :::
 
 ## Multiplexer and SSH Caveats
 
 Terminal detection gets significantly harder when multiplexers (tmux, screen, Zellij) or SSH sessions sit between the application and the real terminal. Each layer can distort the signals that detection mechanisms rely on.
 
-**tmux overrides `$TERM`.** When tmux starts, it replaces the terminal's `$TERM` value with `tmux-256color` or `screen-256color` (depending on its `default-terminal` setting). The application sees tmux's terminal type, not the outer terminal's. This is correct behavior — tmux _is_ the terminal from the application's perspective — but it means `$TERM` tells you nothing about the real terminal's capabilities. tmux may support fewer features than the outer terminal (for example, it only recently added support for styled underlines and still doesn't support Kitty graphics).
+**tmux sets `$TERM` for its panes.** The value names the description tmux exposes to applications, rather than the outer terminal's description. That is the relevant interface for an application running in the pane. [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
 
-**SSH strips environment variables.** By default, `sshd` only accepts a small whitelist of environment variables from the client (typically `LANG`, `LC_*`, and `TERM`). Variables like `TERM_PROGRAM`, `COLORTERM`, `KITTY_WINDOW_ID`, and `GHOSTTY_RESOURCES_DIR` are not forwarded. You can configure `SendEnv` on the client and `AcceptEnv` on the server, but most users don't, and you can't count on it for general-purpose detection.
+**SSH forwards selected environment variables.** `SendEnv` and `AcceptEnv` control additional variables; with a requested PTY, `$TERM` is sent as part of the protocol. Do not assume variables such as `COLORTERM` or `TERM_PROGRAM` arrive unchanged. [OpenSSH ssh_config(5)](https://man.openbsd.org/ssh_config); [OpenSSH sshd_config(5)](https://man.openbsd.org/sshd_config)
 
-**Nested sessions compound the problem.** SSH into a remote machine that launches tmux, and now the application is two layers removed from the real terminal. `$TERM` is `tmux-256color`, `TERM_PROGRAM` is unset, and the only variables that survived are the ones tmux itself set. The application has no direct evidence of the outer terminal's identity.
+**Nested sessions compound the problem.** An application running in tmux on a remote host sees the environment and terminal behavior exposed through both SSH and tmux. Neither the presence nor the absence of a particular environment variable establishes the outer terminal's identity.
 
-**Escape-sequence queries pass through — mostly.** DA1, DECRPM, and XTVERSION queries travel through tmux and SSH to the outer terminal, and the responses travel back. This makes them more reliable than environment variables in nested scenarios. However, there are caveats: XTVERSION inside tmux returns tmux's identity (`tmux 3.5`), not the outer terminal's. tmux can also intercept and modify some responses. And some escape sequences that the outer terminal supports may be consumed by tmux rather than passed through to the application.
+**Query the exposed layer.** SSH carries terminal input and output, but tmux may answer, filter, or relay a query. A response describes the layer that answered it. tmux also documents a DCS passthrough mechanism controlled by `allow-passthrough`; it is not a promise that ordinary queries reach the outer terminal. [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
 
 ::: tip Detection strategy inside multiplexers
 
-1. Check `$TMUX` or `$STY` to detect that you're inside a multiplexer
-2. Use DECRPM to probe the multiplexer's capabilities (which may be a subset of the outer terminal's)
-3. If you need the outer terminal's identity, try `XTVERSION` passthrough via tmux's `\ePtmux;` DCS wrapper — but be prepared for it to fail
-4. Accept that inside a multiplexer, you're constrained to whatever the multiplexer exposes
+1. Check the selected `$TERM` entry for the interface exposed to your application.
+2. Query a specific mode when the responding layer implements DECRQM; treat silence as inconclusive.
+3. If you explicitly use tmux passthrough, check its `allow-passthrough` setting and validate the reply's origin. [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
    :::
 
 ## Practical Detection Recipes
 
 Here are minimal, copy-pasteable examples for the most common detection tasks.
 
-### Bash: detect truecolor support
+### Bash: check truecolor hints
 
 ```bash
-has_truecolor() {
+hints_truecolor() {
   case "${COLORTERM-}" in
     truecolor|24bit) return 0 ;;
   esac
-  # Fallback: check TERM for known truecolor terminals
+  # Fallback: check TERM for a direct-color description name
   case "$TERM" in
     *-direct|*-truecolor) return 0 ;;
   esac
   return 1
 }
 
-if has_truecolor; then
-  printf '\e[38;2;255;100;0mTruecolor works\e[0m\n'
+if hints_truecolor; then
+  printf '\e[38;2;255;100;0mTruecolor requested\e[0m\n'
 fi
 ```
 
 ### Python: query DA1 with timeout
+
+This small example returns unparsed bytes. It does not verify that a complete DA1 reply arrived or establish support for another feature.
 
 ```python
 import sys, os, select, termios, tty
@@ -181,33 +184,33 @@ def query_da1(timeout=0.5):
     return None
 ```
 
-### JavaScript (Node.js): detect terminal capabilities
+### JavaScript (Node.js): collect environment hints
 
 ```js
-function detectCapabilities() {
+function environmentHints() {
   const env = process.env
   return {
-    truecolor: /^(truecolor|24bit)$/i.test(env.COLORTERM ?? ""),
+    truecolorHint: /^(truecolor|24bit)$/i.test(env.COLORTERM ?? ""),
     term: env.TERM ?? "unknown",
     program: env.TERM_PROGRAM ?? null,
     version: env.TERM_PROGRAM_VERSION ?? null,
     isTmux: "TMUX" in env,
     isSSH: "SSH_TTY" in env || "SSH_CLIENT" in env,
-    isKitty: "KITTY_WINDOW_ID" in env,
-    is256color: /256color/.test(env.TERM ?? ""),
+    kittyLaunchHint: "KITTY_WINDOW_ID" in env,
+    color256DescriptionHint: /256color/.test(env.TERM ?? ""),
   }
 }
 ```
 
-For runtime probing in Node.js (DA1, DECRPM, XTVERSION), see the `npx terminfo.dev detect` command — it handles raw mode, timeouts, and response parsing.
+The Bash and JavaScript examples inspect hints, not terminal behavior; the Python example returns unparsed query bytes. For one raw observation run in an interactive TTY, use `npx terminfo.dev test --json`. The `detect` command uses environment and local application metadata; it does not run the probe suite.
 
 ## What Developers Should Do
 
-For maximum compatibility, use a layered detection strategy. Start with the fast, zero-round-trip checks: `$TERM` and `$COLORTERM` give you a baseline. If `$COLORTERM` is `truecolor` or `24bit`, you can safely use 24-bit RGB colors. If `$TERM` ends with `-256color`, you have 256-color support. These checks cost nothing and cover the most common questions.
+For maximum compatibility, use a layered detection strategy. Start with `$TERM` to select a terminal description and `$COLORTERM` as a color hint. Read the entry rather than inferring all of its capabilities from its name. If accurate color behavior matters, test it on the actual terminal path.
 
-For specific features, probe at runtime. Send a DECRPM query for modes you care about (synchronized output, bracketed paste, focus tracking) and check the response. If you need the terminal's identity, try XTVERSION first — if it responds, you know exactly what you're working with and can enable features accordingly. Use DA1 as a sentinel for queries that might not get a response.
+For specific features, ask a specific question. DECRQM can report whether the responding layer recognizes a private mode and its current state. XTVERSION can report that layer's name and version; a version table is a prediction, not a behavioral measurement. DA1 can help delimit unanswered queries, but a complete correlated reply establishes its scoped result even if DA1 never arrives.
 
-Most importantly, **degrade gracefully**. Don't assume that `xterm-256color` means full xterm compatibility — it almost certainly doesn't. Don't assume that a missing DECRPM response means "not supported" — the terminal might not support DECRPM itself. Always have a fallback path: if truecolor isn't available, fall back to 256 colors; if styled underlines aren't supported, use a basic underline; if the Kitty keyboard protocol isn't available, use traditional key encoding. The terminal ecosystem is heterogeneous, and the applications that work best are the ones that adapt to whatever the terminal actually provides.
+Most importantly, **degrade gracefully**. Do not treat `xterm-256color` as full xterm compatibility or a missing DECRPM reply as proof of non-support. Keep fallbacks for color, underlines, and keyboard input when a capability is unknown or unavailable. Match each conclusion to what was actually declared or observed.
 
 ---
 
