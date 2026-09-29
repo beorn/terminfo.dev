@@ -10,6 +10,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
+  decodeCollectorRun,
+  decodeExactUtf8,
   loadSelectedResults,
   parseInterpretations,
   parseRun as parseRunSource,
@@ -31,6 +33,7 @@ const manifests = new Map([
   ["state", manifest("state", ["cursor.position"])],
   ["pixels", manifest("pixels", ["extensions.graphics"])],
   ["query", manifest("query", ["extensions.query"])],
+  ["with-diagnostic", manifest("with-diagnostic", ["extensions.graphics", "extensions.query", "cursor.position"])],
 ])
 const parseRun = (path: string, source: string, catalogIds: readonly string[]) =>
   parseRunSource(path, source, catalogIds, manifests)
@@ -121,6 +124,110 @@ function temporaryContent() {
 }
 
 describe("selected results", () => {
+  it("rejects conclusive v2 consumed or legacy claims without measured assertions", () => {
+    const base = run("claimed", {
+      identity: "unverified",
+      suiteId: "current",
+      sourceRevision: "a".repeat(40),
+      assertions: [],
+      observations: [{ featureId: "extensions.query", outcome: "supported", evidence: "consumed" }],
+      suiteComplete: false,
+    })
+    for (const evidence of ["consumed", "legacy"]) {
+      expect(() =>
+        decodeCollectorRun(
+          `${evidence}.json`,
+          JSON.stringify({
+            ...base,
+            observations: [{ featureId: "extensions.query", outcome: "supported", evidence }],
+          }),
+          manifest("current"),
+          "a".repeat(40),
+        ),
+      ).toThrow(/conclusive.*consumed|conclusive.*legacy/i)
+    }
+  })
+
+  it("decodes exact current collector bytes without promoting legacy or a mismatched source", () => {
+    const collectorRevision = "a".repeat(40)
+    const value = run("public", {
+      identity: "unverified",
+      suiteId: "current",
+      sourceRevision: collectorRevision,
+      observations: [observation("extensions.query", "supported", "query")],
+      suiteComplete: false,
+    })
+    const raw = `${JSON.stringify(value)}\n`
+    const decoded = decodeCollectorRun("public.json", raw, manifest("current"), collectorRevision)
+    expect(decoded.raw).toBe(raw)
+    expect(decoded.sha256).toBe(createHash("sha256").update(raw).digest("hex"))
+    expect(decoded.run.suiteComplete).toBe(false)
+    expect(decoded.run.identity).toBe("unverified")
+    expect(decoded.run).not.toHaveProperty("path")
+    expect(decoded.run).not.toHaveProperty("sha256")
+    expect(decoded.run).not.toHaveProperty("legacy")
+    expect(() => decodeExactUtf8(Buffer.from([0xff]), "invalid.json")).toThrow(/UTF-8/i)
+    expect(() => decodeExactUtf8(Buffer.from([0xef, 0xbb, 0xbf, 0x7b, 0x7d]), "bom.json")).toThrow(
+      /exact.*UTF-8|UTF-8.*bytes/i,
+    )
+    expect(() =>
+      decodeCollectorRun(
+        "legacy.json",
+        JSON.stringify({ terminal: "kitty", version: "0.46.2", generated: value.measuredAt, results: {} }),
+        manifest("current"),
+        collectorRevision,
+      ),
+    ).toThrow(/schemaVersion.*2|v2/i)
+    for (const [name, changed] of [
+      ["future", { schemaVersion: 3 }],
+      ["suite", { probeHash: "other" }],
+      ["source", { sourceRevision: "b".repeat(40) }],
+      ["identity", { identity: "verified" }],
+      ["origin", { origin: { kind: "manual-capture" } }],
+      ["reply", { rawReplies: { "extensions.query": "ACK" } }],
+    ] as const) {
+      expect(() =>
+        decodeCollectorRun(
+          `${name}.json`,
+          JSON.stringify({ ...value, ...changed }),
+          manifest("current"),
+          collectorRevision,
+        ),
+      ).toThrow()
+    }
+    const mixedManifest = {
+      ...manifest("current", ["extensions.query"]),
+      probes: {
+        app: ["extensions.query"],
+        mux: ["extensions.query"],
+        headless: ["extensions.query", "extensions.graphics"],
+      },
+    }
+    const foreignDiagnostic = {
+      ...value,
+      observations: [observation("extensions.query", "supported", "query")],
+      assertions: value.assertions.filter((entry) => entry.featureId === "extensions.query"),
+      ungradedDiagnostics: { "extensions.graphics": { kind: "legacy-callback", pass: false } },
+      suiteComplete: true,
+    }
+    const foreignAssertion = {
+      ...foreignDiagnostic,
+      assertions: value.assertions,
+      ungradedDiagnostics: {},
+    }
+    expect(() =>
+      decodeCollectorRun("foreign-assertion.json", JSON.stringify(foreignAssertion), mixedManifest, collectorRevision),
+    ).toThrow(/assertion.*extensions.graphics.*outside suite/i)
+    expect(() =>
+      decodeCollectorRun(
+        "foreign-diagnostic.json",
+        JSON.stringify(foreignDiagnostic),
+        mixedManifest,
+        collectorRevision,
+      ),
+    ).toThrow(/diagnostic.*extensions.graphics.*outside suite/i)
+  })
+
   it("never admits an uncommitted source revision even with an identity review", () => {
     const dirty = parseRun(
       "dirty.json",
@@ -193,6 +300,7 @@ describe("selected results", () => {
       JSON.stringify(
         run("pixels", {
           probeHash: "pixels",
+          assertions: [],
           screenshotRefs: [controlRef, screenshotRef],
           observations: [
             {
@@ -288,13 +396,15 @@ describe("selected results", () => {
       "diagnostic.json",
       JSON.stringify(
         run("diagnostic", {
+          probeHash: "with-diagnostic",
+          suiteComplete: false,
           ungradedDiagnostics: { "cursor.position": diagnostic },
         }),
       ),
       catalog,
     )
-    const selected = projectResults([measured], [reviewFor(measured)], catalog, { currentProbeHash: "current" })
-      .current["app:kitty"]
+    const selected = projectResults([measured], [reviewFor(measured)], catalog, { currentProbeHash: "with-diagnostic" })
+      .history["app:kitty"]?.[0]
     expect(selected?.ungradedDiagnostics).toEqual({
       evidence: "legacy",
       label: "old callback result, unverified",
@@ -548,11 +658,9 @@ describe("selected results", () => {
       featureId: "extensions.graphics",
       observation: { featureId: "extensions.graphics", outcome: "supported" as const, evidence: "consumed" as const },
     }
-    const correctedHistory = projectResults([legacy], [correction], catalog, { currentProbeHash: "current" }).history[
-      "app:kitty"
-    ]?.[0]
-    expect(correctedHistory?.counts.conclusive).toBe(0)
-    expect(correctedHistory?.v1["extensions.graphics"]).toBeUndefined()
+    expect(() => projectResults([legacy], [correction], catalog, { currentProbeHash: "current" })).toThrow(
+      /conclusive.*consumed/,
+    )
   })
 
   it("admits insufficient evidence only for an inconclusive observation", () => {

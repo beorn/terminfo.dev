@@ -36,12 +36,20 @@ export interface Probe {
 }
 
 /** Build a TermContext from the tty.ts helpers */
-function createTermContext(writes?: string[], events?: TTYTraceEvent[]): TermContext {
+function createTermContext({
+  out,
+  writes,
+  events,
+}: {
+  out: NodeJS.WriteStream
+  writes?: string[]
+  events?: TTYTraceEvent[]
+}): TermContext {
   return {
     write(text: string) {
       writes?.push(text)
       events?.push({ kind: "write", sequence: text })
-      process.stdout.write(text)
+      out.write(text)
     },
     async queryCursorPosition() {
       const result = await queryCursorPosition()
@@ -65,7 +73,7 @@ function createTermContext(writes?: string[], events?: TTYTraceEvent[]): TermCon
     queryWithSentinelOutcome,
     queryMode,
     get cols() {
-      return process.stdout.columns || 80
+      return out.columns || 80
     },
   }
 }
@@ -114,8 +122,9 @@ function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selecte
 
 /** Collect the real callback result, without treating its legacy boolean as an observation. */
 export async function runProbeBatch(
-  options: { ids?: string[]; capture?: ProbeCapture; clipboard?: LinuxClipboardAdapter } = {},
+  options: { ids?: string[]; capture?: ProbeCapture; clipboard?: LinuxClipboardAdapter; out?: NodeJS.WriteStream } = {},
 ): Promise<ProbeBatch> {
+  const out = options.out ?? process.stdout
   const { expected, selected } = selectAppProbes(options.ids)
   const batch: ProbeBatch = {
     rawReplies: {},
@@ -132,7 +141,7 @@ export async function runProbeBatch(
     const clipboardEvents: ClipboardTraceEvent[] = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
-    const context = createTermContext(writes, events)
+    const context = createTermContext({ out, writes, events })
     if (options.clipboard) {
       const clipboard = options.clipboard
       context.withClipboardFixture = (work) =>
@@ -154,7 +163,7 @@ export async function runProbeBatch(
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
-      const result = await withTTYOperation(() => withTTYQueryTrace(queries, events, () => callback(context)))
+      const result = await withTTYOperation(() => withTTYQueryTrace(queries, events, () => callback(context)), out)
       if (result.observation) {
         const rawReplyRef = queries.length || captureAttempted || clipboardEvents.length ? probe.id : undefined
         batch.observations.push({ featureId: probe.id, ...result.observation, ...(rawReplyRef ? { rawReplyRef } : {}) })

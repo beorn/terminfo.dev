@@ -3,7 +3,9 @@ import { randomBytes } from "node:crypto"
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ProbeRun as CollectedProbeRun, ProbeTarget } from "@terminfo/probe-defs"
+import type { ProbeRun as CollectedProbeRun, ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
+import { decodeCollectorRun, decodeExactUtf8 } from "../../../docs/data/selected-results.ts"
+import { getTrustedSuiteReceipt } from "./serve.ts"
 
 export interface DaemonRegistration {
   pid: number
@@ -142,37 +144,29 @@ export async function requestDaemonProbe(daemon: DaemonRegistration): Promise<Re
   return response
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+/** Preserve and validate the exact HTTP bytes before any public save. */
+export async function readRawDaemonProbeResponse(
+  response: Response,
+  receipt: { manifest: ProbeSuiteManifest; collectorRevision: string } = getTrustedSuiteReceipt(),
+): Promise<{
+  run: CollectedProbeRun
+  raw: string
+  sha256: string
+}> {
+  const raw = decodeExactUtf8(Buffer.from(await response.arrayBuffer()), "daemon /probe")
+  const decoded = decodeCollectorRun("daemon /probe", raw, receipt.manifest, receipt.collectorRevision)
+  if (decoded.run.target.kind !== "app" && decoded.run.target.kind !== "mux") {
+    throw new Error(`Daemon /probe target kind ${decoded.run.target.kind} is not an app or mux`)
+  }
+  return decoded
 }
 
-/** Reject legacy boolean envelopes; only explicit v2 observations cross this boundary. */
-export async function readDaemonProbeResponse(response: Response): Promise<CollectedProbeRun> {
-  const data: unknown = await response.json()
-  if (
-    !isRecord(data) ||
-    data.schemaVersion !== 2 ||
-    typeof data.runId !== "string" ||
-    !isRecord(data.target) ||
-    typeof data.target.id !== "string" ||
-    typeof data.target.version !== "string" ||
-    !["app", "mux"].includes(String(data.target.kind)) ||
-    data.identity !== "unverified" ||
-    typeof data.probeHash !== "string" ||
-    typeof data.sourceRevision !== "string" ||
-    typeof data.measuredAt !== "string" ||
-    !isRecord(data.rawReplies) ||
-    !Object.values(data.rawReplies).every((value) => typeof value === "string") ||
-    !Array.isArray(data.observations) ||
-    !Array.isArray(data.assertions) ||
-    !Array.isArray(data.screenshotRefs) ||
-    !isRecord(data.ungradedDiagnostics) ||
-    typeof data.suiteComplete !== "boolean" ||
-    Object.hasOwn(data, "results")
-  ) {
-    throw new Error("Invalid /probe response: expected explicit v2 observation schema, not boolean results")
-  }
-  return data as unknown as CollectedProbeRun
+/** Admin callers consume the same strict decoder and may discard the retained bytes. */
+export async function readDaemonProbeResponse(
+  response: Response,
+  receipt: { manifest: ProbeSuiteManifest; collectorRevision: string } = getTrustedSuiteReceipt(),
+): Promise<CollectedProbeRun> {
+  return (await readRawDaemonProbeResponse(response, receipt)).run
 }
 
 /** Preserve one immutable raw capture under its measured identity. */

@@ -422,7 +422,10 @@ function validateObservation(
     fail(path, `missing raw reply ${rawReplyRef} for ${featureId}`)
   }
   if (outcome !== "supported" && outcome !== "unsupported") return
-  if (evidence === "consumed" || evidence === "legacy" || evidence === "pixels") return
+  if (evidence === "consumed" || evidence === "legacy") {
+    fail(path, `conclusive ${featureId} cannot use ${evidence} evidence`)
+  }
+  if (evidence === "pixels") return
   const kind = outcome === "supported" ? "positive" : "negative"
   const assertion = assertions.find(
     (entry) =>
@@ -697,6 +700,7 @@ export function parseRun(
   const catalog = new Set(catalogIds)
   const sha256 = createHash("sha256").update(source).digest("hex")
   if (raw.schemaVersion === 2) {
+    if (Object.hasOwn(raw, "results")) fail(path, "v2 run cannot contain legacy boolean results")
     const target = parseTarget(raw.target, path)
     const runtimeIdentity = parseRuntimeIdentity(raw.runtimeIdentity, target, path)
     const runId = asString(raw.runId, path, "runId")
@@ -756,6 +760,11 @@ export function parseRun(
       fail(path, `unknown suite ${probeHash}; missing trusted manifest`)
     }
     const expected = new Set(manifest.probes[target.kind])
+    for (const assertion of assertions) {
+      if (!expected.has(assertion.featureId)) {
+        fail(path, `assertion ${assertion.featureId} is outside suite ${probeHash} for ${target.kind}`)
+      }
+    }
     for (const observation of observations) {
       if (!expected.has(observation.featureId)) {
         fail(path, `${observation.featureId} is outside suite ${probeHash} for ${target.kind}`)
@@ -764,6 +773,10 @@ export function parseRun(
     const suiteComplete = observations.length === expected.size
     if (raw.suiteComplete !== suiteComplete) {
       fail(path, `suiteComplete disagrees with observed membership (${observations.length} of ${expected.size} probes)`)
+    }
+    const ungradedDiagnostics = parseDiagnostics(raw.ungradedDiagnostics, path, catalog, observations)
+    for (const id of Object.keys(ungradedDiagnostics)) {
+      if (!expected.has(id)) fail(path, `diagnostic ${id} is outside suite ${probeHash} for ${target.kind}`)
     }
     if (!date(raw.measuredAt)) fail(path, "invalid measuredAt")
     return {
@@ -790,7 +803,7 @@ export function parseRun(
       assertions,
       screenshotRefs: raw.screenshotRefs as string[],
       observations,
-      ungradedDiagnostics: parseDiagnostics(raw.ungradedDiagnostics, path, catalog, observations),
+      ungradedDiagnostics,
       legacy: false,
     }
   }
@@ -842,6 +855,61 @@ export function parseRun(
     ungradedDiagnostics: {},
     legacy: true,
   }
+}
+
+/** Decode file/HTTP bytes without replacing malformed UTF-8 or discarding a BOM. */
+export function decodeExactUtf8(bytes: Uint8Array, path: string): string {
+  let source: string
+  try {
+    source = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+  } catch {
+    return fail(path, "invalid UTF-8 in raw run")
+  }
+  if (!Buffer.from(source, "utf8").equals(Buffer.from(bytes))) {
+    fail(path, "raw UTF-8 bytes change when decoded")
+  }
+  return source
+}
+
+/** One public/admin collector boundary over the same canonical run parser. */
+export function decodeCollectorRun(
+  path: string,
+  raw: string,
+  manifest: ProbeSuiteManifest,
+  collectorRevision: string,
+): { run: ProbeRun; raw: string; sha256: string } {
+  const catalog = [...new Set(Object.values(manifest.probes).flat())]
+  const measured = parseRun(path, raw, catalog, new Map([[manifest.probeHash, manifest]]))
+  if (measured.schemaVersion !== 2) fail(path, "expected schemaVersion 2 collector run, not legacy boolean results")
+  if (measured.probeHash !== manifest.probeHash || measured.suiteId !== manifest.probeHash) {
+    fail(path, `collector suite differs from trusted ${manifest.probeHash}`)
+  }
+  if (measured.sourceRevision !== collectorRevision) {
+    fail(path, `collector sourceRevision differs from trusted ${collectorRevision}`)
+  }
+  if (measured.identity !== "unverified" || measured.origin.kind !== "collector") {
+    fail(path, "public collector run must have unverified identity and collector origin")
+  }
+  const run: ProbeRun = {
+    schemaVersion: 2,
+    runId: measured.runId,
+    target: measured.target,
+    identity: "unverified",
+    ...(measured.runtimeIdentity && { runtimeIdentity: measured.runtimeIdentity }),
+    ...(measured.provenance && { provenance: measured.provenance }),
+    suiteId: measured.suiteId,
+    probeHash: manifest.probeHash,
+    suiteComplete: measured.suiteComplete,
+    sourceRevision: collectorRevision,
+    measuredAt: measured.measuredAt,
+    origin: measured.origin,
+    rawReplies: measured.rawReplies,
+    assertions: measured.assertions,
+    screenshotRefs: measured.screenshotRefs,
+    observations: measured.observations,
+    ungradedDiagnostics: measured.ungradedDiagnostics,
+  }
+  return { run, raw, sha256: measured.sha256 }
 }
 
 export function parseInterpretations(path: string, source: string, catalogIds: readonly string[]): Interpretation[] {

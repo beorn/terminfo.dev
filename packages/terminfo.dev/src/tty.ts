@@ -4,7 +4,7 @@ import type { TerminalQueryOutcome } from "@terminfo/probe-defs"
 /**
  * TTY utilities — raw mode, response reading, escape sequence I/O.
  *
- * The core primitive: write an escape sequence to stdout, read a response
+ * The core primitive: write an escape sequence to the active TTY output, read a response
  * from stdin within a timeout.
  */
 
@@ -13,7 +13,7 @@ import type { TerminalQueryOutcome } from "@terminfo/probe-defs"
  * Must be called while stdin is in raw mode.
  */
 const ttyOperations = new WeakMap<typeof process.stdin, Promise<void>>()
-const operationContext = new AsyncLocalStorage<{ active: boolean }>()
+const operationContext = new AsyncLocalStorage<{ active: boolean; out: NodeJS.WriteStream }>()
 export interface TTYQueryTrace {
   sequence: string
   reason: QueryOutcome["reason"]
@@ -34,13 +34,17 @@ export function withTTYQueryTrace<T>(
 }
 
 /** Serialize whole terminal operations; queries inside one operation run inline. */
-export function withTTYOperation<T>(fn: () => Promise<T>): Promise<T> {
-  if (operationContext.getStore()?.active) return fn()
+export function withTTYOperation<T>(fn: () => Promise<T>, out?: NodeJS.WriteStream): Promise<T> {
+  const active = operationContext.getStore()
+  if (active?.active) {
+    if (out && out !== active.out) throw new Error("Nested TTY operation changed output stream")
+    return fn()
+  }
   const previous = ttyOperations.get(process.stdin) ?? Promise.resolve()
   const current = previous
     .catch(() => {})
     .then(() => {
-      const lease = { active: true }
+      const lease = { active: true, out: out ?? process.stdout }
       return operationContext.run(lease, async () => {
         try {
           return await fn()
@@ -57,6 +61,11 @@ export function withTTYOperation<T>(fn: () => Promise<T>): Promise<T> {
     ),
   )
   return current
+}
+
+function currentTTYOutput(): NodeJS.WriteStream {
+  const lease = operationContext.getStore()
+  return lease?.active ? lease.out : process.stdout
 }
 
 function matchResponse(
@@ -134,7 +143,7 @@ export type QueryOutcome = TerminalQueryOutcome
 /** Return the response disposition and exact received bytes for a plain query. */
 export async function queryOutcome(sequence: string, responsePattern: RegExp, timeoutMs = 1000): Promise<QueryOutcome> {
   return withTTYOperation(() =>
-    matchResponse(responsePattern, timeoutMs, () => process.stdout.write(sequence), false, sequence),
+    matchResponse(responsePattern, timeoutMs, () => currentTTYOutput().write(sequence), false, sequence),
   )
 }
 
@@ -152,7 +161,7 @@ export async function queryWithSentinelOutcome(
     matchResponse(
       responsePattern,
       timeoutMs,
-      () => process.stdout.write(sequence + "\x1b[c"),
+      () => currentTTYOutput().write(sequence + "\x1b[c"),
       true,
       sequence + "\x1b[c",
     ),
@@ -195,12 +204,12 @@ export async function queryCursorPosition(): Promise<[number, number] | null> {
  */
 export async function measureRenderedWidth(text: string): Promise<number | null> {
   return withTTYOperation(async () => {
-    process.stdout.write("\x1b7\x1b[1G" + text)
+    currentTTYOutput().write("\x1b7\x1b[1G" + text)
     try {
       const pos = await queryCursorPosition()
       return pos ? pos[1] - 1 : null
     } finally {
-      process.stdout.write("\x1b8")
+      currentTTYOutput().write("\x1b8")
     }
   })
 }
@@ -257,7 +266,7 @@ export async function drainStdin(ms = 300): Promise<void> {
  * Run a function with stdin in raw mode.
  * Restores original mode on exit.
  */
-export async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
+export async function withRawMode<T>(fn: () => Promise<T>, out?: NodeJS.WriteStream): Promise<T> {
   return withTTYOperation(async () => {
     const wasRaw = process.stdin.isRaw
     const wasPaused = process.stdin.isPaused()
@@ -273,5 +282,5 @@ export async function withRawMode<T>(fn: () => Promise<T>): Promise<T> {
         if (wasPaused) process.stdin.pause()
       }
     }
-  })
+  }, out)
 }

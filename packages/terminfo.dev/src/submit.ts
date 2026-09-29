@@ -1,131 +1,92 @@
-/**
- * Submit results to terminfo.dev via GitHub issue.
- */
+/** Offline draft from one exact, unreviewed v2 collector run. */
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { basename, dirname, join } from "node:path"
+import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { decodeCollectorRun, decodeExactUtf8 } from "../../../docs/data/selected-results.ts"
 
-import { writeFileSync, unlinkSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-import { execFileSync } from "node:child_process"
-
-const REPO = "beorn/terminfo.dev"
-
-interface SubmitData {
-  terminal: string
-  terminalVersion: string
-  os: string
-  osVersion: string
-  results: Record<string, boolean>
-  notes: Record<string, string>
-  responses: Record<string, string>
-  generated: string
-  cliVersion?: string
-  probeCount?: number
+export interface DraftReceipt {
+  manifest: ProbeSuiteManifest
+  collectorRevision: string
+  cliVersion: string
 }
 
-export async function submitResults(data: SubmitData): Promise<string | null> {
-  const passed = Object.values(data.results).filter(Boolean).length
-  const total = Object.keys(data.results).length
-  const pct = Math.round((passed / total) * 100)
-  const ver = data.terminalVersion ? ` ${data.terminalVersion}` : ""
-
-  const title = `[probe] ${data.terminal}${ver} on ${data.os} — ${pct}% (${passed}/${total})`
-  const body = formatIssueBody(data, passed, total, pct)
-
-  if (!hasGhCli()) {
-    return submitViaBrowser(title, body, data)
-  }
-
-  const bodyFile = join(tmpdir(), `terminfo-submit-${Date.now()}.md`)
-  try {
-    writeFileSync(bodyFile, body)
-    const url = execFileSync("gh", ["issue", "create", "--repo", REPO, "--title", title, "--body-file", bodyFile], {
-      encoding: "utf-8",
-      timeout: 30000,
-    }).trim()
-    return url
-  } catch (err) {
-    console.error(`  Failed to create issue: ${err instanceof Error ? err.message : String(err)}`)
-    return null
-  } finally {
-    try {
-      unlinkSync(bodyFile)
-    } catch {}
-  }
+function fenceFor(source: string): string {
+  const longest = Math.max(3, ...Array.from(source.matchAll(/~+/g), ([run]) => run.length))
+  return "~".repeat(longest + 1)
 }
 
-function hasGhCli(): boolean {
-  try {
-    execFileSync("gh", ["--version"], { stdio: "ignore", timeout: 5000 })
-    return true
-  } catch {
-    return false
+export function createDraft(
+  rawRunPath: string,
+  draftPath: string,
+  receipt: DraftReceipt,
+): { sha256: string; runId: string; suiteComplete: boolean; attachmentPath: string } {
+  const rawBytes = readFileSync(rawRunPath)
+  const raw = decodeExactUtf8(rawBytes, rawRunPath)
+  const decoded = decodeCollectorRun(rawRunPath, raw, receipt.manifest, receipt.collectorRevision)
+  const { run } = decoded
+  if (run.screenshotRefs.length > 0) {
+    throw new Error(`${rawRunPath}: screenshot artifact bytes are not retained with this offline draft`)
   }
-}
-
-async function submitViaBrowser(title: string, body: string, data: SubmitData): Promise<string | null> {
-  const issueUrl = `https://github.com/${REPO}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}&labels=probe-results`
-  console.log("  Opening browser...")
-  try {
-    const { platform } = await import("node:os")
-    const os = platform()
-    if (os === "darwin") execFileSync("open", [issueUrl])
-    else if (os === "win32") execFileSync("cmd", ["/c", "start", issueUrl])
-    else execFileSync("xdg-open", [issueUrl])
-    console.log(`  Review and click "Submit new issue".`)
-    return null
-  } catch {
-    const filename = `terminfo-${data.terminal}-${data.os}-${Date.now()}.json`
-    writeFileSync(filename, JSON.stringify(data, null, 2))
-    console.log(`  Couldn't open browser. Results saved to ${filename}`)
-    return null
+  const expected = receipt.manifest.probes[run.target.kind].length
+  const ungraded = Object.keys(run.ungradedDiagnostics ?? {}).length
+  const missing = expected - run.observations.length - ungraded
+  if (missing < 0) throw new Error(`${rawRunPath}: observation/diagnostic counts exceed trusted suite`)
+  const context = {
+    target: run.target.kind,
+    terminal: run.target.id,
+    version: run.target.version,
+    os: run.target.os ?? "unknown",
+    osVersion: run.target.osVersion ?? "unknown",
+    outerTerminal: run.target.outerTerminal ?? "unknown",
+    mux: run.target.mux ?? "unknown",
+    config: run.target.config ?? "unknown",
+    permissions: run.target.permissions ?? "unknown",
+    measuredAt: run.measuredAt,
+    cliVersion: receipt.cliVersion,
+    suiteId: run.suiteId,
+    probeHash: run.probeHash,
+    sourceRevision: run.sourceRevision,
+    identity: run.identity,
+    runId: run.runId,
+    runSha256: decoded.sha256,
+    runByteLength: rawBytes.length,
+    coverage: {
+      explicit: `${run.observations.length}/${expected}`,
+      ungraded,
+      missing,
+      suiteComplete: run.suiteComplete,
+    },
   }
-}
-
-function formatIssueBody(data: SubmitData, passed: number, total: number, pct: number): string {
-  const categories = new Map<string, { pass: number; fail: number; failList: string[] }>()
-  for (const [id, pass] of Object.entries(data.results)) {
-    const cat = id.split(".")[0]!
-    if (!categories.has(cat)) categories.set(cat, { pass: 0, fail: 0, failList: [] })
-    const entry = categories.get(cat)!
-    if (pass) entry.pass++
-    else {
-      entry.fail++
-      const note = data.notes[id]
-      entry.failList.push(note ? `- \`${id}\`: ${note}` : `- \`${id}\``)
+  const contextJson = JSON.stringify(context, null, 2)
+  const fence = fenceFor(contextJson)
+  const attachmentPath = join(dirname(draftPath), `${decoded.sha256}.json`)
+  if (attachmentPath === draftPath) throw new Error("Draft path cannot be the raw attachment path")
+  const draft = [
+    "# Terminal observation draft",
+    "",
+    "This command creates files offline and does not send them. Review this draft before posting it as a GitHub issue.",
+    "If you choose to contribute, include this consent statement:",
+    "I dedicate these results to the public domain (CC0 1.0) so terminfo.dev can publish them under any license.",
+    ...(run.suiteComplete ? [] : ["This run is partial: history only; not current terminal support."]),
+    "",
+    "## Measured context and coverage",
+    "",
+    `${fence}json`,
+    contextJson,
+    fence,
+    "",
+    "## Exact original run bytes",
+    "",
+    `[Attach the original JSON file](${basename(attachmentPath)}) (SHA256 ${decoded.sha256}; ${rawBytes.length} bytes).`,
+    "",
+  ].join("\n")
+  if (existsSync(attachmentPath)) {
+    if (!readFileSync(attachmentPath).equals(rawBytes)) {
+      throw new Error(`${attachmentPath}: existing content-addressed attachment differs from raw run bytes`)
     }
+  } else {
+    writeFileSync(attachmentPath, rawBytes, { flag: "wx", mode: 0o600 })
   }
-  const lines: string[] = []
-  for (const [cat, { pass, fail, failList }] of categories) {
-    const icon = fail === 0 ? "✅" : "⚠️"
-    lines.push(`${icon} **${cat}**: ${pass}/${pass + fail}`)
-    if (failList.length > 0) lines.push(...failList)
-  }
-
-  return `## Community Census Result
-
-| Field | Value |
-|-------|-------|
-| Terminal | ${data.terminal} |
-| Version | ${data.terminalVersion || "unknown"} |
-| OS | ${data.os} ${data.osVersion || ""} |
-| Score | ${passed}/${total} (${pct}%) |
-| CLI Version | ${data.cliVersion ?? "unknown"} |
-| Probes | ${data.probeCount ?? total} |
-| Generated | ${data.generated} |
-
-### Summary
-
-${lines.join("\n")}
-
-<details>
-<summary>Full JSON</summary>
-
-\`\`\`json
-${JSON.stringify(data, null, 2)}
-\`\`\`
-
-</details>
-
----
-*Submitted via \`npx terminfo.dev submit\`*`
+  writeFileSync(draftPath, draft, { flag: "wx", mode: 0o600 })
+  return { sha256: decoded.sha256, runId: run.runId, suiteComplete: run.suiteComplete, attachmentPath }
 }

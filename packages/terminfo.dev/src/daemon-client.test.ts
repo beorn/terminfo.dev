@@ -6,19 +6,32 @@
  * @reach fs-walk /tmp/terminfo-owned-*
  */
 import { createServer, type Server } from "node:http"
+import { createHash } from "node:crypto"
 import { once } from "node:events"
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import type { ProbeRun as CollectedProbeRun } from "@terminfo/probe-defs"
+import type { ProbeRun as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
   findOwnedDaemon,
   readDaemonProbeResponse,
+  readRawDaemonProbeResponse,
   requestDaemonProbe,
   saveDaemonProbeRun,
   stopOwnedDaemon,
 } from "./daemon-client.ts"
+
+const trustedReceipt = {
+  manifest: {
+    probeHash: "abcdef123456",
+    sourceRevision: "b".repeat(40),
+    generatedAt: "2026-09-28T00:00:00.000Z",
+    adapterVersion: "3.3.1",
+    probes: { app: ["device.primary-da"], headless: ["device.primary-da"], mux: ["device.primary-da"] },
+  } satisfies ProbeSuiteManifest,
+  collectorRevision: "a".repeat(40),
+}
 
 let server: Server | undefined
 let root: string | undefined
@@ -224,8 +237,44 @@ it("refuses the old boolean daemon payload instead of upgrading it to v2 observa
       terminalVersion: "0.49.1",
       os: "macos",
       osVersion: "25.4",
+      generated: "2026-09-28T00:00:00.000Z",
       results: { "device.primary-da": true },
     }),
   )
-  await expect(readDaemonProbeResponse(legacy)).rejects.toThrow(/v2|schema|boolean/i)
+  await expect(readDaemonProbeResponse(legacy, trustedReceipt)).rejects.toThrow(/v2|schema|boolean/i)
+})
+
+it("retains exact daemon HTTP bytes and refuses invalid UTF-8 before parsing", async () => {
+  const run: CollectedProbeRun = {
+    schemaVersion: 2,
+    runId: "1234567890abcdef1234567890abcdef",
+    target: {
+      kind: "app",
+      id: "kitty",
+      version: "0.49.1",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    suiteId: trustedReceipt.manifest.probeHash,
+    probeHash: trustedReceipt.manifest.probeHash,
+    suiteComplete: false,
+    sourceRevision: trustedReceipt.collectorRevision,
+    measuredAt: "2026-09-28T12:00:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: {},
+    assertions: [],
+    screenshotRefs: [],
+    observations: [],
+    ungradedDiagnostics: {},
+  }
+  const raw = `${JSON.stringify(run)}\r\n`
+  const decoded = await readRawDaemonProbeResponse(new Response(raw), trustedReceipt)
+  expect(decoded.raw).toBe(raw)
+  expect(decoded.sha256).toBe(createHash("sha256").update(raw).digest("hex"))
+  await expect(readRawDaemonProbeResponse(new Response(Buffer.from([0xff])), trustedReceipt)).rejects.toThrow(/UTF-8/i)
 })

@@ -63,7 +63,7 @@ function assertLoadedAppSuite(manifest: ProbeSuiteManifest, probeHash: string, l
   }
 }
 
-function suiteMetadata(): { probeHash: string; sourceRevision: string } {
+export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collectorRevision: string } {
   if (bundledSuite) {
     const { manifest, collectorRevision } = bundledSuite
     if (!/^[0-9a-f]{12}$/.test(manifest.probeHash) || !/^[0-9a-f]{40}$/.test(collectorRevision)) {
@@ -76,7 +76,7 @@ function suiteMetadata(): { probeHash: string; sourceRevision: string } {
     ) {
       throw new Error("Runtime suite metadata disagrees with compiled CLI receipt")
     }
-    return { probeHash: manifest.probeHash, sourceRevision: collectorRevision }
+    return { manifest, collectorRevision }
   }
   const probeHash = process.env.TERMINFO_PROBE_HASH
   const sourceRevision = process.env.TERMINFO_SOURCE_REVISION
@@ -107,13 +107,14 @@ function suiteMetadata(): { probeHash: string; sourceRevision: string } {
     },
   ).trim()
   if (dirty) throw new Error(`Collector source is uncommitted: ${dirty}`)
-  return { probeHash, sourceRevision }
+  return { manifest, collectorRevision: sourceRevision }
 }
 
 /** The same source-tree collector powers daemon and inline CLI entry points. */
-export async function collectProbeRun(options: { ids?: string[] } = {}): Promise<ProbeRun> {
+export async function collectProbeRun(options: { ids?: string[]; out?: NodeJS.WriteStream } = {}): Promise<ProbeRun> {
   const terminal = detectTerminal()
-  const { probeHash, sourceRevision } = suiteMetadata()
+  const { manifest, collectorRevision: sourceRevision } = getTrustedSuiteReceipt()
+  const probeHash = manifest.probeHash
   const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
   const clipboardReceipt = process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT
   const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
@@ -148,7 +149,7 @@ export async function collectProbeRun(options: { ids?: string[] } = {}): Promise
       })
       await drainStdin(1000)
       return result
-    })
+    }, options.out)
   } finally {
     await clipboard?.dispose()
   }

@@ -5,7 +5,16 @@
  * @testonly none
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { query, queryMode, queryOutcome, queryWithSentinel, queryWithSentinelOutcome, withRawMode } from "./tty.ts"
+import {
+  measureRenderedWidth,
+  query,
+  queryMode,
+  queryOutcome,
+  queryWithSentinel,
+  queryWithSentinelOutcome,
+  withRawMode,
+  withTTYOperation,
+} from "./tty.ts"
 
 const originalWrite = process.stdout.write
 
@@ -178,5 +187,53 @@ describe("TTY transaction replies", () => {
     await second
     expect(await delayed).toBeTruthy()
     expect(writes).toEqual(["hold-start", "hold-end", "\x1b[6n"])
+  })
+
+  it("routes nested query, sentinel, and width traffic through one injected TTY", async () => {
+    const writes: string[] = []
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        writes.push(chunk)
+        if (chunk === "\x1b[6n") reply("\x1b[1;3R")
+        if (chunk === "\x1b[?2026$p\x1b[c") reply("\x1b[?2026;1$y\x1b[?62;4c")
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    process.stdout.write = (() => {
+      throw new Error("controls reached stdout")
+    }) as typeof process.stdout.write
+
+    await withTTYOperation(async () => {
+      expect((await queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).reason).toBe("reply")
+      expect((await queryWithSentinelOutcome("\x1b[?2026$p", /\x1b\[\?2026;([0-4])\$y/, 20)).reason).toBe("reply")
+      expect(await measureRenderedWidth("界")).toBe(2)
+    }, out)
+    expect(writes).toEqual(["\x1b[6n", "\x1b[?2026$p\x1b[c", "\x1b7\x1b[1G界", "\x1b[6n", "\x1b8"])
+  })
+
+  it("releases an injected stream after an error so a later default query uses stdout", async () => {
+    const injectedWrites: string[] = []
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        injectedWrites.push(chunk)
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    await expect(
+      withTTYOperation(async () => {
+        throw new Error("probe failed")
+      }, out),
+    ).rejects.toThrow("probe failed")
+    const defaultWrites: string[] = []
+    process.stdout.write = ((chunk: string) => {
+      defaultWrites.push(chunk)
+      reply("\x1b[2;4R")
+      return true
+    }) as typeof process.stdout.write
+    expect(await query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).toMatchObject(["\x1b[2;4R", "2", "4"])
+    expect(injectedWrites).toEqual([])
+    expect(defaultWrites).toEqual(["\x1b[6n"])
   })
 })

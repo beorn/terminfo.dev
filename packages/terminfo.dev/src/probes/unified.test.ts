@@ -13,6 +13,29 @@ afterEach(() => {
   process.stdin.removeAllListeners("data")
 })
 
+// The public inline runner must put both callback writes and nested CPR queries on its selected TTY.
+it("uses the injected TTY for callback writes, columns, and nested cursor queries", async () => {
+  const writes: string[] = []
+  const out = {
+    columns: 12,
+    write(chunk: string) {
+      writes.push(chunk)
+      if (chunk === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[2;2R"))
+      return true
+    },
+  } as unknown as NodeJS.WriteStream
+  process.stdout.write = (() => {
+    throw new Error("probe traffic reached stdout")
+  }) as typeof process.stdout.write
+
+  const batch = await runProbeBatch({ ids: ["text.wrap"], out })
+  expect(writes).toEqual(["\x1b[1;1H\x1b[2K", `${"W".repeat(12)}X`, "\x1b[6n"])
+  expect(batch.ungradedDiagnostics["text.wrap"]).toMatchObject({ kind: "legacy-callback", pass: true })
+  const trace = JSON.parse(batch.rawReplies["text.wrap"]!) as { writes: string[]; queries: Array<{ sequence: string }> }
+  expect(trace.writes).toEqual(writes.slice(0, 2))
+  expect(trace.queries).toMatchObject([{ sequence: "\x1b[6n" }])
+})
+
 it("binds an explicit DA1 observation to exact outbound and reply bytes", async () => {
   const received = Buffer.from([0xff, ...Buffer.from("\x1b[?62;4c")])
   process.stdout.write = (() => {
@@ -84,6 +107,7 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
   process.stdout.write = ((text: string) => {
     writes.push(text)
     if (text.startsWith("\x1b]52;c;")) order.push("osc52")
+    if (text === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[1;1R"))
     return true
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
