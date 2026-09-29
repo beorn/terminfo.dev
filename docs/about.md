@@ -74,7 +74,7 @@ Features are tagged by their defining standard (13 standards). Each standard pag
 - **Specific versions, not all versions.** Probe results are from particular versions of each terminal and backend. Older or newer versions may differ. Check the terminal page and result context for the measured version.
 - **Programs inside a terminal are a different target.** A terminal emulator provides the surface that ordinary terminal applications consume. Identify which layer a reproduction actually tests.
 - **Visual claims need visual evidence.** Controlled screenshots, pixel checks or recordings can be automated, but protocol replies alone cannot establish glyph appearance, image placement or cursor blink timing.
-- **Platform coverage is incomplete.** Existing automated app records are from macOS. Controlled Linux captures are being added; they do not establish behavior on macOS or Windows. Platform gaps remain untested.
+- **Platform coverage is incomplete.** Current reviewed app results cover Kitty on Linux. Older macOS records remain historical; the corrected suite has not established app behavior on macOS or Windows. Headless engine results are separate from desktop-app measurements.
 - **Headless evidence varies.** A cell-state assertion can prove an engine effect; a declared capability or consumed sequence cannot. Neither establishes rendering in the desktop application.
 - **Multiplexer results depend on the outer terminal.** Multiplexer pass-through probes test what the multiplexer relays, but the outer terminal must also support the feature for it to work end-to-end.
 

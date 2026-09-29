@@ -147,7 +147,7 @@ const breadcrumbParent = (() => {
     <li><strong>{{ errors }}</strong> errors</li>
     <li><strong>{{ counts.notTested }}</strong> untested</li>
   </ul>
-  <p class="score-detail">Inconclusive means support is still unknown. Each result covers only its recorded check.</p>
+  <p class="score-detail">Inconclusive means support is still unknown. Each result covers only its recorded check. <a href="/contribute#reading-results">How to read results</a></p>
   <details class="result-counting">
     <summary>How these results are counted</summary>
     <p>{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. This includes checks that could not run, such as a probe refused by a permission policy.</p>
