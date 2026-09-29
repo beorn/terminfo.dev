@@ -139,14 +139,21 @@ const breadcrumbParent = (() => {
 </p>
 
 <div v-if="!isHistorical && selectedRun" class="score-card">
-  <div v-if="score !== null" class="score-number">{{ score }}<span class="score-pct">%</span></div>
-  <div v-else class="score-number">No score</div>
-  <div v-if="counts.conclusive" class="score-detail">
-    {{ counts.supported }} / {{ counts.conclusive }} conclusive checks supported
-  </div>
-  <div v-else class="score-detail">No conclusive results in this reviewed run.</div>
-  <p class="score-detail">{{ counts.supported }} supported · {{ counts.unsupported }} unsupported · {{ inconclusive }} inconclusive · {{ errors }} errors · {{ counts.notTested }} untested</p>
-  <p class="score-detail">{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. Inconclusive means support is still unknown. Each result covers its recorded check, not every behavior of a feature.</p>
+  <h2 class="results-heading">Results from this run</h2>
+  <ul class="result-counts">
+    <li><strong>{{ counts.supported }}</strong> supported</li>
+    <li><strong>{{ counts.unsupported }}</strong> unsupported</li>
+    <li><strong>{{ inconclusive }}</strong> inconclusive</li>
+    <li><strong>{{ errors }}</strong> errors</li>
+    <li><strong>{{ counts.notTested }}</strong> untested</li>
+  </ul>
+  <p class="score-detail">Inconclusive means support is still unknown. Each result covers only its recorded check.</p>
+  <details class="result-counting">
+    <summary>How these results are counted</summary>
+    <p>{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. This includes checks that could not run, such as a probe refused by a permission policy.</p>
+    <p v-if="counts.conclusive">{{ counts.supported }} of {{ counts.conclusive }} conclusive results are supported ({{ score }}%). This percentage excludes {{ inconclusive }} inconclusive results, {{ errors }} errors and {{ counts.notTested }} untested features; it does not measure overall compatibility.</p>
+    <p v-else>No conclusive results in this reviewed run.</p>
+  </details>
 </div>
 
 <details v-if="selectedRun" class="run-context">
@@ -357,34 +364,36 @@ const breadcrumbParent = (() => {
   border-radius: 8px;
   padding: 1.5em;
   margin: 1.5em 0;
-  text-align: center;
 }
 
-.score-number {
-  font-size: 3em;
-  font-weight: 700;
-  line-height: 1;
+.score-card .results-heading {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 1em;
+  font-weight: 600;
 }
 
-.score-pct {
-  font-size: 0.5em;
-  color: var(--vp-c-text-3);
+.score-card .result-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em 1.5em;
+  padding: 0;
+  list-style: none;
 }
 
-.score-detail {
+.score-card .result-counts li {
+  margin: 0;
+}
+
+.result-counting summary {
+  cursor: pointer;
+}
+
+.score-detail,
+.result-counting {
   margin-top: 0.5em;
   font-size: 0.95em;
-}
-
-.score-yes { color: #10b981; }
-.score-partial { color: #f59e0b; }
-.score-no { color: #ef4444; }
-.score-total { color: var(--vp-c-text-3); }
-
-.score-date {
-  margin-top: 0.5em;
-  font-size: 0.85em;
-  color: var(--vp-c-text-3);
 }
 
 .category-section {
