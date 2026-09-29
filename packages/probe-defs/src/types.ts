@@ -326,4 +326,6 @@ export interface ProbeDefinition {
   termNeedsGeometry?: true
   /** Explicit opt-in for recording callback exceptions as observations. */
   termObservationEvidence?: ObservationEvidence
+  /** Every observation this Termless callback returns names this method, or none for a refusal before measurement. */
+  termlessObservationEvidence?: ObservationEvidence
 }

@@ -90,7 +90,8 @@ export function errorMessage(error: unknown): string {
 }
 
 /** A callback conclusion without its raw state cannot become a support claim. */
-function recordResult(batch: Batch, id: string, result: ProbeResult): void {
+function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult): void {
+  const id = probe.id
   const explicit = result.observation
   if (!explicit) {
     batch.ungradedDiagnostics[id] = {
@@ -99,6 +100,22 @@ function recordResult(batch: Batch, id: string, result: ProbeResult): void {
       ...(result.note && { note: result.note }),
       ...(result.response !== undefined && { response: result.response }),
     }
+    return
+  }
+  const declared = probe.termlessObservationEvidence
+  const unmeasuredRefusal =
+    explicit.outcome === "inconclusive" &&
+    Boolean(explicit.reason) &&
+    result.response === undefined &&
+    !result.assertions?.length
+  if (declared && !(explicit.evidence === "none" ? unmeasuredRefusal : explicit.evidence === declared)) {
+    batch.observations.push({
+      featureId: id,
+      outcome: "error",
+      reason: "collector-error",
+      evidence: explicit.evidence,
+      note: `Termless callback ${id} declares ${declared} evidence but returned ${explicit.evidence}${explicit.evidence === "none" ? " without an unmeasured refusal" : ""}`,
+    })
     return
   }
   const conclusive = explicit.outcome === "supported" || explicit.outcome === "unsupported"
@@ -145,15 +162,15 @@ export function collectBatch(
     process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)
     try {
       backend.reset()
-      recordResult(batch, probe.id, probe.termless(ctx))
+      recordResult(batch, probe, probe.termless(ctx))
     } catch (error) {
       const message = errorMessage(error)
-      if (probe.termObservationEvidence) {
+      if (probe.termlessObservationEvidence) {
         batch.observations.push({
           featureId: probe.id,
           outcome: "error",
           reason: "collector-error",
-          evidence: probe.termObservationEvidence,
+          evidence: probe.termlessObservationEvidence,
           note: message,
         })
       } else {

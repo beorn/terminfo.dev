@@ -476,6 +476,28 @@ it("records an opted-in query callback exception as collector error, never suppo
   expect(batch.suiteComplete).toBe(false)
 })
 
+it("does not use a headless-only marker to grade an app callback exception", async () => {
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const originalApp = definition.termObservationEvidence
+  const originalHeadless = definition.termlessObservationEvidence
+  definition.termObservationEvidence = undefined
+  definition.termlessObservationEvidence = "parser-state"
+  process.stdout.write = (() => {
+    throw new Error("App TTY write failed")
+  }) as typeof process.stdout.write
+  try {
+    const batch = await runProbeBatch({ ids: [definition.id] })
+    expect(batch.observations).toEqual([])
+    expect(batch.assertions).toEqual([])
+    expect(batch.ungradedDiagnostics).toEqual({
+      [definition.id]: { kind: "collector-error", name: "Error", message: "App TTY write failed" },
+    })
+  } finally {
+    definition.termObservationEvidence = originalApp
+    definition.termlessObservationEvidence = originalHeadless
+  }
+})
+
 // A live fixture must bind its independent X11 events to the same feature trace, after pixel checkpoints.
 it("runs owned OSC 52 after pixels and retains timestamped independent clipboard operations", async () => {
   verifiedBatchFixture()
