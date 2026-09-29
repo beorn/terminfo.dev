@@ -125,13 +125,20 @@ test("headless wide sample needs ASCII cell control before a support assertion",
 })
 
 test("app cursor motion needs a measured start while cell-only text stays ungraded", async () => {
-  const replies = [
-    { row: 3, col: 5 },
-    { row: 4, col: 5 },
-  ]
-  const newline = await byId("text.newline").term(app({ queryCursorPosition: async () => replies.shift() ?? null }))
-  expect(newline.observation).toMatchObject({ outcome: "supported", evidence: "query" })
-  expect(newline.assertions).toMatchObject([{ kind: "positive" }])
+  for (const [row, col, outcome] of [
+    [4, 1, "supported"],
+    [4, 5, "supported"],
+    [3, 5, "unsupported"],
+  ] as const) {
+    const replies = [
+      { row: 3, col: 5 },
+      { row, col },
+    ]
+    const newline = await byId("text.newline").term(app({ queryCursorPosition: async () => replies.shift() ?? null }))
+    expect(newline.observation, `LF final ${row};${col}`).toMatchObject({ outcome, evidence: "query" })
+    expect(newline.assertions).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
+    expect(JSON.parse(newline.response ?? "")).toMatchObject({ before: { row: 3, col: 5 }, pos: { row, col } })
+  }
   const uncalibrated = await byId("text.newline").term(app({ queryCursorPosition: async () => ({ row: 4, col: 5 }) }))
   expect(uncalibrated.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   const basic = await byId("text.basic").term(app({ queryCursorPosition: async () => ({ row: 1, col: 6 }) }))

@@ -147,22 +147,29 @@ test("SGR consumption stays inconclusive while headless cell state supports an a
   expect(JSON.parse(supported.response ?? "")).toMatchObject({ char: "X", bold: true })
   expect(supported.assertions).toMatchObject([{ kind: "positive", observed: supported.response }])
 
-  const unsupported = probe.termless(headless())
-  expect(unsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
-  expect(unsupported.assertions).toMatchObject([{ kind: "negative", observed: unsupported.response }])
+  const unmeasured = probe.termless(headless())
+  expect(unmeasured.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  expect(JSON.parse(unmeasured.response ?? "")).toMatchObject({ char: "X", bold: false })
+  expect(unmeasured.assertions).toBeUndefined()
 })
 
-test("unexposed overline stays inconclusive and cannot inherit the old true boolean", () => {
-  const probe = sgrProbes.find((item) => item.id === "sgr.overline")
-  if (!probe?.termless) throw new Error("missing headless overline probe")
-  const result = probe.termless(headless())
-  expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "parser-state",
-  })
-  expect(JSON.parse(result.response ?? "")).toMatchObject({ char: "X" })
+test("unexposed overline and default conceal flags cannot establish negative support", () => {
+  for (const id of ["sgr.overline", "sgr.hidden"]) {
+    const probe = sgrProbes.find((item) => item.id === id)
+    if (!probe?.termless) throw new Error(`missing headless ${id} probe`)
+    const result = probe.termless(headless())
+    expect(result.pass, id).toBe(false)
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "parser-state",
+    })
+    expect(JSON.parse(result.response ?? ""), id).toMatchObject({ char: "X" })
+    expect(result.assertions, id).toBeUndefined()
+    const measured = probe.termless(headless({ getCell: () => ({ ...baseCell, hidden: true, overline: true }) }))
+    expect(measured.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(measured.assertions, id).toMatchObject([{ kind: "positive" }])
+  }
 })
 
 test("underline color needs an observed color, not only an underline or a consumed sequence", async () => {

@@ -62,7 +62,8 @@ export function unmeasuredCellResult(position: { row: number; col: number } | nu
 /**
  * SGR probe — feed SGR sequence + "X", verify cell attribute (termless) or cursor position (term).
  *
- * Termless: check actual cell state. A null predicate means the backend does not expose the attribute.
+ * Termless: positive cell state establishes parser support. Adapters may omit
+ * attributes or collapse styles, so a mismatch cannot establish non-support.
  * Term: cursor advance only proves the sequence was consumed, not that its style rendered.
  */
 export function sgrProbe(
@@ -76,11 +77,16 @@ export function sgrProbe(
     termless(ctx) {
       ctx.feed(sequence + "X")
       const cell = ctx.getCell(0, 0)
+      const measured = cell.char === "X" && check(cell) === true
       return parserStateResult(
-        cell.char === "X" ? check(cell) : null,
+        measured ? true : null,
         `${id}: attribute applied to the rendered X cell`,
         cell,
-        cell.char === "X" ? undefined : "No rendered X cell to evaluate",
+        cell.char !== "X"
+          ? "No rendered X cell to evaluate"
+          : measured
+            ? undefined
+            : "Cell readback cannot distinguish unsupported styling from unreported attributes or collapsed styles; a negative needs rendering review",
       )
     },
     async term(ctx) {

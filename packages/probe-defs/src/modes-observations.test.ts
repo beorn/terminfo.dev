@@ -15,6 +15,55 @@ const modes = [
   { id: "modes.decsclm", number: 4 },
 ] as const
 
+test("IRM grades measured insertion despite false mode metadata and distinguishes replacement from bad setup", () => {
+  const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
+  if (!definition?.termless) throw new Error("Missing headless IRM callback")
+  for (const [target, outcome] of [
+    ["XABC", "supported"],
+    ["XBC ", "unsupported"],
+    ["XAB ", "inconclusive"],
+  ] as const) {
+    const feeds: string[] = []
+    let phase = "empty"
+    const context = {
+      cols: 4,
+      getScrollback: () => ({ viewportOffset: 0, totalLines: 1, screenLines: 1 }),
+      getMode: () => false,
+      getCursor: () => ({ x: phase === "seed" ? 3 : 0, y: 0, visible: true, style: null }),
+      feed: (sequence: string) => {
+        feeds.push(sequence)
+        if (sequence.includes("ABC")) phase = "seed"
+        else if (sequence === "\x1b[1;1H") phase = "origin"
+        else if (sequence === "X") phase = "target"
+      },
+      getCell: (_row: number, col: number) => ({ char: (phase === "target" ? target : "ABC ")[col] ?? "" }),
+    } as unknown as TermlessContext
+    const result = definition.termless(context)
+    expect(result.observation, target).toMatchObject({ outcome, evidence: "parser-state" })
+    expect(feeds.at(-1), target).toBe("\x1b[4l")
+    if (outcome === "inconclusive") expect(result.assertions, target).toBeUndefined()
+    else expect(result.assertions, target).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
+  }
+})
+
+test("IRM does not grade output when the seed was not measured", () => {
+  const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
+  if (!definition?.termless) throw new Error("Missing headless IRM callback")
+  const feeds: string[] = []
+  const context = {
+    cols: 4,
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 1, screenLines: 1 }),
+    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+    feed: (sequence: string) => feeds.push(sequence),
+    getCell: () => ({ char: " " }),
+  } as unknown as TermlessContext
+  const result = definition.termless(context)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.assertions).toBeUndefined()
+  expect(feeds).not.toContain("\x1b[4h")
+  expect(feeds).not.toContain("X")
+})
+
 test("app cursor replies and mode recognition do not prove alternate-buffer behavior", async () => {
   for (const id of ["modes.alt-screen.exit", "modes.insert-replace", "modes.altscreen-47", "modes.altscreen-1047"]) {
     const definition = modesProbes.find((entry) => entry.id === id)

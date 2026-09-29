@@ -2,11 +2,12 @@
  * @failure Headless exceptions borrow an app marker, or a mismarked returned observation enters a graded batch.
  * @level l1
  * @consumer Production headless batch collector
- * @reach imports headless-batch.ts, @terminfo/probe-defs, @termless/xtermjs
+ * @reach imports headless-batch.ts, @terminfo/probe-defs, @termless/xtermjs, @termless/vterm
  * @testonly none
  */
 /* oxlint-disable typescript/no-deprecated -- Exercise the production TerminalBackend adapter boundary. */
 import { createXtermBackend } from "@termless/xtermjs"
+import { createVtermBackend } from "@termless/vterm"
 import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 import { collectBatch } from "./headless-batch.ts"
@@ -25,6 +26,27 @@ function definition(
 ): ProbeDefinition {
   return { id, termless, term: null, ...markers }
 }
+
+test("real vterm grades interior-region SU without creating scrollback history", () => {
+  const id = "scrollback.scroll-up"
+  const probe = ALL_PROBES.find((item) => item.id === id)
+  if (!probe) throw new Error(`Missing ${id} registry definition`)
+  const value = createVtermBackend({ cols: 80, rows: 24 })
+  try {
+    const batch = collectBatch(value, "vterm", [probe])
+    expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", evidence: "parser-state" }])
+    expect(batch.assertions).toMatchObject([{ featureId: id, kind: "positive" }])
+    const raw = batch.rawReplies[id]
+    if (!raw) throw new Error(`Missing ${id} raw measurement`)
+    expect(JSON.parse(raw)).toMatchObject({
+      seed: ["A", "B", "C", "D", "E"],
+      beforeScroll: { totalLines: 24, screenLines: 24 },
+      afterScroll: { totalLines: 24, screenLines: 24 },
+    })
+  } finally {
+    value.destroy()
+  }
+})
 
 beforeEach(() => {
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
@@ -60,7 +82,7 @@ test("attributes headless exceptions only to the headless marker and leaves lega
   expect(batch.assertions).toEqual([])
 })
 
-test("routes real registry constructor markers while legacy and multi-method callbacks remain ungraded", () => {
+test("routes real registry constructor markers while multi-method callbacks remain ungraded", () => {
   const ids = [
     "sgr.bold",
     "cursor.move.absolute",
@@ -93,8 +115,9 @@ test("routes real registry constructor markers while legacy and multi-method cal
     { featureId: "sgr.reset", outcome: "error", reason: "collector-error", evidence: "parser-state" },
     { featureId: "cursor.save-restore", outcome: "error", reason: "collector-error", evidence: "parser-state" },
     { featureId: "cursor.cup-scroll-region", outcome: "error", reason: "collector-error", evidence: "parser-state" },
+    { featureId: "extensions.truecolor", outcome: "error", reason: "collector-error", evidence: "parser-state" },
   ])
-  expect(Object.keys(batch.ungradedDiagnostics).sort()).toEqual(ids.slice(7).sort())
+  expect(Object.keys(batch.ungradedDiagnostics).sort()).toEqual(ids.slice(8).sort())
   expect(batch.assertions).toEqual([])
   expect(batch.rawReplies).toEqual({})
 })

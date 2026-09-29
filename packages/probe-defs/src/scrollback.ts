@@ -117,32 +117,48 @@ export const scrollbackProbes: ProbeDefinition[] = [
     ...probe(
       "scrollback.scroll-up",
       (ctx) => {
-        const rows = ctx.getScrollback().screenLines
-        if (!validSize(rows, 1) || !validSize(ctx.cols, 4)) {
+        const initial = ctx.getScrollback()
+        const rows = initial.screenLines
+        if (!validSize(rows, 5) || !validSize(ctx.cols, 3) || initial.totalLines !== rows) {
           return {
             pass: false,
             observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
           }
         }
-        ctx.feed("TOP\r\n")
-        const before = ctx.getCell(0, 0)
-        for (let i = 0; i < rows - 1; i++) ctx.feed("line\r\n")
-        const atCommand = ctx.getCell(0, 0)
-        if (before.char !== "T" || atCommand.char !== "T") {
-          return parserStateResult(
-            null,
-            "SU moves the measured TOP marker away from row zero",
-            { before, atCommand },
-            "TOP marker was not present immediately before SU",
-          )
+        const expected = "Interior-region SU shifts the measured middle and bottom rows up, clearing the region bottom"
+        ctx.feed("\x1b[2J")
+        for (const [row, marker] of ["A", "B", "C", "D", "E"].entries()) {
+          ctx.feed(`\x1b[${row + 1};1H${marker}`)
         }
-        ctx.feed("\x1b[S")
-        const after = ctx.getCell(0, 0)
-        return parserStateResult(after.char !== "T", "SU moves the measured TOP marker away from row zero", {
-          before,
-          atCommand,
-          after,
-        })
+        try {
+          ctx.feed("\x1b[2;4r")
+          const seed = Array.from({ length: 5 }, (_, row) => ctx.getCell(row, 0).char)
+          const beforeScroll = ctx.getScrollback()
+          if (seed.join("") !== "ABCDE" || beforeScroll.totalLines !== rows) {
+            return parserStateResult(
+              null,
+              expected,
+              { seed, beforeScroll },
+              "Interior-region SU seed or history was not established",
+            )
+          }
+          ctx.feed("\x1b[S")
+          const after = Array.from({ length: 5 }, (_, row) => ctx.getCell(row, 0).char)
+          const afterScroll = ctx.getScrollback()
+          const controlsValid = after[0] === "A" && after[4] === "E" && afterScroll.totalLines === rows
+          const shifted = after[1] === "C" && after[2] === "D" && isBlank(after[3] ?? "\0")
+          const unchanged = after.join("") === "ABCDE"
+          return parserStateResult(
+            controlsValid ? (shifted ? true : unchanged ? false : null) : null,
+            expected,
+            { seed, beforeScroll, after, afterScroll },
+            controlsValid && (shifted || unchanged)
+              ? undefined
+              : "Interior-region SU controls or output were not measured",
+          )
+        } finally {
+          ctx.feed("\x1b[r")
+        }
       },
       async (ctx) => {
         const refusal = tooSmall(ctx, 5, 5)

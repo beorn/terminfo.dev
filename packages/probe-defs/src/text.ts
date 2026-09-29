@@ -166,9 +166,10 @@ export const textProbes: ProbeDefinition[] = [
         const before = await ctx.queryCursorPosition()
         ctx.write("\n") // LF
         const pos = await ctx.queryCursorPosition()
-        if (!before || !pos)
+        if (!before || !pos) {
           return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        if (before.row !== 3 || before.col !== 5)
+        }
+        if (before.row !== 3 || before.col !== 5) {
           return {
             pass: false,
             response: JSON.stringify({ before, pos }),
@@ -179,11 +180,20 @@ export const textProbes: ProbeDefinition[] = [
               note: "Could not establish starting cursor position",
             },
           }
-        const pass = pos.row === 4 && pos.col === 5
+        }
+        // LNM or TTY output processing may also return to column 1. The
+        // feature claim is vertical movement; retain the column as evidence.
+        const pass = pos.row === 4
         return {
           pass,
           response: JSON.stringify({ before, pos }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: {
+            outcome: pass ? "supported" : "unsupported",
+            evidence: "query",
+            ...(pos.col !== 5 && {
+              note: `Column changed from 5 to ${pos.col}; this probe does not distinguish terminal newline mode from TTY output processing`,
+            }),
+          },
           assertions: [
             {
               kind: pass ? "positive" : "negative",
@@ -299,7 +309,7 @@ export const textProbes: ProbeDefinition[] = [
         if (refusal) return refusal
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1f389}")
-        if (ascii !== 2 || width === null)
+        if (ascii !== 2 || width === null) {
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
@@ -310,6 +320,7 @@ export const textProbes: ProbeDefinition[] = [
               note: "ASCII width control or emoji width was unavailable",
             },
           }
+        }
         const pass = width === 2
         return {
           pass,
@@ -350,7 +361,7 @@ export const textProbes: ProbeDefinition[] = [
         if (refusal) return refusal
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u4e2d")
-        if (ascii !== 2 || width === null)
+        if (ascii !== 2 || width === null) {
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
@@ -361,6 +372,7 @@ export const textProbes: ProbeDefinition[] = [
               note: "ASCII width control or CJK width was unavailable",
             },
           }
+        }
         const pass = width === 2
         return {
           pass,
@@ -435,9 +447,10 @@ export const textProbes: ProbeDefinition[] = [
         const before = await ctx.queryCursorPosition()
         ctx.write("\r") // CR
         const pos = await ctx.queryCursorPosition()
-        if (!before || !pos)
+        if (!before || !pos) {
           return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        if (before.row !== 1 || before.col !== 3)
+        }
+        if (before.row !== 1 || before.col !== 3) {
           return {
             pass: false,
             response: JSON.stringify({ before, pos }),
@@ -448,6 +461,7 @@ export const textProbes: ProbeDefinition[] = [
               note: "Could not establish cursor at 1;3 before CR",
             },
           }
+        }
         const pass = pos.row === 1 && pos.col === 1
         return {
           pass,
@@ -490,9 +504,10 @@ export const textProbes: ProbeDefinition[] = [
         const before = await ctx.queryCursorPosition()
         ctx.write("\b") // BS
         const pos = await ctx.queryCursorPosition()
-        if (!before || !pos)
+        if (!before || !pos) {
           return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        if (before.row !== 1 || before.col !== 5)
+        }
+        if (before.row !== 1 || before.col !== 5) {
           return {
             pass: false,
             response: JSON.stringify({ before, pos }),
@@ -503,6 +518,7 @@ export const textProbes: ProbeDefinition[] = [
               note: "Could not establish cursor at 1;5 before BS",
             },
           }
+        }
         const pass = pos.row === 1 && pos.col === 4
         return {
           pass,
@@ -544,9 +560,10 @@ export const textProbes: ProbeDefinition[] = [
         const before = await ctx.queryCursorPosition()
         ctx.write("\x1bD") // IND
         const pos = await ctx.queryCursorPosition()
-        if (!before || !pos)
+        if (!before || !pos) {
           return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        if (before.row !== 3 || before.col !== 5)
+        }
+        if (before.row !== 3 || before.col !== 5) {
           return {
             pass: false,
             response: JSON.stringify({ before, pos }),
@@ -557,6 +574,7 @@ export const textProbes: ProbeDefinition[] = [
               note: "Could not establish starting cursor position",
             },
           }
+        }
         const pass = pos.row === 4 && pos.col === 5
         return {
           pass,
@@ -598,9 +616,10 @@ export const textProbes: ProbeDefinition[] = [
         const before = await ctx.queryCursorPosition()
         ctx.write("\x1bE") // NEL
         const pos = await ctx.queryCursorPosition()
-        if (!before || !pos)
+        if (!before || !pos) {
           return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        if (before.row !== 3 || before.col !== 5)
+        }
+        if (before.row !== 3 || before.col !== 5) {
           return {
             pass: false,
             response: JSON.stringify({ before, pos }),
@@ -611,6 +630,7 @@ export const textProbes: ProbeDefinition[] = [
               note: "Could not establish starting cursor position",
             },
           }
+        }
         const pass = pos.row === 4 && pos.col === 1
         return {
           pass,
@@ -698,7 +718,7 @@ export const textProbes: ProbeDefinition[] = [
         if (refusal) return refusal
         const ascii = await ctx.measureRenderedWidth("A")
         const width = await ctx.measureRenderedWidth("e\u0301")
-        if (ascii !== 1 || width === null)
+        if (ascii !== 1 || width === null) {
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
@@ -709,6 +729,7 @@ export const textProbes: ProbeDefinition[] = [
               note: "ASCII width control or combining width was unavailable",
             },
           }
+        }
         const pass = width === 1
         return {
           pass,
@@ -973,7 +994,7 @@ export const textProbes: ProbeDefinition[] = [
         if (refusal) return refusal
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F1FA}\u{1F1F8}")
-        if (ascii !== 2 || width === null)
+        if (ascii !== 2 || width === null) {
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
@@ -984,6 +1005,7 @@ export const textProbes: ProbeDefinition[] = [
               note: "ASCII width control or flag width was unavailable",
             },
           }
+        }
         const pass = width === 2
         return {
           pass,
@@ -1025,7 +1047,7 @@ export const textProbes: ProbeDefinition[] = [
         if (refusal) return refusal
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u263A\uFE0F")
-        if (ascii !== 2 || width === null)
+        if (ascii !== 2 || width === null) {
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
@@ -1036,6 +1058,7 @@ export const textProbes: ProbeDefinition[] = [
               note: "ASCII width control or VS16 width was unavailable",
             },
           }
+        }
         const pass = width === 2
         return {
           pass,
@@ -1077,7 +1100,7 @@ export const textProbes: ProbeDefinition[] = [
         if (refusal) return refusal
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
-        if (ascii !== 2 || width === null)
+        if (ascii !== 2 || width === null) {
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
@@ -1088,6 +1111,7 @@ export const textProbes: ProbeDefinition[] = [
               note: "ASCII width control or ZWJ width was unavailable",
             },
           }
+        }
         const pass = width === 2
         return {
           pass,

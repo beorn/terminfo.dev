@@ -1634,8 +1634,8 @@
     "slug": "lf-line-feed",
     "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
     "tags": ["ecma-48", "vt100"],
-    "body": "LF (0x0A) moves the cursor down one line. If the cursor is at the bottom of the scroll region, the content scrolls up and a blank line appears at the bottom. On most terminals, LF also performs an implicit carriage return (moves to column 1), though the VT100 specification treats LF as vertical movement only.",
-    "probe": "Write \"A\\r\\nB\", verify A is at cell (0,0) and B is at cell (1,0).",
+    "body": "LF (0x0A) moves the cursor down one line. If the cursor is at the bottom of the scroll region, the content scrolls up and a blank line appears at the bottom. Terminal newline mode or TTY output processing can also cause a carriage return to column 1. The observed cursor position alone does not distinguish these causes.",
+    "probe": "Headless: write \"A\\r\\nB\" and verify A and B on consecutive rows. App: establish row 3, column 5, write LF, and measure advancement to row 4; retain the final column without requiring it to stay unchanged.",
     "baseline": "core"
   },
   "text.backspace": {

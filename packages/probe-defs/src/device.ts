@@ -98,7 +98,8 @@ export const deviceProbes: ProbeDefinition[] = [
   deviceQuery({
     id: "device.primary-da",
     query: "\x1b[c",
-    valid: /\x1b\[\?[0-9]+(?:;[0-9]+)*c/,
+    // Kitty includes a trailing empty parameter: CSI ? 62 ; 52 ; c.
+    valid: /\x1b\[\?[0-9]+(?:;[0-9]+)*;?c/,
     malformed: /\x1b\[\?/,
     expected: "complete DA1 CSI ? numeric attributes c",
     direct: true, // DA1 is also the normal sentinel; it must be queried directly.

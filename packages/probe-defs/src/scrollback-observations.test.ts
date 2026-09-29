@@ -288,38 +288,68 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
   expect(writes).toEqual([])
 })
 
-test("SU cannot claim support when the setup lines already scrolled TOP away", () => {
+test("interior-region SU grades measured movement, a no-op, and invalid controls", () => {
   const probe = scrollbackProbes.find((item) => item.id === "scrollback.scroll-up")
   if (!probe?.termless) throw new Error("missing scroll-up callback")
-  let lines = 0
-  const result = probe.termless(
-    headless({
-      getScrollback: () => ({ viewportOffset: 0, totalLines: 4, screenLines: 4 }),
-      feed: (sequence) => {
-        if (sequence === "line\r\n") lines++
-      },
-      getCell: () => ({ char: lines >= 3 ? " " : "T" }) as ReturnType<TermlessContext["getCell"]>,
-    }),
-  )
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
-  expect(result.assertions).toBeUndefined()
+  for (const [effect, outcome] of [
+    ["shift", "supported"],
+    ["noop", "unsupported"],
+    ["unexpected", "inconclusive"],
+    ["outer", "inconclusive"],
+    ["history", "inconclusive"],
+    ["missing-seed", "inconclusive"],
+  ] as const) {
+    const cells = [" ", " ", " ", " ", " "]
+    const feeds: string[] = []
+    let history = 0
+    const result = probe.termless(
+      headless({
+        cols: 4,
+        getScrollback: () => ({ viewportOffset: 0, totalLines: 5 + history, screenLines: 5 }),
+        feed: (sequence) => {
+          feeds.push(sequence)
+          const write = /^\x1b\[(\d+);1H([A-Z])$/.exec(sequence)
+          if (write) {
+            const row = Number(write[1]) - 1
+            if (effect !== "missing-seed" || row !== 2) cells[row] = write[2]!
+          }
+          if (sequence === "\x1b[S") {
+            if (effect === "shift" || effect === "outer" || effect === "history") {
+              cells[1] = cells[2]!
+              cells[2] = cells[3]!
+              cells[3] = " "
+            }
+            if (effect === "unexpected") cells[2] = "?"
+            if (effect === "outer") cells[0] = "?"
+            if (effect === "history") history++
+          }
+        },
+        getCell: (row) => ({ char: cells[row] ?? " " }) as ReturnType<TermlessContext["getCell"]>,
+      }),
+    )
+    expect(result.observation, effect).toMatchObject({ outcome, evidence: "parser-state" })
+    expect(
+      feeds.some((sequence) => sequence.includes("\n")),
+      effect,
+    ).toBe(false)
+    expect(feeds.at(-1), effect).toBe("\x1b[r")
+    if (outcome === "inconclusive") expect(result.assertions, effect).toBeUndefined()
+    else expect(result.assertions, effect).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
+  }
 })
 
-test("SU retains support when TOP survives setup and CSI S alone moves it", () => {
+test("interior-region SU declines preexisting history before writing", () => {
   const probe = scrollbackProbes.find((item) => item.id === "scrollback.scroll-up")
   if (!probe?.termless) throw new Error("missing scroll-up callback")
-  let scrolled = false
+  const feeds: string[] = []
   const result = probe.termless(
     headless({
-      getScrollback: () => ({ viewportOffset: 0, totalLines: 4, screenLines: 4 }),
-      feed: (sequence) => {
-        if (sequence === "\x1b[S") scrolled = true
-      },
-      getCell: () => ({ char: scrolled ? " " : "T" }) as ReturnType<TermlessContext["getCell"]>,
+      getScrollback: () => ({ viewportOffset: 1, totalLines: 6, screenLines: 5 }),
+      feed: (sequence) => feeds.push(sequence),
     }),
   )
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
-  expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(feeds).toEqual([])
 })
 
 test("DECSTBM needs an inner-row movement control, not just a surviving top row", () => {

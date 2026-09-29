@@ -3,7 +3,7 @@ import { deviceProbes } from "./device.ts"
 import type { TermContext, TermlessContext, TerminalQueryOutcome } from "./types.ts"
 
 const replies = [
-  { id: "device.primary-da", query: "\x1b[c", valid: "\x1b[?1;2c", partial: "\x1b[?1;c" },
+  { id: "device.primary-da", query: "\x1b[c", valid: "\x1b[?62;52;c", partial: "\x1b[?62;52;" },
   { id: "device.status-report", query: "\x1b[5n", valid: "\x1b[0n", partial: "\x1b[4n" },
   { id: "device.secondary-da", query: "\x1b[>c", valid: "\x1b[>0;49;1c", partial: "\x1b[>0;;1c" },
   { id: "device.tertiary-da", query: "\x1b[=c", valid: "\x1bP!|1234ABCD\x1b\\", partial: "\x1bP!|1234ABCD" },

@@ -1,5 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { probe, decrpmModeProbe, parserStateResult } from "./helpers.ts"
+import { probe, decrpmModeProbe, parserStateResult, isBlank } from "./helpers.ts"
 
 export const modesProbes: ProbeDefinition[] = [
   // Alt screen enter
@@ -96,8 +96,9 @@ export const modesProbes: ProbeDefinition[] = [
     try {
       ctx.feed("\x1b[?7h")
       const enabled = ctx.getMode("autoWrap")
-      if (!enabled)
+      if (!enabled) {
         return parserStateResult(null, expected, { originallyEnabled, enabled }, "Auto-wrap setup was not measured")
+      }
       ctx.feed("X".repeat(ctx.cols) + "Y")
       const last = ctx.getCell(0, ctx.cols - 1)
       const next = ctx.getCell(1, 0)
@@ -178,16 +179,40 @@ export const modesProbes: ProbeDefinition[] = [
     ...probe(
       "modes.insert-replace",
       (ctx) => {
-        ctx.feed("ABC\x1b[1G\x1b[4hX")
-        const result = ctx.getMode("insertMode") === true
-        const cell0 = ctx.getCell(0, 0).char === "X"
-        const cell1 = ctx.getCell(0, 1).char === "A"
-        ctx.feed("\x1b[4l")
-        return parserStateResult(result && cell0 && cell1, "IRM inserts X before the measured A cell", {
-          mode: result,
-          first: ctx.getCell(0, 0),
-          second: ctx.getCell(0, 1),
-        })
+        const expected = "IRM inserts X before measured ABC instead of replacing A"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 4 || !Number.isSafeInteger(rows) || rows < 1) {
+          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "IRM fixture needs at least 1x4")
+        }
+        ctx.feed("\x1b[4l\x1b[1;1H\x1b[2KABC")
+        const seed = Array.from({ length: 4 }, (_, col) => ctx.getCell(0, col).char)
+        ctx.feed("\x1b[1;1H")
+        const origin = ctx.getCursor()
+        if (
+          seed[0] !== "A" ||
+          seed[1] !== "B" ||
+          seed[2] !== "C" ||
+          !isBlank(seed[3] ?? "\0") ||
+          origin.x !== 0 ||
+          origin.y !== 0
+        ) {
+          return parserStateResult(null, expected, { seed, origin }, "Cannot verify IRM seed and cursor origin")
+        }
+        try {
+          ctx.feed("\x1b[4h")
+          ctx.feed("X")
+          const after = Array.from({ length: 4 }, (_, col) => ctx.getCell(0, col).char)
+          const inserted = after[0] === "X" && after[1] === "A" && after[2] === "B" && after[3] === "C"
+          const replaced = after[0] === "X" && after[1] === "B" && after[2] === "C" && isBlank(after[3] ?? "\0")
+          return parserStateResult(
+            inserted ? true : replaced ? false : null,
+            expected,
+            { seed, origin, after },
+            inserted || replaced ? undefined : "Measured cells match neither insertion nor replacement",
+          )
+        } finally {
+          ctx.feed("\x1b[4l")
+        }
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 5) {
