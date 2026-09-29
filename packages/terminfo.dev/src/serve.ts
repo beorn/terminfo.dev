@@ -28,6 +28,7 @@ import { resolveMeasuredAppVersion } from "./identity-guard.ts"
 import { withRawMode, drainStdin } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture } from "./linux-capture.ts"
+import { createLinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { parseRunProvenance } from "../../../docs/data/selected-results.ts"
 
 const s = createStyle()
@@ -107,11 +108,25 @@ export async function collectProbeRun(options: { ids?: string[] } = {}): Promise
         return (await ownedCapture)(checkpoint)
       }
     : undefined
-  const batch = await withRawMode(async () => {
-    const result = await runProbeBatch({ ...options, ...(capture && { capture }) })
-    await drainStdin(1000)
-    return result
-  })
+  const clipboardReceipt = process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT
+  const clipboard = clipboardReceipt
+    ? await createLinuxClipboardAdapter(clipboardReceipt, process.env.TERMINFO_RUN_ID ?? "")
+    : undefined
+  let batch: Awaited<ReturnType<typeof runProbeBatch>>
+  try {
+    batch = await withRawMode(async () => {
+      const result = await runProbeBatch({
+        ...options,
+        ...(capture && { capture }),
+        ...(clipboard && clipboard.profile !== "default" && { clipboard }),
+      })
+      await drainStdin(1000)
+      return result
+    })
+  } finally {
+    await clipboard?.dispose()
+  }
+  if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
   const target: ProbeRun["target"] = {
     kind: "app",
     id: terminal.name,
@@ -135,6 +150,12 @@ export async function collectProbeRun(options: { ids?: string[] } = {}): Promise
     : undefined
   if (provenancePath && !provenance) throw new Error(`Missing runtime provenance in ${provenancePath}`)
   if (provenance) target.config = provenance.fixture.config
+  if (clipboard) {
+    if (!provenance || provenance.fixture.config !== clipboard.config) {
+      throw new Error("Owned clipboard profile config differs from runtime provenance")
+    }
+    if (clipboard.profile !== "default") target.permissions = clipboard.permissions
+  }
   return {
     schemaVersion: 2,
     runId: randomBytes(16).toString("hex"),

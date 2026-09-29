@@ -86,7 +86,14 @@ function createTermlessContext(b: TerminalBackend): TermlessContext {
       return response
     },
     getCell(row, col) {
-      return b.getCell(row, col) as any
+      const cell = b.getCell(row, col)
+      if (b.capabilities.osc8Hyperlinks) {
+        if (cell.hyperlink === undefined)
+          throw new Error(`${b.name} declares OSC 8 link metadata but omitted it at ${row},${col}`)
+        return cell
+      }
+      const { hyperlink: _unreported, ...withoutLink } = cell
+      return withoutLink
     },
     getCursor() {
       return b.getCursor()

@@ -1,5 +1,5 @@
 /**
- * @failure A legacy callback is graded from its boolean or its exact TTY reply bytes are discarded.
+ * @failure A callback's explicit result or exact TTY reply bytes are discarded, or a failed owned restoration is graded as success.
  * @level l1
  * @consumer Real-terminal app, daemon, and inline probe batch
  * @testonly none
@@ -13,16 +13,25 @@ afterEach(() => {
   process.stdin.removeAllListeners("data")
 })
 
-it("keeps a successful old query as an ungraded diagnostic with exact outbound and reply bytes", async () => {
+it("binds an explicit DA1 observation to exact outbound and reply bytes", async () => {
   const received = Buffer.from([0xff, ...Buffer.from("\x1b[?62;4c")])
   process.stdout.write = (() => {
     process.stdin.emit("data", received)
     return true
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({ ids: ["device.primary-da"] })
-  expect(batch.observations).toEqual([])
-  expect(batch.assertions).toEqual([])
-  expect(batch.ungradedDiagnostics["device.primary-da"]).toMatchObject({ kind: "legacy-callback", pass: true })
+  expect(batch.observations).toEqual([
+    expect.objectContaining({
+      featureId: "device.primary-da",
+      outcome: "supported",
+      evidence: "query",
+      rawReplyRef: "device.primary-da",
+    }),
+  ])
+  expect(batch.assertions).toEqual([
+    expect.objectContaining({ featureId: "device.primary-da", kind: "positive", rawReplyRef: "device.primary-da" }),
+  ])
+  expect(batch.ungradedDiagnostics["device.primary-da"]).toBeUndefined()
   expect(batch.suiteComplete).toBe(false)
   expect(batch.rawReplies["device.primary-da"]).toBe(received.toString())
   const trace = JSON.parse(batch.rawReplies["device.primary-da.trace"]!) as {
@@ -50,17 +59,101 @@ it("keeps the reply trace when stdin emits outside the callback's async context"
   expect(trace.events).toMatchObject([{ kind: "query", sequence: "\x1b[c" }])
 })
 
-it("keeps an old callback exception outside observations and records no false result", async () => {
+it("records an opted-in query callback exception as collector error, never support", async () => {
   process.stdout.write = (() => {
     throw new Error("TTY write failed")
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({ ids: ["device.primary-da"] })
-  expect(batch.observations).toEqual([])
-  expect(batch.ungradedDiagnostics["device.primary-da"]).toMatchObject({
-    kind: "collector-error",
-    name: "Error",
-    message: "TTY write failed",
+  expect(batch.observations).toEqual([
+    expect.objectContaining({
+      featureId: "device.primary-da",
+      outcome: "error",
+      reason: "collector-error",
+      evidence: "query",
+      note: "TTY write failed",
+    }),
+  ])
+  expect(batch.ungradedDiagnostics["device.primary-da"]).toBeUndefined()
+  expect(batch.suiteComplete).toBe(false)
+})
+
+// A live fixture must bind its independent X11 events to the same feature trace, after pixel checkpoints.
+it("runs owned OSC 52 after pixels and retains timestamped independent clipboard operations", async () => {
+  const writes: string[] = []
+  const order: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    if (text.startsWith("\x1b]52;c;")) order.push("osc52")
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc52-write", "sgr.underline.curly"],
+    capture: async ({ role, label }) => {
+      order.push(`capture-${role}`)
+      return { frame: { role, label, capturedAt: Date.now(), ref: `sha256:${"a".repeat(64)}` }, trace: {} }
+    },
+    clipboard: {
+      profile: "allow",
+      config: "fixture",
+      permissions: "fixture",
+      summary: "{}",
+      dispose: async () => {},
+      async withClipboardFixture(work, trace) {
+        const at = new Date().toISOString()
+        const result = await work({
+          readText: async () => {
+            const frame = writes.findLast((text) => text.startsWith("\x1b]52;c;"))
+            const nonce = frame ? atob(/\x1b\]52;c;([^\x07]+)\x07/.exec(frame)?.[1] ?? "") : ""
+            trace({ kind: "clipboard-read", at, sha256: "a".repeat(64), length: nonce.length })
+            return nonce
+          },
+          writeText: async () => {},
+        })
+        trace({ kind: "clipboard-restore", at, sha256: "b".repeat(64), length: 8 })
+        trace({ kind: "clipboard-verify", at, sha256: "b".repeat(64), length: 8 })
+        return result
+      },
+    },
   })
+  expect(order).toEqual(["capture-control", "capture-target", "osc52"])
+  expect(batch.observations.find((item) => item.featureId === "extensions.osc52-write")).toMatchObject({
+    outcome: "supported",
+    rawReplyRef: "extensions.osc52-write",
+  })
+  const trace = JSON.parse(batch.rawReplies["extensions.osc52-write"]!) as {
+    clipboard: Array<{ kind: string; at: string }>
+  }
+  expect(trace.clipboard.map((event) => event.kind)).toEqual([
+    "clipboard-read",
+    "clipboard-restore",
+    "clipboard-verify",
+  ])
+})
+
+it("records failed clipboard restoration as collector error rather than retaining callback success", async () => {
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc52-write"],
+    clipboard: {
+      profile: "allow",
+      config: "fixture",
+      permissions: "fixture",
+      summary: "{}",
+      dispose: async () => {},
+      async withClipboardFixture(_work, trace) {
+        trace({ kind: "clipboard-restore", at: new Date().toISOString(), sha256: "b".repeat(64), length: 8 })
+        throw new Error("Owned clipboard restoration failed")
+      },
+    },
+  })
+  expect(batch.observations).toEqual([
+    expect.objectContaining({
+      featureId: "extensions.osc52-write",
+      outcome: "error",
+      reason: "collector-error",
+      rawReplyRef: "extensions.osc52-write",
+    }),
+  ])
   expect(batch.suiteComplete).toBe(false)
 })
 

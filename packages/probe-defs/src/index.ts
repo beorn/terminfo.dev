@@ -1,4 +1,11 @@
-export type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
+export type {
+  ProbeDefinition,
+  ProbeResult,
+  TermlessContext,
+  TermContext,
+  TerminalQueryOutcome,
+  ClipboardFixture,
+} from "./types.ts"
 export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, OBSERVATION_EVIDENCE } from "./types.ts"
 export type {
   ObservationOutcome,
@@ -44,9 +51,11 @@ import { scrollbackProbes } from "./scrollback.ts"
 import { charsetsProbes } from "./charsets.ts"
 import { unicodeProbes } from "./unicode.ts"
 
+const clipboardProbes = extensionsProbes.filter((probe) => probe.id.startsWith("extensions.osc52-"))
+
 export const ALL_PROBES = [
-  // Extensions first; live OSC 52 probes refuse to touch an unowned clipboard.
-  ...extensionsProbes,
+  // Clipboard probes run after all pixel checkpoints, including when an owned fixture is installed.
+  ...extensionsProbes.filter((probe) => !probe.id.startsWith("extensions.osc52-")),
   ...sgrProbes,
   ...cursorProbes,
   ...textProbes,
@@ -59,6 +68,7 @@ export const ALL_PROBES = [
   ...scrollbackProbes,
   ...charsetsProbes,
   ...unicodeProbes,
+  ...clipboardProbes,
 ]
 
 export {

@@ -11,6 +11,7 @@ import {
   type Observation,
   type ObservationFrame,
   type ProbeAssertion,
+  type ProbeDefinition,
   type TermContext,
   type UngradedDiagnostic,
 } from "@terminfo/probe-defs"
@@ -27,6 +28,7 @@ import {
   type TTYQueryTrace,
   type TTYTraceEvent,
 } from "../tty.ts"
+import type { ClipboardTraceEvent, LinuxClipboardAdapter } from "../linux-clipboard.ts"
 
 export interface Probe {
   id: string
@@ -89,19 +91,32 @@ export type ProbeCapture = (checkpoint: {
   label: string
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
-/** Collect the real callback result, without treating its legacy boolean as an observation. */
-export async function runProbeBatch(options: { ids?: string[]; capture?: ProbeCapture } = {}): Promise<ProbeBatch> {
+function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selected: ProbeDefinition[] } {
   const expected = PROBE_DEFS.filter((probe) => probe.term !== null)
-  const selected = options.ids
-    ? options.ids.map((id) => {
+  const requested = ids
+    ? ids.map((id) => {
         const probe = expected.find((item) => item.id === id)
         if (!probe) throw new Error(`Unknown or inapplicable app probe ${id}`)
         return probe
       })
     : expected
-  if (new Set(selected.map((probe) => probe.id)).size !== selected.length) {
+  if (new Set(requested.map((probe) => probe.id)).size !== requested.length) {
     throw new Error("Duplicate probe ID in app batch")
   }
+  return {
+    expected,
+    selected: [
+      ...requested.filter((probe) => !probe.id.startsWith("extensions.osc52-")),
+      ...requested.filter((probe) => probe.id.startsWith("extensions.osc52-")),
+    ],
+  }
+}
+
+/** Collect the real callback result, without treating its legacy boolean as an observation. */
+export async function runProbeBatch(
+  options: { ids?: string[]; capture?: ProbeCapture; clipboard?: LinuxClipboardAdapter } = {},
+): Promise<ProbeBatch> {
+  const { expected, selected } = selectAppProbes(options.ids)
   const batch: ProbeBatch = {
     rawReplies: {},
     observations: [],
@@ -114,9 +129,15 @@ export async function runProbeBatch(options: { ids?: string[]; capture?: ProbeCa
     const writes: string[] = []
     const queries: TTYQueryTrace[] = []
     const events: TTYTraceEvent[] = []
+    const clipboardEvents: ClipboardTraceEvent[] = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
     const context = createTermContext(writes, events)
+    if (options.clipboard) {
+      const clipboard = options.clipboard
+      context.withClipboardFixture = (work) =>
+        clipboard.withClipboardFixture(work, (event) => clipboardEvents.push(event))
+    }
     const capture = options.capture
     if (capture) {
       context.capture = async (checkpoint) => {
@@ -135,7 +156,7 @@ export async function runProbeBatch(options: { ids?: string[]; capture?: ProbeCa
       const callback = probe.term
       const result = await withTTYOperation(() => withTTYQueryTrace(queries, events, () => callback(context)))
       if (result.observation) {
-        const rawReplyRef = queries.length || captureAttempted ? probe.id : undefined
+        const rawReplyRef = queries.length || captureAttempted || clipboardEvents.length ? probe.id : undefined
         batch.observations.push({ featureId: probe.id, ...result.observation, ...(rawReplyRef ? { rawReplyRef } : {}) })
         for (const assertion of result.assertions ?? []) {
           batch.assertions.push({ featureId: probe.id, ...assertion, ...(rawReplyRef ? { rawReplyRef } : {}) })
@@ -159,13 +180,19 @@ export async function runProbeBatch(options: { ids?: string[]; capture?: ProbeCa
           reason: "collector-error",
           evidence: errorEvidence,
           note: message,
-          ...(queries.length || captureAttempted ? { rawReplyRef: probe.id } : {}),
+          ...(queries.length || captureAttempted || clipboardEvents.length ? { rawReplyRef: probe.id } : {}),
         })
       } else {
         batch.ungradedDiagnostics[probe.id] = { kind: "collector-error", name, message }
       }
     } finally {
-      const trace = JSON.stringify({ writes, queries, events, ...(captureAttempted ? { captures } : {}) })
+      const trace = JSON.stringify({
+        writes,
+        queries,
+        events,
+        ...(clipboardEvents.length ? { clipboard: clipboardEvents } : {}),
+        ...(captureAttempted ? { captures } : {}),
+      })
       if (probe.id === "device.primary-da" || probe.id === "device.xtversion") {
         batch.rawReplies[probe.id] = queries.map((item) => item.raw).join("")
         batch.rawReplies[`${probe.id}.trace`] = trace

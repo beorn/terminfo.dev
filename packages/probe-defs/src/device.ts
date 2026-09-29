@@ -1,154 +1,143 @@
-import type { ProbeDefinition } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TerminalQueryOutcome } from "./types.ts"
 import { responseProbe, probe } from "./helpers.ts"
 
+/** These patterns match complete answers to the specific query, not arbitrary consumed output. */
+interface DeviceReply {
+  id: string
+  query: string
+  valid: RegExp
+  malformed: RegExp
+  expected: string
+  refusal?: RegExp
+  refusalExpected?: string
+  note?: (frame: string) => string | undefined
+  direct?: boolean
+}
+
+function deviceReplyResult(spec: DeviceReply, raw: string, reason: TerminalQueryOutcome["reason"]): ProbeResult {
+  const valid = spec.valid.exec(raw)
+  if (valid?.[0]) {
+    const note = spec.note?.(valid[0])
+    return {
+      pass: true,
+      response: raw,
+      ...(note && { note }),
+      observation: { outcome: "supported", evidence: "query", ...(note && { note }) },
+      assertions: [{ kind: "positive", expected: spec.expected, observed: valid[0] }],
+    }
+  }
+  const refusal = spec.refusal?.exec(raw)
+  if (refusal?.[0]) {
+    return {
+      pass: false,
+      response: raw,
+      observation: { outcome: "unsupported", evidence: "query", note: "Requested setting or name refused" },
+      assertions: [{ kind: "negative", expected: spec.refusalExpected ?? spec.expected, observed: refusal[0] }],
+    }
+  }
+  const missingReason = spec.malformed.test(raw) ? "invalid-reply" : reason === "timeout" ? "timeout" : "no-response"
+  return {
+    pass: false,
+    response: raw,
+    observation: { outcome: "inconclusive", reason: missingReason, evidence: "query" },
+  }
+}
+
+function deviceQuery(spec: DeviceReply): ProbeDefinition {
+  const responsePattern = spec.refusal
+    ? new RegExp(`${spec.valid.source}|${spec.refusal.source}`, spec.valid.flags)
+    : spec.valid
+  return probe(
+    spec.id,
+    (ctx) => deviceReplyResult(spec, ctx.feedCapture(spec.query), "sentinel"),
+    async (ctx) => {
+      const outcome = spec.direct
+        ? await ctx.queryOutcome(spec.query, responsePattern)
+        : await ctx.queryWithSentinelOutcome(spec.query, responsePattern)
+      return deviceReplyResult(spec, outcome.raw, outcome.reason)
+    },
+    "query",
+  )
+}
+
 export const deviceProbes: ProbeDefinition[] = [
-  // DA1 — Primary device attributes
-  responseProbe(
-    "device.primary-da",
-    "\x1b[c",
-    /\x1b\[\?([0-9;]+)c/,
-    (response) => ({
-      pass: response.includes("?") && response.endsWith("c"),
-      response,
-    }),
-    async (ctx) => {
-      const match = await ctx.query("\x1b[c", /\x1b\[\?([0-9;]+)c/, 1000)
-      if (!match) return { pass: false, note: "No DA1 response" }
-      return { pass: true, response: match[0] }
-    },
-  ),
-
-  // DSR 5 — Device status report
-  responseProbe(
-    "device.status-report",
-    "\x1b[5n",
-    /\x1b\[(\d+)n/,
-    (response) => ({
-      pass: response.includes("0n"),
-      response,
-    }),
-    async (ctx) => {
-      const match = await ctx.query("\x1b[5n", /\x1b\[(\d+)n/, 1000)
-      if (!match) return { pass: false, note: "No DSR 5 response" }
-      return {
-        pass: match[1] === "0",
-        note: match[1] === "0" ? undefined : `status ${match[1]}`,
-        response: match[0],
-      }
-    },
-  ),
-
-  // DA2 — Secondary device attributes
-  responseProbe(
-    "device.secondary-da",
-    "\x1b[>c",
-    /\x1b\[>([0-9;]+)c/,
-    (response) => ({
-      pass: response.includes(">"),
-      response,
-    }),
-    async (ctx) => {
-      const match = await ctx.query("\x1b[>c", /\x1b\[>([0-9;]+)c/, 1000)
-      if (!match) return { pass: false, note: "No DA2 response" }
-      return { pass: true, response: match[0] }
-    },
-  ),
-
-  // DA3 — Tertiary device attributes
-  responseProbe(
-    "device.tertiary-da",
-    "\x1b[=c",
-    /./,
-    (response) => ({
-      pass: response.length > 0,
-      response,
-    }),
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[=c", /\x1bP!?\|([^\x1b]*)\x1b\\/)
-      if (match) return { pass: true, response: match[1] }
-      return { pass: false, note: "No DA3 response" }
-    },
-  ),
-
-  // DECRQSS — Request status string
-  responseProbe(
-    "device.decrqss",
-    '\x1bP$q"p\x1b\\',
-    /./,
-    (response) => ({
-      pass: response.length > 0,
-      response,
-    }),
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel('\x1bP$q"p\x1b\\', /\x1bP([01])\$r/)
-      if (match) return { pass: true, response: match[0] }
-      return { pass: false, note: "No DECRQSS response" }
-    },
-  ),
-
-  // XTGETTCAP — Termcap query
-  responseProbe(
-    "device.xtgettcap",
-    "\x1bP+q544e\x1b\\",
-    /./,
-    (response) => ({
-      pass: response.length > 0,
-      response,
-    }),
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1bP+q544e\x1b\\", /\x1bP([01])\+r/)
-      if (match) return { pass: true, response: match[0] }
-      return { pass: false, note: "No XTGETTCAP response" }
-    },
-  ),
-
-  // DECRPM — Mode query
-  probe(
-    "device.decrpm",
-    (ctx) => {
-      const response = ctx.feedCapture("\x1b[?1$p") // Query DECCKM
-      return {
-        pass: response.includes("$y"),
-        response,
-      }
-    },
-    async (ctx) => {
-      // Query DECAWM (mode 7) — universally supported
-      const result = await ctx.queryMode(7)
-      if (result === null) return { pass: false, note: "No DECRPM response" }
-      return {
-        pass: result !== "unknown",
-        note: result === "unknown" ? "Terminal does not support DECRPM" : `DECAWM is ${result}`,
-        response: result,
-      }
-    },
-  ),
-
-  // XTVERSION — Terminal version query: CSI > 0 q → DCS > | name(version) ST
-  responseProbe(
-    "device.xtversion",
-    "\x1b[>0q",
-    /\x1bP>\|/,
-    (response) => ({
-      pass: response.length > 0 && response.includes(">|"),
-      response,
-    }),
-    async (ctx) => {
-      const match = await ctx.queryWithSentinel("\x1b[>0q", /\x1bP>\|([^\x1b]+)\x1b\\/)
-      if (!match) return { pass: false, note: "No XTVERSION response" }
-      return { pass: true, response: match[1] }
-    },
-  ),
-
-  // TERM_FEATURES — env var check (term-only, not testable in headless)
+  deviceQuery({
+    id: "device.primary-da",
+    query: "\x1b[c",
+    valid: /\x1b\[\?[0-9]+(?:;[0-9]+)*c/,
+    malformed: /\x1b\[\?/,
+    expected: "complete DA1 CSI ? numeric attributes c",
+    direct: true, // DA1 is also the normal sentinel; it must be queried directly.
+  }),
+  deviceQuery({
+    id: "device.status-report",
+    query: "\x1b[5n",
+    valid: /\x1b\[(?:0|3)n/,
+    malformed: /\x1b\[[0-9]*n/,
+    expected: "complete DSR 5 status 0 (ready) or 3 (malfunction)",
+    note: (frame) => (frame === "\x1b[3n" ? "Terminal reports malfunction" : undefined),
+  }),
+  deviceQuery({
+    id: "device.secondary-da",
+    query: "\x1b[>c",
+    valid: /\x1b\[>[0-9]+;[0-9]+;[0-9]+c/,
+    malformed: /\x1b\[>/,
+    expected: "complete DA2 CSI > three numeric fields c",
+  }),
+  deviceQuery({
+    id: "device.tertiary-da",
+    query: "\x1b[=c",
+    valid: /\x1bP!\|[0-9A-Fa-f]{8}\x1b\\/,
+    malformed: /\x1bP!\|/,
+    expected: "complete DECRPTUI DCS !| followed by four hexadecimal pairs and ST",
+  }),
+  deviceQuery({
+    id: "device.decrqss",
+    query: '\x1bP$q"p\x1b\\',
+    valid: /\x1bP1\$r[0-9]+(?:;[0-9]+)*"p\x1b\\/,
+    refusal: /\x1bP0\$r\x1b\\/,
+    malformed: /\x1bP[01]\$r/,
+    expected: 'complete DECRQSS status 1 DECSCL parameters ending "p and ST',
+    refusalExpected: "DECRQSS status 1 for the requested DECSCL setting",
+  }),
+  deviceQuery({
+    id: "device.xtgettcap",
+    query: "\x1bP+q544e\x1b\\",
+    valid: /\x1bP1\+r544e=(?:[0-9A-Fa-f]{2})+\x1b\\/i,
+    refusal: /\x1bP0\+r\x1b\\/,
+    malformed: /\x1bP[01]\+r/,
+    expected: "complete XTGETTCAP status 1 for TN with even-length hex value and ST",
+    refusalExpected: "XTGETTCAP status 1 for the requested TN name",
+  }),
+  deviceQuery({
+    id: "device.decrpm",
+    query: "\x1b[?7$p",
+    valid: /\x1b\[\?7;[1-4]\$y/,
+    refusal: /\x1b\[\?7;0\$y/,
+    malformed: /\x1b\[\?[0-9]+;[0-9]*\$y|\x1b\[\?7(?:;|\$)/,
+    expected: "complete DECRPM for DECAWM mode 7 with recognized state 1–4",
+    refusalExpected: "DECRPM recognizes queried DECAWM mode 7",
+  }),
+  deviceQuery({
+    id: "device.xtversion",
+    query: "\x1b[>0q",
+    valid: /\x1bP>\|[\x20-\x7e]+\x1b\\/,
+    malformed: /\x1bP>\|/,
+    expected: "complete XTVERSION DCS >| printable name/version ST",
+  }),
   probe(
     "device.term-features",
-    null, // not testable in headless
-    (_ctx) => {
-      const value = typeof process !== "undefined" ? process.env.TERM_FEATURES : undefined
-      if (!value) return Promise.resolve({ pass: false, note: "TERM_FEATURES env var not set" })
-      return Promise.resolve({ pass: true, response: value })
+    null,
+    () => {
+      // Inherited process environment does not authenticate the current terminal.
+      const advertised = typeof process !== "undefined" && !!process.env.TERM_FEATURES
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note: advertised ? "TERM_FEATURES advertised; source unverified" : "TERM_FEATURES not advertised",
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy" },
+      })
     },
+    "legacy",
   ),
 
   // DSR ?996 — color-scheme query: CSI ? 996 n → CSI ? 997 ; Ps n

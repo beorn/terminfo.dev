@@ -1241,7 +1241,7 @@
     "url": "https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 8 adds clickable hyperlinks to terminal output, similar to HTML anchor tags. The format is <code>ESC ] 8 ; params ; uri ST</code> to start a link and <code>ESC ] 8 ; ; ST</code> to end it. Text between these markers becomes a clickable hyperlink.\n\nThe <code>params</code> field supports an <code>id=value</code> parameter that groups non-contiguous text into a single link — essential for links that span multiple lines or are broken by line wrapping. When the user hovers over any part of a multi-segment link with the same <code>id</code>, all segments highlight together.\n\nTerminals typically render hyperlinks with an underline and open them in the default browser on click or Ctrl+click. Tools like <code>ls --hyperlink=auto</code>, <code>gcc</code>, and <code>grep</code> can emit OSC 8 links to file paths and URLs. Widely adopted across modern terminals including Ghostty, iTerm2, WezTerm, GNOME Terminal, and Windows Terminal.",
-    "probe": "Write an OSC 8 hyperlink (<code>ESC ] 8 ; ; url BEL text ESC ] 8 ; ; BEL</code>) and verify the link is rendered.",
+    "probe": "Write an OSC 8 hyperlink (<code>ESC ] 8 ; ; url BEL text ESC ] 8 ; ; BEL</code>) and inspect the resulting cells for the exact URI and unlinked controls. A cursor response or screenshot alone cannot verify the link target.",
     "baseline": "rich",
     "sequence": "ESC ] 8 ; params ; uri BEL"
   },
@@ -1271,7 +1271,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 allows terminal applications to read from and write to the system clipboard. To set the clipboard: <code>ESC ] 52 ; c ; &lt;base64-data&gt; ST</code>. To query it: <code>ESC ] 52 ; c ; ? ST</code>, and the terminal responds with the base64-encoded clipboard contents.\n\nThis is particularly valuable for remote sessions (SSH, tmux, mosh) where the application has no direct access to the local system clipboard. A vim session inside tmux over SSH can yank text to the user's local clipboard without any special tooling.\n\nSecurity is a concern: clipboard read access lets any application running in the terminal silently exfiltrate clipboard contents. Many terminals disable read access by default or prompt the user for confirmation, while still allowing clipboard writes. The <code>c</code> parameter selects the clipboard buffer — <code>c</code> for clipboard, <code>p</code> for primary selection (X11).",
-    "probe": "In an isolated headless backend, write a fresh nonce with <code>OSC 52;c;... BEL</code>, query <code>OSC 52;c;? BEL</code>, and require a complete, canonical base64 reply containing that exact nonce. Live app collection does not access the clipboard until an owned disposable clipboard and verified restoration are available; its result is inconclusive.",
+    "probe": "In an isolated headless backend, write a fresh nonce and require a complete, canonical OSC 52 reply containing it. Live app collection tests both directions only with a verified disposable Linux clipboard: it independently reads back the OSC write, independently seeds a nonce before the OSC read, and restores and verifies the baseline. Without that owned fixture, collection refuses clipboard traffic and records an inconclusive result.",
     "baseline": "modern",
     "sequence": "ESC ] 52 ; c ; base64 BEL"
   },
@@ -1859,11 +1859,11 @@
   "device.term-features": {
     "name": "Feature Reporting (TERM_FEATURES)",
     "slug": "term-features",
-    "url": "https://iterm2.com/documentation-escape-codes.html",
+    "url": "https://iterm2.com/feature-reporting/",
     "tags": ["iterm2"],
     "baseline": "rich",
-    "body": "TERM_FEATURES is an environment variable proposed by iTerm2 for terminals to advertise their capabilities as a semicolon-delimited list of capability strings. Unlike escape-sequence-based detection, this approach allows applications to check capabilities without TTY I/O, making it suitable for non-interactive contexts. Adoption remains limited as most terminals prefer escape-sequence-based feature reporting.",
-    "probe": "Check whether the TERM_FEATURES environment variable is set in the terminal session.",
+    "body": "TERM_FEATURES carries the feature string defined by iTerm2's feature-reporting specification: encoded feature values are concatenated, without semicolon separators. A terminal may also answer an OSC 1337 Capabilities query. An inherited environment value can be stale or supplied by another process, so its presence alone does not establish the current terminal's capabilities.",
+    "probe": "Record whether TERM_FEATURES is advertised; without an authenticated terminal source, its presence is inconclusive.",
     "probeStatus": "partial"
   },
   "device.xtwinops-14": {
@@ -2277,7 +2277,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 clipboard write sets the system clipboard content. The sequence <code>ESC ] 52 ; c ; base64-data BEL</code> sets the clipboard to the decoded base64 content. Most modern terminals support clipboard write, though some require explicit opt-in for security (e.g., iTerm2 prompts the user). Write-only support is more common than read support — many terminals allow setting the clipboard but block reading it back to prevent clipboard snooping by malicious programs.",
-    "probe": "In an isolated headless backend, write a fresh nonce and independently read it back through a complete OSC 52 clipboard reply. Consumption or terminal responsiveness alone is insufficient evidence. Live app collection does not write an unowned clipboard and reports an inconclusive result.",
+    "probe": "In an isolated headless backend, write a fresh nonce and read it back through a complete OSC 52 reply. In an owned disposable Linux display, write a fresh OSC 52 nonce and check the clipboard independently with X11, then restore and verify the baseline. Without the owned fixture, live collection sends no clipboard traffic and records an inconclusive result.",
     "baseline": "modern"
   },
   "extensions.osc52-read": {
@@ -2286,7 +2286,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 52 clipboard read queries the current clipboard content. The sequence <code>ESC ] 52 ; c ; ? BEL</code> requests the terminal to respond with the clipboard data base64-encoded. Fewer terminals support read than write — clipboard read is a security-sensitive operation since a malicious program could silently exfiltrate clipboard contents (passwords, tokens). Terminals that support it often require explicit user opt-in.",
-    "probe": "In an isolated headless backend, write a fresh nonce, query with <code>OSC 52;c;? BEL</code>, and require the exact decoded nonce in a complete clipboard reply. Live app collection does not query an unowned clipboard and reports an inconclusive result.",
+    "probe": "In an isolated headless backend, write a fresh nonce and require the exact decoded value in a complete OSC 52 reply. In an owned disposable Linux display, seed the clipboard independently with X11, query using OSC 52, require a complete canonical reply with that nonce, then restore and verify the baseline. Without the owned fixture, live collection sends no clipboard traffic and records an inconclusive result.",
     "baseline": "rich"
   },
   "extensions.osc1-icon": {

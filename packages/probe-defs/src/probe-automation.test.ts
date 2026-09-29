@@ -78,6 +78,72 @@ function terminalContext(overrides: Partial<TermContext>): TermContext {
 }
 
 /**
+ * @failure OSC 8 consumption or a capability flag was mistaken for linked-cell metadata.
+ * @level l0
+ * @consumer Unified headless and application OSC 8 observation.
+ * @testonly none
+ */
+describe("OSC 8 link metadata observation", () => {
+  const uri = "https://example.com/osc8-proof"
+  const positions = [null, uri, uri, uri, uri, null] as const
+
+  function linkedContext(links: readonly (string | null | undefined)[], declared = true): TermlessContext {
+    const base = context({})
+    return context({
+      capabilities: { ...base.capabilities, osc8Hyperlinks: declared },
+      getCell(_row, col) {
+        const link = links[col]
+        return {
+          ...base.getCell(0, col),
+          char: "ALINKZ"[col] ?? "",
+          ...(link !== undefined && { hyperlink: link }),
+        }
+      },
+    })
+  }
+
+  test("four exact URI cells bracketed by unlinked controls establish support", () => {
+    const p = probe("extensions.osc8")
+    if (!p.termless) throw new Error("OSC 8 needs headless callback")
+    const result = p.termless(linkedContext(positions))
+    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
+  })
+
+  test("wrong URI or link leaking past close is unsupported with measured mismatch", () => {
+    const p = probe("extensions.osc8")
+    if (!p.termless) throw new Error("OSC 8 needs headless callback")
+    for (const links of [
+      [null, uri, "https://wrong.example", uri, uri, null],
+      [null, uri, uri, uri, uri, uri],
+    ]) {
+      const result = p.termless(linkedContext(links))
+      expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+      expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+    }
+  })
+
+  test("missing link metadata is inconclusive, but a true declaration with absent field is an error", () => {
+    const p = probe("extensions.osc8")
+    if (!p.termless) throw new Error("OSC 8 needs headless callback")
+    const unreported = p.termless(linkedContext(Array(6).fill(undefined), false))
+    expect(unreported.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(() => p.termless?.(linkedContext(Array(6).fill(undefined), true))).toThrow(/OSC 8.*metadata.*declared/i)
+  })
+
+  test("application CPR consumption remains inconclusive", async () => {
+    const p = probe("extensions.osc8")
+    if (!p.term) throw new Error("OSC 8 needs application callback")
+    const result = await p.term(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 7 }) }))
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "consumed",
+    })
+  })
+})
+
+/**
  * @failure Invalid Kitty queries miss support; ignored OSC sequences become false positives.
  * @level l0
  * @consumer Unified app and headless probe definitions.
@@ -218,6 +284,99 @@ describe("Kitty protocol detection", () => {
       expect(live.observation).toMatchObject({ outcome: "inconclusive", reason: "policy-refused" })
       expect(live.note).toMatch(/collector|owned clipboard/i)
     }
+  })
+
+  // An owned fixture measures write and read independently; an echoed OSC frame alone cannot prove a write.
+  test("owned live OSC 52 checks independent clipboard state and complete canonical query replies", async () => {
+    const written: string[] = []
+    let clipboard = "baseline"
+    const fixture = {
+      readText: async () => clipboard,
+      writeText: async (text: string) => {
+        clipboard = text
+      },
+    }
+    const withClipboardFixture: NonNullable<TermContext["withClipboardFixture"]> = async (work) => work(fixture)
+    const queryOutcome = async (sequence: string) => {
+      expect(sequence).toBe("\x1b]52;c;?\x07")
+      const frame = `\x1b]52;c;${btoa(clipboard)}\x1b\\`
+      return {
+        match: [frame, btoa(clipboard)],
+        reason: "reply" as const,
+        raw: frame,
+        rawBase64: Buffer.from(frame).toString("base64"),
+      }
+    }
+    for (const id of ["extensions.osc52-write", "extensions.osc52-read", "extensions.osc52-clipboard"]) {
+      written.length = 0
+      clipboard = "baseline"
+      const p = probe(id)
+      if (!p.term) throw new Error(`${id} needs a live callback`)
+      const result = await p.term(
+        terminalContext({
+          withClipboardFixture,
+          write(text) {
+            written.push(text)
+            const match = /\x1b\]52;c;([^\x07\x1b]*)\x07/.exec(text)
+            if (match) clipboard = atob(match[1] ?? "")
+          },
+          queryOutcome,
+        }),
+      )
+      expect(result.observation, id).toMatchObject({
+        outcome: "supported",
+        evidence: id === "extensions.osc52-write" ? "behavior" : "query",
+      })
+      expect(clipboard, id).not.toBe("baseline")
+      expect(
+        written.some((value) => value.startsWith("\x1b]52;c;")),
+        id,
+      ).toBe(id !== "extensions.osc52-read")
+    }
+    const read = probe("extensions.osc52-read")
+    if (!read.term) throw new Error("read callback missing")
+    for (const raw of ["\x1b[1;1R", "\x1b]52;p;d3Jvbmc=\x07", "\x1b]52;c;bad!\x07", "\x1b]52;c;d3Jvbmc=\x1b", ""]) {
+      const result = await read.term(
+        terminalContext({
+          withClipboardFixture,
+          queryOutcome: async () => ({
+            match: null,
+            reason: "timeout",
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+          }),
+        }),
+      )
+      expect(result.observation?.outcome, JSON.stringify(raw)).toBe("inconclusive")
+    }
+    const uncorrelated = await read.term(
+      terminalContext({
+        withClipboardFixture,
+        queryOutcome: async () => {
+          const raw = `\x1b]52;c;${btoa(clipboard)}\x07`
+          return { match: null, reason: "timeout", raw, rawBase64: Buffer.from(raw).toString("base64") }
+        },
+      }),
+    )
+    expect(uncorrelated.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+    let captured = false
+    const prompt = await read.term(
+      terminalContext({
+        withClipboardFixture,
+        queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+        capture: async (request) => {
+          captured = true
+          expect(request).toEqual({ role: "target", label: "Clipboard query after no response" })
+          return { ...request, capturedAt: 1, ref: `sha256:${"a".repeat(64)}` }
+        },
+      }),
+    )
+    expect(captured).toBe(true)
+    expect(prompt.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+      screenshotRef: `sha256:${"a".repeat(64)}`,
+    })
   })
 
   // A rejected query used to skip the pop and leak this probe's keyboard mode into later probes.

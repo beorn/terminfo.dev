@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import type { ProbeDefinition, ProbeResult, TermlessContext, TerminalQueryOutcome } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
 import { probe } from "./helpers.ts"
 
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
@@ -540,6 +540,89 @@ function liveClipboardNotTested(): ProbeResult {
   }
 }
 
+const osc52Reply = /\x1b\]52;c;([A-Za-z0-9+/=]*)(?:\x07|\x1b\\)/
+
+function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): ProbeResult {
+  const frame = osc52Reply.exec(outcome.raw)
+  if (!frame || outcome.reason !== "reply" || !outcome.match) {
+    const reason = outcome.raw ? "invalid-reply" : "no-response"
+    return {
+      pass: false,
+      observation: { outcome: "inconclusive", reason, evidence: "query", note: "No complete OSC 52 c reply" },
+    }
+  }
+  const encoded = frame[1] ?? ""
+  let decoded: string
+  try {
+    decoded = atob(encoded)
+    if (btoa(decoded) !== encoded) throw new Error("Noncanonical base64")
+  } catch {
+    return { pass: false, observation: { outcome: "inconclusive", reason: "invalid-reply", evidence: "query" } }
+  }
+  const pass = decoded === expected
+  return {
+    pass,
+    response: frame[0],
+    observation: {
+      outcome: pass ? "supported" : "inconclusive",
+      ...(!pass && { reason: "insufficient-evidence" as const }),
+      evidence: "query",
+    },
+    ...(pass && {
+      assertions: [
+        { kind: "positive" as const, expected: "OSC 52 c returns the independently written nonce", observed: frame[0] },
+      ],
+    }),
+  }
+}
+
+async function liveClipboardProbe(ctx: TermContext, kind: "write" | "read" | "roundtrip"): Promise<ProbeResult> {
+  if (!ctx.withClipboardFixture) return liveClipboardNotTested()
+  return ctx.withClipboardFixture(async (fixture) => {
+    if (kind !== "read") {
+      const nonce = `terminfo-osc52-${randomUUID()}`
+      ctx.write(`\x1b]52;c;${btoa(nonce)}\x07`)
+      const measured = await fixture.readText()
+      if (measured !== nonce) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "behavior",
+            note: "Independent clipboard read did not equal the OSC 52 write nonce",
+          },
+        }
+      }
+      if (kind === "write") {
+        return {
+          pass: true,
+          observation: { outcome: "supported", evidence: "behavior" },
+          assertions: [
+            { kind: "positive", expected: "Independent clipboard text equals OSC 52 write nonce", observed: measured },
+          ],
+        }
+      }
+    }
+    const nonce = `terminfo-osc52-${randomUUID()}`
+    await fixture.writeText(nonce)
+    const outcome = await ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply)
+    const result = clipboardQueryResult(outcome, nonce)
+    if (!outcome.raw && ctx.capture && result.observation) {
+      const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
+      return {
+        ...result,
+        observation: {
+          ...result.observation,
+          screenshotRef: frame.ref,
+          note: "No OSC 52 reply; retained the visible window for prompt/no-prompt review without automatic interaction",
+        },
+      }
+    }
+    return result
+  })
+}
+
 export const extensionsProbes: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
   probe(
@@ -650,17 +733,69 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 8 — hyperlinks
   probe(
     "extensions.osc8",
-    (ctx) => ({ pass: ctx.capabilities.osc8Hyperlinks === true }),
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]8;;http://example.com\x07link\x1b]8;;\x07")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
+    (ctx) => {
+      const uri = "https://example.com/osc8-proof"
+      ctx.feed(`\x1b[1;1H\x1b[2KA\x1b]8;;${uri}\x07LINK\x1b]8;;\x07Z`)
+      const cells = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col))
+      const expectedChars = "ALINKZ"
+      const links = cells.map((cell) =>
+        cell.hyperlink !== undefined ? { reported: true, uri: cell.hyperlink } : { reported: false },
+      )
+      const response = JSON.stringify({ chars: cells.map((cell) => cell.char), links })
+      if (ctx.capabilities.osc8Hyperlinks && links.some((link) => !link.reported)) {
+        throw new Error("OSC 8 link metadata declared available but absent from a measured cell")
+      }
+      const reported = links.every((link) => link.reported)
+      const charsMatch = cells.every((cell, index) => cell.char === expectedChars[index])
+      if (!reported || !charsMatch || cells.slice(1, 5).some((cell) => cell.hyperlink === null)) {
+        return {
+          pass: false,
+          response,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "parser-state",
+            note: !reported ? "Backend did not report OSC 8 link metadata" : "Linked text was not observable",
+          },
+        }
+      }
+      const expected = JSON.stringify([null, uri, uri, uri, uri, null])
+      const observed = JSON.stringify(cells.map((cell) => cell.hyperlink))
+      const pass = observed === expected
       return {
-        pass: pos.col === 5,
-        note: pos.col === 5 ? undefined : `cursor at col ${pos.col}, expected 5 (4 visible chars)`,
+        pass,
+        response,
+        observation: {
+          outcome: pass ? "supported" : "unsupported",
+          evidence: "parser-state",
+          ...(!pass && { note: "OSC 8 cell URI differs from the exact requested link or leaked past close" }),
+        },
+        assertions: [{ kind: pass ? "positive" : "negative", expected, observed }],
       }
     },
+    async (ctx) => {
+      ctx.write("\x1b[1;1H\x1b[2K")
+      ctx.write("A\x1b]8;;https://example.com/osc8-proof\x07LINK\x1b]8;;\x07Z")
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) {
+        return {
+          pass: false,
+          note: "No cursor response",
+          observation: { outcome: "inconclusive", reason: "no-response", evidence: "consumed" },
+        }
+      }
+      return {
+        pass: false,
+        response: `${pos.row};${pos.col}`,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
+        },
+      }
+    },
+    "consumed",
   ),
 
   // Reflow
@@ -728,13 +863,18 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 52 — clipboard
-  probe("extensions.osc52-clipboard", headlessClipboardRoundtrip, () => Promise.resolve(liveClipboardNotTested())),
+  probe(
+    "extensions.osc52-clipboard",
+    headlessClipboardRoundtrip,
+    (ctx) => liveClipboardProbe(ctx, "roundtrip"),
+    "behavior",
+  ),
 
   // OSC 52 write — set clipboard (most terminals support this)
-  probe("extensions.osc52-write", headlessClipboardRoundtrip, () => Promise.resolve(liveClipboardNotTested())),
+  probe("extensions.osc52-write", headlessClipboardRoundtrip, (ctx) => liveClipboardProbe(ctx, "write"), "behavior"),
 
   // OSC 52 read — query clipboard back (fewer terminals support this)
-  probe("extensions.osc52-read", headlessClipboardRoundtrip, () => Promise.resolve(liveClipboardNotTested())),
+  probe("extensions.osc52-read", headlessClipboardRoundtrip, (ctx) => liveClipboardProbe(ctx, "read"), "query"),
 
   // OSC 10 — foreground color query
   oscColorQueryProbe("extensions.osc10-fg-color", 10),

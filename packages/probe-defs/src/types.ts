@@ -235,6 +235,8 @@ export interface TermlessContext {
     col: number,
   ): {
     char: string
+    /** Absent: backend does not report links; null: reported unlinked; string: exact URI. */
+    hyperlink?: string | null
     bold: boolean
     dim: boolean
     italic: boolean
@@ -277,6 +279,12 @@ export interface TerminalQueryOutcome {
   rawBase64: string
 }
 
+/** Independently observed text selection in an owned disposable display. */
+export interface ClipboardFixture {
+  readText(): Promise<string>
+  writeText(text: string): Promise<void>
+}
+
 export interface TermContext {
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>
@@ -286,6 +294,8 @@ export interface TermContext {
   queryOutcome(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<TerminalQueryOutcome>
   queryWithSentinelOutcome(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<TerminalQueryOutcome>
   queryMode(modeNum: number): Promise<"set" | "reset" | "unknown" | null>
+  /** An owned Linux collector installs this only after verifying the launch receipt. */
+  withClipboardFixture?: (work: (fixture: ClipboardFixture) => Promise<ProbeResult>) => Promise<ProbeResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: Pick<ObservationFrame, "role" | "label">) => Promise<ObservationFrame>
   cols: number
