@@ -14,8 +14,13 @@ interface DeviceReply {
   direct?: boolean
 }
 
-function deviceReplyResult(spec: DeviceReply, raw: string, reason: TerminalQueryOutcome["reason"]): ProbeResult {
-  const valid = spec.valid.exec(raw)
+function deviceReplyResult(
+  spec: DeviceReply,
+  raw: string,
+  matchedFrame: string | null,
+  reason: TerminalQueryOutcome["reason"],
+): ProbeResult {
+  const valid = matchedFrame ? spec.valid.exec(matchedFrame) : null
   if (valid?.[0]) {
     const note = spec.note?.(valid[0])
     return {
@@ -26,7 +31,7 @@ function deviceReplyResult(spec: DeviceReply, raw: string, reason: TerminalQuery
       assertions: [{ kind: "positive", expected: spec.expected, observed: valid[0] }],
     }
   }
-  const refusal = spec.refusal?.exec(raw)
+  const refusal = matchedFrame ? spec.refusal?.exec(matchedFrame) : null
   if (refusal?.[0]) {
     return {
       pass: false,
@@ -35,7 +40,14 @@ function deviceReplyResult(spec: DeviceReply, raw: string, reason: TerminalQuery
       assertions: [{ kind: "negative", expected: spec.refusalExpected ?? spec.expected, observed: refusal[0] }],
     }
   }
-  const missingReason = spec.malformed.test(raw) ? "invalid-reply" : reason === "timeout" ? "timeout" : "no-response"
+  // Raw bytes remain available for diagnostics, but a frame after DA1 cannot establish a result.
+  const hasCompleteUnmatchedFrame = spec.valid.test(raw) || spec.refusal?.test(raw) === true
+  const missingReason =
+    !hasCompleteUnmatchedFrame && spec.malformed.test(raw)
+      ? "invalid-reply"
+      : reason === "timeout"
+        ? "timeout"
+        : "no-response"
   return {
     pass: false,
     response: raw,
@@ -49,12 +61,17 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
     : spec.valid
   const definition = probe(
     spec.id,
-    (ctx) => deviceReplyResult(spec, ctx.feedCapture(spec.query), "sentinel"),
+    (ctx) => {
+      const raw = ctx.feedCapture(spec.query)
+      return deviceReplyResult(spec, raw, responsePattern.exec(raw)?.[0] ?? null, "sentinel")
+    },
     async (ctx) => {
+      // Primary DA1 answers its own direct query; all other device queries use DA1 as a sentinel.
       const outcome = spec.direct
         ? await ctx.queryOutcome(spec.query, responsePattern)
         : await ctx.queryWithSentinelOutcome(spec.query, responsePattern)
-      return deviceReplyResult(spec, outcome.raw, outcome.reason)
+      const matchedFrame = outcome.reason === "reply" ? (outcome.match?.[0] ?? null) : null
+      return deviceReplyResult(spec, outcome.raw, matchedFrame, outcome.reason)
     },
     "query",
   )

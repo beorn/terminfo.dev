@@ -78,6 +78,89 @@ function terminalContext(overrides: Partial<TermContext>): TermContext {
 }
 
 /**
+ * @failure A color-register count, protocol failure, or DA1 responsiveness was reported as Sixel geometry.
+ * @level l0
+ * @consumer XTSMGRAPHICS item-2 callbacks in headless and real-terminal collectors.
+ * @testonly none
+ */
+describe("Sixel geometry item-2 report", () => {
+  const query = "\x1b[?2;1;0S"
+  const geometry = probe("extensions.sixel-geometry-report")
+  if (!geometry.termless || !geometry.term) throw new Error("Sixel geometry requires both callbacks")
+  const headless = geometry.termless
+  const terminal = geometry.term
+
+  function fromHeadless(raw: string) {
+    return headless(
+      context({
+        feedCapture(sequence) {
+          expect(sequence).toBe(query)
+          return raw
+        },
+      }),
+    )
+  }
+
+  async function fromTerminal(raw: string, sentinelFirst = false) {
+    return terminal(
+      terminalContext({
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          expect(sequence).toBe(query)
+          const match = sentinelFirst ? null : raw.match(pattern)
+          return { match, reason: match ? "reply" : "sentinel", raw, rawBase64: Buffer.from(raw).toString("base64") }
+        },
+        queryCursorPosition: async () => {
+          throw new Error("CPR cannot establish Sixel geometry")
+        },
+      }),
+    )
+  }
+
+  test("binds a status-0 width and height reply as the exact query result", async () => {
+    const raw = "\x1b[?2;0;640;480S"
+    for (const result of [fromHeadless(raw), await fromTerminal(raw)]) {
+      expect(result).toMatchObject({ pass: true, response: raw })
+      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.assertions?.[0]).toMatchObject({ kind: "positive", observed: raw })
+    }
+    expect(geometry.termWrites).toBe("query")
+  })
+
+  test("a valid-looking frame after the DA1 sentinel cannot be promoted from raw bytes", async () => {
+    const raw = "\x1b[?62;52;c\x1b[?2;0;640;480S"
+    const result = await fromTerminal(raw, true)
+    expect(result).toMatchObject({ pass: false, response: raw })
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+    expect(result.assertions).toBeUndefined()
+  })
+
+  test("a geometry frame before DA1 supports while preserving the full raw trace", async () => {
+    const frame = "\x1b[?2;0;640;480S"
+    const raw = `${frame}\x1b[?62;52;c`
+    const result = await fromTerminal(raw)
+    expect(result).toMatchObject({ pass: true, response: raw })
+    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.assertions?.[0]).toMatchObject({ kind: "positive", observed: frame })
+  })
+
+  test("protocol failure, color count, malformed dimensions, zero geometry, and silence stay inconclusive", async () => {
+    for (const [raw, reason] of [
+      ["\x1b[?2;3;0S", "insufficient-evidence"],
+      ["\x1b[?1;0;256S", "no-response"],
+      ["\x1b[?2;0;640S", "invalid-reply"],
+      ["\x1b[?2;0;0;480S", "insufficient-evidence"],
+      ["", "no-response"],
+    ] as const) {
+      for (const result of [fromHeadless(raw), await fromTerminal(raw)]) {
+        expect(result).toMatchObject({ pass: false, response: raw })
+        expect(result.observation).toMatchObject({ outcome: "inconclusive", reason, evidence: "query" })
+        expect(result.assertions).toBeUndefined()
+      }
+    }
+  })
+})
+
+/**
  * @failure OSC 8 consumption or a capability flag was mistaken for linked-cell metadata.
  * @level l0
  * @consumer Unified headless and application OSC 8 observation.

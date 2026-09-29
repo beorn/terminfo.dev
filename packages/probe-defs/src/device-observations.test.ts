@@ -27,7 +27,9 @@ function terminal(raw: string, reason: TerminalQueryOutcome["reason"] = "reply")
   const reply = (sequence: string, pattern: RegExp): Promise<TerminalQueryOutcome> => {
     const item = replies.find((candidate) => candidate.query === sequence)
     if (!item) throw new Error(`unexpected query ${JSON.stringify(sequence)}`)
-    return Promise.resolve({ match: pattern.exec(raw), reason, raw, rawBase64: Buffer.from(raw).toString("base64") })
+    // Live TTY matching returns null when the DA1 sentinel precedes a matching frame in the same buffer.
+    const match = reason === "reply" ? pattern.exec(raw) : null
+    return Promise.resolve({ match, reason, raw, rawBase64: Buffer.from(raw).toString("base64") })
   }
   return {
     queryOutcome: reply,
@@ -73,6 +75,60 @@ describe("device query observations", () => {
       }
     })
   }
+
+  test("DA1 sentinel before a valid frame cannot establish any of the seven device results", async () => {
+    const sentinel = "\x1b[?62;52;c"
+    for (const item of replies.filter((candidate) => candidate.id !== "device.primary-da")) {
+      const lateRaw = sentinel + item.valid
+      const late = await callback(item.id).terminal(terminal(lateRaw, "sentinel"))
+      expect(late.response, item.id).toBe(lateRaw)
+      expect(late.observation, item.id).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+      expect(late.assertions, item.id).toBeUndefined()
+
+      const earlyRaw = item.valid + sentinel
+      const early = await callback(item.id).terminal(terminal(earlyRaw))
+      expect(early.response, item.id).toBe(earlyRaw)
+      expect(early.observation, item.id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(early.assertions, item.id).toMatchObject([{ kind: "positive", observed: item.valid }])
+    }
+  })
+
+  test("DA1 sentinel before explicit refusals cannot become unsupported", async () => {
+    const sentinel = "\x1b[?62;52;c"
+    for (const [id, refusal] of [
+      ["device.decrqss", "\x1bP0$r\x1b\\"],
+      ["device.xtgettcap", "\x1bP0+r\x1b\\"],
+      ["device.decrpm", "\x1b[?7;0$y"],
+    ] as const) {
+      const lateRaw = sentinel + refusal
+      const late = await callback(id).terminal(terminal(lateRaw, "sentinel"))
+      expect(late.response, id).toBe(lateRaw)
+      expect(late.observation, id).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+      expect(late.assertions, id).toBeUndefined()
+
+      const earlyRaw = refusal + sentinel
+      const early = await callback(id).terminal(terminal(earlyRaw))
+      expect(early.response, id).toBe(earlyRaw)
+      expect(early.observation, id).toMatchObject({ outcome: "unsupported", evidence: "query" })
+      expect(early.assertions, id).toMatchObject([{ kind: "negative", observed: refusal }])
+    }
+  })
+
+  test("the first combined refusal or valid frame determines the DECRPM result", async () => {
+    const refusal = "\x1b[?7;0$y"
+    const valid = "\x1b[?7;1$y"
+    const probe = callback("device.decrpm")
+    for (const result of [probe.headless(headless(refusal + valid)), await probe.terminal(terminal(refusal + valid))]) {
+      expect(result.response).toBe(refusal + valid)
+      expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+      expect(result.assertions).toMatchObject([{ kind: "negative", observed: refusal }])
+    }
+    for (const result of [probe.headless(headless(valid + refusal)), await probe.terminal(terminal(valid + refusal))]) {
+      expect(result.response).toBe(valid + refusal)
+      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: valid }])
+    }
+  })
 
   test("silence is inconclusive and a TTY deadline remains a timeout", async () => {
     for (const item of replies) {

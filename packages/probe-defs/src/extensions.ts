@@ -6,6 +6,84 @@ function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }
 }
 
+/** A read of current Sixel geometry; protocol failure and silence never establish a negative. */
+function sixelGeometryResult(raw: string, frame: string | null, missingReason: "no-response" | "timeout"): ProbeResult {
+  const reply = frame ? /\x1b\[\?2;([0-9]+);([0-9;]*)S/.exec(frame) : null
+  if (!reply) {
+    const malformed = frame !== null
+    const note = malformed ? "Malformed Sixel geometry response" : "No Sixel geometry response for item 2"
+    return {
+      pass: false,
+      response: raw,
+      note,
+      observation: {
+        outcome: "inconclusive",
+        evidence: "query",
+        reason: malformed ? "invalid-reply" : missingReason,
+        note,
+      },
+    }
+  }
+  const status = Number(reply[1])
+  if (status !== 0) {
+    const validFailure = status === 1 || status === 2 || status === 3
+    const note = validFailure
+      ? `Sixel geometry query reported protocol status ${status}`
+      : `Unknown Sixel geometry protocol status ${reply[1]}`
+    return {
+      pass: false,
+      response: raw,
+      note,
+      observation: {
+        outcome: "inconclusive",
+        evidence: "query",
+        reason: validFailure ? "insufficient-evidence" : "invalid-reply",
+        note,
+      },
+    }
+  }
+  const dimensions = reply[2]?.split(";") ?? []
+  const width = Number(dimensions[0])
+  const height = Number(dimensions[1])
+  if (
+    dimensions.length !== 2 ||
+    dimensions.some((value) => !/^[0-9]+$/.test(value)) ||
+    !Number.isSafeInteger(width) ||
+    !Number.isSafeInteger(height)
+  ) {
+    const note = "Successful Sixel geometry response lacked two numeric pixel dimensions"
+    return {
+      pass: false,
+      response: raw,
+      note,
+      observation: { outcome: "inconclusive", evidence: "query", reason: "invalid-reply", note },
+    }
+  }
+  if (width === 0 || height === 0) {
+    const note = `Sixel geometry reported ${width}×${height} pixels; usable dimensions were not established`
+    return {
+      pass: false,
+      response: raw,
+      note,
+      observation: { outcome: "inconclusive", evidence: "query", reason: "insufficient-evidence", note },
+    }
+  }
+  const note = `Current Sixel geometry reported as ${width}×${height} pixels`
+  return {
+    pass: true,
+    response: raw,
+    note,
+    observation: { outcome: "supported", evidence: "query", note },
+    assertions: [
+      {
+        kind: "positive",
+        expected: "XTSMGRAPHICS item 2 read returns status 0 and two positive pixel dimensions",
+        observed: reply[0],
+      },
+    ],
+  }
+}
+
 /** OSC color query probe — feedCapture + regex (termless), sentinel query (term). */
 function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
   const querySeq = `\x1b]${oscCode};?\x07`
@@ -1816,35 +1894,21 @@ export const extensionsProbes: ProbeDefinition[] = [
     ),
   ),
 
-  // Sixel geometry report — CSI ? Pi ; Pa ; Pv S → CSI ? Pi ; ... S
-  // Added in xterm patch 402 (2025-06-22). xterm-only as of 2026.
-  // Partial probe verifies the sequence is consumed without leaking literal characters.
+  // XTSMGRAPHICS item 2 reads current Sixel geometry in pixels; item 1 is only color registers.
   queryOnly(
     probe(
       "extensions.sixel-geometry-report",
       (ctx) => {
-        // Read color register count: Pi=1, Pa=1 (read), Pv=0
-        const response = ctx.feedCapture("\x1b[?1;1;0S")
-        if (/\x1b\[\?1;[0-9;]+S/.test(response)) {
-          return { pass: true, response, note: "Sixel geometry response received" }
-        }
-        // Verify sequence consumed (not printed literally) and terminal responsive
-        const probeResponse = ctx.feedCapture("\x1b[c")
-        return {
-          pass: /\x1b\[\?[0-9;]+c/.test(probeResponse) && !response.includes("?1;1;0S"),
-          note: /\x1b\[\?[0-9;]+c/.test(probeResponse)
-            ? "Sequence consumed; terminal responsive (no sixel geometry response)"
-            : "Terminal unresponsive after CSI ? 1 ; 1 ; 0 S",
-        }
+        const raw = ctx.feedCapture("\x1b[?2;1;0S")
+        const frame = /\x1b\[\?2;[0-9;]*S/.exec(raw)?.[0] ?? null
+        return sixelGeometryResult(raw, frame, "no-response")
       },
       async (ctx) => {
-        const match = await ctx.queryWithSentinel("\x1b[?1;1;0S", /\x1b\[\?1;([0-9;]+)S/, 1000)
-        if (match) return { pass: true, response: match[0], note: `geometry: ${match[1]}` }
-        // Verify the sequence didn't break the terminal — DSR should still respond.
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) return { pass: false, note: "No response after sixel geometry query" }
-        return { pass: false, note: "Sequence consumed but no sixel geometry response" }
+        const reply = await ctx.queryWithSentinelOutcome("\x1b[?2;1;0S", /\x1b\[\?2;[0-9;]*S/, 1000)
+        const frame = reply.reason === "reply" ? (reply.match?.[0] ?? null) : null
+        return sixelGeometryResult(reply.raw, frame, reply.reason === "timeout" ? "timeout" : "no-response")
       },
+      "query",
     ),
   ),
 ]
