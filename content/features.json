@@ -703,7 +703,8 @@
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": ["ecma-48", "vt100"],
     "body": "IL inserts N blank lines at the cursor row, scrolling existing lines down within the scroll region. The sequence is <code>ESC [ N L</code> (default N=1). Lines scrolled past the bottom margin are lost. Used by full-screen applications to make room for new content without redrawing the entire screen.",
-    "probe": "Write 3 lines, move to row 2, send <code>\\x1b[1L</code> (IL 1), verify row 1 is blank and original content shifted down.",
+    "probe": "Headless: measure four seeded rows and cursor position, insert one blank row at row 2, then check the shifted known rows with row 1 unchanged. The app cursor reply does not establish edited cells or scrolling-region margins.",
+    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC [ N L"
   },
@@ -713,7 +714,8 @@
     "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
     "tags": ["ecma-48", "vt100"],
     "body": "DL deletes N lines at the cursor row, scrolling lines below upward within the scroll region. The sequence is <code>ESC [ N M</code> (default N=1). Blank lines are inserted at the bottom margin. The complement of IL (insert lines).\n\nDL is part of the terminal editing toolbox that predates full-screen repainting. Instead of redrawing every row, an application can delete lines inside the scroll region and let the terminal shift the remaining content. It is still useful for efficient editors, but correctness depends on honoring margins and inserting blank rows at the far edge.",
-    "probe": "Write 3 lines, move to row 2, send <code>\\x1b[1M</code> (DL 1), verify LINE3 moved up to row 1.",
+    "probe": "Headless: measure four seeded rows and cursor position, delete row 2, then check the known rows shifted up with row 1 unchanged. This does not check bottom-margin blank filling; the app cursor reply does not establish edited cells or scrolling-region margins.",
+    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC [ N M"
   },

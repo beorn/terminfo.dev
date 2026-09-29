@@ -127,9 +127,38 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.insert-lines",
       (ctx) => {
-        ctx.feed("LINE1\r\nLINE2\r\nLINE3\x1b[2;1H\x1b[1L")
-        const r1 = ctx.getCell(1, 0).char
-        return { pass: isBlank(r1) && ctx.getCell(2, 0).char === "L" }
+        const expected = "IL inserts a blank row 2 and shifts measured rows down while row 1 stays intact"
+        const screenLines = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(screenLines) || screenLines < 4) {
+          return parserStateResult(
+            null,
+            expected,
+            { cols: ctx.cols, screenLines },
+            "Need six measured columns and four measured screen lines for IL",
+          )
+        }
+        const seed = ["AAAAA", "BBBBB", "CCCCC", "DDDDD"]
+        for (const [row, text] of seed.entries()) ctx.feed(`\x1b[${row + 1};1H\x1b[2K${text}`)
+        const before = seed.map((_, row) => Array.from({ length: 5 }, (_, col) => ctx.getCell(row, col).char))
+        if (before.some((cells, row) => cells.join("") !== seed[row])) {
+          return parserStateResult(null, expected, { before }, "IL source rows were not measured before the edit")
+        }
+        ctx.feed("\x1b[2;1H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 0 || setup.y !== 1) {
+          return parserStateResult(null, expected, { before, setup }, "IL cursor setup did not reach row 2 column 1")
+        }
+        ctx.feed("\x1b[1L")
+        const after = seed.map((_, row) => Array.from({ length: 5 }, (_, col) => ctx.getCell(row, col).char))
+        const controlsValid = after[0]?.join("") === "AAAAA"
+        return parserStateResult(
+          controlsValid
+            ? after[1]?.every(isBlank) === true && after[2]?.join("") === "BBBBB" && after[3]?.join("") === "CCCCC"
+            : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "IL first-row control changed during the edit",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
@@ -160,8 +189,39 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.delete-lines",
       (ctx) => {
-        ctx.feed("LINE1\r\nLINE2\r\nLINE3\x1b[2;1H\x1b[1M")
-        return { pass: ctx.getCell(1, 0).char === "L" && ctx.getCell(1, 4).char === "3" }
+        const expected = "DL removes row 2 and shifts measured rows up while row 1 stays intact"
+        const screenLines = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(screenLines) || screenLines < 4) {
+          return parserStateResult(
+            null,
+            expected,
+            { cols: ctx.cols, screenLines },
+            "Need six measured columns and four measured screen lines for DL",
+          )
+        }
+        const seed = ["AAAAA", "BBBBB", "CCCCC", "DDDDD"]
+        for (const [row, text] of seed.entries()) ctx.feed(`\x1b[${row + 1};1H\x1b[2K${text}`)
+        const before = seed.map((_, row) => Array.from({ length: 5 }, (_, col) => ctx.getCell(row, col).char))
+        if (before.some((cells, row) => cells.join("") !== seed[row])) {
+          return parserStateResult(null, expected, { before }, "DL source rows were not measured before the edit")
+        }
+        ctx.feed("\x1b[2;1H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 0 || setup.y !== 1) {
+          return parserStateResult(null, expected, { before, setup }, "DL cursor setup did not reach row 2 column 1")
+        }
+        ctx.feed("\x1b[1M")
+        // Row 4's incoming source is unmeasured when the screen is taller than four rows.
+        const after = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 5 }, (_, col) => ctx.getCell(row, col).char),
+        )
+        const controlsValid = after[0]?.join("") === "AAAAA"
+        return parserStateResult(
+          controlsValid ? after[1]?.join("") === "CCCCC" && after[2]?.join("") === "DDDDD" : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "DL first-row control changed during the edit",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {

@@ -13,30 +13,56 @@ const cases = [
     id: "editing.insert-chars",
     feature: "\x1b[1@",
     cols: 8,
-    before: "ABCDEZQH",
-    after: "AB CDEZQ",
+    screenLines: 1,
+    before: ["ABCDEZQH"],
+    after: ["AB CDEZQ"],
   },
   {
     id: "editing.delete-chars",
     feature: "\x1b[1P",
     cols: 8,
-    before: "ABCDEZQH",
-    after: "ABDEZQH",
+    screenLines: 1,
+    before: ["ABCDEZQH"],
+    after: ["ABDEZQH"],
   },
   {
     id: "editing.repeat-char",
     feature: "\x1b[3b",
     cols: 6,
-    before: "AX   Z",
-    after: "AXXXXZ",
+    screenLines: 1,
+    before: ["AX   Z"],
+    after: ["AXXXXZ"],
+  },
+  {
+    id: "editing.insert-lines",
+    feature: "\x1b[1L",
+    cols: 6,
+    screenLines: 4,
+    before: ["AAAAA", "BBBBB", "CCCCC", "DDDDD"],
+    after: ["AAAAA", "     ", "BBBBB", "CCCCC"],
+  },
+  {
+    id: "editing.delete-lines",
+    feature: "\x1b[1M",
+    cols: 6,
+    screenLines: 4,
+    before: ["AAAAA", "BBBBB", "CCCCC", "DDDDD"],
+    after: ["AAAAA", "CCCCC", "DDDDD", "UNMEASURED"],
   },
 ] as const
 
 function staged(
   item: (typeof cases)[number],
-  options: { before?: string; after?: string; cols?: number; cursor?: { x: number; y: number } } = {},
+  options: {
+    before?: readonly string[]
+    after?: readonly string[]
+    cols?: number
+    screenLines?: number
+    cursor?: { x: number; y: number }
+  } = {},
 ) {
   const feeds: string[] = []
+  const afterReadRows: number[] = []
   let edited = false
   let printedX = false
   const before = options.before ?? item.before
@@ -50,8 +76,9 @@ function staged(
     },
     feedCapture: () => "",
     getCell(row, col) {
+      if (edited) afterReadRows.push(row)
       return {
-        char: row === 0 ? ((edited ? after : before)[col] ?? "") : "",
+        char: (edited ? after : before)[row]?.[col] ?? "",
         bold: false,
         dim: false,
         italic: false,
@@ -66,13 +93,20 @@ function staged(
       }
     },
     getCursor: () => ({
-      ...(options.cursor ?? { x: item.id === "editing.repeat-char" && !printedX ? 1 : 2, y: 0 }),
+      ...(options.cursor ??
+        (item.id === "editing.insert-lines" || item.id === "editing.delete-lines"
+          ? { x: 0, y: 1 }
+          : { x: item.id === "editing.repeat-char" && !printedX ? 1 : 2, y: 0 })),
       visible: true,
       style: null,
     }),
     getMode: () => false,
     getText: () => "",
-    getScrollback: () => ({ viewportOffset: 0, totalLines: 1, screenLines: 1 }),
+    getScrollback: () => ({
+      viewportOffset: 0,
+      totalLines: options.screenLines ?? item.screenLines,
+      screenLines: options.screenLines ?? item.screenLines,
+    }),
     getTitle: () => "",
     reset() {},
     capabilities: {
@@ -87,7 +121,7 @@ function staged(
       extensions: new Set(),
     },
   }
-  return { context, feeds }
+  return { context, feeds, afterReadRows }
 }
 
 test.each(cases)("$id binds a measured edit to cells and calibrated controls", (item) => {
@@ -105,7 +139,7 @@ test.each(cases)("$id binds a measured edit to cells and calibrated controls", (
   expect(unsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
   expect(unsupported.assertions?.[0]).toMatchObject({ kind: "negative", observed: unsupported.response })
 
-  const badSeed = staged(item, { before: `?${item.before.slice(1)}` })
+  const badSeed = staged(item, { before: [`?${(item.before[0] ?? "").slice(1)}`, ...item.before.slice(1)] })
   expect(definition.termless(badSeed.context).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
@@ -119,7 +153,7 @@ test.each(cases)("$id binds a measured edit to cells and calibrated controls", (
   })
   expect(badCursor.feeds.some((bytes) => bytes.includes(item.feature))).toBe(false)
 
-  const badControl = staged(item, { after: `?${item.after.slice(1)}` })
+  const badControl = staged(item, { after: [`?${(item.after[0] ?? "").slice(1)}`, ...item.after.slice(1)] })
   expect(definition.termless(badControl.context).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
@@ -133,4 +167,15 @@ test.each(cases)("$id binds a measured edit to cells and calibrated controls", (
     })
     expect(noRoom.feeds, `${item.id} at ${cols} columns`).toEqual([])
   }
+  if (item.id === "editing.insert-lines" || item.id === "editing.delete-lines") {
+    for (const screenLines of [3, NaN, Infinity, 1.5]) {
+      const noRows = staged(item, { screenLines })
+      expect(definition.termless(noRows.context).observation).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+      })
+      expect(noRows.feeds, `${item.id} with ${screenLines} screen lines`).toEqual([])
+    }
+  }
+  if (item.id === "editing.delete-lines") expect(correct.afterReadRows).not.toContain(3)
 })
