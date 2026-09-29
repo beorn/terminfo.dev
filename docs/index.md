@@ -719,6 +719,13 @@ strips, or mishandles.
   flex-shrink: 0;
 }
 
+@media (max-width: 900px) {
+  .summary-row { flex-wrap: wrap; }
+  .summary-bar { order: 1; flex-basis: 100%; }
+  .summary-pct { order: 2; width: auto; text-align: left; }
+  .summary-counts { order: 3; width: 100%; text-align: left; }
+}
+
 /* Filters */
 .filters {
   display: flex;
@@ -878,6 +885,10 @@ strips, or mishandles.
 .matrix-wrapper {
   margin: 1em 0;
   overflow: visible;
+}
+
+@media (max-width: 900px) {
+  .matrix-wrapper { overflow-x: auto; }
 }
 
 /* Override VitePress default table overflow-x:auto which breaks sticky */

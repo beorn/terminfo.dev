@@ -22,7 +22,7 @@ const score = computed(() => counts.value?.conclusive ? Math.round(counts.value.
 const inconclusive = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'inconclusive').length)
 const errors = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'error').length)
 function runLabel(run) {
-  return `${run.target.version} · ${run.target.os || 'OS not recorded'} · ${run.target.permissions || 'Permissions not overridden'} · ${run.sha256.slice(0, 8)}`
+  return `${run.target.version} · ${run.target.os || 'OS not recorded'} · ${run.target.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
 }
 
 function featureTooltip(f) {
