@@ -142,7 +142,7 @@ const breadcrumbParent = (() => {
   <div v-if="score !== null" class="score-number">{{ score }}<span class="score-pct">%</span></div>
   <div v-else class="score-number">No score</div>
   <div v-if="counts.conclusive" class="score-detail">
-    Supported among {{ counts.conclusive }} conclusive observations
+    {{ counts.supported }} / {{ counts.conclusive }} conclusive checks supported
   </div>
   <div v-else class="score-detail">No conclusive results in this reviewed run.</div>
   <p class="score-detail">{{ counts.supported }} supported · {{ counts.unsupported }} unsupported · {{ inconclusive }} inconclusive · {{ errors }} errors · {{ counts.notTested }} untested</p>

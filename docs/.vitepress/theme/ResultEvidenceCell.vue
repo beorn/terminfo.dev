@@ -359,10 +359,14 @@ onBeforeUnmount(() => {
 
             <details class="result-evidence__details">
               <summary>Review history</summary>
-              <p v-if="correction">Result corrected by {{ correction.reviewer }}: {{ correction.reason }}</p>
-              <p>
-                Evidence checked for publication by {{ presentation.review.reviewer }}: {{ presentation.review.reason }}
+              <p v-if="correction">
+                Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
+                Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
               </p>
+              <details>
+                <summary>Evidence publication check</summary>
+                <p>{{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
+              </details>
               <template v-if="originalDiffers">
                 <h4>Original recorded observation</h4>
                 <p>
