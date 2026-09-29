@@ -20,7 +20,7 @@ function featureTooltip(f) {
   return parts.join('\n')
 }
 
-const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''
+const testDate = p.generated ? new Date(p.generated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) : ''
 const isHistorical = p.historical === 'true'
 
 const typeBadge = (() => {
@@ -122,15 +122,17 @@ const breadcrumbParent = (() => {
   &mdash; this terminal uses the same underlying engine and is not probed separately.
 </p>
 
-<div v-if="!isHistorical && p.total" class="score-card">
-  <div class="score-number">{{ p.pct }}<span class="score-pct">%</span></div>
-  <div class="score-detail">
+<div v-if="!isHistorical && p.runSha256" class="score-card">
+  <div v-if="p.pct" class="score-number">{{ p.pct }}<span class="score-pct">%</span></div>
+  <div v-else class="score-number">No score</div>
+  <div v-if="p.total !== '0'" class="score-detail">
     <span class="score-yes">{{ p.yes }} passed</span> ·
     <span v-if="Number(p.partial) > 0" class="score-partial">{{ p.partial }} partial · </span>
     <span class="score-no">{{ p.total - p.yes - p.partial }} failed</span>
     <span class="score-total"> of {{ p.total }} features</span>
   </div>
-  <div v-if="testDate" class="score-date">Tested: {{ testDate }} · {{ p.suiteFreshness }}</div>
+  <div v-else class="score-detail">No conclusive results in this reviewed run.</div>
+  <div v-if="testDate" class="score-date">Tested (UTC): {{ testDate }} · {{ p.suiteFreshness }}</div>
   <div v-if="p.runSha256" class="score-date">Run: <a href="/api/v2/data.json">{{ p.runSha256.slice(0, 12) }}</a></div>
 </div>
 
@@ -159,11 +161,11 @@ const breadcrumbParent = (() => {
         <td class="version-name">{{ v.version }}</td>
         <td class="version-bar-cell">
           <div class="version-bar">
-            <div class="version-bar-fill" :style="{ width: (v.yes / v.total * 100) + '%' }"></div>
+            <div class="version-bar-fill" :style="{ width: v.total ? (v.yes / v.total * 100) + '%' : '0%' }"></div>
           </div>
         </td>
-        <td class="version-pct">{{ v.pct }}%</td>
-        <td class="version-counts">{{ v.yes }} / {{ v.total }}</td>
+        <td class="version-pct">{{ v.pct == null ? 'No score' : `${v.pct}%` }}</td>
+        <td class="version-counts">{{ v.total ? `${v.yes} / ${v.total}` : 'No conclusive results' }}</td>
       </tr>
     </tbody>
   </table>

@@ -59,7 +59,7 @@ export default {
       })
 
       const yesCount = backendResults.filter((r) => r.result === "yes").length
-      const totalCount = backendResults.length
+      const totalCount = backendResults.filter((r) => r.result === "yes" || r.result === "no").length
 
       // Build tags with labels for display
       const tags = (meta?.tags ?? []).map((t: string) => ({
@@ -124,9 +124,9 @@ export default {
           specUrl: desc?.url ?? f.spec ?? "",
           featureBody: linkifyContentExcluding(meta?.body ?? "", selfHrefs),
           probeMethod: linkifyContentExcluding(meta?.probe ?? "", selfHrefs),
-          baseline: (meta as any)?.baseline ?? "",
-          probeStatus: (meta as any)?.probeStatus ?? "automated",
-          sequence: (meta as any)?.sequence ?? "",
+          baseline: meta?.baseline ?? "",
+          probeStatus: meta?.probeStatus ?? "automated",
+          sequence: meta?.sequence ?? "",
           featureTags: JSON.stringify(tags),
           backendResults: JSON.stringify(backendResults),
           yesCount: String(yesCount),

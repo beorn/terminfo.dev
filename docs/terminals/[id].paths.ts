@@ -25,7 +25,7 @@ interface VersionInfo {
   version: string
   total: number
   yes: number
-  pct: number
+  pct: number | null
 }
 
 /** Versions displayed on a terminal page come only from reviewed, exact-context runs. */
@@ -38,12 +38,14 @@ function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: st
       (selected) =>
         selected.target.id === current?.selected.target.id && selected.target.kind === current.selected.target.kind,
     )
-    .filter((selected) => selected.counts.conclusive > 0)
     .map((selected) => ({
       version: selected.target.version,
       total: selected.counts.conclusive,
       yes: selected.counts.supported,
-      pct: Math.round((selected.counts.supported / selected.counts.conclusive) * 100),
+      pct:
+        selected.counts.conclusive > 0
+          ? Math.round((selected.counts.supported / selected.counts.conclusive) * 100)
+          : null,
     }))
   return versions.sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))
 }
@@ -55,7 +57,8 @@ export default {
 
     const pages: Array<{ params: Record<string, string> }> = data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
-      const stats = data.stats[b.name] ?? { total: 0, yes: 0, no: 0, partial: 0, pct: 0 }
+      const stats = data.stats[b.name]
+      if (!stats) throw new Error(`Missing site statistics for selected terminal ${b.name}`)
       const slug = terminalSlug(b.name, data.meta)
 
       // Build feature results grouped by category
@@ -132,7 +135,7 @@ export default {
           yes: String(stats.yes),
           no: String(stats.no),
           partial: String(stats.partial),
-          pct: String(stats.pct),
+          pct: stats.pct === null ? "" : String(stats.pct),
           categories: JSON.stringify(categories),
           versions: JSON.stringify(versions),
           analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${slug}`])),

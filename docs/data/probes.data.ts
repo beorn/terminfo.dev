@@ -63,7 +63,7 @@ export interface ProbeData {
   /** backend name -> feature id -> note string */
   notes: Record<string, Record<string, string>>
   /** Selected terminal id -> conclusive-only compatibility score. */
-  stats: Record<string, { total: number; yes: number; no: number; partial: number; pct: number }>
+  stats: Record<string, { total: number; yes: number; no: number; partial: number; pct: number | null }>
   /** backend name -> metadata from backends.json */
   meta: Record<string, BackendMeta>
   /** "backend:feature" -> { note, url? } from annotations.json */
@@ -73,7 +73,7 @@ export interface ProbeData {
   /** baseline -> feature ids */
   baselines: Record<string, string[]>
   /** backend name -> baseline -> { total, yes, pct } */
-  baselineStats: Record<string, Record<string, { total: number; yes: number; pct: number }>>
+  baselineStats: Record<string, Record<string, { total: number; yes: number; pct: number | null }>>
   /** category slug -> display label */
   categoryLabels: Record<string, string>
   generated: string
@@ -209,7 +209,6 @@ export default {
     const stats: ProbeData["stats"] = {}
     const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(byTarget)
     for (const [key, { selected }] of byTarget) {
-      if (selected.counts.conclusive === 0) continue
       const { kind, os } = selected.target
       if (results[key]) throw new Error(`Ambiguous published terminal ${key}: multiple selected targets`)
       backends.push({
@@ -233,7 +232,7 @@ export default {
         yes: supported,
         no: unsupported,
         partial: 0,
-        pct: Math.round((supported / conclusive) * 100),
+        pct: conclusive > 0 ? Math.round((supported / conclusive) * 100) : null,
       }
     }
     backends.sort((a, b) => (stats[b.name]?.yes ?? 0) - (stats[a.name]?.yes ?? 0) || a.name.localeCompare(b.name))
@@ -275,9 +274,9 @@ function computeBaselines(data: ProbeData): void {
   }
 
   // Compute per-backend baseline stats
-  const baselineStats: Record<string, Record<string, { total: number; yes: number; pct: number }>> = {}
+  const baselineStats: Record<string, Record<string, { total: number; yes: number; pct: number | null }>> = {}
   for (const backend of data.backends) {
-    const backendStats: Record<string, { total: number; yes: number; pct: number }> = {}
+    const backendStats: Record<string, { total: number; yes: number; pct: number | null }> = {}
     baselineStats[backend.name] = backendStats
     const br = data.results[backend.name] ?? {}
     for (const bl of baselineOrder) {
@@ -285,7 +284,7 @@ function computeBaselines(data: ProbeData): void {
       const tested = ids.filter((id) => id in br)
       const total = tested.length
       const yes = tested.filter((id) => br[id] === "yes").length
-      backendStats[bl] = { total, yes, pct: total > 0 ? Math.round((yes / total) * 100) : 0 }
+      backendStats[bl] = { total, yes, pct: total > 0 ? Math.round((yes / total) * 100) : null }
     }
   }
 

@@ -9,7 +9,8 @@ export default {
     // Build terminal info list with stats
     const terminals = data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
-      const stats = data.stats[b.name] ?? { total: 0, yes: 0, no: 0, partial: 0, pct: 0 }
+      const stats = data.stats[b.name]
+      if (!stats) throw new Error(`Missing site statistics for selected terminal ${b.name}`)
       const slug = terminalSlug(b.name, data.meta)
       return {
         name: b.name,
@@ -119,8 +120,8 @@ export default {
             termBUrl: b.url,
             termAType: a.type,
             termBType: b.type,
-            termAPct: String(a.stats.pct),
-            termBPct: String(b.stats.pct),
+            termAPct: a.stats.pct === null ? "" : String(a.stats.pct),
+            termBPct: b.stats.pct === null ? "" : String(b.stats.pct),
             termAPass: String(a.stats.yes),
             termBPass: String(b.stats.yes),
             termAPartial: String(a.stats.partial),

@@ -111,12 +111,12 @@ function platformIcons(b) {
     <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
     <span class="summary-platforms" v-html="platformIcons(s)"></span>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
-      <div class="bar-fail" :style="{ width: ((s.total - s.yes - s.partial) / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'fail')"></div>
+      <div class="bar-yes" :style="{ width: s.total ? (s.yes / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: s.total ? (s.partial / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
+      <div class="bar-fail" :style="{ width: s.total ? ((s.total - s.yes - s.partial) / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'fail')"></div>
     </div>
-    <span class="summary-pct">{{ s.pct }}%</span>
-    <span class="summary-counts">{{ s.yes }} / {{ s.total }}</span>
+    <span class="summary-pct">{{ s.pct == null ? 'No score' : `${s.pct}%` }}</span>
+    <span class="summary-counts">{{ s.total ? `${s.yes} / ${s.total}` : 'No conclusive results' }}</span>
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet.</p>
@@ -129,12 +129,12 @@ function platformIcons(b) {
   <div v-for="s in headlessScores" :key="s.name" class="summary-row">
     <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (s.yes / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: (s.partial / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
-      <div class="bar-fail" :style="{ width: ((s.total - s.yes - s.partial) / s.total * 100) + '%' }" :data-tooltip="barTooltip(s, 'fail')"></div>
+      <div class="bar-yes" :style="{ width: s.total ? (s.yes / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: s.total ? (s.partial / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'partial')"></div>
+      <div class="bar-fail" :style="{ width: s.total ? ((s.total - s.yes - s.partial) / s.total * 100) + '%' : '0%' }" :data-tooltip="barTooltip(s, 'fail')"></div>
     </div>
-    <span class="summary-pct">{{ s.pct }}%</span>
-    <span class="summary-counts">{{ s.yes }} / {{ s.total }}</span>
+    <span class="summary-pct">{{ s.pct == null ? 'No score' : `${s.pct}%` }}</span>
+    <span class="summary-counts">{{ s.total ? `${s.yes} / ${s.total}` : 'No conclusive results' }}</span>
   </div>
 </div>
 
@@ -325,7 +325,8 @@ function platformIcons(b) {
 }
 
 .summary-pct {
-  width: 40px;
+  width: 8ch;
+  white-space: nowrap;
   font-weight: 600;
   font-size: 0.9em;
   text-align: right;
@@ -333,7 +334,7 @@ function platformIcons(b) {
 }
 
 .summary-counts {
-  width: 70px;
+  width: 12em;
   font-size: 0.8em;
   color: var(--vp-c-text-3);
   text-align: right;

@@ -75,9 +75,10 @@ function termTooltip(r) {
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
 </div>
 
-<p class="feature-score">
+<p v-if="Number(p.totalCount) > 0" class="feature-score">
   Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> backends ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
 </p>
+<p v-else class="feature-score">No conclusive results for this feature.</p>
 
 ## Terminal Applications
 

@@ -79,15 +79,39 @@ const fixture = vi.hoisted(() => {
     v1: { "sgr.bold": true },
     counts: { catalog: 270, tested: 1, notTested: 269, conclusive: 1, supported: 1, unsupported: 0 },
   }
+  const screen = {
+    ...mux,
+    runId: "screen-reviewed",
+    sha256: "d".repeat(64),
+    measuredAt: "2026-09-29T12:34:56.000Z",
+    target: { ...mux.target, id: "screen", mux: "screen", version: "5.0" },
+    cells: {
+      "sgr.bold": {
+        ...cells["sgr.bold"],
+        outcome: "inconclusive",
+        conclusive: false,
+        chain: { origin: { kind: "collector" }, method: "query", runId: "screen-reviewed", runSha256: "d".repeat(64) },
+      },
+    },
+    v1: {},
+    counts: { catalog: 270, tested: 1, notTested: 269, conclusive: 0, supported: 0, unsupported: 0 },
+  }
+  const olderScreen = {
+    ...selected,
+    runId: "screen-older-reviewed",
+    sha256: "c".repeat(64),
+    target: { ...screen.target, version: "4.9" },
+  }
   return {
     runSha256,
     measuredAt,
     selected,
     mux,
+    screen,
     projection: {
-      current: { "app:kitty": selected, "mux:tmux": mux },
-      versions: { "app:kitty": [selected], "mux:tmux": [mux] },
-      history: { "app:kitty": [selected], "mux:tmux": [mux] },
+      current: { "app:kitty": selected, "mux:tmux": mux, "mux:screen": screen },
+      versions: { "app:kitty": [selected], "mux:tmux": [mux], "mux:screen": [screen, olderScreen] },
+      history: { "app:kitty": [selected], "mux:tmux": [mux], "mux:screen": [screen] },
       exclusions: [],
     },
   }
@@ -99,11 +123,15 @@ vi.mock("../docs/data/current-results.ts", () => ({
     new Map([
       ["kitty", { contextKey: "app:kitty", selected: fixture.selected }],
       ["tmux", { contextKey: "mux:tmux", selected: fixture.mux }],
+      ["screen", { contextKey: "mux:screen", selected: fixture.screen }],
     ]),
 }))
 
 import probesLoader from "../docs/data/probes.data.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
+import comparePaths from "../docs/compare/[id].paths.ts"
+import baselinePaths from "../docs/baseline/[id].paths.ts"
+import featurePaths from "../docs/[category]/[id].paths.ts"
 import { generateApi } from "./generate-api.ts"
 import { generateAnalysis } from "./generate-analysis.ts"
 
@@ -165,5 +193,37 @@ describe("selected-run consumer parity", () => {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }
+  })
+
+  it("keeps a reviewed inconclusive target and its version visible without a score", () => {
+    const site = probesLoader.load()
+    const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")
+    expect(site.backends.map((backend) => backend.name)).toContain("screen")
+    expect(site.selectedByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
+    expect(site.stats.screen).toMatchObject({ total: 0, yes: 0, no: 0 })
+    expect(site.stats.screen?.pct).toBeNull()
+    expect(terminal?.params).toMatchObject({
+      generated: fixture.screen.measuredAt,
+      runSha256: fixture.screen.sha256,
+      pct: "",
+    })
+    expect(JSON.parse(terminal?.params.versions ?? "[]")).toEqual([
+      expect.objectContaining({ version: fixture.screen.target.version, pct: null }),
+      expect.objectContaining({ version: "4.9", pct: 50 }),
+    ])
+    const comparison = comparePaths
+      .paths()
+      .find(
+        (page) =>
+          [page.params.termAId, page.params.termBId].includes("screen") &&
+          [page.params.termAId, page.params.termBId].includes("kitty"),
+      )
+    expect(comparison?.params[comparison.params.termAId === "screen" ? "termAPct" : "termBPct"]).toBe("")
+    const core = baselinePaths.paths().find((page) => page.params.id === "core")
+    expect(JSON.parse(core?.params.scores ?? "[]")).toContainEqual(
+      expect.objectContaining({ name: "screen", total: 0, pct: null }),
+    )
+    const bold = featurePaths.paths().find((page) => page.params.featureId === "sgr.bold")
+    expect(bold?.params).toMatchObject({ yesCount: "2", totalCount: "2" })
   })
 })

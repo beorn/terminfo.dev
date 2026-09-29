@@ -98,13 +98,17 @@ function topTerminals(cat, limit = 3) {
   const appBackends = data.backends.filter(b => b.type === 'app')
   const scores = appBackends.map(b => {
     const featureIds = features.map(f => f.id)
+    const conclusive = featureIds.filter(id => ['yes', 'no'].includes(data.results[b.name]?.[id]))
+    if (conclusive.length === 0) return null
     const yes = featureIds.filter(id => data.results[b.name]?.[id] === 'yes').length
     return {
       name: data.meta[b.name]?.label ?? b.name,
       slug: data.meta[b.name]?.slug ?? b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-      pct: Math.round((yes / featureIds.length) * 100),
+      pct: Math.round((yes / conclusive.length) * 100),
+      yes,
+      total: conclusive.length,
     }
-  }).sort((a, b) => b.pct - a.pct)
+  }).filter(Boolean).sort((a, b) => b.pct - a.pct || b.total - a.total)
 
   // Return top terminals that score 100%, or the top N
   const perfect = scores.filter(s => s.pct === 100)
@@ -166,7 +170,7 @@ In practice, control sequences use the 7-bit form starting with `ESC` (byte `0x1
     <p v-if="categoryMeta[cat]?.tagline" class="category-tagline">{{ categoryMeta[cat]?.tagline }}</p>
     <div v-if="topTerminals(cat).length > 0" class="category-top">
       <span class="category-top-label">Top:</span>
-      <span v-for="(t, i) in topTerminals(cat)" :key="t.name" class="category-top-terminal">{{ t.name }} ({{ t.pct }}%)<span v-if="i < topTerminals(cat).length - 1">, </span></span>
+      <span v-for="(t, i) in topTerminals(cat)" :key="t.name" class="category-top-terminal">{{ t.name }} ({{ t.yes }}/{{ t.total }} conclusive, {{ t.pct }}%)<span v-if="i < topTerminals(cat).length - 1">, </span></span>
     </div>
   </a>
 </div>

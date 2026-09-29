@@ -33,6 +33,9 @@ export interface FeatureMeta {
   group?: string
   body?: string
   probe?: string
+  baseline?: string
+  probeStatus?: string
+  sequence?: string
 }
 
 let _featuresMeta: Record<string, FeatureMeta> | null = null

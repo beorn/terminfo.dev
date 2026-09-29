@@ -61,8 +61,8 @@ for (const cat of categories) {
     <a :href="'/terminals/' + p.termASlug" class="compare-card-link">
       <h3>{{ p.termALabel }}</h3>
     </a>
-    <div class="compare-score">{{ p.termAPct }}<span class="compare-pct">%</span></div>
-    <div class="compare-detail">{{ p.termAPass }}/{{ p.termATotal }} passed</div>
+    <div class="compare-score">{{ p.termAPct ? `${p.termAPct}%` : 'No score' }}</div>
+    <div class="compare-detail">{{ p.termATotal !== '0' ? `${p.termAPass}/${p.termATotal} passed` : 'No conclusive results' }}</div>
     <div v-if="Number(p.termAPartial) > 0" class="compare-partial">{{ p.termAPartial }} partial</div>
   </div>
   <div class="compare-vs">vs</div>
@@ -70,8 +70,8 @@ for (const cat of categories) {
     <a :href="'/terminals/' + p.termBSlug" class="compare-card-link">
       <h3>{{ p.termBLabel }}</h3>
     </a>
-    <div class="compare-score">{{ p.termBPct }}<span class="compare-pct">%</span></div>
-    <div class="compare-detail">{{ p.termBPass }}/{{ p.termBTotal }} passed</div>
+    <div class="compare-score">{{ p.termBPct ? `${p.termBPct}%` : 'No score' }}</div>
+    <div class="compare-detail">{{ p.termBTotal !== '0' ? `${p.termBPass}/${p.termBTotal} passed` : 'No conclusive results' }}</div>
     <div v-if="Number(p.termBPartial) > 0" class="compare-partial">{{ p.termBPartial }} partial</div>
   </div>
 </div>

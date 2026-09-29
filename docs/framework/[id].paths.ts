@@ -73,7 +73,7 @@ export default {
           yes: bs?.yes ?? 0,
           partial,
           total: bs?.total ?? 0,
-          pct: bs?.pct ?? 0,
+          pct: bs?.pct ?? null,
         }
       })
 

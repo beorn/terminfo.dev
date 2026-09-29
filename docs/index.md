@@ -151,9 +151,19 @@ function barSegmentTooltip(backendName, segment) {
 
 function failBarWidth(backendName) {
   const s = data.stats[backendName]
-  if (!s) return '0%'
+  if (!s?.total) return '0%'
   const fail = s.total - s.yes - (s.partial ?? 0)
   return (fail / s.total * 100) + '%'
+}
+
+function barWidth(backendName, segment) {
+  const s = data.stats[backendName]
+  return s?.total ? (s[segment] / s.total * 100) + '%' : '0%'
+}
+
+function scoreLabel(backendName) {
+  const pct = data.stats[backendName]?.pct
+  return pct == null ? 'No score' : `${pct}%`
 }
 
 // Slug helpers for SEO page links — use slug from features.json if available
@@ -186,7 +196,8 @@ function backendTooltip(name, version) {
   if (meta.upstream) parts.push(`Upstream: ${meta.upstream}`)
   if (meta.type) parts.push(`Type: ${meta.type}`)
   if (version) parts.push(`Version: ${version}`)
-  if (data.generated) parts.push(`Tested: ${new Date(data.generated).toLocaleDateString()}`)
+  const measuredAt = data.selectedByBackend[name]?.selected.measuredAt
+  if (measuredAt) parts.push(`Tested (UTC): ${new Date(measuredAt).toLocaleDateString('en-US', { timeZone: 'UTC' })}`)
   if (meta.url) parts.push(meta.url)
   if (meta.caveat) parts.push(`⚠ ${meta.caveat}`)
   return parts.join('\n')
@@ -222,13 +233,13 @@ function backendTooltip(name, version) {
     <span class="summary-platforms" v-html="platformIcons(b.name)"></span>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
+      <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
     </div>
-    <span class="summary-pct">{{ data.stats[b.name]?.pct }}%</span>
+    <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
     <span class="summary-counts">
-      {{ data.stats[b.name]?.yes }} / {{ data.stats[b.name]?.total }}
+      {{ data.stats[b.name]?.total ? `${data.stats[b.name].yes} / ${data.stats[b.name].total}` : 'No conclusive results' }}
     </span>
   </div>
 </div>
@@ -252,7 +263,7 @@ function backendTooltip(name, version) {
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct ?? 0 }}%</span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}%` }}</span>
       </div>
     </div>
   </a>
@@ -330,13 +341,13 @@ function backendTooltip(name, version) {
     <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
+      <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
     </div>
-    <span class="summary-pct">{{ data.stats[b.name]?.pct }}%</span>
+    <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
     <span class="summary-counts">
-      {{ data.stats[b.name]?.yes }} / {{ data.stats[b.name]?.total }}
+      {{ data.stats[b.name]?.total ? `${data.stats[b.name].yes} / ${data.stats[b.name].total}` : 'No conclusive results' }}
     </span>
   </div>
 </div>
@@ -355,7 +366,7 @@ function backendTooltip(name, version) {
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct ?? 0 }}%</span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}%` }}</span>
       </div>
     </div>
   </a>
@@ -402,13 +413,13 @@ function backendTooltip(name, version) {
     <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: (data.stats[b.name]?.yes / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: (data.stats[b.name]?.partial / data.stats[b.name]?.total * 100) + '%' }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
+      <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
+      <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
     </div>
-    <span class="summary-pct">{{ data.stats[b.name]?.pct }}%</span>
+    <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
     <span class="summary-counts">
-      {{ data.stats[b.name]?.yes }} / {{ data.stats[b.name]?.total }}
+      {{ data.stats[b.name]?.total ? `${data.stats[b.name].yes} / ${data.stats[b.name].total}` : 'No conclusive results' }}
     </span>
   </div>
 </div>
@@ -447,7 +458,7 @@ function backendTooltip(name, version) {
 <p class="footer-note">
   Hover over any cell for details.<br/>
   Data from <a href="https://termless.dev">Termless</a> probes and <a href="https://www.npmjs.com/package/terminfo.dev">community submissions</a>.
-  {{ data.generated ? 'Generated: ' + data.generated : '' }}
+  {{ data.generated ? 'Latest selected measurement: ' + data.generated : '' }}
 </p>
 
 ## Explore
@@ -683,7 +694,8 @@ strips, or mishandles.
 }
 
 .summary-pct {
-  width: 40px;
+  width: 8ch;
+  white-space: nowrap;
   font-weight: 600;
   font-size: 0.9em;
   text-align: right;
@@ -691,7 +703,7 @@ strips, or mishandles.
 }
 
 .summary-counts {
-  width: 70px;
+  width: 12em;
   font-size: 0.8em;
   color: var(--vp-c-text-3);
   text-align: right;
@@ -846,7 +858,8 @@ strips, or mishandles.
 }
 
 .baseline-backend-pct {
-  width: 32px;
+  width: 8ch;
+  white-space: nowrap;
   text-align: right;
   font-weight: 600;
   flex-shrink: 0;
