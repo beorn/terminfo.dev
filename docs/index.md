@@ -888,7 +888,7 @@ strips, or mishandles.
 }
 
 @media (max-width: 900px) {
-  .matrix-wrapper { overflow-x: auto; }
+  .VPHome .matrix-wrapper { overflow-x: auto; }
 }
 
 /* Override VitePress default table overflow-x:auto which breaks sticky */
