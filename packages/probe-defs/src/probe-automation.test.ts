@@ -108,6 +108,9 @@ describe("OSC 8 link metadata observation", () => {
     const result = p.termless(linkedContext(positions))
     expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
     expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
+    // The headless batch admits parser-state conclusions only when the exact
+    // assertion observation is the immutable raw response for this feature.
+    expect(result.assertions?.[0]?.observed).toBe(result.response)
   })
 
   test("wrong URI or link leaking past close is unsupported with measured mismatch", () => {
@@ -120,6 +123,7 @@ describe("OSC 8 link metadata observation", () => {
       const result = p.termless(linkedContext(links))
       expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
       expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+      expect(result.assertions?.[0]?.observed).toBe(result.response)
     }
   })
 

@@ -759,8 +759,11 @@ export const extensionsProbes: ProbeDefinition[] = [
           },
         }
       }
-      const expected = JSON.stringify([null, uri, uri, uri, uri, null])
-      const observed = JSON.stringify(cells.map((cell) => cell.hyperlink))
+      const expected = JSON.stringify({
+        chars: [...expectedChars],
+        links: [null, uri, uri, uri, uri, null].map((link) => ({ reported: true, uri: link })),
+      })
+      const observed = response
       const pass = observed === expected
       return {
         pass,
