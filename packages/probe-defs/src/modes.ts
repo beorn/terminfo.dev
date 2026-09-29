@@ -497,10 +497,13 @@ export const modesProbes: ProbeDefinition[] = [
     },
     async (ctx) => {
       ctx.write("\x1b[#{")
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[#}") // pop to clean up
-      if (!pos) return { pass: false, note: "No DSR response after XTPUSHSGR" }
-      return { pass: true, note: "Sequence consumed; terminal responsive" }
+      try {
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No DSR response after XTPUSHSGR" }
+        return { pass: true, note: "Sequence consumed; terminal responsive" }
+      } finally {
+        ctx.write("\x1b[#}") // pop to clean up
+      }
     },
   ),
 
@@ -545,10 +548,13 @@ export const modesProbes: ProbeDefinition[] = [
     },
     async (ctx) => {
       ctx.write("\x1b[?7s")
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?7r") // restore to clean up
-      if (!pos) return { pass: false, note: "No DSR response after XTSAVE" }
-      return { pass: true, note: "Sequence consumed; terminal responsive" }
+      try {
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No DSR response after XTSAVE" }
+        return { pass: true, note: "Sequence consumed; terminal responsive" }
+      } finally {
+        ctx.write("\x1b[?7r") // restore to clean up
+      }
     },
   ),
 
@@ -592,10 +598,13 @@ export const modesProbes: ProbeDefinition[] = [
     },
     async (ctx) => {
       ctx.write("\x1b[#P")
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[#Q") // pop to clean up
-      if (!pos) return { pass: false, note: "No DSR response after XTPUSHCOLORS" }
-      return { pass: true, note: "Sequence consumed; terminal responsive" }
+      try {
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No DSR response after XTPUSHCOLORS" }
+        return { pass: true, note: "Sequence consumed; terminal responsive" }
+      } finally {
+        ctx.write("\x1b[#Q") // pop to clean up
+      }
     },
   ),
 

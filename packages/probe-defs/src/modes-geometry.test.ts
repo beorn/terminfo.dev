@@ -14,7 +14,13 @@ const fixtures = [
   { id: "modes.altscreen-1048", rows: 15, cols: 20, failedWrite: 3, restore: "\x1b[?1048l" },
 ] as const
 
-function app(rows: number, cols: number, events: string[], failWrite?: number): TermContext {
+const stateFixtures = [
+  { id: "modes.xtpushsgr", enter: "\x1b[#{", restore: "\x1b[#}" },
+  { id: "modes.xtsave", enter: "\x1b[?7s", restore: "\x1b[?7r" },
+  { id: "modes.xtpushcolors", enter: "\x1b[#P", restore: "\x1b[#Q" },
+] as const
+
+function app(rows: number, cols: number, events: string[], failWrite?: number, failQuery = false): TermContext {
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in mode fixture`)
   }
@@ -28,6 +34,7 @@ function app(rows: number, cols: number, events: string[], failWrite?: number): 
     },
     queryCursorPosition: async () => {
       events.push("CPR")
+      if (failQuery) throw new Error("injected CPR failure")
       return { row: 5, col: 10 }
     },
     measureRenderedWidth: async () => unexpected("measureRenderedWidth"),
@@ -79,3 +86,20 @@ test("direct mode fixtures attempt only their entered-state cleanup after a late
     expect(events, id).not.toContain("CPR")
   }
 })
+
+test.each(stateFixtures)(
+  "$id restores its own checkpoint after CPR rejects and preserves the valid legacy path",
+  async ({ id, enter, restore }) => {
+    const definition = modesProbes.find((probe) => probe.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+    const failedEvents: string[] = []
+    await expect(definition.term(app(1, 1, failedEvents, undefined, true))).rejects.toThrow("injected CPR failure")
+    expect(failedEvents).toEqual([enter, "CPR", restore])
+
+    const validEvents: string[] = []
+    const result = await definition.term(app(1, 1, validEvents))
+    expect(validEvents).toEqual([enter, "CPR", restore])
+    expect(result.pass).toBe(true)
+    expect(result.observation).toBeUndefined()
+  },
+)
