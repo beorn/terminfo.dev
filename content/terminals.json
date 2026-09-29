@@ -5,10 +5,10 @@
     "kind": "app",
     "url": "https://ghostty.org",
     "description": "GPU-accelerated terminal by Mitchell Hashimoto. Metal on macOS and OpenGL on Linux.",
-    "body": "<p><strong>Ghostty</strong> is a GPU-accelerated terminal created by <strong>Mitchell Hashimoto</strong>. Written in Zig, it renders with Metal on macOS and OpenGL on Linux.</p>\n<p>Its terminal emulation core is available through <strong>libghostty</strong>, which other applications can embed. cmux is a separate app built on that library.</p>\n<p>Ghostty documents support for the Kitty keyboard and graphics protocols, OSC 8 hyperlinks, and Unicode grapheme clustering. Individual capabilities on this site are reported from selected app or parser runs.</p>",
-    "headlessBackends": ["ghostty-native"],
+    "body": "<p><strong>Ghostty</strong> is a GPU-accelerated terminal created by <strong>Mitchell Hashimoto</strong>. Written in Zig, it renders with Metal on macOS and OpenGL on Linux.</p>\n<p>Its terminal emulation core is available through <strong>libghostty</strong>, which other applications can embed. cmux is a separate app built on that library. Termless measures separate native libghostty and ghostty-web WebAssembly backends; neither is an app-rendering test.</p>\n<p>Ghostty documents support for the Kitty keyboard and graphics protocols, OSC 8 hyperlinks, and Unicode grapheme clustering. Individual capabilities on this site are reported from selected app or parser runs.</p>",
+    "headlessBackends": ["ghostty-native", "ghostty"],
     "manifestBackend": "ghostty",
-    "platforms": ["macos"]
+    "platforms": ["macos", "linux"]
   },
   "kitty": {
     "label": "Kitty",
@@ -19,7 +19,7 @@
     "body": "<p><strong>Kitty</strong> was created by <strong>Kovid Goyal</strong> and first released in 2017. Written in C and Python, it uses <strong>OpenGL GPU rendering</strong>.</p>\n<p>Kitty introduced the <strong>Kitty keyboard protocol</strong>, which addresses long-standing ambiguity in terminal key reporting, and the <strong>Kitty graphics protocol</strong> for inline images. Its documented extensions also include styled underlines and independent underline colors.</p>\n<p>Kitty supports an extension ecosystem through “kittens,” including an image viewer, SSH integration, and a diff viewer. The terminal also provides tab and window management, remote control, and Unicode support.</p>",
     "headlessBackends": ["kitty"],
     "manifestBackend": "kitty",
-    "platforms": ["macos"]
+    "platforms": ["macos", "linux"]
   },
   "iterm2": {
     "label": "iTerm2",
@@ -187,6 +187,36 @@
     "body": "<p><strong>vt100.js</strong> is a small, zero-dependency TypeScript emulator focused on the original DEC VT100’s monochrome screen, cursor movement, scroll regions, and character sets.</p>\n<p>It is a headless backend in Termless. Its narrower design makes it a useful comparison with vterm.js; support on this site comes from versioned observations rather than a fixed coverage percentage.</p>",
     "headlessBackends": ["vt100"],
     "platforms": ["macos", "linux", "windows"]
+  },
+  "libvterm": {
+    "label": "libvterm (Neovim fork)",
+    "slug": "libvterm",
+    "kind": "headless",
+    "url": "https://github.com/neovim/libvterm",
+    "repo": "https://github.com/neovim/libvterm",
+    "description": "Neovim's archived libvterm fork, compiled to WebAssembly for Termless.",
+    "body": "<p><strong>libvterm</strong> is a C terminal-emulation library. This target uses <a href=\"https://github.com/neovim/libvterm\">Neovim’s fork</a>, compiled to WebAssembly by Termless.</p>\n<p>That repository is archived; Neovim now maintains its terminal core inside the Neovim repository. These observations describe the pinned fork in the run receipt, not the current Neovim application.</p>",
+    "headlessBackends": ["libvterm"]
+  },
+  "vt100-rust": {
+    "label": "vt100 (Rust)",
+    "slug": "vt100-rust",
+    "kind": "headless",
+    "url": "https://crates.io/crates/vt100",
+    "repo": "https://github.com/doy/vt100-rust",
+    "description": "Rust terminal-emulation crate exposed to Termless through a native binding.",
+    "body": "<p><strong>vt100-rust</strong> is the Rust <code>vt100</code> terminal-emulation crate, exposed to Termless through napi-rs.</p>\n<p>These results measure the parser library’s state and replies. They do not describe a standalone terminal application or its rendering.</p>",
+    "headlessBackends": ["vt100-rust"]
+  },
+  "vt220": {
+    "label": "vt220.js",
+    "slug": "vt220-js",
+    "kind": "headless",
+    "url": "https://www.npmjs.com/package/vt220.js",
+    "repo": "https://github.com/beorn/vterm",
+    "description": "Headless TypeScript terminal-emulation library focused on VT220 behavior.",
+    "body": "<p><strong>vt220.js</strong> is a TypeScript terminal-emulation library used as a headless Termless backend.</p>\n<p>This software target is distinct from the historical DEC VT220 hardware. Its versioned observations describe parser and state behavior.</p>",
+    "headlessBackends": ["vt220"]
   },
   "alacritty": {
     "label": "Alacritty",

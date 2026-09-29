@@ -218,10 +218,25 @@ test("bottom-row cursor result uses measured headless height and does not guess 
       outcome: targetY === 29 ? "supported" : "unsupported",
       evidence: "parser-state",
     })
+    expect(result.observation?.note).toBeUndefined()
     expect(result.assertions).toMatchObject([
       { kind: targetY === 29 ? "positive" : "negative", observed: result.response },
     ])
   }
+  const invalid = headless(0, 0, 30)
+  let invalidPosition = { x: 0, y: 0 }
+  invalid.feed = (sequence) => {
+    if (sequence === "\x1b[999B") invalidPosition = { x: 0, y: Number.NaN }
+  }
+  invalid.getCursor = () => ({ ...invalidPosition, visible: true, style: null })
+  const invalidResult = probe.termless!(invalid)
+  expect(invalidResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "parser-state",
+    note: "CUD target cursor readback is invalid",
+  })
+  expect(invalidResult.assertions).toBeUndefined()
   expect((await probe.term!(app({ row: 20, col: 1 }))).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",

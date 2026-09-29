@@ -700,11 +700,12 @@ export const cursorProbes: ProbeDefinition[] = [
         const target = Math.max(999, rows + 1)
         ctx.feed(`\x1b[${target}B`)
         const final = ctx.getCursor()
+        const validFinal = Number.isSafeInteger(final.y) && Number.isSafeInteger(final.x)
         return parserStateResult(
-          Number.isSafeInteger(final.y) && Number.isSafeInteger(final.x) ? final.y === rows - 1 && final.x === 0 : null,
+          validFinal ? final.y === rows - 1 && final.x === 0 : null,
           `CUD ${target} clamps to last initialized row ${rows - 1}, col 0 after qualified home`,
           { rows, origin, final },
-          "CUD target cursor readback is invalid",
+          validFinal ? undefined : "CUD target cursor readback is invalid",
         )
       },
       async (ctx) => {
