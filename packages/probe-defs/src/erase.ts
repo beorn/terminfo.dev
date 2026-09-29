@@ -141,11 +141,8 @@ function eraseScreenResult(
     }),
   )
   const preservedCursor = cursorAfter.x === cursorBefore.x && cursorAfter.y === cursorBefore.y
-  const preservedHistory =
-    scrollbackAfter.screenLines === scrollbackBefore.screenLines &&
-    scrollbackAfter.totalLines === scrollbackBefore.totalLines
-  // ED2 clears the display; some terminals move its old rows into scrollback.
-  const supported = cellsMatch && preservedCursor && (sequence === "\x1b[2J" || preservedHistory)
+  // ED0/1/2 specify visible cells; some terminals also move old rows into scrollback.
+  const supported = cellsMatch && preservedCursor
   return {
     pass: supported,
     response,
@@ -153,7 +150,7 @@ function eraseScreenResult(
     assertions: [
       {
         kind: supported ? "positive" : "negative",
-        expected: `rows ${rows.join(",")}: ${expected.join("/")}; cursor preserved${sequence === "\x1b[2J" ? "" : "; scrollback preserved"}`,
+        expected: `rows ${rows.join(",")}: ${expected.join("/")}; cursor preserved`,
         observed: response,
       },
     ],

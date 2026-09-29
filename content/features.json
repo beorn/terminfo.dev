@@ -610,7 +610,7 @@
     "url": "https://vt100.net/docs/vt510-rm/ED.html",
     "tags": ["ecma-48", "vt100"],
     "group": "screen",
-    "body": "ED 2 erases the entire visible screen. The sequence is <code>ESC [ 2 J</code>. The cursor position is not changed. Does not affect the scrollback buffer — use ED 3 to clear scrollback.\n\nED 2 is what many users think of as 'clear screen', but it only clears the visible display. It intentionally does not erase scrollback; xterm-style ED 3 exists for that separate job. This distinction matters for security and debugging, because wiping the viewport should not silently destroy the user's history.",
+    "body": "ED 2 erases the entire visible screen. The sequence is <code>ESC [ 2 J</code>. The cursor position is not changed. It does not erase saved scrollback lines — use ED 3 for that.\n\nED 2 is what many users think of as 'clear screen', but its erasure target is the visible display. Some terminals move the old displayed rows into scrollback while clearing it. Xterm-style ED 3 exists to erase saved lines. This distinction matters for security and debugging, because wiping the viewport does not necessarily destroy the user's history.",
     "probe": "Write three lines, send <code>\\x1b[2J</code> (ED 2), verify all visible content is cleared.",
     "baseline": "core",
     "sequence": "ESC [ 2 J"

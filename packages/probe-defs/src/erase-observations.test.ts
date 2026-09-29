@@ -279,3 +279,28 @@ test("ED2 accepts erased cells and preserved cursor with growing history", () =>
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
   expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
 })
+
+// ED0/1 specify which displayed cells are erased. A backend's numeric history
+// growth is retained as context, but cannot turn correct erasure into a failure.
+test.each([
+  ["erase.screen.below", ["AAAAA", "BB   ", "     "]],
+  ["erase.screen.above", ["     ", "   BB", "CCCCC"]],
+] as const)("%s grades cells and cursor even when numeric history grows", (id, expected) => {
+  const correct = byId(id).termless!(screenHeadless(expected, { historyBefore: 24, historyAfter: 48 }))
+  expect(correct.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(correct.assertions).toMatchObject([{ kind: "positive", observed: correct.response }])
+  expect(JSON.parse(correct.response ?? "") as unknown).toMatchObject({
+    before: ["AAAAA", "BBBBB", "CCCCC"].map((row) => row.split("")),
+    after: expected.map((row) => row.split("")),
+    cursorBefore: { x: 2, y: 1 },
+    cursorAfter: { x: 2, y: 1 },
+    scrollbackBefore: { totalLines: 24 },
+    scrollbackAfter: { totalLines: 48 },
+  })
+
+  const ignored = byId(id).termless!(
+    screenHeadless(["AAAAA", "BBBBB", "CCCCC"], { historyBefore: 24, historyAfter: 48 }),
+  )
+  expect(ignored.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(ignored.assertions).toMatchObject([{ kind: "negative", observed: ignored.response }])
+})
