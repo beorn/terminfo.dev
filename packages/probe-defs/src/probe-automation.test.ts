@@ -1234,28 +1234,126 @@ describe("partial probe automation candidates", () => {
     }
   })
 
+  function colorStackFixture(
+    failedQuery?: number,
+    failedFeed?: "mutation" | "pop" | "restore",
+    queryError: unknown = new Error("foreground query unavailable"),
+  ) {
+    const original = "rgb:1010/2020/3030"
+    let current = original
+    const stack: string[] = []
+    const writes: string[] = []
+    let queries = 0
+    let feedFailed = false
+    const ctx = context({
+      feed(sequence) {
+        writes.push(sequence)
+        const action = sequence.includes("]30101")
+          ? "pop"
+          : sequence.includes(`]10;${original}`)
+            ? "restore"
+            : sequence.includes("]10;")
+              ? "mutation"
+              : "push"
+        if (!feedFailed && action === failedFeed) {
+          feedFailed = true
+          throw new Error(`${action} unavailable`)
+        }
+        if (sequence.includes("]30001")) stack.push(current)
+        else if (sequence.includes("]30101")) current = stack.pop() ?? current
+        else current = /\x1b\]10;(rgb:[a-f\d/]+)/i.exec(sequence)?.[1] ?? current
+      },
+      feedCapture(sequence) {
+        expect(sequence).toBe("\x1b]10;?\x07")
+        if (++queries === failedQuery) throw queryError
+        return `\x1b]10;${current}\x1b\\`
+      },
+    })
+    return { ctx, original, writes, foreground: () => current, stackDepth: () => stack.length }
+  }
+
   test("OSC 30001/30101 probes verify color stack restore behavior", () => {
     for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
       const p = probe(id)
       expect(p.termless).toBeTypeOf("function")
-      let current = "rgb:1010/2020/3030"
-      const stack: string[] = []
-      const result = p.termless!(
-        context({
-          feed(sequence) {
-            if (sequence.includes("]30001")) stack.push(current)
-            else if (sequence.includes("]30101")) current = stack.pop() ?? current
-            else current = /\x1b\]10;(rgb:[a-f\d/]+)/i.exec(sequence)?.[1] ?? current
-          },
-          feedCapture(sequence) {
-            expect(sequence).toBe("\x1b]10;?\x07")
-            return `\x1b]10;${current}\x1b\\`
-          },
-        }),
-      )
+      const fixture = colorStackFixture()
+      const result = p.termless!(fixture.ctx)
       expect(result.pass).toBe(true)
       expect(result.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
-      expect(current).toBe("rgb:1010/2020/3030")
+      expect(fixture.foreground()).toBe(fixture.original)
+      expect(fixture.stackDepth()).toBe(0)
+    }
+  })
+
+  /**
+   * @failure Operational color-stack failures lose their observing method or cleanup leaves a success/assertion behind.
+   * @level l0
+   * @consumer Headless collectors recording both unmarked OSC color-stack callbacks.
+   * @testonly none
+   */
+  test.each([
+    { action: "initial query", failedQuery: 1, evidence: "query" },
+    { action: "foreground mutation", failedFeed: "mutation", evidence: "behavior" },
+    { action: "query after mutation", failedQuery: 2, evidence: "query" },
+    { action: "stack pop", failedFeed: "pop", evidence: "behavior" },
+    { action: "query after pop", failedQuery: 3, evidence: "query" },
+    { action: "cleanup restore", failedFeed: "restore", evidence: "behavior" },
+    { action: "query and cleanup restore", failedQuery: 2, failedFeed: "restore", evidence: "query" },
+    { action: "query and cleanup pop", failedQuery: 2, failedFeed: "pop", evidence: "query" },
+  ] as const)("color-stack $action failures retain their method and named diagnostics", (row) => {
+    for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
+      const fixture = colorStackFixture(
+        "failedQuery" in row ? row.failedQuery : undefined,
+        "failedFeed" in row ? row.failedFeed : undefined,
+      )
+      const definition = probe(id)
+      expect(definition.termlessObservationEvidence).toBeUndefined()
+      const result = definition.termless!(fixture.ctx)
+      expect(result).toMatchObject({
+        pass: false,
+        observation: { outcome: "error", reason: "collector-error", evidence: row.evidence },
+      })
+      expect(result.note).toContain("Error:")
+      expect(result.response).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      if ("failedQuery" in row) expect(result.note).toContain("foreground query unavailable")
+      if ("failedFeed" in row) expect(result.note).toContain(`${row.failedFeed} unavailable`)
+      if (row.action.startsWith("query and cleanup")) {
+        expect(result.note).toContain("cleanup")
+        expect(result.note).toContain("behavior")
+      }
+      expect(fixture.foreground()).toBe(fixture.original)
+      if (row.action === "initial query") expect(fixture.writes).toEqual([])
+      else expect(fixture.writes.at(-1)).toBe(`\x1b]10;${fixture.original}\x07`)
+      if (row.action === "query and cleanup pop") {
+        expect(fixture.writes.some((sequence) => sequence.includes("]30101"))).toBe(true)
+      } else expect(fixture.stackDepth()).toBe(0)
+    }
+  })
+
+  /**
+   * @failure A cleanup error replaces an unexpected primary throw and is falsely graded.
+   * @level l0
+   * @consumer Headless collectors leaving unexpected callback throws ungraded.
+   * @testonly none
+   */
+  test("unexpected color-stack throws remain ungraded and survive a cleanup failure", () => {
+    const primary = "unexpected query adapter throw"
+    for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
+      const fixture = colorStackFixture(2, "restore", primary)
+      let caught: unknown
+      try {
+        probe(id).termless!(fixture.ctx)
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toBeInstanceOf(AggregateError)
+      if (!(caught instanceof AggregateError)) throw new Error("expected both callback and cleanup failures")
+      expect(caught.errors).toContain(primary)
+      expect(caught.message).toContain(primary)
+      expect(caught.message).toContain("restore unavailable")
+      expect(fixture.writes.some((sequence) => sequence.includes("]30101"))).toBe(true)
+      expect(fixture.writes.at(-1)).toBe(`\x1b]10;${fixture.original}\x07`)
     }
   })
 

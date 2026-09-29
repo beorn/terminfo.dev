@@ -194,9 +194,37 @@ function promptConsumptionResult(consumed: boolean | null): ProbeResult {
   }
 }
 
+function colorStackError(evidence: "query" | "behavior", action: string, error: unknown): ProbeResult {
+  if (!(error instanceof Error)) throw error
+  const note = `${action} (${evidence}) failed: ${error.name}: ${error.message}`
+  return { pass: false, note, observation: { outcome: "error", reason: "collector-error", evidence, note } }
+}
+
 function colorStackProbe(): ProbeDefinition["termless"] {
   return (ctx) => {
-    const before = foregroundValue(ctx.feedCapture(foregroundQuery))
+    let result: ProbeResult | undefined
+    let primaryError: unknown
+    const queryForeground = (action: string): string | ProbeResult | null => {
+      let response: string
+      try {
+        response = ctx.feedCapture(foregroundQuery)
+      } catch (error) {
+        primaryError = error
+        return colorStackError("query", action, error)
+      }
+      return foregroundValue(response)
+    }
+    const feed = (sequence: string, action: string): ProbeResult | undefined => {
+      try {
+        ctx.feed(sequence)
+        return undefined
+      } catch (error) {
+        primaryError = error
+        return colorStackError("behavior", action, error)
+      }
+    }
+    const before = queryForeground("Original foreground query")
+    if (before !== null && typeof before !== "string") return before
     if (!before) {
       return {
         pass: false,
@@ -205,28 +233,85 @@ function colorStackProbe(): ProbeDefinition["termless"] {
       }
     }
     let pushed = false
+    let unexpectedlyFailed = false
     const requested = probeForeground(before)
     try {
-      ctx.feed(colorPush)
+      result = feed(colorPush, "Color-stack push")
+      if (result !== undefined) return result
       pushed = true
-      ctx.feed(`\x1b]10;${requested}\x07`)
-      const changed = foregroundValue(ctx.feedCapture(foregroundQuery))
-      ctx.feed(colorPop)
-      pushed = false
-      const restored = foregroundValue(ctx.feedCapture(foregroundQuery))
-      if (!changed || !restored) {
-        return {
-          pass: false,
-          note: "No OSC 10 reply after changing or popping color",
-          observation: { outcome: "inconclusive", evidence: "query", reason: "no-response" },
-        }
+      result = feed(`\x1b]10;${requested}\x07`, "Foreground mutation")
+      if (result !== undefined) return result
+      const changed = queryForeground("Foreground query after mutation")
+      if (changed !== null && typeof changed !== "string") {
+        result = changed
+        return result
       }
-      return colorStackResult(before, requested, changed, restored)
+      result = feed(colorPop, "Color-stack pop")
+      if (result !== undefined) return result
+      pushed = false
+      const restored = queryForeground("Foreground query after pop")
+      if (restored !== null && typeof restored !== "string") {
+        result = restored
+        return result
+      }
+      result =
+        !changed || !restored
+          ? {
+              pass: false,
+              note: "No OSC 10 reply after changing or popping color",
+              observation: { outcome: "inconclusive", evidence: "query", reason: "no-response" },
+            }
+          : colorStackResult(before, requested, changed, restored)
+      return result
+    } catch (error) {
+      unexpectedlyFailed = true
+      primaryError = error
+      throw error
     } finally {
+      const cleanupFailures: Array<{ action: string; error: unknown }> = []
       try {
         if (pushed) ctx.feed(colorPop)
+      } catch (error) {
+        cleanupFailures.push({ action: "Color-stack cleanup pop", error })
       } finally {
-        ctx.feed(`\x1b]10;${before}\x07`)
+        try {
+          ctx.feed(`\x1b]10;${before}\x07`)
+        } catch (error) {
+          cleanupFailures.push({ action: "Foreground cleanup restore", error })
+        }
+      }
+      if (cleanupFailures.length > 0) {
+        const cleanupNote = cleanupFailures
+          .map(({ action, error }) =>
+            error instanceof Error
+              ? `${action} (behavior) failed: ${error.name}: ${error.message}`
+              : `${action} (behavior) threw unexpectedly: ${String(error)}`,
+          )
+          .join("; ")
+        const primaryNote = unexpectedlyFailed
+          ? `Color-stack callback threw unexpectedly: ${primaryError instanceof Error ? `${primaryError.name}: ${primaryError.message}` : String(primaryError)}`
+          : result?.observation?.outcome === "error"
+            ? result.note
+            : undefined
+        const note = primaryNote ? `${primaryNote}; ${cleanupNote}` : cleanupNote
+        if (unexpectedlyFailed || cleanupFailures.some(({ error }) => !(error instanceof Error))) {
+          throw new AggregateError(
+            [
+              ...(unexpectedlyFailed || result?.observation?.outcome === "error" ? [primaryError] : []),
+              ...cleanupFailures.map(({ error }) => error),
+            ],
+            note,
+            { cause: primaryError },
+          )
+        }
+        if (result) {
+          const evidence = result.observation?.outcome === "error" ? result.observation.evidence : "behavior"
+          result.pass = false
+          result.note = note
+          result.observation = { outcome: "error", reason: "collector-error", evidence, note }
+          delete result.response
+          delete result.assertions
+        }
       }
     }
   }
