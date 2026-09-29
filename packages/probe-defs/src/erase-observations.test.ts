@@ -26,6 +26,7 @@ function screenHeadless(
     cursorBefore?: { x: number; y: number }
     cursorAfter?: { x: number; y: number }
     missing?: { row: number; col: number }
+    historyBefore?: number
     historyAfter?: number
   } = {},
 ): TermlessContext {
@@ -48,7 +49,11 @@ function screenHeadless(
       const cursor = erased ? (options.cursorAfter ?? options.cursorBefore) : options.cursorBefore
       return { x: cursor?.x ?? 2, y: cursor?.y ?? 1, visible: true, style: null }
     },
-    getScrollback: () => ({ viewportOffset: 0, screenLines: 3, totalLines: erased ? (options.historyAfter ?? 4) : 4 }),
+    getScrollback: () => ({
+      viewportOffset: 0,
+      screenLines: 3,
+      totalLines: erased ? (options.historyAfter ?? options.historyBefore ?? 4) : (options.historyBefore ?? 4),
+    }),
   }
 }
 
@@ -232,10 +237,14 @@ test.each(screenIds)("%s refuses incomplete fixture or cell readback", (id) => {
   }
 })
 
-test("ED2 cannot silently clear measured scrollback, and app CPR never proves erased pixels", async () => {
+test("ED2 retains scrollback changes as raw context, and app CPR never proves erased pixels", async () => {
   const all = byId("erase.screen.all")
-  const historyLost = all.termless!(screenHeadless(["     ", "     ", "     "], { historyAfter: 3 }))
-  expect(historyLost.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  const historyChanged = all.termless!(screenHeadless(["     ", "     ", "     "], { historyAfter: 3 }))
+  expect(historyChanged.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(JSON.parse(historyChanged.response ?? "") as unknown).toMatchObject({
+    scrollbackBefore: { totalLines: 4 },
+    scrollbackAfter: { totalLines: 3 },
+  })
   for (const id of screenIds) {
     expect((await byId(id).term!(app({ row: 2, col: 3 }))).observation).toMatchObject({
       outcome: "inconclusive",
@@ -246,4 +255,27 @@ test("ED2 cannot silently clear measured scrollback, and app CPR never proves er
       reason: "no-response",
     })
   }
+})
+
+// Alacritty 0.26's retained raw result blanked these rows while history grew 24 to 48.
+// The earlier fixed-history fixtures could not catch that false unsupported conclusion.
+test("ED2 accepts erased cells and preserved cursor with growing history", () => {
+  const result = byId("erase.screen.all").termless!(
+    screenHeadless(["     ", "     ", "     "], { historyBefore: 24, historyAfter: 48 }),
+  )
+  const state = JSON.parse(result.response ?? "") as {
+    before: string[][]
+    after: string[][]
+    cursorBefore: { x: number; y: number }
+    cursorAfter: { x: number; y: number }
+    scrollbackBefore: { totalLines: number }
+    scrollbackAfter: { totalLines: number }
+  }
+  expect(state.before).toEqual(["AAAAA", "BBBBB", "CCCCC"].map((row) => row.split("")))
+  expect(state.after).toEqual(["     ", "     ", "     "].map((row) => row.split("")))
+  expect(state.cursorAfter).toEqual(state.cursorBefore)
+  expect(state.scrollbackBefore.totalLines).toBe(24)
+  expect(state.scrollbackAfter.totalLines).toBe(48)
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
 })
