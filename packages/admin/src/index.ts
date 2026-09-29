@@ -24,6 +24,7 @@
  */
 
 import { Command } from "@silvery/commander"
+import { ensureSourceSuiteEnvironment } from "../versions.ts"
 
 const program = new Command().name("terminfo").description("Terminal feature testing for terminfo.dev")
 
@@ -75,6 +76,7 @@ probe
   .option("-p, --port <port>", "Port for --start", parseInt)
   .option("--all", "Probe all running daemons")
   .actionMerged(async (opts: { daemon?: string; start?: boolean; port?: number; all?: boolean }) => {
+    ensureSourceSuiteEnvironment()
     const { handleServer } = await import("./server.ts")
     await handleServer(opts.daemon, opts)
   })
@@ -88,6 +90,7 @@ probe
   .option("--all", "Probe all installed terminals")
   .option("-f, --force", "Re-run even if cached")
   .actionMerged(async (opts: { terminal?: string; all?: boolean; force?: boolean }) => {
+    ensureSourceSuiteEnvironment()
     const { handleApp } = await import("./app.ts")
     await handleApp(opts.terminal, opts)
   })
@@ -101,6 +104,7 @@ probe
   .option("--all", "Probe through all installed multiplexers")
   .option("-f, --force", "Re-run even if cached")
   .actionMerged(async (opts: { multiplexer?: string; all?: boolean; force?: boolean }) => {
+    ensureSourceSuiteEnvironment()
     const { handleMux } = await import("./mux.ts")
     await handleMux(opts.multiplexer, opts)
   })

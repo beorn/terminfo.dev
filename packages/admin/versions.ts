@@ -149,6 +149,19 @@ export function sourceSuiteEnvironment(): { TERMINFO_PROBE_HASH: string; TERMINF
   }
 }
 
+/** Supply a source-tree launcher without overwriting a conflicting declared suite. */
+export function ensureSourceSuiteEnvironment(): ReturnType<typeof sourceSuiteEnvironment> {
+  const expected = sourceSuiteEnvironment()
+  for (const key of ["TERMINFO_PROBE_HASH", "TERMINFO_SOURCE_REVISION"] as const) {
+    const declared = process.env[key]
+    if (declared !== undefined && declared !== expected[key]) {
+      throw new Error(`${key} differs from the current source suite`)
+    }
+  }
+  Object.assign(process.env, expected)
+  return expected
+}
+
 // ── Version catalog ──
 
 export function loadVersionsCatalog(): VersionsCatalog {

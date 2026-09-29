@@ -1,9 +1,9 @@
 /** Inline real-terminal collection through the shared v2 batch. */
 
-import { sourceSuiteEnvironment } from "../versions.ts"
+import { ensureSourceSuiteEnvironment } from "../versions.ts"
 
 export async function handleHere(opts: { json?: boolean }): Promise<void> {
-  Object.assign(process.env, sourceSuiteEnvironment())
+  ensureSourceSuiteEnvironment()
   const { collectProbeRun } = await import("terminfo.dev/src/serve.ts")
   const run = await collectProbeRun()
   if (opts.json) {
