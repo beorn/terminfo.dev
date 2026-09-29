@@ -8,19 +8,12 @@ import { release, tmpdir } from "node:os"
 import { join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import { manifest, type TerminalBackend } from "@termless/core"
-import {
-  ALL_PROBES,
-  type Observation,
-  type ProbeAssertion,
-  type ProbeResult,
-  type ProbeRun,
-  type TermlessContext,
-  type UngradedDiagnostic,
-} from "@terminfo/probe-defs"
+import { ALL_PROBES, type ProbeRun } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
 import { checkCurrentSuiteManifest } from "../../scripts/suite-manifest.ts"
 import { headlessRuntimeIdentity } from "./headless-identity.ts"
+import { collectBatch, errorMessage } from "./headless-batch.ts"
 
 const ROOT = resolve(import.meta.dir, "../..")
 let TERMLESS_ROOT: string
@@ -29,8 +22,6 @@ try {
 } catch (cause) {
   throw new Error(`Local headless v2 collection requires the owned Termless checkout beside ${ROOT}`, { cause })
 }
-const encoder = new TextEncoder()
-const decoder = new TextDecoder()
 // Match the existing Linux full-probe HTTP budget for one engine.
 const WORKER_TIMEOUT_MS = 120_000
 const WORKER_STOP_GRACE_MS = 2_000
@@ -51,156 +42,6 @@ function loadedBackend(value: unknown, specifier: string): TerminalBackend {
     throw new Error(`${specifier} resolve() did not return a Termless backend`)
   }
   return value as unknown as TerminalBackend
-}
-
-function context(backend: TerminalBackend): TermlessContext {
-  let cols: number
-  try {
-    cols = backend.getRow(0).length
-  } catch (cause) {
-    throw new Error(`${backend.name} has no initialized row 0 grid for headless probes`, { cause })
-  }
-  if (!Number.isSafeInteger(cols) || cols < 1) {
-    throw new Error(`${backend.name} returned invalid initialized grid width ${cols}`)
-  }
-  if (cols !== 80) throw new Error(`${backend.name} initialized ${cols} columns; requested 80`)
-  return {
-    cols,
-    feed(text) {
-      backend.feed(encoder.encode(text))
-    },
-    feedCapture(text) {
-      let response = ""
-      const previous = backend.onResponse
-      backend.onResponse = (bytes) => {
-        response += decoder.decode(bytes)
-      }
-      try {
-        backend.feed(encoder.encode(text))
-      } finally {
-        backend.onResponse = previous
-      }
-      return response
-    },
-    getCell(row, col) {
-      const cell = backend.getCell(row, col)
-      if (backend.capabilities.osc8Hyperlinks) {
-        if (cell.hyperlink === undefined) {
-          throw new Error(`${backend.name} declares OSC 8 link metadata but omitted it at ${row},${col}`)
-        }
-        return cell as ReturnType<TermlessContext["getCell"]>
-      }
-      const { hyperlink: _unreported, ...withoutLink } = cell
-      return withoutLink as ReturnType<TermlessContext["getCell"]>
-    },
-    getCursor() {
-      return backend.getCursor()
-    },
-    getMode(mode) {
-      return backend.getMode(mode as Parameters<TerminalBackend["getMode"]>[0])
-    },
-    getText() {
-      return backend.getText()
-    },
-    getScrollback() {
-      return backend.getScrollback()
-    },
-    getTitle() {
-      return backend.getTitle()
-    },
-    reset() {
-      backend.reset()
-    },
-    get capabilities() {
-      return backend.capabilities as TermlessContext["capabilities"]
-    },
-  }
-}
-
-interface Batch {
-  rawReplies: Record<string, string>
-  observations: Observation[]
-  assertions: ProbeAssertion[]
-  ungradedDiagnostics: Record<string, UngradedDiagnostic>
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-/** A callback conclusion without its raw state cannot become a support claim. */
-function recordResult(batch: Batch, id: string, result: ProbeResult): void {
-  const explicit = result.observation
-  if (!explicit) {
-    batch.ungradedDiagnostics[id] = {
-      kind: "legacy-callback",
-      pass: result.pass,
-      ...(result.note && { note: result.note }),
-      ...(result.response !== undefined && { response: result.response }),
-    }
-    return
-  }
-  const conclusive = explicit.outcome === "supported" || explicit.outcome === "unsupported"
-  const bound = result.response !== undefined && result.response.length > 0
-  const expectedKind = explicit.outcome === "supported" ? "positive" : "negative"
-  const validAssertions = (result.assertions ?? []).filter(
-    (assertion) => assertion.kind === expectedKind && assertion.expected.length > 0 && assertion.observed.length > 0,
-  )
-  const bindingInvalid =
-    !bound ||
-    validAssertions.length === 0 ||
-    (result.assertions ?? []).some((assertion) => assertion.kind !== expectedKind) ||
-    (explicit.evidence === "parser-state" &&
-      !validAssertions.some((assertion) => assertion.observed === result.response))
-  if (
-    (conclusive && bindingInvalid) ||
-    ((explicit.outcome === "error" || explicit.outcome === "inconclusive") && !explicit.reason)
-  ) {
-    batch.observations.push({
-      featureId: id,
-      outcome: "error",
-      reason: "collector-error",
-      evidence: explicit.evidence,
-      note: `Callback result lacks ${conclusive ? "matching raw state and assertion" : "an inconclusive/error reason"}`,
-    })
-    return
-  }
-  if (result.response !== undefined) batch.rawReplies[id] = result.response
-  batch.observations.push({ featureId: id, ...explicit, ...(bound && { rawReplyRef: id }) })
-  for (const assertion of result.assertions ?? []) {
-    batch.assertions.push({ featureId: id, ...assertion, ...(bound && { rawReplyRef: id }) })
-  }
-}
-
-function collectBatch(backend: TerminalBackend, backendName: string): Batch {
-  const batch: Batch = { rawReplies: {}, observations: [], assertions: [], ungradedDiagnostics: {} }
-  const ctx = context(backend)
-  for (const probe of ALL_PROBES) {
-    if (!probe.termless) continue
-    process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)
-    try {
-      backend.reset()
-      recordResult(batch, probe.id, probe.termless(ctx))
-    } catch (error) {
-      const message = errorMessage(error)
-      if (probe.termObservationEvidence) {
-        batch.observations.push({
-          featureId: probe.id,
-          outcome: "error",
-          reason: "collector-error",
-          evidence: probe.termObservationEvidence,
-          note: message,
-        })
-      } else {
-        batch.ungradedDiagnostics[probe.id] = {
-          kind: "collector-error",
-          name: error instanceof Error ? error.name : "Error",
-          message,
-        }
-      }
-    }
-  }
-  return batch
 }
 
 export interface HeadlessCollection {
@@ -232,6 +73,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     "packages/run-parser/src",
     "packages/run-parser/package.json",
     "packages/probes/collect-headless.ts",
+    "packages/probes/headless-batch.ts",
     "packages/probes/headless-identity.ts",
     "packages/admin/src/termless.ts",
     "packages/admin/versions.ts",
@@ -266,7 +108,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     loaded.init({ cols: 80, rows: 24 })
     loaded.getCell(0, 0)
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
-    const batch = collectBatch(loaded, name)
+    const batch = collectBatch(loaded, name, ALL_PROBES)
     const run: ProbeRun = {
       schemaVersion: 2,
       runId: randomUUID(),
