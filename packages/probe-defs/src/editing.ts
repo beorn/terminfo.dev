@@ -1,19 +1,39 @@
 import type { ProbeDefinition } from "./types.ts"
-import { probe, isBlank } from "./helpers.ts"
+import { parserStateResult, probe, isBlank } from "./helpers.ts"
 
 export const editingProbes: ProbeDefinition[] = [
   {
     ...probe(
       "editing.insert-chars",
       (ctx) => {
-        ctx.feed("ABCDE\x1b[1G\x1b[2@")
-        return {
-          pass:
-            isBlank(ctx.getCell(0, 0).char) &&
-            isBlank(ctx.getCell(0, 1).char) &&
-            ctx.getCell(0, 2).char === "A" &&
-            ctx.getCell(0, 3).char === "B",
+        const expected = "ICH inserts a blank cell at column 3 and shifts measured text right; prefix stays intact"
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8) {
+          return parserStateResult(
+            null,
+            expected,
+            { cols: ctx.cols },
+            "Need eight measured columns for the ICH fixture",
+          )
         }
+        ctx.feed("\x1b[1;1H\x1b[2KABCDEZQH")
+        const before = Array.from({ length: 8 }, (_, col) => ctx.getCell(0, col).char)
+        if (before.join("") !== "ABCDEZQH") {
+          return parserStateResult(null, expected, { before }, "ICH seed was not measured before the edit")
+        }
+        ctx.feed("\x1b[1;3H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 2 || setup.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "ICH cursor setup did not reach column 3")
+        }
+        ctx.feed("\x1b[1@")
+        const after = Array.from({ length: 8 }, (_, col) => ctx.getCell(0, col).char)
+        const controlsValid = after[0] === "A" && after[1] === "B"
+        return parserStateResult(
+          controlsValid ? isBlank(after[2] ?? "") && after.slice(3).join("") === "CDEZQ" : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "ICH prefix control changed during the edit",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 5) {
@@ -46,10 +66,35 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.delete-chars",
       (ctx) => {
-        ctx.feed("ABCDE\x1b[1G\x1b[2P")
-        return {
-          pass: ctx.getCell(0, 0).char === "C" && ctx.getCell(0, 1).char === "D" && ctx.getCell(0, 2).char === "E",
+        const expected = "DCH deletes the cell at column 3 and shifts measured text left; prefix stays intact"
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8) {
+          return parserStateResult(
+            null,
+            expected,
+            { cols: ctx.cols },
+            "Need eight measured columns for the DCH fixture",
+          )
         }
+        ctx.feed("\x1b[1;1H\x1b[2KABCDEZQH")
+        const before = Array.from({ length: 8 }, (_, col) => ctx.getCell(0, col).char)
+        if (before.join("") !== "ABCDEZQH") {
+          return parserStateResult(null, expected, { before }, "DCH seed was not measured before the edit")
+        }
+        ctx.feed("\x1b[1;3H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 2 || setup.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "DCH cursor setup did not reach column 3")
+        }
+        ctx.feed("\x1b[1P")
+        // The next unmeasured cell can shift into column 8; assert only the known source span.
+        const after = Array.from({ length: 7 }, (_, col) => ctx.getCell(0, col).char)
+        const controlsValid = after[0] === "A" && after[1] === "B"
+        return parserStateResult(
+          controlsValid ? after.slice(2).join("") === "DEZQH" : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "DCH prefix control changed during the edit",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 5) {
@@ -147,10 +192,41 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.repeat-char",
       (ctx) => {
-        ctx.feed("X\x1b[4b")
-        return {
-          pass: ctx.getCell(0, 0).char === "X" && ctx.getCell(0, 1).char === "X" && ctx.getCell(0, 4).char === "X",
+        const expected =
+          "REP repeats the immediately preceding X into three target cells without changing flank controls"
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6) {
+          return parserStateResult(null, expected, { cols: ctx.cols }, "Need six measured columns for the REP fixture")
         }
+        ctx.feed("\x1b[1;1H\x1b[2KAX   Z")
+        const seed = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col).char)
+        if (seed.join("") !== "AX   Z") {
+          return parserStateResult(null, expected, { seed }, "REP flank and blank seed was not measured")
+        }
+        ctx.feed("\x1b[1;2H")
+        const targetPosition = ctx.getCursor()
+        if (targetPosition.x !== 1 || targetPosition.y !== 0) {
+          return parserStateResult(null, expected, { seed, targetPosition }, "REP cursor setup did not reach column 2")
+        }
+        ctx.feed("X")
+        const before = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col).char)
+        const setup = ctx.getCursor()
+        if (before.join("") !== "AX   Z" || setup.x !== 2 || setup.y !== 0) {
+          return parserStateResult(
+            null,
+            expected,
+            { seed, targetPosition, before, setup },
+            "REP X setup was not measured",
+          )
+        }
+        ctx.feed("\x1b[3b")
+        const after = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col).char)
+        const controlsValid = after[0] === "A" && after[5] === "Z"
+        return parserStateResult(
+          controlsValid ? after.slice(1, 5).join("") === "XXXX" : null,
+          expected,
+          { seed, targetPosition, before, setup, after },
+          controlsValid ? undefined : "REP flank control changed during the edit",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
