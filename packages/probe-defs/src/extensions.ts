@@ -831,75 +831,89 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 8 — hyperlinks
-  probe(
-    "extensions.osc8",
-    (ctx) => {
-      const uri = "https://example.com/osc8-proof"
-      ctx.feed(`\x1b[1;1H\x1b[2KA\x1b]8;;${uri}\x07LINK\x1b]8;;\x07Z`)
-      const cells = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col))
-      const expectedChars = "ALINKZ"
-      const links = cells.map((cell) =>
-        cell.hyperlink !== undefined ? { reported: true, uri: cell.hyperlink } : { reported: false },
-      )
-      const response = JSON.stringify({ chars: cells.map((cell) => cell.char), links })
-      if (ctx.capabilities.osc8Hyperlinks && links.some((link) => !link.reported)) {
-        throw new Error("OSC 8 link metadata declared available but absent from a measured cell")
-      }
-      const reported = links.every((link) => link.reported)
-      const charsMatch = cells.every((cell, index) => cell.char === expectedChars[index])
-      if (!reported || !charsMatch || cells.slice(1, 5).some((cell) => cell.hyperlink === null)) {
+  {
+    ...probe(
+      "extensions.osc8",
+      (ctx) => {
+        const uri = "https://example.com/osc8-proof"
+        ctx.feed(`\x1b[1;1H\x1b[2KA\x1b]8;;${uri}\x07LINK\x1b]8;;\x07Z`)
+        const cells = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col))
+        const expectedChars = "ALINKZ"
+        const links = cells.map((cell) =>
+          cell.hyperlink !== undefined ? { reported: true, uri: cell.hyperlink } : { reported: false },
+        )
+        const response = JSON.stringify({ chars: cells.map((cell) => cell.char), links })
+        if (ctx.capabilities.osc8Hyperlinks && links.some((link) => !link.reported)) {
+          throw new Error("OSC 8 link metadata declared available but absent from a measured cell")
+        }
+        const reported = links.every((link) => link.reported)
+        const charsMatch = cells.every((cell, index) => cell.char === expectedChars[index])
+        if (!reported || !charsMatch || cells.slice(1, 5).some((cell) => cell.hyperlink === null)) {
+          return {
+            pass: false,
+            response,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "parser-state",
+              note: !reported ? "Backend did not report OSC 8 link metadata" : "Linked text was not observable",
+            },
+          }
+        }
+        const expected = JSON.stringify({
+          chars: [...expectedChars],
+          links: [null, uri, uri, uri, uri, null].map((link) => ({ reported: true, uri: link })),
+        })
+        const observed = response
+        const pass = observed === expected
+        return {
+          pass,
+          response,
+          observation: {
+            outcome: pass ? "supported" : "unsupported",
+            evidence: "parser-state",
+            ...(!pass && { note: "OSC 8 cell URI differs from the exact requested link or leaked past close" }),
+          },
+          assertions: [{ kind: pass ? "positive" : "negative", expected, observed }],
+        }
+      },
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 7) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `OSC 8 fixture needs at least 1x7, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("A\x1b]8;;https://example.com/osc8-proof\x07LINK\x1b]8;;\x07Z")
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) {
+          return {
+            pass: false,
+            note: "No cursor response",
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "consumed" },
+          }
+        }
         return {
           pass: false,
-          response,
+          response: `${pos.row};${pos.col}`,
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
-            evidence: "parser-state",
-            note: !reported ? "Backend did not report OSC 8 link metadata" : "Linked text was not observable",
+            evidence: "consumed",
+            note: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
           },
         }
-      }
-      const expected = JSON.stringify({
-        chars: [...expectedChars],
-        links: [null, uri, uri, uri, uri, null].map((link) => ({ reported: true, uri: link })),
-      })
-      const observed = response
-      const pass = observed === expected
-      return {
-        pass,
-        response,
-        observation: {
-          outcome: pass ? "supported" : "unsupported",
-          evidence: "parser-state",
-          ...(!pass && { note: "OSC 8 cell URI differs from the exact requested link or leaked past close" }),
-        },
-        assertions: [{ kind: pass ? "positive" : "negative", expected, observed }],
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("A\x1b]8;;https://example.com/osc8-proof\x07LINK\x1b]8;;\x07Z")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) {
-        return {
-          pass: false,
-          note: "No cursor response",
-          observation: { outcome: "inconclusive", reason: "no-response", evidence: "consumed" },
-        }
-      }
-      return {
-        pass: false,
-        response: `${pos.row};${pos.col}`,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
-        },
-      }
-    },
-    "consumed",
-  ),
+      },
+      "consumed",
+    ),
+    termNeedsGeometry: true,
+  },
 
   // Reflow
   probe(
@@ -1284,56 +1298,70 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 66 — text sizing protocol (Kitty, sets text scale/cell width)
-  probe(
-    "extensions.osc66-text-sizing",
-    (ctx) => {
-      ctx.feed("\x1b[1;1H\x1b[2K\r")
-      const before = { ...ctx.getCursor() }
-      ctx.feed("\x1b]66;w=2; \x07")
-      const width = { ...ctx.getCursor() }
-      ctx.feed("\x1b]66;s=2; \x07")
-      const scale = { ...ctx.getCursor() }
-      return textSizingResult(
-        { row: before.y, col: before.x },
-        { row: width.y, col: width.x },
-        { row: scale.y, col: scale.x },
-        "parser-state",
-      )
-    },
-    async (ctx) => {
-      // The protocol defines detection by cursor movement, not an OSC query.
-      ctx.write("\x1b[1;1H\x1b[2K\r")
-      const before = await ctx.queryCursorPosition()
-      if (!before) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            evidence: "behavior",
-            reason: "no-response",
-            note: "No baseline cursor response",
-          },
+  {
+    ...probe(
+      "extensions.osc66-text-sizing",
+      (ctx) => {
+        ctx.feed("\x1b[1;1H\x1b[2K\r")
+        const before = { ...ctx.getCursor() }
+        ctx.feed("\x1b]66;w=2; \x07")
+        const width = { ...ctx.getCursor() }
+        ctx.feed("\x1b]66;s=2; \x07")
+        const scale = { ...ctx.getCursor() }
+        return textSizingResult(
+          { row: before.y, col: before.x },
+          { row: width.y, col: width.x },
+          { row: scale.y, col: scale.x },
+          "parser-state",
+        )
+      },
+      async (ctx) => {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 5) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `OSC 66 fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
         }
-      }
-      ctx.write("\x1b]66;w=2; \x07")
-      const width = await ctx.queryCursorPosition()
-      ctx.write("\x1b]66;s=2; \x07")
-      const scale = await ctx.queryCursorPosition()
-      if (!width || !scale) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            evidence: "behavior",
-            reason: "no-response",
-            note: "Missing cursor response for text sizing",
-          },
+        // The protocol defines detection by cursor movement, not an OSC query.
+        ctx.write("\x1b[1;1H\x1b[2K\r")
+        const before = await ctx.queryCursorPosition()
+        if (!before) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              evidence: "behavior",
+              reason: "no-response",
+              note: "No baseline cursor response",
+            },
+          }
         }
-      }
-      return textSizingResult(before, width, scale, "behavior")
-    },
-    "behavior",
-  ),
+        ctx.write("\x1b]66;w=2; \x07")
+        const width = await ctx.queryCursorPosition()
+        ctx.write("\x1b]66;s=2; \x07")
+        const scale = await ctx.queryCursorPosition()
+        if (!width || !scale) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              evidence: "behavior",
+              reason: "no-response",
+              note: "Missing cursor response for text sizing",
+            },
+          }
+        }
+        return textSizingResult(before, width, scale, "behavior")
+      },
+      "behavior",
+    ),
+    termNeedsGeometry: true,
+  },
 
   // OSC 5522 — advanced clipboard (Kitty protocol, MIME-aware paste events)
   queryOnly(
