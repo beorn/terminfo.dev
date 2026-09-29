@@ -24,6 +24,7 @@ function termContext(overrides: Partial<TermContext>): TermContext {
     queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => null,
     cols: 80,
+    rows: 24,
     ...overrides,
   }
 }

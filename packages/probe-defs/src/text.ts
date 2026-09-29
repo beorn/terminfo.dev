@@ -134,25 +134,38 @@ export const textProbes: ProbeDefinition[] = [
     },
   ),
 
-  probe(
-    "text.wrap",
-    (ctx) => {
-      ctx.feed("X".repeat(85))
-      return { pass: ctx.getCell(1, 0).char === "X" }
-    },
-    async (ctx) => {
-      const cols = ctx.cols
-      ctx.write("\x1b[1;1H\x1b[2K")
-      const line = "W".repeat(cols) + "X"
-      ctx.write(line)
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row === 2 && pos.col === 2,
-        note: pos.row === 2 && pos.col === 2 ? undefined : `cursor at ${pos.row};${pos.col}, expected 2;2`,
-      }
-    },
-  ),
+  {
+    ...probe(
+      "text.wrap",
+      (ctx) => {
+        ctx.feed("X".repeat(85))
+        return { pass: ctx.getCell(1, 0).char === "X" }
+      },
+      async (ctx) => {
+        const cols = ctx.cols
+        if (ctx.rows < 2 || cols < 2)
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `Wrap fixture needs at least 2x2, measured ${ctx.rows}x${cols}`,
+            },
+          }
+        ctx.write("\x1b[1;1H\x1b[2K")
+        const line = "W".repeat(cols) + "X"
+        ctx.write(line)
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No cursor response" }
+        return {
+          pass: pos.row === 2 && pos.col === 2,
+          note: pos.row === 2 && pos.col === 2 ? undefined : `cursor at ${pos.row};${pos.col}, expected 2;2`,
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   probe(
     "text.tab",
@@ -344,195 +357,217 @@ export const textProbes: ProbeDefinition[] = [
   ),
 
   // HTS — set tab stop
-  probe(
-    "text.hts",
-    (ctx) => {
-      try {
-        ctx.feed("\x1b[3g\x1b[6G\x1bH\x1b[1G\t")
-        return { pass: ctx.getCursor().x === 5 }
-      } finally {
-        restoreDefaultTabs(ctx.feed, ctx.cols)
-      }
-    },
-    async (ctx) => {
-      try {
-        ctx.write("\x1b[3g\x1b[1;6H\x1bH\x1b[1;1H\t")
-        const pos = await ctx.queryCursorPosition()
-        return { pass: pos?.col === 6, ...(pos ? {} : { note: "No cursor response" }) }
-      } finally {
-        restoreDefaultTabs(ctx.write, ctx.cols)
-      }
-    },
-  ),
+  {
+    ...probe(
+      "text.hts",
+      (ctx) => {
+        try {
+          ctx.feed("\x1b[3g\x1b[6G\x1bH\x1b[1G\t")
+          return { pass: ctx.getCursor().x === 5 }
+        } finally {
+          restoreDefaultTabs(ctx.feed, ctx.cols)
+        }
+      },
+      async (ctx) => {
+        if (ctx.cols < 6)
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "HTS fixture needs at least 6 columns",
+            },
+          }
+        try {
+          ctx.write("\x1b[3g\x1b[1;6H\x1bH\x1b[1;1H\t")
+          const pos = await ctx.queryCursorPosition()
+          return { pass: pos?.col === 6, ...(pos ? {} : { note: "No cursor response" }) }
+        } finally {
+          restoreDefaultTabs(ctx.write, ctx.cols)
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // TBC — clear tab stop
-  probe(
-    "text.tbc",
-    (ctx) => {
-      const cols = ctx.cols
-      if (cols < 34) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "parser-state",
-            note: "Tab fixture needs at least 34 columns",
-          },
+  {
+    ...probe(
+      "text.tbc",
+      (ctx) => {
+        const cols = ctx.cols
+        if (cols < 34) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "parser-state",
+              note: "Tab fixture needs at least 34 columns",
+            },
+          }
         }
-      }
-      try {
-        installTabFixture(ctx.feed)
-        ctx.feed("\x1b[1;25H\x1bH\x1b[1;1H")
-        ctx.feed("\t")
-        const oldFirst = ctx.getCursor()
-        ctx.feed("\t")
-        const oldSecond = ctx.getCursor()
-        ctx.feed("\t")
-        const oldThird = ctx.getCursor()
-        ctx.feed("\x1b[3g\x1b[1;33H\x1bH\x1b[1;1H\t")
-        const after = ctx.getCursor()
-        const position = (cursor: { x: number; y: number }) => ({ row: cursor.y + 1, col: cursor.x + 1 })
-        return tabClearResult(
-          {
-            oldFirst: position(oldFirst),
-            oldSecond: position(oldSecond),
-            oldThird: position(oldThird),
-            after: position(after),
-          },
-          cols,
-          "parser-state",
-        )
-      } finally {
-        restoreDefaultTabs(ctx.feed, cols)
-      }
-    },
-    async (ctx) => {
-      if (ctx.cols < 34) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "behavior",
-            note: "Tab fixture needs at least 34 columns",
-          },
+        try {
+          installTabFixture(ctx.feed)
+          ctx.feed("\x1b[1;25H\x1bH\x1b[1;1H")
+          ctx.feed("\t")
+          const oldFirst = ctx.getCursor()
+          ctx.feed("\t")
+          const oldSecond = ctx.getCursor()
+          ctx.feed("\t")
+          const oldThird = ctx.getCursor()
+          ctx.feed("\x1b[3g\x1b[1;33H\x1bH\x1b[1;1H\t")
+          const after = ctx.getCursor()
+          const position = (cursor: { x: number; y: number }) => ({ row: cursor.y + 1, col: cursor.x + 1 })
+          return tabClearResult(
+            {
+              oldFirst: position(oldFirst),
+              oldSecond: position(oldSecond),
+              oldThird: position(oldThird),
+              after: position(after),
+            },
+            cols,
+            "parser-state",
+          )
+        } finally {
+          restoreDefaultTabs(ctx.feed, cols)
         }
-      }
-      try {
-        installTabFixture(ctx.write)
-        ctx.write("\x1b[1;25H\x1bH\x1b[1;1H")
-        ctx.write("\t")
-        const oldFirst = await ctx.queryCursorPosition()
-        ctx.write("\t")
-        const oldSecond = await ctx.queryCursorPosition()
-        ctx.write("\t")
-        const oldThird = await ctx.queryCursorPosition()
-        ctx.write("\x1b[3g\x1b[1;33H\x1bH\x1b[1;1H\t")
-        const after = await ctx.queryCursorPosition()
-        return tabClearResult({ oldFirst, oldSecond, oldThird, after }, ctx.cols, "behavior")
-      } finally {
-        restoreDefaultTabs(ctx.write, ctx.cols)
-      }
-    },
-    "behavior",
-  ),
+      },
+      async (ctx) => {
+        if (ctx.cols < 34) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "Tab fixture needs at least 34 columns",
+            },
+          }
+        }
+        try {
+          installTabFixture(ctx.write)
+          ctx.write("\x1b[1;25H\x1bH\x1b[1;1H")
+          ctx.write("\t")
+          const oldFirst = await ctx.queryCursorPosition()
+          ctx.write("\t")
+          const oldSecond = await ctx.queryCursorPosition()
+          ctx.write("\t")
+          const oldThird = await ctx.queryCursorPosition()
+          ctx.write("\x1b[3g\x1b[1;33H\x1bH\x1b[1;1H\t")
+          const after = await ctx.queryCursorPosition()
+          return tabClearResult({ oldFirst, oldSecond, oldThird, after }, ctx.cols, "behavior")
+        } finally {
+          restoreDefaultTabs(ctx.write, ctx.cols)
+        }
+      },
+      "behavior",
+    ),
+    termNeedsGeometry: true,
+  },
 
   // CHT — cursor horizontal forward tab
-  probe(
-    "text.cht",
-    (ctx) => {
-      const cols = ctx.cols
-      if (cols < 21) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "parser-state",
-            note: "Tab fixture needs at least 21 columns",
-          },
+  {
+    ...probe(
+      "text.cht",
+      (ctx) => {
+        const cols = ctx.cols
+        if (cols < 21) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "parser-state",
+              note: "Tab fixture needs at least 21 columns",
+            },
+          }
         }
-      }
-      try {
-        installTabFixture(ctx.feed)
-        ctx.feed("\x1b[2I")
-        const cursor = ctx.getCursor()
-        return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "parser-state")
-      } finally {
-        restoreDefaultTabs(ctx.feed, cols)
-      }
-    },
-    async (ctx) => {
-      if (ctx.cols < 21) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "behavior",
-            note: "Tab fixture needs at least 21 columns",
-          },
+        try {
+          installTabFixture(ctx.feed)
+          ctx.feed("\x1b[2I")
+          const cursor = ctx.getCursor()
+          return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "parser-state")
+        } finally {
+          restoreDefaultTabs(ctx.feed, cols)
         }
-      }
-      try {
-        installTabFixture(ctx.write)
-        ctx.write("\x1b[2I")
-        return tabPositionResult(await ctx.queryCursorPosition(), 17, "behavior")
-      } finally {
-        restoreDefaultTabs(ctx.write, ctx.cols)
-      }
-    },
-    "behavior",
-  ),
+      },
+      async (ctx) => {
+        if (ctx.cols < 21) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "Tab fixture needs at least 21 columns",
+            },
+          }
+        }
+        try {
+          installTabFixture(ctx.write)
+          ctx.write("\x1b[2I")
+          return tabPositionResult(await ctx.queryCursorPosition(), 17, "behavior")
+        } finally {
+          restoreDefaultTabs(ctx.write, ctx.cols)
+        }
+      },
+      "behavior",
+    ),
+    termNeedsGeometry: true,
+  },
 
   // CBT — cursor backward tab
-  probe(
-    "text.cbt",
-    (ctx) => {
-      const cols = ctx.cols
-      if (cols < 21) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "parser-state",
-            note: "Tab fixture needs at least 21 columns",
-          },
+  {
+    ...probe(
+      "text.cbt",
+      (ctx) => {
+        const cols = ctx.cols
+        if (cols < 21) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "parser-state",
+              note: "Tab fixture needs at least 21 columns",
+            },
+          }
         }
-      }
-      try {
-        installTabFixture(ctx.feed)
-        ctx.feed("\x1b[1;21H\x1b[Z")
-        const cursor = ctx.getCursor()
-        return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "parser-state")
-      } finally {
-        restoreDefaultTabs(ctx.feed, cols)
-      }
-    },
-    async (ctx) => {
-      if (ctx.cols < 21) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "behavior",
-            note: "Tab fixture needs at least 21 columns",
-          },
+        try {
+          installTabFixture(ctx.feed)
+          ctx.feed("\x1b[1;21H\x1b[Z")
+          const cursor = ctx.getCursor()
+          return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "parser-state")
+        } finally {
+          restoreDefaultTabs(ctx.feed, cols)
         }
-      }
-      try {
-        installTabFixture(ctx.write)
-        ctx.write("\x1b[1;21H\x1b[Z")
-        return tabPositionResult(await ctx.queryCursorPosition(), 17, "behavior")
-      } finally {
-        restoreDefaultTabs(ctx.write, ctx.cols)
-      }
-    },
-    "behavior",
-  ),
+      },
+      async (ctx) => {
+        if (ctx.cols < 21) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "Tab fixture needs at least 21 columns",
+            },
+          }
+        }
+        try {
+          installTabFixture(ctx.write)
+          ctx.write("\x1b[1;21H\x1b[Z")
+          return tabPositionResult(await ctx.queryCursorPosition(), 17, "behavior")
+        } finally {
+          restoreDefaultTabs(ctx.write, ctx.cols)
+        }
+      },
+      "behavior",
+    ),
+    termNeedsGeometry: true,
+  },
 
   probe(
     "text.wide.emoji-flags",

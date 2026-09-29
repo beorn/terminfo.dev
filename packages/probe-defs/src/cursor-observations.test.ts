@@ -26,6 +26,7 @@ function app(position: { row: number; col: number } | null): TermContext {
     queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => null,
     cols: 80,
+    rows: 24,
   }
 }
 
@@ -278,4 +279,102 @@ test("headless cursor movement rejects ignored origin and setup, then measures a
     final: { x: 3, y: 0 },
   })
   expect(result.assertions).toMatchObject([{ kind: "negative", observed: result.response }])
+})
+
+// The same result must not be selected from a guessed 80-column bound.
+test("cursor geometry declarations include the factory and direct CUP", () => {
+  for (const id of [
+    "cursor.move.absolute",
+    "cursor.move.home",
+    "cursor.move.forward",
+    "cursor.move.back",
+    "cursor.move.down",
+    "cursor.move.up",
+    "cursor.cup-boundaries",
+  ]) {
+    expect(byId(id).termNeedsGeometry, id).toBe(true)
+  }
+})
+
+test("CUP qualifies the measured 24x61 edge, then distinguishes clamp from ignored target", async () => {
+  const probe = byId("cursor.cup-boundaries")
+  for (const ignoreTarget of [false, true]) {
+    let position = { row: 7, col: 7 }
+    const writes: string[] = []
+    const context = app(null)
+    context.rows = 24
+    context.cols = 61
+    context.write = (sequence) => {
+      writes.push(sequence)
+      if (sequence === "\x1b[1;1H") position = { row: 1, col: 1 }
+      if (sequence === "\x1b[24;61H") position = { row: 24, col: 61 }
+      if (sequence === "\x1b[999;999H" && !ignoreTarget) position = { row: 24, col: 61 }
+    }
+    context.queryCursorPosition = async () => position
+    const result = await probe.term!(context)
+    expect(writes).toEqual(["\x1b[1;1H", "\x1b[24;61H", "\x1b[1;1H", "\x1b[999;999H"])
+    expect(result.observation).toMatchObject({ outcome: ignoreTarget ? "unsupported" : "supported", evidence: "query" })
+    expect(JSON.parse(result.response ?? "")).toMatchObject({
+      origin: { row: 1, col: 1 },
+      edge: { row: 24, col: 61 },
+      beforeTarget: { row: 1, col: 1 },
+      final: ignoreTarget ? { row: 1, col: 1 } : { row: 24, col: 61 },
+    })
+    expect(result.assertions).toMatchObject([
+      { kind: ignoreTarget ? "negative" : "positive", observed: result.response },
+    ])
+  }
+})
+
+test("CUP chooses a target outside a grid larger than 999 cells", async () => {
+  let position = { row: 1, col: 1 }
+  const context = app(null)
+  context.rows = 1000
+  context.cols = 1001
+  const writes: string[] = []
+  context.write = (sequence) => {
+    writes.push(sequence)
+    if (sequence === "\x1b[1;1H") position = { row: 1, col: 1 }
+    if (sequence === "\x1b[1000;1001H" || sequence === "\x1b[1001;1002H") position = { row: 1000, col: 1001 }
+  }
+  context.queryCursorPosition = async () => position
+  const result = await byId("cursor.cup-boundaries").term!(context)
+  expect(writes.at(-1)).toBe("\x1b[1001;1002H")
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+})
+
+test("CUP declines a too-small grid or an unqualified edge", async () => {
+  const probe = byId("cursor.cup-boundaries")
+  const writes: string[] = []
+  const small = app({ row: 1, col: 1 })
+  small.rows = 1
+  small.cols = 1
+  small.write = (sequence) => writes.push(sequence)
+  expect((await probe.term!(small)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(writes).toEqual([])
+  const ignoredEdge = app({ row: 1, col: 1 })
+  ignoredEdge.cols = 61
+  expect((await probe.term!(ignoredEdge)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+  })
+})
+
+test("cursor factory declines an undersized setup before the origin write", async () => {
+  const writes: string[] = []
+  const context = app({ row: 1, col: 1 })
+  context.rows = 4
+  context.cols = 9
+  context.write = (sequence) => writes.push(sequence)
+  const result = await byId("cursor.move.absolute").term!(context)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(writes).toEqual([])
 })

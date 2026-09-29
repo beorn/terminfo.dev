@@ -20,6 +20,7 @@ function app(overrides: Partial<TermContext> = {}): TermContext {
     queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => null,
     cols: 150,
+    rows: 24,
     ...overrides,
   }
 }
@@ -240,4 +241,65 @@ test("grapheme ID measures the ZWJ sample width, including headless cell state",
   const headlessResult = probe.termless(headless())
   expect(headlessResult.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
   expect(headlessResult.assertions).toMatchObject([{ kind: "positive", observed: headlessResult.response }])
+})
+
+test("direct text and Unicode size readers declare geometry, including tab finally", () => {
+  for (const id of ["text.wrap", "text.hts", "text.tbc", "text.cht", "text.cbt"]) {
+    expect(textProbes.find((entry) => entry.id === id)?.termNeedsGeometry, id).toBe(true)
+  }
+  for (const probe of unicodeProbes) expect(probe.termNeedsGeometry, probe.id).toBe(true)
+})
+
+test("text.wrap writes the measured 61 columns and declines one row before writing", async () => {
+  const writes: string[] = []
+  await byId("text.wrap").term(
+    app({ cols: 61, rows: 24, write: (s) => writes.push(s), queryCursorPosition: async () => ({ row: 2, col: 2 }) }),
+  )
+  expect(writes).toEqual(["\x1b[1;1H\x1b[2K", "W".repeat(61) + "X"])
+  const narrowWrites: string[] = []
+  const result = await byId("text.wrap").term(app({ cols: 61, rows: 1, write: (s) => narrowWrites.push(s) }))
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(narrowWrites).toEqual([])
+})
+
+test("HTS restores stops only inside the measured 61-column fixture", async () => {
+  const writes: string[] = []
+  await byId("text.hts").term(
+    app({ cols: 61, write: (s) => writes.push(s), queryCursorPosition: async () => ({ row: 1, col: 6 }) }),
+  )
+  expect(writes.at(-1)).toContain("\x1b[1;57H\x1bH")
+  expect(writes.at(-1)).not.toContain("\x1b[1;65H\x1bH")
+  const small: string[] = []
+  const result = await byId("text.hts").term(app({ cols: 5, write: (s) => small.push(s) }))
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(small).toEqual([])
+})
+
+test("tab and Unicode size refusals record no feature measurement or writes", async () => {
+  for (const id of [
+    "text.tbc",
+    "text.cht",
+    "text.cbt",
+    "unicode.tab-stops",
+    "unicode.wrap-boundary",
+    "unicode.east-asian-ambiguous",
+    "unicode.grapheme-cursor",
+  ]) {
+    const writes: string[] = []
+    const result = await byId(id).term(app({ cols: 1, rows: 1, write: (sequence) => writes.push(sequence) }))
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(writes, id).toEqual([])
+  }
 })

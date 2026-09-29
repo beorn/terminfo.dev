@@ -2,28 +2,31 @@ import type { ProbeDefinition } from "./types.ts"
 import { probe, isBlank } from "./helpers.ts"
 
 export const scrollbackProbes: ProbeDefinition[] = [
-  probe(
-    "scrollback.accumulate",
-    (ctx) => {
-      for (let i = 0; i < 30; i++) ctx.feed(`line ${i}\r\n`)
-      return { pass: ctx.getScrollback().totalLines > 24 }
-    },
-    async (ctx) => {
-      const sizeMatch = await ctx.queryWithSentinel("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/)
-      const rows = sizeMatch ? parseInt(sizeMatch[1]!, 10) : 24
-      ctx.write("\x1b[2J\x1b[H") // clear + home
-      const lineCount = rows + 10
-      for (let i = 0; i < lineCount; i++) {
-        ctx.write(`line-${i}\n`)
-      }
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row <= rows,
-        note: pos.row <= rows ? undefined : `cursor at row ${pos.row}, expected <= ${rows}`,
-      }
-    },
-  ),
+  {
+    ...probe(
+      "scrollback.accumulate",
+      (ctx) => {
+        for (let i = 0; i < 30; i++) ctx.feed(`line ${i}\r\n`)
+        const scroll = ctx.getScrollback()
+        return { pass: scroll.totalLines > scroll.screenLines }
+      },
+      async (ctx) => {
+        const rows = ctx.rows
+        ctx.write("\x1b[2J\x1b[H") // clear + home
+        const lineCount = rows + 10
+        for (let i = 0; i < lineCount; i++) {
+          ctx.write(`line-${i}\n`)
+        }
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No cursor response" }
+        return {
+          pass: pos.row <= rows,
+          note: pos.row <= rows ? undefined : `cursor at row ${pos.row}, expected <= ${rows}`,
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   probe(
     "scrollback.total-lines",
@@ -181,37 +184,52 @@ export const scrollbackProbes: ProbeDefinition[] = [
   ),
 
   // DECSTBM reset — ESC [ r with no params resets to full screen
-  probe(
-    "scrollback.decstbm-reset",
-    (ctx) => {
-      // Set a scroll region
-      ctx.feed("\x1b[5;10r")
-      // Reset it
-      ctx.feed("\x1b[r")
-      // Write enough lines to fill the screen + overflow
-      ctx.feed("\x1b[H")
-      for (let i = 0; i < 30; i++) ctx.feed(`line-${i}\r\n`)
-      // If region was properly reset, scrollback should accumulate
-      const scroll = ctx.getScrollback()
-      return {
-        pass: scroll.totalLines > 24,
-        note:
-          scroll.totalLines > 24 ? undefined : `totalLines=${scroll.totalLines}, expected >24 (full-screen scrolling)`,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[5;10r") // set region
-      ctx.write("\x1b[r") // reset to full screen
-      ctx.write("\x1b[H")
-      // Verify cursor can reach the bottom of the screen
-      ctx.write("\x1b[999B") // CUD past bottom
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row >= 20, // should be near bottom of full screen
-        note: `cursor at row ${pos.row} (expected near bottom after DECSTBM reset)`,
-        response: `${pos.row};${pos.col}`,
-      }
-    },
-  ),
+  {
+    ...probe(
+      "scrollback.decstbm-reset",
+      (ctx) => {
+        // Set a scroll region
+        ctx.feed("\x1b[5;10r")
+        // Reset it
+        ctx.feed("\x1b[r")
+        // Write enough lines to fill the screen + overflow
+        ctx.feed("\x1b[H")
+        for (let i = 0; i < 30; i++) ctx.feed(`line-${i}\r\n`)
+        // If region was properly reset, scrollback should accumulate
+        const scroll = ctx.getScrollback()
+        return {
+          pass: scroll.totalLines > 24,
+          note:
+            scroll.totalLines > 24
+              ? undefined
+              : `totalLines=${scroll.totalLines}, expected >24 (full-screen scrolling)`,
+        }
+      },
+      async (ctx) => {
+        if (ctx.rows < 10)
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "DECSTBM fixture needs at least 10 rows",
+            },
+          }
+        ctx.write("\x1b[5;10r") // set region
+        ctx.write("\x1b[r") // reset to full screen
+        ctx.write("\x1b[H")
+        // Verify cursor can reach the bottom of the screen
+        ctx.write(`\x1b[${ctx.rows}B`) // CUD past the measured bottom
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) return { pass: false, note: "No cursor response" }
+        return {
+          pass: pos.row === ctx.rows, // CUD past bottom reaches the measured final row
+          note: `cursor at row ${pos.row} (expected near bottom after DECSTBM reset)`,
+          response: `${pos.row};${pos.col}`,
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 ]

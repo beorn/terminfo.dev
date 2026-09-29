@@ -31,11 +31,19 @@ test("suite hash changes when either imported mode or extension definitions chan
   changed.file = ""
 })
 
-test("suite identity includes the real-terminal adapter source and applicable probe membership", () => {
+test("suite identity changes with executable collection, ownership, capture and identity source", () => {
   const baseline = probeHash()
-  for (const file of ["packages/terminfo.dev/src/probes/unified.ts", "packages/terminfo.dev/src/tty.ts"]) {
+  for (const file of [
+    "packages/terminfo.dev/src/probes/unified.ts",
+    "packages/terminfo.dev/src/tty.ts",
+    "packages/terminfo.dev/src/linux-clipboard.ts",
+    "packages/terminfo.dev/src/linux-capture.ts",
+    "packages/terminfo.dev/src/serve.ts",
+    "packages/terminfo.dev/src/detect.ts",
+    "packages/terminfo.dev/src/identity-guard.ts",
+  ]) {
     changed.file = file
-    expect(probeHash()).not.toBe(baseline)
+    expect(probeHash(), file).not.toBe(baseline)
   }
   changed.file = ""
   const snapshot = probeSuiteSnapshot()

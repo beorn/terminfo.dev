@@ -311,6 +311,7 @@ export interface TermContext {
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: Pick<ObservationFrame, "role" | "label">) => Promise<ObservationFrame>
   cols: number
+  rows: number
 }
 
 export interface ProbeDefinition {
@@ -319,6 +320,8 @@ export interface ProbeDefinition {
   term: ((ctx: TermContext) => Promise<ProbeResult>) | null
   /** Only an explicitly reviewed report request may run without a disposable terminal. */
   termWrites?: "query"
+  /** App callback requires measured geometry from its owned output stream. */
+  termNeedsGeometry?: true
   /** Explicit opt-in for recording callback exceptions as observations. */
   termObservationEvidence?: ObservationEvidence
 }

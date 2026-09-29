@@ -358,8 +358,11 @@ export function validateObservation(
     fail(path, `conclusive ${featureId} cannot use ${evidence} evidence`)
   }
   if (evidence === "none") {
-    if (outcome !== "inconclusive" || observation.reason !== "policy-refused") {
-      fail(path, `none evidence for ${featureId} requires inconclusive policy-refused outcome`)
+    if (
+      outcome !== "inconclusive" ||
+      (observation.reason !== "policy-refused" && observation.reason !== "insufficient-evidence")
+    ) {
+      fail(path, `none evidence for ${featureId} requires inconclusive policy-refused or insufficient-evidence outcome`)
     }
     if (observation.screenshotRef !== undefined || observation.frames !== undefined) {
       fail(path, `none evidence for ${featureId} cannot carry screenshotRef or frames`)

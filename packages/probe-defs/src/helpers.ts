@@ -118,6 +118,7 @@ export function cursorProbe(
   })
   return {
     id,
+    termNeedsGeometry: true,
     termObservationEvidence: "query",
     termless(ctx) {
       ctx.feed("\x1b[1;1H")
@@ -164,6 +165,16 @@ export function cursorProbe(
       )
     },
     async term(ctx) {
+      const minRows = Math.max(1, expected.row + 1, (setupExpected?.row ?? 0) + 1)
+      const minCols = Math.max(1, expected.col + 1, (setupExpected?.col ?? 0) + 1)
+      if (ctx.rows < minRows || ctx.cols < minCols) {
+        const note = `Cursor fixture needs at least ${minRows} rows and ${minCols} columns; measured ${ctx.rows}x${ctx.cols}`
+        return {
+          pass: false,
+          note,
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        }
+      }
       ctx.write("\x1b[1;1H")
       const origin = await ctx.queryCursorPosition()
       if (!origin) return inconclusive(null, null, null, "query", "no-response", "No cursor reply at origin")

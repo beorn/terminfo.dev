@@ -28,7 +28,7 @@ import {
   type TTYQueryTrace,
   type TTYTraceEvent,
 } from "../tty.ts"
-import type { ClipboardTraceEvent, LinuxClipboardAdapter } from "../linux-clipboard.ts"
+import type { ClipboardTraceEvent, GeometryMeasurement, LinuxClipboardAdapter } from "../linux-clipboard.ts"
 import { ownedTerminalVerifiedFor } from "../linux-clipboard.ts"
 
 export interface Probe {
@@ -41,11 +41,23 @@ function createTermContext({
   out,
   writes,
   events,
+  probe,
+  geometry,
 }: {
   out: NodeJS.WriteStream
   writes?: string[]
   events?: TTYTraceEvent[]
+  probe: ProbeDefinition
+  geometry?: Extract<GeometryMeasurement, { status: "measured" }>
 }): TermContext {
+  const size = () => {
+    if (probe.termNeedsGeometry !== true || !geometry) {
+      const error = new Error(`App callback ${probe.id} accessed undeclared or unavailable terminal geometry`)
+      error.name = "UndeclaredTerminalGeometry"
+      throw error
+    }
+    return geometry
+  }
   return {
     write(text: string) {
       writes?.push(text)
@@ -74,7 +86,10 @@ function createTermContext({
     queryWithSentinelOutcome,
     queryMode,
     get cols() {
-      return out.columns || 80
+      return size().cols
+    },
+    get rows() {
+      return size().rows
     },
   }
 }
@@ -99,6 +114,19 @@ export type ProbeCapture = (checkpoint: {
   role: ObservationFrame["role"]
   label: string
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
+
+export interface GeometryCorroboration {
+  status: "agree" | "conflict" | "uncorroborated" | "silent" | "malformed"
+  query: {
+    sequence: "\x1b[18t"
+    outbound: "\x1b[18t\x1b[c"
+    reason: "reply" | "sentinel" | "timeout"
+    raw: string
+    rawBase64: string
+  }
+  rows?: number
+  cols?: number
+}
 
 function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selected: ProbeDefinition[] } {
   const expected = PROBE_DEFS.filter((probe) => probe.term !== null)
@@ -129,6 +157,7 @@ export async function runProbeBatch(
     clipboard?: LinuxClipboardAdapter
     captureRunId?: string
     out?: NodeJS.WriteStream
+    geometryCorroboration?: GeometryCorroboration
   } = {},
 ): Promise<ProbeBatch> {
   const out = options.out ?? process.stdout
@@ -140,6 +169,28 @@ export async function runProbeBatch(
     ungradedDiagnostics: {},
     suiteComplete: false,
     screenshotRefs: [],
+  }
+  const geometryChecks: Array<{
+    featureId: string
+    pre?: GeometryMeasurement
+    post?: GeometryMeasurement
+    diagnostic?: string
+  }> = []
+  const unavailable = (error: unknown): GeometryMeasurement => ({
+    status: "unavailable",
+    at: new Date().toISOString(),
+    source: "stty size on a /proc/self/fd reopen of the verified output device",
+    diagnostic: error instanceof Error ? error.message : String(error),
+    stdout: "",
+    stderr: "",
+  })
+  const readGeometry = async (): Promise<GeometryMeasurement> => {
+    try {
+      if (!options.clipboard) throw new Error("No owned geometry reader")
+      return await options.clipboard.readGeometry()
+    } catch (error) {
+      return unavailable(error)
+    }
   }
   for (const probe of selected) {
     const writes: string[] = []
@@ -160,7 +211,51 @@ export async function runProbeBatch(
       batch.rawReplies[probe.id] = JSON.stringify({ writes, queries, events })
       continue
     }
-    const context = createTermContext({ out, writes, events })
+    let preGeometry: GeometryMeasurement | undefined
+    let geometryCheck: (typeof geometryChecks)[number] | undefined
+    if (probe.termNeedsGeometry) {
+      geometryCheck = { featureId: probe.id }
+      geometryChecks.push(geometryCheck)
+      const geometryOwner = ownedTerminalVerifiedFor(options.clipboard, options.captureRunId ?? "", out)
+      const grant = geometryOwner ? options.clipboard?.geometryAtGrant : undefined
+      if (grant?.status === "measured") {
+        preGeometry = await readGeometry()
+        geometryCheck.pre = preGeometry
+      }
+      const corroboration = options.geometryCorroboration
+      const diagnostic = !geometryOwner
+        ? "No verified owned terminal for geometry read"
+        : grant?.status !== "measured"
+          ? `Grant geometry unavailable: ${grant?.status === "unavailable" ? grant.diagnostic : "no owned measurement"}`
+          : preGeometry?.status !== "measured"
+            ? `Pre-callback geometry unavailable: ${preGeometry?.status === "unavailable" ? preGeometry.diagnostic : "no measurement"}`
+            : corroboration?.status === "conflict"
+              ? `CSI 18t geometry ${corroboration.rows}x${corroboration.cols} conflicts with stty ${preGeometry.rows}x${preGeometry.cols}`
+              : corroboration?.status === "agree" &&
+                  (corroboration.rows !== preGeometry.rows || corroboration.cols !== preGeometry.cols)
+                ? `Pre-callback stty geometry ${preGeometry.rows}x${preGeometry.cols} differs from CSI 18t ${corroboration.rows}x${corroboration.cols}`
+                : undefined
+      if (diagnostic) {
+        geometryCheck.diagnostic = diagnostic
+        batch.observations.push({
+          featureId: probe.id,
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "none",
+          note: diagnostic,
+          rawReplyRef: probe.id,
+        })
+        batch.rawReplies[probe.id] = JSON.stringify({ writes, queries, events })
+        continue
+      }
+    }
+    const context = createTermContext({
+      out,
+      writes,
+      events,
+      probe,
+      geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
+    })
     if (options.clipboard && options.clipboard.profile !== "default") {
       const clipboard = options.clipboard
       context.withClipboardFixture = (work) =>
@@ -182,14 +277,34 @@ export async function runProbeBatch(
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
-      const result = await withTTYOperation(() => withTTYQueryTrace(queries, events, () => callback(context)), out)
+      let result
+      try {
+        result = await withTTYOperation(() => withTTYQueryTrace(queries, events, () => callback(context)), out)
+      } finally {
+        if (geometryCheck) geometryCheck.post = await readGeometry()
+      }
       if (result.observation) {
         const rawReplyRef =
           queries.length || captureAttempted || clipboardEvents.length || result.observation.evidence === "none"
             ? probe.id
             : undefined
-        batch.observations.push({ featureId: probe.id, ...result.observation, ...(rawReplyRef ? { rawReplyRef } : {}) })
-        for (const assertion of result.assertions ?? []) {
+        const post = geometryCheck?.post
+        const resized =
+          preGeometry?.status === "measured" &&
+          (post?.status !== "measured" || post.rows !== preGeometry.rows || post.cols !== preGeometry.cols)
+        batch.observations.push({
+          featureId: probe.id,
+          ...result.observation,
+          ...(resized
+            ? {
+                outcome: "inconclusive" as const,
+                reason: "insufficient-evidence" as const,
+                note: `Measured geometry changed or became unavailable after ${probe.id}`,
+              }
+            : {}),
+          ...(rawReplyRef ? { rawReplyRef } : {}),
+        })
+        for (const assertion of resized ? [] : (result.assertions ?? [])) {
           batch.assertions.push({ featureId: probe.id, ...assertion, ...(rawReplyRef ? { rawReplyRef } : {}) })
         }
       } else {
@@ -203,7 +318,8 @@ export async function runProbeBatch(
     } catch (error) {
       const name = error instanceof Error ? error.name : "Error"
       const message = error instanceof Error ? error.message : String(error)
-      const errorEvidence = captureAttempted ? "pixels" : probe.termObservationEvidence
+      const errorEvidence =
+        name === "UndeclaredTerminalGeometry" ? undefined : captureAttempted ? "pixels" : probe.termObservationEvidence
       if (errorEvidence) {
         batch.observations.push({
           featureId: probe.id,
@@ -231,6 +347,15 @@ export async function runProbeBatch(
         batch.rawReplies[probe.id] = trace
       }
     }
+  }
+  if (options.clipboard && ownedTerminalVerifiedFor(options.clipboard, options.captureRunId ?? "", out)) {
+    batch.rawReplies["collector.geometry"] = JSON.stringify({
+      source: "stty size on a /proc/self/fd reopen of the verified output device",
+      bindingReceiptRef: "collector.clipboardFixture",
+      grant: options.clipboard.geometryAtGrant ?? null,
+      corroboration: options.geometryCorroboration ?? null,
+      checks: geometryChecks,
+    })
   }
   const observed = new Set(batch.observations.map((item) => item.featureId))
   batch.suiteComplete =

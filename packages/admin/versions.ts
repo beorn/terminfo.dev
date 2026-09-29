@@ -35,7 +35,16 @@ const RESULTS_DIR = join(REPO_ROOT, "content", "probes-libs")
 const PROBES_DIR = join(REPO_ROOT, "packages", "probes")
 const PROBE_DEFS_DIR = join(REPO_ROOT, "packages", "probe-defs", "src")
 const ADAPTER_PACKAGE_PATH = "packages/terminfo.dev/package.json"
-const ADAPTER_SOURCE_PATHS = ["packages/terminfo.dev/src/probes/unified.ts", "packages/terminfo.dev/src/tty.ts"]
+// Include the collector's executed local imports: ownership and identity affect the observation too.
+const ADAPTER_SOURCE_PATHS = [
+  "packages/terminfo.dev/src/probes/unified.ts",
+  "packages/terminfo.dev/src/tty.ts",
+  "packages/terminfo.dev/src/linux-clipboard.ts",
+  "packages/terminfo.dev/src/linux-capture.ts",
+  "packages/terminfo.dev/src/serve.ts",
+  "packages/terminfo.dev/src/detect.ts",
+  "packages/terminfo.dev/src/identity-guard.ts",
+]
 const VERSIONS_PATH = join(REPO_ROOT, "versions.json")
 // Cache dir handled by ensureCachedVersion() in backends.ts
 

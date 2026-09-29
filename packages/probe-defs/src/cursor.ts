@@ -225,32 +225,111 @@ export const cursorProbes: ProbeDefinition[] = [
   ),
 
   // CUP at screen boundaries — cursor should clamp to valid range
-  probe(
-    "cursor.cup-boundaries",
-    (ctx) => {
-      ctx.feed("\x1b[999;999H")
-      const cursor = ctx.getCursor()
-      // Should clamp to last row (23) and last col (79) for 80x24 terminal
-      return {
-        pass: cursor.y === 23 && cursor.x === 79,
-        note: cursor.y === 23 && cursor.x === 79 ? undefined : `got ${cursor.y};${cursor.x}, expected 23;79`,
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[999;999H")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      // Should clamp to screen dimensions (1-based: rows;cols)
-      return {
-        pass: pos.row <= 24 && pos.col <= 80 && pos.row > 0 && pos.col > 0,
-        note:
-          pos.row <= 24 && pos.col <= 80 && pos.row > 0 && pos.col > 0
-            ? undefined
-            : `got ${pos.row};${pos.col}, expected within screen bounds`,
-        response: `${pos.row};${pos.col}`,
-      }
-    },
-  ),
+  {
+    ...probe(
+      "cursor.cup-boundaries",
+      (ctx) => {
+        ctx.feed("\x1b[999;999H")
+        const cursor = ctx.getCursor()
+        // Should clamp to last row (23) and last col (79) for 80x24 terminal
+        return {
+          pass: cursor.y === 23 && cursor.x === 79,
+          note: cursor.y === 23 && cursor.x === 79 ? undefined : `got ${cursor.y};${cursor.x}, expected 23;79`,
+        }
+      },
+      async (ctx) => {
+        const { rows, cols } = ctx
+        if (rows < 2 || cols < 2)
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `CUP edge fixture needs at least 2x2, measured ${rows}x${cols}`,
+            },
+          }
+        ctx.write("\x1b[1;1H")
+        const origin = await ctx.queryCursorPosition()
+        if (!origin)
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        if (origin.row !== 1 || origin.col !== 1)
+          return {
+            pass: false,
+            response: JSON.stringify({ origin }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "CUP home control did not reach 1;1",
+            },
+          }
+        ctx.write(`\x1b[${rows};${cols}H`)
+        const edge = await ctx.queryCursorPosition()
+        if (!edge)
+          return {
+            pass: false,
+            response: JSON.stringify({ origin, edge }),
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        if (edge.row !== rows || edge.col !== cols)
+          return {
+            pass: false,
+            response: JSON.stringify({ origin, edge }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: `CUP edge control did not reach ${rows};${cols}`,
+            },
+          }
+        ctx.write("\x1b[1;1H")
+        const beforeTarget = await ctx.queryCursorPosition()
+        if (!beforeTarget)
+          return {
+            pass: false,
+            response: JSON.stringify({ origin, edge, beforeTarget }),
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        if (beforeTarget.row !== 1 || beforeTarget.col !== 1)
+          return {
+            pass: false,
+            response: JSON.stringify({ origin, edge, beforeTarget }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "CUP reset control did not reach 1;1",
+            },
+          }
+        const targetRow = Math.max(999, rows + 1)
+        const targetCol = Math.max(999, cols + 1)
+        ctx.write(`\x1b[${targetRow};${targetCol}H`)
+        const final = await ctx.queryCursorPosition()
+        const response = JSON.stringify({ rows, cols, origin, edge, beforeTarget, final })
+        if (!final)
+          return {
+            pass: false,
+            response,
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        const pass = final.row === rows && final.col === cols
+        return {
+          pass,
+          response,
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: `CUP ${targetRow};${targetCol} clamps to measured ${rows};${cols} after qualified edge`,
+              observed: response,
+            },
+          ],
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // CUU past top of screen — cursor should stop at row 0
   probe(

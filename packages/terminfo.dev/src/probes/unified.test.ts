@@ -10,31 +10,26 @@ import { decodeCollectorRun } from "@terminfo/run-parser"
 import * as terminalOwnership from "../linux-clipboard.ts"
 import { runProbeBatch } from "./unified.ts"
 
-// An unowned inline batch must refuse before a callback can send RIS or paint the user's TTY.
-it("refuses an unowned mutating callback without sending terminal bytes", async () => {
-  const writes: string[] = []
-  process.stdout.write = ((text: string) => {
-    writes.push(text)
-    return true
-  }) as typeof process.stdout.write
-  const batch = await runProbeBatch({ ids: ["reset.ris"], captureRunId: "a".repeat(32) })
-  expect(writes).toEqual([])
-  expect(batch.observations).toMatchObject([
-    { featureId: "reset.ris", outcome: "inconclusive", reason: "policy-refused", evidence: "none" },
-  ])
-  expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toMatchObject({ writes: [], queries: [], events: [] })
+const noGeometry = {
+  status: "unavailable" as const,
+  at: "2026-09-28T00:00:00.000Z",
+  source: "stty size on a /proc/self/fd reopen of the verified output device" as const,
+  diagnostic: "No owned size read in fixture",
+  stdout: "",
+  stderr: "",
+}
 
-  // A policy refusal must survive the real public/admin parser, not just this batch object.
-  const probeHash = "f".repeat(12)
-  const sourceRevision = "e".repeat(40)
-  const manifest: ProbeSuiteManifest = {
-    probeHash,
-    sourceRevision,
-    generatedAt: "2026-09-28T00:00:00.000Z",
-    adapterVersion: "test",
-    probes: { app: ALL_PROBES.filter((probe) => probe.term).map((probe) => probe.id), headless: [], mux: [] },
-  }
-  const run: ProbeRun = {
+const probeHash = "f".repeat(12)
+const sourceRevision = "e".repeat(40)
+const manifest: ProbeSuiteManifest = {
+  probeHash,
+  sourceRevision,
+  generatedAt: "2026-09-28T00:00:00.000Z",
+  adapterVersion: "test",
+  probes: { app: ALL_PROBES.filter((probe) => probe.term).map((probe) => probe.id), headless: [], mux: [] },
+}
+function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>): ProbeRun {
+  return {
     schemaVersion: 2,
     runId: "a".repeat(32),
     target: {
@@ -61,9 +56,33 @@ it("refuses an unowned mutating callback without sending terminal bytes", async 
     observations: batch.observations,
     ungradedDiagnostics: batch.ungradedDiagnostics,
   }
+}
+
+// An unowned inline batch must refuse before a callback can send RIS or paint the user's TTY.
+it("refuses an unowned mutating callback without sending terminal bytes", async () => {
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: ["reset.ris"], captureRunId: "a".repeat(32) })
+  expect(writes).toEqual([])
+  expect(batch.observations).toMatchObject([
+    { featureId: "reset.ris", outcome: "inconclusive", reason: "policy-refused", evidence: "none" },
+  ])
+  expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toMatchObject({ writes: [], queries: [], events: [] })
+
+  // A policy refusal must survive the real public/admin parser, not just this batch object.
+  const run = asRun(batch)
   expect(
     decodeCollectorRun("test-run.json", JSON.stringify(run), manifest, sourceRevision).run.observations,
   ).toMatchObject([{ featureId: "reset.ris", outcome: "inconclusive", reason: "policy-refused" }])
+
+  // Missing owned geometry also declines before a callback writes; the same exact zero-byte trace must parse.
+  run.observations[0] = { ...run.observations[0]!, reason: "insufficient-evidence" }
+  expect(
+    decodeCollectorRun("geometry-unavailable.json", JSON.stringify(run), manifest, sourceRevision).run.observations,
+  ).toMatchObject([{ featureId: "reset.ris", outcome: "inconclusive", reason: "insufficient-evidence" }])
 })
 
 it("records an owned default-profile OSC 52 refusal as unmeasured with an empty bound trace", async () => {
@@ -103,6 +122,8 @@ it("refuses a structural clipboard adapter even with the same claimed capture ID
       config: "fixture",
       permissions: "fixture",
       summary: "{}",
+      geometryAtGrant: noGeometry,
+      readGeometry: async () => noGeometry,
       dispose: async () => {},
       withClipboardFixture: async () => ({ pass: true }),
     },
@@ -155,9 +176,185 @@ function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
 
+const measured = (rows: number, cols: number) => ({
+  status: "measured" as const,
+  at: "2026-09-28T00:00:00.000Z",
+  source: "stty size on a /proc/self/fd reopen of the verified output device" as const,
+  rows,
+  cols,
+  stdout: `${rows} ${cols}\n`,
+  stderr: "",
+})
+
+it("declines a declared callback with missing or conflicting owned geometry before any feature bytes", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "reset.ris")!
+  const original = definition.termNeedsGeometry
+  definition.termNeedsGeometry = true
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const clipboard = {
+    profile: "default" as const,
+    config: "fixture",
+    permissions: "fixture",
+    summary: "{}",
+    geometryAtGrant: noGeometry,
+    readGeometry: async () => measured(24, 61),
+    dispose: async () => {},
+    withClipboardFixture: async () => ({ pass: true }),
+  }
+  try {
+    const missing = await runProbeBatch({ ids: ["reset.ris"], clipboard })
+    expect(missing.observations).toMatchObject([
+      { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+    ])
+    expect(
+      decodeCollectorRun("missing-geometry.json", JSON.stringify(asRun(missing)), manifest, sourceRevision).run
+        .observations,
+    ).toMatchObject([{ featureId: "reset.ris", outcome: "inconclusive", reason: "insufficient-evidence" }])
+    expect(JSON.parse(missing.rawReplies["reset.ris"]!)).toEqual({ writes: [], queries: [], events: [] })
+    expect(writes).toEqual([])
+    const conflict = await runProbeBatch({
+      ids: ["reset.ris"],
+      clipboard: { ...clipboard, geometryAtGrant: measured(24, 61) },
+      geometryCorroboration: {
+        status: "conflict",
+        rows: 25,
+        cols: 61,
+        query: {
+          sequence: "\x1b[18t",
+          outbound: "\x1b[18t\x1b[c",
+          reason: "reply",
+          raw: "\x1b[8;25;61t",
+          rawBase64: Buffer.from("\x1b[8;25;61t").toString("base64"),
+        },
+      },
+    })
+    expect(conflict.observations).toMatchObject([
+      { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+    ])
+    expect(writes).toEqual([])
+    expect(JSON.parse(conflict.rawReplies["collector.geometry"]!)).toMatchObject({
+      bindingReceiptRef: "collector.clipboardFixture",
+      corroboration: {
+        query: { sequence: "\x1b[18t", outbound: "\x1b[18t\x1b[c", reason: "reply" },
+      },
+      checks: [{ featureId: "reset.ris", diagnostic: expect.stringContaining("conflicts") }],
+    })
+  } finally {
+    definition.termNeedsGeometry = original
+  }
+})
+
+it("keeps query-only and nongeometry callbacks runnable when owned size is unavailable", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    if (text === "\x1b[?2004$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?2004;2$y"))
+    if (text === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[1;2R"))
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["modes.bracketed-paste", "reset.sgr"],
+    clipboard: {
+      profile: "default",
+      config: "fixture",
+      permissions: "fixture",
+      summary: "{}",
+      geometryAtGrant: noGeometry,
+      readGeometry: async () => noGeometry,
+      dispose: async () => {},
+      withClipboardFixture: async () => ({ pass: true }),
+    },
+  })
+  expect(batch.observations.find((item) => item.featureId === "modes.bracketed-paste")).toMatchObject({
+    outcome: "supported",
+    evidence: "query",
+  })
+  expect(batch.ungradedDiagnostics["reset.sgr"]).toMatchObject({ kind: "legacy-callback" })
+  expect(writes).toContain("\x1b[1;1H\x1b[2K")
+  expect(writes).toContain("\x1b[?2004$p\x1b[c")
+})
+
+it("keeps actual query evidence but downgrades its explicit result after a measured resize", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const original = definition.termNeedsGeometry
+  definition.termNeedsGeometry = true
+  let reads = 0
+  process.stdout.write = ((text: string) => {
+    if (text === "\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?62;4c"))
+    return true
+  }) as typeof process.stdout.write
+  try {
+    const batch = await runProbeBatch({
+      ids: ["device.primary-da"],
+      clipboard: {
+        profile: "default",
+        config: "fixture",
+        permissions: "fixture",
+        summary: "{}",
+        geometryAtGrant: measured(24, 61),
+        readGeometry: async () => (++reads === 1 ? measured(24, 61) : measured(31, 73)),
+        dispose: async () => {},
+        withClipboardFixture: async () => ({ pass: true }),
+      },
+    })
+    expect(batch.observations).toMatchObject([
+      {
+        featureId: "device.primary-da",
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+      },
+    ])
+    expect(batch.assertions).toEqual([])
+    expect(batch.rawReplies["device.primary-da"]).toBe("\x1b[?62;4c")
+    expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
+      checks: [{ pre: { rows: 24, cols: 61 }, post: { rows: 31, cols: 73 } }],
+    })
+  } finally {
+    definition.termNeedsGeometry = original
+  }
+})
+
+it("reports undeclared geometry reads as collector errors without invented evidence", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!
+  const original = definition.termNeedsGeometry
+  const originalEvidence = definition.termObservationEvidence
+  definition.termNeedsGeometry = undefined
+  definition.termObservationEvidence = "behavior"
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  try {
+    const batch = await runProbeBatch({ ids: ["text.wrap"] })
+    expect(batch.ungradedDiagnostics["text.wrap"]).toMatchObject({
+      kind: "collector-error",
+      name: "UndeclaredTerminalGeometry",
+      message: expect.stringContaining("text.wrap"),
+    })
+    expect(batch.observations).toEqual([])
+    expect(writes).toEqual([])
+  } finally {
+    definition.termNeedsGeometry = original
+    definition.termObservationEvidence = originalEvidence
+  }
+})
+
 // The public inline runner must put both callback writes and nested CPR queries on its selected TTY.
 it("uses the injected TTY for callback writes, columns, and nested cursor queries", async () => {
   verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!
+  const original = definition.termNeedsGeometry
+  definition.termNeedsGeometry = true
   const writes: string[] = []
   const out = {
     columns: 12,
@@ -171,9 +368,38 @@ it("uses the injected TTY for callback writes, columns, and nested cursor querie
     throw new Error("probe traffic reached stdout")
   }) as typeof process.stdout.write
 
-  const batch = await runProbeBatch({ ids: ["text.wrap"], out })
+  let batch: Awaited<ReturnType<typeof runProbeBatch>>
+  try {
+    batch = await runProbeBatch({
+      ids: ["text.wrap"],
+      out,
+      geometryCorroboration: {
+        status: "silent",
+        query: {
+          sequence: "\x1b[18t",
+          outbound: "\x1b[18t\x1b[c",
+          reason: "sentinel",
+          raw: "\x1b[?62c",
+          rawBase64: Buffer.from("\x1b[?62c").toString("base64"),
+        },
+      },
+      clipboard: {
+        profile: "default",
+        config: "fixture",
+        permissions: "fixture",
+        summary: "{}",
+        geometryAtGrant: measured(24, 12),
+        readGeometry: async () => measured(24, 12),
+        dispose: async () => {},
+        withClipboardFixture: async () => ({ pass: true }),
+      },
+    })
+  } finally {
+    definition.termNeedsGeometry = original
+  }
   expect(writes).toEqual(["\x1b[1;1H\x1b[2K", `${"W".repeat(12)}X`, "\x1b[6n"])
   expect(batch.ungradedDiagnostics["text.wrap"]).toMatchObject({ kind: "legacy-callback", pass: true })
+  expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({ corroboration: { status: "silent" } })
   const trace = JSON.parse(batch.rawReplies["text.wrap"]!) as { writes: string[]; queries: Array<{ sequence: string }> }
   expect(trace.writes).toEqual(writes.slice(0, 2))
   expect(trace.queries).toMatchObject([{ sequence: "\x1b[6n" }])
@@ -265,6 +491,8 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
       config: "fixture",
       permissions: "fixture",
       summary: "{}",
+      geometryAtGrant: noGeometry,
+      readGeometry: async () => noGeometry,
       dispose: async () => {},
       async withClipboardFixture(work, trace) {
         const at = new Date().toISOString()
@@ -308,6 +536,8 @@ it("records failed clipboard restoration as collector error rather than retainin
       config: "fixture",
       permissions: "fixture",
       summary: "{}",
+      geometryAtGrant: noGeometry,
+      readGeometry: async () => noGeometry,
       dispose: async () => {},
       async withClipboardFixture(_work, trace) {
         trace({ kind: "clipboard-restore", at: new Date().toISOString(), sha256: "b".repeat(64), length: 8 })

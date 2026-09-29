@@ -163,6 +163,37 @@ try {
     const foreign = new WriteStream(foreignFd)
     await assert.rejects(factory(foreign), /Owned output device/)
     const adapter = await factory(process.stdout)
+    assert.deepEqual([adapter.geometryAtGrant.status, adapter.geometryAtGrant.rows, adapter.geometryAtGrant.cols],
+      ["measured", 24, 61])
+    assert.deepEqual(JSON.parse(adapter.summary).geometryAtGrant, adapter.geometryAtGrant)
+    const changedSize = realChildProcess.spawnSync("stty", ["rows", "31", "cols", "73"],
+      { stdio: [0, "ignore", "pipe"] })
+    assert.equal(changedSize.status, 0, changedSize.stderr?.toString())
+    const resized = await adapter.readGeometry()
+    assert.deepEqual([resized.status, resized.rows, resized.cols], ["measured", 31, 73])
+    const originalPath = process.env.PATH
+    const sttyFixture = join(dir, "stty")
+    try {
+      process.env.PATH = dir
+      const missing = await adapter.readGeometry()
+      assert.equal(missing.status, "unavailable")
+      assert.match(missing.diagnostic, /stty size failed/)
+      process.env.PATH = dir + ":" + originalPath
+      for (const [script, expected] of [
+        ["#!/bin/sh\nprintf 'bad size\\n'\n", /invalid rows and cols/],
+        ["#!/bin/sh\nprintf '0 61\\n'\n", /invalid rows and cols/],
+        ["#!/bin/sh\nprintf '31 73\\n'\nexit 7\n", /exited 7/],
+        ["#!/bin/sh\nexec sleep 2\n", /timed out/],
+      ]) {
+        realFs.writeFileSync(sttyFixture, script, { mode: 0o700 })
+        const unavailable = await adapter.readGeometry()
+        assert.equal(unavailable.status, "unavailable")
+        assert.match(unavailable.diagnostic, expected)
+      }
+    } finally {
+      process.env.PATH = originalPath
+      realFs.rmSync(sttyFixture, { force: true })
+    }
     const stdoutBinding = JSON.parse(adapter.summary).outputBinding
     assert.equal(stdoutBinding.matched, "pty")
     assert.equal(stdoutBinding.controllingTtyNr, stdoutBinding.inputRdev)
@@ -189,12 +220,17 @@ try {
     assert.equal(aliasBinding.outputRdev, 1280)
     assert.equal(aliasBinding.controllingTtyNr, aliasBinding.inputRdev)
     assert.equal(verifier.ownedTerminalVerifiedFor(aliasAdapter, "d".repeat(32), alias), true)
+    assert.deepEqual([aliasAdapter.geometryAtGrant.status, aliasAdapter.geometryAtGrant.rows, aliasAdapter.geometryAtGrant.cols],
+      ["measured", 31, 73])
+    const aliasSize = await aliasAdapter.readGeometry()
+    assert.deepEqual([aliasSize.status, aliasSize.rows, aliasSize.cols], ["measured", 31, 73])
     const aliasBatch = await runProbeBatch({ ids: ["reset.ris"], captureRunId: "d".repeat(32),
       clipboard: aliasAdapter, out: alias })
     assert.match(aliasBatch.rawReplies["reset.ris"], /\\u001bc/)
     await aliasAdapter.dispose()
     await new Promise((resolve) => alias.end(resolve))
     await adapter.dispose()
+    await assert.rejects(adapter.readGeometry(), /no live bound capture/)
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, process.stdout), false)
     const disposed = await runProbeBatch({ ids: ["reset.ris"], captureRunId: capture,
       clipboard: adapter, out: process.stdout })
@@ -209,10 +245,11 @@ try {
 }
 `
   const python = String.raw`
-import fcntl, os, pty, subprocess, sys, termios, threading
+import fcntl, os, pty, struct, subprocess, sys, termios, threading
 mode = sys.argv[1]
 primary_master, primary_slave = pty.openpty()
 foreign_master, foreign_slave = pty.openpty()
+fcntl.ioctl(primary_slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 61, 0, 0))
 def session():
     os.setsid()
     if mode == 'owned': fcntl.ioctl(primary_slave, termios.TIOCSCTTY, 0)

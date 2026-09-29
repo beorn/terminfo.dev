@@ -25,8 +25,8 @@ import { fileURLToPath } from "node:url"
 import type { ProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
 import { resolveMeasuredAppVersion } from "./identity-guard.ts"
-import { withRawMode, drainStdin } from "./tty.ts"
-import { ALL_PROBES, runProbeBatch, type ProbeCapture } from "./probes/unified.ts"
+import { withRawMode, drainStdin, queryWithSentinelOutcome } from "./tty.ts"
+import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { parseRunProvenance } from "@terminfo/run-parser"
@@ -151,12 +151,43 @@ export async function collectProbeRun(options: { ids?: string[]; out?: NodeJS.Wr
   let batch: Awaited<ReturnType<typeof runProbeBatch>>
   try {
     batch = await withRawMode(async () => {
+      let geometryCorroboration: GeometryCorroboration | undefined
+      if (clipboard) {
+        const response = await queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/, 700)
+        const query = {
+          sequence: "\x1b[18t" as const,
+          outbound: "\x1b[18t\x1b[c" as const,
+          reason: response.reason,
+          raw: response.raw,
+          rawBase64: response.rawBase64,
+        }
+        if (response.match) {
+          const rows = Number(response.match[1])
+          const cols = Number(response.match[2])
+          const grant = clipboard.geometryAtGrant
+          const status =
+            !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols)
+              ? "malformed"
+              : grant?.status !== "measured"
+                ? "uncorroborated"
+                : rows === grant.rows && cols === grant.cols
+                  ? "agree"
+                  : "conflict"
+          geometryCorroboration = { status, query, ...(status !== "malformed" ? { rows, cols } : {}) }
+        } else {
+          geometryCorroboration = {
+            status: response.raw.includes("\x1b[8;") ? "malformed" : "silent",
+            query,
+          }
+        }
+      }
       const result = await runProbeBatch({
         ...options,
         out,
         captureRunId,
         ...(capture && { capture }),
         ...(clipboard && { clipboard }),
+        ...(geometryCorroboration && { geometryCorroboration }),
       })
       await drainStdin(1000)
       return result
