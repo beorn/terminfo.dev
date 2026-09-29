@@ -5,7 +5,8 @@
  * @testonly none
  */
 import { describe, expect, it, vi } from "vitest"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import probesLoader from "../docs/data/probes.data.ts"
@@ -23,6 +24,51 @@ function writeCatalog(content: string): void {
 }
 
 describe("consumer selection", () => {
+  it("checks freshness without changing inventory or treating unreviewed files as current", () => {
+    const root = mkdtempSync(join(tmpdir(), "terminfo-freshness-"))
+    const source = join(import.meta.dirname, "..")
+    try {
+      mkdirSync(join(root, "scripts"))
+      mkdirSync(join(root, "content"))
+      copyFileSync(join(source, "scripts", "sitefile.ts"), join(root, "scripts", "sitefile.ts"))
+      symlinkSync(join(source, "docs"), join(root, "docs"), "dir")
+      for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(root, "content", dir))
+      writeCatalog(join(root, "content"))
+      writeFileSync(join(root, "content", "features.json"), '{"sgr.bold":{"name":"Bold"}}')
+      writeFileSync(
+        join(root, "content", "probes-apps", "kitty-0.46.2-linux.json"),
+        JSON.stringify({
+          backend: "kitty",
+          version: "0.46.2",
+          generated: new Date().toISOString(),
+          results: { "sgr.bold": true },
+        }),
+      )
+      const lock = join(root, "scripts", "sitefile.lock.json")
+      const before = '{"unchanged":"a check does not regenerate inventory"}\n'
+      writeFileSync(lock, before)
+      const check = spawnSync(process.execPath, [join(root, "scripts", "sitefile.ts"), "--check"], { encoding: "utf8" })
+      expect(check.stderr).toBe("")
+      expect(check.status).toBe(1)
+      expect(check.stdout).toContain("kitty — no reviewed current measurement")
+      expect(readFileSync(lock, "utf8")).toBe(before)
+      const generate = spawnSync(process.execPath, [join(root, "scripts", "sitefile.ts")], { encoding: "utf8" })
+      expect(generate.stderr).toBe("")
+      expect(generate.status).toBe(0)
+      const inventory = JSON.parse(readFileSync(lock, "utf8")) as {
+        sources: Array<{ lastChecked: string | null }>
+        terminals: Array<{ terminalId: string; lastProbedVersion: string | null; lastProbedDate: string }>
+      }
+      expect(inventory.sources.every((entry) => entry.lastChecked === null)).toBe(true)
+      expect(inventory.terminals.find((entry) => entry.terminalId === "kitty")).toMatchObject({
+        lastProbedVersion: null,
+        lastProbedDate: "never",
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it("does not score unreviewed legacy booleans as current results", () => {
     const warnings: string[] = []
     const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))

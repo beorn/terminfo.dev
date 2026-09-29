@@ -37,7 +37,7 @@ The shared selection logic lives in [`docs/data/selected-results.ts`](docs/data/
 
 ## Checks that exist today
 
-[`scripts/validate.ts`](scripts/validate.ts) exits nonzero for structural errors such as unknown tags, duplicate slugs and names, missing terminal bodies, invalid platform references and malformed identity. It **warns** about missing or brief feature bodies (the current target is 260 characters), missing probe descriptions, orphaned annotations and terminals without data; warning-free content still needs factual review. [`scripts/sitefile.ts`](scripts/sitefile.ts) lists specs, vendor docs, proposals, release feeds and freshness intervals. Its `--check` currently reports stale probe files but does not fail on staleness, and running it rewrites the lockfile; it does not verify upstream source freshness.
+[`scripts/validate.ts`](scripts/validate.ts) exits nonzero for structural errors such as unknown tags, duplicate slugs and names, missing terminal bodies, invalid platform references and malformed identity. It **warns** about missing or brief feature bodies (the current target is 260 characters), missing probe descriptions, orphaned annotations and terminals without data; warning-free content still needs factual review. [`scripts/sitefile.ts`](scripts/sitefile.ts) lists specs, vendor docs, proposals, release feeds and freshness intervals. Its `--check` reads the same reviewed current measurements as the site/API, fails on missing or stale measurements, and leaves the inventory unchanged. Generating the inventory does not verify upstream sources or stamp them as checked.
 
 The package scripts run the relevant local checks:
 

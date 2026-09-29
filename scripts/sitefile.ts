@@ -13,6 +13,9 @@
  *   bun -e "import { sources } from './scripts/sitefile.ts'; console.log(sources.length, 'sources')"
  */
 
+import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { parseJsonStrict } from "../docs/data/selected-results.ts"
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -428,7 +431,7 @@ export const terminals: TrackedTerminal[] = [
     probeMethod: "server",
   },
   {
-    id: "vscode",
+    id: "com.microsoft.VSCode",
     label: "VS Code",
     releaseUrl: "https://github.com/microsoft/vscode/releases",
     currentVersion: "1.113.0",
@@ -567,17 +570,16 @@ async function generateLockfile() {
   const lockfilePath = path.join(import.meta.dir, "..", "scripts", "sitefile.lock.json")
 
   // Count features from features.json
-  const featuresJson = JSON.parse(fs.readFileSync(path.join(contentDir, "features.json"), "utf-8")) as Record<
-    string,
-    unknown
-  >
+  const featuresPath = path.join(contentDir, "features.json")
+  const featuresJson = parseJsonStrict(featuresPath, fs.readFileSync(featuresPath, "utf8")) as Record<string, unknown>
   const featureKeys = Object.keys(featuresJson).filter((k) => k !== "$comment")
   const totalFeatures = featureKeys.length
 
   // Count features per family
   const featureFamilies: Record<string, number> = {}
   for (const key of featureKeys) {
-    const family = key.split(".")[0]!
+    const family = key.split(".")[0]
+    if (!family) throw new Error(`${featuresPath}: feature ${JSON.stringify(key)} has no family`)
     featureFamilies[family] = (featureFamilies[family] || 0) + 1
   }
 
@@ -586,97 +588,47 @@ async function generateLockfile() {
     const familyCount = s.featureFamilies.reduce((sum, fam) => sum + (featureFamilies[fam] || 0), 0)
     return {
       sourceId: s.id,
-      lastChecked: new Date().toISOString().split("T")[0],
-      extractedFeatureCount: s.definesFeatures ? familyCount : 0,
-      notes: "",
+      lastChecked: null,
+      catalogFeatureCount: s.definesFeatures ? familyCount : 0,
+      notes: "Manifest generation does not fetch or verify this source; catalog count is declared family membership",
     }
   })
 
-  // Build terminal lock entries from probe files
-  const terminalLock: Array<{
-    terminalId: string
-    lastProbedVersion: string
-    lastProbedDate: string
-    featureCount: number
-    probeFile: string
-  }> = []
-
-  for (const terminal of terminals) {
-    // Search across all probe directories
-    const probeDirs = ["probes-apps", "probes-libs", "probes-mux"]
-    let bestMatch: {
-      file: string
-      date: string
-      count: number
-      version: string
-    } | null = null
-
-    for (const dir of probeDirs) {
-      const probeDir = path.join(contentDir, dir)
-      if (!fs.existsSync(probeDir)) continue
-
-      const files = fs.readdirSync(probeDir).filter((f: string) => f.endsWith(".json"))
-
-      for (const file of files) {
-        // Match by terminal id in filename
-        const lowerFile = file.toLowerCase()
-        const termId = terminal.id.toLowerCase()
-
-        // Match patterns like "ghostty-1.3.1-macos.json", "alacritty-0.26.0.json",
-        // "com-microsoft-vscode-1.113.0-macos.json", etc.
-        const idVariants = [
-          termId,
-          termId.replace(/-/g, ""),
-          // VS Code special case
-          ...(termId === "vscode" ? ["com-microsoft-vscode", "com.microsoft.vscode"] : []),
-          // screen special case: prefer latest version
-          ...(termId === "screen" ? ["screen-5", "screen-4"] : []),
-        ]
-
-        const matches = idVariants.some(
-          (variant) => lowerFile.startsWith(variant + "-") || lowerFile.startsWith(variant + "."),
-        )
-
-        if (matches) {
-          const filePath = path.join(probeDir, file)
-          const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, any>
-          const date = data.generated ? new Date(data.generated).toISOString().split("T")[0]! : "unknown"
-          const count = data.results ? Object.keys(data.results).length : 0
-
-          // Extract version from filename
-          const versionMatch = file.match(/(?:^[a-z0-9.-]+-)([\d][^-]*?)(?:-(?:macos|linux|windows))?\.json$/i)
-          const version: string = data.version || (versionMatch ? versionMatch[1] : terminal.currentVersion)
-
-          // Prefer file matching currentVersion, then newer probe date, then later filename
-          const matchesCurrentVersion = file.includes(terminal.currentVersion)
-          const bestMatchesCurrent = bestMatch?.file.includes(terminal.currentVersion) ?? false
-
-          const isBetter =
-            !bestMatch ||
-            (matchesCurrentVersion && !bestMatchesCurrent) ||
-            (!bestMatchesCurrent &&
-              !matchesCurrentVersion &&
-              new Date(data.generated || 0) > new Date(bestMatch.date === "unknown" ? 0 : bestMatch.date))
-
-          if (isBetter) {
-            bestMatch = { file, date, count, version }
-          }
-        }
-      }
+  // Reuse the site/API's reviewed context selection; filenames and advertised
+  // versions are not measurements. Partial/unreviewed history stays excluded.
+  const { projection } = loadCurrentResults(contentDir)
+  const selected = [...compatibilityTargets(projection, contentDir).values()]
+  const catalogPath = path.join(contentDir, "terminals.json")
+  const catalog = parseJsonStrict(catalogPath, fs.readFileSync(catalogPath, "utf8")) as Record<
+    string,
+    { kind: string; slug: string }
+  >
+  const terminalLock = terminals.map((terminal) => {
+    const declarations = Object.entries(catalog).filter(([id, row]) => id === terminal.id || row.slug === terminal.id)
+    if (declarations.length !== 1) {
+      throw new Error(`${catalogPath}: tracked terminal ${terminal.id} has ${declarations.length} catalog owners`)
     }
-
-    terminalLock.push({
+    const chosenDeclaration = declarations[0]
+    if (!chosenDeclaration) throw new Error(`${catalogPath}: missing tracked terminal ${terminal.id}`)
+    const [targetId, declaration] = chosenDeclaration
+    const kind = terminal.probeMethod === "termless" ? "headless" : declaration.kind
+    const entry = selected.find(({ selected: run }) => run.target.kind === kind && run.target.id === targetId)
+    const run = entry?.selected
+    return {
       terminalId: terminal.id,
-      lastProbedVersion: bestMatch?.version || terminal.currentVersion,
-      lastProbedDate: bestMatch?.date || "never",
-      featureCount: bestMatch?.count || 0,
-      probeFile: bestMatch?.file || "none",
-    })
-  }
+      kind,
+      contextKey: entry?.contextKey ?? null,
+      runId: run?.runId ?? null,
+      runSha256: run?.sha256 ?? null,
+      lastProbedVersion: run?.target.version ?? null,
+      lastProbedDate: run?.measuredAt ?? "never",
+      featureCount: run?.counts.tested ?? 0,
+    }
+  })
 
   const lockfile = {
     $comment:
-      "Generated by scripts/sitefile.ts — do not edit by hand. Tracks current state of all sources and terminals.",
+      "Generated inventory of declared sources and reviewed current measurements; not an upstream source-check receipt.",
     generated: new Date().toISOString(),
     totalFeatures,
     featureFamilies,
@@ -684,28 +636,31 @@ async function generateLockfile() {
     terminals: terminalLock,
   }
 
-  fs.writeFileSync(lockfilePath, JSON.stringify(lockfile, null, 2) + "\n")
-  console.log(`Written ${lockfilePath}`)
-  console.log(`  ${totalFeatures} features across ${Object.keys(featureFamilies).length} families`)
-  console.log(`  ${sources.length} sources`)
-  console.log(`  ${terminals.length} terminals`)
+  const check = process.argv.includes("--check")
+  if (!check) {
+    fs.writeFileSync(lockfilePath, JSON.stringify(lockfile, null, 2) + "\n")
+    console.log(`Written ${lockfilePath}`)
+    console.log(`  ${totalFeatures} features across ${Object.keys(featureFamilies).length} families`)
+    console.log(`  ${sources.length} declared sources (freshness not checked)`)
+    console.log(`  ${terminals.length} tracked terminals`)
+  }
 
   // Check freshness if --check flag
-  if (process.argv.includes("--check")) {
+  if (check) {
     console.log("\nFreshness check:")
     const now = Date.now()
     let staleCount = 0
 
     for (const entry of terminalLock) {
       if (entry.lastProbedDate === "never" || entry.lastProbedDate === "unknown") {
-        console.log(`  STALE: ${entry.terminalId} — never probed`)
+        console.log(`  STALE: ${entry.terminalId} — no reviewed current measurement`)
         staleCount++
         continue
       }
       const age = Math.floor((now - new Date(entry.lastProbedDate).getTime()) / (1000 * 60 * 60 * 24))
       const sla = freshnessSLAs.find((s) => s.contentType === "probe-data")
-      if (sla && age > sla.maxAgeDays) {
-        console.log(`  STALE: ${entry.terminalId} — ${age} days old (SLA: ${sla.maxAgeDays} days)`)
+      if (!Number.isFinite(age) || age < 0 || (sla && age > sla.maxAgeDays)) {
+        console.log(`  STALE: ${entry.terminalId} — ${age} days old (SLA: ${sla?.maxAgeDays} days)`)
         staleCount++
       }
     }
@@ -713,7 +668,8 @@ async function generateLockfile() {
     if (staleCount === 0) {
       console.log("  All terminals within freshness SLAs.")
     } else {
-      console.log(`\n  ${staleCount} terminal(s) need re-probing.`)
+      console.log(`\n  ${staleCount} terminal(s) need reviewed measurements.`)
+      process.exitCode = 1
     }
   }
 }
