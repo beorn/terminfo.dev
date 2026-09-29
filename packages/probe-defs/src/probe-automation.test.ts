@@ -232,12 +232,55 @@ describe("OSC 8 link metadata observation", () => {
 })
 
 /**
- * @failure Invalid Kitty queries miss support; ignored OSC sequences become false positives.
+ * @failure Reflow wrapping masquerades as resize support; ignored OSC sequences and misplaced OSC 66 baselines become false positives.
  * @level l0
  * @consumer Unified app and headless probe definitions.
  * @testonly none
  */
 describe("Kitty protocol detection", () => {
+  test("reflow declaration does not claim resize-time behavior without a controlled resize", async () => {
+    const p = probe("extensions.reflow")
+    if (!p.term || !p.termless) throw new Error("Reflow needs both callbacks")
+    for (const declared of [true, false]) {
+      const writes: string[] = []
+      const headless = p.termless(
+        context({
+          capabilities: { ...context({}).capabilities, reflow: declared },
+          feed(sequence) {
+            writes.push(sequence)
+          },
+        }),
+      )
+      const terminal = await p.term(
+        terminalContext({
+          write(sequence) {
+            writes.push(sequence)
+          },
+          queryWithSentinel: async () => {
+            throw new Error("Reflow must not query size without a resize oracle")
+          },
+          queryCursorPosition: async () => {
+            throw new Error("Reflow must not grade wrapping as resize reflow")
+          },
+        }),
+      )
+      expect(writes).toEqual([])
+      for (const [result, evidence] of [
+        [headless, "legacy"],
+        [terminal, "none"],
+      ] as const) {
+        expect(result.pass).toBe(false)
+        expect(result.observation).toMatchObject({
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence,
+        })
+        expect(result.note).toMatch(/controlled resize|readback/i)
+      }
+      expect(headless.response).toContain(String(declared))
+    }
+  })
+
   test("OSC 66 measures width and scale rather than treating consumption as support", async () => {
     const p = probe("extensions.osc66-text-sizing")
     if (!p.term || !p.termless) throw new Error("OSC 66 needs both probe methods")
@@ -275,10 +318,68 @@ describe("Kitty protocol detection", () => {
         evidence: "parser-state",
       })
     }
-    expect((await p.term(terminalContext({ queryCursorPosition: async () => null }))).observation).toMatchObject({
+    const missingWrites: string[] = []
+    let missingQueries = 0
+    const missing = await p.term(
+      terminalContext({
+        write(sequence) {
+          missingWrites.push(sequence)
+        },
+        queryCursorPosition: async () => {
+          missingQueries++
+          return null
+        },
+      }),
+    )
+    expect(missingWrites).toEqual(["\x1b[1;1H\x1b[2K\r"])
+    expect(missingQueries).toBe(1)
+    expect(missing.observation).toMatchObject({
       outcome: "inconclusive",
       reason: "no-response",
     })
+  })
+
+  test("OSC 66 requires a measured home cursor before either protocol write", async () => {
+    const p = probe("extensions.osc66-text-sizing")
+    if (!p.term || !p.termless) throw new Error("OSC 66 needs both callbacks")
+    for (const baseline of [
+      { row: 1, col: 2 },
+      { row: 2, col: 1 },
+    ]) {
+      const writes: string[] = []
+      let queries = 0
+      const terminal = await p.term(
+        terminalContext({
+          write(sequence) {
+            writes.push(sequence)
+          },
+          queryCursorPosition: async () => {
+            queries++
+            return baseline
+          },
+        }),
+      )
+      expect(queries).toBe(1)
+      expect(writes).toEqual(["\x1b[1;1H\x1b[2K\r"])
+      expect(terminal.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      expect(terminal.response).toContain(JSON.stringify(baseline))
+      expect(terminal.assertions ?? []).toEqual([])
+      const fed: string[] = []
+      const headless = p.termless(
+        context({
+          feed(sequence) {
+            fed.push(sequence)
+          },
+          getCursor() {
+            return { x: baseline.col - 1, y: baseline.row - 1, visible: true, style: "block" }
+          },
+        }),
+      )
+      expect(fed).toEqual(["\x1b[1;1H\x1b[2K\r"])
+      expect(headless.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      expect(headless.response).toContain(JSON.stringify({ row: baseline.row - 1, col: baseline.col - 1 }))
+      expect(headless.assertions ?? []).toEqual([])
+    }
   })
 
   test("OSC 5522 detects protocol support with DECRQM, without reading the clipboard", async () => {

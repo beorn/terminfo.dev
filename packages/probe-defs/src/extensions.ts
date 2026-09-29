@@ -915,23 +915,25 @@ export const extensionsProbes: ProbeDefinition[] = [
     termNeedsGeometry: true,
   },
 
-  // Reflow
+  // Current wrapping and a declared backend capability do not measure reflow after resize.
   probe(
     "extensions.reflow",
-    (ctx) => ({ pass: ctx.capabilities.reflow === true }),
-    async (ctx) => {
-      const sizeMatch = await ctx.queryWithSentinel("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/)
-      if (!sizeMatch?.[2]) return { pass: false, note: "No XTWINOPS 18 response (can't report size)" }
-      const cols = parseInt(sizeMatch[2], 10)
-      ctx.write("\x1b[1;1H\x1b[2J")
-      const longLine = "W".repeat(cols + 5)
-      ctx.write(longLine)
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
+    (ctx) => {
+      const note = "No controlled resize and cell-content readback to measure reflow"
       return {
-        pass: pos.row === 2 && pos.col === 6,
-        note: pos.row === 2 && pos.col === 6 ? undefined : `cursor at ${pos.row};${pos.col}, expected 2;6`,
+        pass: false,
+        response: JSON.stringify({ declaredReflow: ctx.capabilities.reflow === true }),
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
       }
+    },
+    () => {
+      const note = "No controlled resize and cell-content readback to measure reflow"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      })
     },
   ),
 
@@ -1304,6 +1306,15 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => {
         ctx.feed("\x1b[1;1H\x1b[2K\r")
         const before = { ...ctx.getCursor() }
+        if (before.x !== 0 || before.y !== 0) {
+          const note = `OSC 66 baseline cursor did not reach home: ${before.y};${before.x}`
+          return {
+            pass: false,
+            response: JSON.stringify({ row: before.y, col: before.x }),
+            note,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state", note },
+          }
+        }
         ctx.feed("\x1b]66;w=2; \x07")
         const width = { ...ctx.getCursor() }
         ctx.feed("\x1b]66;s=2; \x07")
@@ -1339,6 +1350,15 @@ export const extensionsProbes: ProbeDefinition[] = [
               reason: "no-response",
               note: "No baseline cursor response",
             },
+          }
+        }
+        if (before.row !== 1 || before.col !== 1) {
+          const note = `OSC 66 baseline cursor did not reach home: ${before.row};${before.col}`
+          return {
+            pass: false,
+            response: JSON.stringify(before),
+            note,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "behavior", note },
           }
         }
         ctx.write("\x1b]66;w=2; \x07")
