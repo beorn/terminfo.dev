@@ -138,14 +138,6 @@ const breadcrumbParent = (() => {
   &mdash; this terminal uses the same underlying engine and is not probed separately.
 </p>
 
-<div v-if="runs.length > 1" class="run-picker">
-  <label for="reviewed-run">Reviewed version and configuration</label>
-  <select id="reviewed-run" v-model="runSha">
-    <option v-for="run in runs" :key="run.sha256" :value="run.sha256">{{ runLabel(run) }}</option>
-  </select>
-  <p>Each choice keeps its own observations and evidence. The matrix uses the default context.</p>
-</div>
-
 <div v-if="!isHistorical && selectedRun" class="score-card">
   <div v-if="score !== null" class="score-number">{{ score }}<span class="score-pct">%</span></div>
   <div v-else class="score-number">No score</div>
@@ -154,13 +146,22 @@ const breadcrumbParent = (() => {
   </div>
   <div v-else class="score-detail">No conclusive results in this reviewed run.</div>
   <p class="score-detail">{{ counts.supported }} supported · {{ counts.unsupported }} unsupported · {{ inconclusive }} inconclusive · {{ errors }} errors · {{ counts.notTested }} untested</p>
-  <div v-if="testDate" class="score-date">Tested (UTC): {{ testDate }} · {{ selectedRun.suiteFreshness }}</div>
-  <div class="score-date">Run: <a href="/api/v2/data.json">{{ selectedRun.sha256.slice(0, 12) }}</a></div>
+  <p class="score-detail">{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. Inconclusive does not mean unsupported.</p>
 </div>
 
 <details v-if="selectedRun" class="run-context">
-  <summary>Run environment and configuration</summary>
+  <summary>Test run: {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · {{ testDate }} (UTC)</summary>
+<div v-if="runs.length > 1" class="run-picker">
+  <label for="reviewed-run">Version and configuration</label>
+  <select id="reviewed-run" v-model="runSha">
+    <option v-for="run in runs" :key="run.sha256" :value="run.sha256">{{ runLabel(run) }}</option>
+  </select>
+  <p>Each choice keeps its own observations and evidence. The matrix uses the default context.</p>
+</div>
+
   <dl>
+    <dt>Run</dt><dd><a href="/api/v2/data.json">{{ selectedRun.sha256 }}</a></dd>
+    <dt>Suite</dt><dd>{{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }} · {{ selectedRun.suite.observed }}/{{ selectedRun.suite.expected ?? '?' }} outcomes recorded</dd>
     <dt>Target</dt><dd>{{ selectedRun.target.kind }} · {{ selectedRun.target.id }} {{ selectedRun.target.version }}</dd>
     <dt>OS</dt><dd>{{ selectedRun.target.os || 'Not recorded' }} {{ selectedRun.target.osVersion || '' }}</dd>
     <dt>Permissions</dt><dd>{{ selectedRun.target.permissions || 'No explicit override recorded' }}</dd>
@@ -203,6 +204,8 @@ const breadcrumbParent = (() => {
     </tbody>
   </table>
 </div>
+
+<p v-if="selectedRun">Select a result to see its evidence. Results marked “Images” include screenshots.</p>
 
 <div v-for="cat in categories" :key="cat.name" class="category-section">
 

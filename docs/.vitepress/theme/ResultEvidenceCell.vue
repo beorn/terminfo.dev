@@ -49,6 +49,7 @@ const shortLabel = computed(() => {
 const methodLabel = computed(() => (props.cell?.evidence === "none" ? "Not measured" : (props.cell?.evidence ?? "")))
 
 const presentation = computed(() => props.cell?.presentation)
+const correction = computed(() => props.version?.reviews.find((review) => review.id === props.cell?.chain.correctionId))
 const previewRecord = computed(() => (presentation.value?.state === "presented" ? props.cell?.record : undefined))
 const previewScreenshot = computed(() => previewRecord.value?.screenshot)
 const screenshotUrl = computed(() => (previewScreenshot.value ? withBase(previewScreenshot.value.url) : undefined))
@@ -249,7 +250,9 @@ onBeforeUnmount(() => {
       @click="openDialog"
     >
       <span aria-hidden="true">{{ status.icon }}</span>
-      <span v-if="display === 'text'" class="result-evidence__label">{{ shortLabel }}</span>
+      <span v-if="display === 'text'" class="result-evidence__label"
+        >{{ shortLabel }}<template v-if="previewImageUrl"> · Images</template></span
+      >
     </button>
 
     <Teleport to="body">
@@ -267,20 +270,14 @@ onBeforeUnmount(() => {
         <span v-if="cell"
           >Method: {{ methodLabel }}<template v-if="cell.reason"> · Reason: {{ cell.reason }}</template></span
         >
-        <span v-if="cell" style="overflow-wrap: anywhere"
-          >Run {{ cell.chain.runId }} · SHA-256 {{ cell.chain.runSha256 }}</span
-        >
         <span v-if="cell?.note">{{ cell.note }}</span>
         <img
           v-if="previewImageUrl"
           :src="previewImageUrl"
           :alt="previewFrame ? `${previewFrame.label} target frame` : `Recorded ${featureName} result`"
         />
-        <span v-if="previewFrames.length"
-          >{{ previewFrames.length }} approved recorded frames · control and target</span
-        >
+        <span v-if="previewFrames.length">{{ previewFrames.length }} screenshots · before and after</span>
         <span v-if="presentation?.state === 'withdrawn'">Presentation withdrawn: {{ presentation.review.reason }}</span>
-        <span v-if="presentation?.state === 'presented'">Presentation reviewed; open for review details</span>
         <span>{{ actionLabel }}<template v-if="previewImageUrl"> · open for original image</template></span>
       </div>
 
@@ -310,7 +307,7 @@ onBeforeUnmount(() => {
         <p v-if="cell?.note">{{ cell.note }}</p>
         <p v-if="cell?.reason">Reason: {{ cell.reason }}</p>
 
-        <h3>Observation</h3>
+        <h3>Evidence</h3>
         <p v-if="!version">No reviewed current run is selected for this terminal context.</p>
         <p v-else-if="!cell">This feature was not tested by the reviewed current run.</p>
         <template v-else-if="presentation?.state === 'not-reviewed'">
@@ -321,26 +318,22 @@ onBeforeUnmount(() => {
           <p>Reviewed by {{ presentation.review.reviewer }}.</p>
         </template>
         <template v-else-if="presentation?.state === 'presented'">
-          <p>
-            Evidence presentation reviewed by {{ presentation.review.reviewer }}.<template
-              v-if="cell?.chain.correctionId"
-            >
-              The selected result includes a reviewed correction; the original observation is below.</template
-            >
-          </p>
           <p v-if="evidenceLoading" role="status">Loading and verifying the original evidence…</p>
           <p v-else-if="evidenceError" role="alert" class="result-evidence__outcome result-evidence__outcome--error">
             Evidence could not be verified: {{ evidenceError }}
           </p>
           <template v-else-if="evidenceDocument">
             <template v-if="evidenceFrames.length">
-              <h4>Captured frames</h4>
+              <h4>Screenshots</h4>
               <div class="result-evidence__frames">
                 <figure v-for="(frame, index) in evidenceFrames" :key="index" class="result-evidence__image">
                   <img :src="withBase(frame.url)" :alt="`${frame.role} frame: ${frame.label}`" />
                   <figcaption>
-                    <strong>{{ frame.role === "control" ? "Control" : "Target" }}</strong> · {{ frame.label }}<br />
-                    Captured {{ frameTime(frame.capturedAt) }} · SHA-256 {{ frame.sha256 }}
+                    <strong>{{ frame.role === "control" ? "Before" : "After" }}</strong> · {{ frame.label }}
+                    <details>
+                      <summary>Image details</summary>
+                      Captured {{ frameTime(frame.capturedAt) }} · SHA-256 {{ frame.sha256 }}
+                    </details>
                   </figcaption>
                   <a :href="withBase(frame.url)" target="_blank" rel="noopener noreferrer"
                     >Open original {{ frame.role }} image</a
@@ -362,8 +355,11 @@ onBeforeUnmount(() => {
             </template>
 
             <details class="result-evidence__details">
-              <summary>Presentation review and original observation</summary>
-              <p>Reviewed by {{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
+              <summary>Review history</summary>
+              <p v-if="correction">Result corrected by {{ correction.reviewer }}: {{ correction.reason }}</p>
+              <p>
+                Evidence checked for publication by {{ presentation.review.reviewer }}: {{ presentation.review.reason }}
+              </p>
               <template v-if="originalDiffers">
                 <h4>Original recorded observation</h4>
                 <p>
@@ -378,13 +374,13 @@ onBeforeUnmount(() => {
 
             <p v-if="!hasRecordedDetail">No raw evidence was captured for this observation.</p>
             <details v-if="rawReply !== undefined || assertions.length" class="result-evidence__details">
-              <summary>Raw reply and bound assertions</summary>
+              <summary>Test details</summary>
               <template v-if="rawReply !== undefined">
                 <h4>{{ evidenceDocument.observation.evidence === "none" ? "Collector trace" : "Raw reply" }}</h4>
                 <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
               </template>
               <template v-if="assertions.length">
-                <h4>Bound assertions</h4>
+                <h4>Expected and observed</h4>
                 <ul class="result-evidence__assertions">
                   <li v-for="(assertion, index) in assertions" :key="index">
                     <strong>{{ assertion.kind }}</strong
@@ -443,17 +439,6 @@ onBeforeUnmount(() => {
             <dd>{{ cell?.chain.correctionId ?? "None" }}</dd>
           </dl>
         </details>
-
-        <details v-if="version?.reviews?.length" class="result-evidence__details">
-          <summary>Run reviews</summary>
-          <ul class="result-evidence__reviews">
-            <li v-for="review in version.reviews" :key="review.id">
-              <strong>{{ review.reviewer }}</strong> · {{ review.reason }}
-              <span v-if="review.sources.length">Sources: {{ review.sources.join(", ") }}</span>
-            </li>
-          </ul>
-        </details>
-        <p v-if="cell" class="result-evidence__repro">Full reproduction steps: not recorded for this observation.</p>
       </dialog>
     </Teleport>
   </span>
