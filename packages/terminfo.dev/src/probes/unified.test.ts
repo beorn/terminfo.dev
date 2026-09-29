@@ -189,8 +189,7 @@ const measured = (rows: number, cols: number) => ({
 it("declines a declared callback with missing or conflicting owned geometry before any feature bytes", async () => {
   verifiedBatchFixture()
   const definition = ALL_PROBES.find((item) => item.id === "reset.ris")!
-  const original = definition.termNeedsGeometry
-  definition.termNeedsGeometry = true
+  expect(definition.termNeedsGeometry).toBe(true)
   const writes: string[] = []
   process.stdout.write = ((text: string) => {
     writes.push(text)
@@ -206,47 +205,43 @@ it("declines a declared callback with missing or conflicting owned geometry befo
     dispose: async () => {},
     withClipboardFixture: async () => ({ pass: true }),
   }
-  try {
-    const missing = await runProbeBatch({ ids: ["reset.ris"], clipboard })
-    expect(missing.observations).toMatchObject([
-      { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-    ])
-    expect(
-      decodeCollectorRun("missing-geometry.json", JSON.stringify(asRun(missing)), manifest, sourceRevision).run
-        .observations,
-    ).toMatchObject([{ featureId: "reset.ris", outcome: "inconclusive", reason: "insufficient-evidence" }])
-    expect(JSON.parse(missing.rawReplies["reset.ris"]!)).toEqual({ writes: [], queries: [], events: [] })
-    expect(writes).toEqual([])
-    const conflict = await runProbeBatch({
-      ids: ["reset.ris"],
-      clipboard: { ...clipboard, geometryAtGrant: measured(24, 61) },
-      geometryCorroboration: {
-        status: "conflict",
-        rows: 25,
-        cols: 61,
-        query: {
-          sequence: "\x1b[18t",
-          outbound: "\x1b[18t\x1b[c",
-          reason: "reply",
-          raw: "\x1b[8;25;61t",
-          rawBase64: Buffer.from("\x1b[8;25;61t").toString("base64"),
-        },
+  const missing = await runProbeBatch({ ids: ["reset.ris"], clipboard })
+  expect(missing.observations).toMatchObject([
+    { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+  ])
+  expect(
+    decodeCollectorRun("missing-geometry.json", JSON.stringify(asRun(missing)), manifest, sourceRevision).run
+      .observations,
+  ).toMatchObject([{ featureId: "reset.ris", outcome: "inconclusive", reason: "insufficient-evidence" }])
+  expect(JSON.parse(missing.rawReplies["reset.ris"]!)).toEqual({ writes: [], queries: [], events: [] })
+  expect(writes).toEqual([])
+  const conflict = await runProbeBatch({
+    ids: ["reset.ris"],
+    clipboard: { ...clipboard, geometryAtGrant: measured(24, 61) },
+    geometryCorroboration: {
+      status: "conflict",
+      rows: 25,
+      cols: 61,
+      query: {
+        sequence: "\x1b[18t",
+        outbound: "\x1b[18t\x1b[c",
+        reason: "reply",
+        raw: "\x1b[8;25;61t",
+        rawBase64: Buffer.from("\x1b[8;25;61t").toString("base64"),
       },
-    })
-    expect(conflict.observations).toMatchObject([
-      { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-    ])
-    expect(writes).toEqual([])
-    expect(JSON.parse(conflict.rawReplies["collector.geometry"]!)).toMatchObject({
-      bindingReceiptRef: "collector.clipboardFixture",
-      corroboration: {
-        query: { sequence: "\x1b[18t", outbound: "\x1b[18t\x1b[c", reason: "reply" },
-      },
-      checks: [{ featureId: "reset.ris", diagnostic: expect.stringContaining("conflicts") }],
-    })
-  } finally {
-    definition.termNeedsGeometry = original
-  }
+    },
+  })
+  expect(conflict.observations).toMatchObject([
+    { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+  ])
+  expect(writes).toEqual([])
+  expect(JSON.parse(conflict.rawReplies["collector.geometry"]!)).toMatchObject({
+    bindingReceiptRef: "collector.clipboardFixture",
+    corroboration: {
+      query: { sequence: "\x1b[18t", outbound: "\x1b[18t\x1b[c", reason: "reply" },
+    },
+    checks: [{ featureId: "reset.ris", diagnostic: expect.stringContaining("conflicts") }],
+  })
 })
 
 it("keeps query-only and nongeometry callbacks runnable when owned size is unavailable", async () => {
@@ -259,7 +254,7 @@ it("keeps query-only and nongeometry callbacks runnable when owned size is unava
     return true
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
-    ids: ["modes.bracketed-paste", "reset.sgr"],
+    ids: ["modes.bracketed-paste", "reset.decaln"],
     clipboard: {
       profile: "default",
       config: "fixture",
@@ -275,8 +270,8 @@ it("keeps query-only and nongeometry callbacks runnable when owned size is unava
     outcome: "supported",
     evidence: "query",
   })
-  expect(batch.ungradedDiagnostics["reset.sgr"]).toMatchObject({ kind: "legacy-callback" })
-  expect(writes).toContain("\x1b[1;1H\x1b[2K")
+  expect(batch.ungradedDiagnostics["reset.decaln"]).toMatchObject({ kind: "legacy-callback" })
+  expect(writes).toContain("\x1b#8")
   expect(writes).toContain("\x1b[?2004$p\x1b[c")
 })
 
