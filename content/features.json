@@ -1195,8 +1195,8 @@
     "slug": "alt-screen-separate-scrollback",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer",
     "tags": ["xterm-extensions"],
-    "body": "Tests whether the alternate screen buffer maintains its own separate scrollback, independent from the main screen's scrollback. Most terminals do not provide scrollback in the alternate screen — full-screen applications are expected to manage their own scrolling. Some terminals (like Kitty) offer configurable behavior for alternate screen scrollback.",
-    "probe": "Write \"NORMAL\", enter alt screen with <code>\\x1b[?1049h</code>, verify <code>altScreen</code> mode is active.",
+    "body": "Tests whether the alternate screen buffer maintains its own separate scrollback, independent from the main screen's scrollback. Full-screen applications often manage their own scrolling. Screen switching and cursor positions alone cannot establish whether either screen retains scrollback.",
+    "probe": "Enter and leave the alternate screen, then inspect cursor position. This cannot establish independent retained scrollback without history readback, so the result remains inconclusive.",
     "baseline": "core"
   },
   "scrollback.decstbm": {
@@ -1242,7 +1242,7 @@
     "slug": "kitty-graphics-protocol",
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/",
     "tags": ["kitty-extensions"],
-    "body": "The Kitty graphics protocol enables inline image display in the terminal using a structured escape sequence format. Unlike Sixel, which encodes pixel data as ASCII characters, Kitty graphics transmits images as base64-encoded PNG, RGB, or RGBA data via APC (Application Program Command) sequences.\n\nImages are sent with <code>ESC_G &lt;control data&gt; ; &lt;payload&gt; ESC \\</code>. Large images are split into chunks using the <code>m=1</code> flag for continuation. The protocol supports placement (positioning images relative to cells), virtual image references (transmit once, display many times), animation frames, and z-layering. Each image gets a numeric ID, and Unicode placeholder characters allow images to participate in text layout and scrollback.\n\nCompared to Sixel, the Kitty protocol offers higher fidelity (full 32-bit RGBA), streaming, and compositing — but requires explicit terminal support. Adopted by Ghostty, WezTerm, and Konsole.",
+    "body": "The Kitty graphics protocol enables inline image display in the terminal using a structured escape sequence format. Unlike Sixel, which encodes pixel data as ASCII characters, Kitty graphics transmits PNG, RGB, or RGBA image data via APC (Application Program Command) sequences.\n\nImages are sent with <code>ESC_G &lt;control data&gt; ; &lt;payload&gt; ESC \\</code>. Large images are split into chunks using the <code>m=1</code> flag for continuation. The protocol supports placement (positioning images relative to cells), virtual image references (transmit once, display many times), animation frames, and z-layering. Each image gets a numeric ID, and Unicode placeholder characters allow images to participate in text layout and scrollback.\n\nAn acknowledgement of a graphics query establishes protocol recognition, not visible image rendering. Other terminals may document implementations, but their app behavior requires its own measurement.",
     "probe": "Send a 1x1 raw-RGB Kitty graphics query via APC (<code>ESC _ G ... ESC \\</code>) and verify the matching image ID is acknowledged. Visible pixels are not tested.",
     "baseline": "rich"
   },
@@ -1974,7 +1974,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "sequence": "CSI # R",
-    "body": "XTREPORTCOLORS queries xterm's color and graphics capabilities. The sequence is <code>CSI # R</code>, and the response is <code>CSI Pm # Q</code> where Pm describes the color change support level and graphics capabilities. The response values include: 0=dynamic color change allowed, 1=not allowed, 2=direct-color control, 3=color register control only, 4-5=sixel support, 6=sixel scrolling support, 8-9=ReGIS graphics support, 10=selected graphics read/write support. After the first Pm, the response may include color register count and sixel geometry. Added in xterm patch 400 and updated in patch 401 (2025) to report sixel scrolling support.\n\nSupport: xterm only as of 2026. Proposed as a unified capability query to replace the patchwork of individual feature queries.",
+    "body": "XTREPORTCOLORS queries xterm's color and graphics capabilities. The sequence is <code>CSI # R</code>, and the response is <code>CSI Pm # Q</code> where Pm describes the color change support level and graphics capabilities. The response values include: 0=dynamic color change allowed, 1=not allowed, 2=direct-color control, 3=color register control only, 4-5=sixel support, 6=sixel scrolling support, 8-9=ReGIS graphics support, 10=selected graphics read/write support. After the first Pm, the response may include color register count and sixel geometry. Added in xterm patch 400 and updated in patch 401 (2025) to report sixel scrolling support.\n\nThe selected Kitty app run also answers this query. Other implementations need their own versioned measurements.",
     "probe": "Send <code>CSI # R</code>, verify response matches <code>CSI Pm # Q</code> pattern."
   },
   "device.xtgetxres": {
@@ -2130,8 +2130,8 @@
     "slug": "osc66-text-sizing",
     "url": "https://sw.kovidgoyal.net/kitty/text-sizing-protocol/",
     "tags": ["osc", "kitty-extensions"],
-    "body": "OSC 66 is the Kitty text sizing protocol, allowing applications to render text at different sizes (scale 1-7x) and explicitly specify character cell widths. The sequence <code>ESC ] 66 ; params BEL</code> controls text sizing with <code>s=N</code> for scale factor and <code>w=N</code> for explicit cell width.\n\nThis protocol addresses the fundamental character width ambiguity problem — applications can tell the terminal exactly how wide a character should be, rather than relying on potentially inconsistent wcwidth() calculations. Supported by kitty and foot, with Ghostty parsing (but not yet rendering) the sequences.",
-    "probe": "Query text sizing state with <code>OSC 66;? BEL</code> and check for response. Fallback: send <code>OSC 66;s=2 BEL</code> and verify the sequence is consumed.",
+    "body": "OSC 66 is the Kitty text sizing protocol, allowing applications to request text at different sizes and explicitly specify character cell widths. The sequence <code>OSC 66 ; metadata ; text ST</code> carries the text to render, with <code>s=N</code> for scale factor and <code>w=N</code> for explicit cell width.\n\nThis protocol addresses character-width ambiguity by letting applications specify how many cells text occupies. Cursor advancement can measure that cell-width effect; it cannot establish the visible shape or size of the glyphs.",
+    "probe": "At a known cursor origin, record CPR, print a space using OSC 66 first with <code>w=2</code>, then with <code>s=2</code>, then compare CPR column advances. This measures cursor-cell effects, not glyph appearance.",
     "baseline": "rich"
   },
   "extensions.osc5522-clipboard": {
@@ -2139,8 +2139,8 @@
     "slug": "osc5522-clipboard",
     "url": "https://sw.kovidgoyal.net/kitty/clipboard/",
     "tags": ["osc", "kitty-extensions"],
-    "body": "OSC 5522 is the Kitty advanced clipboard protocol, extending OSC 52 with MIME type support, rich content handling, and authorization tokens. When mode 5522 is enabled, bracketed paste is replaced with MIME-aware paste events that include content type metadata.\n\nUnlike OSC 52 which only handles plain text base64 data, OSC 5522 supports multiple MIME types (text/plain, text/html, image/png, etc.) in a single clipboard operation, with pre-authorization tokens for secure paste handling. Currently supported by kitty, with Ghostty parsing but not yet fully implementing the protocol.",
-    "probe": "Query clipboard capabilities with <code>OSC 5522;? BEL</code> and check for response.",
+    "body": "OSC 5522 is the Kitty advanced clipboard protocol, extending OSC 52 with MIME type support, rich content handling, and authorization tokens. It can carry multiple MIME types, such as text/plain, text/html and image/png, in a clipboard operation.\n\nA DECRPM response for mode 5522 establishes protocol recognition. It does not establish clipboard read or write permission, MIME transfer, or paste-event behavior.",
+    "probe": "Query mode 5522 with <code>CSI ? 5522 $ p</code> and parse its DECRPM reply. A positive report establishes protocol recognition only; it does not read or write the clipboard.",
     "baseline": "rich"
   },
   "modes.color-scheme-reporting": {
@@ -2676,12 +2676,12 @@
   "input.kitty-click-events": {
     "name": "Kitty click events",
     "slug": "kitty-click-events",
-    "url": "https://sw.kovidgoyal.net/kitty/protocol-extensions/#mouse-handling",
+    "url": "https://sw.kovidgoyal.net/kitty/shell-integration/",
     "tags": ["kitty-extensions"],
-    "body": "Kitty's click_events extension enhances the keyboard protocol to report mouse click events through the same CSI u encoding used for keyboard events. When enabled (via the kitty keyboard protocol flags), the terminal sends mouse click coordinates and button state as enhanced key events rather than traditional X10/SGR mouse escape sequences.\n\nThis unifies keyboard and mouse input into a single protocol, simplifying input parsing for applications that already use the kitty keyboard protocol. Adopted by Ghostty in version 1.3.0 (the first terminal besides Kitty to support it).",
-    "probe": "Enable kitty keyboard protocol with click_events flag, perform a click, verify the response uses CSI u encoding with mouse event data.",
+    "body": "Kitty shell integration can request clickable prompts with <code>OSC 133;A;click_events=1</code> for absolute Y coordinates or <code>click_events=2</code> for coordinates relative to the prompt. The resulting click events use xterm SGR mouse encoding. This is separate from Kitty keyboard-protocol flags and CSI u key events.",
+    "probe": "Not measured: enable shell-integration click events, perform a click, and record the resulting SGR mouse event.",
     "baseline": "rich",
-    "probeStatus": "partial"
+    "probeStatus": "unprobed"
   },
   "modes.decsscls": {
     "name": "DECSSCLS — set scroll speed",

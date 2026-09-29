@@ -517,29 +517,29 @@ The OSC namespace is **open-ended** — any terminal can define new number codes
 
 ### Kitty Extensions (2017) — The Modern Revolution {#kitty}
 
-Kovid Goyal, already known as the creator of <a href="https://calibre-ebook.com/" target="_blank" rel="noopener">Calibre</a> (the e-book manager), built Kitty out of frustration with existing terminal limitations. The keyboard protocol was born from a specific pain: writing a Vim-like editor where `Ctrl+I` and `Tab` needed to be different keys. Kitty introduced protocols that solve fundamental limitations of the 1978-era terminal model. The **Kitty keyboard protocol** provides unambiguous, modifier-aware key reporting — solving exactly that problem: `Ctrl+I` and `Tab` are the same byte (0x09) in traditional terminals. With the Kitty protocol, they're distinct events, and key-up events are reportable for the first time.
+Kovid Goyal, also the creator of <a href="https://calibre-ebook.com/" target="_blank" rel="noopener">Calibre</a> (the e-book manager), created Kitty and documented extensions to terminal input and display. The **Kitty keyboard protocol** provides unambiguous, modifier-aware key reporting: `Ctrl+I` and `Tab` are the same byte (0x09) in traditional terminals, but the protocol can distinguish them and report key-release events.
 
-The keyboard protocol has seen broad adoption — Ghostty, WezTerm, foot, and others now implement it, making it the closest thing to an emerging standard for terminal input. The **Kitty graphics protocol** enables inline image display via chunked base64 transfer, and its adoption keeps widening: our probes show Kitty, Ghostty, iTerm2, and Warp passing it, while xterm.js-based terminals (VS Code, Cursor) do not. Kitty also defined **extended underline styles** (curly, dotted, dashed) with independent underline colors, which have seen wide adoption across modern terminals.
+The [keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) documents implementations in Ghostty, WezTerm, foot, and other terminals. Those documentation claims are separate from app measurements here. The **Kitty graphics protocol** carries PNG, RGB, or RGBA images in APC sequences; our current Kitty app run acknowledges a graphics query, which does not establish visible image rendering. Kitty also documented **extended underline styles** (curly, dotted, dashed) with independent underline colors.
 
 ::: info At a glance
 **Introduced:**
 
 - Unambiguous keyboard protocol — `Ctrl+I` and `Tab` are finally distinct events
 - Key-release reporting — apps can detect when a key is released, not just pressed
-- Kitty graphics protocol — chunked base64 inline image display
+- Kitty graphics protocol — APC image transmission and placement
 - Extended underline styles (curly, dotted, dashed) with independent colors
 
 **Still matters:**
 
-- The keyboard protocol is adopted by Ghostty, WezTerm, foot, and others
+- Kitty documents keyboard-protocol implementations in Ghostty, WezTerm, foot, and others
 - Extended underlines power squiggly-line error indicators in terminal editors
-- Kitty graphics is the highest-fidelity inline image protocol available
+- Graphics queries can establish protocol recognition; visible rendering needs a capture
   :::
 
 <p class="standard-link"><a class="hover-link" href="/kitty-extensions">View Kitty Extension features &rarr;</a></p>
 
 ::: tip Why Kitty matters
-Kitty significantly advanced terminal input by documenting key-release reporting and a comprehensive keyboard protocol. Earlier efforts like xterm's modifyOtherKeys and Leonerd's CSI u/fixterms addressed parts of this problem. The keyboard protocol has been widely adopted (Ghostty, WezTerm, foot, and others), making it the closest thing to an emerging standard for terminal input. The graphics protocol's adoption is narrower but growing — Kitty, Ghostty, WezTerm, iTerm2, and Warp support it, while xterm.js-based terminals do not.
+Kitty documented key-release reporting as part of a comprehensive keyboard protocol. Earlier efforts such as xterm's modifyOtherKeys and Leonerd's CSI u/fixterms addressed parts of the input ambiguity. The [Kitty protocol documentation](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) names other keyboard-protocol implementers. A graphics query and a visible image answer different questions; each terminal app needs its own versioned evidence for either claim.
 :::
 
 ---

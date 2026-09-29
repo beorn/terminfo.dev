@@ -50,7 +50,7 @@ We are correcting older probes and results that treated sequence consumption or 
 
 The model being introduced keeps outcome and method together: **supported**, **unsupported**, **inconclusive** or **collection error**, accompanied by the specific assertion and evidence. **Not tested** means there is no applicable observation. Documentation can describe an implementation, but is separate from a measured result. Older scorecards do not yet express all of these distinctions.
 
-Coverage and support are different. Coverage asks how much of the intended suite was measured; support asks which measured behaviors worked. An older submission with fewer probes contributes useful history without making its missing features failures. Our target is complete, trustworthy measurements of the stated scope, rather than 100% support from every terminal.
+Suite completeness and support are different. A complete suite has a recorded outcome for every scheduled probe, including policy refusals and collection errors; it does not mean every check was attempted or produced conclusive evidence. Support asks which measured behaviors worked. An older submission with fewer probes contributes useful history without making its missing features failures. Our target is trustworthy measurements of the stated scope, rather than 100% support from every terminal.
 
 ## Contributing screenshots and reproductions
 
