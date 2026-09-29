@@ -7,7 +7,7 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from "node:fs"
-import { join, basename } from "node:path"
+import { join } from "node:path"
 import { verifyTerminalIdentity } from "../packages/terminfo.dev/src/identity-guard.ts"
 
 // ---------------------------------------------------------------------------
@@ -85,7 +85,10 @@ const terminals = loadJson(join(contentDir, "terminals.json")) as Record<
   {
     label: string
     slug: string
+    description?: string
+    body?: string
     headlessBackends?: string[]
+    manifestBackend?: string
     [key: string]: unknown
   }
 >
@@ -109,10 +112,8 @@ const platforms = loadJson(join(contentDir, "platforms.json")) as Record<
 
 const annotations = loadJson(join(contentDir, "annotations.json")) as Record<string, { note: string; result?: string }>
 
-const baselines = loadJson(join(contentDir, "baselines.json")) as Record<
-  string,
-  { label: string; [key: string]: unknown }
->
+// Baseline metadata is a required input even though this validator has no baseline-specific checks.
+void loadJson(join(contentDir, "baselines.json"))
 
 // Probe result files
 const probeAppsDir = join(contentDir, "probes-apps")
@@ -128,7 +129,6 @@ const featureIds = new Set(Object.keys(features))
 const standardKeys = new Set(Object.keys(standards))
 const categoryKeys = new Set(Object.keys(categories))
 const validTags = new Set([...standardKeys, ...categoryKeys])
-const baselineKeys = new Set(Object.keys(baselines))
 const platformKeys = new Set(Object.keys(platforms).filter((k) => k !== "$comment"))
 const knownPlatformKeys = new Set(["macos", "linux", "windows"])
 
@@ -143,6 +143,55 @@ let warnings = 0
 // ---------------------------------------------------------------------------
 
 heading("Errors (block deploy)")
+
+type ProbeFile = {
+  file: string
+  dir: "probes-apps" | "probes-libs" | "probes-mux"
+  data: {
+    schemaVersion?: number
+    terminal?: string
+    backend?: string
+    responses?: Record<string, string>
+    results?: Record<string, boolean>
+  }
+}
+
+// Parse every measured input once before producing any derived validation summary.
+const probeFiles: ProbeFile[] = []
+for (const [dir, files] of [
+  ["probes-apps", probeAppsFiles],
+  ["probes-libs", probeLibsFiles],
+  ["probes-mux", probeMuxFiles],
+] as const) {
+  for (const file of files) {
+    try {
+      const data = loadJson(join(contentDir, dir, file))
+      if (data === null || typeof data !== "object" || Array.isArray(data)) {
+        throw new Error("expected a JSON object")
+      }
+      const probe = data as ProbeFile["data"]
+      if (
+        probe.schemaVersion !== 2 &&
+        (probe.results === null || typeof probe.results !== "object" || Array.isArray(probe.results))
+      ) {
+        throw new Error("legacy probe results must be a JSON object")
+      }
+      probeFiles.push({ file, dir, data: probe })
+    } catch (cause) {
+      error(
+        `Probe file "${dir}/${file}" could not be parsed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      )
+      errors++
+    }
+  }
+}
+if (errors > 0) process.exit(1)
+
+const probeBackends = new Set<string>()
+for (const { dir, data } of probeFiles) {
+  const backend = dir === "probes-libs" ? data.backend : data.terminal
+  if (backend) probeBackends.add(backend)
+}
 
 // 1. Features with unknown tags
 {
@@ -185,9 +234,12 @@ heading("Errors (block deploy)")
   const slugsByCategory = new Map<string, Map<string, string>>()
   for (const [id, feat] of Object.entries(features)) {
     if (id === "$comment") continue
-    const catPrefix = id.split(".")[0]!
-    if (!slugsByCategory.has(catPrefix)) slugsByCategory.set(catPrefix, new Map())
-    const catSlugs = slugsByCategory.get(catPrefix)!
+    const catPrefix = id.split(".")[0] ?? ""
+    let catSlugs = slugsByCategory.get(catPrefix)
+    if (!catSlugs) {
+      catSlugs = new Map()
+      slugsByCategory.set(catPrefix, catSlugs)
+    }
     const slug = feat.slug
     if (slug && catSlugs.has(slug)) {
       error(`Duplicate slug "${slug}" in category "${catPrefix}": "${catSlugs.get(slug)}" and "${id}"`)
@@ -205,7 +257,7 @@ heading("Errors (block deploy)")
   let found = false
   for (const [id] of Object.entries(features)) {
     if (id === "$comment") continue
-    const prefix = id.split(".")[0]!
+    const prefix = id.split(".")[0] ?? ""
     if (!categoryKeys.has(prefix)) {
       error(`Feature "${id}" has category prefix "${prefix}" not found in categories.json`)
       errors++
@@ -257,8 +309,8 @@ heading("Errors (block deploy)")
     const missing: string[] = []
     if (!term.label) missing.push("label")
     if (!term.slug) missing.push("slug")
-    const desc = (term as any).description ?? ""
-    const body = (term as any).body ?? ""
+    const desc = term.description ?? ""
+    const body = term.body ?? ""
     if (desc.length < 10) missing.push("description")
     if (body.length < 20) missing.push("body")
     if (missing.length > 0) {
@@ -358,64 +410,31 @@ heading("Errors (block deploy)")
   let verifiedCount = 0
   let uncheckedCount = 0
 
-  for (const f of probeAppsFiles) {
-    try {
-      const fullPath = join(probeAppsDir, f)
-      const data = loadJson(fullPath) as {
-        terminal?: string
-        backend?: string
-        responses?: Record<string, any>
-        results?: Record<string, any>
-      }
-      const term = data.terminal || data.backend
-      if (term) {
-        const check = verifyTerminalIdentity(term, data.responses, data.results)
-        if (!check.ok) {
-          error(`Probe file "probes-apps/${f}" failed terminal identity check: ${check.reason}`)
-          errors++
-          found = true
-        } else if (check.checked) {
-          verifiedCount++
-        } else {
-          uncheckedCount++
-        }
-      }
-    } catch (e: any) {
-      error(`Probe file "probes-apps/${f}" could not be parsed: ${e.message}`)
-      errors++
-      found = true
+  for (const { file, dir, data } of probeFiles) {
+    if (dir === "probes-libs") continue
+    const term = data.terminal || data.backend
+    if (!term) continue
+    if (data.schemaVersion !== 2 && data.responses === undefined) {
+      warn(`Probe file "${dir}/${file}" has no captured identity responses (legacy history; unverified)`)
+      warnings++
+      uncheckedCount++
+      continue
     }
-  }
-  for (const f of probeMuxFiles) {
-    try {
-      const fullPath = join(probeMuxDir, f)
-      const data = loadJson(fullPath) as {
-        terminal?: string
-        backend?: string
-        responses?: Record<string, any>
-        results?: Record<string, any>
-      }
-      const term = data.terminal || data.backend
-      if (term && data.responses) {
-        const check = verifyTerminalIdentity(term, data.responses, data.results)
-        if (!check.ok) {
-          error(`Probe file "probes-mux/${f}" failed terminal identity check: ${check.reason}`)
-          errors++
-          found = true
-        } else if (check.checked) {
-          verifiedCount++
-        } else {
-          uncheckedCount++
-        }
-      }
-    } catch (e: any) {
-      error(`Probe file "probes-mux/${f}" could not be parsed: ${e.message}`)
+    const check = verifyTerminalIdentity(term, data.responses, data.results)
+    if (!check.ok) {
+      error(`Probe file "${dir}/${file}" failed terminal identity check: ${check.reason}`)
       errors++
       found = true
+    } else if (check.checked) {
+      verifiedCount++
+    } else {
+      uncheckedCount++
     }
   }
   if (!found) {
-    info(`Probe terminal identity guards: ${verifiedCount} verified, ${uncheckedCount} unchecked (no rule registered)`)
+    info(
+      `Probe terminal identity guards: ${verifiedCount} verified, ${uncheckedCount} unchecked (missing replies or no rule)`,
+    )
   }
 }
 
@@ -461,33 +480,6 @@ heading("Warnings (fix soon)")
 
 // 7. Terminals with no probe data
 {
-  // Collect all backend names from probe files
-  const probeBackends = new Set<string>()
-
-  // Apps: filename pattern is <terminal>-<version>-<os>.json; key field is "terminal"
-  for (const f of probeAppsFiles) {
-    try {
-      const data = loadJson(join(probeAppsDir, f)) as { terminal?: string }
-      if (data.terminal) probeBackends.add(data.terminal)
-    } catch {}
-  }
-
-  // Libs: filename pattern is <backend>-<version>.json; key field is "backend"
-  for (const f of probeLibsFiles) {
-    try {
-      const data = loadJson(join(probeLibsDir, f)) as { backend?: string }
-      if (data.backend) probeBackends.add(data.backend)
-    } catch {}
-  }
-
-  // Mux: filename pattern is <terminal>-<version>-<os>.json; key field is "terminal"
-  for (const f of probeMuxFiles) {
-    try {
-      const data = loadJson(join(probeMuxDir, f)) as { terminal?: string }
-      if (data.terminal) probeBackends.add(data.terminal)
-    } catch {}
-  }
-
   let count = 0
   for (const [id, term] of Object.entries(terminals)) {
     const backends = term.headlessBackends ?? []
@@ -516,27 +508,17 @@ heading("Warnings (fix soon)")
   // Also add slug and manifestBackend if present
   for (const [, term] of Object.entries(terminals)) {
     if (term.slug) knownBackends.add(term.slug)
-    if ((term as any).manifestBackend) knownBackends.add((term as any).manifestBackend)
+    if (term.manifestBackend) knownBackends.add(term.manifestBackend)
   }
 
   let count = 0
-  const allProbeFiles = [
-    ...probeAppsFiles.map((f) => ({ file: f, dir: "probes-apps" })),
-    ...probeLibsFiles.map((f) => ({ file: f, dir: "probes-libs" })),
-    ...probeMuxFiles.map((f) => ({ file: f, dir: "probes-mux" })),
-  ]
-
-  for (const { file, dir } of allProbeFiles) {
-    try {
-      const fullPath = join(contentDir, dir, file)
-      const data = loadJson(fullPath) as { terminal?: string; backend?: string }
-      const backendName = data.terminal ?? data.backend
-      if (backendName && !knownBackends.has(backendName)) {
-        warn(`Probe file "${dir}/${file}" references "${backendName}" — no matching terminal in terminals.json`)
-        warnings++
-        count++
-      }
-    } catch {}
+  for (const { file, dir, data } of probeFiles) {
+    const backendName = data.terminal ?? data.backend
+    if (backendName && !knownBackends.has(backendName)) {
+      warn(`Probe file "${dir}/${file}" references "${backendName}" — no matching terminal in terminals.json`)
+      warnings++
+      count++
+    }
   }
   if (count === 0) info("All probe files match a terminal in terminals.json")
 }
@@ -593,28 +575,11 @@ heading("Warnings (fix soon)")
     for (const b of term.headlessBackends ?? []) {
       allBackends.add(b)
     }
-    if ((term as any).manifestBackend) allBackends.add((term as any).manifestBackend)
+    if (term.manifestBackend) allBackends.add(term.manifestBackend)
   }
 
   // Also add backends found in probe data (e.g. "ghostty-native")
-  for (const f of probeLibsFiles) {
-    try {
-      const data = loadJson(join(probeLibsDir, f)) as { backend?: string }
-      if (data.backend) allBackends.add(data.backend)
-    } catch {}
-  }
-  for (const f of probeAppsFiles) {
-    try {
-      const data = loadJson(join(probeAppsDir, f)) as { terminal?: string }
-      if (data.terminal) allBackends.add(data.terminal)
-    } catch {}
-  }
-  for (const f of probeMuxFiles) {
-    try {
-      const data = loadJson(join(probeMuxDir, f)) as { terminal?: string }
-      if (data.terminal) allBackends.add(data.terminal)
-    } catch {}
-  }
+  for (const backend of probeBackends) allBackends.add(backend)
 
   let count = 0
   for (const key of Object.keys(annotations)) {
@@ -668,7 +633,7 @@ heading("Info (summary)")
 
   const perCategory = new Map<string, number>()
   for (const id of featureIds) {
-    const prefix = id.split(".")[0]!
+    const prefix = id.split(".")[0] ?? ""
     perCategory.set(prefix, (perCategory.get(prefix) ?? 0) + 1)
   }
   const catEntries = [...perCategory.entries()].sort(
@@ -711,26 +676,6 @@ heading("Info (summary)")
 // 15. Terminal counts
 {
   const termCount = Object.keys(terminals).length
-  const probeBackends = new Set<string>()
-  for (const f of probeAppsFiles) {
-    try {
-      const data = loadJson(join(probeAppsDir, f)) as { terminal?: string }
-      if (data.terminal) probeBackends.add(data.terminal)
-    } catch {}
-  }
-  for (const f of probeLibsFiles) {
-    try {
-      const data = loadJson(join(probeLibsDir, f)) as { backend?: string }
-      if (data.backend) probeBackends.add(data.backend)
-    } catch {}
-  }
-  for (const f of probeMuxFiles) {
-    try {
-      const data = loadJson(join(probeMuxDir, f)) as { terminal?: string }
-      if (data.terminal) probeBackends.add(data.terminal)
-    } catch {}
-  }
-
   let withProbe = 0
   let withoutProbe = 0
   for (const [id, term] of Object.entries(terminals)) {
@@ -752,34 +697,24 @@ heading("Info (summary)")
   let totalFailures = 0
   let annotatedFailures = 0
 
-  const allProbeFiles = [
-    ...probeAppsFiles.map((f) => join(probeAppsDir, f)),
-    ...probeLibsFiles.map((f) => join(probeLibsDir, f)),
-    ...probeMuxFiles.map((f) => join(probeMuxDir, f)),
-  ]
-
-  for (const filePath of allProbeFiles) {
-    try {
-      const data = loadJson(filePath) as {
-        terminal?: string
-        backend?: string
-        results: Record<string, boolean>
-      }
-      const backendName = data.terminal ?? data.backend ?? ""
-      for (const [featureId, result] of Object.entries(data.results)) {
-        if (result === false) {
-          totalFailures++
-          const annotationKey = `${backendName}:${featureId}`
-          if (annotations[annotationKey]) {
-            annotatedFailures++
-          }
+  // v2 runs store observations, not legacy boolean results; this coverage only counts legacy failures.
+  for (const { file, dir, data } of probeFiles) {
+    if (data.schemaVersion === 2) continue
+    if (!data.results) throw new Error(`Probe file "${dir}/${file}" lost required legacy results after inventory`)
+    const backendName = data.terminal ?? data.backend ?? ""
+    for (const [featureId, result] of Object.entries(data.results)) {
+      if (result === false) {
+        totalFailures++
+        const annotationKey = `${backendName}:${featureId}`
+        if (annotations[annotationKey]) {
+          annotatedFailures++
         }
       }
-    } catch {}
+    }
   }
 
   const pct = totalFailures > 0 ? ((annotatedFailures / totalFailures) * 100).toFixed(1) : "N/A"
-  info(`Annotation coverage: ${annotatedFailures}/${totalFailures} failures annotated (${pct}%)`)
+  info(`Legacy annotation coverage: ${annotatedFailures}/${totalFailures} failures annotated (${pct}%)`)
   info(`Total annotations: ${Object.keys(annotations).length}`)
 }
 

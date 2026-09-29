@@ -42,18 +42,20 @@ let _featuresMeta: Record<string, FeatureMeta> | null = null
 
 /** Load features.json with tags and groups (richer than probes featureDescriptions) */
 export function loadFeaturesMeta(): Record<string, FeatureMeta> {
-  if (!_featuresMeta) {
-    try {
-      const path = join(__dirname, "..", "..", "content", "features.json")
-      const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, FeatureMeta>
-      delete raw.$comment
-      _featuresMeta = raw
-    } catch {
-      _featuresMeta = {}
+  if (_featuresMeta) return _featuresMeta
+  const path = join(__dirname, "..", "..", "content", "features.json")
+  try {
+    const raw: unknown = JSON.parse(readFileSync(path, "utf-8"))
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new Error("Expected a feature metadata object")
     }
+    const metadata = raw as Record<string, FeatureMeta>
+    delete metadata.$comment
+    _featuresMeta = metadata
+    return metadata
+  } catch (cause) {
+    throw new Error(`${path}: required feature metadata could not be read or parsed`, { cause })
   }
-  if (!_featuresMeta) throw new Error("Feature metadata failed to initialize")
-  return _featuresMeta
 }
 
 /** Get all unique tags from features.json, validating against standards.json */
