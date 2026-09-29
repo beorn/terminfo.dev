@@ -320,17 +320,43 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.decfra",
       (ctx) => {
-        // DECFRA: fill rows 1-3, cols 1-5 with 'X' (88 = ASCII 'X')
-        ctx.feed("\x1b[88;1;1;3;5$x")
-        // Verify every cell in the 3×5 rectangle contains 'X'
-        for (let row = 0; row < 3; row++) {
-          for (let col = 0; col < 5; col++) {
-            if (ctx.getCell(row, col).char !== "X") {
-              return { pass: false, note: `cell(${row},${col})="${ctx.getCell(row, col).char}", expected "X"` }
-            }
-          }
+        const expected = "DECFRA fills the measured 3x5 area and preserves its measured right flank"
+        if (
+          !Number.isSafeInteger(ctx.cols) ||
+          ctx.cols < 6 ||
+          !Number.isSafeInteger(ctx.getScrollback().screenLines) ||
+          ctx.getScrollback().screenLines < 3
+        ) {
+          return parserStateResult(
+            null,
+            expected,
+            { cols: ctx.cols, rows: ctx.getScrollback().screenLines },
+            "Need a measured 3x6 fixture",
+          )
         }
-        return { pass: true }
+        ctx.feed("\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW")
+        const before = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col).char).join(""),
+        )
+        if (before.join("|") !== "aaaaaZ|bbbbbY|cccccW") {
+          return parserStateResult(null, expected, { before }, "DECFRA seed was not measured")
+        }
+        ctx.feed("\x1b[1;1H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 0 || setup.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "DECFRA cursor setup failed")
+        }
+        ctx.feed("\x1b[88;1;1;3;5$x")
+        const after = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col).char).join(""),
+        )
+        const controlsValid = after.every((line, row) => line[5] === before[row]?.[5])
+        return parserStateResult(
+          controlsValid ? after.every((line) => line.slice(0, 5) === "XXXXX") : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "DECFRA outside control changed",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
@@ -360,18 +386,35 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.decera",
       (ctx) => {
-        // Write text first, then erase a rectangle
-        ctx.feed("AAAAA\r\nBBBBB\r\nCCCCC\x1b[1;1H")
-        ctx.feed("\x1b[1;1;3;5$z") // DECERA rows 1-3 cols 1-5
-        // Verify every cell in the 3×5 rectangle is blank
-        for (let row = 0; row < 3; row++) {
-          for (let col = 0; col < 5; col++) {
-            if (!isBlank(ctx.getCell(row, col).char)) {
-              return { pass: false, note: `cell(${row},${col})="${ctx.getCell(row, col).char}", expected blank` }
-            }
-          }
+        const expected = "DECERA blanks measured 3x5 cells and preserves their measured right flank"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(rows) || rows < 3) {
+          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 3x6 fixture")
         }
-        return { pass: true }
+        const seeds = ["aaaaaZ", "bbbbbY", "cccccX"]
+        ctx.feed("\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccX")
+        const before = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col).char),
+        )
+        if (!before.every((line, row) => line.every((char, col) => char === seeds[row]?.[col]))) {
+          return parserStateResult(null, expected, { before }, "DECERA seed was not measured")
+        }
+        ctx.feed("\x1b[1;1H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 0 || setup.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "DECERA cursor setup failed")
+        }
+        ctx.feed("\x1b[1;1;3;5$z")
+        const after = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col).char),
+        )
+        const controlsValid = after.every((line, row) => line[5] === before[row]?.[5])
+        return parserStateResult(
+          controlsValid ? after.every((line) => line.slice(0, 5).every(isBlank)) : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "DECERA outside control changed",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
@@ -444,32 +487,42 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.deccra",
       (ctx) => {
-        // Write "HELLO" at row 1, then copy row 1 cols 1-5 to row 3 col 1
-        // DECCRA params: Pts;Pls;Pbs;Prs;Pps;Ptd;Pld;Ppd $v
-        //   source: top=1, left=1, bottom=1, right=5, page=1
-        //   dest:   top=3, left=1, page=1
-        ctx.feed("HELLO\x1b[1;1H")
-        ctx.feed("\x1b[1;1;1;5;1;3;1;1$v") // DECCRA: copy row1 cols1-5 → row3 col1
-        // Verify source row (row 0) still has "HELLO"
-        const srcOk =
-          ctx.getCell(0, 0).char === "H" &&
-          ctx.getCell(0, 1).char === "E" &&
-          ctx.getCell(0, 2).char === "L" &&
-          ctx.getCell(0, 3).char === "L" &&
-          ctx.getCell(0, 4).char === "O"
-        // Verify destination row (row 2) has "HELLO"
-        const dstOk =
-          ctx.getCell(2, 0).char === "H" &&
-          ctx.getCell(2, 1).char === "E" &&
-          ctx.getCell(2, 2).char === "L" &&
-          ctx.getCell(2, 3).char === "L" &&
-          ctx.getCell(2, 4).char === "O"
-        if (!srcOk) return { pass: false, note: "source row corrupted after copy" }
-        if (!dstOk) {
-          const got = [0, 1, 2, 3, 4].map((c) => ctx.getCell(2, c).char).join("")
-          return { pass: false, note: `dest row="${got}", expected "HELLO"` }
+        const expected = "DECCRA copies measured 2x5 source cells to row 5 column 10 without changing the source"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 14 || !Number.isSafeInteger(rows) || rows < 6) {
+          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 6x14 fixture")
         }
-        return { pass: true }
+        ctx.feed(
+          "\x1b[1;1HABCDE.........\x1b[2;1HFGHIJ.........\x1b[3;1H..............\x1b[4;1H..............\x1b[5;1H.........12345\x1b[6;1H.........67890",
+        )
+        const before = Array.from({ length: 6 }, (_, row) =>
+          Array.from({ length: 14 }, (_, col) => ctx.getCell(row, col).char).join(""),
+        )
+        if (
+          before.join("|") !==
+          "ABCDE.........|FGHIJ.........|..............|..............|.........12345|.........67890"
+        ) {
+          return parserStateResult(null, expected, { before }, "DECCRA source and destination were not measured")
+        }
+        ctx.feed("\x1b[1;1H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 0 || setup.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "DECCRA cursor setup failed")
+        }
+        ctx.feed("\x1b[1;1;2;5;1;5;10$v")
+        const after = Array.from({ length: 6 }, (_, row) =>
+          Array.from({ length: 14 }, (_, col) => ctx.getCell(row, col).char).join(""),
+        )
+        const controlsValid =
+          after.slice(0, 4).every((line, row) => line === before[row]) &&
+          after[4]?.slice(0, 9) === before[4]?.slice(0, 9) &&
+          after[5]?.slice(0, 9) === before[5]?.slice(0, 9)
+        return parserStateResult(
+          controlsValid ? after[4]?.slice(9) === "ABCDE" && after[5]?.slice(9) === "FGHIJ" : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "DECCRA source or outside control changed",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 6 || ctx.cols < 14) {
@@ -499,18 +552,39 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.deccara",
       (ctx) => {
-        // Write text, then apply inverse (SGR 7) to a rectangle via DECCARA
-        ctx.feed("AAAAA\r\nBBBBB\r\nCCCCC\x1b[1;1H")
-        ctx.feed("\x1b[1;1;3;5;7$r") // DECCARA: apply inverse to rows 1-3 cols 1-5
-        // Verify cells in the rectangle have inverse set
-        for (let row = 0; row < 3; row++) {
-          for (let col = 0; col < 5; col++) {
-            if (!ctx.getCell(row, col).inverse) {
-              return { pass: false, note: `cell(${row},${col}).inverse=false, expected true` }
-            }
-          }
+        const expected = "DECCARA sets inverse on measured 3x5 cells, preserving text and right flank"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(rows) || rows < 3) {
+          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 3x6 fixture")
         }
-        return { pass: true }
+        ctx.feed("\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccX")
+        const before = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col)),
+        )
+        if (
+          before.map((line) => line.map((cell) => cell.char).join("")).join("|") !== "aaaaaZ|bbbbbY|cccccX" ||
+          before.some((line) => line.some((cell) => cell.inverse))
+        ) {
+          return parserStateResult(null, expected, { before }, "DECCARA character and attribute seed was not measured")
+        }
+        ctx.feed("\x1b[1;1H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 0 || setup.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "DECCARA cursor setup failed")
+        }
+        ctx.feed("\x1b[1;1;3;5;7$r")
+        const after = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col)),
+        )
+        const controlsValid = after.every(
+          (line, row) => line.every((cell, col) => cell.char === before[row]?.[col]?.char) && !line[5]?.inverse,
+        )
+        return parserStateResult(
+          controlsValid ? after.every((line) => line.slice(0, 5).every((cell) => cell.inverse)) : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "DECCARA character or outside attribute control changed",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
@@ -540,23 +614,39 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.decrara",
       (ctx) => {
-        // Write text with inverse attr, then toggle inverse via DECRARA
-        // First: write text with inverse on
-        ctx.feed("\x1b[7mAAAAA\x1b[0m\r\n\x1b[7mBBBBB\x1b[0m\r\n\x1b[7mCCCCC\x1b[0m\x1b[1;1H")
-        // Verify inverse is set before toggle
-        if (!ctx.getCell(0, 0).inverse) {
-          return { pass: false, note: "pre-condition: inverse not set on cell(0,0)" }
+        const expected = "DECRARA clears inverse on measured 3x5 inverse cells, preserving text and right flank"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(rows) || rows < 3) {
+          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 3x6 fixture")
         }
-        ctx.feed("\x1b[1;1;3;5;7$t") // DECRARA: toggle inverse on rows 1-3 cols 1-5
-        // After toggling, inverse should now be off
-        for (let row = 0; row < 3; row++) {
-          for (let col = 0; col < 5; col++) {
-            if (ctx.getCell(row, col).inverse) {
-              return { pass: false, note: `cell(${row},${col}).inverse=true after toggle, expected false` }
-            }
-          }
+        ctx.feed("\x1b[1;1H\x1b[7maaaaa\x1b[0mZ\x1b[2;1H\x1b[7mbbbbb\x1b[0mY\x1b[3;1H\x1b[7mccccc\x1b[0mX")
+        const before = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col)),
+        )
+        if (
+          before.map((line) => line.map((cell) => cell.char).join("")).join("|") !== "aaaaaZ|bbbbbY|cccccX" ||
+          before.some((line) => !line.slice(0, 5).every((cell) => cell.inverse) || line[5]?.inverse)
+        ) {
+          return parserStateResult(null, expected, { before }, "DECRARA inverse seed was not measured")
         }
-        return { pass: true }
+        ctx.feed("\x1b[1;1H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 0 || setup.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "DECRARA cursor setup failed")
+        }
+        ctx.feed("\x1b[1;1;3;5;7$t")
+        const after = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col)),
+        )
+        const controlsValid = after.every(
+          (line, row) => line.every((cell, col) => cell.char === before[row]?.[col]?.char) && !line[5]?.inverse,
+        )
+        return parserStateResult(
+          controlsValid ? after.every((line) => line.slice(0, 5).every((cell) => !cell.inverse)) : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "DECRARA character or outside attribute control changed",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
@@ -647,27 +737,36 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.sl",
       (ctx) => {
-        // Write "1234567" at row 1, then SL 2 — shifts all columns left by 2.
-        // Result: col 0 should have '3', col 1 '4', col 2 '5', etc.
-        // Cols at the right edge should be blank.
-        ctx.feed("\x1b[1;1H\x1b[2K1234567")
-        ctx.feed("\x1b[2 @") // SL 2 — note literal space before @
-        const c0 = ctx.getCell(0, 0).char
-        const c1 = ctx.getCell(0, 1).char
-        const c2 = ctx.getCell(0, 2).char
-        const c3 = ctx.getCell(0, 3).char
-        const c4 = ctx.getCell(0, 4).char
-        // After shifting left by 2: "1234567" → "34567  " (blanks at cols 5-6)
-        const shifted = c0 === "3" && c1 === "4" && c2 === "5" && c3 === "6" && c4 === "7"
-        if (!shifted) {
-          const got = [c0, c1, c2, c3, c4].join("")
-          return { pass: false, note: `got "${got}", expected "34567"` }
+        const expected = "SL shifts the first nine observed cells of two rows left by two columns"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 9 || !Number.isSafeInteger(rows) || rows < 2) {
+          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 2x9 fixture")
         }
-        // Right edge should be blank
-        if (!isBlank(ctx.getCell(0, 5).char) || !isBlank(ctx.getCell(0, 6).char)) {
-          return { pass: false, note: "right edge not blank after shift left" }
+        const measuredWidth = Math.min(ctx.cols, 11)
+        const seeds = ["ABCDEFGHIJK".slice(0, measuredWidth), "JKLMNOPQRST".slice(0, measuredWidth)]
+        ctx.feed(`\x1b[1;1H${seeds[0]}\x1b[2;1H${seeds[1]}`)
+        const before = Array.from({ length: 2 }, (_, row) =>
+          Array.from({ length: measuredWidth }, (_, col) => ctx.getCell(row, col).char),
+        )
+        if (!before.every((line, row) => line.every((char, col) => char === seeds[row]?.[col]))) {
+          return parserStateResult(null, expected, { before }, "SL seed and incoming sources were not measured")
         }
-        return { pass: true }
+        ctx.feed("\x1b[1;1H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 0 || setup.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "SL cursor setup failed")
+        }
+        ctx.feed("\x1b[2 @")
+        const after = Array.from({ length: 2 }, (_, row) =>
+          Array.from({ length: 9 }, (_, col) => ctx.getCell(row, col).char),
+        )
+        return parserStateResult(
+          after.every((line, row) =>
+            line.every((char, col) => (col + 2 < ctx.cols ? char === before[row]?.[col + 2] : isBlank(char))),
+          ),
+          expected,
+          { before, setup, after },
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 8) {
@@ -700,20 +799,35 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.sr",
       (ctx) => {
-        ctx.feed("\x1b[1;1H\x1b[2K1234567")
-        ctx.feed("\x1b[2 A") // SR 2 — note literal space before A
-        // After shifting right by 2: "1234567" → "  1234567" (first 2 cols blank)
-        // but the terminal width truncates at the right edge.
-        const c0 = ctx.getCell(0, 0).char
-        const c1 = ctx.getCell(0, 1).char
-        const c2 = ctx.getCell(0, 2).char
-        const c3 = ctx.getCell(0, 3).char
-        // First 2 cols should be blank, then "12345..."
-        const blanks = isBlank(c0) && isBlank(c1)
-        const shifted = c2 === "1" && c3 === "2"
-        if (!blanks) return { pass: false, note: `cols 0-1 not blank: "${c0}${c1}"` }
-        if (!shifted) return { pass: false, note: `cols 2-3 expected "12", got "${c2}${c3}"` }
-        return { pass: true }
+        const expected = "SR shifts the first nine measured cells of two rows right by two columns"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 9 || !Number.isSafeInteger(rows) || rows < 2) {
+          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 2x9 fixture")
+        }
+        const seeds = ["ABCDEFGHI", "JKLMNOPQR"]
+        ctx.feed("\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR")
+        const before = Array.from({ length: 2 }, (_, row) =>
+          Array.from({ length: 9 }, (_, col) => ctx.getCell(row, col).char),
+        )
+        if (!before.every((line, row) => line.every((char, col) => char === seeds[row]?.[col]))) {
+          return parserStateResult(null, expected, { before }, "SR seed was not measured")
+        }
+        ctx.feed("\x1b[1;1H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 0 || setup.y !== 0) {
+          return parserStateResult(null, expected, { before, setup }, "SR cursor setup failed")
+        }
+        ctx.feed("\x1b[2 A")
+        const after = Array.from({ length: 2 }, (_, row) =>
+          Array.from({ length: 9 }, (_, col) => ctx.getCell(row, col).char),
+        )
+        return parserStateResult(
+          after.every((line, row) =>
+            line.every((char, col) => (col < 2 ? isBlank(char) : char === before[row]?.[col - 2])),
+          ),
+          expected,
+          { before, setup, after },
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 9) {
@@ -746,35 +860,41 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.decic",
       (ctx) => {
-        // Write "ABCDE" on rows 1-2, position cursor at row 1 col 3, insert 2 cols.
-        // Row 1: "ABCDE" → after DECIC 2 at col 3: "AB  CDE" (C,D,E shifted right)
-        ctx.feed("ABCDE\r\nABCDE\x1b[1;3H")
-        ctx.feed("\x1b[2'}") // DECIC 2 at col 3
-        // Row 0: cols 0-1 = "AB", cols 2-3 = blank (inserted), cols 4-5 = "CD"
-        const r0c0 = ctx.getCell(0, 0).char
-        const r0c1 = ctx.getCell(0, 1).char
-        const r0c2 = ctx.getCell(0, 2).char
-        const r0c3 = ctx.getCell(0, 3).char
-        const r0c4 = ctx.getCell(0, 4).char
-        if (r0c0 !== "A" || r0c1 !== "B") {
-          return { pass: false, note: `cols 0-1 expected "AB", got "${r0c0}${r0c1}"` }
+        const expected = "DECIC inserts two blank columns at column 3 on three measured rows"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8 || !Number.isSafeInteger(rows) || rows < 3) {
+          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 3x8 fixture")
         }
-        if (!isBlank(r0c2) || !isBlank(r0c3)) {
-          return { pass: false, note: `inserted cols 2-3 not blank: "${r0c2}${r0c3}"` }
+        const seeds = ["ABCDEFGH", "IJKLMNOP", "QRSTUVWX"]
+        ctx.feed("\x1b[1;1HABCDEFGH\x1b[2;1HIJKLMNOP\x1b[3;1HQRSTUVWX")
+        const before = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 8 }, (_, col) => ctx.getCell(row, col).char),
+        )
+        if (!before.every((line, row) => line.every((char, col) => char === seeds[row]?.[col]))) {
+          return parserStateResult(null, expected, { before }, "DECIC seed was not measured")
         }
-        if (r0c4 !== "C") {
-          return { pass: false, note: `col 4 expected "C", got "${r0c4}"` }
+        ctx.feed("\x1b[2;3H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 2 || setup.y !== 1) {
+          return parserStateResult(null, expected, { before, setup }, "DECIC cursor setup failed")
         }
-        // DECIC is a column operation — it affects ALL rows, so verify row 2 as well
-        const r1c2 = ctx.getCell(1, 2).char
-        const r1c4 = ctx.getCell(1, 4).char
-        if (!isBlank(r1c2)) {
-          return { pass: false, note: `row 1 col 2 not blank: "${r1c2}"` }
-        }
-        if (r1c4 !== "C") {
-          return { pass: false, note: `row 1 col 4 expected "C", got "${r1c4}"` }
-        }
-        return { pass: true }
+        ctx.feed("\x1b[2'}")
+        const after = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 8 }, (_, col) => ctx.getCell(row, col).char),
+        )
+        const controlsValid = after.every((line, row) =>
+          line.slice(0, 2).every((char, col) => char === before[row]?.[col]),
+        )
+        return parserStateResult(
+          controlsValid
+            ? after.every((line, row) =>
+                line.every((char, col) => (col < 2 ? true : col < 4 ? isBlank(char) : char === before[row]?.[col - 2])),
+              )
+            : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "DECIC unchanged-prefix control changed",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 4) {
@@ -806,26 +926,44 @@ export const editingProbes: ProbeDefinition[] = [
     ...probe(
       "editing.decdc",
       (ctx) => {
-        // Write "ABCDE" on rows 1-2, position cursor at row 1 col 2, delete 2 cols.
-        // Row 1: "ABCDE" → after DECDC 2 at col 2: "ADE  " (B,C deleted, D,E shift left)
-        ctx.feed("ABCDE\r\nABCDE\x1b[1;2H")
-        ctx.feed("\x1b[2'~") // DECDC 2 at col 2
-        // Row 0: col 0 = "A", col 1 = "D", col 2 = "E", cols 3-4 = blank
-        const r0c0 = ctx.getCell(0, 0).char
-        const r0c1 = ctx.getCell(0, 1).char
-        const r0c2 = ctx.getCell(0, 2).char
-        if (r0c0 !== "A") return { pass: false, note: `col 0 expected "A", got "${r0c0}"` }
-        if (r0c1 !== "D") return { pass: false, note: `col 1 expected "D", got "${r0c1}"` }
-        if (r0c2 !== "E") return { pass: false, note: `col 2 expected "E", got "${r0c2}"` }
-        if (!isBlank(ctx.getCell(0, 3).char) || !isBlank(ctx.getCell(0, 4).char)) {
-          return { pass: false, note: "right edge not blank after column delete" }
+        const expected = "DECDC deletes two columns at column 3 on three measured rows"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8 || !Number.isSafeInteger(rows) || rows < 3) {
+          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 3x8 fixture")
         }
-        // DECDC is a column operation — verify row 2 as well
-        const r1c1 = ctx.getCell(1, 1).char
-        if (r1c1 !== "D") {
-          return { pass: false, note: `row 1 col 1 expected "D", got "${r1c1}"` }
+        const measuredWidth = Math.min(ctx.cols, 10)
+        const seeds = ["ABCDEFGHIJ", "IJKLMNOPQR", "QRSTUVWXab"].map((line) => line.slice(0, measuredWidth))
+        ctx.feed(`\x1b[1;1H${seeds[0]}\x1b[2;1H${seeds[1]}\x1b[3;1H${seeds[2]}`)
+        const before = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: measuredWidth }, (_, col) => ctx.getCell(row, col).char),
+        )
+        if (!before.every((line, row) => line.every((char, col) => char === seeds[row]?.[col]))) {
+          return parserStateResult(null, expected, { before }, "DECDC seed and incoming sources were not measured")
         }
-        return { pass: true }
+        ctx.feed("\x1b[2;3H")
+        const setup = ctx.getCursor()
+        if (setup.x !== 2 || setup.y !== 1) {
+          return parserStateResult(null, expected, { before, setup }, "DECDC cursor setup failed")
+        }
+        ctx.feed("\x1b[2'~")
+        const after = Array.from({ length: 3 }, (_, row) =>
+          Array.from({ length: 8 }, (_, col) => ctx.getCell(row, col).char),
+        )
+        const controlsValid = after.every((line, row) =>
+          line.slice(0, 2).every((char, col) => char === before[row]?.[col]),
+        )
+        return parserStateResult(
+          controlsValid
+            ? after.every((line, row) =>
+                line.every((char, col) =>
+                  col < 2 ? true : col + 2 < ctx.cols ? char === before[row]?.[col + 2] : isBlank(char),
+                ),
+              )
+            : null,
+          expected,
+          { before, setup, after },
+          controlsValid ? undefined : "DECDC unchanged-prefix control changed",
+        )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 4) {

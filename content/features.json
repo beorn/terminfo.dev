@@ -736,7 +736,8 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
     "tags": ["xterm-extensions"],
     "body": "SL (Shift Left) horizontally scrolls the display contents left by N columns within the current scroll region. The sequence is <code>ESC [ Ps SP @</code> — note the literal space character before <code>@</code>, which distinguishes SL from ICH (<code>ESC [ Ps @</code>). Default Ps=1.\n\nColumns shifted off the left edge are discarded; blank columns are inserted at the right edge. SL is the horizontal counterpart of SU (Scroll Up) and is rarely used in modern TUI applications — most full-screen apps redraw their content rather than rely on terminal-side horizontal scrolling. Some xterm-derived terminals implement it for compatibility with applications that drive horizontal panning displays. Originally specified in ECMA-48 alongside SU/SD but not implemented by all terminals.",
-    "probe": "Write \"ABCDEFGH\" on row 1, send <code>\\x1b[2 @</code> (SL 2), verify the sequence is consumed without leaving literal characters on screen. Most headless backends don't implement column shifts, so verification is partial.",
+    "probe": "Headless: measure the first nine cells of two rows plus incoming source cells through column 11 when present, verify cursor setup, shift left by two, then compare each destination cell to its measured source; require blanks only beyond the screen edge. The app cursor reply does not establish shifted cells or margin behavior.",
+    "probeStatus": "partial",
     "baseline": "rich",
     "sequence": "CSI Ps SP @"
   },
@@ -746,7 +747,8 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
     "tags": ["xterm-extensions"],
     "body": "SR (Shift Right) horizontally scrolls the display contents right by N columns within the current scroll region. The sequence is <code>ESC [ Ps SP A</code> — note the literal space character before <code>A</code>, which distinguishes SR from CUU (<code>ESC [ Ps A</code>). Default Ps=1.\n\nColumns shifted off the right edge are discarded; blank columns are inserted at the left edge. SR is the horizontal counterpart of SD (Scroll Down) and the inverse of SL (Shift Left). Like SL, it's rarely used in modern terminal applications and many emulators either don't implement it or treat it as a no-op. Specified in ECMA-48 alongside SU/SD/SL.",
-    "probe": "Write \"ABCDEFGH\" on row 1, send <code>\\x1b[2 A</code> (SR 2), verify the sequence is consumed without leaving literal characters on screen. Most headless backends don't implement column shifts, so verification is partial.",
+    "probe": "Headless: measure the first nine cells of two rows and cursor setup, shift right by two, then compare each destination cell to its measured source and check the two inserted left blanks. The app cursor reply does not establish shifted cells or margin behavior.",
+    "probeStatus": "partial",
     "baseline": "rich",
     "sequence": "CSI Ps SP A"
   },
@@ -756,7 +758,8 @@
     "url": "https://vt100.net/docs/vt510-rm/DECIC.html",
     "tags": ["xterm-extensions"],
     "body": "DECIC (DEC Insert Column) inserts N blank columns at the cursor's column position, shifting all content to the right of the cursor further right. The sequence is <code>ESC [ Ps ' }</code> — note the apostrophe (intermediate) before <code>}</code>. Default Ps=1.\n\nColumns shifted past the right margin are discarded. DECIC is the horizontal/column counterpart of IL (Insert Lines): IL inserts blank rows by shifting content down, DECIC inserts blank columns by shifting content right. It only operates on cells within the current scroll region (top/bottom margins) and the current left/right margin region if DECLRMM (mode 69) is enabled. Originally a VT420 feature, supported by xterm and some other modern terminals but not universally implemented.",
-    "probe": "Write content on multiple rows, position cursor in the middle, send <code>\\x1b[2'}</code> (DECIC 2), verify the sequence is consumed without leaving literal characters on screen. Most headless backends don't implement column inserts, so verification is partial.",
+    "probe": "Headless: measure the first eight cells of three rows and cursor setup, insert two columns at column 3, then check inserted blank cells, shifted cells against their measured sources, and unchanged prefixes. The app cursor reply does not establish column editing or margins.",
+    "probeStatus": "partial",
     "baseline": "rich",
     "sequence": "CSI Ps ' }"
   },
@@ -766,7 +769,8 @@
     "url": "https://vt100.net/docs/vt510-rm/DECDC.html",
     "tags": ["xterm-extensions"],
     "body": "DECDC (DEC Delete Column) deletes N columns at the cursor's column position, shifting all content to the right of the cursor further left. The sequence is <code>ESC [ Ps ' ~</code> — note the apostrophe (intermediate) before <code>~</code>. Default Ps=1.\n\nBlank columns are inserted at the right margin to fill the vacated space. DECDC is the horizontal counterpart of DL (Delete Lines) and the inverse of DECIC (Insert Column). It only operates within the current scroll region's vertical bounds, and within the left/right margin bounds when DECLRMM (mode 69) is enabled. Originally a VT420 feature, supported by xterm but rarely used in practice — most TUI applications redraw their content rather than use column-based editing.",
-    "probe": "Write content on multiple rows, position cursor in the middle, send <code>\\x1b[2'~</code> (DECDC 2), verify the sequence is consumed without leaving literal characters on screen. Most headless backends don't implement column deletes, so verification is partial.",
+    "probe": "Headless: measure the first eight cells of three rows plus incoming source cells through column 10 when present, verify cursor setup, delete two columns at column 3, then compare destinations to measured sources and check unchanged prefixes; require right blanks only beyond the screen edge. The app cursor reply does not establish column editing or margins.",
+    "probeStatus": "partial",
     "baseline": "rich",
     "sequence": "CSI Ps ' ~"
   },
@@ -777,7 +781,8 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECFRA (<code>CSI Pc ; Pt ; Pl ; Pb ; Pr $ x</code>) fills a rectangular area with character <code>Pc</code> from rows <code>Pt</code> through <code>Pb</code> and columns <code>Pl</code> through <code>Pr</code>. Introduced on the DEC VT420 in 1990 for form-fill applications and spreadsheets that needed to paint rectangular regions of the screen — drawing dividers, padding fields, or clearing a region with a fill character — without touching cells outside the rectangle. xterm and mintty implement DECFRA; nearly every other modern terminal skips it. The character must be in the printable ASCII range or DEC supplemental graphic range.",
-    "probe": "Send <code>\\x1b[88;1;1;3;5$x</code> (fill rows 1-3, cols 1-5 with 'X'), verify cells in the rectangle contain 'X'.",
+    "probe": "Headless: measure a 3x5 seeded area and right-flank controls, fill with X, and read back all target cells. The app cursor reply does not establish filled cells.",
+    "probeStatus": "partial",
     "sequence": "CSI Pc ; Pt ; Pl ; Pb ; Pr $ x"
   },
   "editing.decera": {
@@ -787,7 +792,8 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECERA (<code>CSI Pt ; Pl ; Pb ; Pr $ z</code>) erases a rectangular region from rows <code>Pt</code>-<code>Pb</code>, columns <code>Pl</code>-<code>Pr</code>, replacing each cell with a space and the current SGR background. Unlike a global ED, DECERA leaves protected characters (set via DECSCA) untouched, making it safe inside form-fill applications that have static labels alongside editable fields. Companion to DECFRA. Another VT420-era feature surviving mostly in xterm and mintty.",
-    "probe": "Write text across multiple rows, send <code>\\x1b[1;1;3;5$z</code> (erase rows 1-3, cols 1-5), verify cells in the rectangle are blank.",
+    "probe": "Headless: measure a 3x5 nonblank seed and right-flank controls, erase the area, and read back all target cells. The app cursor reply does not establish erased cells.",
+    "probeStatus": "partial",
     "sequence": "CSI Pt ; Pl ; Pb ; Pr $ z"
   },
   "editing.decsera": {
@@ -807,7 +813,8 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECCRA (<code>CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v</code>) copies a rectangular area from one location to another. The source rectangle is <code>Pts</code>;<code>Pls</code>-<code>Pbs</code>;<code>Prs</code> on page <code>Pps</code>; the destination's top-left is <code>Ptd</code>;<code>Pld</code>. The most complex of the VT420 rectangle operations: cells are copied including their SGR attributes, source and destination may overlap (the result is as if the source were captured first), and the operation can cross page boundaries on terminals that implement multi-page memory. xterm implements all of this. Almost nothing else does.",
-    "probe": "Write text in a region, send <code>\\x1b[1;1;2;5;1;5;10$v</code> (copy rows 1-2 cols 1-5 to row 5 col 10), verify the sequence is consumed.",
+    "probe": "Headless: measure a 2x5 source at the top and destination at rows 5-6 column 10, copy, then read back both destination rows with source and outside controls. The app cursor reply does not establish copied cells.",
+    "probeStatus": "partial",
     "sequence": "CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v"
   },
   "editing.deccara": {
@@ -817,7 +824,8 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECCARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ r</code>) changes the SGR attributes of every cell in a rectangular region without touching the characters themselves. The <code>Ps</code> parameters are SGR codes (1=bold, 4=underline, 7=inverse, etc.), accumulated and applied to the rectangle. Whether DECCARA operates on a true rectangle or on the stream of cells between the corners depends on DECSACE. Used by VT420-era forms to highlight an entire input field, error message, or table cell without rewriting its contents.",
-    "probe": "Write text, send <code>\\x1b[1;1;3;5;7$r</code> (apply inverse to rows 1-3 cols 1-5), verify the sequence is consumed.",
+    "probe": "Headless: measure text and initially clear inverse attributes in a 3x5 rectangle, apply inverse, then read back target attributes with unchanged characters and right-flank controls. The app cursor reply does not establish attributes or DECSACE extent variants.",
+    "probeStatus": "partial",
     "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ r"
   },
   "editing.decrara": {
@@ -827,7 +835,8 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECRARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ t</code>) toggles the listed SGR attributes within a rectangular region. Each cell flips the listed bits — bold cells become non-bold, non-bold cells become bold, and so on. Like DECCARA, it leaves the characters alone and obeys DECSACE to operate on a rectangle or a stream. VT420-era applications used DECRARA to flash highlight a field on validation errors or to invert a selected row in a list.",
-    "probe": "Write text, send <code>\\x1b[1;1;3;5;7$t</code> (toggle inverse on rows 1-3 cols 1-5), verify the sequence is consumed.",
+    "probe": "Headless: measure text and initially set inverse attributes in a 3x5 rectangle, reverse inverse, then read back target attributes with unchanged characters and right-flank controls. The app cursor reply does not establish attributes or DECSACE extent variants.",
+    "probeStatus": "partial",
     "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ t"
   },
   "editing.decsace": {
