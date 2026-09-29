@@ -420,4 +420,4 @@ Use `/marketing enrich` in km to AI-generate enrichment content for review.
 
 ## Issue Tracking
 
-Beads under `km-terminfo` epic in the km repo.
+Beads under `@km/13056-terminfo` epic in the km repo.
