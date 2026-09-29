@@ -293,139 +293,78 @@ export const modesProbes: ProbeDefinition[] = [
   },
 
   // ?1007 — alt-scroll mouse wheel
-  probe(
-    "modes.alt-scroll-1007",
-    (ctx) => {
-      ctx.feed("\x1b[?1007h")
-      // Verify via DECRPM query — response CSI ? 1007 ; Ps $ y where Ps=1 means set
-      const response = ctx.feedCapture("\x1b[?1007$p")
-      ctx.feed("\x1b[?1007l")
-      if (response.includes("$y")) {
-        const set = response.includes("1007;1$y")
-        return {
-          pass: set,
-          note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
-          response,
-        }
-      }
-      // Fallback: verify sequence didn't break the terminal
-      ctx.feed("X")
-      const ok = ctx.getCell(0, 0).char === "X"
-      return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
-    },
-    async (ctx) => {
-      const decrpmResult = await ctx.queryMode(1007)
-      if (decrpmResult !== null && decrpmResult !== "unknown") {
-        return { pass: true, note: `DECRPM: mode ${decrpmResult}`, response: decrpmResult }
-      }
-      ctx.write("\x1b[?1007h")
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?1007l")
-      return {
-        pass: pos !== null,
-        note: pos ? "Behavioral: ?1007 accepted" : "No cursor response after enable",
-      }
-    },
-  ),
-
-  // ?1005 — UTF-8 mouse encoding (legacy)
-  probe(
-    "modes.utf8-mouse-1005",
-    (ctx) => {
-      ctx.feed("\x1b[?1005h")
-      // Verify via DECRPM query — response CSI ? 1005 ; Ps $ y where Ps=1 means set
-      const response = ctx.feedCapture("\x1b[?1005$p")
-      ctx.feed("\x1b[?1005l")
-      if (response.includes("$y")) {
-        const set = response.includes("1005;1$y")
-        return {
-          pass: set,
-          note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
-          response,
-        }
-      }
-      // Fallback: verify sequence didn't break the terminal
-      ctx.feed("X")
-      const ok = ctx.getCell(0, 0).char === "X"
-      return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
-    },
-    async (ctx) => {
-      const decrpmResult = await ctx.queryMode(1005)
-      if (decrpmResult !== null && decrpmResult !== "unknown") {
-        return { pass: true, note: `DECRPM: mode ${decrpmResult}`, response: decrpmResult }
-      }
-      ctx.write("\x1b[?1005h")
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?1005l")
-      return {
-        pass: pos !== null,
-        note: pos ? "Behavioral: ?1005 accepted" : "No cursor response after enable",
-      }
-    },
-  ),
-
-  // ?3 — DECCOLM 80/132 column switch
-  probe(
-    "modes.deccolm",
-    (ctx) => {
-      ctx.feed("\x1b[?3h")
-      // Verify via DECRPM query — response CSI ? 3 ; Ps $ y where Ps=1 means set
-      const response = ctx.feedCapture("\x1b[?3$p")
-      ctx.feed("\x1b[?3l")
-      if (response.includes("$y")) {
-        const set = response.includes("3;1$y")
-        return {
-          pass: set,
-          note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
-          response,
-        }
-      }
-      // Fallback: verify sequence didn't break the terminal
-      ctx.feed("X")
-      const ok = ctx.getText().includes("X")
-      return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
-    },
-    async (ctx) => {
-      const decrpmResult = await ctx.queryMode(3)
-      if (decrpmResult !== null && decrpmResult !== "unknown") {
-        return { pass: true, note: `DECRPM: mode ${decrpmResult}`, response: decrpmResult }
-      }
-      ctx.write("\x1b[?3h")
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?3l")
-      return {
-        pass: pos !== null,
-        note: pos ? "Behavioral: ?3 accepted" : "No cursor response after enable",
-      }
-    },
-  ),
-
-  // ?4 — DECSCLM smooth scroll mode. This is observable through DECRPM even
-  // though modern emulators often render both smooth and jump scrolling instantly.
-  probe(
-    "modes.decsclm",
-    (ctx) => {
-      ctx.feed("\x1b[?4h")
-      const response = ctx.feedCapture("\x1b[?4$p")
-      ctx.feed("\x1b[?4l")
-      const set = response.includes("?4;1$y")
+  decrpmModeProbe("modes.alt-scroll-1007", 1007, (ctx) => {
+    ctx.feed("\x1b[?1007h")
+    // Verify via DECRPM query — response CSI ? 1007 ; Ps $ y where Ps=1 means set
+    const response = ctx.feedCapture("\x1b[?1007$p")
+    ctx.feed("\x1b[?1007l")
+    if (response.includes("$y")) {
+      const set = response.includes("1007;1$y")
       return {
         pass: set,
         note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
         response,
       }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?4h")
-      const result = await ctx.queryMode(4)
-      ctx.write("\x1b[?4l")
+    }
+    // Fallback: verify sequence didn't break the terminal
+    ctx.feed("X")
+    const ok = ctx.getCell(0, 0).char === "X"
+    return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
+  }),
+
+  // ?1005 — UTF-8 mouse encoding (legacy)
+  decrpmModeProbe("modes.utf8-mouse-1005", 1005, (ctx) => {
+    ctx.feed("\x1b[?1005h")
+    // Verify via DECRPM query — response CSI ? 1005 ; Ps $ y where Ps=1 means set
+    const response = ctx.feedCapture("\x1b[?1005$p")
+    ctx.feed("\x1b[?1005l")
+    if (response.includes("$y")) {
+      const set = response.includes("1005;1$y")
       return {
-        pass: result === "set",
-        note: result === "set" ? "DECRPM: mode set" : `DECRPM: mode ${result ?? "no response"}`,
-        response: result ?? undefined,
+        pass: set,
+        note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
+        response,
       }
-    },
-  ),
+    }
+    // Fallback: verify sequence didn't break the terminal
+    ctx.feed("X")
+    const ok = ctx.getCell(0, 0).char === "X"
+    return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
+  }),
+
+  // ?3 — DECCOLM 80/132 column switch
+  decrpmModeProbe("modes.deccolm", 3, (ctx) => {
+    ctx.feed("\x1b[?3h")
+    // Verify via DECRPM query — response CSI ? 3 ; Ps $ y where Ps=1 means set
+    const response = ctx.feedCapture("\x1b[?3$p")
+    ctx.feed("\x1b[?3l")
+    if (response.includes("$y")) {
+      const set = response.includes("3;1$y")
+      return {
+        pass: set,
+        note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
+        response,
+      }
+    }
+    // Fallback: verify sequence didn't break the terminal
+    ctx.feed("X")
+    const ok = ctx.getText().includes("X")
+    return { pass: ok, note: ok ? "Sequence parsed (DECRPM not supported)" : "Parser broke" }
+  }),
+
+  // ?4 — DECSCLM smooth scroll mode. This is observable through DECRPM even
+  // though modern emulators often render both smooth and jump scrolling instantly.
+  decrpmModeProbe("modes.decsclm", 4, (ctx) => {
+    ctx.feed("\x1b[?4h")
+    const response = ctx.feedCapture("\x1b[?4$p")
+    ctx.feed("\x1b[?4l")
+    const set = response.includes("?4;1$y")
+    return {
+      pass: set,
+      note: set ? "DECRPM: mode set" : `DECRPM: mode not set (${JSON.stringify(response)})`,
+      response,
+    }
+  }),
 
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
   // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty
