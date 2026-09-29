@@ -186,7 +186,7 @@
     "tags": ["ecma-48"],
     "group": "colors",
     "body": "SGR 30-37 set the foreground text color to one of 8 standard colors: black (30), red (31), green (32), yellow (33), blue (34), magenta (35), cyan (36), white (37). Universally supported. The actual displayed color depends on the terminal's color scheme — \"red\" in one theme may look very different from \"red\" in another.",
-    "probe": "Send <code>\\x1b[31m</code>X (red), verify the cell's foreground color has a red channel > 100.",
+    "probe": "Headless: compare neutral C with SGR 31 X and SGR 34 Y; X must differ from the measured baseline and Y from X to show named foreground-color selection. Theme RGB values are not fixed; equality or missing values are inconclusive. TTY cursor advance does not verify color.",
     "baseline": "core",
     "sequence": "ESC [ 30–37 m"
   },
@@ -197,7 +197,7 @@
     "tags": ["ecma-48"],
     "group": "colors",
     "body": "SGR 40-47 set the background color to one of 8 standard colors: black (40), red (41), green (42), yellow (43), blue (44), magenta (45), cyan (46), white (47). Universally supported. As with foreground colors, the actual RGB values depend on the terminal's configured color scheme.",
-    "probe": "Send <code>\\x1b[42m</code>X (green bg), verify the cell's background color has a green channel > 100.",
+    "probe": "Headless: compare neutral C with SGR 41 X and SGR 44 Y; X must differ from the measured baseline and Y from X to show named background-color selection. Theme RGB values are not fixed; equality or missing values are inconclusive. TTY cursor advance does not verify color.",
     "baseline": "core",
     "sequence": "ESC [ 40–47 m"
   },
@@ -208,7 +208,7 @@
     "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 90-97 set the foreground to one of 8 bright (high-intensity) colors, corresponding to the standard colors at higher intensity. Originally an xterm extension, now universally supported. These provide 8 additional named colors beyond SGR 30-37 without requiring 256-color or truecolor support.",
-    "probe": "Send <code>\\x1b[91m</code>X (bright red), verify the foreground red channel > 150.",
+    "probe": "Headless: compare neutral C with SGR 91 X and SGR 94 Y; X must differ from the measured baseline and Y from X to show bright named foreground-color selection. Intensity and theme RGB are not assumed; equality is inconclusive.",
     "baseline": "modern",
     "sequence": "ESC [ 90–97 m"
   },
@@ -219,7 +219,7 @@
     "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 100-107 set the background to one of 8 bright (high-intensity) colors. The bright background counterpart to SGR 90-97 bright foreground colors. Originally an xterm extension, now universally supported.\n\nBright background colors are the high-intensity half of the 16-color ANSI palette. They began as terminal-emulator extensions rather than original VT100 hardware behavior, but are now expected by color libraries and themes. The exact RGB values are theme-defined, so applications should treat them as named slots, not fixed colors.",
-    "probe": "Send <code>\\x1b[102m</code>X (bright green bg), verify the background green channel > 150.",
+    "probe": "Headless: compare neutral C with SGR 101 X and SGR 104 Y; X must differ from the measured baseline and Y from X to show bright named background-color selection. Intensity and theme RGB are not assumed; equality is inconclusive.",
     "baseline": "modern",
     "sequence": "ESC [ 100–107 m"
   },
@@ -230,7 +230,7 @@
     "tags": ["ecma-48"],
     "group": "colors",
     "body": "SGR 39 resets the foreground color to the terminal's default, without affecting other attributes. The sequence is <code>ESC [ 39 m</code>. This is more targeted than SGR 0, which resets all attributes. Useful when you want to clear a color change while preserving bold, underline, or other active attributes.",
-    "probe": "Send <code>\\x1b[31m</code>X<code>\\x1b[39m</code>Y, verify the second cell's foreground is reset to default (null).",
+    "probe": "Headless: measure neutral C, SGR 31 colored X, then SGR 39 reset R; require X to differ from C and R to match the measured foreground default, which may be RGB or null. TTY cursor advance is inconclusive.",
     "baseline": "core",
     "sequence": "ESC [ 39 m"
   },
@@ -241,7 +241,7 @@
     "tags": ["ecma-48"],
     "group": "colors",
     "body": "SGR 49 resets the background color to the terminal's default, without affecting other attributes. The sequence is <code>ESC [ 49 m</code>. The counterpart of SGR 39 (default foreground).\n\nDefault-color resets let applications return to the user's theme instead of assuming black, white, or any particular palette entry. This is especially important for translucent terminals, dark/light theme switching, and accessibility themes. Use SGR 49 for background cleanup when foreground color and other attributes should remain active.",
-    "probe": "Send <code>\\x1b[42m</code>X<code>\\x1b[49m</code>Y, verify the second cell's background is reset to default (null).",
+    "probe": "Headless: measure neutral C, SGR 42 colored X, then SGR 49 reset R; require X to differ from C and R to match the measured background default, which may be RGB or null. TTY cursor advance is inconclusive.",
     "baseline": "core",
     "sequence": "ESC [ 49 m"
   },
@@ -252,7 +252,7 @@
     "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 38;5;N sets the foreground to one of 256 colors. The sequence is <code>ESC [ 38;5;N m</code> where N is 0-255. Colors 0-7 are the standard colors, 8-15 are bright, 16-231 are a 6x6x6 color cube, and 232-255 are a grayscale ramp. This palette provides a reasonable range of colors that works across most modern terminals without requiring truecolor support.",
-    "probe": "Send <code>\\x1b[38;5;196m</code>X (256-color red), verify the foreground red channel > 200.",
+    "probe": "Headless: compare foreground SGR 38;5;67 and 38;5;173 cells with two independently exact direct-RGB cube reference cells. Matching both supports these sampled canonical colors; unknown or custom palette mappings remain inconclusive.",
     "baseline": "modern",
     "sequence": "ESC [ 38;5;N m"
   },
@@ -263,7 +263,7 @@
     "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 48;5;N sets the background to one of 256 colors. The sequence is <code>ESC [ 48;5;N m</code>. Same palette as SGR 38;5 (256-color foreground): 0-15 standard/bright, 16-231 color cube, 232-255 grayscale.\n\nThe 256-color palette is the bridge between named ANSI colors and truecolor. It combines 16 theme colors, a 6x6x6 RGB cube, and a grayscale ramp. Background 256-color support is still important when truecolor is unavailable or disabled, especially over older SSH, tmux, or terminfo configurations.",
-    "probe": "Send <code>\\x1b[48;5;21m</code>X (256-color blue), verify the background blue channel > 100.",
+    "probe": "Headless: compare background SGR 48;5;67 and 48;5;173 cells with two independently exact direct-RGB cube reference cells. Matching both supports these sampled canonical colors; unknown or custom palette mappings remain inconclusive.",
     "baseline": "modern",
     "sequence": "ESC [ 48;5;N m"
   },
@@ -274,7 +274,7 @@
     "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 38;2;R;G;B sets the foreground to a 24-bit RGB color. The sequence is <code>ESC [ 38;2;R;G;B m</code> where R, G, B are 0-255. There is also a colon-separated variant <code>ESC [ 38:2::R:G:B m</code> per ITU T.416, but the semicolon format has wider compatibility.\n\nThis gives applications access to 16.7 million colors. Applications can check for truecolor support via <code>COLORTERM=truecolor</code> or <code>COLORTERM=24bit</code> in the environment.",
-    "probe": "Send <code>\\x1b[38;2;255;128;0m</code>X, verify the foreground color matches RGB(255, 128, 0) exactly.",
+    "probe": "Headless: require two distinct foreground SGR 38;2 RGB cells to match their requested values exactly, with the preceding named-color control exposed and different from the first requested RGB. A mismatch is negative only when independent named-color controls calibrate the channel; missing or colliding readback is inconclusive.",
     "baseline": "modern",
     "sequence": "ESC [ 38;2;R;G;B m"
   },
@@ -285,7 +285,7 @@
     "tags": ["xterm-extensions"],
     "group": "colors",
     "body": "SGR 48;2;R;G;B sets the background to a 24-bit RGB color. The sequence is <code>ESC [ 48;2;R;G;B m</code>. Same syntax variants and compatibility notes as SGR 38;2 (24-bit foreground).\n\nThe background form follows the same direct-color convention as SGR 38;2 for foregrounds. In practice, the semicolon form is what most terminals and applications emit, while the colon-separated ISO/ITU-style form is less consistently supported. Background truecolor is what makes theme previews, color pickers, and high-fidelity terminal screenshots possible.",
-    "probe": "Send <code>\\x1b[48;2;0;255;128m</code>X, verify the background color matches RGB(0, 255, 128) exactly.",
+    "probe": "Headless: require two distinct background SGR 48;2 RGB cells to match their requested values exactly, with the preceding named-color control exposed and different from the first requested RGB. A mismatch is negative only when independent named-color controls calibrate the channel; missing or colliding readback is inconclusive.",
     "baseline": "modern",
     "sequence": "ESC [ 48;2;R;G;B m"
   },

@@ -388,14 +388,202 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
   }
 })
 
-test("default color callbacks remain ungraded when the color setup is unobserved", () => {
+test("named ANSI color probes require distinct exposed selection, without theme thresholds", () => {
+  const lowRed = { r: 3, g: 1, b: 2 }
+  const lowBlue = { r: 1, g: 2, b: 4 }
+  for (const id of ["sgr.fg.standard", "sgr.bg.standard", "sgr.fg.bright", "sgr.bg.bright"]) {
+    const probe = sgrProbes.find((item) => item.id === id)
+    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    const channel = id.includes(".fg.") ? "fg" : "bg"
+    const fed: string[] = []
+    const run = (
+      first: typeof lowRed | null,
+      second: typeof lowBlue | null,
+      chars = ["C", "X", "Y"],
+      baseline: typeof lowRed | null = null,
+    ) =>
+      probe.termless?.(
+        headless({
+          feed: (sequence) => fed.push(sequence),
+          getCell: (_row, col) => ({
+            ...baseCell,
+            char: chars[col] ?? "",
+            [channel]: [baseline, first, second][col] ?? null,
+          }),
+        }),
+      )
+    const distinct = run(lowRed, lowBlue)
+    const codes: Record<string, readonly number[]> = {
+      "sgr.fg.standard": [31, 34],
+      "sgr.bg.standard": [41, 44],
+      "sgr.fg.bright": [91, 94],
+      "sgr.bg.bright": [101, 104],
+    }
+    for (const code of codes[id] ?? []) expect(fed[0], id).toContain(`\x1b[${code}m`)
+    expect(distinct?.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(distinct?.assertions, id).toMatchObject([{ kind: "positive", observed: distinct?.response }])
+    expect(JSON.parse(distinct?.response ?? ""), id).toMatchObject({
+      baseline: { char: "C" },
+      first: { char: "X" },
+      second: { char: "Y" },
+    })
+    for (const uncertain of [
+      run(lowRed, lowRed),
+      run(null, null),
+      run(lowRed, lowBlue, ["C", "?", "Y"]),
+      run(lowRed, lowBlue, ["C", "X", "Y"], lowRed),
+    ]) {
+      expect(uncertain?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      expect(uncertain?.assertions, id).toBeUndefined()
+    }
+  }
+})
+
+test("indexed cube colors require two exact direct-RGB reference controls", () => {
+  const first = { r: 95, g: 135, b: 175 }
+  const second = { r: 215, g: 135, b: 95 }
+  for (const id of ["sgr.fg.256", "sgr.bg.256"]) {
+    const probe = sgrProbes.find((item) => item.id === id)
+    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    const channel = id.includes(".fg.") ? "fg" : "bg"
+    const fed: string[] = []
+    const run = (indexed: readonly (typeof first | null)[], direct: readonly (typeof first | null)[]) =>
+      probe.termless?.(
+        headless({
+          feed: (sequence) => fed.push(sequence),
+          getCell: (_row, col) => ({
+            ...baseCell,
+            char: ["C", "A", "B", "X", "Y"][col] ?? "",
+            [channel]: [null, ...direct, ...indexed][col] ?? null,
+          }),
+        }),
+      )
+    const matched = run([first, second], [first, second])
+    const selector = channel === "fg" ? 38 : 48
+    for (const code of [
+      `${selector};5;67`,
+      `${selector};5;173`,
+      `${selector};2;95;135;175`,
+      `${selector};2;215;135;95`,
+    ]) {
+      expect(fed[0], id).toContain(`\x1b[${code}m`)
+    }
+    expect(matched?.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(matched?.assertions, id).toMatchObject([{ kind: "positive", observed: matched?.response }])
+    expect(JSON.parse(matched?.response ?? ""), id).toMatchObject({
+      directFirst: { char: "A" },
+      indexedSecond: { char: "Y" },
+    })
+    for (const uncertain of [
+      run([first, first], [first, second]),
+      run([null, null], [first, second]),
+      run([first, second], [null, null]),
+    ]) {
+      expect(uncertain?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      expect(uncertain?.assertions, id).toBeUndefined()
+    }
+  }
+})
+
+test("truecolor probes distinguish exact sampled RGB from calibrated wrong RGB", () => {
+  const firstFg = { r: 255, g: 128, b: 0 }
+  const firstBg = { r: 0, g: 255, b: 128 }
+  const second = { r: 17, g: 97, b: 201 }
+  const red = { r: 7, g: 1, b: 2 }
+  const blue = { r: 2, g: 1, b: 7 }
+  for (const id of ["sgr.fg.truecolor", "sgr.bg.truecolor"]) {
+    const probe = sgrProbes.find((item) => item.id === id)
+    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    const channel = id.includes(".fg.") ? "fg" : "bg"
+    const first = channel === "fg" ? firstFg : firstBg
+    const fed: string[] = []
+    const run = (targets: readonly (typeof first | null)[], controls: readonly (typeof red | null)[] = [red, blue]) =>
+      probe.termless?.(
+        headless({
+          feed: (sequence) => fed.push(sequence),
+          getCell: (_row, col) => ({
+            ...baseCell,
+            char: ["C", "A", "B", "X", "Y"][col] ?? "",
+            [channel]: [null, ...controls, ...targets][col] ?? null,
+          }),
+        }),
+      )
+    const exact = run([first, second])
+    const selector = channel === "fg" ? 38 : 48
+    expect(fed[0], id).toContain(`\x1b[${selector};2;${first.r};${first.g};${first.b}m`)
+    expect(fed[0], id).toContain(`\x1b[${selector};2;17;97;201m`)
+    expect(exact?.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(exact?.assertions, id).toMatchObject([{ kind: "positive", observed: exact?.response }])
+    const wrong = run([red, blue])
+    expect(wrong?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(wrong?.assertions, id).toMatchObject([{ kind: "negative", observed: wrong?.response }])
+    for (const uncertain of [run([red, blue], [red, red]), run([null, null]), run([first, second], [red, first])]) {
+      expect(uncertain?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      expect(uncertain?.assertions, id).toBeUndefined()
+    }
+  }
+})
+
+test("SGR 39 and 49 restore the measured default, including concrete RGB defaults", () => {
+  const baseline = { r: 4, g: 5, b: 6 }
+  const colored = { r: 90, g: 20, b: 10 }
   for (const id of ["sgr.fg.default", "sgr.bg.default"]) {
     const probe = sgrProbes.find((item) => item.id === id)
     if (!probe?.termless) throw new Error(`missing ${id} callback`)
-    const result = probe.termless(headless({ getCell: (_row, col) => ({ ...baseCell, char: col === 0 ? "X" : "Y" }) }))
-    expect(result.pass, id).toBe(false)
-    expect(result.observation, id).toBeUndefined()
+    const channel = id.includes(".fg.") ? "fg" : "bg"
+    const fed: string[] = []
+    const run = (colors: readonly (typeof baseline | null)[]) =>
+      probe.termless?.(
+        headless({
+          feed: (sequence) => fed.push(sequence),
+          getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "R"][col] ?? "", [channel]: colors[col] ?? null }),
+        }),
+      )
+    const restored = run([baseline, colored, baseline])
+    expect(fed[0], id).toContain(channel === "fg" ? "\x1b[31m" : "\x1b[42m")
+    expect(fed[0], id).toContain(channel === "fg" ? "\x1b[39m" : "\x1b[49m")
+    expect(restored?.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(restored?.assertions, id).toMatchObject([{ kind: "positive", observed: restored?.response }])
+    const ignored = run([baseline, colored, colored])
+    expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
+    const uncalibrated = run([baseline, baseline, baseline])
+    expect(uncalibrated?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(uncalibrated?.assertions, id).toBeUndefined()
   }
+})
+
+test("all ten SGR color TTY replies remain inconclusive and restore style", async () => {
+  for (const channel of ["fg", "bg"]) {
+    for (const family of ["standard", "bright", "256", "truecolor", "default"]) {
+      const id = `sgr.${channel}.${family}`
+      const probe = sgrProbes.find((item) => item.id === id)
+      if (!probe?.term) throw new Error(`missing ${id} TTY callback`)
+      const writes: string[] = []
+      const answered = await probe.term(
+        terminal({ write: (text) => writes.push(text), queryCursorPosition: async () => ({ row: 1, col: 2 }) }),
+      )
+      expect(answered.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      expect(answered.assertions, id).toBeUndefined()
+      expect(writes.at(-1), id).toBe("\x1b[0m")
+      const silent = await probe.term(terminal())
+      expect(silent.observation, id).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+    }
+  }
+  const color = sgrProbes.find((item) => item.id === "sgr.fg.standard")
+  if (!color?.term) throw new Error("missing standard foreground TTY callback")
+  const failedWrites: string[] = []
+  await expect(
+    color.term(
+      terminal({
+        write: (text) => failedWrites.push(text),
+        queryCursorPosition: async () => {
+          throw new Error("TTY color query failed")
+        },
+      }),
+    ),
+  ).rejects.toThrow("TTY color query failed")
+  expect(failedWrites.at(-1)).toBe("\x1b[0m")
 })
 
 test("SGR reset cursor replies remain inconclusive and style cleanup runs on query failure", async () => {
