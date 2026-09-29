@@ -99,7 +99,6 @@ function termTooltip(r) {
         :version="data.selectedByBackend[r.name]?.selected" :cell="data.selectedByBackend[r.name]?.selected.cells[p.featureId]" display="text" /></td>
       <td class="note-cell">
         {{ r.note }}
-        <a v-if="r.url" :href="r.url" target="_blank" rel="noopener" class="upstream-link"> ↗ upstream</a>
       </td>
     </tr>
   </tbody>
@@ -129,7 +128,6 @@ function termTooltip(r) {
         :version="data.selectedByBackend[r.name]?.selected" :cell="data.selectedByBackend[r.name]?.selected.cells[p.featureId]" display="text" /></td>
       <td class="note-cell">
         {{ r.note }}
-        <a v-if="r.url" :href="r.url" target="_blank" rel="noopener" class="upstream-link"> ↗ upstream</a>
       </td>
     </tr>
   </tbody>

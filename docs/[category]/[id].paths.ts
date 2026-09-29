@@ -30,14 +30,11 @@ export default {
         type: string
         result: string
         note: string
-        url: string
       }> = []
 
       for (const b of data.backends) {
         const result = data.results[b.name]?.[f.id] ?? "unknown"
-        const ann = data.annotations?.[`${b.name}:${f.id}`]
-        const note = ann?.note ?? data.notes[b.name]?.[f.id] ?? ""
-        const url = ann?.url ?? ""
+        const note = data.selectedByBackend[b.name]?.selected.cells[f.id]?.note ?? ""
         const bmeta = data.meta[b.name]
         backendResults.push({
           name: b.name,
@@ -48,7 +45,6 @@ export default {
           type: b.type ?? "headless",
           result,
           note,
-          url,
         })
       }
 

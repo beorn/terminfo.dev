@@ -56,8 +56,7 @@ export default {
         const results: Record<string, { result: string; note: string }> = {}
         for (const b of sortedBackends) {
           const result = data.results[b.name]?.[fid] ?? "unknown"
-          const ann = data.annotations?.[`${b.name}:${fid}`]
-          const note = ann?.note ?? data.notes[b.name]?.[fid] ?? ""
+          const note = data.selectedByBackend[b.name]?.selected.cells[fid]?.note ?? ""
           results[b.name] = { result, note }
         }
         return {

@@ -80,8 +80,7 @@ export default {
       for (const [cat, features] of Object.entries(data.categories)) {
         const catFeatures = features.map((f) => {
           const result = data.results[b.name]?.[f.id] ?? "unknown"
-          const ann = data.annotations?.[`${b.name}:${f.id}`]
-          const note = ann?.note ?? data.notes[b.name]?.[f.id] ?? ""
+          const note = data.selectedByBackend[b.name]?.selected.cells[f.id]?.note ?? ""
           const desc = data.featureDescriptions[f.id]
           return {
             id: f.id,

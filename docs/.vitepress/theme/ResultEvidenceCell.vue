@@ -264,7 +264,9 @@ onBeforeUnmount(() => {
         <span
           >{{ targetName }}<template v-if="version"> · {{ version.target.version }}</template></span
         >
-        <span v-if="cell">Method: {{ methodLabel }} · Reason: {{ cell.reason ?? "Not recorded" }}</span>
+        <span v-if="cell"
+          >Method: {{ methodLabel }}<template v-if="cell.reason"> · Reason: {{ cell.reason }}</template></span
+        >
         <span v-if="cell" style="overflow-wrap: anywhere"
           >Run {{ cell.chain.runId }} · SHA-256 {{ cell.chain.runSha256 }}</span
         >
@@ -278,7 +280,7 @@ onBeforeUnmount(() => {
           >{{ previewFrames.length }} approved recorded frames · control and target</span
         >
         <span v-if="presentation?.state === 'withdrawn'">Presentation withdrawn: {{ presentation.review.reason }}</span>
-        <span v-if="presentation?.state === 'presented'">Presentation reviewed: {{ presentation.review.reason }}</span>
+        <span v-if="presentation?.state === 'presented'">Presentation reviewed; open for review details</span>
         <span>{{ actionLabel }}<template v-if="previewImageUrl"> · open for original image</template></span>
       </div>
 
@@ -306,7 +308,7 @@ onBeforeUnmount(() => {
           >
         </p>
         <p v-if="cell?.note">{{ cell.note }}</p>
-        <p v-if="cell">Reason: {{ cell.reason ?? "Not recorded" }}</p>
+        <p v-if="cell?.reason">Reason: {{ cell.reason }}</p>
 
         <h3>Observation</h3>
         <p v-if="!version">No reviewed current run is selected for this terminal context.</p>
@@ -319,24 +321,18 @@ onBeforeUnmount(() => {
           <p>Reviewed by {{ presentation.review.reviewer }}.</p>
         </template>
         <template v-else-if="presentation?.state === 'presented'">
-          <p>Evidence presentation reviewed by {{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
+          <p>
+            Evidence presentation reviewed by {{ presentation.review.reviewer }}.<template
+              v-if="cell?.chain.correctionId"
+            >
+              The selected result includes a reviewed correction; the original observation is below.</template
+            >
+          </p>
           <p v-if="evidenceLoading" role="status">Loading and verifying the original evidence…</p>
           <p v-else-if="evidenceError" role="alert" class="result-evidence__outcome result-evidence__outcome--error">
             Evidence could not be verified: {{ evidenceError }}
           </p>
           <template v-else-if="evidenceDocument">
-            <template v-if="originalDiffers">
-              <h4>Original recorded observation</h4>
-              <p>
-                {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
-                <template v-if="evidenceDocument.observation.reason">
-                  · {{ evidenceDocument.observation.reason }}</template
-                >
-              </p>
-              <p v-if="evidenceDocument.observation.note">{{ evidenceDocument.observation.note }}</p>
-              <p>The current result above includes a reviewed correction.</p>
-            </template>
-
             <template v-if="evidenceFrames.length">
               <h4>Captured frames</h4>
               <div class="result-evidence__frames">
@@ -365,78 +361,98 @@ onBeforeUnmount(() => {
               </p>
             </template>
 
+            <details class="result-evidence__details">
+              <summary>Presentation review and original observation</summary>
+              <p>Reviewed by {{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
+              <template v-if="originalDiffers">
+                <h4>Original recorded observation</h4>
+                <p>
+                  {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
+                  <template v-if="evidenceDocument.observation.reason">
+                    · {{ evidenceDocument.observation.reason }}</template
+                  >
+                </p>
+                <p v-if="evidenceDocument.observation.note">{{ evidenceDocument.observation.note }}</p>
+              </template>
+            </details>
+
             <p v-if="!hasRecordedDetail">No raw evidence was captured for this observation.</p>
-            <template v-if="rawReply !== undefined">
-              <h4>{{ evidenceDocument.observation.evidence === "none" ? "Collector trace" : "Raw reply" }}</h4>
-              <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
-            </template>
-            <template v-if="assertions.length">
-              <h4>Bound assertions</h4>
-              <ul class="result-evidence__assertions">
-                <li v-for="(assertion, index) in assertions" :key="index">
-                  <strong>{{ assertion.kind }}</strong
-                  ><template v-if="assertion.action"> · {{ assertion.action }}</template>
-                  <span>Expected: {{ assertion.expected }}</span>
-                  <span>Observed: {{ assertion.observed }}</span>
-                  <span v-if="assertion.note">{{ assertion.note }}</span>
-                </li>
-              </ul>
-            </template>
+            <details v-if="rawReply !== undefined || assertions.length" class="result-evidence__details">
+              <summary>Raw reply and bound assertions</summary>
+              <template v-if="rawReply !== undefined">
+                <h4>{{ evidenceDocument.observation.evidence === "none" ? "Collector trace" : "Raw reply" }}</h4>
+                <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
+              </template>
+              <template v-if="assertions.length">
+                <h4>Bound assertions</h4>
+                <ul class="result-evidence__assertions">
+                  <li v-for="(assertion, index) in assertions" :key="index">
+                    <strong>{{ assertion.kind }}</strong
+                    ><template v-if="assertion.action"> · {{ assertion.action }}</template>
+                    <span>Expected: {{ assertion.expected }}</span>
+                    <span>Observed: {{ assertion.observed }}</span>
+                    <span v-if="assertion.note">{{ assertion.note }}</span>
+                  </li>
+                </ul>
+              </template>
+            </details>
           </template>
         </template>
 
-        <h3>Run context</h3>
-        <dl class="result-evidence__metadata">
-          <dt>Feature ID</dt>
-          <dd>{{ featureId }}</dd>
-          <dt>Target</dt>
-          <dd>{{ version ? `${version.target.kind}:${version.target.id}` : "No reviewed current run" }}</dd>
-          <dt>Version</dt>
-          <dd>{{ version?.target.version ?? "Not recorded" }}</dd>
-          <dt>Operating system</dt>
-          <dd>
-            {{ version?.target.os ?? "Not recorded"
-            }}<template v-if="version?.target.osVersion"> {{ version.target.osVersion }}</template>
-          </dd>
-          <dt>Outer terminal</dt>
-          <dd>{{ version?.target.outerTerminal ?? "Not recorded" }}</dd>
-          <dt>Multiplexer</dt>
-          <dd>{{ version?.target.mux ?? "Not recorded" }}</dd>
-          <dt>Configuration</dt>
-          <dd>{{ version?.target.config ?? "Not recorded" }}</dd>
-          <dt>Permissions</dt>
-          <dd>{{ version?.target.permissions ?? "Not recorded" }}</dd>
-          <dt>Measured at</dt>
-          <dd>{{ version?.measuredAt ?? "Not recorded" }}</dd>
-          <dt>Run ID</dt>
-          <dd>{{ cell?.chain.runId ?? version?.runId ?? "Not recorded" }}</dd>
-          <dt>Run SHA-256</dt>
-          <dd>{{ cell?.chain.runSha256 ?? version?.sha256 ?? "Not recorded" }}</dd>
-          <dt>Recorded method</dt>
-          <dd>{{ cell?.chain.method ?? "Not recorded" }}</dd>
-          <dt>Suite</dt>
-          <dd>
-            {{ version?.suiteId ?? "Not recorded"
-            }}<template v-if="version">
-              · {{ version.suite.observed }}/{{ version.suite.expected ?? "?" }} probes ·
-              {{ version.suiteFreshness }}</template
-            >
-          </dd>
-          <dt>Source revision</dt>
-          <dd>{{ version?.sourceRevision ?? "Not recorded" }}</dd>
-          <dt>Correction</dt>
-          <dd>{{ cell?.chain.correctionId ?? "None" }}</dd>
-        </dl>
+        <details class="result-evidence__details">
+          <summary>Run context</summary>
+          <dl class="result-evidence__metadata">
+            <dt>Feature ID</dt>
+            <dd>{{ featureId }}</dd>
+            <dt>Target</dt>
+            <dd>{{ version ? `${version.target.kind}:${version.target.id}` : "No reviewed current run" }}</dd>
+            <dt>Version</dt>
+            <dd>{{ version?.target.version ?? "Not recorded" }}</dd>
+            <dt>Operating system</dt>
+            <dd>
+              {{ version?.target.os ?? "Not recorded"
+              }}<template v-if="version?.target.osVersion"> {{ version.target.osVersion }}</template>
+            </dd>
+            <dt>Outer terminal</dt>
+            <dd>{{ version?.target.outerTerminal ?? "Not recorded" }}</dd>
+            <dt>Multiplexer</dt>
+            <dd>{{ version?.target.mux ?? "Not recorded" }}</dd>
+            <dt>Configuration</dt>
+            <dd>{{ version?.target.config ?? "Not recorded" }}</dd>
+            <dt>Permissions</dt>
+            <dd>{{ version?.target.permissions ?? "Not recorded" }}</dd>
+            <dt>Measured at</dt>
+            <dd>{{ version?.measuredAt ?? "Not recorded" }}</dd>
+            <dt>Run ID</dt>
+            <dd>{{ cell?.chain.runId ?? version?.runId ?? "Not recorded" }}</dd>
+            <dt>Run SHA-256</dt>
+            <dd>{{ cell?.chain.runSha256 ?? version?.sha256 ?? "Not recorded" }}</dd>
+            <dt>Recorded method</dt>
+            <dd>{{ cell?.chain.method ?? "Not recorded" }}</dd>
+            <dt>Suite</dt>
+            <dd>
+              {{ version?.suiteId ?? "Not recorded"
+              }}<template v-if="version">
+                · {{ version.suite.observed }}/{{ version.suite.expected ?? "?" }} probes ·
+                {{ version.suiteFreshness }}</template
+              >
+            </dd>
+            <dt>Source revision</dt>
+            <dd>{{ version?.sourceRevision ?? "Not recorded" }}</dd>
+            <dt>Correction</dt>
+            <dd>{{ cell?.chain.correctionId ?? "None" }}</dd>
+          </dl>
+        </details>
 
-        <template v-if="version?.reviews?.length">
-          <h3>Reviews</h3>
+        <details v-if="version?.reviews?.length" class="result-evidence__details">
+          <summary>Run reviews</summary>
           <ul class="result-evidence__reviews">
             <li v-for="review in version.reviews" :key="review.id">
               <strong>{{ review.reviewer }}</strong> · {{ review.reason }}
               <span v-if="review.sources.length">Sources: {{ review.sources.join(", ") }}</span>
             </li>
           </ul>
-        </template>
+        </details>
         <p v-if="cell" class="result-evidence__repro">Full reproduction steps: not recorded for this observation.</p>
       </dialog>
     </Teleport>

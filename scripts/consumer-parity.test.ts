@@ -1,5 +1,5 @@
 /**
- * @failure Site, API and analysis disagree about one already-admitted run, its denominator or measurement time.
+ * @failure Site, API and analysis disagree about an admitted run, or an unscoped annotation overrides its selected public note.
  * @level l2
  * @consumer Site matrix, terminal paths, v1/v2 API and generated analysis.
  * @testonly none
@@ -178,6 +178,7 @@ import { loadProbes } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
 import comparePaths from "../docs/compare/[id].paths.ts"
 import baselinePaths from "../docs/baseline/[id].paths.ts"
+import categoryPaths from "../docs/[id].paths.ts"
 import featurePaths from "../docs/[category]/[id].paths.ts"
 import { generateApi } from "./generate-api.ts"
 import { generateAnalysis } from "./generate-analysis.ts"
@@ -423,5 +424,91 @@ describe("selected-run consumer parity", () => {
     )
     const bold = featurePaths.paths().find((page) => page.params.featureId === "sgr.bold")
     expect(bold?.params).toMatchObject({ yesCount: "2", totalCount: "2" })
+  })
+
+  it("uses selected public notes across routes without promoting unscoped annotations", () => {
+    const data = loadProbes()
+    const reviewed = data.selectedByBackend.kitty?.selected.cells["sgr.bold"]
+    const inconclusive = data.selectedByBackend.screen?.selected.cells["sgr.bold"]
+    if (!reviewed || !inconclusive) throw new Error("Missing selected bold cells in parity fixture")
+    const originalNote = reviewed.note
+    const originalInconclusiveNote = inconclusive.note
+    const originalBoldAnnotation = data.annotations["kitty:sgr.bold"]
+    const originalSixelAnnotation = data.annotations["kitty:extensions.sixel"]
+    const originalScreenAnnotation = data.annotations["screen:sgr.bold"]
+    reviewed.note = "Reviewed Kitty bold note"
+    inconclusive.note = "Reviewed screen inconclusive note"
+    data.annotations["kitty:sgr.bold"] = {
+      note: "Unscoped conflicting bold annotation",
+      url: "https://example.org/unscoped-implementation",
+    }
+    data.annotations["kitty:extensions.sixel"] = { note: "Unreviewed sixel annotation" }
+    data.annotations["screen:sgr.bold"] = { note: "Unscoped screen annotation" }
+
+    const rowNote = (rows: string, featureId: string, backendName: string): string | undefined =>
+      (JSON.parse(rows) as Array<{ id: string; results: Record<string, { note: string }> }>).find(
+        (row) => row.id === featureId,
+      )?.results[backendName]?.note
+
+    try {
+      const categories = categoryPaths.paths()
+      const baselines = baselinePaths.paths()
+      const terminals = terminalPaths.paths()
+      const features = featurePaths.paths()
+      const comparison = comparePaths
+        .paths()
+        .find(
+          (entry) =>
+            [entry.params.termAId, entry.params.termBId].includes("kitty") &&
+            [entry.params.termAId, entry.params.termBId].includes("screen"),
+        )
+      const comparisonRows = JSON.parse(comparison?.params.categories ?? "[]") as Array<{
+        features: Array<{ id: string; noteA: string; noteB: string }>
+      }>
+      const terminalNote = (backendName: string, featureId: string): string | undefined => {
+        const page = terminals.find((entry) => entry.params.backendId === backendName)
+        const groups = JSON.parse(page?.params.categories ?? "[]") as Array<{
+          features: Array<{ id: string; note: string }>
+        }>
+        return groups.flatMap((group) => group.features).find((row) => row.id === featureId)?.note
+      }
+      for (const [backendName, featureId, categoryId, tagId, baselineId, expected] of [
+        ["kitty", "sgr.bold", "sgr", "ecma-48", "core", "Reviewed Kitty bold note"],
+        ["kitty", "extensions.sixel", "extensions", "sixel", "rich", ""],
+        ["screen", "sgr.bold", "sgr", "ecma-48", "core", "Reviewed screen inconclusive note"],
+      ] as const) {
+        const category = categories.find((page) => page.params.id === categoryId)
+        const tag = categories.find((page) => page.params.id === tagId)
+        const baseline = baselines.find((page) => page.params.id === baselineId)
+        const feature = features.find((page) => page.params.featureId === featureId)
+        const featureRows = JSON.parse(feature?.params.backendResults ?? "[]") as Array<{ name: string; note: string }>
+        const comparisonRow = comparisonRows.flatMap((group) => group.features).find((row) => row.id === featureId)
+        expect(rowNote(category?.params.features ?? "[]", featureId, backendName)).toBe(expected)
+        expect(rowNote(tag?.params.features ?? "[]", featureId, backendName)).toBe(expected)
+        expect(rowNote(baseline?.params.features ?? "[]", featureId, backendName)).toBe(expected)
+        expect(featureRows.find((row) => row.name === backendName)?.note).toBe(expected)
+        expect(comparison?.params.termAId === backendName ? comparisonRow?.noteA : comparisonRow?.noteB).toBe(expected)
+        expect(terminalNote(backendName, featureId)).toBe(expected)
+      }
+      expect(data.results.screen?.["sgr.bold"]).toBeUndefined()
+      const bold = features.find((page) => page.params.featureId === "sgr.bold")
+      const boldResults = JSON.parse(bold?.params.backendResults ?? "[]") as Array<Record<string, unknown>>
+      expect(boldResults.find((row) => row.name === "kitty")).not.toHaveProperty("url")
+      expect(data.annotations["kitty:sgr.bold"]?.note).toBe("Unscoped conflicting bold annotation")
+      expect(data.annotations["kitty:sgr.bold"]?.url).toBe("https://example.org/unscoped-implementation")
+      expect(data.annotations["kitty:extensions.sixel"]?.note).toBe("Unreviewed sixel annotation")
+      expect(data.annotations["screen:sgr.bold"]?.note).toBe("Unscoped screen annotation")
+    } finally {
+      if (originalNote === undefined) delete reviewed.note
+      else reviewed.note = originalNote
+      if (originalInconclusiveNote === undefined) delete inconclusive.note
+      else inconclusive.note = originalInconclusiveNote
+      if (originalBoldAnnotation === undefined) delete data.annotations["kitty:sgr.bold"]
+      else data.annotations["kitty:sgr.bold"] = originalBoldAnnotation
+      if (originalSixelAnnotation === undefined) delete data.annotations["kitty:extensions.sixel"]
+      else data.annotations["kitty:extensions.sixel"] = originalSixelAnnotation
+      if (originalScreenAnnotation === undefined) delete data.annotations["screen:sgr.bold"]
+      else data.annotations["screen:sgr.bold"] = originalScreenAnnotation
+    }
   })
 })

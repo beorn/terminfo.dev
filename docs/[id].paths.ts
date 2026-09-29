@@ -78,8 +78,7 @@ export default {
         const results: Record<string, { result: string; note: string }> = {}
         for (const b of sortedBackends) {
           const result = data.results[b.name]?.[f.id] ?? "unknown"
-          const ann = data.annotations?.[`${b.name}:${f.id}`]
-          const note = ann?.note ?? data.notes[b.name]?.[f.id] ?? ""
+          const note = data.selectedByBackend[b.name]?.selected.cells[f.id]?.note ?? ""
           results[b.name] = { result, note }
         }
         return {
@@ -98,12 +97,12 @@ export default {
         if (categoryFeatureIds.has(fid)) continue
         const desc = data.featureDescriptions[fid]
         if (!desc) continue
-        const fcat = fid.split(".")[0]!
+        const fcat = fid.split(".")[0]
+        if (!fcat) throw new Error(`Tagged feature ${fid} has no category`)
         const results: Record<string, { result: string; note: string }> = {}
         for (const b of sortedBackends) {
           const result = data.results[b.name]?.[fid] ?? "unknown"
-          const ann = data.annotations?.[`${b.name}:${fid}`]
-          const note = ann?.note ?? data.notes[b.name]?.[fid] ?? ""
+          const note = data.selectedByBackend[b.name]?.selected.cells[fid]?.note ?? ""
           results[b.name] = { result, note }
         }
         featureRows.push({
@@ -157,8 +156,7 @@ export default {
         const results: Record<string, { result: string; note: string }> = {}
         for (const b of sortedBackends) {
           const result = data.results[b.name]?.[fid] ?? "unknown"
-          const ann = data.annotations?.[`${b.name}:${fid}`]
-          const note = ann?.note ?? data.notes[b.name]?.[fid] ?? ""
+          const note = data.selectedByBackend[b.name]?.selected.cells[fid]?.note ?? ""
           results[b.name] = { result, note }
         }
         return {
@@ -177,9 +175,11 @@ export default {
       featureRows.sort((a, b) => {
         const numA = a.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)
         const numB = b.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)
-        if (numA && numB) return parseInt(numA[1]!, 10) - parseInt(numB[1]!, 10)
-        if (numA) return -1
-        if (numB) return 1
+        const valueA = numA?.[1]
+        const valueB = numB?.[1]
+        if (valueA && valueB) return parseInt(valueA, 10) - parseInt(valueB, 10)
+        if (valueA) return -1
+        if (valueB) return 1
         return a.name.localeCompare(b.name)
       })
 
