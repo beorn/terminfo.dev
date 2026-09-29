@@ -1,5 +1,5 @@
 /**
- * @failure Malformed probe input is accepted or skipped, while legacy files without replies are falsely reported as measured DA1 mismatches.
+ * @failure Malformed probe input is accepted or skipped, v2 files disappear from inventory, or legacy files without replies are falsely reported as measured DA1 mismatches.
  * @level l2
  * @consumer The content-validation CLI used before site publication.
  * @testonly none
@@ -10,7 +10,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test } from "vitest"
 
-test("validation refuses malformed library probe data with its path", () => {
+test("validation inventories v2 targets and refuses malformed probe data with its path", () => {
   const source = join(import.meta.dirname, "..")
   const root = mkdtempSync(join(tmpdir(), "terminfo-validate-"))
   try {
@@ -23,11 +23,10 @@ test("validation refuses malformed library probe data with its path", () => {
     for (const name of ["features", "standards", "categories", "terminals", "platforms", "annotations", "baselines"]) {
       copyFileSync(join(source, "content", `${name}.json`), join(root, "content", `${name}.json`))
     }
-    writeFileSync(
-      join(root, "content", "probes-libs", "v2-observations.json"),
-      // This syntax check does not perform the shared Run parser's schema/admission validation.
-      JSON.stringify({ schemaVersion: 2, observations: [] }),
-    )
+    const v2Path = join(root, "content", "probes-libs", "v2-observations.json")
+    const v2Probe = { schemaVersion: 2, target: { kind: "headless", id: "libvterm" }, observations: [] }
+    // This metadata check does not perform the shared Run parser's schema/admission validation.
+    writeFileSync(v2Path, JSON.stringify(v2Probe))
 
     const script = join(root, "scripts", "validate.ts")
     const baseline = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
@@ -35,6 +34,24 @@ test("validation refuses malformed library probe data with its path", () => {
     expect(baseline.status, baseline.stderr).toBe(0)
     expect(baseline.stdout).toContain("0 errors")
     expect(baseline.stdout).toContain("Legacy annotation coverage: 0/0")
+    expect(baseline.stdout).not.toContain('Terminal "libvterm" (libvterm (Neovim fork)) has no probe data files')
+    expect(baseline.stdout).toContain("With probe data: 1")
+    expect(baseline.stdout).toContain("Without probe data: 22")
+
+    writeFileSync(v2Path, JSON.stringify({ ...v2Probe, target: { kind: "headless", id: "unknown-backend" } }))
+    const unknownV2 = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
+    expect(unknownV2.error).toBeUndefined()
+    expect(unknownV2.status, unknownV2.stdout + unknownV2.stderr).toBe(0)
+    expect(unknownV2.stdout).toContain('Probe file "probes-libs/v2-observations.json" references "unknown-backend"')
+
+    for (const target of [undefined, { kind: "app", id: "libvterm" }, { kind: "headless", id: " " }]) {
+      writeFileSync(v2Path, JSON.stringify({ ...v2Probe, target }))
+      const invalidV2 = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
+      expect(invalidV2.error).toBeUndefined()
+      expect(invalidV2.status, invalidV2.stdout + invalidV2.stderr).toBe(1)
+      expect(invalidV2.stdout).toMatch(/probes-libs\/v2-observations\.json.*target/i)
+    }
+    writeFileSync(v2Path, JSON.stringify(v2Probe))
 
     writeFileSync(join(root, "content", "probes-libs", "broken.json"), "{")
     const corrupt = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })

@@ -147,10 +147,12 @@ heading("Errors (block deploy)")
 type ProbeFile = {
   file: string
   dir: "probes-apps" | "probes-libs" | "probes-mux"
+  backendName?: string
   data: {
     schemaVersion?: number
     terminal?: string
     backend?: string
+    target?: unknown
     responses?: Record<string, string>
     results?: Record<string, boolean>
   }
@@ -190,7 +192,25 @@ for (const [dir, files] of [
           throw new Error("legacy identity responses must be string values in a JSON object")
         }
       }
-      probeFiles.push({ file, dir, data: probe })
+      let backendName: string | undefined
+      if (probe.schemaVersion === 2) {
+        const target = probe.target
+        if (target === null || typeof target !== "object" || Array.isArray(target)) {
+          throw new Error("v2 target must be a JSON object")
+        }
+        const expectedKind = dir === "probes-libs" ? "headless" : dir === "probes-apps" ? "app" : "mux"
+        if ((target as Record<string, unknown>).kind !== expectedKind) {
+          throw new Error(`v2 target.kind must be "${expectedKind}" in ${dir}`)
+        }
+        const id = (target as Record<string, unknown>).id
+        if (typeof id !== "string" || id.trim().length === 0) {
+          throw new Error("v2 target.id must be a nonempty string")
+        }
+        backendName = id
+      } else {
+        backendName = dir === "probes-libs" ? (probe.backend ?? probe.terminal) : (probe.terminal ?? probe.backend)
+      }
+      probeFiles.push({ file, dir, backendName, data: probe })
     } catch (cause) {
       error(
         `Probe file "${dir}/${file}" could not be parsed: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -202,9 +222,8 @@ for (const [dir, files] of [
 if (errors > 0) process.exit(1)
 
 const probeBackends = new Set<string>()
-for (const { dir, data } of probeFiles) {
-  const backend = dir === "probes-libs" ? data.backend : data.terminal
-  if (backend) probeBackends.add(backend)
+for (const { backendName } of probeFiles) {
+  if (backendName) probeBackends.add(backendName)
 }
 
 // 1. Features with unknown tags
@@ -526,8 +545,7 @@ heading("Warnings (fix soon)")
   }
 
   let count = 0
-  for (const { file, dir, data } of probeFiles) {
-    const backendName = data.terminal ?? data.backend
+  for (const { file, dir, backendName } of probeFiles) {
     if (backendName && !knownBackends.has(backendName)) {
       warn(`Probe file "${dir}/${file}" references "${backendName}" — no matching terminal in terminals.json`)
       warnings++
