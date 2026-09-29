@@ -394,6 +394,39 @@ describe("selected-run consumer parity", () => {
     }
   })
 
+  it("names the canonical Legacy baseline for a measured legacy feature", () => {
+    // Core-only fixtures would miss the generator's former fallback of every other baseline to Unicode.
+    const warnings: string[] = []
+    const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))
+    const featureId = "modes.decsclm"
+    const cells = fixture.selected.cells
+    const results = fixture.selected.v1
+    const bold = cells["sgr.bold"]
+    if (!bold) throw new Error("Missing selected bold fixture cell")
+    try {
+      Object.assign(cells, {
+        [featureId]: {
+          ...bold,
+          featureId,
+          outcome: "unsupported",
+          evidence: "behavior",
+          conclusive: true,
+          record: { assertions: [{ featureId, kind: "negative", expected: "smooth scroll", observed: "jump scroll" }] },
+          chain: { ...bold.chain, method: "behavior" },
+        },
+      })
+      Object.assign(results, { [featureId]: false })
+      const analysis = generateAnalysis()["modes/decsclm-smooth-scroll"]?.analysis
+      expect(analysis).toContain("Legacy")
+      expect(analysis).not.toContain("Unicode")
+      expect(warnings.every((message) => message.includes("no reviewed current conclusive results"))).toBe(true)
+    } finally {
+      warning.mockRestore()
+      Reflect.deleteProperty(cells, featureId)
+      Reflect.deleteProperty(results, featureId)
+    }
+  })
+
   it("keeps a reviewed inconclusive target and its version visible without a score", () => {
     const site = probesLoader.load()
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")

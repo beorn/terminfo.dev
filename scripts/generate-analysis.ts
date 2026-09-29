@@ -657,6 +657,7 @@ function generateFeatureAnalysis(
   featureId: string,
   feature: FeatureMeta,
   allStats: Map<string, TerminalStats>,
+  baselines: Record<string, BaselineMeta>,
 ): AnalysisEntry {
   const parts: string[] = []
 
@@ -705,9 +706,9 @@ function generateFeatureAnalysis(
 
   // Baseline context
   if (feature.baseline) {
-    parts.push(
-      `Part of the <strong>${feature.baseline === "core" ? "Core TUI" : feature.baseline === "modern" ? "Modern TUI" : feature.baseline === "rich" ? "Rich TUI" : "Unicode"}</strong> baseline`,
-    )
+    const baseline = baselines[feature.baseline]
+    if (!baseline) throw new Error(`Feature ${featureId} references unknown baseline ${feature.baseline}`)
+    parts.push(`Part of the <strong>${baseline.label}</strong> baseline`)
   }
 
   return {
@@ -1275,7 +1276,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const category = featureId.split(".")[0]
     const slug = featureMeta.slug ?? featureId.replaceAll(".", "-")
     const key = `${category}/${slug}`
-    const entry = generateFeatureAnalysis(featureId, featureMeta, allStats)
+    const entry = generateFeatureAnalysis(featureId, featureMeta, allStats, baselines)
     if (entry.analysis) {
       validateHtml(entry.analysis, key)
       output[key] = entry
