@@ -86,15 +86,15 @@ Terminfo describes capabilities associated with a `$TERM` entry, including [user
 
 ## Comparing Detection Methods
 
-| Method            | Reliability                          | Coverage                              | Speed                   | Requires Response | Works Over SSH           |
-| ----------------- | ------------------------------------ | ------------------------------------- | ----------------------- | ----------------- | ------------------------ |
-| **$TERM**         | Low — almost everything lies         | Legacy features only (via terminfo)   | Instant                 | No                | Yes                      |
-| **$COLORTERM**    | Medium — widely adopted for color    | Truecolor only                        | Instant                 | No                | Depends on forwarding    |
-| **terminfo**      | Medium — accurate for what it tracks | Legacy features only                  | Instant (cached)        | No                | Yes (if entry installed) |
-| **DA1**           | Medium — useful as sentinel          | Terminal class, not specific features | Fast (~ms)              | Yes               | Yes                      |
-| **DECRPM**        | High — definitive answer             | Mode-toggled features only            | Fast (~ms)              | Yes               | Yes                      |
-| **XTVERSION**     | High — exact identity                | All features (via lookup table)       | Fast (~ms)              | Yes               | May report mux instead   |
-| **Runtime probe** | Depends on the measured claim        | Only executed checks                  | Varies                  | Often             | Depends on the path      |
+| Method            | Reliability                          | Coverage                              | Speed            | Requires Response | Works Over SSH           |
+| ----------------- | ------------------------------------ | ------------------------------------- | ---------------- | ----------------- | ------------------------ |
+| **$TERM**         | Low — almost everything lies         | Legacy features only (via terminfo)   | Instant          | No                | Yes                      |
+| **$COLORTERM**    | Medium — widely adopted for color    | Truecolor only                        | Instant          | No                | Depends on forwarding    |
+| **terminfo**      | Medium — accurate for what it tracks | Legacy features only                  | Instant (cached) | No                | Yes (if entry installed) |
+| **DA1**           | Medium — useful as sentinel          | Terminal class, not specific features | Fast (~ms)       | Yes               | Yes                      |
+| **DECRPM**        | High — definitive answer             | Mode-toggled features only            | Fast (~ms)       | Yes               | Yes                      |
+| **XTVERSION**     | High — exact identity                | All features (via lookup table)       | Fast (~ms)       | Yes               | May report mux instead   |
+| **Runtime probe** | Depends on the measured claim        | Only executed checks                  | Varies           | Often             | Depends on the path      |
 
 ## Secondary Environment Hints
 
