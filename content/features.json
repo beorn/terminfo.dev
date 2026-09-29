@@ -2447,10 +2447,10 @@
   "extensions.osc22-pointer": {
     "name": "Pointer shape (OSC 22)",
     "slug": "osc-22-pointer-shape",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "tags": ["osc", "xterm-extensions"],
-    "body": "OSC 22 sets the mouse pointer cursor shape when hovering over the terminal window. The sequence <code>ESC ] 22 ; name BEL</code> sets the pointer to a named cursor shape (e.g., <code>pointer</code>, <code>crosshair</code>, <code>text</code>, <code>wait</code>, <code>help</code>). Applications use this to provide visual feedback — a text cursor over editable regions, a pointer over clickable elements, or a wait cursor during processing. Supported by xterm, foot, Ghostty, and WezTerm. Shape names follow the X11 cursor font or CSS cursor keyword conventions.",
-    "probe": "Send <code>OSC 22 ; pointer BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "url": "https://sw.kovidgoyal.net/kitty/pointer-shapes/",
+    "tags": ["osc", "xterm-extensions", "kitty-extensions"],
+    "body": "OSC 22 controls the mouse pointer shape. Kitty extends xterm’s original mechanism with standardized shape names, a push/pop stack and queries. For example, <code>OSC 22 ; ?__current__ ST</code> asks for the selected shape, while <code>OSC 22 ; ?pointer,crosshair ST</code> asks whether named shapes are supported. A reply reports protocol state or recognized names; observing the visible pointer is a separate check.",
+    "probe": "The current app probe sends <code>OSC 22 ; pointer BEL</code> and reads the text cursor position. It does not query OSC 22 state or observe the mouse pointer, so the result remains inconclusive. No headless callback is implemented.",
     "baseline": "rich",
     "probeStatus": "partial",
     "sequence": "ESC ] 22 ; shape BEL"
