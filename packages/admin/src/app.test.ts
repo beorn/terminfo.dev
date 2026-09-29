@@ -16,12 +16,8 @@ import {
   saveDaemonProbeRun,
   stopOwnedDaemon,
 } from "terminfo.dev/src/daemon-client.ts"
-import {
-  assertOwnedTerminalWindow,
-  captureTerminalAppReceipt,
-  closeOwnedTerminalWindow,
-  launchTerminalWindow,
-} from "./terminal-app-receipt.ts"
+import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
+import { assertOwnedTerminalWindow, closeOwnedTerminalWindow } from "terminfo.dev/src/terminal-app-window.ts"
 
 vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true), writeFileSync: vi.fn() }))
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn(), execSync: vi.fn(() => "2.15\n"), spawn: vi.fn() }))
@@ -42,10 +38,12 @@ vi.mock("terminfo.dev/src/daemon-client.ts", () => ({
   shellQuote: vi.fn((text: string) => `'${text}'`),
 }))
 vi.mock("./terminal-app-receipt.ts", () => ({
-  assertOwnedTerminalWindow: vi.fn(),
   captureTerminalAppReceipt: vi.fn(),
-  closeOwnedTerminalWindow: vi.fn(),
   launchTerminalWindow: vi.fn(),
+}))
+vi.mock("terminfo.dev/src/terminal-app-window.ts", () => ({
+  assertOwnedTerminalWindow: vi.fn(),
+  closeOwnedTerminalWindow: vi.fn(),
 }))
 
 const window = { windowId: 14, tty: "/dev/ttys003" }

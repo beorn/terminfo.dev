@@ -8,7 +8,8 @@ import { beforeEach, describe, expect, test, vi } from "vitest"
 import { spawnSync } from "node:child_process"
 import { readFileSync, realpathSync } from "node:fs"
 import { createHash } from "node:crypto"
-import { captureTerminalAppReceipt, closeOwnedTerminalWindow, launchTerminalWindow } from "./terminal-app-receipt.ts"
+import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
+import { closeOwnedTerminalWindow } from "terminfo.dev/src/terminal-app-window.ts"
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }))
 vi.mock("node:fs", () => ({ readFileSync: vi.fn(), realpathSync: vi.fn() }))
@@ -71,6 +72,12 @@ beforeEach(() => {
 })
 
 describe("owned Terminal.app receipt", () => {
+  test("shared window module import does not run a process", async () => {
+    vi.resetModules()
+    await import("terminfo.dev/src/terminal-app-window.ts")
+    expect(spawnSync).not.toHaveBeenCalled()
+  })
+
   test("launch selects the one new single-tab window with the returned tab TTY", () => {
     // The OS reply lists the before IDs, do-script tab TTY, then only new
     // windows' ID, tab count, and sole-tab TTY. Retained closed IDs can vanish

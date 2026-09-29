@@ -22,6 +22,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/serve.ts",
   "packages/terminfo.dev/src/detect.ts",
   "packages/terminfo.dev/src/identity-guard.ts",
+  "packages/terminfo.dev/src/terminal-app-window.ts",
 ]
 const VERSIONS_PATH = join(REPO_ROOT, "versions.json")
 
