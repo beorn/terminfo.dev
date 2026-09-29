@@ -9,11 +9,47 @@ import { eraseProbes } from "./erase.ts"
 import type { TermContext, TermlessContext } from "./types.ts"
 
 const ids = ["erase.line.right", "erase.line.left", "erase.line.all", "erase.character"] as const
+const screenIds = ["erase.screen.below", "erase.screen.above", "erase.screen.all"] as const
 
-function byId(id: (typeof ids)[number]) {
+function byId(id: (typeof ids)[number] | (typeof screenIds)[number]) {
   const probe = eraseProbes.find((item) => item.id === id)
   if (!probe?.termless || !probe.term) throw new Error(`missing erase callbacks for ${id}`)
   return probe
+}
+
+type ScreenRows = readonly [string, string, string]
+
+function screenHeadless(
+  after: ScreenRows,
+  options: {
+    before?: ScreenRows
+    cursorBefore?: { x: number; y: number }
+    cursorAfter?: { x: number; y: number }
+    missing?: { row: number; col: number }
+    historyAfter?: number
+  } = {},
+): TermlessContext {
+  const base = headless("ABCDE")
+  const before = options.before ?? (["AAAAA", "BBBBB", "CCCCC"] as const)
+  let erased = false
+  return {
+    ...base,
+    feed(sequence) {
+      if (/^\x1b\[[012]J$/.test(sequence)) erased = true
+    },
+    getCell(row, col) {
+      const char =
+        erased && options.missing?.row === row && options.missing.col === col
+          ? undefined
+          : ((erased ? after : before)[row]?.[col] ?? "")
+      return { ...base.getCell(0, 0), char: char as string }
+    },
+    getCursor: () => {
+      const cursor = erased ? (options.cursorAfter ?? options.cursorBefore) : options.cursorBefore
+      return { x: cursor?.x ?? 2, y: cursor?.y ?? 1, visible: true, style: null }
+    },
+    getScrollback: () => ({ viewportOffset: 0, screenLines: 3, totalLines: erased ? (options.historyAfter ?? 4) : 4 }),
+  }
 }
 
 function headless(
@@ -142,6 +178,66 @@ test("EL 2 preserves a neighboring row, while app CPR only reports responsivenes
   })
   for (const id of ids) {
     expect((await byId(id).term!(app({ row: 1, col: 3 }))).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+    })
+    expect((await byId(id).term!(app(null))).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+    })
+  }
+})
+
+// ED0/1/2 act on screen cells, which the earlier EL/ECH row fixtures never inspect.
+test.each([
+  ["erase.screen.below", ["AAAAA", "BB   ", "     "], ["     ", "BBBBB", "CCCCC"], ["AAAAA", "   BB", "CCCCC"]],
+  ["erase.screen.above", ["     ", "   BB", "CCCCC"], ["AAAAA", "BBBBB", "     "], ["AAAAA", "BB   ", "CCCCC"]],
+  ["erase.screen.all", ["     ", "     ", "     "], ["AAAAA", "BBBBB", "CCCCC"], ["AAAAA", "     ", "CCCCC"]],
+] as const)("%s requires exact erased cells and preserved controls", (id, expected, ignored, wrongSide) => {
+  const probe = byId(id)
+  const supported = probe.termless!(screenHeadless(expected))
+  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(supported.assertions).toMatchObject([{ kind: "positive", observed: supported.response }])
+  const raw: unknown = JSON.parse(supported.response ?? "")
+  expect(raw).toMatchObject({
+    before: ["AAAAA", "BBBBB", "CCCCC"].map((row) => row.split("")),
+    after: expected.map((row) => row.split("")),
+    cursorBefore: { x: 2, y: 1 },
+    cursorAfter: { x: 2, y: 1 },
+  })
+  for (const actual of [ignored, wrongSide, ["     ", "     ", "     "] as const]) {
+    if (actual.join("") === expected.join("")) continue
+    const result = probe.termless!(screenHeadless(actual))
+    expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(result.assertions).toMatchObject([{ kind: "negative", observed: result.response }])
+  }
+})
+
+test.each(screenIds)("%s refuses incomplete fixture or cell readback", (id) => {
+  const expected: ScreenRows =
+    id === "erase.screen.below"
+      ? ["AAAAA", "BB   ", "     "]
+      : id === "erase.screen.above"
+        ? ["     ", "   BB", "CCCCC"]
+        : ["     ", "     ", "     "]
+  const probe = byId(id)
+  for (const context of [
+    screenHeadless(expected, { before: ["AAAAA", "XXXXX", "CCCCC"] }),
+    screenHeadless(expected, { cursorBefore: { x: 0, y: 1 } }),
+    screenHeadless(expected, { missing: { row: 1, col: 2 } }),
+  ]) {
+    const result = probe.termless!(context)
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.assertions).toBeUndefined()
+  }
+})
+
+test("ED2 cannot silently clear measured scrollback, and app CPR never proves erased pixels", async () => {
+  const all = byId("erase.screen.all")
+  const historyLost = all.termless!(screenHeadless(["     ", "     ", "     "], { historyAfter: 3 }))
+  expect(historyLost.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  for (const id of screenIds) {
+    expect((await byId(id).term!(app({ row: 2, col: 3 }))).observation).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
     })

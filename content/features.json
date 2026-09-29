@@ -936,7 +936,7 @@
     "url": "https://gitlab.freedesktop.org/terminal-wg/specifications/-/merge_requests/2",
     "tags": ["dec-private-modes"],
     "body": "Synchronized output prevents flicker during screen updates by batching terminal output. The application sends <code>ESC [ ? 2026 h</code> before a render and <code>ESC [ ? 2026 l</code> after. The terminal buffers all output between these markers and renders it as a single atomic frame.\n\nWithout synchronized output, complex TUI updates (clearing screen, repositioning cursor, writing content) may partially render between frames, causing visible tearing or flicker. This is especially noticeable over slow connections or with complex layouts.\n\nThis protocol was proposed by the terminal-wg (Terminal Working Group) and adopted by Ghostty, Kitty, WezTerm, foot, Contour, and other modern terminals. It has become the standard way to achieve flicker-free TUI rendering.",
-    "probe": "Send <code>\\x1b[?2026h</code>, write text, send <code>\\x1b[?2026l</code>, verify output rendered without crash.",
+    "probe": "Query DECRPM for mode 2026 and verify a set or reset reply. Atomic rendering is not tested.",
     "baseline": "modern",
     "sequence": "ESC [ ? 2026 h"
   },
@@ -1223,7 +1223,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/",
     "tags": ["kitty-extensions"],
     "body": "The Kitty graphics protocol enables inline image display in the terminal using a structured escape sequence format. Unlike Sixel, which encodes pixel data as ASCII characters, Kitty graphics transmits images as base64-encoded PNG, RGB, or RGBA data via APC (Application Program Command) sequences.\n\nImages are sent with <code>ESC_G &lt;control data&gt; ; &lt;payload&gt; ESC \\</code>. Large images are split into chunks using the <code>m=1</code> flag for continuation. The protocol supports placement (positioning images relative to cells), virtual image references (transmit once, display many times), animation frames, and z-layering. Each image gets a numeric ID, and Unicode placeholder characters allow images to participate in text layout and scrollback.\n\nCompared to Sixel, the Kitty protocol offers higher fidelity (full 32-bit RGBA), streaming, and compositing — but requires explicit terminal support. Adopted by Ghostty, WezTerm, and Konsole.",
-    "probe": "Send a minimal Kitty graphics payload (<code>ESC_P G ... ESC \\</code>) and check for an acknowledgment response.",
+    "probe": "Send a 1x1 raw-RGB Kitty graphics query via APC (<code>ESC _ G ... ESC \\</code>) and verify the matching image ID is acknowledged. Visible pixels are not tested.",
     "baseline": "rich"
   },
   "extensions.sixel": {
@@ -2232,7 +2232,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
     "tags": ["kitty-extensions"],
     "body": "Flag 16 adds associated text codepoints to key events. When a key press would produce text (after input method processing, dead keys, compose sequences), the terminal includes the resulting text as an additional parameter. This is critical for international input — compose sequences, CJK input methods, and dead key combinations produce text that can't be derived from the key code alone.",
-    "probe": "Push keyboard mode with flags 1+16 (<code>CSI > 17 u</code>), query flags, verify bit 16 is set.",
+    "probe": "Push keyboard mode with flags 1+8+16 (<code>CSI > 25 u</code>), query flags, verify bits 8 and 16 are set, then pop the mode. Key events are not tested.",
     "baseline": "rich"
   },
   "extensions.kitty-graphics.transmit": {
@@ -2241,7 +2241,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#transmitting-data",
     "tags": ["kitty-extensions"],
     "body": "The transmit action (<code>a=t</code>) sends image data to the terminal for storage without displaying it. The terminal assigns an image ID and acknowledges receipt. This is the foundation of the kitty graphics protocol — images are transmitted once and can be displayed multiple times at different positions.",
-    "probe": "Transmit a 1x1 PNG with <code>a=t</code> and a unique image ID. Check for acknowledgment response (APC G ... ST).",
+    "probe": "Transmit one 1x1 raw-RGB pixel with <code>a=t,f=24</code> and a fresh image number. Verify the reply allocates an image ID and echoes that number; display is not tested.",
     "baseline": "rich"
   },
   "extensions.kitty-graphics.display": {
@@ -2426,7 +2426,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/desktop-notifications/",
     "tags": ["osc", "kitty-extensions"],
     "body": "OSC 99 is Kitty's rich desktop notification protocol, extending simple notification sequences (OSC 9, OSC 777) with structured metadata. The sequence <code>ESC ] 99 ; params BEL</code> supports key-value parameters including notification identifiers, action buttons, custom icons, urgency levels, and sound control. Identifiers allow updating or closing existing notifications. The protocol defines a capability query so applications can discover which notification features the terminal supports. Currently supported by Kitty, with partial adoption by other terminals.",
-    "probe": "Send <code>OSC 99 ; i=1:d=0:p=body;test BEL</code> and verify the terminal consumes the notification sequence (cursor position unchanged).",
+    "probe": "Send a nonce-tagged OSC 99 capability query (<code>i=&lt;id&gt;:p=?</code>) and verify the reply matches the ID and advertises title payloads. Desktop delivery is not tested.",
     "baseline": "rich",
     "probeStatus": "partial",
     "sequence": "ESC ] 99 ; params BEL"

@@ -76,6 +76,89 @@ function appErasePositionResult(position: { row: number; col: number } | null): 
   }
 }
 
+/** ED0/1/2 must change the requested cells while preserving the opposite side. */
+function eraseScreenResult(
+  ctx: TermlessContext,
+  sequence: string,
+  expected: readonly [string, string, string],
+): ProbeResult {
+  const initialScrollback = ctx.getScrollback()
+  const lines = initialScrollback.screenLines
+  if (!Number.isInteger(lines) || lines < 3) {
+    return {
+      pass: false,
+      response: JSON.stringify({ initialScrollback }),
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "parser-state",
+        note: "Screen fixture needs at least three measured rows",
+      },
+    }
+  }
+  const middle = Math.floor(lines / 2)
+  const rows = [0, middle, lines - 1] as const
+  ctx.feed(`\x1b[1;1HAAAAA\x1b[${middle + 1};1HBBBBB\x1b[${lines};1HCCCCC\x1b[${middle + 1};3H`)
+  const before = rows.map((row) => rowCells(ctx, row))
+  const cursorBefore = ctx.getCursor()
+  const scrollbackBefore = ctx.getScrollback()
+  ctx.feed(sequence)
+  const after = rows.map((row) => rowCells(ctx, row))
+  const cursorAfter = ctx.getCursor()
+  const scrollbackAfter = ctx.getScrollback()
+  const response = JSON.stringify({
+    rows,
+    before,
+    cursorBefore: { x: cursorBefore.x, y: cursorBefore.y },
+    scrollbackBefore,
+    after,
+    cursorAfter: { x: cursorAfter.x, y: cursorAfter.y },
+    scrollbackAfter,
+  })
+  const fixtureReady =
+    before.every((row, i) => row.join("") === ["AAAAA", "BBBBB", "CCCCC"][i]) &&
+    cursorBefore.x === 2 &&
+    cursorBefore.y === middle &&
+    Number.isInteger(scrollbackBefore.totalLines) &&
+    scrollbackBefore.totalLines >= lines &&
+    !after.some((row) => row.some((char) => char === null))
+  if (!fixtureReady) {
+    return {
+      pass: false,
+      response,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "parser-state",
+        note: "Screen fixture, cursor setup, or cell readback unavailable",
+      },
+    }
+  }
+  const cellsMatch = expected.every((expectedRow, row) =>
+    [...expectedRow].every((expectedChar, col) => {
+      const actual = after[row]?.[col]
+      return expectedChar === " " ? isBlank(actual ?? "\0") : actual === expectedChar
+    }),
+  )
+  const preservedCursor = cursorAfter.x === cursorBefore.x && cursorAfter.y === cursorBefore.y
+  const preservedHistory =
+    scrollbackAfter.screenLines === scrollbackBefore.screenLines &&
+    scrollbackAfter.totalLines === scrollbackBefore.totalLines
+  const supported = cellsMatch && preservedCursor && preservedHistory
+  return {
+    pass: supported,
+    response,
+    observation: { outcome: supported ? "supported" : "unsupported", evidence: "parser-state" },
+    assertions: [
+      {
+        kind: supported ? "positive" : "negative",
+        expected: `rows ${rows.join(",")}: ${expected.join("/")}; cursor and scrollback preserved`,
+        observed: response,
+      },
+    ],
+  }
+}
+
 export const eraseProbes: ProbeDefinition[] = [
   probe(
     "erase.line.right",
@@ -119,55 +202,34 @@ export const eraseProbes: ProbeDefinition[] = [
 
   probe(
     "erase.screen.below",
-    (ctx) => {
-      ctx.feed("AAA\r\nBBB\r\nCCC\x1b[H\x1b[J")
-      return { pass: !ctx.getText().includes("BBB") }
-    },
+    (ctx) => eraseScreenResult(ctx, "\x1b[0J", ["AAAAA", "BB   ", "     "]),
     async (ctx) => {
       ctx.write("\x1b[5;5H") // Move to known position
       ctx.write("\x1b[0J") // ED 0 — erase below
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after ED 0" }
-      return {
-        pass: pos.row === 5 && pos.col === 5,
-        note: pos.row === 5 && pos.col === 5 ? undefined : `cursor at ${pos.row};${pos.col}, expected 5;5`,
-      }
+      return appErasePositionResult(pos)
     },
   ),
 
   probe(
     "erase.screen.above",
-    (ctx) => {
-      ctx.feed("AAA\r\nBBB\r\nCCC\x1b[3;2H\x1b[1J")
-      return { pass: isBlank(ctx.getCell(0, 0).char) }
-    },
+    (ctx) => eraseScreenResult(ctx, "\x1b[1J", ["     ", "   BB", "CCCCC"]),
     async (ctx) => {
       ctx.write("\x1b[5;5H") // Move to known position
       ctx.write("\x1b[1J") // ED 1 — erase above
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after ED 1" }
-      return {
-        pass: pos.row === 5 && pos.col === 5,
-        note: pos.row === 5 && pos.col === 5 ? undefined : `cursor at ${pos.row};${pos.col}, expected 5;5`,
-      }
+      return appErasePositionResult(pos)
     },
   ),
 
   probe(
     "erase.screen.all",
-    (ctx) => {
-      ctx.feed("AAA\r\nBBB\r\nCCC\x1b[2J")
-      return { pass: ctx.getText().trim() === "" }
-    },
+    (ctx) => eraseScreenResult(ctx, "\x1b[2J", ["     ", "     ", "     "]),
     async (ctx) => {
       ctx.write("\x1b[5;5H") // Move to known position
       ctx.write("\x1b[2J") // ED 2 — erase entire screen
       const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response after ED 2" }
-      return {
-        pass: pos.row === 5 && pos.col === 5,
-        note: pos.row === 5 && pos.col === 5 ? undefined : `cursor at ${pos.row};${pos.col}, expected 5;5`,
-      }
+      return appErasePositionResult(pos)
     },
   ),
 
