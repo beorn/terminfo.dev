@@ -239,45 +239,13 @@ export function cursorProbe(
 }
 
 /**
- * Mode probe — check mode via getMode (termless) or DECRPM (term).
- */
-export function modeProbe(
-  id: string,
-  modeName: string,
-  enableSeq: string,
-  _disableSeq: string,
-  modeNum: number,
-): ProbeDefinition {
-  return {
-    id,
-    termWrites: "query",
-    termless(ctx) {
-      ctx.feed(enableSeq)
-      return { pass: ctx.getMode(modeName) === true }
-    },
-    async term(ctx) {
-      const result = await ctx.queryMode(modeNum)
-      if (result === null) return { pass: false, note: "No DECRPM response" }
-      return {
-        pass: result !== "unknown",
-        note: result === "unknown" ? "Mode not recognized" : `Mode ${result}`,
-        response: result,
-      }
-    },
-  }
-}
-
-/**
  * DECRPM mode probe. Responsiveness after enabling a mode does not prove that mode,
  * and blindly disabling it could change a mode the user already had enabled.
  */
-export function behavioralModeProbe(
+export function decrpmModeProbe(
   id: string,
-  _enableSeq: string,
-  _disableSeq: string,
   modeNum: number,
   termlessFn: ((ctx: TermlessContext) => ProbeResult) | null,
-  _termBehaviorFn?: (ctx: TermContext) => Promise<ProbeResult>,
 ): ProbeDefinition {
   return {
     id,

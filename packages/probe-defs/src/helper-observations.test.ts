@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { behavioralModeProbe, cursorProbe, sgrProbe } from "./helpers.ts"
+import { decrpmModeProbe, cursorProbe, sgrProbe } from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
 import type { TermContext, TermlessContext } from "./types.ts"
 
@@ -671,17 +671,17 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
       },
       queryMode: async () => state,
     })
-  const behavioral = behavioralModeProbe("modes.test", "\x1b[?42h", "\x1b[?42l", 42, null)
-  if (!behavioral.term) throw new Error("missing mode callback")
+  const decrpm = decrpmModeProbe("modes.test", 42, null)
+  if (!decrpm.term) throw new Error("missing mode callback")
   for (const state of ["set", "reset"] as const) {
-    const result = await behavioral.term(makeContext(state))
+    const result = await decrpm.term(makeContext(state))
     expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: state }])
   }
-  const unknown = await behavioral.term(makeContext("unknown"))
+  const unknown = await decrpm.term(makeContext("unknown"))
   expect(unknown.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
   expect(unknown.assertions).toMatchObject([{ kind: "negative", observed: "unknown" }])
-  expect((await behavioral.term(makeContext(null))).observation).toMatchObject({
+  expect((await decrpm.term(makeContext(null))).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "no-response",
   })

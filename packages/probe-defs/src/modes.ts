@@ -1,30 +1,12 @@
-import type { ProbeDefinition, TermContext } from "./types.ts"
-import { probe, behavioralModeProbe } from "./helpers.ts"
-
-async function responsiveAfterEnable(ctx: TermContext): Promise<import("./types.ts").ProbeResult> {
-  const pos = await ctx.queryCursorPosition()
-  return { pass: pos !== null, note: pos ? "Behavioral: responsive after enable" : "No response" }
-}
+import type { ProbeDefinition } from "./types.ts"
+import { probe, decrpmModeProbe } from "./helpers.ts"
 
 export const modesProbes: ProbeDefinition[] = [
   // Alt screen enter
-  behavioralModeProbe(
-    "modes.alt-screen.enter",
-    "\x1b[?1049h",
-    "\x1b[?1049l",
-    1049,
-    (ctx) => {
-      ctx.feed("\x1b[?1049h")
-      return { pass: ctx.getMode("altScreen") === true }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H") // move to 1;1 in alt screen
-      ctx.write("TEST")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response in alt screen" }
-      return { pass: true, note: "Behavioral: entered and responded" }
-    },
-  ),
+  decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) => {
+    ctx.feed("\x1b[?1049h")
+    return { pass: ctx.getMode("altScreen") === true }
+  }),
 
   // Alt screen exit
   probe(
@@ -44,132 +26,56 @@ export const modesProbes: ProbeDefinition[] = [
   ),
 
   // Bracketed paste
-  behavioralModeProbe(
-    "modes.bracketed-paste",
-    "\x1b[?2004h",
-    "\x1b[?2004l",
-    2004,
-    (ctx) => {
-      ctx.feed("\x1b[?2004h")
-      return { pass: ctx.getMode("bracketedPaste") === true }
-    },
-    async (ctx) => {
-      const match = await ctx.query("\x1b[c", /\x1b\[\?([0-9;]+)c/, 1000)
-      if (!match) return { pass: false, note: "No DA1 response after enabling bracketed paste" }
-      return { pass: true, note: "Behavioral: terminal responsive after enable" }
-    },
-  ),
+  decrpmModeProbe("modes.bracketed-paste", 2004, (ctx) => {
+    ctx.feed("\x1b[?2004h")
+    return { pass: ctx.getMode("bracketedPaste") === true }
+  }),
 
   // Application cursor keys
-  behavioralModeProbe(
-    "modes.application-cursor",
-    "\x1b[?1h",
-    "\x1b[?1l",
-    1,
-    (ctx) => {
-      ctx.feed("\x1b[?1h")
-      return { pass: ctx.getMode("applicationCursor") === true }
-    },
-    responsiveAfterEnable,
-  ),
+  decrpmModeProbe("modes.application-cursor", 1, (ctx) => {
+    ctx.feed("\x1b[?1h")
+    return { pass: ctx.getMode("applicationCursor") === true }
+  }),
 
   // Auto wrap
-  behavioralModeProbe(
-    "modes.auto-wrap",
-    "\x1b[?7h",
-    "", // don't disable — auto-wrap is normally on
-    7,
-    (ctx) => {
-      ctx.feed("X".repeat(80) + "Y")
-      return { pass: ctx.getCell(1, 0).char === "Y" }
-    },
-    async (ctx) => {
-      const cols = ctx.cols
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("A".repeat(cols) + "B")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) return { pass: false, note: "No cursor response" }
-      return {
-        pass: pos.row === 2,
-        note: pos.row === 2 ? "Behavioral: wrap confirmed" : `cursor at row ${pos.row}, expected 2`,
-      }
-    },
-  ),
+  decrpmModeProbe("modes.auto-wrap", 7, (ctx) => {
+    ctx.feed("X".repeat(80) + "Y")
+    return { pass: ctx.getCell(1, 0).char === "Y" }
+  }),
 
   // Mouse tracking
-  behavioralModeProbe(
-    "modes.mouse-tracking",
-    "\x1b[?1000h",
-    "\x1b[?1000l",
-    1000,
-    (ctx) => {
-      ctx.feed("\x1b[?1000h")
-      return { pass: ctx.getMode("mouseTracking") === true }
-    },
-    responsiveAfterEnable,
-  ),
+  decrpmModeProbe("modes.mouse-tracking", 1000, (ctx) => {
+    ctx.feed("\x1b[?1000h")
+    return { pass: ctx.getMode("mouseTracking") === true }
+  }),
 
   // Focus tracking
-  behavioralModeProbe(
-    "modes.focus-tracking",
-    "\x1b[?1004h",
-    "\x1b[?1004l",
-    1004,
-    (ctx) => {
-      ctx.feed("\x1b[?1004h")
-      return { pass: ctx.getMode("focusTracking") === true }
-    },
-    responsiveAfterEnable,
-  ),
+  decrpmModeProbe("modes.focus-tracking", 1004, (ctx) => {
+    ctx.feed("\x1b[?1004h")
+    return { pass: ctx.getMode("focusTracking") === true }
+  }),
 
   // Reverse video
-  behavioralModeProbe(
-    "modes.reverse-video",
-    "\x1b[?5h",
-    "\x1b[?5l",
-    5,
-    (ctx) => {
-      ctx.feed("\x1b[?5h")
-      return { pass: ctx.getMode("reverseVideo") === true }
-    },
-    responsiveAfterEnable,
-  ),
+  decrpmModeProbe("modes.reverse-video", 5, (ctx) => {
+    ctx.feed("\x1b[?5h")
+    return { pass: ctx.getMode("reverseVideo") === true }
+  }),
 
   // Synchronized output
-  behavioralModeProbe(
-    "modes.synchronized-output",
-    "\x1b[?2026h",
-    "\x1b[?2026l",
-    2026,
-    (ctx) => {
-      ctx.feed("\x1b[?2026h")
-      ctx.feed("Hello")
-      ctx.feed("\x1b[?2026l")
-      return { pass: ctx.getText().includes("Hello") }
-    },
-    responsiveAfterEnable,
-  ),
+  decrpmModeProbe("modes.synchronized-output", 2026, (ctx) => {
+    ctx.feed("\x1b[?2026h")
+    ctx.feed("Hello")
+    ctx.feed("\x1b[?2026l")
+    return { pass: ctx.getText().includes("Hello") }
+  }),
 
   // Origin mode
-  behavioralModeProbe(
-    "modes.origin",
-    "\x1b[?6h",
-    "\x1b[?6l",
-    6,
-    (ctx) => {
-      ctx.feed("\x1b[?6h")
-      const result = ctx.getMode("originMode") === true
-      ctx.feed("\x1b[?6l")
-      return { pass: result }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[5;10r") // scroll region rows 5-10
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[r") // reset scroll region
-      if (!pos) return { pass: false, note: "No response" }
-      return { pass: pos.row >= 5, note: `Behavioral: cursor at row ${pos.row} (origin mapped)` }
-    },
-  ),
+  decrpmModeProbe("modes.origin", 6, (ctx) => {
+    ctx.feed("\x1b[?6h")
+    const result = ctx.getMode("originMode") === true
+    ctx.feed("\x1b[?6l")
+    return { pass: result }
+  }),
 
   // Insert/replace mode (IRM)
   probe(
@@ -199,34 +105,20 @@ export const modesProbes: ProbeDefinition[] = [
   ),
 
   // SGR mouse encoding
-  behavioralModeProbe(
-    "modes.mouse-sgr",
-    "\x1b[?1006h",
-    "\x1b[?1006l",
-    1006,
-    (ctx) => {
-      ctx.feed("\x1b[?1006h")
-      const pass = ctx.getMode("sgrMouse") === true
-      ctx.feed("\x1b[?1006l")
-      return { pass }
-    },
-    responsiveAfterEnable,
-  ),
+  decrpmModeProbe("modes.mouse-sgr", 1006, (ctx) => {
+    ctx.feed("\x1b[?1006h")
+    const pass = ctx.getMode("sgrMouse") === true
+    ctx.feed("\x1b[?1006l")
+    return { pass }
+  }),
 
   // All-motion mouse tracking
-  behavioralModeProbe(
-    "modes.mouse-all",
-    "\x1b[?1003h",
-    "\x1b[?1003l",
-    1003,
-    (ctx) => {
-      ctx.feed("\x1b[?1003h")
-      const pass = ctx.getMode("mouseTracking") === true
-      ctx.feed("\x1b[?1003l")
-      return { pass }
-    },
-    responsiveAfterEnable,
-  ),
+  decrpmModeProbe("modes.mouse-all", 1003, (ctx) => {
+    ctx.feed("\x1b[?1003h")
+    const pass = ctx.getMode("mouseTracking") === true
+    ctx.feed("\x1b[?1003l")
+    return { pass }
+  }),
 
   // Application keypad
   probe(

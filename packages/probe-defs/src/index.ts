@@ -34,8 +34,7 @@ export type {
 export {
   sgrProbe,
   cursorProbe,
-  modeProbe,
-  behavioralModeProbe,
+  decrpmModeProbe,
   responseProbe,
   capabilityProbe,
   widthProbe,
