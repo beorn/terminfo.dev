@@ -2,8 +2,9 @@
 
 ## Unreleased — draft
 
-- Reporting work is in progress to separate recorded observations from reviewed results and to show probe coverage without treating unknown behavior as lack of support.
-- Current terminal and Termless versions are being remeasured. The Linux Kitty container capture remains unreviewed history until its run and interpretation pass admission.
-- Each future website build will identify the owning source commit, build time, local changes or GitHub run, and the same metadata in its build artifact.
+- Results separate immutable observations from reviewed interpretations, with probe coverage shown independently of support among conclusive results.
+- Reviewed measurements cover Kitty 0.49.1 on Linux in three permission contexts and eleven Termless headless targets. Earlier excluded runs remain history; the corrected suite has not measured macOS or Windows apps.
+- Per-result evidence links expose raw responses, assertions and available screenshots. A query response or headless cell check is not presented as proof of app rendering.
+- The build footer links the owning source commit, build time and local/GitHub context in [build metadata](/api/v1/build.json). Deployment uses the same validated site archive, identified by its SHA-256.
 
-These are proposed website changes, not a deployed release. The CLI package has a separate release path: tags beginning with `v` trigger its npm publication workflow. A future website-only GitHub release must use a different tag namespace, such as `site-v`, and must not invoke that workflow.
+These changes await publication. The CLI package has a separate release path: tags beginning with `v` trigger its npm publication workflow. A future website-only GitHub release must use a different tag namespace, such as `site-v`, and must not invoke that workflow.

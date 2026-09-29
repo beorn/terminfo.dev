@@ -16,7 +16,7 @@ next: false
 
 OSC 52 (`\e]52;c;<base64-data>\a`) lets applications read and write the system clipboard through the terminal. This is genuinely useful — it's how copying works over SSH, in tmux, and in terminal-based editors that can't access the system clipboard directly.
 
-The security problem: any program that can write to stdout can also write to your clipboard. And if clipboard _reading_ is enabled, any program can silently read whatever you last copied — passwords, tokens, private keys.
+When terminal policy permits clipboard access, a program that emits OSC 52 can overwrite clipboard text or request its contents. Unrestricted _reading_ can expose whatever you last copied, including passwords or tokens; some terminals ask for permission first.
 
 ```bash
 # Write "hello" to the clipboard via OSC 52
@@ -26,18 +26,13 @@ printf '\e]52;c;%s\a' "$(echo -n 'hello' | base64)"
 printf '\e]52;c;?\a'
 ```
 
-**How terminals handle this:**
+**Policy affects the result:** a terminal can allow writes while denying reads, ask before a read, or allow both. For example, [Kitty documents a read-permission prompt by default](https://sw.kovidgoyal.net/kitty/kittens/clipboard/), controlled by `clipboard_control`.
 
-| Policy                      | Behavior                                        | Terminals (as probed on macOS)     |
-| --------------------------- | ----------------------------------------------- | ---------------------------------- |
-| Write allowed, read blocked | Default in most modern terminals                | Ghostty, Kitty, Warp, Terminal.app |
-| Write and read allowed      | Read works out of the box or after a permission | iTerm2, VS Code, Cursor            |
-
-Reading the clipboard is the dangerous operation. A compromised process in a tmux session could silently capture anything you copy. Most terminals now block clipboard reads by default and require explicit opt-in.
+Our current app measurements cover [Kitty 0.49.1 on Linux](/terminals/kitty) in separate default and explicitly allowed/denied clipboard contexts. They do not establish other terminals' policies or macOS behavior. Inspect the result's method and reason: a collector withholding a clipboard probe is different from a terminal denying it. A denied or unanswered read is not proof that the protocol is unsupported.
 
 ::: warning What to do
 
-- Verify clipboard read is disabled in your terminal's settings (it usually is by default).
+- Check your terminal's clipboard policy; keep reads denied or subject to confirmation unless you need unrestricted access.
 - If you enable OSC 52 read for remote workflows, scope it to specific sessions or hosts.
 - Libraries: don't assume OSC 52 read works. Fall back gracefully — check the terminal's response or use platform clipboard tools (`pbcopy`, `xclip`).
   :::

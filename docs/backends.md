@@ -117,7 +117,7 @@ Parser probes run through [Termless](https://termless.dev), a headless terminal 
 3. **Reads back terminal state** — cursor position, cell attributes, mode flags, response strings
 4. **Asserts correctness** — did the parser interpret the sequence as specified?
 
-This runs in-process, without any GUI, window, or PTY. A full probe suite across all backends completes in seconds.
+These checks inspect backend state without an app window. Execution time and process isolation depend on the backend.
 
 ```
 Probe: "SGR bold"
@@ -133,10 +133,10 @@ Kitty currently has both an [app result](/terminals/kitty) and a separate [headl
 
 The two test types answer different questions:
 
-- **Parser results** confirm parser correctness. Does the parser understand the sequence?
-- **App results** confirm the full stack. Does the feature actually work when a user types in the terminal?
+- **Headless results** report what the backend exposes: cell attributes, state or protocol replies. They do not establish the app's pixels or user interaction.
+- **App results** report what the specific probe observed in a running terminal. Query replies establish response behavior; controlled screenshots can establish the visible property they show. Input and permission behavior need their own checks.
 
-In most cases these agree. Where they diverge, it's informative: a parser pass with an app fail usually means the parser handles the sequence but the renderer or event pipeline doesn't expose it. A parser fail with an app pass is rarer and typically means the app has special-case handling outside the core parser.
+When results differ, compare the terminal version, configuration, probe method and evidence before attributing a cause. A difference can come from the adapter or probe as well as the terminal. The [result definitions](/contribute#reading-results) distinguish unsupported behavior, inconclusive observations and collection errors.
 
 ---
 
