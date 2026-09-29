@@ -1,0 +1,28 @@
+{
+  "name": "@terminfo/run-parser",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@terminfo/probe-defs": "workspace:*"
+  },
+  "devDependencies": {
+    "tsdown": "0.22.13",
+    "typescript": "^5.9.3"
+  },
+  "tsdown": {
+    "clean": true,
+    "dts": true,
+    "entry": "src/index.ts",
+    "format": "esm"
+  }
+}

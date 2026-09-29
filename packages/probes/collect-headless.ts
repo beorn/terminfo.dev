@@ -17,7 +17,7 @@ import {
   type TermlessContext,
   type UngradedDiagnostic,
 } from "@terminfo/probe-defs"
-import { parseRun } from "../../docs/data/selected-results.ts"
+import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
 import { checkCurrentSuiteManifest } from "../../scripts/suite-manifest.ts"
 import { headlessRuntimeIdentity } from "./headless-identity.ts"
@@ -229,6 +229,8 @@ async function collectOne(name: string, directory: string): Promise<string> {
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const sourcePaths = new Set([
     ...probeSuiteSnapshot().sourcePaths,
+    "packages/run-parser/src",
+    "packages/run-parser/package.json",
     "packages/probes/collect-headless.ts",
     "packages/probes/headless-identity.ts",
     "packages/admin/src/termless.ts",

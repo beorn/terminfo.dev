@@ -28,7 +28,7 @@ import { version as packageVersion } from "../package.json" with { type: "json" 
 import { detectTerminal } from "./detect.ts"
 import { ALL_PROBES } from "./probes/unified.ts"
 import { DetectView } from "./views/DetectView.tsx"
-import { decodeCollectorRun } from "../../../docs/data/selected-results.ts"
+import { decodeCollectorRun } from "@terminfo/run-parser"
 import { createDraft } from "./submit.ts"
 
 /** Collect the same explicit v2 run as the daemon endpoint. */
@@ -119,8 +119,9 @@ program
 
       // One named daemon: retain its exact response bytes at an explicit destination.
       if (opts.daemon) {
-        if (!opts.json && !opts.output)
+        if (!opts.json && !opts.output) {
           throw new Error("Daemon collection requires --json or an absolute --output file")
+        }
         const { listDaemons } = await import("./serve.ts")
         const daemons = listDaemons()
         const selectedName = opts.daemon.toLowerCase()
@@ -151,10 +152,11 @@ program
       try {
         collected = await runProbes(out)
       } finally {
-        if (out)
+        if (out) {
           await new Promise<void>((resolve) => {
             out.end(resolve)
           })
+        }
       }
       const raw = `${JSON.stringify(collected.run)}\n`
       const decoded = decodeCollectorRun(

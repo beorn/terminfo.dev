@@ -9,14 +9,8 @@ import { createHash } from "node:crypto"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import {
-  decodeCollectorRun,
-  decodeExactUtf8,
-  loadSelectedResults,
-  parseInterpretations,
-  parseRun as parseRunSource,
-  projectResults,
-} from "../docs/data/selected-results.ts"
+import { loadSelectedResults, parseInterpretations, projectResults } from "../docs/data/selected-results.ts"
+import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]

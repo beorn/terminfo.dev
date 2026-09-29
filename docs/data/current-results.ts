@@ -2,12 +2,8 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { probeHash } from "../../packages/admin/versions.ts"
-import {
-  loadSelectedResults,
-  parseJsonStrict,
-  type SelectedProjection,
-  type SelectedVersion,
-} from "./selected-results.ts"
+import { loadSelectedResults, type SelectedProjection, type SelectedVersion } from "./selected-results.ts"
+import { parseJsonStrict } from "@terminfo/run-parser"
 
 export interface DefaultContextReview {
   contextKey: string

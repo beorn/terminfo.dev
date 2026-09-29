@@ -45,6 +45,7 @@
     "@terminfo/admin": "workspace:*",
     "@terminfo/probe-defs": "workspace:*",
     "@terminfo/probes": "workspace:*",
+    "@terminfo/run-parser": "workspace:*",
     "@vue/server-renderer": "3.5.43",
     "oxfmt": "0.38.0",
     "terminfo.dev": "workspace:*",

@@ -32,6 +32,7 @@ describe("consumer selection", () => {
       mkdirSync(join(root, "content"))
       copyFileSync(join(source, "scripts", "sitefile.ts"), join(root, "scripts", "sitefile.ts"))
       symlinkSync(join(source, "docs"), join(root, "docs"), "dir")
+      symlinkSync(join(source, "node_modules"), join(root, "node_modules"), "dir")
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(root, "content", dir))
       writeCatalog(join(root, "content"))
       writeFileSync(join(root, "content", "features.json"), '{"sgr.bold":{"name":"Bold"}}')

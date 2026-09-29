@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { basename, dirname, join } from "node:path"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { decodeCollectorRun, decodeExactUtf8 } from "../../../docs/data/selected-results.ts"
+import { decodeCollectorRun, decodeExactUtf8 } from "@terminfo/run-parser"
 
 export interface DraftReceipt {
   manifest: ProbeSuiteManifest

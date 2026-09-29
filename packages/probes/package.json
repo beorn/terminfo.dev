@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@terminfo/probe-defs": "workspace:*",
+    "@terminfo/run-parser": "workspace:*",
     "@termless/alacritty": "^0.9.1",
     "@termless/core": "^0.9.1",
     "@termless/ghostty": "^0.9.1",

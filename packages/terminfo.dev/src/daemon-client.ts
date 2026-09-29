@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, 
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ProbeRun as CollectedProbeRun, ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
-import { decodeCollectorRun, decodeExactUtf8 } from "../../../docs/data/selected-results.ts"
+import { decodeCollectorRun, decodeExactUtf8 } from "@terminfo/run-parser"
 import { getTrustedSuiteReceipt } from "./serve.ts"
 
 export interface DaemonRegistration {

@@ -7,7 +7,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { probeSuiteSnapshot, type ProbeSuiteSnapshot } from "../packages/admin/versions.ts"
-import { parseSuiteManifest } from "../docs/data/selected-results.ts"
+import { parseSuiteManifest } from "@terminfo/run-parser"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const SUITES_DIR = join(ROOT, "content", "suites")

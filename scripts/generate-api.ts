@@ -15,7 +15,8 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
-import { parseJsonStrict, type SelectedVersion } from "../docs/data/selected-results.ts"
+import { parseJsonStrict } from "@terminfo/run-parser"
+import type { SelectedVersion } from "../docs/data/selected-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")

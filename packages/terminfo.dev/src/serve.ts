@@ -29,7 +29,7 @@ import { withRawMode, drainStdin } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
-import { parseRunProvenance } from "../../../docs/data/selected-results.ts"
+import { parseRunProvenance } from "@terminfo/run-parser"
 
 const s = createStyle()
 
@@ -99,7 +99,8 @@ export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collec
       "packages/probe-defs/src",
       "packages/terminfo.dev/src",
       "packages/terminfo.dev/package.json",
-      "docs/data/selected-results.ts",
+      "packages/run-parser/src",
+      "packages/run-parser/package.json",
     ],
     {
       cwd: SOURCE_ROOT,
