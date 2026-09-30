@@ -149,7 +149,7 @@ ECMA-48 defines a family of control-sequence formats (CSI, OSC, DCS, and others)
     <tr><td><code>ESC[5;10H</code></td><td><em>cursor jumps to row 5, col 10</em></td><td><a href="/cursor/cup-cursor-position">Cursor Position</a></td></tr>
     <tr><td><code>ESC[?1049h</code></td><td><em>screen clears</em></td><td><a href="/modes/decset-1049-alt-screen-enter">Alternate Screen</a></td></tr>
     <tr><td><code>ESC[6n</code></td><td>terminal replies <code>ESC[24;80R</code></td><td><a href="/cursor/dsr-6-cursor-position-report">Cursor Report</a></td></tr>
-    <tr><td><code>ESC[&gt;1u</code></td><td><em>keyboard sends unambiguous keys</em></td><td><a href="/extensions/kitty-keyboard-protocol">Kitty Keyboard</a></td></tr>
+    <tr><td><code>ESC[&gt;1u</code></td><td><em>requests unambiguous key reporting</em></td><td><a href="/extensions/kitty-keyboard-protocol">Kitty Keyboard</a></td></tr>
   </tbody>
 </table>
 </div>

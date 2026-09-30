@@ -58,7 +58,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/underlines/",
     "tags": ["kitty-extensions"],
     "group": "underline",
-    "body": "SGR 4:3 draws a wavy/curly underline beneath text, using the ECMA-48 colon sub-parameter syntax: <code>ESC [ 4:3 m</code>. This underline style was introduced by Kitty and is commonly used by editors and IDEs to indicate spelling errors, lint warnings, or diagnostic information — similar to the red squiggly underline in graphical editors.\n\nCombine with SGR 58 (underline color) to set the underline color independently of the text color, e.g., a red curly underline under normally colored text for errors. Kitty specifies this syntax; WezTerm documents it from version 20210314-114017-04b7cedd, and Alacritty lists it from version 0.11.0. These are documented implementations, not this site's measurement of their visual output. Reset the underline style with SGR 24.\n\nSources: <a href=\"https://sw.kovidgoyal.net/kitty/underlines/\">Kitty underline specification</a>, <a href=\"https://wezterm.org/escape-sequences.html\">WezTerm escape reference</a>, <a href=\"https://github.com/alacritty/alacritty/blob/v0.11.0/CHANGELOG.md#0110\">Alacritty 0.11.0 changelog</a>.",
+    "body": "SGR 4:3 draws a wavy/curly underline beneath text, using the ECMA-48 colon sub-parameter syntax: <code>ESC [ 4:3 m</code>. Kitty documents this underline style, which editors and IDEs can use to indicate spelling errors, lint warnings, or diagnostic information — similar to the red squiggly underline in graphical editors.\n\nCombine with SGR 58 (underline color) to set the underline color independently of the text color, e.g., a red curly underline under normally colored text for errors. Kitty specifies this syntax; WezTerm documents it from version 20210314-114017-04b7cedd, and Alacritty lists it from version 0.11.0. These are documented implementations, not this site's measurement of their visual output. Reset the underline style with SGR 24.\n\nSources: <a href=\"https://sw.kovidgoyal.net/kitty/underlines/\">Kitty underline specification</a>, <a href=\"https://wezterm.org/escape-sequences.html\">WezTerm escape reference</a>, <a href=\"https://github.com/alacritty/alacritty/blob/v0.11.0/CHANGELOG.md#0110\">Alacritty 0.11.0 changelog</a>.",
     "probe": "Send <code>\\x1b[4:3m</code>X (colon sub-parameter syntax), verify <code>underline === \"curly\"</code>.",
     "baseline": "modern",
     "sequence": "ESC [ 4:3 m"
@@ -69,7 +69,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/underlines/",
     "tags": ["kitty-extensions"],
     "group": "underline",
-    "body": "SGR 4:4 draws a dotted underline beneath text: <code>ESC [ 4:4 m</code>. Part of the Kitty extended underline styles. Can be combined with SGR 58 for colored underlines. Reset with SGR 24.\n\nDotted underline is part of the modern styled-underline family popularized by Kitty and adopted by other terminals. Editors use it for low-severity diagnostics, spelling hints, and subtle annotations where a full solid underline would be too strong. Terminals that do not recognize the sub-parameter should ignore it or fall back gracefully.",
+    "body": "SGR 4:4 draws a dotted underline beneath text: <code>ESC [ 4:4 m</code>. Part of the Kitty extended underline styles. Can be combined with SGR 58 for colored underlines. Reset with SGR 24.\n\nKitty documents dotted underline as part of its extended underline styles. Editors can use it for low-severity diagnostics, spelling hints, and subtle annotations where a full solid underline would be too strong. Terminals that do not recognize the sub-parameter should ignore it or fall back gracefully.",
     "probe": "Send <code>\\x1b[4:4m</code>X, verify <code>underline === \"dotted\"</code>.",
     "baseline": "modern",
     "sequence": "ESC [ 4:4 m"
@@ -2239,7 +2239,7 @@
     "slug": "kitty-keyboard-report-events",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
     "tags": ["kitty-extensions"],
-    "body": "Flag 2 enables key release and repeat event reporting. Without this flag, terminals only report key press events. With it, the terminal sends event-type sub-parameters: 1=press, 2=repeat, 3=release. Essential for games, keyboard-driven UIs that need to track held keys, and applications that distinguish tap from hold.",
+    "body": "Flag 2 enables key release and repeat event reporting. Without this flag, terminals only report key press events. Release events for Enter, Tab and Backspace also require flag 8 (report all keys as escape codes); text-producing keys require that mode for repeat and release reporting. With it, the terminal sends event-type sub-parameters: 1=press, 2=repeat, 3=release. Essential for games, keyboard-driven UIs that need to track held keys, and applications that distinguish tap from hold.",
     "probe": "Push keyboard mode with flags 1+2 (<code>CSI > 3 u</code>), query flags, verify bit 2 is set.",
     "baseline": "rich"
   },

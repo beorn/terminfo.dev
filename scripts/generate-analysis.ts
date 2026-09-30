@@ -562,10 +562,10 @@ function generateCategoryAnalysis(
   if (perfect.length > 0) {
     const names = perfect.map((s) => s.name)
     if (perfect.length === catScores.length) {
-      parts.push(`All ${catScores.length} tested terminals achieve 100%`)
+      parts.push(`All ${catScores.length} measured targets have support for every category check (100%)`)
     } else {
       parts.push(
-        `Top performers (100%): ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}`,
+        `Targets with support for every category check (100%): ${names.slice(0, 5).join(", ")}${names.length > 5 ? ` and ${names.length - 5} more` : ""}`,
       )
     }
   }
@@ -586,6 +586,10 @@ function generateCategoryAnalysis(
     )
     parts.push(`Common gaps: ${gapNames.join(", ")}`)
   }
+
+  parts.push(
+    "App and headless checks establish different evidence scopes; open individual results for their method and evidence",
+  )
 
   return {
     analysis: `<p>${parts.join(". ")}.</p>`,
@@ -693,12 +697,14 @@ function generateFeatureAnalysis(
 
   // Support summary
   if (supported === total) {
-    parts.push(`Supported in <strong>all ${total}</strong> conclusive measurements for this feature`)
+    parts.push(
+      `Recorded checks report support in <strong>all ${total}</strong> conclusive measurements for this feature`,
+    )
   } else if (supported === 0) {
     parts.push(`No conclusive support among <strong>${total}</strong> measured targets`)
   } else {
     parts.push(
-      `Supported by <strong>${supported}</strong> of <strong>${total}</strong> conclusively measured targets (${pct}%)`,
+      `Recorded checks report support for <strong>${supported}</strong> of <strong>${total}</strong> conclusively measured targets (${pct}%)`,
     )
   }
 
@@ -713,6 +719,8 @@ function generateFeatureAnalysis(
     if (!baseline) throw new Error(`Feature ${featureId} references unknown baseline ${feature.baseline}`)
     parts.push(`Part of the <strong>${baseline.label}</strong> baseline`)
   }
+
+  parts.push("These summaries describe the recorded checks; open individual results for their method and evidence")
 
   return {
     analysis: `<p>${parts.join(". ")}.</p>`,
