@@ -75,7 +75,7 @@ The mapping is elegant and mathematical: **Ctrl+key produces the byte value of t
 This is a traditional terminal input encoding convention — the terminal emulator performs this mapping before the byte reaches any software. This is also why **Ctrl+I and Tab are the same byte (0x09)**: the terminal has no way to distinguish them. It's not a bug; it's the fundamental design of ASCII.
 
 ::: info Ctrl+I and Tab are the same byte (0x09)
-This is why you can't bind Ctrl+I and Tab to different actions in traditional terminals — they produce identical input. The [Kitty keyboard protocol](/kitty-extensions) solves this by reporting keys as symbolic events with modifiers, not as raw bytes. With the Kitty protocol, Ctrl+I and Tab are distinct events, and key-release events are reportable for the first time.
+This is why you can't bind Ctrl+I and Tab to different actions in traditional terminals — they produce identical input. The [Kitty keyboard protocol](/kitty-extensions) solves this by reporting keys as symbolic events with modifiers, not as raw bytes. With the Kitty protocol, Ctrl+I and Tab can be distinct events, and applications can request key-release reporting through [progressive enhancement](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement).
 :::
 
 ## The Characters That Still Matter
