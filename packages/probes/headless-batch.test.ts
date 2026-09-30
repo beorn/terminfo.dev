@@ -16,7 +16,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
-import { collectBatch } from "./headless-batch.ts"
+import { collectBatch, createTermlessContext } from "./headless-batch.ts"
 
 async function backend() {
   return createXtermBackend()
@@ -431,4 +431,31 @@ test("does not promote a marked legacy callback's conclusion into an observation
     rawReplies: {},
     ungradedDiagnostics: { legacy: { kind: "legacy-callback", pass: true, note: "Legacy conclusion" } },
   })
+})
+
+// AC3: feature support cannot authorize metadata readback. Existing tests grade
+// outcomes but do not catch a placeholder hyperlink=null presented as reported.
+test("OSC 8 feature without metadata extension omits the cell field", () => {
+  const value = createXtermBackend({ cols: 80, rows: 24 })
+  try {
+    value.capabilities.extensions.delete("hyperlinks")
+    value.feed(new TextEncoder().encode("\x1b]8;;https://example.com/observed\x07L"))
+    expect(value.capabilities.osc8Hyperlinks).toBe(true)
+    expect(createTermlessContext(value).getCell(0, 0)).not.toHaveProperty("hyperlink")
+  } finally {
+    value.destroy()
+  }
+})
+
+// An advertised metadata contract must fail loudly by backend and cell; old
+// coverage only checked getCell fields, so malformed extension methods escaped.
+test.each([undefined, () => undefined, () => 5])("OSC 8 metadata declaration mismatch is named: %s", (readLink) => {
+  const value = createXtermBackend({ cols: 80, rows: 24 })
+  try {
+    value.capabilities.extensions.add("hyperlinks")
+    Object.assign(value, { getHyperlinkAt: readLink })
+    expect(() => createTermlessContext(value).getCell(0, 0)).toThrow(`${value.name} declares OSC 8 metadata`)
+  } finally {
+    value.destroy()
+  }
 })

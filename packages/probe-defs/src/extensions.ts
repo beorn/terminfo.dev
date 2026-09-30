@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
-import { parserStateResult, probe, unmeasuredCellResult } from "./helpers.ts"
+import { parserStateResult, probe, readHyperlinkMetadata, unmeasuredCellResult } from "./helpers.ts"
 
 function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }
@@ -1117,15 +1117,22 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => {
         const uri = "https://example.com/osc8-proof"
         ctx.feed(`\x1b[1;1H\x1b[2KA\x1b]8;;${uri}\x07LINK\x1b]8;;\x07Z`)
-        const cells = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col))
+        const cells = Array.from({ length: 6 }, (_, col) => {
+          const { hyperlink: _unreported, ...cell } = ctx.getCell(0, col)
+          const hyperlink = readHyperlinkMetadata(
+            ctx.capabilities.extensions.has("hyperlinks"),
+            ctx.getHyperlinkAt,
+            0,
+            col,
+            "OSC 8 context",
+          )
+          return { ...cell, ...(hyperlink !== undefined && { hyperlink }) }
+        })
         const expectedChars = "ALINKZ"
         const links = cells.map((cell) =>
           cell.hyperlink !== undefined ? { reported: true, uri: cell.hyperlink } : { reported: false },
         )
         const response = JSON.stringify({ chars: cells.map((cell) => cell.char), links })
-        if (ctx.capabilities.osc8Hyperlinks && links.some((link) => !link.reported)) {
-          throw new Error("OSC 8 link metadata declared available but absent from a measured cell")
-        }
         const reported = links.every((link) => link.reported)
         const charsMatch = cells.every((cell, index) => cell.char === expectedChars[index])
         if (!reported || !charsMatch || cells.slice(1, 5).some((cell) => cell.hyperlink === null)) {

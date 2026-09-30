@@ -173,17 +173,24 @@ describe("OSC 8 link metadata observation", () => {
 
   function linkedContext(links: readonly (string | null | undefined)[], declared = true): TermlessContext {
     const base = context({})
-    return context({
-      capabilities: { ...base.capabilities, osc8Hyperlinks: declared },
-      getCell(_row, col) {
-        const link = links[col]
-        return {
-          ...base.getCell(0, col),
-          char: "ALINKZ"[col] ?? "",
-          ...(link !== undefined && { hyperlink: link }),
-        }
-      },
-    })
+    return Object.assign(
+      context({
+        capabilities: {
+          ...base.capabilities,
+          osc8Hyperlinks: true,
+          extensions: new Set(declared ? ["hyperlinks"] : []),
+        },
+        getCell(_row, col) {
+          const link = links[col]
+          return {
+            ...base.getCell(0, col),
+            char: "ALINKZ"[col] ?? "",
+            ...(link !== undefined && { hyperlink: link }),
+          }
+        },
+      }),
+      declared ? { getHyperlinkAt: (_row: number, col: number) => links[col] } : {},
+    )
   }
 
   test("four exact URI cells bracketed by unlinked controls establish support", () => {
@@ -216,7 +223,16 @@ describe("OSC 8 link metadata observation", () => {
     if (!p.termless) throw new Error("OSC 8 needs headless callback")
     const unreported = p.termless(linkedContext(Array(6).fill(undefined), false))
     expect(unreported.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-    expect(() => p.termless?.(linkedContext(Array(6).fill(undefined), true))).toThrow(/OSC 8.*metadata.*declared/i)
+    expect(() => p.termless?.(linkedContext(Array(6).fill(undefined), true))).toThrow(/declares OSC 8 metadata/i)
+  })
+
+  // AC3: the published feature flag does not declare metadata exposure.
+  test("a true feature flag with no metadata extension stays unreported", () => {
+    const p = probe("extensions.osc8")
+    if (!p.termless) throw new Error("OSC 8 needs headless callback")
+    const result = p.termless(linkedContext(Array(6).fill(null), false))
+    expect(result.observation).toMatchObject({ outcome: "inconclusive" })
+    expect(JSON.parse(result.response ?? "")).toMatchObject({ links: Array(6).fill({ reported: false }) })
   })
 
   test("application CPR consumption remains inconclusive", async () => {

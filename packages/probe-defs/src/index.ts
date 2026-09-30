@@ -39,6 +39,7 @@ export {
   capabilityProbe,
   widthProbe,
   isBlank,
+  readHyperlinkMetadata,
   probe,
 } from "./helpers.ts"
 

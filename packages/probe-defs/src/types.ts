@@ -240,6 +240,8 @@ export interface Interpretation {
 
 /** Context for headless backends (synchronous cell-state access) */
 export interface TermlessContext {
+  /** Existing HyperlinkExtension method; present only for exposed parser metadata. */
+  getHyperlinkAt?(row: number, col: number): string | null
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
   readonly cols: number
   feed(text: string): void

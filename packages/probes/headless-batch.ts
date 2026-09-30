@@ -1,7 +1,8 @@
 /** Internal production adapter and isolated result collection for one Termless engine. */
 /* oxlint-disable typescript/no-deprecated -- Current Termless resolve() adapters expose TerminalBackend lifecycle; Emulator does not yet replace that loader. */
 
-import type { TerminalBackend } from "@termless/core"
+import { hasExtension, type HyperlinkExtension, type TerminalBackend } from "@termless/core"
+import { readHyperlinkMetadata } from "@terminfo/probe-defs"
 import type {
   Observation,
   ProbeAssertion,
@@ -43,8 +44,13 @@ export function createTermlessContext(backend: TerminalBackend): TermlessContext
     throw new Error(`${backend.name} returned invalid initialized grid width ${cols}`)
   }
   if (cols !== 80) throw new Error(`${backend.name} initialized ${cols} columns; requested 80`)
+  const readLink =
+    hasExtension<HyperlinkExtension>(backend, "hyperlinks") && typeof backend.getHyperlinkAt === "function"
+      ? backend.getHyperlinkAt.bind(backend)
+      : undefined
   return {
     cols,
+    getHyperlinkAt: readLink,
     feed(text) {
       backend.feed(encoder.encode(text))
     },
@@ -53,14 +59,15 @@ export function createTermlessContext(backend: TerminalBackend): TermlessContext
     },
     getCell(row, col) {
       const cell = backend.getCell(row, col)
-      if (backend.capabilities.osc8Hyperlinks) {
-        if (cell.hyperlink === undefined) {
-          throw new Error(`${backend.name} declares OSC 8 link metadata but omitted it at ${row},${col}`)
-        }
-        return cell as ReturnType<TermlessContext["getCell"]>
-      }
+      const hyperlink = readHyperlinkMetadata(
+        backend.capabilities.extensions.has("hyperlinks"),
+        readLink,
+        row,
+        col,
+        backend.name,
+      )
       const { hyperlink: _unreported, ...withoutLink } = cell
-      return withoutLink as ReturnType<TermlessContext["getCell"]>
+      return { ...withoutLink, ...(hyperlink !== undefined && { hyperlink }) } as ReturnType<TermlessContext["getCell"]>
     },
     getCursor() {
       return backend.getCursor()

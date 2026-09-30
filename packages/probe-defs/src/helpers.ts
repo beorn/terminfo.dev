@@ -429,3 +429,22 @@ export function probe(
 ): ProbeDefinition {
   return { id, termless, term, ...(termObservationEvidence && { termObservationEvidence }) }
 }
+
+/** Feature support is independent of whether an observer can inspect link metadata. */
+export function readHyperlinkMetadata(
+  available: boolean,
+  readLink: TermlessContext["getHyperlinkAt"],
+  row: number,
+  col: number,
+  backendName: string,
+): string | null | undefined {
+  if (!available) return undefined
+  if (typeof readLink !== "function") {
+    throw new Error(`${backendName} declares OSC 8 metadata but has no getHyperlinkAt method at ${row},${col}`)
+  }
+  const hyperlink = readLink(row, col)
+  if (hyperlink !== null && typeof hyperlink !== "string") {
+    throw new Error(`${backendName} declares OSC 8 metadata but returned an invalid value at ${row},${col}`)
+  }
+  return hyperlink
+}
