@@ -9,7 +9,11 @@
 
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { readDaemonProbeResponse, requestDaemonProbe, saveDaemonProbeRun } from "terminfo.dev/src/daemon-client.ts"
+import {
+  readRetainedDaemonProbeResponse,
+  requestDaemonProbe,
+  saveDaemonProbeRun,
+} from "terminfo.dev/src/daemon-client.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -77,7 +81,9 @@ export async function handleServer(
 
     try {
       const res = await requestDaemonProbe(d)
-      const data = await readDaemonProbeResponse(res)
+      const retained = await readRetainedDaemonProbeResponse(res)
+      console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
+      const data = retained.run
       const observed = data.observations.length
       const total = observed + Object.keys(data.ungradedDiagnostics ?? {}).length
       console.log(`  ${label.padEnd(25)} ${observed}/${total} explicit observations (unreviewed)`)

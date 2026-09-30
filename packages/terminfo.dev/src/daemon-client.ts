@@ -1,8 +1,17 @@
 /** Shared request boundary for the CLI and admin daemon collectors. */
 import { randomBytes } from "node:crypto"
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs"
+import { homedir, tmpdir } from "node:os"
+import { dirname, join } from "node:path"
 import type { ProbeRun as CollectedProbeRun, ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
 import { decodeCollectorRun, decodeExactUtf8 } from "@terminfo/run-parser"
 import { getTrustedSuiteReceipt } from "./serve.ts"
@@ -174,12 +183,69 @@ export async function readRawDaemonProbeResponse(
   return decoded
 }
 
-/** Admin callers consume the same strict decoder and may discard the retained bytes. */
-export async function readDaemonProbeResponse(
+/**
+ * Keep validated response bytes outside the public run tree until a person removes them.
+ * POSIX 0700/0600 limits access to this OS user, not to another seat with the same UID;
+ * the directory is not a secret store and its files are never removed automatically.
+ */
+export async function readRetainedDaemonProbeResponse(
   response: Response,
-  receipt: { manifest: ProbeSuiteManifest; collectorRevision: string } = getTrustedSuiteReceipt(),
-): Promise<CollectedProbeRun> {
-  return (await readRawDaemonProbeResponse(response, receipt)).run
+  options: {
+    directory?: string
+    receipt?: { manifest: ProbeSuiteManifest; collectorRevision: string }
+  } = {},
+): Promise<{ run: CollectedProbeRun; path: string; sha256: string }> {
+  const decoded = await readRawDaemonProbeResponse(response, options.receipt)
+  const directory = options.directory ?? join(homedir(), ".terminfo-dev", "http-responses")
+  const parent = dirname(directory)
+  try {
+    mkdirSync(parent, { recursive: true, mode: 0o700 })
+  } catch (error) {
+    throw new Error(
+      `Cannot prepare HTTP response parent ${parent}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  const parentInfo = lstatSync(parent)
+  if (parentInfo.isSymbolicLink()) throw new Error(`HTTP response parent ${parent} is a symbolic link`)
+  if (!parentInfo.isDirectory()) throw new Error(`HTTP response parent ${parent} is not a directory`)
+  try {
+    mkdirSync(directory, { recursive: true, mode: 0o700 })
+  } catch (error) {
+    throw new Error(
+      `Cannot prepare private HTTP response directory ${directory}: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  const directoryInfo = lstatSync(directory)
+  if (directoryInfo.isSymbolicLink()) throw new Error(`HTTP response directory ${directory} is a symbolic link`)
+  if (!directoryInfo.isDirectory() || (directoryInfo.mode & 0o077) !== 0) {
+    throw new Error(`HTTP response directory ${directory} is not a private ordinary directory (mode 0700)`)
+  }
+  const path = join(directory, decoded.sha256)
+  try {
+    writeFileSync(path, decoded.raw, { flag: "wx", mode: 0o600 })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+      throw new Error(
+        `Cannot retain HTTP response at ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+  const info = lstatSync(path)
+  if (info.isSymbolicLink()) throw new Error(`HTTP response artifact ${path} is a symbolic link`)
+  if (!info.isFile() || (info.mode & 0o077) !== 0) {
+    throw new Error(`HTTP response artifact ${path} is not a private ordinary file (mode 0600)`)
+  }
+  if (!readFileSync(path).equals(Buffer.from(decoded.raw, "utf8"))) {
+    throw new Error(`HTTP response artifact ${path} has different bytes for digest ${decoded.sha256}`)
+  }
+  return {
+    run: {
+      ...decoded.run,
+      rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
+    },
+    path,
+    sha256: decoded.sha256,
+  }
 }
 
 /** Preserve one immutable raw capture under its measured identity. */

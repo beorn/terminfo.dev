@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url"
 import {
   createProbeRun,
   findOwnedDaemon,
-  readDaemonProbeResponse,
+  readRetainedDaemonProbeResponse,
   removeProbeRun,
   requestDaemonProbe,
   saveDaemonProbeRun,
@@ -200,7 +200,9 @@ async function probeDaemon(
         }
       : undefined,
   )
-  const data = await readDaemonProbeResponse(res)
+  const retained = await readRetainedDaemonProbeResponse(res)
+  console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
+  const data = retained.run
   const identityCheck = verifyTerminalIdentity(appId, data.rawReplies)
   const run = {
     ...data,

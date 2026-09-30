@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url"
 import {
   createProbeRun,
   findOwnedDaemon,
-  readDaemonProbeResponse,
+  readRetainedDaemonProbeResponse,
   removeProbeRun,
   requestDaemonProbe,
   saveDaemonProbeRun,
@@ -129,7 +129,9 @@ async function probeDaemon(
   try {
     const res = await requestDaemonProbe(daemon)
 
-    const data = await readDaemonProbeResponse(res)
+    const retained = await readRetainedDaemonProbeResponse(res)
+    console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
+    const data = retained.run
     const path = saveDaemonProbeRun(data, RESULTS_DIR, { kind: "mux", id: muxId, version })
     console.log(`  Saved unreviewed raw run ${path}`)
     const observed = data.observations.length

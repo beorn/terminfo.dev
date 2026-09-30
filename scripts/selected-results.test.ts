@@ -17,6 +17,7 @@ import {
 } from "../docs/data/selected-results.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
 const manifest = (probeHash: string, ids = ["extensions.graphics", "extensions.query"]): ProbeSuiteManifest => ({
@@ -830,6 +831,50 @@ describe("selected results", () => {
       projectResults([candidate], [reviewFor(candidate)], catalog, { currentProbeHash: "current" }).current["app:kitty"]
         ?.runId,
     ).toBe(candidate.runId)
+  })
+
+  it("keeps retained HTTP bodies outside selection and binds review to the enriched run", async () => {
+    const content = temporaryContent()
+    const directory = `${content}-http-responses`
+    contentDirs.push(directory)
+    const receipt = { manifest: manifest("current"), collectorRevision: "a".repeat(40) }
+    const raw = `${JSON.stringify(
+      run("retained-http", {
+        suiteId: "current",
+        sourceRevision: receipt.collectorRevision,
+        identity: "unverified",
+      }),
+    )}\r\n`
+    const original = parseRun("original.json", raw, catalog)
+    const before = projectResults([original], [reviewFor(original)], catalog, { currentProbeHash: "current" })
+    const retained = await readRetainedDaemonProbeResponse(new Response(raw), { directory, receipt })
+    const path = saveDaemonProbeRun(retained.run, join(content, "probes-apps"))
+    const enriched = parseRun(path, readFileSync(path, "utf8"), catalog)
+    expect(readFileSync(retained.path, "utf8")).toBe(raw)
+    expect(retained.sha256).toBe(original.sha256)
+    expect(enriched.sha256).not.toBe(retained.sha256)
+    expect(enriched.rawReplies["collector.httpResponseSha256"]).toBe(retained.sha256)
+    expect(enriched.observations).toEqual(original.observations)
+    expect(enriched.assertions).toEqual(original.assertions)
+
+    // Retaining a valid body does not review it, and its digest cannot review the enriched file.
+    expect(loadSelectedResults(content, "current").current).toEqual({})
+    writeFileSync(join(content, "interpretations.json"), JSON.stringify([reviewFor(original)]))
+    expect(loadSelectedResults(content, "current").current).toEqual({})
+    writeFileSync(join(content, "interpretations.json"), JSON.stringify([reviewFor(enriched)]))
+    const after = loadSelectedResults(content, "current")
+    expect(Object.keys(after.current)).toEqual(["app:kitty"])
+    expect(after.history["app:kitty"]).toHaveLength(1)
+    expect(after.versions["app:kitty"]).toHaveLength(1)
+    expect(after.exclusions).toEqual([])
+    expect(after.current["app:kitty"]).toMatchObject({
+      runId: original.runId,
+      target: original.target,
+      sha256: enriched.sha256,
+      counts: before.current["app:kitty"]!.counts,
+      v1: before.current["app:kitty"]!.v1,
+    })
+    expect(after.current["app:kitty"]!.cells["extensions.query"]!.chain.runSha256).toBe(enriched.sha256)
   })
 
   it("selects a reviewed Terminal.app run only with DA2 family and an exact launch receipt", () => {

@@ -8,15 +8,28 @@
 import { createServer, type Server } from "node:http"
 import { createHash } from "node:crypto"
 import { once } from "node:events"
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import type { ProbeRun as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
+  createProbeRun,
   findOwnedDaemon,
-  readDaemonProbeResponse,
   readRawDaemonProbeResponse,
+  readRetainedDaemonProbeResponse,
+  removeProbeRun,
   requestDaemonProbe,
   saveDaemonProbeRun,
   stopOwnedDaemon,
@@ -31,6 +44,36 @@ const trustedReceipt = {
     probes: { app: ["device.primary-da"], headless: ["device.primary-da"], mux: ["device.primary-da"] },
   } satisfies ProbeSuiteManifest,
   collectorRevision: "a".repeat(40),
+}
+
+function collectorRun(): CollectedProbeRun {
+  return {
+    schemaVersion: 2,
+    runId: "1234567890abcdef1234567890abcdef",
+    target: {
+      kind: "app",
+      id: "kitty",
+      version: "0.49.1",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    suiteId: trustedReceipt.manifest.probeHash,
+    probeHash: trustedReceipt.manifest.probeHash,
+    suiteComplete: false,
+    sourceRevision: trustedReceipt.collectorRevision,
+    measuredAt: "2026-09-28T12:00:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: {},
+    assertions: [],
+    screenshotRefs: [],
+    observations: [],
+    ungradedDiagnostics: {},
+  }
 }
 
 let server: Server | undefined
@@ -289,40 +332,107 @@ it("refuses the old boolean daemon payload instead of upgrading it to v2 observa
       results: { "device.primary-da": true },
     }),
   )
-  await expect(readDaemonProbeResponse(legacy, trustedReceipt)).rejects.toThrow(/v2|schema|boolean/i)
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  await expect(
+    readRetainedDaemonProbeResponse(legacy, { directory: join(root, "http-responses"), receipt: trustedReceipt }),
+  ).rejects.toThrow(/v2|schema|boolean/i)
 })
 
 it("retains exact daemon HTTP bytes and refuses invalid UTF-8 before parsing", async () => {
-  const run: CollectedProbeRun = {
-    schemaVersion: 2,
-    runId: "1234567890abcdef1234567890abcdef",
-    target: {
-      kind: "app",
-      id: "kitty",
-      version: "0.49.1",
-      os: "linux",
-      osVersion: null,
-      outerTerminal: null,
-      mux: null,
-      config: null,
-      permissions: null,
-    },
-    identity: "unverified",
-    suiteId: trustedReceipt.manifest.probeHash,
-    probeHash: trustedReceipt.manifest.probeHash,
-    suiteComplete: false,
-    sourceRevision: trustedReceipt.collectorRevision,
-    measuredAt: "2026-09-28T12:00:00.000Z",
-    origin: { kind: "collector" },
-    rawReplies: {},
-    assertions: [],
-    screenshotRefs: [],
-    observations: [],
-    ungradedDiagnostics: {},
-  }
-  const raw = `${JSON.stringify(run)}\r\n`
+  const raw = `${JSON.stringify(collectorRun())}\r\n`
   const decoded = await readRawDaemonProbeResponse(new Response(raw), trustedReceipt)
   expect(decoded.raw).toBe(raw)
   expect(decoded.sha256).toBe(createHash("sha256").update(raw).digest("hex"))
   await expect(readRawDaemonProbeResponse(new Response(Buffer.from([0xff])), trustedReceipt)).rejects.toThrow(/UTF-8/i)
+})
+
+// The admin's second serialization cannot reconstruct the authenticated HTTP entity body.
+it("retains authenticated exact response bytes before intended-version refusal", async () => {
+  const privateRoot = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  root = privateRoot
+  const privateDir = join(privateRoot, "http-responses")
+  const token = "private-bearer-token"
+  const run = collectorRun()
+  const raw = `${JSON.stringify(run)}\r\n`
+  const seen: Array<{ path: string; authorization: string | undefined }> = []
+  server = createServer((req, res) => {
+    seen.push({ path: req.url ?? "", authorization: req.headers.authorization })
+    if (req.url === "/info") {
+      res.end(JSON.stringify({ runId: run.runId, pid: 222, terminal: "kitty", terminalVersion: "0.49.1" }))
+    } else res.end(raw)
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const address = server.address()
+  if (!address || typeof address === "string") throw new Error("fixture did not bind")
+  const response = await requestDaemonProbe({
+    runId: run.runId,
+    pid: 222,
+    port: address.port,
+    token,
+    terminal: "kitty",
+    terminalVersion: "0.49.1",
+  })
+  const retained = await readRetainedDaemonProbeResponse(response, { directory: privateDir, receipt: trustedReceipt })
+  const sha = createHash("sha256").update(raw).digest("hex")
+  expect(seen).toEqual([
+    { path: "/info", authorization: undefined },
+    { path: "/probe", authorization: `Bearer ${token}` },
+  ])
+  expect(retained.sha256).toBe(sha)
+  expect(retained.path).toBe(join(privateDir, sha))
+  expect(readFileSync(retained.path, "utf8")).toBe(raw)
+  const launch = createProbeRun()
+  removeProbeRun(launch)
+  expect(readFileSync(retained.path, "utf8")).toBe(raw)
+  expect(readFileSync(retained.path, "utf8")).not.toContain(token)
+  expect(lstatSync(privateDir).mode & 0o077).toBe(0)
+  expect(lstatSync(retained.path).mode & 0o077).toBe(0)
+  expect(retained.run.rawReplies["collector.httpResponseSha256"]).toBe(sha)
+  expect(() =>
+    saveDaemonProbeRun(retained.run, join(privateRoot, "runs"), { kind: "app", id: "kitty", version: "0.48.0" }),
+  ).toThrow(/Measured version/)
+  expect(readdirSync(privateRoot).sort()).toEqual(["http-responses"])
+  await readRetainedDaemonProbeResponse(new Response(raw), { directory: privateDir, receipt: trustedReceipt })
+  expect(readFileSync(retained.path, "utf8")).toBe(raw)
+})
+
+it("refuses permissive stores, symlinks and conflicting bytes before returning an enriched run", async () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  const dir = join(root, "http-responses")
+  mkdirSync(dir, { mode: 0o755 })
+  const valid = `${JSON.stringify(collectorRun())}\r\n`
+  await expect(
+    readRetainedDaemonProbeResponse(new Response(valid), { directory: dir, receipt: trustedReceipt }),
+  ).rejects.toThrow(/directory.*mode|private/i)
+  expect(readdirSync(dir)).toEqual([])
+  const decoded = await readRawDaemonProbeResponse(new Response(valid), trustedReceipt)
+  chmodSync(dir, 0o700)
+  const path = join(dir, decoded.sha256)
+  symlinkSync(join(root, "missing"), path)
+  await expect(
+    readRetainedDaemonProbeResponse(new Response(valid), { directory: dir, receipt: trustedReceipt }),
+  ).rejects.toThrow(/symbolic link|symlink/i)
+  rmSync(path)
+  writeFileSync(path, "wrong bytes", { mode: 0o600 })
+  await expect(
+    readRetainedDaemonProbeResponse(new Response(valid), { directory: dir, receipt: trustedReceipt }),
+  ).rejects.toThrow(/different bytes/)
+  writeFileSync(path, valid)
+  chmodSync(path, 0o644)
+  await expect(
+    readRetainedDaemonProbeResponse(new Response(valid), { directory: dir, receipt: trustedReceipt }),
+  ).rejects.toThrow(/private ordinary file/)
+
+  const publicDir = join(root, "public")
+  mkdirSync(publicDir)
+  const linkedConfig = join(root, "linked-config")
+  symlinkSync(publicDir, linkedConfig)
+  await expect(
+    readRetainedDaemonProbeResponse(new Response(valid), {
+      directory: join(linkedConfig, "http-responses"),
+      receipt: trustedReceipt,
+    }),
+  ).rejects.toThrow(/symbolic link/)
+  expect(existsSync(join(publicDir, "http-responses"))).toBe(false)
 })

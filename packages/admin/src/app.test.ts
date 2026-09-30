@@ -10,7 +10,7 @@ import { handleApp } from "./app.ts"
 import {
   createProbeRun,
   findOwnedDaemon,
-  readDaemonProbeResponse,
+  readRetainedDaemonProbeResponse,
   removeProbeRun,
   requestDaemonProbe,
   saveDaemonProbeRun,
@@ -18,6 +18,7 @@ import {
 } from "terminfo.dev/src/daemon-client.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { assertOwnedTerminalWindow, closeOwnedTerminalWindow } from "terminfo.dev/src/terminal-app-window.ts"
+import { verifyTerminalIdentity } from "terminfo.dev/src/identity-guard.ts"
 
 vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true), writeFileSync: vi.fn() }))
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn(), execSync: vi.fn(() => "2.15\n"), spawn: vi.fn() }))
@@ -30,7 +31,7 @@ vi.mock("terminfo.dev/src/identity-guard.ts", () => ({
 vi.mock("terminfo.dev/src/daemon-client.ts", () => ({
   createProbeRun: vi.fn(),
   findOwnedDaemon: vi.fn(),
-  readDaemonProbeResponse: vi.fn(),
+  readRetainedDaemonProbeResponse: vi.fn(),
   removeProbeRun: vi.fn(),
   requestDaemonProbe: vi.fn(),
   saveDaemonProbeRun: vi.fn(),
@@ -81,32 +82,36 @@ beforeEach(() => {
   vi.mocked(launchTerminalWindow).mockReturnValue(window)
   vi.mocked(findOwnedDaemon).mockResolvedValue({ filepath: "/private/registration", registration })
   vi.mocked(requestDaemonProbe).mockResolvedValue(new Response("{}"))
-  vi.mocked(readDaemonProbeResponse).mockResolvedValue({
-    schemaVersion: 2,
-    runId: "private-run",
-    origin: { kind: "collector" },
-    target: {
-      kind: "app",
-      id: "terminal-app",
-      version: "2.15",
-      os: "macos",
-      osVersion: "26.6.2",
-      outerTerminal: null,
-      mux: null,
-      config: null,
-      permissions: null,
+  vi.mocked(readRetainedDaemonProbeResponse).mockResolvedValue({
+    path: "/private/http-responses/digest",
+    sha256: "d".repeat(64),
+    run: {
+      schemaVersion: 2,
+      runId: "private-run",
+      origin: { kind: "collector" },
+      target: {
+        kind: "app",
+        id: "terminal-app",
+        version: "2.15",
+        os: "macos",
+        osVersion: "26.6.2",
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      suiteId: "suite",
+      probeHash: "hash",
+      suiteComplete: false,
+      sourceRevision: "source",
+      measuredAt: "2026-09-28T00:00:00.000Z",
+      rawReplies: { "collector.httpResponseSha256": "d".repeat(64) },
+      assertions: [],
+      screenshotRefs: [],
+      observations: [],
+      ungradedDiagnostics: {},
     },
-    identity: "unverified",
-    suiteId: "suite",
-    probeHash: "hash",
-    suiteComplete: false,
-    sourceRevision: "source",
-    measuredAt: "2026-09-28T00:00:00.000Z",
-    rawReplies: {},
-    assertions: [],
-    screenshotRefs: [],
-    observations: [],
-    ungradedDiagnostics: {},
   })
   vi.mocked(captureTerminalAppReceipt).mockReturnValue({ receipt, trace: { daemonTty: "/dev/ttys003" } })
   vi.mocked(saveDaemonProbeRun).mockReturnValue("/raw/terminal-app.json")
@@ -130,10 +135,16 @@ describe("Terminal.app app collection", () => {
     const requestOrder = vi.mocked(requestDaemonProbe).mock.invocationCallOrder[0]!
     expect(vi.mocked(captureTerminalAppReceipt).mock.invocationCallOrder[0]).toBeLessThan(requestOrder)
     expect(vi.mocked(assertOwnedTerminalWindow).mock.invocationCallOrder[0]).toBeLessThan(requestOrder)
+    expect(vi.mocked(readRetainedDaemonProbeResponse).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(saveDaemonProbeRun).mock.invocationCallOrder[0]!,
+    )
     expect(saveDaemonProbeRun).toHaveBeenCalledOnce()
     expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0]).toMatchObject({
       origin: { kind: "collector", appLaunch: receipt },
-      rawReplies: { "collector.appLaunchTrace": JSON.stringify({ daemonTty: "/dev/ttys003" }) },
+      rawReplies: {
+        "collector.httpResponseSha256": "d".repeat(64),
+        "collector.appLaunchTrace": JSON.stringify({ daemonTty: "/dev/ttys003" }),
+      },
     })
     expect(stopOwnedDaemon).toHaveBeenCalledOnce()
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
@@ -159,5 +170,27 @@ describe("Terminal.app app collection", () => {
     expect(saveDaemonProbeRun).not.toHaveBeenCalled()
     expect(stopOwnedDaemon).toHaveBeenCalledOnce()
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
+  })
+
+  test("retention failure blocks the enriched save", async () => {
+    vi.mocked(readRetainedDaemonProbeResponse).mockRejectedValueOnce(
+      new Error("private response directory is permissive"),
+    )
+    await expect(handleApp("terminal-app", {})).rejects.toThrow(/private response directory/)
+    expect(saveDaemonProbeRun).not.toHaveBeenCalled()
+    expect(stopOwnedDaemon).toHaveBeenCalledOnce()
+  })
+
+  test("a negative identity check remains an unreviewed saved trace", async () => {
+    vi.mocked(verifyTerminalIdentity).mockReturnValueOnce({
+      checked: true,
+      ok: false,
+      reason: "measured reply differs",
+    })
+    await handleApp("terminal-app", {})
+    expect(vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0].rawReplies["collector.identityCheck"]).toBe(
+      JSON.stringify({ checked: true, ok: false, reason: "measured reply differs" }),
+    )
+    expect(saveDaemonProbeRun).toHaveBeenCalledOnce()
   })
 })
