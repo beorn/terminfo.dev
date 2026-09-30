@@ -101390,5 +101390,3311 @@
     "supersedes": [],
     "featureId": "extensions.osc52-read",
     "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "identity-headless-libvterm-3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "reviewer": "Codex (automated review)",
+    "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "verifiesIdentity": true,
+    "reviewed": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.truecolor",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.truecolor",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.osc8",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.osc8",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.osc2-title",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.osc2-title",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.osc0-icon-title",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.osc0-icon-title",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.osc66-text-sizing",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.osc66-text-sizing",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.osc5522-clipboard",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.osc5522-clipboard",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.osc1-icon",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.osc1-icon",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.osc117-reset-highlight-bg",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.osc117-reset-highlight-bg",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.osc119-reset-highlight-fg",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.osc119-reset-highlight-fg",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.osc720-scroll-up",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.osc720-scroll-up",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-extensions.sixel-da1",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "extensions.sixel-da1",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.bold",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.bold",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.faint",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.faint",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.italic",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.italic",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.underline.single",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.underline.single",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.underline.double",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.underline.double",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.underline.curly",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.underline.curly",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.underline.dotted",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.underline.dotted",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.underline.dashed",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.underline.dashed",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.blink",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.blink",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.inverse",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.inverse",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.hidden",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.hidden",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.strikethrough",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.strikethrough",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.overline",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.overline",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.underline.color",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.underline.color",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.underline-color-indexed",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.underline-color-indexed",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.underline-color-rgb",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.underline-color-rgb",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.underline-color-reset",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.underline-color-reset",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.fg.standard",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.fg.standard",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.bg.standard",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.bg.standard",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.fg.bright",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.fg.bright",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.bg.bright",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.bg.bright",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.fg.default",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.fg.default",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.bg.default",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.bg.default",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.fg.256",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.fg.256",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.bg.256",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.bg.256",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.fg.truecolor",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.fg.truecolor",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.bg.truecolor",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.bg.truecolor",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.selective-reset.bold",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.selective-reset.bold",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.selective-reset.underline",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.selective-reset.underline",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.selective-reset.italic",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.selective-reset.italic",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.selective-reset.inverse",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.selective-reset.inverse",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-sgr.reset",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "sgr.reset",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.move.absolute",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.move.absolute",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.move.home",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.move.home",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.move.forward",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.move.forward",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.move.back",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.move.back",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.move.down",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.move.down",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.move.up",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.move.up",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.hide",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the fresh original parser-state record after correcting synthetic adapter defaults. The result is inconclusive because this adapter cannot observe the cursor property; it is not evidence of non-support.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.shape",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the fresh original parser-state record after correcting synthetic adapter defaults. The result is inconclusive because this adapter cannot observe the cursor property; it is not evidence of non-support.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.shape",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.horizontal-absolute",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.horizontal-absolute",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.next-line",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.next-line",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.position-report",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.position-report",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.ansi-save",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.ansi-save",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.ansi-restore",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.ansi-restore",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.save-restore",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.save-restore",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.reverse-wrap",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.reverse-wrap",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.cup-boundaries",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.cup-boundaries",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.cuu-past-top",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.cuu-past-top",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.cud-past-bottom",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.cud-past-bottom",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.vpa",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.vpa",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.cpl",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.cpl",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.hpa",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.hpa",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-cursor.cup-scroll-region",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "cursor.cup-scroll-region",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.basic",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.basic",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.newline",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.newline",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.wrap",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.wrap",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.tab",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.tab",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.wide.emoji",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.wide.emoji",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.wide.cjk",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.wide.cjk",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.overwrite",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.overwrite",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.cr",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.cr",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.backspace",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.backspace",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.index",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.index",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.next-line",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.next-line",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.reverse-index-scroll",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.reverse-index-scroll",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.combining",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.combining",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.hts",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.hts",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.tbc",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.tbc",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.cht",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.cht",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.cbt",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.cbt",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.wide.emoji-flags",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.wide.emoji-flags",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.wide.emoji-vs16",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.wide.emoji-vs16",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-text.wide.emoji-zwj",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "text.wide.emoji-zwj",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.line.right",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.line.right",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.line.left",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.line.left",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.line.all",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.line.all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.screen.below",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.screen.below",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.screen.above",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.screen.above",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.screen.all",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.screen.all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.screen.scrollback",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.screen.scrollback",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.character",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.character",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.selective",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.selective",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.el-with-attrs",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.el-with-attrs",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-erase.ed-scroll-region",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "erase.ed-scroll-region",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.insert-chars",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.insert-chars",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.delete-chars",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.delete-chars",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.insert-lines",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.insert-lines",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.delete-lines",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.delete-lines",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.repeat-char",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.repeat-char",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.decfra",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.decfra",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.decera",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.decera",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.decsera",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.decsera",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.deccra",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.deccra",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.deccara",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.deccara",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.decrara",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.decrara",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.decsace",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run consumed record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.decsace",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.sl",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.sl",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.sr",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.sr",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.decic",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.decic",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-editing.decdc",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "editing.decdc",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.alt-screen.enter",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.alt-screen.enter",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.alt-screen.exit",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.alt-screen.exit",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.bracketed-paste",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.bracketed-paste",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.application-cursor",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.application-cursor",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.auto-wrap",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.auto-wrap",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.mouse-tracking",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.mouse-tracking",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.focus-tracking",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.focus-tracking",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.reverse-video",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.reverse-video",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.synchronized-output",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.synchronized-output",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.origin",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.origin",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.insert-replace",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.insert-replace",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.mouse-sgr",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.mouse-sgr",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.mouse-all",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.mouse-all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.application-keypad",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.application-keypad",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.left-right-margin",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.left-right-margin",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.altscreen-47",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.altscreen-47",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.altscreen-1047",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.altscreen-1047",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.altscreen-1048",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.altscreen-1048",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.alt-scroll-1007",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.alt-scroll-1007",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.utf8-mouse-1005",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.utf8-mouse-1005",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.deccolm",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.deccolm",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.decsclm",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.decsclm",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.color-scheme-reporting",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.color-scheme-reporting",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.xtpushsgr",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run consumed record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.xtpushsgr",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.xtpopsgr",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run consumed record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.xtpopsgr",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.xtsave",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run consumed record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.xtsave",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.xtrestore",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run consumed record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.xtrestore",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.xtpushcolors",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run consumed record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.xtpushcolors",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-modes.xtpopcolors",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run consumed record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "modes.xtpopcolors",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-device.primary-da",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "device.primary-da",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-device.status-report",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "device.status-report",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-device.secondary-da",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "device.secondary-da",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-device.decrqss",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "device.decrqss",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-device.decrpm",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "device.decrpm",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-device.xtversion",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "device.xtversion",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-device.xtwinops-14",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "device.xtwinops-14",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-device.xtwinops-18",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run query record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "device.xtwinops-18",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-device.xtwinops-22",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "device.xtwinops-22",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-device.xtwinops-23",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "device.xtwinops-23",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-reset.sgr",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "reset.sgr",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-reset.ris",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "reset.ris",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-reset.soft",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "reset.soft",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-reset.decaln",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "reset.decaln",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-reset.method",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "reset.method",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-scrollback.accumulate",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "scrollback.accumulate",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-scrollback.total-lines",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "scrollback.total-lines",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-scrollback.scroll-up",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "scrollback.scroll-up",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-scrollback.reverse-index",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "scrollback.reverse-index",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-scrollback.scroll-down",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "scrollback.scroll-down",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-scrollback.set-region",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "scrollback.set-region",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-scrollback.alt-screen",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "scrollback.alt-screen",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-scrollback.decstbm",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "scrollback.decstbm",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-scrollback.decstbm-reset",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is inconclusive; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "scrollback.decstbm-reset",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-charsets.dec-special",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "charsets.dec-special",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-charsets.utf8",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "charsets.utf8",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-charsets.g0-g1-switching",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "charsets.g0-g1-switching",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-charsets.dec-line-drawing",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "charsets.dec-line-drawing",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-unicode.east-asian-ambiguous",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "unicode.east-asian-ambiguous",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-unicode.grapheme-cursor",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is unsupported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "unicode.grapheme-cursor",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-unicode.wrap-boundary",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "unicode.wrap-boundary",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3590c7eb-8fd6-496b-934f-e48c08deb4ef",
+    "runSha256": "c1035049097c3c23af1412452db8a1601e33cb9683a8739e7c8d2aa3e600d411",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["d07f5702de63", "d07f5702de63"]
+    },
+    "id": "present-3590c7eb-8fd6-496b-934f-e48c08deb4ef-unicode.tab-stops",
+    "reviewer": "Codex (automated review)",
+    "reason": "Reviewed the original controlled-run parser-state record. The recorded outcome is supported; retain its stated scope and limitations.",
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-3590c7eb-8fd6-496b-934f-e48c08deb4ef.json"],
+    "supersedes": [],
+    "featureId": "unicode.tab-stops",
+    "presentsEvidence": true
   }
 ]
