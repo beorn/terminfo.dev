@@ -4,7 +4,10 @@
       "contextKey": "app:kitty@[\"app\",\"kitty\",\"linux\",\"7.0.0-34-generic\",null,null,\"--config NONE --class terminfo-kitty-container-daemon -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600 -o font_family=DejaVu\\\\ Sans\\\\ Mono -o font_size=16 \",null]",
       "reviewer": "Codex (automated review)",
       "reason": "Use the controlled Linux Kitty default configuration for the compatibility view. OSC52 was not sent in this profile and remains inconclusive. Explicit allow and deny-read contexts remain available in v2.",
-      "sources": ["content/probes-apps/kitty-0.49.1-linux-92b128d025af9aa6ade894a51fa86ba9.json"]
+      "sources": [
+        "content/probes-apps/kitty-0.49.1-linux-92b128d025af9aa6ade894a51fa86ba9.json",
+        "content/probes-apps/kitty-0.49.1-linux-7db8a7e3a125a2f396f503fe8aeaa66c.json"
+      ]
     }
   }
 }
