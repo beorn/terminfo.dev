@@ -92,7 +92,7 @@
     "tags": ["kitty-extensions"],
     "group": "underline",
     "body": "SGR 58 sets the underline color independently of the text foreground color. The syntax mirrors SGR 38 (foreground): <code>ESC [ 58:2::R:G:B m</code> for truecolor, <code>ESC [ 58:5:N m</code> for 256-color. Reset the underline color to default with SGR 59.\n\nThis is particularly useful with curly underlines (SGR 4:3) for diagnostic indicators: red underline for errors, yellow for warnings, blue for hints — all while keeping the text color unchanged. Introduced by Kitty and adopted by other modern terminals.",
-    "probe": "Send <code>\\x1b[4m\\x1b[58;2;255;0;128m</code>X, verify the cell has <code>underline</code> active and <code>underlineColor</code> matches RGB(255, 0, 128).",
+    "probe": "Headless: compare the requested RGB(255, 0, 128) underline with reset/default-color control cells; a negative result requires exposed, differing foreground and underline colors in the two control cells. App: capture control and target text when available; screenshots alone do not establish the exact underline color. Cursor advance does not verify styling.",
     "baseline": "modern",
     "sequence": "ESC [ 58;2;R;G;B m"
   },
@@ -125,7 +125,7 @@
     "tags": ["ecma-48", "kitty-extensions"],
     "group": "underline",
     "body": "SGR 59 resets the underline color to its default value, which typically matches the current text foreground color. The sequence is <code>ESC [ 59 m</code>. This is the companion reset for SGR 58 (set underline color), analogous to how SGR 39 resets the foreground color set by SGR 38.\n\nUsing SGR 59 allows applications to clear an explicit underline color without resetting other attributes — the underline style itself (single, double, curly, dotted, dashed) and any other SGR state remain in effect. To remove the underline entirely, use SGR 24 instead.\n\nKitty specifies SGR 59, WezTerm documents it, and Alacritty lists support from version 0.11.0. Other terminals need a matching source or measurement before reset behavior is claimed.\n\nSources: <a href=\"https://sw.kovidgoyal.net/kitty/underlines/\">Kitty underline specification</a>, <a href=\"https://wezterm.org/escape-sequences.html\">WezTerm escape reference</a>, <a href=\"https://github.com/alacritty/alacritty/blob/v0.11.0/CHANGELOG.md#0110\">Alacritty 0.11.0 changelog</a>.",
-    "probe": "Send <code>\\x1b[4m\\x1b[58;2;255;0;128mX\\x1b[59mY</code>, verify the cell at (0,0) has the colored underline and the cell at (0,1) has underline active but no explicit <code>underlineColor</code> (or a null/default value).",
+    "probe": "Headless: first verify the requested colored underline, then compare SGR 59 reset with a measured reset-state control. Missing or ambiguous cell/color readback is inconclusive. App: the cursor-position check does not verify underline color or its reset.",
     "baseline": "rich",
     "sequence": "CSI 59 m"
   },
