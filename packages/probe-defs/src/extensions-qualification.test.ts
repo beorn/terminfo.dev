@@ -102,6 +102,25 @@ test.each(directReplies)("%s only qualifies its complete, bound query frame", as
     expect(result.observation?.outcome, id).toBe("inconclusive")
     expect(result.assertions, id).toBeUndefined()
   }
+  if (id === "extensions.sixel-da1") {
+    // Kitty 0.49.1 replies with a trailing empty DA1 parameter.
+    for (const [raw, outcome] of [
+      ["\x1b[?62;52;c", "unsupported"],
+      ["\x1b[?62;4;52;c", "supported"],
+    ] as const) {
+      for (const result of await run(raw)) {
+        expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+        expect(result.response).toBe(raw)
+        expect(result.assertions).toMatchObject([
+          { kind: outcome === "supported" ? "positive" : "negative", observed: raw },
+        ])
+      }
+      for (const result of await run(raw.slice(0, -1))) {
+        expect(result.observation?.outcome).toBe("inconclusive")
+        expect(result.assertions).toBeUndefined()
+      }
+    }
+  }
   if (frame.includes("rgb:")) {
     for (const payload of ["?", "red", "rgb:zz/00/00", "rgb:fffff/00/00"]) {
       for (const result of await run(frame.replace(/rgb:[^\x07]+/, payload))) {

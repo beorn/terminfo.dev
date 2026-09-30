@@ -45,8 +45,10 @@ function unmeasuredStateEffect(feature: string): ProbeResult {
   }
 }
 
+const sixelDa1Reply = /\x1b\[\?([0-9]+(?:;[0-9]+)*);?c/
+
 function sixelDa1Result(raw: string, frame: string | null): ProbeResult {
-  const match = frame ? /\x1b\[\?([0-9]+(?:;[0-9]+)*)c/.exec(frame) : null
+  const match = frame ? sixelDa1Reply.exec(frame) : null
   if (!match) {
     return {
       pass: false,
@@ -2126,10 +2128,10 @@ export const extensionsProbes: ProbeDefinition[] = [
         "extensions.sixel-da1",
         (ctx) => {
           const raw = ctx.feedCapture("\x1b[c")
-          return sixelDa1Result(raw, /\x1b\[\?[0-9]+(?:;[0-9]+)*c/.exec(raw)?.[0] ?? null)
+          return sixelDa1Result(raw, sixelDa1Reply.exec(raw)?.[0] ?? null)
         },
         async (ctx) => {
-          const reply = await ctx.queryOutcome("\x1b[c", /\x1b\[\?[0-9]+(?:;[0-9]+)*c/)
+          const reply = await ctx.queryOutcome("\x1b[c", sixelDa1Reply)
           return sixelDa1Result(reply.raw, reply.reason === "reply" ? (reply.match?.[0] ?? null) : null)
         },
         "query",
