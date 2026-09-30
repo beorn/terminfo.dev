@@ -21,7 +21,7 @@
  * Run weekly or monthly.
  */
 
-import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from "node:fs"
+import { readFileSync, existsSync, appendFileSync, mkdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { spawn } from "node:child_process"
@@ -214,7 +214,7 @@ function loadExistingIds(): Set<string> {
   return ids
 }
 
-async function runDeepQuery(queryPrompt: string, queryId: string): Promise<string> {
+async function runDeepQuery(queryPrompt: string): Promise<string> {
   const kmRoot = "/Users/beorn/Code/pim/km"
   return new Promise((resolve, reject) => {
     // Note: don't pass --model — it overrides --deep's web search routing.
@@ -224,7 +224,7 @@ async function runDeepQuery(queryPrompt: string, queryId: string): Promise<strin
       stdio: ["pipe", "pipe", "inherit"],
     })
     let stdout = ""
-    proc.stdout?.on("data", (chunk) => (stdout += chunk.toString()))
+    proc.stdout?.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")))
     proc.on("close", (code) => {
       if (code !== 0) {
         reject(new Error(`llm exited with code ${code}`))
@@ -234,12 +234,21 @@ async function runDeepQuery(queryPrompt: string, queryId: string): Promise<strin
       // {"query":"...", "chars": N, "model":"...", "file": "/tmp/llm-*.txt"}
       // Read the actual content from the output file.
       try {
-        const result = JSON.parse(stdout.trim().split("\n").pop()!) as { file?: string }
-        if (!result.file) {
+        const metadataLine = stdout.trim().split("\n").pop()
+        if (!metadataLine) {
+          reject(new Error("llm did not return output metadata"))
+          return
+        }
+        const result: unknown = JSON.parse(metadataLine)
+        const file =
+          result && typeof result === "object" && !Array.isArray(result)
+            ? (result as Record<string, unknown>).file
+            : undefined
+        if (typeof file !== "string" || !file) {
           reject(new Error("llm did not return output file path"))
           return
         }
-        const content = readFileSync(result.file, "utf-8")
+        const content = readFileSync(file, "utf-8")
         // Strip the metadata comment header (lines starting with //)
         const bodyStart = content.indexOf("\n\n")
         resolve(bodyStart > 0 ? content.slice(bodyStart + 2) : content)
@@ -263,16 +272,18 @@ function extractFindings(rawOutput: string, queryId: string): Finding[] {
   const sections = rawOutput.split(/\n(?=#{2,4}\s)/)
   for (const section of sections) {
     const titleMatch = section.match(/^#{2,4}\s+(.+?)$/m)
-    if (!titleMatch) continue
-    const title = titleMatch[1]!.trim().replace(/[*_`]/g, "") // strip markdown
+    const matchedTitle = titleMatch?.[1]
+    if (!matchedTitle || !titleMatch) continue
+    const title = matchedTitle.trim().replace(/[*_`]/g, "") // strip markdown
     if (title.length < 5) continue
     // Skip generic section headers that aren't findings
     if (
       /^(?:overview|summary|key details|verifiable|relevant|baseline|conclusion|references|sources?|notes?|what changed)\b/i.test(
         title,
       )
-    )
+    ) {
       continue
+    }
 
     // Extract URLs (strip trailing punctuation that commonly appears at end of markdown links)
     const urls = [...section.matchAll(/https?:\/\/[^\s)\]<>"`,]+/g)]
@@ -308,11 +319,12 @@ function extractFindings(rawOutput: string, queryId: string): Finding[] {
     if (/\bpatch\s*#?\d+/i.test(title) || /xterm\s+patch/i.test(title)) type = "spec-change"
     else if (/\b(?:version|release)\b/i.test(title)) type = "new-version"
     else if (/\bOSC\b|\bCSI\b|\bDCS\b|\bSGR\b|protocol|escape|XT[A-Z]/i.test(title)) type = "new-protocol"
-    else if (/terminal\s+(?:emulator|app)|ghostty|kitty|wezterm|alacritty|foot|mintty|iterm/i.test(title))
+    else if (/terminal\s+(?:emulator|app)|ghostty|kitty|wezterm|alacritty|foot|mintty|iterm/i.test(title)) {
       type = "new-terminal"
-    else if (/deprecat|removed|obsolet/i.test(title)) type = "deprecation"
+    } else if (/deprecat|removed|obsolet/i.test(title)) type = "deprecation"
 
-    const firstCitation = uniqueUrls[0]!
+    const firstCitation = uniqueUrls[0]
+    if (!firstCitation) continue
     findings.push({
       id: hashFinding(title, firstCitation),
       type,
@@ -343,7 +355,9 @@ function normalizeDate(raw: string): string {
   if (/^20\d\d$/.test(raw)) return `${raw}-01-01`
   // Month YYYY
   const monthMatch = raw.match(/^(\w+)\s+(20\d\d)$/)
-  if (monthMatch) {
+  const monthName = monthMatch?.[1]
+  const year = monthMatch?.[2]
+  if (monthName && year) {
     const months: Record<string, string> = {
       january: "01",
       february: "02",
@@ -358,8 +372,8 @@ function normalizeDate(raw: string): string {
       november: "11",
       december: "12",
     }
-    const mo = months[monthMatch[1]!.toLowerCase()]
-    if (mo) return `${monthMatch[2]}-${mo}-01`
+    const mo = months[monthName.toLowerCase()]
+    if (mo) return `${year}-${mo}-01`
   }
   return "unknown"
 }
@@ -426,7 +440,7 @@ async function main() {
     console.log(`   ${q.description}`)
     const start = Date.now()
     try {
-      const output = await runDeepQuery(q.prompt, q.id)
+      const output = await runDeepQuery(q.prompt)
       const findings = extractFindings(output, q.id)
       const added = appendFindings(findings, existing)
       totalAdded += added

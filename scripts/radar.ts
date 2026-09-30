@@ -261,7 +261,8 @@ function cmdShow(args: string[]): void {
   const findings = loadFindings()
   // Allow id prefix matching for convenience
   const matches = findings.filter((f) => f.id === id || f.id.startsWith(id))
-  if (matches.length === 0) {
+  const finding = matches[0]
+  if (!finding) {
     console.error(`${RED}error${RESET} no finding with id: ${id}`)
     process.exit(1)
   }
@@ -270,7 +271,7 @@ function cmdShow(args: string[]): void {
     for (const f of matches) console.error(`  ${f.id}  ${f.title}`)
     process.exit(1)
   }
-  showFinding(matches[0]!)
+  showFinding(finding)
 }
 
 function cmdDismiss(args: string[]): void {
@@ -282,7 +283,8 @@ function cmdDismiss(args: string[]): void {
   }
   const findings = loadFindings()
   const matches = findings.filter((f) => f.id === id || f.id.startsWith(id))
-  if (matches.length === 0) {
+  const finding = matches[0]
+  if (!finding) {
     console.error(`${RED}error${RESET} no finding with id: ${id}`)
     process.exit(1)
   }
@@ -291,7 +293,6 @@ function cmdDismiss(args: string[]): void {
     for (const f of matches) console.error(`  ${f.id}  ${f.title}`)
     process.exit(1)
   }
-  const finding = matches[0]!
   if (finding.dismissed) {
     console.log(`${YELLOW}already dismissed${RESET}  ${finding.id}  ${finding.dismissed.reason}`)
     return
