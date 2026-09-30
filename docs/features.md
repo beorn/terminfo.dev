@@ -132,7 +132,7 @@ const totalCategories = computed(() => activeCategories.value.length)
 
 Most terminal features are controlled by **escape sequences** — special byte patterns that tell the terminal to do something other than display text. When a program writes `\x1b[1m`, it's not printing four characters; it's telling the terminal "make the following text bold." The terminal intercepts the pattern, changes its internal state, and displays subsequent characters accordingly. Some features below are behavioral properties — like text wrapping and character width — that terminals implement without explicit control sequences.
 
-The **CSI (Control Sequence Introducer)** `ESC [` (hex `1b 5b`) is the prefix for most sequences. What follows the CSI determines the operation: **SGR** (`m` suffix) for text styling, **CUP** (`H` suffix) for cursor positioning, **DECSET** (`?...h`) for enabling modes. Parameters are semicolon-separated numbers. Sub-parameters (colon-separated, from ECMA-48 but rarely used until Kitty adopted them) enable richer expressions like `4:3` for curly underline.
+The **CSI (Control Sequence Introducer)** `ESC [` (hex `1b 5b`) is the prefix for most sequences. What follows the CSI determines the operation: **SGR** (`m` suffix) for text styling, **CUP** (`H` suffix) for cursor positioning, **DECSET** (`?...h`) for enabling modes. Parameters are semicolon-separated numbers. ECMA-48 permits colon separators within parameters; extensions such as Kitty’s `4:3` curly underline give particular values their meaning. The grammar alone does not establish support for an extension.
 
 ECMA-48 defines a family of control-sequence formats (CSI, OSC, DCS, and others); terminals differ mainly in which parameters and functions they implement. The complexity lives in **which parameter values each terminal recognizes** — and that's exactly what terminfo.dev measures.
 
@@ -179,7 +179,7 @@ In practice, control sequences use the 7-bit form starting with `ESC` (byte `0x1
 
 SGR (Select Graphic Rendition) sequences control every visual aspect of text: **bold**, **italic**, **underline** (5 styles including curly, dotted, and dashed), **256-color** and **truecolor** (24-bit RGB) foregrounds and backgrounds, **strikethrough**, **overline**, and **inverse video**. SGR uses the `m` suffix: `ESC[1m` for bold, `ESC[38;2;255;0;0m` for red truecolor foreground.
 
-Support ranges from universal (bold, basic 8 colors) to inconsistent (curly underline with independent underline color, overline). The curly underline (`SGR 4:3`) is especially interesting — it uses ECMA-48's colon sub-parameter syntax that was largely ignored for decades until Kitty adopted it.
+Basic attributes such as bold and palette colors are common, while extended underline styles and colors vary by implementation. Kitty documents curly underline as `SGR 4:3`; check the selected result’s method before treating accepted syntax as visible styling.
 
 <p class="category-link"><a class="hover-link" href="/sgr">View SGR features &rarr;</a></p>
 
@@ -249,7 +249,7 @@ Modern terminal extensions beyond the traditional VT specification: **Kitty keyb
 
 ### Graphics — Inline Images
 
-Sixel (1983, revived) and Kitty graphics protocol (2017) enable inline image display in terminals. Graphics support remains fragmented — some terminals intentionally avoid image protocols for security or complexity reasons. Sixel predates Kitty graphics, and the two protocols define different image transport and placement behavior. Check the selected terminal version and measured method before relying on either.
+DEC’s Sixel format and the Kitty graphics protocol enable inline image display in terminals. Kitty’s [0.4.0 changelog](https://sw.kovidgoyal.net/kitty/changelog/) dates its graphics implementation to October 22, 2017. Graphics support remains fragmented — some terminals intentionally avoid image protocols for security or complexity reasons. Sixel predates Kitty graphics, and the two protocols define different image transport and placement behavior. Check the selected terminal version and measured method before relying on either.
 
 <p class="category-link"><a class="hover-link" href="/extensions">View Graphics features &rarr;</a></p>
 
@@ -267,7 +267,7 @@ Applications use **DA1** (Device Attributes) to identify terminal type and capab
 
 ### Input Protocols — Beyond VT100 Keyboard
 
-Modern input protocols provide richer keyboard and mouse reporting than the VT100's original scheme. **Mouse tracking** combines four tracking modes (X10, normal, button-event, any-event) with extended report encodings (SGR, urxvt, pixel-precision). **Keyboard enhancement** protocols (modifyOtherKeys, Kitty keyboard) provide modifier-aware key reporting and key release events — capabilities that were simply impossible in the original terminal model.
+Modern input protocols provide richer keyboard and mouse reporting than the VT100's original scheme. **Mouse tracking** combines four tracking modes (X10, normal, button-event, any-event) with extended report encodings (SGR, urxvt, pixel-precision). **Keyboard enhancements** such as [xterm’s modifyOtherKeys](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) distinguish modified keys. The [Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#report-event-types) additionally defines opt-in repeat and release events; particular keys may require more than one enhancement flag.
 
 <p class="category-link"><a class="hover-link" href="/input">View Input Protocol features &rarr;</a></p>
 
@@ -281,13 +281,13 @@ Getting Unicode right is essential for TUI applications to maintain proper **cur
 
 ## How Features Get Tested
 
-Every feature on terminfo.dev is tested by sending **actual escape sequences** to real terminals and measuring the response. There are no self-reported capability databases or spec-sheet claims — only observed behavior.
+The catalog includes measured and unmeasured features. Result cells identify the observation’s method, terminal version and context; protocol documentation explains intended behavior separately from measurements. See [how probing works and its limits](/contribute#what-a-probe-can-establish).
 
-For **terminal applications** (Ghostty, iTerm2, Kitty, etc.), the community CLI (`npx terminfo.dev`) sends escape sequences to the real terminal and verifies behavior via cursor position reports, device attribute queries, and rendered width measurements. These results reflect what users actually experience.
+For **terminal applications**, query probes record replies such as cursor positions or protocol acknowledgements. Controlled app captures can establish particular visible properties when reviewed against a stated fixture. A reply alone does not demonstrate rendering or input-event delivery.
 
-For **headless backends** (xterm.js, vterm, Alacritty parser, etc.), [Termless](https://termless.dev) runs automated probes against headless terminal emulator libraries. Each probe sends an escape sequence and reads back the terminal state programmatically. A headless pass means the parser accepts the sequence — not necessarily that it renders correctly in the visual terminal.
+For **headless backends**, [Termless](https://termless.dev) sends sequences and checks replies or programmatic terminal state. These assertions can verify cell contents, attributes or cursor behavior. A PNG drawn from that state illustrates the grid; it does not capture the terminal app’s renderer.
 
-The combination captures both dimensions: community probes test what users see, headless probes test parser correctness and help library authors verify conformance.
+The methods complement each other. Missing observations remain not tested; silence and policy refusal remain inconclusive. Permissions and intermediaries such as multiplexers are part of the measurement context.
 
 ---
 
