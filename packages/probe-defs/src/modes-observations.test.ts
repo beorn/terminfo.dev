@@ -15,6 +15,62 @@ const modes = [
   { id: "modes.decsclm", number: 4 },
 ] as const
 
+test.each(["bad-start", "ignored-move", "ignored-restore", "restored"] as const)(
+  "1048 qualifies cursor setup before grading %s",
+  (scenario) => {
+    const definition = modesProbes.find((item) => item.id === "modes.altscreen-1048")
+    if (!definition?.termless) throw new Error("Missing headless cursor-save callback")
+    const writes: string[] = []
+    let cursor = { x: 0, y: 0 }
+    const context = {
+      cols: 20,
+      getScrollback: () => ({ viewportOffset: 0, totalLines: 15, screenLines: 15 }),
+      feed(sequence: string) {
+        writes.push(sequence)
+        if (sequence === "\x1b[5;10H" && scenario !== "bad-start") cursor = { x: 9, y: 4 }
+        if (sequence === "\x1b[15;20H" && scenario !== "ignored-move") cursor = { x: 19, y: 14 }
+        if (sequence === "\x1b[?1048l" && scenario === "restored") cursor = { x: 9, y: 4 }
+      },
+      getCursor: () => ({ ...cursor, visible: true, style: null }),
+    } as unknown as TermlessContext
+    const result = definition.termless(context)
+    const outcome =
+      scenario === "restored" ? "supported" : scenario === "ignored-restore" ? "unsupported" : "inconclusive"
+    expect(result.observation, scenario).toMatchObject({ outcome, evidence: "parser-state" })
+    if (outcome === "inconclusive") expect(result.assertions, scenario).toBeUndefined()
+    else {
+      expect(result.assertions, scenario).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
+      expect(JSON.parse(result.response!), scenario).toMatchObject({
+        before: { x: 9, y: 4 },
+        displaced: { x: 19, y: 14 },
+      })
+    }
+    if (scenario === "bad-start") expect(writes).toEqual(["\x1b[5;10H"])
+    else expect(writes.at(-1)).toBe("\x1b[?1048l")
+  },
+)
+
+test("1048 refuses undersized geometry and restores after failed displacement readback", () => {
+  const definition = modesProbes.find((item) => item.id === "modes.altscreen-1048")
+  if (!definition?.termless) throw new Error("Missing headless cursor-save callback")
+  const writes: string[] = []
+  let rows = 14
+  const context = {
+    cols: 20,
+    getScrollback: () => ({ viewportOffset: 0, totalLines: rows, screenLines: rows }),
+    feed: (sequence: string) => writes.push(sequence),
+    getCursor: () => {
+      if (writes.includes("\x1b[15;20H")) throw new Error("readback failed")
+      return { x: 9, y: 4, visible: true, style: null }
+    },
+  } as unknown as TermlessContext
+  expect(definition.termless(context).observation).toMatchObject({ outcome: "inconclusive" })
+  expect(writes).toEqual([])
+  rows = 15
+  expect(() => definition.termless!(context)).toThrow("readback failed")
+  expect(writes.at(-1)).toBe("\x1b[?1048l")
+})
+
 test("IRM grades measured insertion despite false mode metadata and distinguishes replacement from bad setup", () => {
   const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
   if (!definition?.termless) throw new Error("Missing headless IRM callback")
@@ -64,8 +120,42 @@ test("IRM does not grade output when the seed was not measured", () => {
   expect(feeds).not.toContain("X")
 })
 
+test("unmeasured app modes leave prior state untouched instead of toggling it for CPR", async () => {
+  for (const id of [
+    "modes.application-keypad",
+    "modes.left-right-margin",
+    "modes.altscreen-47",
+    "modes.altscreen-1047",
+  ]) {
+    const definition = modesProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing ${id} app callback`)
+    if (id === "modes.altscreen-1047") expect(definition.termObservationEvidence).toBe("query")
+    for (const state of [null, "unknown", "set", "reset"] as const) {
+      const queried: number[] = []
+      const unexpected = (): never => {
+        throw new Error(`${id}: no state write or CPR is a feature measurement`)
+      }
+      const context = {
+        write: unexpected,
+        queryCursorPosition: unexpected,
+        queryMode: async (mode: number) => {
+          queried.push(mode)
+          return state
+        },
+      } as unknown as TermContext
+      const result = await definition.term(context)
+      expect(result.observation, `${id}:${state}`).toMatchObject({
+        outcome: "inconclusive",
+        evidence: id === "modes.altscreen-1047" ? "query" : "none",
+      })
+      expect(result.assertions ?? [], id).toEqual([])
+      expect(queried, id).toEqual(id === "modes.altscreen-1047" ? [1047] : [])
+    }
+  }
+})
+
 test("app cursor replies and mode recognition do not prove alternate-buffer behavior", async () => {
-  for (const id of ["modes.alt-screen.exit", "modes.insert-replace", "modes.altscreen-47", "modes.altscreen-1047"]) {
+  for (const id of ["modes.alt-screen.exit", "modes.insert-replace", "modes.altscreen-1047"]) {
     const definition = modesProbes.find((entry) => entry.id === id)
     if (!definition?.term) throw new Error(`Missing ${id} app callback`)
     const context: TermContext = {

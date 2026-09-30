@@ -526,7 +526,7 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
       return { frame: { role, label, capturedAt: Date.now(), ref: `sha256:${"a".repeat(64)}` }, trace: {} }
     },
     ownedTerminal: {
-      ...geometryOwner(noGeometry),
+      ...geometryOwner(measured(24, 80)),
       clipboard: {
         profile: "allow",
         config: "fixture",
@@ -614,6 +614,7 @@ it("retains same-callback control and target frames without declaring visual sup
   const checkpoints: Array<{ featureId: string; role: string; writes: string }> = []
   const batch = await runProbeBatch({
     ids: ["sgr.underline.curly"],
+    ownedTerminal: geometryOwner(measured(24, 80)),
     capture: async ({ featureId, role }) => {
       checkpoints.push({ featureId, role, writes: writes.join("") })
       const frame = frames[checkpoints.length - 1]
@@ -641,6 +642,9 @@ it("retains same-callback control and target frames without declaring visual sup
   ])
   const trace = JSON.parse(batch.rawReplies["sgr.underline.curly"]!) as { captures: unknown[] }
   expect(trace.captures).toHaveLength(2)
+  expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
+    checks: [{ featureId: "sgr.underline.curly", pre: { rows: 24, cols: 80 }, post: { rows: 24, cols: 80 } }],
+  })
   expect(batch.suiteComplete).toBe(false)
 })
 
@@ -652,6 +656,7 @@ it("records an installed capture adapter failure as an error rather than quietly
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({
     ids: ["sgr.underline.curly"],
+    ownedTerminal: geometryOwner(measured(24, 80)),
     capture: () => Promise.reject(new Error("Owned window disappeared")),
   })
   expect(batch.observations).toEqual([

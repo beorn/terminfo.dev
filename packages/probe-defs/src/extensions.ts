@@ -36,6 +36,15 @@ function unverifiedEffect(note: string, response?: string): ProbeResult {
   }
 }
 
+function unmeasuredStateEffect(feature: string): ProbeResult {
+  const note = `${feature} was not attempted; this probe has no effect readback or prior-state restoration`
+  return {
+    pass: false,
+    note,
+    observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+  }
+}
+
 function sixelDa1Result(raw: string, frame: string | null): ProbeResult {
   const match = frame ? /\x1b\[\?([0-9]+(?:;[0-9]+)*)c/.exec(frame) : null
   if (!match) {
@@ -1239,16 +1248,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         const title = ctx.getTitle()
         return parserStateResult(title === "Test Title", "OSC 2 sets the exact requested window title", { title })
       },
-      async (ctx) => {
-        ctx.write("\x1b]2;terminfo-test\x07")
-        const pos = await ctx.queryCursorPosition()
-        ctx.write("\x1b]2;\x07") // reset title
-        return unverifiedEffect(
-          pos
-            ? "Cursor answered; changed window title was not read back"
-            : "No cursor response; window title was not read back",
-        )
-      },
+      () => Promise.resolve(unmeasuredStateEffect("OSC 2 window title")),
     ),
     termlessObservationEvidence: "parser-state",
   },
@@ -1643,13 +1643,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     "extensions.osc9-progress",
     // Headless: no way to detect OSC 9;4 support (all backends silently consume unknown OSC)
     null,
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]9;4;1;50\x07") // set progress to 50%
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b]9;4;0\x07") // clear progress
-      return unmeasuredCellResult(pos, "OSC 9;4 progress display")
-    },
+    () => Promise.resolve(unmeasuredStateEffect("OSC 9;4 progress display")),
   ),
 
   // OSC 66 — text sizing protocol (Kitty, sets text scale/cell width)
@@ -1805,44 +1799,24 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscColorQueryProbe("extensions.osc12-cursor-color", 12),
 
   // OSC 104 — reset color palette
-  probe("extensions.osc104-reset-palette", colorResetProbe(4, 104, 0), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]104\x07") // reset all palette colors
-    const pos = await ctx.queryCursorPosition()
-    return unverifiedEffect(
-      pos ? "Cursor answered; palette restoration was not measured" : "No cursor response after OSC 104",
-    )
-  }),
+  probe("extensions.osc104-reset-palette", colorResetProbe(4, 104, 0), () =>
+    Promise.resolve(unmeasuredStateEffect("OSC 104 palette reset")),
+  ),
 
   // OSC 110 — reset foreground color
-  probe("extensions.osc110-reset-fg", colorResetProbe(10, 110), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]110\x07")
-    const pos = await ctx.queryCursorPosition()
-    return unverifiedEffect(
-      pos ? "Cursor answered; foreground restoration was not measured" : "No cursor response after OSC 110",
-    )
-  }),
+  probe("extensions.osc110-reset-fg", colorResetProbe(10, 110), () =>
+    Promise.resolve(unmeasuredStateEffect("OSC 110 foreground reset")),
+  ),
 
   // OSC 111 — reset background color
-  probe("extensions.osc111-reset-bg", colorResetProbe(11, 111), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]111\x07")
-    const pos = await ctx.queryCursorPosition()
-    return unverifiedEffect(
-      pos ? "Cursor answered; background restoration was not measured" : "No cursor response after OSC 111",
-    )
-  }),
+  probe("extensions.osc111-reset-bg", colorResetProbe(11, 111), () =>
+    Promise.resolve(unmeasuredStateEffect("OSC 111 background reset")),
+  ),
 
   // OSC 112 — reset cursor color
-  probe("extensions.osc112-reset-cursor", colorResetProbe(12, 112), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]112\x07")
-    const pos = await ctx.queryCursorPosition()
-    return unverifiedEffect(
-      pos ? "Cursor answered; cursor-color restoration was not measured" : "No cursor response after OSC 112",
-    )
-  }),
+  probe("extensions.osc112-reset-cursor", colorResetProbe(12, 112), () =>
+    Promise.resolve(unmeasuredStateEffect("OSC 112 cursor-color reset")),
+  ),
 
   // OSC 117 — reset highlight background
   {
@@ -1905,11 +1879,11 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscColorQueryProbe("extensions.osc19-highlight-fg", 19),
 
   // OSC 22 — pointer shape
-  // Inherently partial: pointer shape is a visual-only effect on the mouse cursor,
-  // not queryable or observable in the terminal cell grid.
+  // Kitty defines shape/status queries, but this callback only checks CPR.
+  // Visible pointer appearance also needs observation outside the cell grid.
   probe(
     "extensions.osc22-pointer",
-    null, // Inherently partial: visual-only, no query mechanism
+    null, // No headless pointer-shape query or desktop observation is implemented here.
     async (ctx) => {
       ctx.write("\x1b[1;1H\x1b[2K")
       ctx.write("\x1b]22;pointer\x07")
@@ -2120,12 +2094,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   probe(
     "extensions.osc710-font-normal",
     null, // Headless: font selection is not observable in the cell grid
-    async (ctx) => {
-      ctx.write("\x1b[1;1H\x1b[2K")
-      ctx.write("\x1b]710;fixed\x07")
-      const pos = await ctx.queryCursorPosition()
-      return unmeasuredCellResult(pos, "OSC 710 font selection")
-    },
+    () => Promise.resolve(unmeasuredStateEffect("OSC 710 font selection")),
   ),
 
   // OSC 720 — rxvt-unicode scroll view up

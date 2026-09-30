@@ -673,11 +673,13 @@ export const editingProbes: ProbeDefinition[] = [
         observation: { outcome: "inconclusive", evidence: "consumed", reason: "insufficient-evidence" },
       }
     },
-    async (ctx) => {
-      ctx.write("\x1b[1;1H")
-      ctx.write("\x1b[2*x") // DECSACE
-      const pos = await ctx.queryCursorPosition()
-      return unmeasuredCellResult(pos, "edited cells or attributes")
+    () => {
+      const note = "DECSACE was not attempted; this probe does not measure attribute-change extent"
+      return Promise.resolve<ProbeResult>({
+        pass: false,
+        note,
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      })
     },
   ),
 

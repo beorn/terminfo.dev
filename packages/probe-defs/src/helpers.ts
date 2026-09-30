@@ -73,6 +73,7 @@ export function sgrProbe(
 ): ProbeDefinition {
   return {
     id,
+    termNeedsGeometry: true,
     termObservationEvidence: "consumed",
     termless(ctx) {
       ctx.feed(sequence + "X")
@@ -90,6 +91,21 @@ export function sgrProbe(
       )
     },
     async term(ctx) {
+      const minRows = ctx.capture ? 3 : 1
+      const minCols = ctx.capture ? 34 : 2
+      const rows = ctx.rows
+      const cols = ctx.cols
+      if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < minCols) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "none",
+            note: `SGR fixture needs at least ${minRows}x${minCols}, measured ${rows}x${cols}`,
+          },
+        }
+      }
       if (ctx.capture) {
         try {
           const sample = "AaBb 0123456789 - terminal text"

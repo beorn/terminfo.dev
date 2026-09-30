@@ -146,18 +146,36 @@ test.each([
   expect(noControl.result.assertions, id).toBeUndefined()
 })
 
-test("app OSC 104 cursor response remains ungraded as a palette-reset effect", async () => {
-  const definition = callback("extensions.osc104-reset-palette")
-  const result = await definition.term!({
-    write: () => undefined,
-    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+test.each([
+  "extensions.osc104-reset-palette",
+  "extensions.osc110-reset-fg",
+  "extensions.osc111-reset-bg",
+  "extensions.osc112-reset-cursor",
+  "extensions.osc710-font-normal",
+  "extensions.osc2-title",
+  "extensions.osc9-progress",
+] as const)("app %s leaves state untouched when no effect readback exists", async (id) => {
+  const definition = extensionsProbes.find((item) => item.id === id)
+  if (!definition?.term) throw new Error(`missing app extension callback ${id}`)
+  const writes: string[] = []
+  const result = await definition.term({
+    write: (bytes: string) => {
+      writes.push(bytes)
+    },
+    queryCursorPosition: async () => {
+      throw new Error("unmeasured CPR must not run")
+    },
   } as unknown as TermContext)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed" })
-  expect(result.assertions).toBeUndefined()
+  expect(writes, id).toEqual([])
+  expect(result.observation, id).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(result.assertions, id).toBeUndefined()
 })
 
 const appOnlyEffects = [
-  "extensions.osc9-progress",
   "extensions.osc22-pointer",
   "extensions.osc777-notify",
   "extensions.osc666-termprop",
@@ -165,7 +183,6 @@ const appOnlyEffects = [
   "extensions.osc176-app-id",
   "extensions.osc555-flash",
   "extensions.osc440-audio",
-  "extensions.osc710-font-normal",
 ] as const
 
 test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect", async (id) => {

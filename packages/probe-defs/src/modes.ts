@@ -295,21 +295,16 @@ export const modesProbes: ProbeDefinition[] = [
         "Mode metadata does not measure keypad events",
       )
     },
-    async (ctx) => {
-      ctx.write("\x1b=") // DECKPAM
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b>") // DECKPNM
-      return {
+    () =>
+      Promise.resolve({
         pass: false,
-        ...(pos && { response: JSON.stringify(pos) }),
         observation: {
           outcome: "inconclusive",
-          reason: pos ? "insufficient-evidence" : "no-response",
-          evidence: "query",
-          note: "Cursor reply does not measure keypad input encoding",
+          reason: "insufficient-evidence",
+          evidence: "none",
+          note: "Keypad mode left unchanged; this probe does not measure keypad input encoding",
         },
-      }
-    },
+      }),
   ),
 
   // Left/right margin mode
@@ -326,21 +321,16 @@ export const modesProbes: ProbeDefinition[] = [
         "Mode metadata does not measure margins",
       )
     },
-    async (ctx) => {
-      ctx.write("\x1b[?69h") // enable DECLRMM
-      const pos = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?69l") // disable
-      return {
+    () =>
+      Promise.resolve({
         pass: false,
-        ...(pos && { response: JSON.stringify(pos) }),
         observation: {
           outcome: "inconclusive",
-          reason: pos ? "insufficient-evidence" : "no-response",
-          evidence: "query",
-          note: "Cursor reply does not measure left/right margin behavior",
+          reason: "insufficient-evidence",
+          evidence: "none",
+          note: "Margin mode left unchanged; this probe does not measure left/right margin behavior",
         },
-      }
-    },
+      }),
   ),
 
   // ?47 — legacy alt screen (no cursor save)
@@ -358,25 +348,16 @@ export const modesProbes: ProbeDefinition[] = [
         "Mode metadata does not measure the buffer",
       )
     },
-    async (ctx) => {
-      ctx.write("\x1b[?47h") // enter legacy alt screen
-      const inAlt = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?47l") // exit
-      const out = await ctx.queryCursorPosition()
-      if (!inAlt || !out) {
-        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-      }
-      return {
+    () =>
+      Promise.resolve({
         pass: false,
-        response: JSON.stringify({ inAlt, out }),
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "query",
-          note: "Cursor replies do not measure the alternate screen buffer",
+          evidence: "none",
+          note: "Alternate buffer left unchanged; this probe does not measure its visible contents",
         },
-      }
-    },
+      }),
   ),
 
   // ?1047 — alt screen, clear on enter
@@ -396,35 +377,21 @@ export const modesProbes: ProbeDefinition[] = [
     },
     async (ctx) => {
       const decrpmResult = await ctx.queryMode(1047)
-      if (decrpmResult !== null && decrpmResult !== "unknown") {
-        return {
-          pass: false,
-          response: decrpmResult,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "query",
-            note: "DECRPM recognition does not measure alternate-buffer clearing",
-          },
-        }
-      }
-      ctx.write("\x1b[?1047h")
-      const inAlt = await ctx.queryCursorPosition()
-      ctx.write("\x1b[?1047l")
-      if (!inAlt) {
-        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-      }
       return {
         pass: false,
-        response: JSON.stringify(inAlt),
+        ...(decrpmResult !== null && { response: decrpmResult }),
         observation: {
           outcome: "inconclusive",
-          reason: "insufficient-evidence",
+          reason: decrpmResult === null ? "no-response" : "insufficient-evidence",
           evidence: "query",
-          note: "Cursor reply does not measure alternate-buffer clearing",
+          note:
+            decrpmResult === null
+              ? "No DECRPM reply; alternate-buffer clearing was not measured"
+              : "DECRPM status does not measure alternate-buffer clearing",
         },
       }
     },
+    "query",
   ),
 
   // ?1048 — save/restore cursor only (no alt screen)
@@ -432,14 +399,42 @@ export const modesProbes: ProbeDefinition[] = [
     ...probe(
       "modes.altscreen-1048",
       (ctx) => {
-        // Position cursor, save with 1048, move, restore, check we're back
+        const expected = "?1048 restores saved cursor from 15;20 to 5;10"
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(ctx.cols) || rows < 15 || ctx.cols < 20) {
+          return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Cursor-save fixture needs at least 15x20")
+        }
         ctx.feed("\x1b[5;10H") // row 5, col 10 (1-based) — termless 0-based: y=4, x=9
+        const before = { ...ctx.getCursor() }
+        if (before.y !== 4 || before.x !== 9) {
+          return parserStateResult(
+            null,
+            expected,
+            { before },
+            "Cursor-save fixture did not establish its start position",
+          )
+        }
         ctx.feed("\x1b[?1048h") // save
-        ctx.feed("\x1b[15;20H") // move to row 15, col 20
-        ctx.feed("\x1b[?1048l") // restore
-        const cursor = ctx.getCursor()
-        return parserStateResult(cursor.y === 4 && cursor.x === 9, "?1048 restores saved cursor position 5;10", {
-          cursor,
+        let displaced: ReturnType<typeof ctx.getCursor>
+        try {
+          ctx.feed("\x1b[15;20H")
+          displaced = { ...ctx.getCursor() }
+          if (displaced.y !== 14 || displaced.x !== 19) {
+            return parserStateResult(
+              null,
+              expected,
+              { before, displaced },
+              "Cursor-save fixture did not measure displacement",
+            )
+          }
+        } finally {
+          ctx.feed("\x1b[?1048l") // restore this fixture's saved cursor
+        }
+        const after = ctx.getCursor()
+        return parserStateResult(after.y === 4 && after.x === 9, expected, {
+          before,
+          displaced,
+          after,
         })
       },
       async (ctx) => {

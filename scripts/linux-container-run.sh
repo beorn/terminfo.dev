@@ -331,11 +331,8 @@ if [[ "${1:-}" == "--inside" ]]; then
   probe_run_sha=$(sha256sum /out/v2-run.json | cut -d ' ' -f 1)
 
   # The shared callbacks captured this daemon's own window before sealing the
-  # run. No second fixture window or post-run screenshot can stand in for it.
-  timeout 10 xdotool search --sync --onlyvisible --pid "$daemon_pid" > /out/windows.txt
-  [[ "$(wc -l < /out/windows.txt)" == 1 ]] || { echo "Ambiguous owned capture window" >&2; exit 2; }
-  read -r window_id </out/windows.txt
-  xdotool getwindowgeometry --shell "$window_id" > /out/geometry.txt
+  # run. Keep the original owned geometry in its receipt; a later window search
+  # or geometry sample cannot replace the measurement recorded in provenance.
   png_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' /out/v2-run.json)
   xwd_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' /out/v2-run.json)
   [[ -r "/out/artifacts/$png_sha.png" && -r "/out/artifacts/$xwd_sha.xwd" ]] || {

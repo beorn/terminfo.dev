@@ -153,6 +153,81 @@ test("SGR consumption stays inconclusive while headless cell state supports an a
   expect(unmeasured.assertions).toBeUndefined()
 })
 
+// A consumed SGR and two screenshots are not comparable when the fixed text
+// fixture wraps or lands outside the measured grid.
+test("SGR app fixtures refuse undersized grids before writes and retain valid branch evidence", async () => {
+  const definition = sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold)
+  if (!definition.term) throw new Error("Missing SGR app callback")
+
+  for (const geometry of [
+    { rows: 1, cols: 1, capture: false },
+    { rows: 2, cols: 34, capture: true },
+    { rows: 3, cols: 33, capture: true },
+    { rows: Number.NaN, cols: 80, capture: false },
+  ]) {
+    const writes: string[] = []
+    let queries = 0
+    let captures = 0
+    const result = await definition.term(
+      terminal({
+        rows: geometry.rows,
+        cols: geometry.cols,
+        write: (bytes) => writes.push(bytes),
+        queryCursorPosition: async () => {
+          queries++
+          return { row: 1, col: 2 }
+        },
+        ...(geometry.capture && {
+          capture: async ({ role, label }: { role: "control" | "target"; label: string }) => {
+            captures++
+            return { role, label, capturedAt: 1, ref: `sha256:${"a".repeat(64)}` }
+          },
+        }),
+      }),
+    )
+    expect(result.observation, `${geometry.rows}x${geometry.cols}`).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(result.response).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(writes).toEqual([])
+    expect(queries).toBe(0)
+    expect(captures).toBe(0)
+  }
+  expect(definition.termNeedsGeometry).toBe(true)
+
+  const plainWrites: string[] = []
+  const plain = await definition.term(
+    terminal({
+      rows: 1,
+      cols: 2,
+      write: (bytes) => plainWrites.push(bytes),
+      queryCursorPosition: async () => ({ row: 1, col: 2 }),
+    }),
+  )
+  expect(plain.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed" })
+  expect(plainWrites.length).toBeGreaterThan(0)
+
+  const captureWrites: string[] = []
+  const roles: string[] = []
+  const captured = await definition.term(
+    terminal({
+      rows: 3,
+      cols: 34,
+      write: (bytes) => captureWrites.push(bytes),
+      capture: async ({ role, label }) => {
+        roles.push(role)
+        return { role, label, capturedAt: 1, ref: `sha256:${"a".repeat(64)}` }
+      },
+    }),
+  )
+  expect(captured.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(roles).toEqual(["control", "target"])
+  expect(captureWrites.length).toBeGreaterThan(0)
+})
+
 test("unexposed overline and default conceal flags cannot establish negative support", () => {
   for (const id of ["sgr.overline", "sgr.hidden"]) {
     const probe = sgrProbes.find((item) => item.id === id)

@@ -791,7 +791,7 @@
     "url": "https://vt100.net/docs/vt510-rm/DECERA.html",
     "tags": ["vt510"],
     "baseline": "legacy",
-    "body": "DECERA (<code>CSI Pt ; Pl ; Pb ; Pr $ z</code>) erases a rectangular region from rows <code>Pt</code>-<code>Pb</code>, columns <code>Pl</code>-<code>Pr</code>, replacing each cell with a space and the current SGR background. Unlike a global ED, DECERA leaves protected characters (set via DECSCA) untouched, making it safe inside form-fill applications that have static labels alongside editable fields. Companion to DECFRA. Another VT420-era feature surviving mostly in xterm and mintty.",
+    "body": "DECERA (<code>CSI Pt ; Pl ; Pb ; Pr $ z</code>) erases characters and visual attributes in a rectangular region from rows <code>Pt</code>-<code>Pb</code>, columns <code>Pl</code>-<code>Pr</code>, replacing characters with spaces. It does not preserve characters protected by DECSCA; use DECSERA for selective erasure. Line attributes and the active cursor position are unchanged. Companion to DECFRA.",
     "probe": "Headless: measure a 3x5 nonblank seed and right-flank controls, erase the area, and read back all target cells. The app cursor reply does not establish erased cells.",
     "probeStatus": "partial",
     "sequence": "CSI Pt ; Pl ; Pb ; Pr $ z"
@@ -803,7 +803,8 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECSERA (<code>CSI Pt ; Pl ; Pb ; Pr $ {</code>) is the selective-erase variant of DECERA: it erases unprotected characters within the rectangle but leaves any cell marked with the DECSCA character protection attribute intact. This is the rectangular companion to DECSED (selective erase in display). On VT420-era hardware, form designers used DECSCA to protect field labels and DECSERA to clear input fields between records without disturbing the form structure.",
-    "probe": "Write text across multiple rows, send <code>\\x1b[1;1;3;5${</code> (selective erase rows 1-3, cols 1-5), verify the sequence is consumed without the literal characters appearing.",
+    "probe": "Headless: seed one row with protected P, unprotected ABCD and an outside Z; verify that selective erasure clears ABCD and preserves both controls. Multi-row extent and visual attributes are not measured. The app cursor reply does not establish selective erasure.",
+    "probeStatus": "partial",
     "sequence": "CSI Pt ; Pl ; Pb ; Pr $ {"
   },
   "editing.deccra": {
@@ -846,7 +847,8 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECSACE (<code>CSI Ps * x</code>) selects how DECCARA and DECRARA interpret their coordinates. <code>Ps</code>=1 (the default) treats the corners as endpoints of a stream of cells in scan order, so the operation affects the partial rows at the top and bottom plus every cell on the rows between. <code>Ps</code>=2 treats the coordinates as a true rectangle, affecting only the cells inside the box. Modern users almost always want the rectangle interpretation; the stream default is a relic of how DEC originally specified the operations.",
-    "probe": "Send <code>\\x1b[2*x</code> (select rectangle extent), verify the sequence is consumed.",
+    "probe": "Not measured: the headless callback checks sequence consumption only, without comparing attribute effects in stream and rectangle modes. The app callback leaves the mode unchanged. Neither establishes attribute-change extent.",
+    "probeStatus": "partial",
     "sequence": "CSI Ps * x"
   },
   "editing.decrqcra": {
@@ -856,7 +858,8 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECRQCRA (<code>CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y</code>) computes a 16-bit checksum of the cells in a rectangular region and reports it back to the host as a DCS response (<code>DCS Pid ! ~ checksum ST</code>). <code>Pid</code> is a request identifier echoed in the response; <code>Ppid</code> is the page number. The checksum hashes both characters and SGR attributes, which is why it's used by DEC's terminal conformance test suites — a test script can paint a known pattern, ask the terminal for the checksum, and compare against an expected value to confirm the terminal rendered the pattern correctly. xterm still implements this. Almost no application has ever used it outside of test suites.",
-    "probe": "Send <code>\\x1b[1;1;1;1;1;1*y</code> (checksum cell 1,1), verify the sequence is consumed without literal output.",
+    "probe": "Request a checksum and check for a complete DCS reply with request ID 1 and four hexadecimal digits. The headless request covers five cells; the app request covers one. A positive result establishes reply capability only; checksum arithmetic is not verified.",
+    "probeStatus": "partial",
     "sequence": "CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y"
   },
   "input.modify-other-keys": {

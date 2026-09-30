@@ -6,7 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { editingProbes } from "./editing.ts"
-import type { TermlessContext } from "./types.ts"
+import type { TermContext, TermlessContext } from "./types.ts"
 
 const cases = [
   {
@@ -508,4 +508,31 @@ test("checksum observations require a complete reply for the issued request", ()
     })
     if (result.pass) expect(result.assertions?.[0]).toMatchObject({ kind: "positive", observed: raw })
   }
+})
+
+test("DECSACE app leaves the mode unchanged when extent is not measured", async () => {
+  const definition = editingProbes.find((probe) => probe.id === "editing.decsace")
+  if (!definition?.term || !definition.termless) throw new Error("Missing DECSACE callbacks")
+  const writes: string[] = []
+  const app = await definition.term({
+    write: (bytes: string) => {
+      writes.push(bytes)
+    },
+    queryCursorPosition: async () => {
+      throw new Error("CPR cannot measure DECSACE extent")
+    },
+  } as unknown as TermContext)
+  expect(writes).toEqual([])
+  expect(app.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })
+  expect(app.assertions).toBeUndefined()
+
+  const feeds: string[] = []
+  const headless = definition.termless({
+    feed: (bytes: string) => {
+      feeds.push(bytes)
+    },
+    getText: () => "sample",
+  } as unknown as TermlessContext)
+  expect(feeds).toEqual(["\x1b[1;1H\x1b[2*x"])
+  expect(headless.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed" })
 })
