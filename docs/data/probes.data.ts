@@ -10,6 +10,7 @@ import { readFileSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
+import { parseJsonStrict } from "@terminfo/run-parser"
 import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 
@@ -153,16 +154,22 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
   if (!existsSync(annotationsPath)) {
     throw new Error(`annotations.json not found at ${annotationsPath}`)
   }
-  return JSON.parse(readFileSync(annotationsPath, "utf-8")) as Record<
-    string,
-    { note: string; url?: string; result?: string }
-  >
+  const raw = parseJsonStrict(annotationsPath, readFileSync(annotationsPath, "utf-8"))
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`${annotationsPath}: expected annotation catalog object`)
+  }
+  return raw as Record<string, { note: string; url?: string; result?: string }>
 }
 
 function loadCategoryLabels(): Record<string, string> {
   const path = join(__dirname, "..", "..", "content", "categories.json")
-  const raw = JSON.parse(readFileSync(path, "utf-8")) as Record<string, { label: string }>
-  return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, v.label]))
+  const raw = parseJsonStrict(path, readFileSync(path, "utf-8"))
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`${path}: expected category catalog object`)
+  }
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, { label: string }>).map(([id, value]) => [id, value.label]),
+  )
 }
 
 function loadBackendMeta(): Record<string, BackendMeta> {
