@@ -328,6 +328,22 @@ describe("selected-run consumer parity", () => {
     }
   })
 
+  it("refuses an API asset above the deployment byte limit before writing it", () => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-api-size-"))
+    const review = fixture.selected.reviews[0]!
+    const originalReason = review.reason
+    try {
+      // The review appears in current/version/history groups. UTF-8 bytes exceed
+      // the limit even though the serialized JavaScript string length does not.
+      review.reason = "界".repeat(3 * 1024 * 1024)
+      expect(() => generateApi(out)).toThrow(/api\/v2\/data\.json.*bytes.*26214400.*Cloudflare Pages/)
+      expect(existsSync(join(out, "api", "v2", "data.json"))).toBe(false)
+    } finally {
+      review.reason = originalReason
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
   it("keeps the same run, conclusive counts and measurement time in every consumer", () => {
     const warnings: string[] = []
     const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))

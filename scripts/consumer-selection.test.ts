@@ -133,7 +133,10 @@ describe("consumer selection", () => {
         terminals: Record<string, { score?: { total: number } }>
         results: Record<string, Record<string, string>>
       }
-      const v2 = JSON.parse(readFileSync(join(out, "api", "v2", "data.json"), "utf8")) as {
+      const v2Bytes = readFileSync(join(out, "api", "v2", "data.json"))
+      // The full retained dataset must fit Cloudflare Pages' single-asset limit.
+      expect(v2Bytes.byteLength).toBeLessThanOrEqual(25 * 1024 * 1024)
+      const v2 = JSON.parse(v2Bytes.toString("utf8")) as {
         current: Record<string, unknown>
         history: Record<string, Array<{ suiteId: string; counts: { conclusive: number } }>>
       }

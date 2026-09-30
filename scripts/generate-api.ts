@@ -225,8 +225,9 @@ function writeEvidence(out: string, documents: ReturnType<typeof publicResults>[
     for (const digest of refs) {
       if (!digest) continue
       const path = `artifacts/${digest}.png`
-      if (!expected.has(path))
+      if (!expected.has(path)) {
         expected.set(path, readVerifiedScreenshot(contentDir, `sha256:${digest}`, document.runId))
+      }
     }
   }
   const inventoryPath = join(out, "api", "v2", "evidence-files.json")
@@ -236,8 +237,9 @@ function writeEvidence(out: string, documents: ReturnType<typeof publicResults>[
   if (existsSync(inventoryPath)) {
     if (lstatSync(inventoryPath).isSymbolicLink()) throw new Error(`${inventoryPath}: evidence inventory is a symlink`)
     const prior = parseJsonStrict(inventoryPath, readFileSync(inventoryPath, "utf8"))
-    if (!isRecord(prior) || prior.version !== 1 || !Array.isArray(prior.files))
+    if (!isRecord(prior) || prior.version !== 1 || !Array.isArray(prior.files)) {
       throw new Error(`${inventoryPath}: invalid generated evidence inventory`)
+    }
     for (const row of prior.files) {
       if (
         !isRecord(row) ||
@@ -403,15 +405,25 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
 
   // v2 retains exact context keys and every selected cell's outcome and provenance.
   const v2Dir = outDir ? join(outDir, "api", "v2") : join(publicDir, "api", "v2")
+  const v2Path = join(v2Dir, "data.json")
+  const v2Json =
+    JSON.stringify({
+      version: 2,
+      generated: apiData.generated,
+      methodology: apiData.methodology,
+      features,
+      ...published.projection,
+    }) + "\n"
+  // https://developers.cloudflare.com/pages/platform/limits/#file-size
+  const maxAssetBytes = 25 * 1024 * 1024
+  const v2Bytes = Buffer.byteLength(v2Json, "utf8")
+  if (v2Bytes > maxAssetBytes) {
+    throw new Error(
+      `${v2Path}: ${v2Bytes} bytes exceeds the ${maxAssetBytes}-byte Cloudflare Pages asset limit. Split the API payload before publishing; retain all observations and history.`,
+    )
+  }
   mkdirSync(v2Dir, { recursive: true })
-  writeFileSync(
-    join(v2Dir, "data.json"),
-    JSON.stringify(
-      { version: 2, generated: apiData.generated, methodology: apiData.methodology, features, ...published.projection },
-      null,
-      2,
-    ) + "\n",
-  )
+  writeFileSync(v2Path, v2Json)
 
   // Generate badges
   let badgeCount = 0
