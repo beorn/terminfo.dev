@@ -14,6 +14,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { parseJsonStrict } from "@terminfo/run-parser"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -113,7 +114,9 @@ function assert(condition: unknown, message: string): asserts condition {
 function loadJson<T>(path: string, description: string): T {
   assert(existsSync(path), `Missing required file: ${path} (${description})`)
   try {
-    return JSON.parse(readFileSync(path, "utf-8")) as T
+    const parsed = parseJsonStrict(path, readFileSync(path, "utf-8"))
+    assert(parsed !== null && typeof parsed === "object" && !Array.isArray(parsed), `Expected metadata object: ${path}`)
+    return parsed as T
   } catch (e) {
     throw new Error(`Failed to parse ${path} (${description}): ${String(e)}`)
   }

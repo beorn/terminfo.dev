@@ -1,11 +1,12 @@
 /**
- * @failure Site, API and analysis disagree about an admitted run, or an unscoped annotation leaks into selected notes or generated commentary.
+ * @failure Consumers disagree about admitted runs, unscoped annotations leak into commentary, or malformed metadata silently omits analysis sections.
  * @level l2
  * @consumer Site matrix, terminal paths, v1/v2 API and generated analysis.
  * @testonly none
  */
 import { describe, expect, it, vi } from "vitest"
-import { mkdtempSync, readFileSync, rmSync, existsSync, mkdirSync, writeFileSync, cpSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, existsSync, mkdirSync, writeFileSync, cpSync, symlinkSync } from "node:fs"
+import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -182,6 +183,58 @@ import categoryPaths from "../docs/[id].paths.ts"
 import featurePaths from "../docs/[category]/[id].paths.ts"
 import { generateApi } from "./generate-api.ts"
 import { generateAnalysis } from "./generate-analysis.ts"
+
+it("analysis rejects malformed required catalogs before replacing its output", () => {
+  const out = mkdtempSync(join(tmpdir(), "terminfo-analysis-metadata-"))
+  try {
+    const sourceRoot = join(import.meta.dirname, "..")
+    mkdirSync(join(out, "scripts"))
+    mkdirSync(join(out, "content"))
+    for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
+    for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
+    const script = join(out, "scripts", "generate-analysis.ts")
+    cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
+    for (const name of [
+      "features",
+      "terminals",
+      "categories",
+      "standards",
+      "baselines",
+      "frameworks",
+      "glossary",
+      "annotations",
+    ]) {
+      cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
+    }
+    const control = spawnSync(process.execPath, [script, "--dry-run"], { cwd: out, encoding: "utf8", timeout: 10_000 })
+    expect(control.error).toBeUndefined()
+    expect(control.status, control.stderr).toBe(0)
+    expect(control.stdout).toContain("Would generate")
+    const outputPath = join(out, "content", "analysis.json")
+    writeFileSync(outputPath, "PRESERVE_PREVIOUS_ANALYSIS")
+    for (const [name, invalid] of [
+      ["features", "[]"],
+      ["terminals", "[]"],
+      ["categories", "[]"],
+      ["standards", "[]"],
+      ["baselines", "[]"],
+      ["features", "null"],
+    ] as const) {
+      const path = join(out, "content", `${name}.json`)
+      const original = readFileSync(path, "utf8")
+      writeFileSync(path, invalid)
+      const result = spawnSync(process.execPath, [script], { cwd: out, encoding: "utf8", timeout: 10_000 })
+      expect(result.error).toBeUndefined()
+      expect(result.status, `${name}: ${result.stderr}`).toBe(1)
+      expect(result.stderr).toContain(path)
+      expect(result.stdout).not.toContain("Generated ")
+      expect(readFileSync(outputPath, "utf8")).toBe("PRESERVE_PREVIOUS_ANALYSIS")
+      writeFileSync(path, original)
+    }
+  } finally {
+    rmSync(out, { recursive: true, force: true })
+  }
+})
 
 describe("selected-run consumer parity", () => {
   it("ships current cells without global selection history while routes retain versions", () => {
