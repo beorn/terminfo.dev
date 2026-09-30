@@ -249,7 +249,7 @@ Modern terminal extensions beyond the traditional VT specification: **Kitty keyb
 
 ### Graphics — Inline Images
 
-DEC’s Sixel format and the Kitty graphics protocol enable inline image display in terminals. Kitty’s [0.4.0 changelog](https://sw.kovidgoyal.net/kitty/changelog/) dates its graphics implementation to October 22, 2017. Graphics support remains fragmented — some terminals intentionally avoid image protocols for security or complexity reasons. Sixel predates Kitty graphics, and the two protocols define different image transport and placement behavior. Check the selected terminal version and measured method before relying on either.
+DEC’s Sixel format and the Kitty graphics protocol enable inline image display in terminals. Kitty’s [0.4.0 changelog](https://sw.kovidgoyal.net/kitty/changelog/) dates its graphics implementation to October 22, 2017. Graphics support varies by terminal and version. Sixel predates Kitty graphics, and the two protocols define different image transport and placement behavior. Check the selected terminal version and measured method before relying on either.
 
 <p class="category-link"><a class="hover-link" href="/extensions">View Graphics features &rarr;</a></p>
 
