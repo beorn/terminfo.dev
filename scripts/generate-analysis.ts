@@ -14,6 +14,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 
@@ -1382,24 +1383,53 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         console.error("No existing analysis.json to validate")
         process.exit(1)
       }
-      const existing = JSON.parse(readFileSync(outputPath, "utf-8")) as Record<string, unknown>
+      const existing = loadJson<Record<string, unknown>>(outputPath, "analysis snapshot")
       const existingKeys = Object.keys(existing).filter((k) => k !== "$generated")
       const newKeys = Object.keys(analysis)
-
-      const missing = newKeys.filter((k) => !existingKeys.includes(k))
-      const extra = existingKeys.filter((k) => !newKeys.includes(k))
-
-      if (missing.length > 0) {
-        console.error(`Missing entries in existing analysis.json: ${missing.join(", ")}`)
+      const historicalKeys = new Set(
+        Object.values(loadTerminals())
+          .filter((meta) => meta.historical)
+          .map((meta) => `terminals/${meta.slug}`),
+      )
+      let failures = 0
+      for (const key of existingKeys) {
+        if (!Object.hasOwn(analysis, key)) {
+          console.error(`${outputPath}: ${key}: unexpected entry`)
+          failures++
+        }
       }
-      if (extra.length > 0) {
-        console.warn(`Extra entries in existing analysis.json: ${extra.join(", ")}`)
+      for (const [key, canonical] of Object.entries(analysis)) {
+        const mode = historicalKeys.has(key) ? "historical-schema" : "current-value"
+        if (!Object.hasOwn(existing, key)) {
+          console.error(`${outputPath}: ${key}: ${mode} failed: missing entry`)
+          failures++
+          continue
+        }
+        const entry = existing[key]
+        const historicalShape =
+          entry !== null &&
+          typeof entry === "object" &&
+          !Array.isArray(entry) &&
+          Object.keys(entry).length === Object.keys(canonical).length &&
+          Object.keys(canonical).every((field) => Object.hasOwn(entry, field)) &&
+          typeof (entry as AnalysisEntry).analysis === "string" &&
+          typeof (entry as AnalysisEntry).date === "string" &&
+          ((entry as AnalysisEntry).changes === null || typeof (entry as AnalysisEntry).changes === "string") &&
+          (entry as AnalysisEntry).probeCount === 0
+        const valid = mode === "historical-schema" ? historicalShape : isDeepStrictEqual(entry, canonical)
+        if (!valid) {
+          console.error(
+            `${outputPath}: ${key}: ${mode} failed: ${mode === "historical-schema" ? "invalid entry shape" : "differs from regenerated canonical values (including date); regenerate analysis"}`,
+          )
+          failures++
+        } else {
+          console.log(`${key}: ${mode} passed`)
+        }
       }
-
-      console.log(`Validation: ${existingKeys.length} existing entries, ${newKeys.length} expected`)
-      console.log(`  ${missing.length} missing, ${extra.length} extra`)
-
-      if (missing.length > 0) process.exit(1)
+      console.log(
+        `Validation: ${existingKeys.length} existing entries, ${newKeys.length} expected; ${failures} failures`,
+      )
+      if (failures > 0) process.exit(1)
       console.log("Validation passed")
       process.exit(0)
     }

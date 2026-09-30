@@ -239,6 +239,108 @@ it("analysis rejects malformed required catalogs before replacing its output", (
   }
 })
 
+it("analysis validation refuses stale live values and key drift but labels historical schema checks", () => {
+  // --validate must prove current values, not merely presence; existing catalog-refusal coverage cannot detect this.
+  const out = mkdtempSync(join(tmpdir(), "terminfo-analysis-validation-"))
+  try {
+    const sourceRoot = join(import.meta.dirname, "..")
+    mkdirSync(join(out, "scripts"))
+    mkdirSync(join(out, "content"))
+    for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
+    for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
+    const script = join(out, "scripts", "generate-analysis.ts")
+    cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
+    for (const name of [
+      "features",
+      "terminals",
+      "categories",
+      "standards",
+      "baselines",
+      "frameworks",
+      "glossary",
+      "annotations",
+    ]) {
+      cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
+    }
+    const run = (args: string[]) =>
+      spawnSync(process.execPath, [script, ...args], { cwd: out, encoding: "utf8", timeout: 10_000 })
+    const generated = run([])
+    expect(generated.status, generated.stderr).toBe(0)
+    const outputPath = join(out, "content", "analysis.json")
+    const original = readFileSync(outputPath, "utf8")
+    const control = JSON.parse(original)
+    const liveKey = "terminals/kitty"
+    const historicalKey = "terminals/vt100-historical"
+    const valid = run(["--validate"])
+    expect(valid.status, valid.stderr).toBe(0)
+    const cases: Array<[string, (data: typeof control) => void]> = [
+      [
+        liveKey,
+        (data) => {
+          data[liveKey].analysis = "<p>Stale claimed support.</p>"
+        },
+      ],
+      [
+        liveKey,
+        (data) => {
+          data[liveKey].date = "2000-01-01"
+        },
+      ],
+      [
+        liveKey,
+        (data) => {
+          data[liveKey].probeCount = 123
+        },
+      ],
+      [
+        liveKey,
+        (data) => {
+          delete data[liveKey]
+        },
+      ],
+      [
+        "stale-extra",
+        (data) => {
+          data["stale-extra"] = data[liveKey]
+        },
+      ],
+      [
+        historicalKey,
+        (data) => {
+          data[historicalKey].analysis = 42
+        },
+      ],
+      [
+        historicalKey,
+        (data) => {
+          data[historicalKey].probeCount = 123
+        },
+      ],
+    ]
+    for (const [key, mutate] of cases) {
+      const data = JSON.parse(original)
+      mutate(data)
+      const bytes = JSON.stringify(data)
+      writeFileSync(outputPath, bytes)
+      const result = run(["--validate"])
+      expect(result.status, `${key}: ${result.stderr}`).toBe(1)
+      expect(result.stderr).toContain(key)
+      expect(result.stdout).not.toContain("Validation passed")
+      expect(readFileSync(outputPath, "utf8")).toBe(bytes)
+    }
+    expect(valid.stdout).toContain(`${liveKey}: current-value passed`)
+    expect(valid.stdout).toContain(`${historicalKey}: historical-schema passed`)
+    control[historicalKey].analysis = "<p>Older historical reference.</p>"
+    control[historicalKey].date = "2000-01-01"
+    writeFileSync(outputPath, JSON.stringify(control))
+    const historical = run(["--validate"])
+    expect(historical.status, historical.stderr).toBe(0)
+    expect(historical.stdout).toContain(`${historicalKey}: historical-schema passed`)
+  } finally {
+    rmSync(out, { recursive: true, force: true })
+  }
+}, 30_000)
+
 describe("selected-run consumer parity", () => {
   it("ships current cells without global selection history while routes retain versions", () => {
     const site = probesLoader.load()
