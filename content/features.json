@@ -103,7 +103,7 @@
     "tags": ["ecma-48", "kitty-extensions"],
     "group": "underline",
     "body": "SGR 58;5;N sets the underline color to one of the 256 indexed palette colors, mirroring the SGR 38;5 syntax used for foreground color. The sequence is <code>ESC [ 58 ; 5 ; N m</code>, where N is a palette index (0-15 system colors, 16-231 6×6×6 RGB cube, 232-255 grayscale ramp). The colon-separated form <code>ESC [ 58 : 5 : N m</code> is also accepted by terminals that support ECMA-48 sub-parameter syntax.\n\nKitty specifies indexed underline color; WezTerm documents SGR 58:5, and Alacritty lists support from version 0.11.0. These are documentation examples, not visual measurements by this site. Combine with curly underlines (SGR 4:3) to render diagnostic indicators in palette colors that match the user's theme.\n\nReset the underline color to default (typically the foreground color) with SGR 59.\n\nSources: <a href=\"https://sw.kovidgoyal.net/kitty/underlines/\">Kitty underline specification</a>, <a href=\"https://wezterm.org/escape-sequences.html\">WezTerm escape reference</a>, <a href=\"https://github.com/alacritty/alacritty/blob/v0.11.0/CHANGELOG.md#0110\">Alacritty 0.11.0 changelog</a>.",
-    "probe": "Send <code>\\x1b[4m\\x1b[58;5;5m</code>X, verify the cell at (0,0) has <code>underline</code> active. If the backend tracks underline color per cell, also verify <code>underlineColor</code> matches palette index 5 (magenta).",
+    "probe": "Headless: compare exposed underline colors for requested palette indices 5 and 4 against distinct palette/default control cells. An unsupported result requires calibrated control readback; missing target colors are inconclusive. App: cursor advance alone is inconclusive for exact underline color.",
     "baseline": "rich",
     "sequence": "CSI 58 ; 5 ; N m"
   },
@@ -114,7 +114,7 @@
     "tags": ["ecma-48", "kitty-extensions"],
     "group": "underline",
     "body": "SGR 58;2;R;G;B sets the underline color to a 24-bit truecolor value, mirroring the SGR 38;2 syntax used for foreground color. The sequence is <code>ESC [ 58 ; 2 ; R ; G ; B m</code>, where R, G, and B are 0-255. The ECMA-48 colon-separated form <code>ESC [ 58 : 2 : : R : G : B m</code> (with an empty colorspace ID slot) is also accepted by terminals that follow the strict spec.\n\nKitty specifies independently colored underlines; WezTerm documents SGR 58:2, and Alacritty lists support from version 0.11.0. Those documented implementations do not establish support in every terminal, version, configuration, or platform layer. The underline color is independent of the text foreground color, so applications can render red squiggly underlines for errors and yellow squiggles for warnings while keeping the surrounding text in its normal color.\n\nReset the underline color to default (typically matching the foreground) with SGR 59.\n\nSources: <a href=\"https://sw.kovidgoyal.net/kitty/underlines/\">Kitty underline specification</a>, <a href=\"https://wezterm.org/escape-sequences.html\">WezTerm escape reference</a>, <a href=\"https://github.com/alacritty/alacritty/blob/v0.11.0/CHANGELOG.md#0110\">Alacritty 0.11.0 changelog</a>.",
-    "probe": "Send <code>\\x1b[4m\\x1b[58;2;255;0;128m</code>X, verify the cell at (0,0) has <code>underline</code> active. If the backend tracks underline color per cell, also verify <code>underlineColor</code> matches RGB(255, 0, 128).",
+    "probe": "Headless: compare exposed underline RGB with RGB(255, 0, 128), using default-color control cells to reject ambiguous matches. An unsupported result requires calibrated control readback; missing target color is inconclusive. App: cursor advance alone is inconclusive for exact underline color.",
     "baseline": "rich",
     "sequence": "CSI 58 ; 2 ; R ; G ; B m"
   },
@@ -1265,7 +1265,7 @@
     "url": "https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 8 adds clickable hyperlinks to terminal output, similar to HTML anchor tags. The format is <code>ESC ] 8 ; params ; uri ST</code> to start a link and <code>ESC ] 8 ; ; ST</code> to end it. Text between these markers becomes a clickable hyperlink.\n\nThe <code>params</code> field supports an <code>id=value</code> parameter that groups non-contiguous text into a single link — essential for links that span multiple lines or are broken by line wrapping. When the user hovers over any part of a multi-segment link with the same <code>id</code>, all segments highlight together.\n\nTerminals typically render hyperlinks with an underline and open them in the default browser on click or Ctrl+click. Tools like <code>ls --hyperlink=auto</code>, <code>gcc</code>, and <code>grep</code> can emit OSC 8 links to file paths and URLs. Widely adopted across modern terminals including Ghostty, iTerm2, WezTerm, GNOME Terminal, and Windows Terminal.",
-    "probe": "Write an OSC 8 hyperlink (<code>ESC ] 8 ; ; url BEL text ESC ] 8 ; ; BEL</code>) and inspect the resulting cells for the exact URI and unlinked controls. A cursor response or screenshot alone cannot verify the link target.",
+    "probe": "Headless: write linked text between plain and trailing controls; inspect each cell for the exact URI on linked text and no URI outside the close. App: write the same text and read cursor position only; this cannot establish the URI, click target, or styling, so the app result is inconclusive.",
     "baseline": "rich",
     "sequence": "ESC ] 8 ; params ; uri BEL"
   },
@@ -2508,7 +2508,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 113 resets the mouse pointer foreground color to the terminal's configured default. The sequence is <code>ESC ] 113 BEL</code>. This is the companion reset for OSC 13, which sets the pointer foreground color. The pointer color set originated in xterm to allow applications to customize the mouse cursor when hovering over the terminal — historically useful on X11 where the X cursor was not styled by the GUI toolkit. Support is mostly limited to xterm and a small number of xterm-compatible terminals that implement the full color management protocol.",
-    "probe": "Send <code>OSC 113 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "probe": "Headless: query OSC 13 foreground color, set a distinct color and verify it, send OSC 113, then query again to compare the restored value with the original. App: send OSC 113 and read text cursor position; this does not measure pointer-color restoration, so the app result is inconclusive.",
     "baseline": "rich",
     "sequence": "ESC ] 113 BEL"
   },
@@ -2518,7 +2518,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 114 resets the mouse pointer background color to the terminal's configured default. The sequence is <code>ESC ] 114 BEL</code>. This is the companion reset for OSC 14, which sets the pointer background color. Together with OSC 113, these complete the xterm pointer color management protocol. Most modern terminals delegate cursor styling to the host operating system or window manager and ignore these sequences entirely; xterm is essentially the reference implementation.",
-    "probe": "Send <code>OSC 114 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
+    "probe": "Headless: query OSC 14 background color, set a distinct color and verify it, send OSC 114, then query again to compare the restored value with the original. App: send OSC 114 and read text cursor position; this does not measure pointer-color restoration, so the app result is inconclusive.",
     "baseline": "rich",
     "sequence": "ESC ] 114 BEL"
   },

@@ -102,10 +102,31 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
     throw new Error(`Collector's Kitty PID ${kittyPid} owns ${windows.length} visible windows; expected one`)
   }
   const ownedWindowId = windowId
+  const display = (await command("xdpyinfo", [])).toString()
+  const rootLines = display.split("\n").filter((line) => /root window id:/.test(line))
+  const roots = rootLines.map((line) => {
+    const match = /^\s*root window id:\s*0x([0-9a-fA-F]+)\s*$/.exec(line)
+    const rootId = match?.[1]
+    return rootId === undefined ? NaN : Number.parseInt(rootId, 16)
+  })
+  if (roots.length === 0 || roots.some((root) => !Number.isSafeInteger(root))) {
+    throw new Error("Cannot identify DISPLAY root windows for capture")
+  }
   async function assertOwned() {
     if (kittyAncestor(executable) !== kittyPid) throw new Error("Collector terminal process changed during capture")
     const owner = (await command("xdotool", ["getwindowpid", ownedWindowId])).toString().trim()
     if (owner !== String(kittyPid)) throw new Error(`Capture window ${windowId} no longer belongs to Kitty ${kittyPid}`)
+    const visible = (await command("xdotool", ["search", "--onlyvisible", "--maxdepth", "1", "--name", ".*"]))
+      .toString()
+      .trim()
+      .split(/\s+/)
+    if (visible.some((id) => !/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)))) {
+      throw new Error("Invalid visible top-level window census for capture")
+    }
+    const topLevel = visible.filter((id) => !roots.includes(Number(id)))
+    if (topLevel.length !== 1 || topLevel[0] !== ownedWindowId) {
+      throw new Error(`Capture requires only its owned visible top-level window; found ${topLevel.join(", ")}`)
+    }
   }
   await assertOwned()
   mkdirSync(directory, { recursive: true, mode: 0o700 })

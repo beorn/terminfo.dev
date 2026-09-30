@@ -42,7 +42,10 @@ function fixture() {
   executable(
     join(directory, "xdotool"),
     `case "$1" in
-  search) printf '%s\\n' "$TEST_CAPTURE_WINDOWS" ;;
+  search)
+    if [ "$3" = --pid ]; then printf '%s\\n' "$TEST_CAPTURE_WINDOWS"
+    else printf '%s\\n' "$TEST_CAPTURE_VISIBLE_WINDOWS"; fi
+    ;;
   getwindowpid)
     if [ "${"$"}TEST_CAPTURE_FAIL" = owner ]; then printf 'owner lookup failed\\n' >&2; exit 17; fi
     printf '%s\\n' "$TEST_CAPTURE_OWNER_PID"
@@ -58,6 +61,7 @@ while [ ! -e "$TEST_CAPTURE_RELEASE" ]; do sleep 0.01; done
 printf finished > "$TEST_CAPTURE_FINISHED"
 printf 'xwd-window-%s' "$2"`,
   )
+  executable(join(directory, "xdpyinfo"), `printf 'root window id: 0x21f\\n'`)
   executable(
     join(directory, "magick"),
     `if [ "$1" = -version ]; then printf 'ImageMagick test\\n'; exit 0; fi
@@ -69,6 +73,7 @@ cat "$TEST_CAPTURE_PNG"`,
   process.env.DISPLAY = ":test"
   process.env.TEST_CAPTURE_OWNER_PID = String(process.pid)
   process.env.TEST_CAPTURE_WINDOWS = "42"
+  process.env.TEST_CAPTURE_VISIBLE_WINDOWS = "543 42"
   process.env.TEST_CAPTURE_STARTED = started
   process.env.TEST_CAPTURE_FINISHED = finished
   process.env.TEST_CAPTURE_RELEASE = release
@@ -92,6 +97,7 @@ afterEach(() => {
   for (const key of [
     "TEST_CAPTURE_OWNER_PID",
     "TEST_CAPTURE_WINDOWS",
+    "TEST_CAPTURE_VISIBLE_WINDOWS",
     "TEST_CAPTURE_STARTED",
     "TEST_CAPTURE_FINISHED",
     "TEST_CAPTURE_RELEASE",
@@ -146,6 +152,29 @@ test.runIf(process.platform === "linux").each(["before", "during"] as const)(
     await rejected
     expect(existsSync(started)).toBe(when === "during")
     expect(readdirSync(frames)).toEqual([])
+  },
+)
+
+test.runIf(process.platform === "linux").each(["before", "during"] as const)(
+  "another visible top-level window %s capture rejects without retaining image artifacts",
+  async (when) => {
+    const { directory, started, release } = fixture()
+    const frames = join(directory, "frames")
+    if (when === "before") process.env.TEST_CAPTURE_VISIBLE_WINDOWS = "543 42 99"
+    const create = createLinuxCapture(frames, liveExecutable())
+    if (when === "before") {
+      await expect(create).rejects.toThrow("visible top-level")
+    } else {
+      const capture = await create
+      const pending = capture({ featureId: "fixture", role: "target", label: "owned frame" })
+      const rejected = expect(pending).rejects.toThrow("visible top-level")
+      for (let n = 0; n < 500 && !existsSync(started); n++) await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(existsSync(started)).toBe(true)
+      process.env.TEST_CAPTURE_VISIBLE_WINDOWS = "543 42 99"
+      writeFileSync(release, "continue")
+      await rejected
+    }
+    expect(existsSync(frames) ? readdirSync(frames) : []).toEqual([])
   },
 )
 
