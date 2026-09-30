@@ -256,12 +256,34 @@ describe("window-operation qualification", () => {
       feedCapture: () => "\x1b]Lother-icon\x07",
     } as unknown as TermlessContext
     expect(icon.headless(headlessIcon).observation?.outcome).not.toBe("supported")
+  })
 
-    const pop = callback("device.xtwinops-23")
-    const headlessPop = {
-      feed: () => undefined,
-      getTitle: () => "new-title",
-    } as unknown as TermlessContext
-    expect(pop.headless(headlessPop).observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  // AC3: a failed push/pop pair cannot identify which individual operation failed.
+  // The prior case only covered failed setup; final WezTerm raw has valid setup and failed restoration.
+  test.each(["device.xtwinops-22", "device.xtwinops-23"])("%s qualifies the complete title round trip", (id) => {
+    for (const [titles, outcome] of [
+      [["pushed-title", "new-title", "pushed-title"], "supported"],
+      [["pushed-title", "new-title", "new-title"], "inconclusive"],
+      [["test-icon", "test-icon", "test-icon"], "inconclusive"],
+    ] as const) {
+      let index = 0
+      const context = {
+        feed: () => undefined,
+        getTitle: () => {
+          const title = titles[index++]
+          if (title === undefined) throw new Error("Unexpected title read")
+          return title
+        },
+      } as unknown as TermlessContext
+      const result = callback(id).headless(context)
+      expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
+      expect(result.response).toBe(JSON.stringify({ original: titles[0], changed: titles[1], restored: titles[2] }))
+      if (outcome === "inconclusive") {
+        expect(result.observation?.reason).toBe("insufficient-evidence")
+        expect(result.assertions).toBeUndefined()
+      } else {
+        expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
+      }
+    }
   })
 })

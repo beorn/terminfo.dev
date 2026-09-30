@@ -324,7 +324,7 @@ export const deviceProbes: ProbeDefinition[] = [
   },
 
   // XTWINOPS 22 — push title/icon stack: CSI 22 ; 0 t
-  // Verify by setting title A, pushing, changing to B, and checking B is active.
+  // A successful push/pop round trip establishes both operations; failure cannot identify either.
   {
     ...probe(
       "device.xtwinops-22",
@@ -337,10 +337,14 @@ export const deviceProbes: ProbeDefinition[] = [
         ctx.feed("\x1b[23;0t")
         const restored = ctx.getTitle()
         return parserStateResult(
-          original !== "pushed-title" || changed !== "new-title" ? null : restored === "pushed-title",
+          original === "pushed-title" && changed === "new-title" && restored === "pushed-title" ? true : null,
           "XTWINOPS 22 preserves the old title on its stack after a different title is set",
           { original, changed, restored },
-          original !== "pushed-title" || changed !== "new-title" ? "Title setup was not observable" : undefined,
+          original !== "pushed-title" || changed !== "new-title"
+            ? "Title setup was not observable"
+            : restored !== "pushed-title"
+              ? "Title push/pop did not restore the old title; the failing operation is unknown"
+              : undefined,
         )
       },
       async (ctx) => {
@@ -373,10 +377,14 @@ export const deviceProbes: ProbeDefinition[] = [
         ctx.feed("\x1b[23;0t")
         const restored = ctx.getTitle()
         return parserStateResult(
-          original !== "pushed-title" || changed !== "new-title" ? null : restored === "pushed-title",
+          original === "pushed-title" && changed === "new-title" && restored === "pushed-title" ? true : null,
           "XTWINOPS 23 restores the title saved before a different title was set",
           { original, changed, restored },
-          original !== "pushed-title" || changed !== "new-title" ? "Title setup was not observable" : undefined,
+          original !== "pushed-title" || changed !== "new-title"
+            ? "Title setup was not observable"
+            : restored !== "pushed-title"
+              ? "Title push/pop did not restore the old title; the failing operation is unknown"
+              : undefined,
         )
       },
       async (ctx) => {
