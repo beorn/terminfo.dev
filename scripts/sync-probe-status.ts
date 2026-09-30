@@ -13,6 +13,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { parseJsonStrict } from "@terminfo/run-parser"
 import { ALL_PROBES } from "../packages/probe-defs/src/index.ts"
 
 const ROOT = import.meta.dirname ? join(import.meta.dirname, "..") : join(process.cwd())
@@ -34,7 +35,17 @@ for (const probe of ALL_PROBES) {
 
 // Read features.json
 const raw = readFileSync(FEATURES_PATH, "utf-8")
-const features = JSON.parse(raw) as Record<string, Record<string, unknown>>
+const parsed = parseJsonStrict(FEATURES_PATH, raw)
+if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+  throw new Error(`${FEATURES_PATH}: expected a feature metadata object`)
+}
+for (const [id, feature] of Object.entries(parsed)) {
+  if (id === "$comment") continue
+  if (feature === null || typeof feature !== "object" || Array.isArray(feature)) {
+    throw new Error(`${FEATURES_PATH}: ${id}: expected a feature metadata object`)
+  }
+}
+const features = parsed as Record<string, Record<string, unknown>>
 
 let downgraded = 0 // automated → partial (set probeStatus)
 let normalized = 0 // explicit automated → implicit default
