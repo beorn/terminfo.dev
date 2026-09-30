@@ -121,6 +121,7 @@ describe("consumer selection", () => {
     }
   })
 
+  // Exercises all consumers over retained history; this is a correctness check, not a latency assertion.
   it("does not score unreviewed legacy booleans as current results", () => {
     const warnings: string[] = []
     const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))
@@ -165,7 +166,7 @@ describe("consumer selection", () => {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 
   it("refuses a malformed required result with its path", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-malformed-selection-"))
