@@ -356,7 +356,7 @@
     "url": "https://vt100.net/docs/vt510-rm/DECSCUSR.html",
     "tags": ["dec-private-modes", "vt510"],
     "body": "DECSCUSR (DEC Set Cursor Style) changes the cursor appearance. The sequence is <code>ESC [ N SP q</code> where N is: 0 or 1 (blinking block), 2 (steady block), 3 (blinking underline), 4 (steady underline), 5 (blinking bar/I-beam), 6 (steady bar). Applications use this to signal editing mode — for example, vim uses a block cursor in normal mode and a bar cursor in insert mode.",
-    "probe": "Send <code>\\x1b[6 q</code> (DECSCUSR steady bar), verify cursor style is <code>\"beam\"</code>.",
+    "probe": "Headless: send <code>\\x1b[6 q</code> (steady bar) and verify parser cursor style is <code>\"beam\"</code>. App: capture the default cursor, send <code>\\x1b[5 q</code> (blinking bar), capture again, then restore the default shape. The app result remains inconclusive pending shape review; a still image cannot establish blinking.",
     "baseline": "modern",
     "sequence": "ESC [ N SP q"
   },
