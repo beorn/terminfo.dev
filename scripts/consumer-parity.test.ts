@@ -499,6 +499,30 @@ describe("selected-run consumer parity", () => {
     }
   })
 
+  it("uses the merged category/tag feature scope for analysis and unsupported gaps", () => {
+    // Unicode's category-only tab-stop feature used to disappear when tag prose overwrote the merged page.
+    const id = "unicode.tab-stops"
+    const cells = fixture.selected.cells
+    const results = fixture.selected.v1
+    const bold = cells["sgr.bold"]
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      Object.assign(cells, { [id]: { ...bold, featureId: id, outcome: "unsupported", conclusive: true } })
+      Object.assign(results, { [id]: false })
+      const page = categoryPaths.paths().find((entry) => entry.params.id === "unicode")!
+      const rows = JSON.parse(page.params.features!) as Array<{ id: string }>
+      expect(rows.map((row) => row.id)).toContain(id)
+      const prose = generateAnalysis().unicode!.analysis
+      expect(prose).toContain(`covers ${page.params.featureCount} features`)
+      expect(prose).toContain("Tab Stops")
+      expect(prose).not.toContain("awaiting verified measurements")
+    } finally {
+      Reflect.deleteProperty(cells, id)
+      Reflect.deleteProperty(results, id)
+      warning.mockRestore()
+    }
+  })
+
   it("keeps a reviewed inconclusive target and its version visible without a score", () => {
     const site = probesLoader.load()
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")

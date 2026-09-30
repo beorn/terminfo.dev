@@ -533,7 +533,7 @@ function generateCategoryAnalysis(
 ): AnalysisEntry {
   const parts: string[] = []
   const categoryFeatures = Object.entries(features)
-    .filter(([id]) => id.startsWith(catId + "."))
+    .filter(([id, feature]) => id.startsWith(catId + ".") || feature.tags?.includes(catId))
     .map(([id]) => id)
 
   parts.push(`The <strong>${catMeta.label}</strong> category covers ${categoryFeatures.length} features`)
@@ -1268,6 +1268,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
 
   // 4. Standard pages
   for (const [stdId, stdMeta] of Object.entries(standards)) {
+    if (categories[stdId]) continue // The merged category page owns overlapping category/tag analysis.
     const key = stdId
     const entry = generateStandardAnalysis(stdId, stdMeta, allStats, features)
     validateHtml(entry.analysis, key)
