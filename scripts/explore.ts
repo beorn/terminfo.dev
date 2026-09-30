@@ -198,7 +198,9 @@ function loadExistingIds(): Set<string> {
     try {
       value = JSON.parse(line)
     } catch (error) {
-      throw new Error(`${radarPath}:${index + 1}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`)
+      throw new Error(
+        `${radarPath}:${index + 1}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      )
     }
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw new Error(`${radarPath}:${index + 1}: expected radar record with a nonempty string id`)
