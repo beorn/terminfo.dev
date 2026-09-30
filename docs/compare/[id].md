@@ -123,9 +123,9 @@ for (const cat of categories) {
   <tbody>
     <tr v-for="f in cat.features" :key="f.id" :class="diffClass(f)">
       <td class="feature-name" :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
-      <td><ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="p.termALabel"
+      <td><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="p.termALabel"
         :version="data.selectedByBackend[p.termAId]?.selected" :cell="data.selectedByBackend[p.termAId]?.selected.cells[f.id]" /></td>
-      <td><ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="p.termBLabel"
+      <td><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="p.termBLabel"
         :version="data.selectedByBackend[p.termBId]?.selected" :cell="data.selectedByBackend[p.termBId]?.selected.cells[f.id]" /></td>
     </tr>
   </tbody>

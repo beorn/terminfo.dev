@@ -327,7 +327,7 @@ function backendTooltip(name, version) {
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in appBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="backendLabel(b.name)"
+        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
           :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
       </td>
     </tr>
@@ -401,7 +401,7 @@ function backendTooltip(name, version) {
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in headlessBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="backendLabel(b.name)"
+        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
           :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
       </td>
     </tr>
@@ -451,7 +451,7 @@ function backendTooltip(name, version) {
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in muxBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="backendLabel(b.name)"
+        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
           :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
       </td>
     </tr>

@@ -7,6 +7,7 @@ const props = withDefaults(
   defineProps<{
     featureId: string
     featureName: string
+    probeGuidance?: string
     targetName: string
     version?: PublicVersion
     cell?: PublicCell
@@ -48,6 +49,7 @@ const shortLabel = computed(() => {
 })
 const methodLabel = computed(() => (props.cell?.evidence === "none" ? "Not measured" : (props.cell?.evidence ?? "")))
 
+const probeGuidanceText = computed(() => props.probeGuidance?.replace(/<\/?code>/g, ""))
 const presentation = computed(() => props.cell?.presentation)
 const correction = computed(() => props.version?.reviews.find((review) => review.id === props.cell?.chain.correctionId))
 const previewRecord = computed(() => (presentation.value?.state === "presented" ? props.cell?.record : undefined))
@@ -326,6 +328,18 @@ onBeforeUnmount(() => {
             Evidence could not be verified: {{ evidenceError }}
           </p>
           <template v-else-if="evidenceDocument">
+            <p v-if="correction">
+              Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}. Reviewed
+              by {{ correction.reviewer }}: {{ correction.reason }}
+            </p>
+            <template v-if="cell.evidence === 'pixels' && probeGuidanceText">
+              <h4>Current probe guidance</h4>
+              <p>{{ probeGuidanceText }}</p>
+              <p>
+                Current catalog guidance, not a recorded assertion or proof. Parser checks do not establish visible
+                styling.
+              </p>
+            </template>
             <template v-if="evidenceFrames.length">
               <h4>Screenshots</h4>
               <div class="result-evidence__frames">
@@ -359,10 +373,6 @@ onBeforeUnmount(() => {
 
             <details class="result-evidence__details">
               <summary>Review history</summary>
-              <p v-if="correction">
-                Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
-                Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
-              </p>
               <details>
                 <summary>Evidence publication check</summary>
                 <p>{{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>

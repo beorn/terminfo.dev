@@ -229,7 +229,7 @@ const breadcrumbParent = (() => {
   <tbody>
     <tr v-for="f in cat.features" :key="f.id">
       <td :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
-      <td class="result-cell"><ResultEvidenceCell :feature-id="f.id" :feature-name="f.name" :target-name="p.backendName"
+      <td class="result-cell"><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="p.backendName"
         :version="selectedRun" :cell="selectedRun?.cells[f.id]" display="text" /></td>
       <td class="note-cell">{{ selectedRun?.cells[f.id]?.note || '' }}</td>
     </tr>

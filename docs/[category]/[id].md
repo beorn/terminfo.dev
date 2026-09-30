@@ -95,7 +95,7 @@ function termTooltip(r) {
     <tr v-for="r in appResults" :key="r.name">
       <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
-      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :feature-name="p.featureName" :target-name="r.label"
+      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :target-name="r.label"
         :version="data.selectedByBackend[r.name]?.selected" :cell="data.selectedByBackend[r.name]?.selected.cells[p.featureId]" display="text" /></td>
       <td class="note-cell">
         {{ r.note }}
@@ -124,7 +124,7 @@ function termTooltip(r) {
     <tr v-for="r in headlessResults" :key="r.name">
       <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
-      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :feature-name="p.featureName" :target-name="r.label"
+      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :target-name="r.label"
         :version="data.selectedByBackend[r.name]?.selected" :cell="data.selectedByBackend[r.name]?.selected.cells[p.featureId]" display="text" /></td>
       <td class="note-cell">
         {{ r.note }}
@@ -151,7 +151,7 @@ function termTooltip(r) {
   <tbody>
     <tr v-for="sf in subFeatures" :key="sf.id">
       <td><a :href="'/' + p.featureCategory + '/' + sf.slug">{{ sf.name }}</a></td>
-      <td v-for="b in appBackends" :key="b.name" class="result-cell"><ResultEvidenceCell :feature-id="sf.id" :feature-name="sf.name" :target-name="b.label"
+      <td v-for="b in appBackends" :key="b.name" class="result-cell"><ResultEvidenceCell :feature-id="sf.id" :probe-guidance="data.featureDescriptions[sf.id]?.probe" :feature-name="sf.name" :target-name="b.label"
         :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[sf.id]" /></td>
     </tr>
   </tbody>
