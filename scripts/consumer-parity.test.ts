@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { SelectedCell } from "../docs/data/selected-results.ts"
+import type { SelectedCell, SelectedVersion } from "../docs/data/selected-results.ts"
 import * as selectedResults from "../docs/data/selected-results.ts"
 import type { EvidenceDocument, PublicVersion } from "../docs/data/public-results.ts"
 
@@ -176,6 +176,9 @@ vi.mock("../docs/data/current-results.ts", () => ({
 
 import probesLoader from "../docs/data/probes.data.ts"
 import { loadProbes } from "../docs/data/load-probes.ts"
+import * as probeData from "../docs/data/load-probes.ts"
+import { loadFullProbes } from "../docs/data/probes.data.ts"
+import * as currentResults from "../docs/data/current-results.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
 import comparePaths from "../docs/compare/[id].paths.ts"
 import baselinePaths from "../docs/baseline/[id].paths.ts"
@@ -771,4 +774,61 @@ describe("selected-run consumer parity", () => {
       else data.annotations["screen:sgr.bold"] = originalScreenAnnotation
     }
   })
+})
+
+it("binds native parser page analysis to its selected run despite sharing an app route slug", () => {
+  // Ghostty's native parser uses /terminals/ghostty; the unmeasured app has its own analysis placeholder.
+  const native = structuredClone(fixture.selected) as unknown as SelectedVersion
+  native.target = { ...native.target, kind: "headless", id: "ghostty-native" }
+  const targets = vi
+    .spyOn(currentResults, "compatibilityTargets")
+    .mockReturnValue(new Map([["ghostty-native", { contextKey: "headless:ghostty-native", selected: native }]]))
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+  let probes: ReturnType<typeof vi.spyOn> | undefined
+  let analysis: ReturnType<typeof vi.spyOn> | undefined
+  try {
+    const data = loadFullProbes()
+    const generated = generateAnalysis()
+    probes = vi.spyOn(probeData, "loadProbes").mockReturnValue(data)
+    analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue(generated)
+    expect(generated["terminals/ghostty"]?.analysis).toContain("awaiting verified measurements")
+    const page = terminalPaths.paths().find((entry) => entry.params.backendId === "ghostty-native")
+    expect(page?.params).toMatchObject({
+      id: "ghostty",
+      terminalType: "headless",
+      runSha256: fixture.runSha256,
+      generated: fixture.measuredAt,
+      analysisDate: "2026-09-28",
+      total: "2",
+      yes: "1",
+      no: "1",
+    })
+    expect(page?.params.analysis).not.toContain("awaiting verified measurements")
+    expect(page?.params.analysis).toContain("(1/2)")
+    // Missing or stale analysis must not silently fall back to the app placeholder.
+    delete generated["terminals/ghostty-native"]
+    expect(() => terminalPaths.paths()).toThrow(/ghostty-native.*selected run.*aaaaaaaa/)
+    // The inverse collision must not attribute a measured app's analysis to an unmeasured parser.
+    const app = structuredClone(native)
+    app.target = { ...app.target, kind: "app", id: "ghostty" }
+    app.sha256 = "b".repeat(64)
+    targets.mockReturnValue(new Map([["ghostty", { contextKey: "app:ghostty", selected: app }]]))
+    analysis.mockReturnValue(generateAnalysis())
+    native.counts = { ...native.counts, conclusive: 0, supported: 0, unsupported: 0 }
+    native.v1 = {}
+    targets.mockReturnValue(new Map([["ghostty-native", { contextKey: "headless:ghostty-native", selected: native }]]))
+    probes.mockReturnValue(loadFullProbes())
+    const unmeasured = terminalPaths.paths().find((entry) => entry.params.backendId === "ghostty-native")
+    expect(unmeasured?.params).toMatchObject({
+      total: "0",
+      analysis: "",
+      analysisDate: "",
+      runSha256: fixture.runSha256,
+    })
+  } finally {
+    probes?.mockRestore()
+    analysis?.mockRestore()
+    warning.mockRestore()
+    targets.mockRestore()
+  }
 })

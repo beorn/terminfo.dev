@@ -102,11 +102,23 @@ export default {
 
       const terminal = meta.terminal ?? {}
 
-      const a = allAnalysis["terminals/" + slug]
+      const selected = data.selectedByBackend[b.name]?.selected
+      // A parser and its app can share a public slug; measured analysis belongs to the selected run.
+      const slugAnalysis = allAnalysis["terminals/" + slug]
+      const a =
+        selected && selected.counts.conclusive > 0
+          ? Object.entries(allAnalysis).find(
+              ([key, entry]) => key.startsWith("terminals/") && entry.runSha256 === selected.sha256,
+            )?.[1]
+          : slugAnalysis?.runSha256
+            ? undefined
+            : slugAnalysis
+      if (selected && selected.counts.conclusive > 0 && !a) {
+        throw new Error(`Missing terminal analysis for ${b.name} selected run ${selected.sha256}`)
+      }
 
       // Load all version results for this backend
       const versions = versionsForBackend(data, b.name)
-      const selected = data.selectedByBackend[b.name]?.selected
       const otherRuns = selected
         ? Object.values(data.selected.versions)
             .flat()
