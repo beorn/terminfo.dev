@@ -1,4 +1,4 @@
-/** Internal production adapter and result collection for one initialized Termless backend. */
+/** Internal production adapter and isolated result collection for one Termless engine. */
 /* oxlint-disable typescript/no-deprecated -- Current Termless resolve() adapters expose TerminalBackend lifecycle; Emulator does not yet replace that loader. */
 
 import type { TerminalBackend } from "@termless/core"
@@ -158,21 +158,23 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
   }
 }
 
-export function collectBatch(
-  backend: TerminalBackend,
+export async function collectBatch(
+  createBackend: () => Promise<TerminalBackend>,
   backendName: string,
   definitions: readonly ProbeDefinition[],
-): Batch {
+): Promise<Batch> {
   const batch: Batch = { rawReplies: {}, observations: [], assertions: [], ungradedDiagnostics: {} }
-  const ctx = createTermlessContext(backend)
   for (const probe of definitions) {
     if (!probe.termless) continue
     process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)
+    let backend: TerminalBackend | undefined
     try {
-      backend.reset()
+      backend = await createBackend()
+      backend.init({ cols: 80, rows: 24 })
+      const ctx = createTermlessContext(backend)
       recordResult(batch, probe, probe.termless(ctx))
     } catch (error) {
-      const message = errorMessage(error)
+      const message = `headless ${backendName} probe ${probe.id}: ${errorMessage(error)}`
       if (probe.termlessObservationEvidence) {
         batch.observations.push({
           featureId: probe.id,
@@ -187,6 +189,14 @@ export function collectBatch(
           name: error instanceof Error ? error.name : "Error",
           message,
         }
+      }
+    } finally {
+      // Engine reset is a measured behavior, not a guarantee of fixture isolation.
+      // A cleanup failure aborts the worker instead of sealing a misleading run.
+      try {
+        backend?.destroy()
+      } catch (cause) {
+        throw new Error(`headless ${backendName} probe ${probe.id}: backend cleanup failed`, { cause })
       }
     }
   }

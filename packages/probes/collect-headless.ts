@@ -108,7 +108,9 @@ async function collectOne(name: string, directory: string): Promise<string> {
     loaded.init({ cols: 80, rows: 24 })
     loaded.getCell(0, 0)
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
-    const batch = collectBatch(loaded, name, ALL_PROBES)
+    backend = undefined
+    loaded.destroy()
+    const batch = await collectBatch(async () => loadedBackend(await resolveBackend(), entry.package), name, ALL_PROBES)
     const run: ProbeRun = {
       schemaVersion: 2,
       runId: randomUUID(),
