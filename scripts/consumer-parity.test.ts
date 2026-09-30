@@ -268,7 +268,19 @@ it("analysis validation refuses stale live values and key drift but labels histo
     expect(generated.status, generated.stderr).toBe(0)
     const outputPath = join(out, "content", "analysis.json")
     const original = readFileSync(outputPath, "utf8")
-    const control = JSON.parse(original)
+    const isFixtureObject = (value: unknown): value is Record<string, unknown> =>
+      value !== null && typeof value === "object" && !Array.isArray(value)
+    const parseFixture = (): Record<string, unknown> => {
+      const data: unknown = JSON.parse(original)
+      if (!isFixtureObject(data)) throw new Error("Expected generated analysis fixture object")
+      return data
+    }
+    const entry = (data: Record<string, unknown>, key: string): Record<string, unknown> => {
+      const value = data[key]
+      if (!isFixtureObject(value)) throw new Error(`Expected generated analysis fixture entry: ${key}`)
+      return value
+    }
+    const control = parseFixture()
     const liveKey = "terminals/kitty"
     const historicalKey = "terminals/vt100-historical"
     const valid = run(["--validate"])
@@ -277,19 +289,19 @@ it("analysis validation refuses stale live values and key drift but labels histo
       [
         liveKey,
         (data) => {
-          data[liveKey].analysis = "<p>Stale claimed support.</p>"
+          entry(data, liveKey).analysis = "<p>Stale claimed support.</p>"
         },
       ],
       [
         liveKey,
         (data) => {
-          data[liveKey].date = "2000-01-01"
+          entry(data, liveKey).date = "2000-01-01"
         },
       ],
       [
         liveKey,
         (data) => {
-          data[liveKey].probeCount = 123
+          entry(data, liveKey).probeCount = 123
         },
       ],
       [
@@ -307,18 +319,18 @@ it("analysis validation refuses stale live values and key drift but labels histo
       [
         historicalKey,
         (data) => {
-          data[historicalKey].analysis = 42
+          entry(data, historicalKey).analysis = 42
         },
       ],
       [
         historicalKey,
         (data) => {
-          data[historicalKey].probeCount = 123
+          entry(data, historicalKey).probeCount = 123
         },
       ],
     ]
     for (const [key, mutate] of cases) {
-      const data = JSON.parse(original)
+      const data = parseFixture()
       mutate(data)
       const bytes = JSON.stringify(data)
       writeFileSync(outputPath, bytes)
@@ -330,8 +342,8 @@ it("analysis validation refuses stale live values and key drift but labels histo
     }
     expect(valid.stdout).toContain(`${liveKey}: current-value passed`)
     expect(valid.stdout).toContain(`${historicalKey}: historical-schema passed`)
-    control[historicalKey].analysis = "<p>Older historical reference.</p>"
-    control[historicalKey].date = "2000-01-01"
+    entry(control, historicalKey).analysis = "<p>Older historical reference.</p>"
+    entry(control, historicalKey).date = "2000-01-01"
     writeFileSync(outputPath, JSON.stringify(control))
     const historical = run(["--validate"])
     expect(historical.status, historical.stderr).toBe(0)
