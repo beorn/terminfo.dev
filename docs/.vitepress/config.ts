@@ -394,6 +394,11 @@ export default defineConfig({
   title: "Terminfo.dev",
   description: "Can your terminal do that? Feature support tables for terminal emulators.",
   cleanUrls: true,
+  vite: {
+    server: {
+      allowedHosts: [".ts.net"],
+    },
+  },
   // Privacy guard (defense-in-depth): never let internal artifacts become routes.
   // Internal AI reviews, design notes, and drafts must never publish as pages on
   // this public site. Keep this in sync with scripts/check-private-leak.ts.
