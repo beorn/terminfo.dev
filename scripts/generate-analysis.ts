@@ -854,7 +854,7 @@ function generateStandardsIndexAnalysis(
   // Count total standards and features
   const standardIds = Object.keys(standards)
   parts.push(
-    `Terminfo.dev tracks <strong>${standardIds.length}</strong> terminal standards, from ECMA-48 (1976) to Kitty Extensions (2017)`,
+    `Terminfo.dev tracks <strong>${standardIds.length}</strong> terminal standards and protocol families, including ECMA-48 and Kitty extensions.`,
   )
 
   // Find which standard has best/worst adoption

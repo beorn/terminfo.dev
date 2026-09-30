@@ -462,7 +462,7 @@ export default defineConfig({
     if (rel === "index.md") {
       pageData.title = "Terminfo.dev — Can Your Terminal Do That?"
       pageData.description =
-        "Feature support tables for terminal emulators. 133 features tested across 11 terminals — like caniuse.com for terminal escape sequences. Powered by Termless."
+        "Terminal feature support, measured results and evidence across terminal emulators and parser backends."
     }
 
     // About page
@@ -679,7 +679,7 @@ export default defineConfig({
           "@type": "Dataset",
           name: "Terminal Feature Database",
           description:
-            "Comprehensive database of terminal emulator feature support across 11 terminals and 133 features. Automated testing via Termless.",
+            "Measured terminal feature results with evidence and method details across terminal emulators and parser backends.",
           url: "https://terminfo.dev",
           creator: {
             "@type": "Person",
