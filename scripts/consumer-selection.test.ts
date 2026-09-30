@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { describe, expect, it, vi } from "vitest"
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -24,6 +24,64 @@ function writeCatalog(content: string): void {
 }
 
 describe("consumer selection", () => {
+  it("refuses failed discovery and corrupt retained radar records without changing prior findings", () => {
+    const root = mkdtempSync(join(tmpdir(), "terminfo-discovery-errors-"))
+    const source = join(import.meta.dirname, "..")
+    try {
+      mkdirSync(join(root, "scripts"))
+      mkdirSync(join(root, "content"))
+      mkdirSync(join(root, "bin"))
+      for (const name of ["explore.ts", "radar.ts"]) {
+        copyFileSync(join(source, "scripts", name), join(root, "scripts", name))
+      }
+      const radarPath = join(root, "content", "radar.jsonl")
+      const retained = JSON.stringify({
+        id: "retained",
+        type: "new-protocol",
+        query_id: "prior",
+        discovered: "2026-09-29",
+      })
+      const valid = `${retained}\n\n`
+      writeFileSync(radarPath, valid)
+      const bunShim = join(root, "bin", "bun")
+      writeFileSync(bunShim, "#!/bin/sh\nexit 23\n")
+      chmodSync(bunShim, 0o755)
+      const invoke = (name: "explore" | "radar") => {
+        const args = name === "explore" ? ["--query", "active-terminals"] : ["stats"]
+        return spawnSync(process.execPath, [join(root, "scripts", `${name}.ts`), ...args], {
+          encoding: "utf8",
+          env: { ...process.env, PATH: `${join(root, "bin")}:${process.env.PATH}` },
+        })
+      }
+
+      writeFileSync(radarPath, "\n  \n")
+      const emptyRadar = invoke("radar")
+      expect(emptyRadar.status, emptyRadar.stderr).toBe(0)
+      expect(emptyRadar.stdout).toContain("no findings")
+      writeFileSync(radarPath, valid)
+      const validRadar = invoke("radar")
+      expect(validRadar.status, validRadar.stderr).toBe(0)
+      expect(validRadar.stdout).toContain("total      1")
+      const failedQuery = invoke("explore")
+      expect(failedQuery.stderr).toContain("Query failed")
+      expect(failedQuery.status, failedQuery.stdout + failedQuery.stderr).toBe(1)
+      expect(readFileSync(radarPath, "utf8")).toBe(valid)
+
+      for (const bad of ["{", "[]", "{}"] as const) {
+        const previous = `${valid}${bad}\n`
+        writeFileSync(radarPath, previous)
+        for (const name of ["radar", "explore"] as const) {
+          const result = invoke(name)
+          expect(result.status, `${name} ${bad}: ${result.stdout}${result.stderr}`).not.toBe(0)
+          expect(result.stderr).toContain(`${radarPath}:3:`)
+          expect(readFileSync(radarPath, "utf8")).toBe(previous)
+        }
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it("checks freshness without changing inventory or treating unreviewed files as current", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-freshness-"))
     const source = join(import.meta.dirname, "..")

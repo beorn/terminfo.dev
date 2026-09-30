@@ -97,20 +97,32 @@ function loadFindings(): Finding[] {
   // Append-only log: later records can supersede earlier ones (e.g. dismissal).
   // We collapse to the latest record per id.
   const byId = new Map<string, Finding>()
-  const lines = raw.split("\n").filter((l) => l.trim().length > 0)
-  for (const line of lines) {
+  const failLine = (line: number, message: string): never => {
+    console.error(`${RED}error${RESET} ${radarPath}:${line}: ${message}`)
+    process.exit(2)
+  }
+  for (const [index, line] of raw.split("\n").entries()) {
+    if (!line.trim()) continue
+    let value: unknown
     try {
-      const obj = JSON.parse(line) as Finding
-      if (!obj.id) continue
-      const existing = byId.get(obj.id)
-      if (existing) {
-        // Merge: prefer later record's fields, but keep dismissed flag if either has it
-        byId.set(obj.id, { ...existing, ...obj, dismissed: obj.dismissed ?? existing.dismissed })
-      } else {
-        byId.set(obj.id, obj)
-      }
-    } catch {
-      // Skip malformed lines silently — radar is append-only and lossy by design.
+      value = JSON.parse(line)
+    } catch (error) {
+      failLine(index + 1, `invalid JSON: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      failLine(index + 1, "expected radar record with a nonempty string id")
+    }
+    const id = (value as Record<string, unknown>).id
+    if (typeof id !== "string" || !id) {
+      failLine(index + 1, "expected radar record with a nonempty string id")
+    }
+    const obj = value as Finding
+    const existing = byId.get(obj.id)
+    if (existing) {
+      // Merge: prefer later record's fields, but keep dismissed flag if either has it
+      byId.set(obj.id, { ...existing, ...obj, dismissed: obj.dismissed ?? existing.dismissed })
+    } else {
+      byId.set(obj.id, obj)
     }
   }
   return [...byId.values()]

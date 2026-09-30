@@ -191,12 +191,23 @@ function hashFinding(title: string, firstCitation: string): string {
 function loadExistingIds(): Set<string> {
   if (!existsSync(radarPath)) return new Set()
   const ids = new Set<string>()
-  const lines = readFileSync(radarPath, "utf-8").split("\n").filter(Boolean)
-  for (const line of lines) {
+  const lines = readFileSync(radarPath, "utf-8").split("\n")
+  for (const [index, line] of lines.entries()) {
+    if (!line.trim()) continue
+    let value: unknown
     try {
-      const obj = JSON.parse(line) as Finding
-      ids.add(obj.id)
-    } catch {}
+      value = JSON.parse(line)
+    } catch (error) {
+      throw new Error(`${radarPath}:${index + 1}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error(`${radarPath}:${index + 1}: expected radar record with a nonempty string id`)
+    }
+    const id = (value as Record<string, unknown>).id
+    if (typeof id !== "string" || !id) {
+      throw new Error(`${radarPath}:${index + 1}: expected radar record with a nonempty string id`)
+    }
+    ids.add(id)
   }
   return ids
 }
@@ -407,6 +418,7 @@ async function main() {
   console.log(`Existing findings in radar: ${existing.size}\n`)
 
   let totalAdded = 0
+  let failedQueries = 0
   for (const q of queriesToRun) {
     console.log(`\n📡 Running query: ${q.id}`)
     console.log(`   ${q.description}`)
@@ -419,12 +431,17 @@ async function main() {
       const elapsed = Math.round((Date.now() - start) / 1000)
       console.log(`   ✓ ${findings.length} findings extracted, ${added} new (${elapsed}s)`)
     } catch (err) {
+      failedQueries++
       console.error(`   ✗ Query failed: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
   console.log(`\n✨ Done. Added ${totalAdded} new findings to ${radarPath}`)
   console.log(`Review with: bun run radar list`)
+  if (failedQueries > 0) {
+    console.error(`${failedQueries} requested quer${failedQueries === 1 ? "y" : "ies"} failed`)
+    process.exitCode = 1
+  }
 }
 
 main().catch((err) => {
