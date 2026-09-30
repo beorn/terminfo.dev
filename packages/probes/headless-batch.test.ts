@@ -63,23 +63,32 @@ for (const [name, create, available] of [
   ["kitty", createKittyBackend, isKittyAvailable()],
 ] as const) {
   test.skipIf(!available)(`${name} captures only current query replies across reset`, async () => {
-    const value = create()
-    const previous = vi.fn()
-    value.onResponse = previous
-    const replies: string[] = []
-    await collectBatch(async () => value, name, [
-      definition("capture", (ctx) => {
-        ctx.feed("\x1b[6n") // This reply belongs to the previous listener.
-        replies.push(ctx.feedCapture("\x1b[2;3H\x1b[6n"))
-        replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
-        ctx.reset()
-        replies.push(ctx.feedCapture("\x1b[6n"))
-        return { pass: true }
-      }),
-    ])
-    expect(replies).toEqual(["\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R"])
-    expect(previous.mock.calls.map(([bytes]) => new TextDecoder().decode(bytes)).join("")).toBe("\x1b[1;1R")
-    expect(value.onResponse).toBe(previous)
+    const configDirectory = name === "kitty" ? mkdtempSync(join(tmpdir(), "terminfo-kitty-config-")) : undefined
+    if (configDirectory) vi.stubEnv("KITTY_CONFIG_DIRECTORY", configDirectory)
+    try {
+      const value = create()
+      const previous = vi.fn()
+      value.onResponse = previous
+      const replies: string[] = []
+      await collectBatch(async () => value, name, [
+        definition("capture", (ctx) => {
+          ctx.feed("\x1b[6n") // This reply belongs to the previous listener.
+          replies.push(ctx.feedCapture("\x1b[2;3H\x1b[6n"))
+          replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
+          ctx.reset()
+          replies.push(ctx.feedCapture("\x1b[6n"))
+          return { pass: true }
+        }),
+      ])
+      expect(replies).toEqual(["\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R"])
+      expect(previous.mock.calls.map(([bytes]) => new TextDecoder().decode(bytes)).join("")).toBe("\x1b[1;1R")
+      expect(value.onResponse).toBe(previous)
+    } finally {
+      if (configDirectory) {
+        vi.unstubAllEnvs()
+        rmSync(configDirectory, { recursive: true, force: true })
+      }
+    }
   })
 }
 
@@ -215,10 +224,11 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
   const value = await backend()
   const failure = new Error(`${stage} failed`)
   const destroy = vi.spyOn(value, "destroy")
-  if (stage === "init")
+  if (stage === "init") {
     vi.spyOn(value, "init").mockImplementation(() => {
       throw failure
     })
+  }
   const callback = vi.fn(() => ({ pass: true }))
   const batch = await collectBatch(
     async () => {
