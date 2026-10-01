@@ -1,5 +1,5 @@
 import { defineConfig } from "vitepress"
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from "node:fs"
+import { readFileSync, mkdirSync, writeFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
@@ -19,26 +19,6 @@ const buildMetadata = createBuildMetadata(join(docsDir, ".."))
 
 // --- Load data for sidebar generation ---
 
-function loadBackendMeta() {
-  // Read backends.json — VitePress config can't import @termless/core
-  // (it runs in Vite's ESM bundler context, not Bun)
-  const candidates = [
-    join(docsDir, "..", "node_modules", "@termless", "core", "backends.json"), // npm installed
-    join(docsDir, "..", "..", "termless", "backends.json"), // sibling submodule (local dev)
-  ]
-  for (const p of candidates) {
-    if (existsSync(p)) {
-      return JSON.parse(readFileSync(p, "utf-8")).backends
-    }
-  }
-  throw new Error(`backends.json not found. Tried:\n${candidates.join("\n")}`)
-}
-
-function terminalSlug(name: string, meta: Record<string, any>): string {
-  const label = (meta[name]?.label ?? name).toLowerCase()
-  return label.replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
-}
-
 function loadPlatformItems(): Array<{ text: string; link: string }> {
   const platformsPath = join(docsDir, "..", "content", "platforms.json")
   const platforms = JSON.parse(readFileSync(platformsPath, "utf-8")) as Record<string, { label: string; slug: string }>
@@ -50,52 +30,77 @@ function loadPlatformItems(): Array<{ text: string; link: string }> {
 }
 
 function buildSidebar() {
-  // Load backends from probe results
-  const probesLibsDir = join(docsDir, "..", "content", "probes-libs")
-  const meta = loadBackendMeta()
-  const terminals: Array<{ text: string; link: string }> = []
-
-  // Build set of headless backends that are subsumed by app terminals
-  // (e.g. xtermjs -> VS Code) — these don't get their own page
-  const terminalsData = JSON.parse(readFileSync(join(docsDir, "..", "content", "terminals.json"), "utf-8")) as Record<
-    string,
-    { headlessBackends?: string[] }
-  >
-  const appSubsumedBackends = new Set<string>()
-  for (const entry of Object.values(terminalsData)) {
-    for (const hb of entry.headlessBackends ?? []) {
-      appSubsumedBackends.add(hb)
-    }
+  const terminalsPath = join(docsDir, "..", "content", "terminals.json")
+  let rawTerminals: unknown
+  try {
+    rawTerminals = JSON.parse(readFileSync(terminalsPath, "utf-8"))
+  } catch (error) {
+    throw new Error(`Cannot load ${terminalsPath}`, { cause: error })
   }
-
-  try {
-    const files = readdirSync(probesLibsDir).filter((f) => f.endsWith(".json") && f !== "unified.json")
-    for (const file of files) {
-      try {
-        const raw = JSON.parse(readFileSync(join(probesLibsDir, file), "utf-8"))
-        if (!raw.backend) continue
-        // Skip backends that are merged into an app terminal page
-        if (appSubsumedBackends.has(raw.backend)) continue
-        const label = meta[raw.backend]?.label ?? raw.backend
-        const slug = terminalSlug(raw.backend, meta)
-        terminals.push({ text: label, link: `/terminals/${slug}` })
-      } catch {}
+  if (!rawTerminals || typeof rawTerminals !== "object" || Array.isArray(rawTerminals)) {
+    throw new Error(`${terminalsPath}: expected an object catalog`)
+  }
+  for (const [key, entry] of Object.entries(rawTerminals)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`${terminalsPath}: terminal "${key}" must be an object`)
     }
-  } catch {}
-  terminals.sort((a, b) => a.text.localeCompare(b.text))
-
-  // Load features.json for tags
-  const featuresPath = join(docsDir, "..", "content", "features.json")
-  const tags = new Set<string>()
-  try {
-    const raw = JSON.parse(readFileSync(featuresPath, "utf-8"))
-    delete raw.$comment
-    for (const entry of Object.values(raw) as any[]) {
-      for (const tag of entry.tags ?? []) {
-        tags.add(tag)
+    const terminal = entry as Record<string, unknown>
+    for (const field of ["label", "slug"] as const) {
+      if (typeof terminal[field] !== "string" || !(terminal[field] as string).trim()) {
+        throw new Error(`${terminalsPath}: terminal "${key}" requires a nonempty ${field}`)
       }
     }
-  } catch {}
+  }
+  const terminalsData = rawTerminals as Record<
+    string,
+    {
+      label: string
+      slug: string
+      historical?: boolean
+      year?: number
+      intermediary?: boolean
+      headlessBackends?: string[]
+    }
+  >
+
+  // Features are required by both tag and category navigation.
+  const featuresPath = join(docsDir, "..", "content", "features.json")
+  let rawFeatures: unknown
+  try {
+    rawFeatures = JSON.parse(readFileSync(featuresPath, "utf-8"))
+  } catch (error) {
+    throw new Error(`Cannot load ${featuresPath}`, { cause: error })
+  }
+  if (!rawFeatures || typeof rawFeatures !== "object" || Array.isArray(rawFeatures)) {
+    throw new Error(`${featuresPath}: expected an object catalog`)
+  }
+  for (const [id, entry] of Object.entries(rawFeatures)) {
+    if (id === "$comment") continue
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`${featuresPath}: feature "${id}" must be an object`)
+    }
+    const feature = entry as Record<string, unknown>
+    if (typeof feature.name !== "string" || !(feature.name as string).trim()) {
+      throw new Error(`${featuresPath}: feature "${id}" requires a nonempty name`)
+    }
+    if (feature.slug !== undefined && (typeof feature.slug !== "string" || !(feature.slug as string).trim())) {
+      throw new Error(`${featuresPath}: feature "${id}" has an invalid slug`)
+    }
+    if (
+      feature.tags !== undefined &&
+      (!Array.isArray(feature.tags) || feature.tags.some((tag) => typeof tag !== "string" || !tag.trim()))
+    ) {
+      throw new Error(`${featuresPath}: feature "${id}" has invalid tags`)
+    }
+  }
+  const featuresData = rawFeatures as Record<string, { name: string; slug?: string; tags?: string[] }>
+  const tags = new Set<string>()
+  for (const [id, entry] of Object.entries(featuresData)) {
+    if (id === "$comment") continue
+    for (const tag of entry.tags ?? []) {
+      tags.add(tag)
+    }
+  }
 
   // Load tag labels from content/standards.json
   const standardsData = JSON.parse(readFileSync(join(docsDir, "..", "content", "standards.json"), "utf-8")) as Record<
@@ -157,18 +162,15 @@ function buildSidebar() {
     "unicode",
   ]
 
-  // Determine categories and features from features.json
+  // Determine categories and features from the same required catalog.
   const categories = new Map<string, Array<{ id: string; name: string; slug: string }>>()
-  try {
-    const raw = JSON.parse(readFileSync(featuresPath, "utf-8"))
-    delete raw.$comment
-    for (const [id, entry] of Object.entries(raw) as [string, any][]) {
-      const cat = id.split(".")[0]
-      if (!categories.has(cat)) categories.set(cat, [])
-      const slug = entry.slug ?? id.replaceAll(".", "-")
-      categories.get(cat)!.push({ id, name: entry.name, slug })
-    }
-  } catch {}
+  for (const [id, entry] of Object.entries(featuresData)) {
+    if (id === "$comment") continue
+    const cat = id.split(".")[0]
+    if (!categories.has(cat)) categories.set(cat, [])
+    const slug = entry.slug ?? id.replaceAll(".", "-")
+    categories.get(cat)!.push({ id, name: entry.name, slug })
+  }
 
   const sortedCategories = [...categories.keys()].sort((a, b) => {
     const ai = categoryOrder.indexOf(a)
@@ -181,8 +183,8 @@ function buildSidebar() {
 
   // Load historical terminals from content/terminals.json
   const historicalTerminals: Array<{ text: string; link: string; year: number }> = []
-  for (const [, entry] of Object.entries(terminalsData as Record<string, any>)) {
-    if (entry.historical && entry.slug && entry.label) {
+  for (const entry of Object.values(terminalsData)) {
+    if (entry.historical) {
       historicalTerminals.push({
         text: `${entry.label} (${entry.year})`,
         link: `/terminals/${entry.slug}`,
@@ -192,39 +194,14 @@ function buildSidebar() {
   }
   historicalTerminals.sort((a, b) => a.year - b.year)
 
-  // Load app terminals from content/probes-apps/ directory
-  const appTerminals: Array<{ text: string; link: string }> = []
-  try {
-    const probesAppsDir = join(docsDir, "..", "content", "probes-apps")
-    const appFiles = readdirSync(probesAppsDir).filter((f: string) => f.endsWith(".json"))
-    const seen = new Set<string>()
-    for (const file of appFiles) {
-      try {
-        const raw = JSON.parse(readFileSync(join(probesAppsDir, file), "utf-8"))
-        if (!raw.terminal || seen.has(raw.terminal)) continue
-        seen.add(raw.terminal)
-        const terminalsData = JSON.parse(
-          readFileSync(join(docsDir, "..", "content", "terminals.json"), "utf-8"),
-        ) as Record<string, { label?: string }>
-        const label = terminalsData[raw.terminal]?.label ?? raw.terminal
-        const slug = label
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/-+$/, "")
-        appTerminals.push({ text: label, link: `/terminals/${slug}` })
-      } catch {}
-    }
-    appTerminals.sort((a, b) => a.text.localeCompare(b.text))
-  } catch {}
-
   // Build terminal groups by type
   const termAppTerminals: Array<{ text: string; link: string }> = []
   const termLibraries: Array<{ text: string; link: string }> = []
   const termMultiplexers: Array<{ text: string; link: string }> = []
 
   const seenSlugs = new Set<string>()
-  for (const [key, entry] of Object.entries(terminalsData as Record<string, any>)) {
-    if (entry.historical || !entry.slug || !entry.label) continue
+  for (const entry of Object.values(terminalsData)) {
+    if (entry.historical) continue
     if (seenSlugs.has(entry.slug)) continue
     seenSlugs.add(entry.slug)
     const item = { text: entry.label, link: `/terminals/${entry.slug}` }
@@ -361,7 +338,6 @@ function buildSidebar() {
 
   return {
     sidebar,
-    terminals,
     allTerminals,
     termAppTerminals,
     termLibraries,
