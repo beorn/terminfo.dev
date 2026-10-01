@@ -206,10 +206,16 @@ export function loadFullProbes(): ProbeData {
   for (const feature of features) (categories[feature.category] ??= []).push(feature)
 
   const terminalPath = join(contentDir, "terminals.json")
-  const terminalContent = JSON.parse(readFileSync(terminalPath, "utf8")) as Record<string, BackendMeta>
+  const terminalContent = parseJsonStrict(terminalPath, readFileSync(terminalPath, "utf8"))
+  if (!terminalContent || typeof terminalContent !== "object" || Array.isArray(terminalContent)) {
+    throw new Error(`${terminalPath}: expected terminal catalog object`)
+  }
   const meta = loadBackendMeta()
   for (const [id, terminal] of Object.entries(terminalContent)) {
-    meta[id] = { ...meta[id], ...terminal }
+    if (!terminal || typeof terminal !== "object" || Array.isArray(terminal)) {
+      throw new Error(`${terminalPath}: ${id} requires a terminal metadata object`)
+    }
+    meta[id] = { ...meta[id], ...(terminal as BackendMeta) }
   }
   for (const [key, { selected }] of byTarget) {
     const id = selected.target.id
