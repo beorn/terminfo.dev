@@ -409,7 +409,14 @@ const breadcrumbParent = (() => {
 
 .score-card .result-counts li {
   margin: 0;
+  padding-top: 0.35em;
+  border-top: 3px solid;
 }
+.score-card .result-counts li:nth-child(1) { border-color: #10b981; }
+.score-card .result-counts li:nth-child(2) { border-color: #ef4444; }
+.score-card .result-counts li:nth-child(3) { border-color: #8b5cf6; }
+.score-card .result-counts li:nth-child(4) { border-color: var(--vp-c-text-3); }
+.score-card .result-counts li:nth-child(5) { border-color: #a34620; }
 .score-card .result-counts strong { display: block; font-size: 1.35em; }
 .score-card .result-counts small { display: block; color: var(--vp-c-text-2); font-size: 0.8em; }
 
