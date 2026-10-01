@@ -18,7 +18,6 @@ const runs = [defaultRun, ...JSON.parse(p.otherRuns || '[]')].filter(Boolean)
 const runSha = ref(defaultRun?.sha256 || '')
 const selectedRun = computed(() => runs.find(run => run.sha256 === runSha.value))
 const counts = computed(() => selectedRun.value?.counts)
-const score = computed(() => counts.value?.conclusive ? Math.round(counts.value.supported / counts.value.conclusive * 100) : null)
 const inconclusive = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'inconclusive').length)
 const errors = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'error').length)
 function runLabel(run) {
@@ -146,29 +145,36 @@ const breadcrumbParent = (() => {
 <div v-if="!isHistorical && selectedRun" class="score-card">
   <h2 class="results-heading">Feature support</h2>
   <p class="selected-run">{{ p.terminalName }} {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
-  <p class="score-detail">Recorded suite: {{ selectedRun.suiteFreshness }}. Results from different suites are not a direct version-to-version comparison.</p>
+  <p class="score-detail">Recorded suite: {{ selectedRun.suiteFreshness }} · {{ selectedRun.suite.observed }}/{{ selectedRun.suite.expected ?? '?' }} results recorded. A recorded result does not mean its check ran. Results from different suites are not directly comparable.</p>
+  <div v-if="runs.length > 1" class="run-picker">
+    <label for="reviewed-run">Version and configuration</label>
+    <select id="reviewed-run" v-model="runSha">
+      <option v-for="run in runs" :key="run.sha256" :value="run.sha256">{{ runLabel(run) }}</option>
+    </select>
+    <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
+  </div>
+  <p class="result-share-label">Results across {{ counts.catalog }} catalog features</p>
+  <div v-if="counts.catalog > 0" class="result-share" aria-hidden="true">
+    <span v-if="counts.supported" class="result-share-supported" :style="{ width: `${counts.supported / counts.catalog * 100}%` }"></span>
+    <span v-if="counts.unsupported" class="result-share-unsupported" :style="{ width: `${counts.unsupported / counts.catalog * 100}%` }"></span>
+    <span v-if="inconclusive" class="result-share-inconclusive" :style="{ width: `${inconclusive / counts.catalog * 100}%` }"></span>
+    <span v-if="counts.notTested" class="result-share-not-tested" :style="{ width: `${counts.notTested / counts.catalog * 100}%` }"></span>
+    <span v-if="errors" class="result-share-error" :style="{ width: `${errors / counts.catalog * 100}%` }"></span>
+  </div>
   <ul class="result-counts">
-    <li><strong>{{ counts.supported }}</strong> supported</li>
-    <li><strong>{{ counts.unsupported }}</strong> unsupported</li>
-    <li><strong>{{ inconclusive }}</strong> inconclusive</li>
-    <li><strong>{{ counts.notTested }}</strong> not tested</li>
-    <li><strong>{{ errors }}</strong> errors</li>
+    <li><strong>{{ counts.supported }}</strong> supported <small>Positive evidence</small></li>
+    <li><strong>{{ counts.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
+    <li><strong>{{ inconclusive }}</strong> inconclusive <small>Cannot decide</small></li>
+    <li><strong>{{ counts.notTested }}</strong> not tested <small>No observation</small></li>
+    <li><strong>{{ errors }}</strong> errors <small>Probe error</small></li>
   </ul>
-  <p class="score-detail">Inconclusive means the evidence cannot establish support, including checks blocked by permissions or policy. Not tested means no observation was recorded. <a href="/contribute#reading-results">How to read results</a></p>
+  <p class="score-detail">Inconclusive includes checks blocked by permissions or policy before execution. This distribution is not an overall compatibility score. <a href="/contribute#reading-results">How to read results</a></p>
   <details class="result-counting">
     <summary>How these results are counted</summary>
     <p>{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. This includes checks that could not run, such as a probe refused by a permission policy.</p>
-    <p v-if="counts.conclusive">{{ counts.supported }} of {{ counts.conclusive }} conclusive results are supported ({{ score }}%). This percentage excludes {{ inconclusive }} inconclusive results, {{ errors }} errors and {{ counts.notTested }} untested features; it does not measure overall compatibility.</p>
+    <p v-if="counts.conclusive">Of {{ counts.conclusive }} results that could be decided, {{ counts.supported }} were supported and {{ counts.unsupported }} were unsupported. Inconclusive, error and not-tested results are separate.</p>
     <p v-else>No conclusive results in this reviewed run.</p>
   </details>
-</div>
-
-<div v-if="selectedRun && runs.length > 1" class="run-picker">
-  <label for="reviewed-run">Version and configuration</label>
-  <select id="reviewed-run" v-model="runSha">
-    <option v-for="run in runs" :key="run.sha256" :value="run.sha256">{{ runLabel(run) }}</option>
-  </select>
-  <p>Selecting a version or configuration replaces all results and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
 </div>
 
 <details v-if="selectedRun" class="run-context">
@@ -383,6 +389,16 @@ const breadcrumbParent = (() => {
 .selected-run { margin: 0.5em 0 1em; color: var(--vp-c-text-2); }
 .terminal-about summary, .analysis summary { cursor: pointer; font-weight: 600; }
 
+.score-card .run-picker { margin: 1em 0; }
+.result-share-label { margin: 1em 0 0.35em; font-weight: 600; }
+.result-share { display: flex; height: 12px; overflow: hidden; border-radius: 6px; background: var(--vp-c-divider); }
+.result-share span { display: block; height: 100%; }
+.result-share-supported { background: #10b981; }
+.result-share-unsupported { background: #ef4444; }
+.result-share-inconclusive { background: #8b5cf6; }
+.result-share-not-tested { background: var(--vp-c-text-3); }
+.result-share-error { background: #a34620; }
+
 .score-card .result-counts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
@@ -395,6 +411,7 @@ const breadcrumbParent = (() => {
   margin: 0;
 }
 .score-card .result-counts strong { display: block; font-size: 1.35em; }
+.score-card .result-counts small { display: block; color: var(--vp-c-text-2); font-size: 0.8em; }
 
 .result-counting summary {
   cursor: pointer;

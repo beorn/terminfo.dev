@@ -336,9 +336,10 @@ onBeforeUnmount(() => {
           {{ status.text }}<template v-if="cell"> · {{ methodLabel }}</template>
         </p>
         <p v-if="cell?.note">{{ cell.note }}</p>
-        <p v-if="cell?.evidence === 'query'">
-          This result covers the recorded query only, not other requests or the protocol's full behavior.
+        <p v-if="cell?.evidence === 'query' && cell?.conclusive">
+          This result is based on the query's recorded evidence, not every use of this feature.
         </p>
+        <p v-else-if="cell?.evidence === 'query'">This query did not establish a yes-or-no result for the feature.</p>
         <p v-if="cell?.reason">Reason: {{ cell.reason }}</p>
         <p v-if="selectionExplanation">{{ selectionExplanation }}</p>
         <p v-else-if="cell?.evidence === 'none'">This probe made no terminal measurement.</p>
@@ -365,6 +366,7 @@ onBeforeUnmount(() => {
             </p>
             <template v-if="assertions.length">
               <h4>Expected and observed</h4>
+              <p>Original assertion values, shown as recorded.</p>
               <ul class="result-evidence__assertions">
                 <li v-for="(assertion, index) in assertions" :key="index">
                   <strong>{{ assertion.kind }}</strong
