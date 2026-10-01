@@ -722,9 +722,9 @@ strips, or mishandles.
 
 @media (max-width: 900px) {
   .summary-row { flex-wrap: wrap; }
-  .summary-bar { order: 1; flex-basis: 100%; }
-  .summary-pct { order: 2; width: auto; text-align: left; }
-  .summary-counts { order: 3; width: 100%; text-align: left; }
+  .VPHome .summary-bar { order: 1; flex-basis: 100%; }
+  .VPHome .summary-pct { order: 2; width: auto; text-align: left; }
+  .VPHome .summary-counts { order: 3; width: 100%; text-align: left; }
 }
 
 /* Filters */
