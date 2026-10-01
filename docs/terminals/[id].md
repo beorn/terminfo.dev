@@ -441,6 +441,10 @@ const breadcrumbParent = (() => {
 }
 
 @media (max-width: 640px) {
+  .backend-page .feature-table td:first-child {
+    overflow-wrap: anywhere;
+  }
+
   .backend-page .feature-table th:last-child,
   .backend-page .feature-table .note-cell {
     display: none;
