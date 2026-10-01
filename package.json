@@ -17,7 +17,7 @@
     "analysis": "bun scripts/generate-analysis.ts",
     "analysis:validate": "bun scripts/generate-analysis.ts --validate",
     "dev": "vitepress dev docs",
-    "build": "bun scripts/suite-manifest.ts --check && bunx --bun vitepress build docs",
+    "build": "bun scripts/suite-manifest.ts --check && bunx --bun vitepress build docs && bun -e 'import { assertDeploymentLimits } from \"./scripts/generate-api.ts\"; const { fileCount, fileLimit, fileHeadroom } = assertDeploymentLimits(\"docs/.vitepress/dist\"); console.log(`Cloudflare Pages Free-plan file count: ${fileCount}/${fileLimit} (${fileHeadroom} remaining; account tier unverified)`);'",
     "preview": "vitepress preview docs",
     "validate": "bun scripts/validate.ts && bun scripts/suite-manifest.ts --check",
     "check-404s": "bun scripts/check-404s.ts",

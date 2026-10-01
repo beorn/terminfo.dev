@@ -62,10 +62,8 @@ export function assertDeploymentLimits(dir: string): { fileCount: number; fileLi
   if (fileCount > maxOutputFiles) {
     throw new Error(`${dir}: ${fileCount} files exceeds the ${maxOutputFiles}-file Cloudflare Pages Free-plan limit`)
   }
+  if (fileCount === 0) throw new Error(`${dir}: deployment output contains no files`)
   const fileHeadroom = maxOutputFiles - fileCount
-  console.log(
-    `Cloudflare Pages Free-plan file count: ${fileCount}/${maxOutputFiles} (${fileHeadroom} remaining; account tier unverified)`,
-  )
   return { fileCount, fileLimit: maxOutputFiles, fileHeadroom }
 }
 

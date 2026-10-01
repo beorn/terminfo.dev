@@ -2,7 +2,7 @@ import { defineConfig } from "vitepress"
 import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { generateApi, assertDeploymentLimits } from "../../scripts/generate-api"
+import { generateApi } from "../../scripts/generate-api"
 import { buildStamp, createBuildMetadata } from "../../scripts/build-metadata"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
 
@@ -781,7 +781,6 @@ export default defineConfig({
     mkdirSync(apiDir, { recursive: true })
     writeFileSync(join(siteConfig.outDir, "build.json"), metadataJson)
     writeFileSync(join(apiDir, "build.json"), metadataJson)
-    assertDeploymentLimits(siteConfig.outDir)
     console.log(`[Build] Source ${buildMetadata.sourceCommit.slice(0, 10)} · ${buildMetadata.context}`)
   },
 })

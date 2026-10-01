@@ -615,6 +615,16 @@ describe("selected-run consumer parity", () => {
     }
   })
 
+  // An empty deployment directory is a wrong build target, not evidence of spare capacity.
+  it("refuses an empty deployment tree instead of certifying the wrong directory", () => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-empty-deploy-"))
+    try {
+      expect(() => assertDeploymentLimits(out)).toThrow(`${out}: deployment output contains no files`)
+    } finally {
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
   // The renderer writes files outside the API writer; its final deployment check must cover them too.
   it.each(["oversized", "symlink"])("rejects %s site assets at the final deployment boundary", (kind) => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-site-asset-limit-"))
