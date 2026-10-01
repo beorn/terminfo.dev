@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
             <p class="result-evidence__context">
               {{ targetName
               }}<template v-if="version">
-                {{ version.target.version }} · {{ version.target.os || "OS not recorded" }}</template
+                · {{ version.target.version }} · {{ version.target.os || "OS not recorded" }}</template
               >
             </p>
           </div>
