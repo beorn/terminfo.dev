@@ -406,13 +406,13 @@ raw="$run_dir/raw"
 # Resolve the declared workspace, then freeze the single CLI producer's output
 # with its public package imports into the content-addressed image input.
 (
-  cd "$code_root"
-  @in -- bun install --frozen-lockfile --ignore-scripts
-  @in -- bun vendor/terminfo.dev/scripts/build-cli.ts
-  mkdir -p "$prep/bundle"
+  cd "$code_root" &&
+  @in -- bun install --frozen-lockfile --ignore-scripts &&
+  @in -- bun vendor/terminfo.dev/scripts/build-cli.ts &&
+  mkdir -p "$prep/bundle" &&
   @in -- bun build \
     vendor/terminfo.dev/packages/terminfo.dev/dist/terminfo.bundle.mjs \
-    --target=bun --outdir "$prep/bundle"
+    --target=bun --outdir "$prep/bundle" &&
   mv "$prep/bundle/terminfo.bundle.js" "$prep/bundle/index.js"
 ) > "$prep/bundle-build.log" 2>&1 || {
   cat "$prep/bundle-build.log" >&2

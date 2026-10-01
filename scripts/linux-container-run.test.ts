@@ -1,12 +1,23 @@
 /**
  * @failure A missing or mismatched container receipt is accepted as a host image's completed run.
  * @level l1 — invokes the real shell receipt composer on owned temporary files.
- * @consumer scripts/linux-container-run.sh host-side run receipt.
+ * @consumer scripts/linux-container-run.sh host-side run receipt and prerequisite handling.
+ * @reach fs-walk <fixture-only: readdir enumerates the owned temporary run output only>
  * @testonly none
  */
 
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -137,5 +148,60 @@ describe("explicit Linux image selection", () => {
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain(error)
     expect(existsSync(join(dir, "prep"))).toBe(false)
+  })
+})
+
+/** The real launcher must stop after a failed frozen dependency prerequisite, even inside its checked group. */
+describe("Linux runner prerequisite failure", () => {
+  it("retains the failed install and never invokes CLI build, Nix or Docker afterwards", () => {
+    const root = join(dir, "code")
+    const scripts = join(root, "vendor/terminfo.dev/scripts")
+    const bins = join(dir, "bin")
+    const output = join(dir, "runs")
+    const calls = join(dir, "calls.log")
+    mkdirSync(scripts, { recursive: true })
+    mkdirSync(bins)
+    writeFileSync(join(root, "flake.nix"), "{}")
+    writeFileSync(join(root, "bun.lock"), "{}")
+    const fixtureLauncher = join(scripts, "linux-container-run.sh")
+    copyFileSync(launcher, fixtureLauncher)
+    for (const name of ["@in", "nix", "docker"]) {
+      const path = join(bins, name)
+      writeFileSync(
+        path,
+        `#!/usr/bin/env bash
+printf '%s %s\n' "$(basename "$0")" "$*" >> "$CALL_LOG"
+if [[ "$1 $2 $3" == "-- bun install" ]]; then
+  echo "fixture frozen install failed (exit 41)" >&2
+  exit 41
+fi
+exit 0
+`,
+      )
+      chmodSync(path, 0o755)
+    }
+    const result = spawnSync(
+      "bash",
+      [fixtureLauncher, "--preset", "current", "--clipboard-profile", "default", output],
+      {
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${bins}:${process.env.PATH ?? ""}`, CALL_LOG: calls },
+        timeout: 5_000,
+      },
+    )
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("fixture frozen install failed (exit 41)")
+    expect(result.stderr).toContain("Offline frozen runner build failed; preserved at")
+    const run = readdirSync(output)
+    expect(run).toHaveLength(1)
+    expect(readFileSync(join(output, run[0]!, "prep/bundle-build.log"), "utf8")).toContain(
+      "fixture frozen install failed (exit 41)",
+    )
+    expect(readFileSync(calls, "utf8").trim().split("\n")).toEqual([
+      "@in -- bun install --frozen-lockfile --ignore-scripts",
+    ])
+    expect(existsSync(join(output, run[0]!, "prep/bundle"))).toBe(false)
+    expect(existsSync(join(output, run[0]!, "prep/nix-build.log"))).toBe(false)
+    expect(existsSync(join(output, run[0]!, "raw/run-receipt.json"))).toBe(false)
   })
 })
