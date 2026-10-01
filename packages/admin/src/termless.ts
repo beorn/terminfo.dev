@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url"
 import { parseVitestJson, fromPerBackendFiles, type CensusData } from "../parse.ts"
 import { manifest, backends as allBackendNames, isReady, entry } from "@termless/core"
 import { renderReport } from "../report.tsx"
-import { runVersionedProbes, probeHash, loadVersionsCatalog } from "../versions.ts"
+import { probeHash } from "../versions.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -20,20 +20,17 @@ const DEFAULT_RESULTS_DIR = join(ROOT, "content", "probes-libs")
 
 interface BackendSelector {
   backend: string
-  version: string | null // null = latest, "*" = all from versions.json
+  version: null // Only the installed backend is probed.
 }
 
 function parseSelector(arg: string): BackendSelector[] {
-  const slashIdx = arg.indexOf("/")
-  let name: string
-  let version: string | null = null
-
-  if (slashIdx >= 0) {
-    name = arg.slice(0, slashIdx)
-    version = arg.slice(slashIdx + 1) || null
-  } else {
-    name = arg
+  if (arg.includes("/")) {
+    throw new Error(
+      `Versioned backend installation is no longer available: ${arg}. Probe the installed backend without a version selector.`,
+    )
   }
+  let name = arg
+  const version = null
 
   // Resolve upstream URI to backend name
   if (name.includes(":")) {
@@ -48,15 +45,6 @@ function parseSelector(arg: string): BackendSelector[] {
   const all = allBackendNames()
   if (!all.includes(name)) {
     throw new Error(`Unknown backend: ${name}\nAvailable: ${all.join(", ")}`)
-  }
-
-  if (version === "*") {
-    const catalog = loadVersionsCatalog()
-    const config = catalog.backends[name]
-    if (!config) {
-      throw new Error(`No version history for ${name} in versions.json`)
-    }
-    return config.versions.map((v) => ({ backend: name, version: v }))
   }
 
   return [{ backend: name, version }]
@@ -227,8 +215,7 @@ export async function runTermlessProbes(selectors: string[], opts: { force?: boo
   }
 
   const parsed = selectors.length > 0 ? selectors.flatMap(parseSelector) : null
-  const versionedSelectors = parsed?.filter((s) => s.version !== null) ?? []
-  const latestSelectors = parsed?.filter((s) => s.version === null) ?? []
+  const latestSelectors = parsed ?? []
   const hash = probeHash()
 
   // Run latest probes
@@ -274,25 +261,6 @@ export async function runTermlessProbes(selectors: string[], opts: { force?: boo
       }
 
       saveResults(latestData, resultsDir, hash)
-    }
-  }
-
-  // Run versioned probes
-  if (versionedSelectors.length > 0) {
-    console.log(
-      `\nRunning versioned probes: ${versionedSelectors.map((s) => `${s.backend}/${s.version}`).join(", ")}\n`,
-    )
-
-    const results = await runVersionedProbes({
-      force: opts.force,
-      backends: [...new Set(versionedSelectors.map((s) => s.backend))],
-      resultsDir,
-    })
-
-    for (const r of results) {
-      if (r.skipped) console.log(`  ${r.backend}@${r.version} — cached`)
-      else if (r.error) console.log(`  ${r.backend}@${r.version} — error: ${r.error}`)
-      else console.log(`  ${r.backend}@${r.version} — ${r.passCount}/${r.featureCount}`)
     }
   }
 
