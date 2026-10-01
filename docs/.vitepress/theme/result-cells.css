@@ -181,6 +181,11 @@
   margin: 16px 0 6px;
   font-size: 0.9rem;
 }
+.result-evidence__context {
+  margin: 6px 0 0;
+  color: var(--vp-c-text-2);
+  font-size: 0.9rem;
+}
 .result-evidence__eyebrow {
   margin: 0 0 4px;
   color: var(--vp-c-text-2);
@@ -238,6 +243,9 @@
 .result-evidence__raw {
   max-height: 220px;
   overflow: auto;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.85rem;
+  line-height: 1.5;
   padding: 12px;
   border-radius: 5px;
   background: var(--vp-c-bg-soft);

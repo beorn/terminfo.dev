@@ -34,6 +34,7 @@ function featureTooltip(f) {
 
 const testDate = computed(() => selectedRun.value ? new Date(selectedRun.value.measuredAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) : '')
 const isHistorical = p.historical === 'true'
+const isCurrentApp = !isHistorical && (p.terminalType === 'app' || p.terminalType === 'app+headless')
 
 const typeBadge = (() => {
   const t = p.terminalType
@@ -113,18 +114,22 @@ const breadcrumbParent = (() => {
 </div>
 
 <div class="terminal-links">
-  <span v-if="p.terminalUrl"><a :href="p.terminalUrl" target="_blank" rel="noopener">{{ p.terminalUrl }}</a></span>
+  <span v-if="p.terminalUrl"><a :href="p.terminalUrl" target="_blank" rel="noopener">Website</a></span>
   <span v-if="p.terminalRepo"> · <a :href="p.terminalRepo" target="_blank" rel="noopener">Source</a></span>
   <span v-if="p.terminalAuthor"> · by {{ p.terminalAuthor }}</span>
 </div>
 
-<div v-if="p.terminalBody" class="terminal-body" v-html="p.terminalBody"></div>
+<details v-if="p.terminalBody && isCurrentApp" class="terminal-about">
+  <summary>About {{ p.terminalName }}</summary>
+  <div class="terminal-body" v-html="p.terminalBody"></div>
+</details>
+<div v-else-if="p.terminalBody" class="terminal-body" v-html="p.terminalBody"></div>
 
 <div v-if="isHistorical && p.significance" class="historical-significance">
   <strong>Significance:</strong> {{ p.significance }}
 </div>
 
-<div v-if="!isHistorical && p.backendDescription" class="backend-info">
+<div v-if="!isHistorical && !isCurrentApp && p.backendDescription" class="backend-info">
   <strong>Backend:</strong> {{ p.backendDescription }}
   <span v-if="p.backendType"> ({{ p.backendType }})</span>
   <span v-if="selectedRun || p.version"> · v{{ selectedRun?.target.version || p.version }}</span>
@@ -139,15 +144,16 @@ const breadcrumbParent = (() => {
 </p>
 
 <div v-if="!isHistorical && selectedRun" class="score-card">
-  <h2 class="results-heading">Results from this run</h2>
+  <h2 class="results-heading">Feature support</h2>
+  <p class="selected-run">{{ p.terminalName }} {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
   <ul class="result-counts">
     <li><strong>{{ counts.supported }}</strong> supported</li>
     <li><strong>{{ counts.unsupported }}</strong> unsupported</li>
     <li><strong>{{ inconclusive }}</strong> inconclusive</li>
+    <li><strong>{{ counts.notTested }}</strong> not tested</li>
     <li><strong>{{ errors }}</strong> errors</li>
-    <li><strong>{{ counts.notTested }}</strong> untested</li>
   </ul>
-  <p class="score-detail">Inconclusive means support is still unknown. Each result covers only its recorded check. <a href="/contribute#reading-results">How to read results</a></p>
+  <p class="score-detail">Inconclusive means the evidence cannot establish support, including checks blocked by permissions or policy. Not tested means no observation was recorded. <a href="/contribute#reading-results">How to read results</a></p>
   <details class="result-counting">
     <summary>How these results are counted</summary>
     <p>{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. This includes checks that could not run, such as a probe refused by a permission policy.</p>
@@ -156,15 +162,16 @@ const breadcrumbParent = (() => {
   </details>
 </div>
 
-<details v-if="selectedRun" class="run-context">
-  <summary>Test run: {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · {{ testDate }} (UTC)<template v-if="runs.length > 1"> · {{ runs.length }} runs available</template></summary>
-<div v-if="runs.length > 1" class="run-picker">
+<div v-if="selectedRun && runs.length > 1" class="run-picker">
   <label for="reviewed-run">Version and configuration</label>
   <select id="reviewed-run" v-model="runSha">
     <option v-for="run in runs" :key="run.sha256" :value="run.sha256">{{ runLabel(run) }}</option>
   </select>
-  <p>Each choice keeps its own observations and evidence. The matrix uses the default context.</p>
+  <p>Selecting a version or configuration replaces all results and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
 </div>
+
+<details v-if="selectedRun" class="run-context">
+  <summary>Test environment</summary>
 
   <dl>
     <dt>Run</dt><dd><a href="/api/v2/data.json">{{ selectedRun.sha256 }}</a></dd>
@@ -177,14 +184,11 @@ const breadcrumbParent = (() => {
   </dl>
 </details>
 
-<div v-if="p.analysis && selectedRun?.sha256 === defaultRun?.sha256" class="analysis">
-  <div class="analysis-header">
-    <span class="analysis-label">Analysis</span>
-    <span class="analysis-date">{{ p.analysisDate }}</span>
-  </div>
+<details v-if="p.analysis && selectedRun?.sha256 === defaultRun?.sha256" class="analysis">
+  <summary>Analysis · {{ p.analysisDate }}</summary>
   <div class="analysis-body" v-html="p.analysis"></div>
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
-</div>
+</details>
 
 <div v-if="versions.length > 1 && selectedRun?.sha256 === defaultRun?.sha256" class="version-history">
   <h2 id="version-history">Version History</h2>
@@ -371,14 +375,17 @@ const breadcrumbParent = (() => {
   margin: 0;
   padding: 0;
   border: 0;
-  font-size: 1em;
+  font-size: 1.25em;
   font-weight: 600;
 }
 
+.selected-run { margin: 0.5em 0 1em; color: var(--vp-c-text-2); }
+.terminal-about summary, .analysis summary { cursor: pointer; font-weight: 600; }
+
 .score-card .result-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5em 1.5em;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.5em 1em;
   padding: 0;
   list-style: none;
 }
@@ -386,6 +393,7 @@ const breadcrumbParent = (() => {
 .score-card .result-counts li {
   margin: 0;
 }
+.score-card .result-counts strong { display: block; font-size: 1.35em; }
 
 .result-counting summary {
   cursor: pointer;

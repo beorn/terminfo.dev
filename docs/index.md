@@ -3,7 +3,7 @@ layout: home
 hero:
   name: "Terminfo.dev"
   text: "Can your terminal do that?"
-  tagline: "Feature support tables for terminal emulators — powered by <a href='#how-this-works'>Termless</a>, Playwright for terminals"
+  tagline: "Feature support tables for terminal emulators"
   actions:
     - theme: brand
       text: Terminal Applications

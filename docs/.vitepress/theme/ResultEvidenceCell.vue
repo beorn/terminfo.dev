@@ -58,7 +58,13 @@ const shortLabel = computed(() => {
   if (status.value.text === "Probe error") return "Error"
   return status.value.text
 })
-const methodLabel = computed(() => (props.cell?.evidence === "none" ? "Not measured" : (props.cell?.evidence ?? "")))
+const methodLabel = computed(() =>
+  props.cell?.evidence === "query"
+    ? "Terminal query"
+    : props.cell?.evidence === "none"
+      ? "Not measured"
+      : (props.cell?.evidence ?? ""),
+)
 const selectionExplanation = computed(() => {
   if (!props.version) return "No reviewed current result is available for this context."
   if (!props.cell) return "This feature was not measured by this selected run."
@@ -313,7 +319,13 @@ onBeforeUnmount(() => {
         <div class="result-evidence__dialog-header">
           <div>
             <p class="result-evidence__eyebrow">Result details</p>
-            <h2 :id="dialogTitleId">{{ featureName }} · {{ targetName }}</h2>
+            <h2 :id="dialogTitleId">{{ featureName }}</h2>
+            <p class="result-evidence__context">
+              {{ targetName
+              }}<template v-if="version">
+                {{ version.target.version }} · {{ version.target.os || "OS not recorded" }}</template
+              >
+            </p>
           </div>
           <button type="button" class="result-evidence__close" aria-label="Close result details" @click="closeDialog">
             Close
@@ -321,10 +333,7 @@ onBeforeUnmount(() => {
         </div>
 
         <p class="result-evidence__outcome" :class="`result-evidence__outcome--${status.tone}`">
-          {{ status.text
-          }}<template v-if="cell">
-            · {{ methodLabel }}<template v-if="cell.evidence !== 'none'"> method</template></template
-          >
+          {{ status.text }}<template v-if="cell"> · {{ methodLabel }}</template>
         </p>
         <p v-if="cell?.note">{{ cell.note }}</p>
         <p v-if="cell?.evidence === 'query'">
@@ -352,16 +361,19 @@ onBeforeUnmount(() => {
           </p>
           <template v-else-if="evidenceDocument">
             <p v-if="correction">
-              Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}. Reviewed
-              by {{ correction.reviewer }}: {{ correction.reason }}
+              This result was corrected after review. See Review history for the original result and reason.
             </p>
-            <template v-if="cell.evidence === 'pixels' && probeGuidanceText">
-              <h4>Current probe guidance</h4>
-              <p>{{ probeGuidanceText }}</p>
-              <p>
-                Current catalog guidance, not a recorded assertion or proof. Parser checks do not establish visible
-                styling.
-              </p>
+            <template v-if="assertions.length">
+              <h4>Expected and observed</h4>
+              <ul class="result-evidence__assertions">
+                <li v-for="(assertion, index) in assertions" :key="index">
+                  <strong>{{ assertion.kind }}</strong
+                  ><template v-if="assertion.action"> · {{ assertion.action }}</template>
+                  <span>Expected: {{ assertion.expected }}</span>
+                  <span>Observed: {{ assertion.observed }}</span>
+                  <span v-if="assertion.note">{{ assertion.note }}</span>
+                </li>
+              </ul>
             </template>
             <template v-if="evidenceFrames.length">
               <h4>Screenshots</h4>
@@ -394,8 +406,20 @@ onBeforeUnmount(() => {
               </p>
             </template>
 
+            <p v-if="!hasRecordedDetail">No raw evidence was captured for this observation.</p>
+            <details v-if="rawReply !== undefined" class="result-evidence__details">
+              <summary>Technical details · raw trace</summary>
+              <template v-if="rawReply !== undefined">
+                <h4>{{ evidenceDocument.observation.evidence === "none" ? "Collector trace" : "Raw reply" }}</h4>
+                <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
+              </template>
+            </details>
             <details class="result-evidence__details">
               <summary>Review history</summary>
+              <p v-if="correction">
+                Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
+                Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
+              </p>
               <details>
                 <summary>Evidence publication check</summary>
                 <p>{{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
@@ -412,31 +436,19 @@ onBeforeUnmount(() => {
               </template>
             </details>
 
-            <p v-if="!hasRecordedDetail">No raw evidence was captured for this observation.</p>
-            <details v-if="rawReply !== undefined || assertions.length" class="result-evidence__details">
-              <summary>Test details</summary>
-              <template v-if="rawReply !== undefined">
-                <h4>{{ evidenceDocument.observation.evidence === "none" ? "Collector trace" : "Raw reply" }}</h4>
-                <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
-              </template>
-              <template v-if="assertions.length">
-                <h4>Expected and observed</h4>
-                <ul class="result-evidence__assertions">
-                  <li v-for="(assertion, index) in assertions" :key="index">
-                    <strong>{{ assertion.kind }}</strong
-                    ><template v-if="assertion.action"> · {{ assertion.action }}</template>
-                    <span>Expected: {{ assertion.expected }}</span>
-                    <span>Observed: {{ assertion.observed }}</span>
-                    <span v-if="assertion.note">{{ assertion.note }}</span>
-                  </li>
-                </ul>
-              </template>
+            <details v-if="cell.evidence === 'pixels' && probeGuidanceText">
+              <summary>Current probe guidance</summary>
+              <p>{{ probeGuidanceText }}</p>
+              <p>
+                Current catalog guidance, not a recorded assertion or proof. Parser checks do not establish visible
+                styling.
+              </p>
             </details>
           </template>
         </template>
 
         <details class="result-evidence__details">
-          <summary>Run context</summary>
+          <summary>Test environment</summary>
           <dl class="result-evidence__metadata">
             <dt>Feature ID</dt>
             <dd>{{ featureId }}</dd>
