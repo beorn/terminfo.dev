@@ -213,7 +213,7 @@ const breadcrumbParent = (() => {
   </table>
 </div>
 
-<p v-if="selectedRun">Select a result to see its evidence. Results marked “Images” include screenshots.</p>
+<p v-if="selectedRun">Select a result to see its notes and evidence. Results marked “Images” include screenshots.</p>
 
 <div v-for="cat in categories" :key="cat.name" class="category-section">
 
@@ -438,6 +438,13 @@ const breadcrumbParent = (() => {
 .note-cell {
   color: var(--vp-c-text-2);
   font-size: 0.95em;
+}
+
+@media (max-width: 640px) {
+  .backend-page .feature-table th:last-child,
+  .backend-page .feature-table .note-cell {
+    display: none;
+  }
 }
 
 /* cell-yes, cell-partial, cell-no, cell-unknown: use shared result-cells.css */
