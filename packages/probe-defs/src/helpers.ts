@@ -332,15 +332,22 @@ function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum: number
       observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
     }
   }
-  const recognized = state !== "unknown"
+  if (state === "unknown") {
+    return {
+      pass: false,
+      note: `DECRPM mode ${modeNum}: not recognized; mode behavior unmeasured`,
+      response: state,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query" },
+    }
+  }
   return {
-    pass: recognized,
-    note: recognized ? `DECRPM mode ${modeNum}: ${state}` : `DECRPM mode ${modeNum}: not recognized`,
+    pass: true,
+    note: `DECRPM mode ${modeNum}: ${state}`,
     response: state,
-    observation: { outcome: recognized ? "supported" : "unsupported", evidence: "query" },
+    observation: { outcome: "supported", evidence: "query" },
     assertions: [
       {
-        kind: recognized ? "positive" : "negative",
+        kind: "positive",
         expected: `DECRPM mode ${modeNum} recognized (set or reset)`,
         observed: state,
       },

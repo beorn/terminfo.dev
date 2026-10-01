@@ -211,11 +211,19 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
       expect(result.pass).toBe(false)
       expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
       expect(result.assertions ?? []).toEqual([])
+    } else if (state === "unknown") {
+      expect(result.pass).toBe(false)
+      expect(result.response).toBe("unknown")
+      expect(result.observation).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+      })
+      expect(result.assertions ?? []).toEqual([])
     } else {
-      const recognized = state !== "unknown"
-      expect(result.pass).toBe(recognized)
-      expect(result.observation).toMatchObject({ outcome: recognized ? "supported" : "unsupported", evidence: "query" })
-      expect(result.assertions).toMatchObject([{ kind: recognized ? "positive" : "negative", observed: state }])
+      expect(result.pass).toBe(true)
+      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: state }])
     }
   }
   expect(definition.termWrites).toBe("query")

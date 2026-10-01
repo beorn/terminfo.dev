@@ -805,8 +805,13 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: state }])
   }
   const unknown = await decrpm.term(makeContext("unknown"))
-  expect(unknown.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
-  expect(unknown.assertions).toMatchObject([{ kind: "negative", observed: "unknown" }])
+  expect(unknown.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+  expect(unknown.response).toBe("unknown")
+  expect(unknown.assertions).toBeUndefined()
   expect((await decrpm.term(makeContext(null))).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "no-response",

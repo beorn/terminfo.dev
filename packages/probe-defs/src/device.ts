@@ -9,7 +9,6 @@ interface DeviceReply {
   malformed: RegExp
   expected: string
   refusal?: RegExp
-  refusalExpected?: string
   note?: (frame: string) => string | undefined
   direct?: boolean
 }
@@ -36,8 +35,12 @@ function deviceReplyResult(
     return {
       pass: false,
       response: raw,
-      observation: { outcome: "unsupported", evidence: "query", note: "Requested setting or name refused" },
-      assertions: [{ kind: "negative", expected: spec.refusalExpected ?? spec.expected, observed: refusal[0] }],
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+        note: "Requested setting or name refused; other settings or names unmeasured",
+      },
     }
   }
   // Raw bytes remain available for diagnostics, but a frame after DA1 cannot establish a result.
@@ -128,12 +131,11 @@ export const deviceProbes: ProbeDefinition[] = [
   }),
   deviceQuery({
     id: "device.decrqss",
-    query: '\x1bP$q"p\x1b\\',
-    valid: /\x1bP1\$r[0-9]+(?:;[0-9]+)*"p\x1b\\/,
+    query: "\x1bP$qm\x1b\\",
+    valid: /\x1bP1\$r[0-9:;]*m\x1b\\/,
     refusal: /\x1bP0\$r\x1b\\/,
     malformed: /\x1bP[01]\$r/,
-    expected: 'complete DECRQSS status 1 DECSCL parameters ending "p and ST',
-    refusalExpected: "DECRQSS status 1 for the requested DECSCL setting",
+    expected: "complete DECRQSS status 1 SGR parameters ending m and ST",
   }),
   deviceQuery({
     id: "device.xtgettcap",
@@ -142,7 +144,6 @@ export const deviceProbes: ProbeDefinition[] = [
     refusal: /\x1bP0\+r\x1b\\/,
     malformed: /\x1bP[01]\+r/,
     expected: "complete XTGETTCAP status 1 for TN with even-length hex value and ST",
-    refusalExpected: "XTGETTCAP status 1 for the requested TN name",
   }),
   deviceQuery({
     id: "device.decrpm",
@@ -151,7 +152,6 @@ export const deviceProbes: ProbeDefinition[] = [
     refusal: /\x1b\[\?7;0\$y/,
     malformed: /\x1b\[\?[0-9]+;[0-9]*\$y|\x1b\[\?7(?:;|\$)/,
     expected: "complete DECRPM for DECAWM mode 7 with recognized state 1–4",
-    refusalExpected: "DECRPM recognizes queried DECAWM mode 7",
   }),
   deviceQuery({
     id: "device.xtversion",
@@ -423,6 +423,5 @@ export const deviceProbes: ProbeDefinition[] = [
     refusal: /\x1bP0\+R7465726d4e616d65\x1b\\/i,
     malformed: /\x1bP[01]\+R/,
     expected: "XTGETXRES returns a complete status-1 termName resource value",
-    refusalExpected: "XTGETXRES explicitly refuses the termName resource",
   }),
 ]

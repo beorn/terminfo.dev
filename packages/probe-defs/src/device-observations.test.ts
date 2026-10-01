@@ -7,7 +7,7 @@ const replies = [
   { id: "device.status-report", query: "\x1b[5n", valid: "\x1b[0n", partial: "\x1b[4n" },
   { id: "device.secondary-da", query: "\x1b[>c", valid: "\x1b[>0;49;1c", partial: "\x1b[>0;;1c" },
   { id: "device.tertiary-da", query: "\x1b[=c", valid: "\x1bP!|1234ABCD\x1b\\", partial: "\x1bP!|1234ABCD" },
-  { id: "device.decrqss", query: '\x1bP$q"p\x1b\\', valid: '\x1bP1$r61;1"p\x1b\\', partial: "\x1bP1$r" },
+  { id: "device.decrqss", query: "\x1bP$qm\x1b\\", valid: "\x1bP1$r0m\x1b\\", partial: "\x1bP1$r" },
   {
     id: "device.xtgettcap",
     query: "\x1bP+q544e\x1b\\",
@@ -93,7 +93,7 @@ describe("device query observations", () => {
     }
   })
 
-  test("DA1 sentinel before explicit refusals cannot become unsupported", async () => {
+  test("DA1 sentinel and one refused setting cannot establish facility support", async () => {
     const sentinel = "\x1b[?62;52;c"
     for (const [id, refusal] of [
       ["device.decrqss", "\x1bP0$r\x1b\\"],
@@ -109,8 +109,12 @@ describe("device query observations", () => {
       const earlyRaw = refusal + sentinel
       const early = await callback(id).terminal(terminal(earlyRaw))
       expect(early.response, id).toBe(earlyRaw)
-      expect(early.observation, id).toMatchObject({ outcome: "unsupported", evidence: "query" })
-      expect(early.assertions, id).toMatchObject([{ kind: "negative", observed: refusal }])
+      expect(early.observation, id).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+      })
+      expect(early.assertions, id).toBeUndefined()
     }
   })
 
@@ -120,8 +124,12 @@ describe("device query observations", () => {
     const probe = callback("device.decrpm")
     for (const result of [probe.headless(headless(refusal + valid)), await probe.terminal(terminal(refusal + valid))]) {
       expect(result.response).toBe(refusal + valid)
-      expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
-      expect(result.assertions).toMatchObject([{ kind: "negative", observed: refusal }])
+      expect(result.observation).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+      })
+      expect(result.assertions).toBeUndefined()
     }
     for (const result of [probe.headless(headless(valid + refusal)), await probe.terminal(terminal(valid + refusal))]) {
       expect(result.response).toBe(valid + refusal)
@@ -161,7 +169,7 @@ describe("device query observations", () => {
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: "\x1b[?1;2c" }])
   })
 
-  test("complete protocol refusals are scoped negative results; malfunction is still a DSR report", async () => {
+  test("complete single-setting refusals are inconclusive; malfunction is still a DSR report", async () => {
     for (const [id, frame] of [
       ["device.decrqss", "\x1bP0$r\x1b\\"],
       ["device.xtgettcap", "\x1bP0+r\x1b\\"],
@@ -169,8 +177,13 @@ describe("device query observations", () => {
     ] as const) {
       const probe = callback(id)
       for (const result of [probe.headless(headless(frame)), await probe.terminal(terminal(frame))]) {
-        expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
-        expect(result.assertions).toMatchObject([{ kind: "negative", observed: frame }])
+        expect(result.observation).toMatchObject({
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "query",
+          note: "Requested setting or name refused; other settings or names unmeasured",
+        })
+        expect(result.assertions).toBeUndefined()
         expect(result.response).toBe(frame)
       }
     }
@@ -184,7 +197,7 @@ describe("device query observations", () => {
     for (const [id, frame] of [
       ["device.decrpm", "\x1b[?1;1$y"],
       ["device.xtgettcap", "\x1bP1+r5267=78\x1b\\"],
-      ["device.decrqss", "\x1bP1$rm\x1b\\"],
+      ["device.decrqss", '\x1bP1$r61;1"p\x1b\\'],
       ["device.xtversion", "\x1bP>|kitty(0.49.1)"],
       ["device.decrqss", '\x1bP0$r61;1"p\x1b\\'],
       ["device.xtgettcap", "\x1bP0+r544e\x1b\\"],
