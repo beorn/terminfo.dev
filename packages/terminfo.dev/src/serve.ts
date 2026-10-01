@@ -150,8 +150,9 @@ export async function collectProbeRun(
     capture = await createLinuxCapture(captureDirectory, executable)
   }
   let ownedTerminal: OwnedTerminal | undefined
-  if (clipboardReceipt && options.terminalAppOwner)
+  if (clipboardReceipt && options.terminalAppOwner) {
     throw new Error("Collection cannot have both Linux and Terminal.app owners")
+  }
   if (clipboardReceipt) {
     if (!executable) throw new Error("Owned clipboard receipt lacks measured executable")
     ownedTerminal = await createOwnedTerminal({
@@ -316,6 +317,20 @@ export function listDaemons(): DaemonInfo[] {
 }
 
 export function startDaemon(port = 0): void {
+  let ids: string[] | undefined
+  if (process.env.TERMINFO_PROBE_IDS !== undefined) {
+    let value: unknown
+    try {
+      value = JSON.parse(process.env.TERMINFO_PROBE_IDS)
+    } catch {
+      throw new Error("Invalid TERMINFO_PROBE_IDS JSON")
+    }
+    if (!Array.isArray(value) || value.length === 0) throw new Error("TERMINFO_PROBE_IDS requires a nonempty array")
+    const invalid = value.filter((id) => typeof id !== "string" || !ALL_PROBES.some((probe) => probe.id === id))
+    if (invalid.length) throw new Error(`Unknown or inapplicable TERMINFO_PROBE_IDS: ${JSON.stringify(invalid)}`)
+    if (new Set(value).size !== value.length) throw new Error(`Duplicate TERMINFO_PROBE_IDS: ${JSON.stringify(value)}`)
+    ids = value as string[]
+  }
   const terminal = detectTerminal()
   const token = randomBytes(32).toString("hex")
   const runId =
@@ -388,8 +403,8 @@ export function startDaemon(port = 0): void {
           res.end(JSON.stringify({ error: "Probe collection requires GET or POST" }))
           return
         }
-        console.log(s.dim(`[${new Date().toISOString()}] Running ${ALL_PROBES.length} probes...`))
-        const run = await collectProbeRun({ terminalAppOwner, expectedLaunchRunId: runId })
+        console.log(s.dim(`[${new Date().toISOString()}] Running ${ids?.length ?? ALL_PROBES.length} probes...`))
+        const run = await collectProbeRun({ ...(ids && { ids }), terminalAppOwner, expectedLaunchRunId: runId })
         console.log(
           s.dim(
             `Collected ${run.observations.length}/${ALL_PROBES.length} explicit observations; partial=${!run.suiteComplete}`,

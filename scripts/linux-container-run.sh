@@ -31,6 +31,8 @@ compose_receipt() {
       error("container collector bytes disagree with host runner receipt")
     elif ($c.probeRun.runId | type) != "string" or ($c.probeRun.sha256 | type) != "string" then
       error("container v2 probe run identity is missing")
+    elif ($h.selectedIDs // null) != ($c.selectedIDs // null) then
+      error("host/container probe selection mismatch")
     elif ($c.display.glxinfo | type) != "string" or ($c.display.geometry | type) != "string" then
       error("container display receipt is missing")
     elif $c.clipboardFixture.runId != $h.runId or $c.clipboardFixture.profile != $h.clipboardProfile or
@@ -95,6 +97,10 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "Frozen runner import smoke failed" >&2
     cat /out/import-smoke.err >&2
     exit 2
+  }
+  selected_ids=${TERMINFO_PROBE_IDS-null}
+  jq -e --argjson ids "$selected_ids" '(.selectedIDs // null) == $ids' /out/host-measured.json >/dev/null || {
+    echo "Container probe selection disagrees with host receipt" >&2; exit 2;
   }
   runner_dir=$(dirname "$TERMINFO_RUNNER")
   build_receipt="$runner_dir/terminfo.bundle.receipt.json"
@@ -311,8 +317,21 @@ if [[ "${1:-}" == "--inside" ]]; then
       fixture:{definition:"Shared ProbeDefinition callbacks; capture checkpoints retained in each raw trace",
         config:$config,font:$font,geometry:$geometry,display:$display,gl:$gl}
     }' > "$TERMINFO_RUNTIME_PROVENANCE"
-  curl --fail-with-body --silent --show-error --max-time 120 \
-    -H "Authorization: Bearer $token" "http://127.0.0.1:$port/probe" > /out/v2-run.json
+  date -u +%FT%TZ > /out/batch-wall-start.txt
+  batch_status=0
+  curl --fail-with-body --silent --show-error --max-time 120 --output /out/v2-run.json \
+    --write-out '%{time_total}\n' \
+    -H "Authorization: Bearer $token" "http://127.0.0.1:$port/probe" > /out/batch-elapsed-seconds.txt || batch_status=$?
+  date -u +%FT%TZ > /out/batch-wall-end.txt
+  [[ "$batch_status" == 0 ]] || { echo "Probe batch HTTP request failed: $batch_status" >&2; exit "$batch_status"; }
+  if [[ "$selected_ids" != null ]]; then
+    jq -e --argjson ids "$selected_ids" '
+      (.observations | map(.featureId)) as $actual |
+      ($actual | length) == ($ids | length) and ($actual | unique | length) == ($ids | length) and
+      ($actual | sort) == ($ids | sort) and (.ungradedDiagnostics | length) == 0' /out/v2-run.json >/dev/null || {
+      echo "Actual observation selection differs from requested IDs or has diagnostics" >&2; exit 2;
+    }
+  fi
   jq -e --slurpfile build "$build_receipt" --arg executablePath "$live_executable" \
     --arg executableSha "$live_executable_sha" '
     .schemaVersion == 2 and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
@@ -349,7 +368,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     > /out/observed.json
   read -r invocation_sha invocation_path < /out/invocation.sha256
   read -r source_sha source_path < /out/source-archive.sha256
-  jq -n --arg run "$TERMINFO_RUN_ID" \
+  jq -n --argjson ids "$selected_ids" --arg run "$TERMINFO_RUN_ID" \
     --arg executablePath "$live_executable" --arg executableSha "$live_executable_sha" \
     --arg invocationPath "$invocation_path" --arg invocationSha "$invocation_sha" \
     --arg executableVersion "$(cat /out/executable-version.txt)" \
@@ -368,18 +387,29 @@ if [[ "${1:-}" == "--inside" ]]; then
       probeRun:{path:"v2-run.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
       clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
-      capture:{xwd:("artifacts/"+$xwdSha+".xwd"),xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}}' \
+      capture:{xwd:("artifacts/"+$xwdSha+".xwd"),xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
     > /out/container-receipt.json
   exit 0
 fi
 
-[[ "$#" == 5 && "${1:-}" == --preset && "${3:-}" == --clipboard-profile ]] || {
-  echo "Usage: $0 --preset baseline|current --clipboard-profile default|allow|deny-read OUTPUT_DIRECTORY" >&2
+[[ "$#" -ge 5 && "${1:-}" == --preset && "${3:-}" == --clipboard-profile ]] || {
+  echo "Usage: $0 --preset baseline|current --clipboard-profile default|allow|deny-read [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   exit 2
 }
 preset=$2
 clipboard_profile=$4
-output_parent=$5
+shift 4
+probe_ids=null
+if [[ "${1:-}" == --ids ]]; then
+  count=0
+  for argument in "$@"; do [[ "$argument" != --ids ]] || count=$((count + 1)); done
+  [[ "$count" == 1 ]] || { echo "Repeated --ids" >&2; exit 2; }
+  [[ "$#" -ge 3 && "${2:-}" != --* ]] || { echo "Missing --ids value" >&2; exit 2; }
+  probe_ids=$(jq -cen --arg list "$2" '$list | split(",") | if length > 0 and all(.[]; test("^[a-z0-9][a-z0-9.-]*$")) and (unique | length) == length then . else error("Invalid probe IDs") end') || { echo "Invalid probe IDs" >&2; exit 2; }
+  shift 2
+fi
+[[ "$#" == 1 && "$1" != --* ]] || { echo "Unknown flag or unexpected launch argument" >&2; exit 2; }
+output_parent=$1
 case "$preset" in
   baseline|current) ;;
   *) echo "Unknown Kitty preset: $preset" >&2; exit 2 ;;
@@ -490,7 +520,7 @@ for declared_env in "TERMINFO_KITTY_PRESET=$preset" "KITTY_EXPECTED_VERSION=$kit
   }
 done
 jq -n \
-  --arg run "$run_id" --arg image "$image_id" --arg tar "$image_tar_sha" \
+  --argjson ids "$probe_ids" --arg run "$run_id" --arg image "$image_id" --arg tar "$image_tar_sha" \
   --arg arch "$image_arch" --arg nix "$nix_lock_revision" --arg source "$source_revision" \
   --arg root "$root_revision" --arg suite "$suite_hash" --arg bundle "$bundle_tar_sha" \
   --arg bundleNar "$bundle_sha" --arg lock "$root_lock_sha" \
@@ -507,15 +537,17 @@ jq -n \
       build:$build[0],rootBunLockSha256:$lock},
     runtime:{imageId:$image,imageTarSha256:$tar,arch:$arch,nixLockRevision:$nix,
       sourceRevision:$source,sourceTreeStatus:$sourceStatus,rootRevision:$root,suiteHash:$suite},
-    status:"raw-unreviewed-history"}' > "$raw/host-measured.json"
+    status:"raw-unreviewed-history"} + (if $ids == null then {} else {selectedIDs:$ids} end)' > "$raw/host-measured.json"
 
+selection_env=()
+[[ "$probe_ids" == null ]] || selection_env=(--env "TERMINFO_PROBE_IDS=$probe_ids")
 container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-only \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 2g --cpus 2 \
   --tmpfs "/tmp:rw,nosuid,nodev,mode=1777" \
   --tmpfs "/home/runner:rw,nosuid,nodev,uid=$(id -u),gid=$(id -g),mode=0700" \
   --mount "type=bind,src=$raw,dst=/out" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_IMAGE_ID=$image_id" \
-  --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" \
+  --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
   "$image_id")
 echo "$container_id" > "$prep/container-id.txt"
 if ! timeout 180 docker start --attach "$container_id" > "$prep/container-stdout.log" 2>"$prep/container-stderr.log"; then

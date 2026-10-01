@@ -15,17 +15,16 @@ let child: ChildProcess | undefined
 let home: string | undefined
 const packageRoot = join(import.meta.dirname, "../../..")
 
-async function startTestDaemon() {
+async function startTestDaemon(
+  source = `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`,
+  environment: Record<string, string | undefined> = {},
+) {
   home = mkdtempSync(join(tmpdir(), "terminfo-serve-"))
-  child = spawn(
-    process.execPath,
-    ["-e", `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`],
-    {
-      cwd: packageRoot,
-      env: { ...process.env, HOME: home, TERM: "dumb", TERM_PROGRAM: "" },
-      stdio: ["pipe", "ignore", "pipe"],
-    },
-  )
+  child = spawn(process.execPath, ["-e", source], {
+    cwd: packageRoot,
+    env: { ...process.env, HOME: home, TERM: "dumb", TERM_PROGRAM: "", ...environment },
+    stdio: ["pipe", "ignore", "pipe"],
+  })
   let filename!: string
   let registration!: { port: number; token?: string; runId: string; pid: number }
   await vi.waitFor(
@@ -139,4 +138,69 @@ describe("daemon HTTP boundary", () => {
     expect(exitCode).toBe(1)
     expect(Buffer.concat(stderr).toString()).toContain(filename)
   }, 5000)
+})
+
+describe("private finite daemon startup", () => {
+  it.each([undefined, '["cursor.hide","reset.decaln"]'])(
+    "forwards startup selection %s once and preserves producer completeness",
+    async (selection) => {
+      const { registration } = await startTestDaemon(
+        `
+          import { mock } from "bun:test"
+          const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+          const tty = await import("./packages/terminfo.dev/src/tty.ts")
+          globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+            manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+            collectorRevision: "b".repeat(40)
+          }
+          mock.module("./packages/terminfo.dev/src/tty.ts", () => ({
+            ...tty, withRawMode: async callback => callback(), drainStdin: async () => {}
+          }))
+          mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({
+            ...unified, runProbeBatch: async options => ({
+              rawReplies: { selected: options.ids ?? null }, observations: (options.ids ?? []).map(featureId => ({ featureId })),
+              assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
+            })
+          }))
+          const { startDaemon } = await import("./packages/terminfo.dev/src/serve.ts")
+          await startDaemon()
+          process.env.TERMINFO_PROBE_IDS = '["not-a-probe"]'
+        `,
+        { TERMINFO_PROBE_IDS: selection },
+      )
+      const response = await fetch(`http://127.0.0.1:${registration.port}/probe`, {
+        headers: { Authorization: `Bearer ${registration.token}` },
+      })
+      expect(response.status).toBe(200)
+      const run = (await response.json()) as {
+        rawReplies: { selected: string[] | null }
+        observations: { featureId: string }[]
+        suiteComplete: boolean
+      }
+      expect(run.rawReplies.selected).toEqual(selection ? JSON.parse(selection) : null)
+      expect(run.observations.map((observation: { featureId: string }) => observation.featureId)).toEqual(
+        selection ? JSON.parse(selection) : [],
+      )
+      expect(run.suiteComplete).toBe(false)
+    },
+  )
+
+  it.each(["", "null", "[]", '["cursor.hide","cursor.hide"]', '["not-a-probe"]', '["cursor.hide",3]'])(
+    "refuses malformed or inapplicable private IDs %s before listening",
+    (value) => {
+      home = mkdtempSync(join(tmpdir(), "terminfo-serve-private-"))
+      const result = spawnSync(
+        process.execPath,
+        ["-e", 'import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; startDaemon()'],
+        {
+          cwd: packageRoot,
+          env: { ...process.env, HOME: home, TERMINFO_PROBE_IDS: value },
+          encoding: "utf8",
+          timeout: 1500,
+        },
+      )
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain("TERMINFO_PROBE_IDS")
+    },
+  )
 })

@@ -108,6 +108,33 @@ describe("container run receipt composition", () => {
     expect(receipt.clipboardFixture).toEqual({ runId: "a".repeat(32), profile: "default", sha256: "fixture-hash" })
   })
 
+  it("refuses a filtered host/container selection mismatch", () => {
+    const { result } = compose()
+    expect(result.status).toBe(0)
+    const host = JSON.parse(readFileSync(join(dir, "host.json"), "utf8")) as { selectedIDs?: string[] }
+    const container = JSON.parse(readFileSync(join(dir, "container.json"), "utf8")) as { selectedIDs?: string[] }
+    host.selectedIDs = ["cursor.hide"]
+    container.selectedIDs = ["reset.decaln"]
+    writeFileSync(join(dir, "host.json"), JSON.stringify(host))
+    writeFileSync(join(dir, "container.json"), JSON.stringify(container))
+    const again = spawnSync(
+      "bash",
+      [
+        "-c",
+        'source "$1"; compose_receipt "$2" "$3" "$4"',
+        "_",
+        launcher,
+        join(dir, "host.json"),
+        join(dir, "container.json"),
+        join(dir, "mismatched.json"),
+      ],
+      { encoding: "utf8" },
+    )
+    expect(again.status).toBe(2)
+    expect(again.stderr).toContain("selection")
+    expect(existsSync(join(dir, "mismatched.json"))).toBe(false)
+  })
+
   it("refuses a missing container half before writing a run receipt", () => {
     const { result, output } = compose("a".repeat(32), false)
     expect(result.status).not.toBe(0)
@@ -203,5 +230,35 @@ exit 0
     expect(existsSync(join(output, run[0]!, "prep/bundle"))).toBe(false)
     expect(existsSync(join(output, run[0]!, "prep/nix-build.log"))).toBe(false)
     expect(existsSync(join(output, run[0]!, "raw/run-receipt.json"))).toBe(false)
+  })
+})
+
+describe("private finite launch arguments", () => {
+  it("refuses an unknown flag before preparing or building", () => {
+    const result = spawnSync(
+      "bash",
+      [launcher, "--preset", "current", "--clipboard-profile", "default", "--unknown", dir],
+      { encoding: "utf8" },
+    )
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Unknown flag")
+    expect(readdirSync(dir)).toEqual([])
+  })
+
+  it.each([
+    [[], "Missing --ids value"],
+    [[""], "Invalid probe IDs"],
+    [["cursor.hide,cursor.hide"], "Invalid probe IDs"],
+    [["cursor.hide,"], "Invalid probe IDs"],
+    [["cursor.hide", "--ids", "reset.decaln"], "Repeated --ids"],
+  ])("refuses invalid supplied filter %j before preparing or building", (suffix, message) => {
+    const result = spawnSync(
+      "bash",
+      [launcher, "--preset", "current", "--clipboard-profile", "default", "--ids", ...suffix, dir],
+      { encoding: "utf8" },
+    )
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain(message)
+    expect(readdirSync(dir)).toEqual([])
   })
 })
