@@ -32,6 +32,8 @@ A useful result states the measured outcome, method, terminal or engine identity
 
 Our target is complete, trustworthy measurements of the stated scope. Terminals and headless engines make different feature choices; a universal 100% support score is not the goal. Untested features, intentional exclusions and inconclusive measurements need explicit labels.
 
+See the [roadmap](/roadmap) for what this measurement repair covers and what remains for later work.
+
 ## Feature Categories
 
 270+ features across 13 categories:
@@ -80,7 +82,9 @@ Features are tagged by their defining standard (13 standards). Each standard pag
 
 ## Changelog
 
-### March 2026
+For current release notes, see the [changelog](/changelog). The entries below describe March 2026 and do not describe current reviewed coverage.
+
+### March 2026 (historical)
 
 - **90+ new features** added across all categories — from 62 to 153 features tracked
 - New categories: **Editing** (ICH/DCH/IL/DL), **Character Sets** (DEC Special Graphics), **Device Status** (DA1/DSR)
