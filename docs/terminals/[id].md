@@ -146,6 +146,7 @@ const breadcrumbParent = (() => {
 <div v-if="!isHistorical && selectedRun" class="score-card">
   <h2 class="results-heading">Feature support</h2>
   <p class="selected-run">{{ p.terminalName }} {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
+  <p class="score-detail">Recorded suite: {{ selectedRun.suiteFreshness }}. Results from different suites are not a direct version-to-version comparison.</p>
   <ul class="result-counts">
     <li><strong>{{ counts.supported }}</strong> supported</li>
     <li><strong>{{ counts.unsupported }}</strong> unsupported</li>
@@ -384,7 +385,7 @@ const breadcrumbParent = (() => {
 
 .score-card .result-counts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
   gap: 0.5em 1em;
   padding: 0;
   list-style: none;
