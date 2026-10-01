@@ -28,8 +28,18 @@ import { publicResults } from "../docs/data/public-results.ts"
 import type { PublicVersion } from "../docs/data/public-results.ts"
 import type { SelectedProjection } from "../docs/data/selected-results.ts"
 
-interface RunReference extends Pick<PublicVersion,
-  "runId" | "target" | "measuredAt" | "suiteId" | "probeHash" | "suiteFreshness" | "suite" | "sourceRevision" | "sha256" | "counts"
+interface RunReference extends Pick<
+  PublicVersion,
+  | "runId"
+  | "target"
+  | "measuredAt"
+  | "suiteId"
+  | "probeHash"
+  | "suiteFreshness"
+  | "suite"
+  | "sourceRevision"
+  | "sha256"
+  | "counts"
 > {
   url: string
   documentSha256: string
@@ -221,7 +231,10 @@ describe("consumer selection", () => {
       for (const version of allExpectedVersions) expectedRuns.set(version.sha256, version)
       expect(expectedRuns.size).toBe(149)
 
-      const assertGroup = (actual: Record<string, RunReference> | Record<string, RunReference[]>, expectedGroup: Record<string, PublicVersion> | Record<string, PublicVersion[]>) => {
+      const assertGroup = (
+        actual: Record<string, RunReference> | Record<string, RunReference[]>,
+        expectedGroup: Record<string, PublicVersion> | Record<string, PublicVersion[]>,
+      ) => {
         expect(Object.keys(actual).sort()).toEqual(Object.keys(expectedGroup).sort())
         for (const [key, expectedValue] of Object.entries(expectedGroup)) {
           const actualValue = actual[key]

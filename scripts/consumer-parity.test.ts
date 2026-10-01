@@ -154,11 +154,13 @@ const fixture = vi.hoisted(() => {
       versions: {
         "app:kitty": [selected],
         "app:kitty:clipboard": [alternateKitty],
-        "headless:kitty": [{
-          ...alternateKitty,
-          sha256: "f".repeat(64),
-          target: { ...target, kind: "headless" },
-        }],
+        "headless:kitty": [
+          {
+            ...alternateKitty,
+            sha256: "f".repeat(64),
+            target: { ...target, kind: "headless" },
+          },
+        ],
         "mux:tmux": [mux],
         "mux:screen": [screen, olderScreen],
       },
@@ -188,7 +190,7 @@ import comparePaths from "../docs/compare/[id].paths.ts"
 import baselinePaths from "../docs/baseline/[id].paths.ts"
 import categoryPaths from "../docs/[id].paths.ts"
 import featurePaths from "../docs/[category]/[id].paths.ts"
-import { generateApi } from "./generate-api.ts"
+import { generateApi, assertDeploymentLimits } from "./generate-api.ts"
 import { generateAnalysis } from "./generate-analysis.ts"
 
 it("analysis rejects malformed required catalogs before replacing its output", () => {
@@ -380,11 +382,7 @@ describe("selected-run consumer parity", () => {
         versions: Record<string, RunReference[]>
         history: Record<string, RunReference[]>
       }
-      const refs = [
-        v2.current["app:kitty"],
-        v2.versions["mux:screen"]?.[0],
-        v2.history["app:kitty"]?.[0],
-      ]
+      const refs = [v2.current["app:kitty"], v2.versions["mux:screen"]?.[0], v2.history["app:kitty"]?.[0]]
       for (const ref of refs) {
         if (!ref) throw new Error("Expected current, version and history run references")
         expect(ref).toMatchObject({
@@ -526,7 +524,7 @@ describe("selected-run consumer parity", () => {
       expect(v1After.terminals).toEqual(v1Before.terminals)
       expect(v1After.notes.kitty?.["sgr.bold"]).toBe("Reviewed correction note")
 
-      delete cell.chain.correctionId
+      Reflect.deleteProperty(cell.chain, "correctionId")
       cell.note = original.note
       cell.presentation.decision.presentsEvidence = true
       generateApi(out)
@@ -564,7 +562,7 @@ describe("selected-run consumer parity", () => {
     try {
       generateApi(out)
       expect(existsSync(runPath)).toBe(true)
-      delete fixture.projection.current["app:kitty"]
+      Reflect.deleteProperty(fixture.projection.current, "app:kitty")
       fixture.projection.versions["app:kitty"] = []
       fixture.projection.history["app:kitty"] = []
       generateApi(out)
@@ -604,15 +602,36 @@ describe("selected-run consumer parity", () => {
     try {
       // A reviewed correction note is public run content. The raw UTF-8 body
       // exceeds the single-file cap even though string length alone would not.
-      cell.chain.correctionId = "large-reviewed-correction"
-      cell.note = "界".repeat(3 * 1024 * 1024)
+      Object.assign(cell.chain, { correctionId: "large-reviewed-correction" })
+      cell.note = "界".repeat(9 * 1024 * 1024)
       expect(() => generateApi(out)).toThrow(
         new RegExp(`api/v2/runs/${fixture.runSha256}\\.json.*bytes.*26214400.*Cloudflare Pages`),
       )
       expect(existsSync(join(out, "api", "v2", "data.json"))).toBe(false)
     } finally {
-      delete cell.chain.correctionId
+      Reflect.deleteProperty(cell.chain, "correctionId")
       cell.note = originalNote
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
+  // The renderer writes files outside the API writer; its final deployment check must cover them too.
+  it.each(["oversized", "symlink"])("rejects %s site assets at the final deployment boundary", (kind) => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-site-asset-limit-"))
+    const path = join(out, "page.html")
+    try {
+      if (kind === "oversized") writeFileSync(path, Buffer.alloc(25 * 1024 * 1024 + 1))
+      else symlinkSync("missing-page.html", path)
+      let failure: unknown
+      try {
+        assertDeploymentLimits(out)
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toBeInstanceOf(Error)
+      expect((failure as Error).message).toContain(path)
+      expect((failure as Error).message).toContain(kind === "oversized" ? "26214401 bytes" : "symlink")
+    } finally {
       rmSync(out, { recursive: true, force: true })
     }
   })
@@ -926,7 +945,7 @@ describe("selected-run consumer parity", () => {
       warning.mockRestore()
       Object.assign(cell, original)
       if (original.note === undefined) delete cell.note
-      if (original.chain.correctionId === undefined) delete cell.chain.correctionId
+      if (original.chain.correctionId === undefined) Reflect.deleteProperty(cell.chain, "correctionId")
     }
   })
 
