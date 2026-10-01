@@ -28,7 +28,7 @@ printf '\e]52;c;?\a'
 
 **Policy affects the result:** a terminal can allow writes while denying reads, ask before a read, or allow both. For example, [Kitty documents a read-permission prompt by default](https://sw.kovidgoyal.net/kitty/kittens/clipboard/), controlled by `clipboard_control`.
 
-Our current app measurements cover [Kitty 0.49.1 on Linux](/terminals/kitty) in separate default and explicitly allowed/denied clipboard contexts. They do not establish other terminals' policies or macOS behavior. Inspect the result's method and reason: a collector withholding a clipboard probe is different from a terminal denying it. A denied or unanswered read is not proof that the protocol is unsupported.
+Our current app measurements cover [Kitty 0.49.2 on Linux](/terminals/kitty) in separate default and explicitly allowed/denied clipboard contexts. They do not establish other terminals' policies or macOS behavior. Inspect the result's method and reason: a collector withholding a clipboard probe is different from a terminal denying it. A denied or unanswered read is not proof that the protocol is unsupported.
 
 ::: warning What to do
 
