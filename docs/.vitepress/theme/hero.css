@@ -1,3 +1,8 @@
+/* Keep scrolling home content behind the fixed navigation during VitePress's scroll transition. */
+.VPNav .VPNavBar.home {
+  background-color: var(--vp-c-bg);
+}
+
 /* Make links in hero tagline visually clickable */
 .VPHero .tagline a {
   text-decoration: underline dotted;

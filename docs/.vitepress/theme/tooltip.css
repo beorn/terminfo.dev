@@ -7,7 +7,7 @@
 }
 
 [data-tooltip]:hover {
-  z-index: 50;
+  z-index: 25;
 }
 
 [data-tooltip]:hover::after {
