@@ -172,34 +172,52 @@ export const cursorProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
-        if (!ctx.capture) {
-          const note = "No cursor pixel readback for visibility"
+        const rows = ctx.rows
+        const cols = ctx.cols
+        const capture = ctx.capture
+        if (!capture || !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 3 || cols < 6) {
+          const note = `Cursor pixel fixture needs capture and measured 3x6 geometry; measured ${rows}x${cols}`
           return {
             pass: false,
             note,
             observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
           }
         }
-        const control = await ctx.capture({ role: "control", label: "Visible cursor" })
+        // Only used inside the collector's owned disposable terminal, not an arbitrary user's screen.
         try {
+          ctx.write("\x1b[0m\x1b[2J\x1b[H")
+          ctx.write("\x1b[1;1HCURSOR\x1b[2;1HL  R\x1b[2;3H\x1b[?25h")
+          const control = await capture({ role: "control", label: "Shown cursor requested at row 2 column 3" })
           ctx.write("\x1b[?25l")
-          const target = await ctx.capture({ role: "target", label: "Hidden cursor" })
+          const target = await capture({ role: "target", label: "Hidden cursor requested at the same cell" })
+          const observed = JSON.stringify({ rows, cols, cursor: { row: 2, col: 3 }, control, target })
           return {
             pass: false,
+            response: observed,
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "pixels",
               screenshotRef: target.ref,
               frames: [control, target],
-              note: "Cursor pixels captured; visibility difference requires review",
+              note: "Seeded cursor pixels require independent review: control must visibly show the cursor; blink phase or missing focus cannot establish a negative",
             },
+            assertions: [
+              {
+                kind: "positive",
+                expected:
+                  "Control visibly shows a cursor at row 2 column 3 between L and R; target removes that cursor while other seeded content is unchanged",
+                observed,
+                note: "capture-only assertion; cursor visibility and the control must be independently reviewed",
+              },
+            ],
           }
         } finally {
-          ctx.write("\x1b[?25h")
+          ctx.write("\x1b[0m\x1b[2J\x1b[H\x1b[?25h")
         }
       },
     ),
+    termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
   },
 

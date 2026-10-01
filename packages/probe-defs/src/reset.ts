@@ -198,38 +198,63 @@ export const resetProbes: ProbeDefinition[] = [
   },
 
   // DECALN — screen alignment test (fill screen with 'E')
-  probe(
-    "reset.decaln",
-    (ctx) => {
-      ctx.feed("\x1b#8") // DECALN — fill screen with 'E'
-      const cell = ctx.getCell(0, 0)
-      return parserStateResult(cell.char === "E", "DECALN fills the measured cell (0,0) with E", { cell })
-    },
-    async (ctx) => {
-      if (!ctx.capture) {
-        const note = "No pixel readback for DECALN alignment pattern"
-        return {
-          pass: false,
-          note,
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+  {
+    ...probe(
+      "reset.decaln",
+      (ctx) => {
+        ctx.feed("\x1b#8") // DECALN — fill screen with 'E'
+        const cell = ctx.getCell(0, 0)
+        return parserStateResult(cell.char === "E", "DECALN fills the measured cell (0,0) with E", { cell })
+      },
+      async (ctx) => {
+        const rows = ctx.rows
+        const cols = ctx.cols
+        const capture = ctx.capture
+        if (!capture || !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 2 || cols < 2) {
+          const note = `DECALN pixel fixture needs capture and measured 2x2 geometry; measured ${rows}x${cols}`
+          return {
+            pass: false,
+            note,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+          }
         }
-      }
-      const control = await ctx.capture({ role: "control", label: "Before DECALN" })
-      ctx.write("\x1b#8") // DECALN
-      const target = await ctx.capture({ role: "target", label: "After DECALN" })
-      return {
-        pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "pixels",
-          screenshotRef: target.ref,
-          frames: [control, target],
-          note: "DECALN pixels captured for review; glyph content was not decoded",
-        },
-      }
-    },
-  ),
+        const seed = "AB".repeat(Math.ceil(cols / 2)).slice(0, cols)
+        // The collector owns a disposable screen; cleanup does not claim restoration of arbitrary prior content.
+        try {
+          ctx.write("\x1b[0m\x1b[2J\x1b[H")
+          for (let row = 1; row <= rows; row++) ctx.write(`\x1b[${row};1H${seed}`)
+          ctx.write("\x1b[H")
+          const control = await capture({ role: "control", label: "Known non-E AB grid before DECALN" })
+          ctx.write("\x1b#8")
+          const target = await capture({ role: "target", label: "DECALN alignment grid after ESC # 8" })
+          const observed = JSON.stringify({ rows, cols, seed, control, target })
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: target.ref,
+              frames: [control, target],
+              note: "Known non-E grid and DECALN pixels captured; repeated E glyphs across measured rows and columns require independent review",
+            },
+            assertions: [
+              {
+                kind: "positive",
+                expected: `Control shows alternating A/B across ${rows} rows and ${cols} columns; DECALN target shows repeated E across that same measured grid`,
+                observed,
+                note: "capture-only assertion; glyphs and full-grid coverage must be independently reviewed",
+              },
+            ],
+          }
+        } finally {
+          ctx.write("\x1b[0m\x1b[2J\x1b[H")
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   {
     ...probe(

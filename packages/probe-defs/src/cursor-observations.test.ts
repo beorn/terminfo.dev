@@ -720,3 +720,70 @@ test("app CUP refuses nonfinite geometry before a feature write", async () => {
     expect(writes).toEqual([])
   }
 })
+
+// Capture safety is distinct from the independent review of the resulting pixels.
+test("app cursor hide seeds a shown fixed-cell control and records geometry without grading pixels", async () => {
+  const context = app(null)
+  const writes: string[] = []
+  const checkpoints: string[] = []
+  context.write = (bytes) => writes.push(bytes)
+  context.capture = async ({ role, label }) => {
+    checkpoints.push(writes.join(""))
+    return { role, label, capturedAt: checkpoints.length, ref: `frame-${role}` }
+  }
+  const result = await byId("cursor.hide").term!(context)
+  expect(checkpoints[0]).toContain("\x1b[?25h")
+  expect(checkpoints[0]).toContain("\x1b[2;3H")
+  expect(checkpoints[0]).toContain("CURSOR")
+  expect(checkpoints[0]).toContain("\x1b[2;1HL  R")
+  expect(checkpoints[1]).toContain("\x1b[?25l")
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(JSON.parse(result.response ?? "")).toMatchObject({ rows: 24, cols: 80, cursor: { row: 2, col: 3 } })
+  expect(result.assertions).toMatchObject([{ kind: "positive", note: expect.stringContaining("capture-only") }])
+  expect(writes.at(-1)).toContain("\x1b[2J")
+  expect(writes.at(-1)).toContain("\x1b[?25h")
+})
+
+test.each([1, 2])("app cursor hide cleans its disposable fixture when capture %i fails", async (failedCapture) => {
+  const context = app(null)
+  const writes: string[] = []
+  context.write = (bytes) => writes.push(bytes)
+  let calls = 0
+  const failure = new Error("owned cursor capture failed")
+  context.capture = async ({ role, label }) => {
+    if (++calls === failedCapture) throw failure
+    return { role, label, capturedAt: calls, ref: "control" }
+  }
+  await expect(byId("cursor.hide").term!(context)).rejects.toBe(failure)
+  expect(writes.at(-1)).toContain("\x1b[2J")
+  expect(writes.at(-1)).toContain("\x1b[?25h")
+})
+
+test("app cursor hide refuses invalid geometry or absent capture before fixture writes", async () => {
+  for (const [rows, cols] of [
+    [2, 80],
+    [24, 5],
+    [NaN, 80],
+    [24, Infinity],
+  ]) {
+    const context = app(null)
+    context.rows = rows!
+    context.cols = cols!
+    const writes: string[] = []
+    context.write = (bytes) => writes.push(bytes)
+    context.capture = async () => {
+      throw new Error("invalid fixture must not capture")
+    }
+    expect((await byId("cursor.hide").term!(context)).observation).toMatchObject({
+      evidence: "none",
+      outcome: "inconclusive",
+    })
+    expect(writes).toEqual([])
+  }
+  expect(byId("cursor.hide").termNeedsGeometry).toBe(true)
+  const context = app(null)
+  context.write = () => {
+    throw new Error("absent capture must not write")
+  }
+  expect((await byId("cursor.hide").term!(context)).observation?.evidence).toBe("none")
+})

@@ -108,3 +108,61 @@ test("fixed charset and reset fixtures require valid measured room before any by
     }
   }
 })
+
+function decaln() {
+  const definition = resetProbes.find((probe) => probe.id === "reset.decaln")
+  if (!definition?.term) throw new Error("missing app DECALN callback")
+  return definition
+}
+
+test("DECALN captures a known non-E grid spanning measured rows and columns without grading pixels", async () => {
+  const events: string[] = []
+  const context = app(3, 6, events)
+  const checkpoints: string[] = []
+  context.capture = async ({ role, label }) => {
+    checkpoints.push(events.join(""))
+    return { role, label, capturedAt: checkpoints.length, ref: `frame-${role}` }
+  }
+  const result = await decaln().term!(context)
+  for (const row of [1, 2, 3]) expect(checkpoints[0]).toContain(`\x1b[${row};1HABABAB`)
+  expect(checkpoints[0]).not.toContain("\x1b#8")
+  expect(checkpoints[1]).toContain("\x1b#8")
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(JSON.parse(result.response ?? "")).toMatchObject({ rows: 3, cols: 6, seed: "ABABAB" })
+  expect(result.assertions).toMatchObject([{ kind: "positive", note: expect.stringContaining("capture-only") }])
+  expect(events.at(-1)).toContain("\x1b[2J")
+})
+
+test.each([1, 2])("DECALN cleans its disposable fixture when capture %i fails", async (failedCapture) => {
+  const events: string[] = []
+  const context = app(3, 6, events)
+  let calls = 0
+  const failure = new Error("owned alignment capture failed")
+  context.capture = async ({ role, label }) => {
+    if (++calls === failedCapture) throw failure
+    return { role, label, capturedAt: calls, ref: "control" }
+  }
+  await expect(decaln().term!(context)).rejects.toBe(failure)
+  expect(events.at(-1)).toContain("\x1b[2J")
+})
+
+test("DECALN refuses invalid geometry and absent capture without writes", async () => {
+  for (const [rows, cols] of [
+    [1, 6],
+    [3, 1],
+    [NaN, 6],
+    [3, Infinity],
+  ]) {
+    const events: string[] = []
+    const context = app(rows!, cols!, events)
+    context.capture = async () => {
+      throw new Error("invalid fixture must not capture")
+    }
+    expect((await decaln().term!(context)).observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+    expect(events).toEqual([])
+  }
+  expect(decaln().termNeedsGeometry).toBe(true)
+  const events: string[] = []
+  expect((await decaln().term!(app(3, 6, events))).observation?.evidence).toBe("none")
+  expect(events).toEqual([])
+})

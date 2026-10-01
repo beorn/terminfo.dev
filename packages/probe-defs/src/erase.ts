@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { probe, isBlank, parserStateResult, unmeasuredCellResult, selectiveEraseResult } from "./helpers.ts"
 
 type ErasedCell = string | null
@@ -152,30 +152,80 @@ function eraseScreenResult(
   }
 }
 
+/** Capture an owned app's erase effect without interpreting its pixels. */
+async function captureEraseFixture(
+  ctx: TermContext,
+  kind: "line" | "screen",
+  sequence: string,
+  expected: string,
+): Promise<ProbeResult> {
+  const rows = ctx.rows
+  const cols = ctx.cols
+  const minRows = kind === "line" ? 2 : 3
+  const capture = ctx.capture
+  if (!capture || !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < 6) {
+    const note = `Erase pixel fixture needs capture and measured ${minRows}x6 geometry; measured ${rows}x${cols}`
+    return {
+      pass: false,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+    }
+  }
+
+  const middle = Math.floor((rows + 1) / 2)
+  const safeCursor = `\x1b[${kind === "line" ? 2 : rows};6H`
+  const seed =
+    kind === "line" ? "\x1b[1;1HABCDE\x1b[2;1HKEEP!" : `\x1b[1;1HAAAAA\x1b[${middle};1HBBBBB\x1b[${rows};1HCCCCC`
+  const eraseAt = `\x1b[${kind === "line" ? 1 : middle};3H`
+  try {
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+    ctx.write(safeCursor)
+    const blank = await capture({ role: "control", label: "Blank erase comparator" })
+    ctx.write(seed)
+    ctx.write(safeCursor)
+    const before = await capture({ role: "control", label: "Before erase: seeded and unaffected cells" })
+    ctx.write(eraseAt)
+    ctx.write(sequence)
+    ctx.write(safeCursor)
+    const target = await capture({ role: "target", label: "After erase: target and unaffected cells" })
+    const observed = JSON.stringify({
+      rows,
+      cols,
+      middle: kind === "screen" ? middle : undefined,
+      blank,
+      before,
+      target,
+    })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [blank, before, target],
+        note: "Blank comparator and seeded target/control pixels captured; erase effect requires independent review",
+      },
+      assertions: [
+        {
+          kind: "positive",
+          expected: `Capture blank comparator, seeded before, and post-${sequence} target at measured geometry; visual expectation ${expected}`,
+          observed,
+          note: "capture-only assertion; no erase support judgment",
+        },
+      ],
+    }
+  } finally {
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
 export const eraseProbes: ProbeDefinition[] = [
   {
     ...probe(
       "erase.line.right",
       (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[K", ["A", "B", "blank", "blank", "blank"], false, 2),
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K") // Clear line
-        ctx.write("ABCDE")
-        ctx.write("\x1b[1;3H") // Move to col 3
-        ctx.write("\x1b[0K") // EL 0 — erase to right
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
+      (ctx) => captureEraseFixture(ctx, "line", "\x1b[0K", "row 1 AB___; row 2 KEEP!"),
     ),
     termNeedsGeometry: true,
 
@@ -186,25 +236,7 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.line.left",
       (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[1K", ["blank", "blank", "blank", "D", "E"], false, 2),
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("ABCDE")
-        ctx.write("\x1b[1;3H") // Move to col 3
-        ctx.write("\x1b[1K") // EL 1 — erase to left
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
+      (ctx) => captureEraseFixture(ctx, "line", "\x1b[1K", "row 1 ___DE; row 2 KEEP!"),
     ),
     termNeedsGeometry: true,
 
@@ -216,25 +248,7 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.line.all",
       (ctx) =>
         eraseRowResult(ctx, "ABCDE\r\nKEEP!\x1b[1;3H", "\x1b[2K", ["blank", "blank", "blank", "blank", "blank"], true),
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("ABCDE")
-        ctx.write("\x1b[1;3H") // Move to col 3
-        ctx.write("\x1b[2K") // EL 2 — erase entire line
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
+      (ctx) => captureEraseFixture(ctx, "line", "\x1b[2K", "row 1 _____; row 2 KEEP!"),
     ),
     termNeedsGeometry: true,
 
@@ -245,23 +259,7 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.screen.below",
       (ctx) => eraseScreenResult(ctx, "\x1b[0J", ["AAAAA", "BB   ", "     "]),
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[5;5H") // Move to known position
-        ctx.write("\x1b[0J") // ED 0 — erase below
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
+      (ctx) => captureEraseFixture(ctx, "screen", "\x1b[0J", "top AAAAA; middle BB___; bottom _____"),
     ),
     termNeedsGeometry: true,
 
@@ -272,23 +270,7 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.screen.above",
       (ctx) => eraseScreenResult(ctx, "\x1b[1J", ["     ", "   BB", "CCCCC"]),
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[5;5H") // Move to known position
-        ctx.write("\x1b[1J") // ED 1 — erase above
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
+      (ctx) => captureEraseFixture(ctx, "screen", "\x1b[1J", "top _____; middle ___BB; bottom CCCCC"),
     ),
     termNeedsGeometry: true,
 
@@ -299,23 +281,7 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.screen.all",
       (ctx) => eraseScreenResult(ctx, "\x1b[2J", ["     ", "     ", "     "]),
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[5;5H") // Move to known position
-        ctx.write("\x1b[2J") // ED 2 — erase entire screen
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
+      (ctx) => captureEraseFixture(ctx, "screen", "\x1b[2J", "top/middle/bottom _____"),
     ),
     termNeedsGeometry: true,
 
