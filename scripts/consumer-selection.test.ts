@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { describe, expect, it, vi } from "vitest"
+import { createHash } from "node:crypto"
 import {
   chmodSync,
   copyFileSync,
@@ -23,7 +24,16 @@ import { generateApi } from "./generate-api.ts"
 import { generateAnalysis } from "./generate-analysis.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { publicResults } from "../docs/data/public-results.ts"
+import type { PublicVersion } from "../docs/data/public-results.ts"
 import type { SelectedProjection } from "../docs/data/selected-results.ts"
+
+interface RunReference extends Pick<PublicVersion,
+  "runId" | "target" | "measuredAt" | "suiteId" | "probeHash" | "suiteFreshness" | "suite" | "sourceRevision" | "sha256" | "counts"
+> {
+  url: string
+  documentSha256: string
+}
 
 function writeCatalog(content: string): void {
   writeFileSync(
@@ -189,6 +199,67 @@ describe("consumer selection", () => {
   })
 
   // Exercises all consumers over retained history; this is a correctness check, not a latency assertion.
+  it("reassembles all retained run documents from the exact public projection", () => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-api-run-parity-"))
+    try {
+      generateApi(out)
+      const contentDir = join(import.meta.dirname, "..", "content")
+      const projection = loadCurrentResults(contentDir).projection
+      const expected = publicResults(projection, compatibilityTargets(projection, contentDir)).projection
+      const v2 = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8")) as {
+        current: Record<string, RunReference>
+        versions: Record<string, RunReference[]>
+        history: Record<string, RunReference[]>
+        exclusions: unknown[]
+      }
+      const expectedRuns = new Map<string, PublicVersion>()
+      const allExpectedVersions = [
+        ...Object.values(expected.current),
+        ...Object.values(expected.versions).flat(),
+        ...Object.values(expected.history).flat(),
+      ]
+      for (const version of allExpectedVersions) expectedRuns.set(version.sha256, version)
+      expect(expectedRuns.size).toBe(149)
+
+      const assertGroup = (actual: Record<string, RunReference> | Record<string, RunReference[]>, expectedGroup: Record<string, PublicVersion> | Record<string, PublicVersion[]>) => {
+        expect(Object.keys(actual).sort()).toEqual(Object.keys(expectedGroup).sort())
+        for (const [key, expectedValue] of Object.entries(expectedGroup)) {
+          const actualValue = actual[key]
+          const expectedVersions = Array.isArray(expectedValue) ? expectedValue : [expectedValue]
+          const actualVersions = Array.isArray(actualValue) ? actualValue : [actualValue]
+          expect(actualVersions).toHaveLength(expectedVersions.length)
+          expectedVersions.forEach((version, index) => {
+            const ref = actualVersions[index]
+            if (!ref) throw new Error(`Missing run reference for ${version.runId}`)
+            expect(ref).toMatchObject({
+              runId: version.runId,
+              target: version.target,
+              measuredAt: version.measuredAt,
+              suiteId: version.suiteId,
+              probeHash: version.probeHash,
+              suiteFreshness: version.suiteFreshness,
+              suite: version.suite,
+              sourceRevision: version.sourceRevision,
+              sha256: version.sha256,
+              counts: version.counts,
+              url: `/api/v2/runs/${version.sha256}.json`,
+            })
+            const bytes = readFileSync(join(out, ref.url))
+            expect(createHash("sha256").update(bytes).digest("hex")).toBe(ref.documentSha256)
+            expect(JSON.parse(bytes.toString("utf8"))).toEqual(version)
+          })
+        }
+      }
+      assertGroup(v2.current, expected.current)
+      assertGroup(v2.versions, expected.versions)
+      assertGroup(v2.history, expected.history)
+      expect(v2.exclusions).toEqual(expected.exclusions)
+      expect(expectedRuns.size).toBeGreaterThan(0)
+    } finally {
+      rmSync(out, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it("does not score unreviewed legacy booleans as current results", () => {
     const warnings: string[] = []
     const warning = vi.spyOn(console, "warn").mockImplementation((message: unknown) => warnings.push(String(message)))

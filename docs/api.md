@@ -141,7 +141,34 @@ if (terminal) {
 
 ## Exact-context v2 data
 
-**`GET /api/v2/data.json`** carries the canonical four outcomes (`supported`, `unsupported`, `inconclusive`, `error`) and each observation's method, reason when applicable, and provenance chain. `current` is keyed by exact target context, so an app, its headless parser and a multiplexer remain separate. Each selected version includes `target`, `runId`, `sha256`, `measuredAt`, `suiteId`, `probeHash`, `suiteFreshness`, `suite` (observed and expected probe counts), `cells`, and counts for catalog, tested, not tested, conclusive, supported and unsupported. `versions` keeps selectable versions; `history` keeps older and excluded runs as metadata summaries, including ungraded legacy observations; `exclusions` names why a run was not selected without publishing internal source paths.
+**`GET /api/v2/data.json`** is the index of exact-context runs. `current` is keyed by target context, so an app, its headless parser and a multiplexer stay separate. `versions` keeps selectable versions; `history` keeps older and excluded runs, including ungraded legacy observations. All three sections contain run references with the same shape. `exclusions` explains why a run was not selected without publishing internal source paths.
+
+Each reference contains `runId`, `target`, `measuredAt`, `suiteId`, `probeHash`, `suiteFreshness`, `suite` (observed and expected probe counts), `sourceRevision`, `sha256`, `counts`, `url` and `documentSha256`. Counts distinguish catalog, tested, not tested, conclusive, supported and unsupported features. The run document at `url` contains the full selected run: its metadata, `cells`, compatibility `v1` values, and reviews. Cells retain the four outcomes (`supported`, `unsupported`, `inconclusive`, `error`), their measurement method, reason when recorded, and provenance.
+
+Run URLs have the form `/api/v2/runs/<sha256>.json`, using the raw run's SHA-256 identity. Reviewed interpretations can change the public document bytes without changing that raw identity or URL. Verify the exact response bytes against `documentSha256`, then check `sha256` and `runId` against the reference before using the document. A failed fetch, digest or identity check is an error, not missing observations. Keep the index and its verified documents together when archiving a result; a later deployment can replace the public interpretation at the same URL. v1 remains the single-request compatibility summary.
+
+For example, a browser client can retrieve one current context:
+
+```javascript
+const indexResponse = await fetch("https://terminfo.dev/api/v2/data.json")
+if (!indexResponse.ok) throw new Error(`API index: HTTP ${indexResponse.status}`)
+const index = await indexResponse.json()
+const contextKey = Object.keys(index.current)[0] // Choose a recorded context from the index.
+const ref = index.current[contextKey]
+if (!ref) throw new Error("No current observation for this context")
+const response = await fetch(new URL(ref.url, "https://terminfo.dev"))
+if (!response.ok) throw new Error(`Run document: HTTP ${response.status}`)
+const bytes = await response.arrayBuffer()
+const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
+  .map((byte) => byte.toString(16).padStart(2, "0"))
+  .join("")
+if (digest !== ref.documentSha256) throw new Error("Run document digest mismatch")
+const run = JSON.parse(new TextDecoder().decode(bytes))
+if (run.sha256 !== ref.sha256 || run.runId !== ref.runId) {
+  throw new Error("Run document identity mismatch")
+}
+console.log(run.target, run.counts, run.cells)
+```
 
 Each v2 cell gives the public outcome, reason when recorded, method and run identity. Its `presentation.state` distinguishes `not-reviewed`, `withdrawn` (with reviewer and reason) and `presented` (with reviewer, reason, evidence URL and SHA-256 digest). A presented cell may include verified image descriptors for the hover preview. Raw replies and assertion bodies are **not** embedded in `data.json`, including its history. For a presented cell, the static document at its `presentation.url` contains the original recorded feature observation, raw reply and bound assertions when captured, approved image descriptors, exact `runId`, `runSha256` and `featureId`, and the presentation review. Clients should verify the document bytes against `presentation.sha256` and check those identities before using its details. A successful document with no raw material means none was captured; a failed fetch, digest or identity check is an evidence error, not missing evidence.
 

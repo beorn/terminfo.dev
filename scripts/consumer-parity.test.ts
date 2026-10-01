@@ -154,7 +154,11 @@ const fixture = vi.hoisted(() => {
       versions: {
         "app:kitty": [selected],
         "app:kitty:clipboard": [alternateKitty],
-        "headless:kitty": [{ ...alternateKitty, target: { ...target, kind: "headless" } }],
+        "headless:kitty": [{
+          ...alternateKitty,
+          sha256: "f".repeat(64),
+          target: { ...target, kind: "headless" },
+        }],
         "mux:tmux": [mux],
         "mux:screen": [screen, olderScreen],
       },
@@ -354,6 +358,59 @@ it("analysis validation refuses stale live values and key drift but labels histo
 }, 30_000)
 
 describe("selected-run consumer parity", () => {
+  it("publishes v2 run references that resolve to digest-verified full run documents", () => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-run-documents-"))
+    try {
+      generateApi(out)
+      type RunReference = {
+        runId: string
+        target: Record<string, unknown>
+        measuredAt: string
+        suiteId: string
+        probeHash: string
+        suiteFreshness: string
+        sourceRevision: string
+        sha256: string
+        counts: Record<string, unknown>
+        url: string
+        documentSha256: string
+      }
+      const v2 = JSON.parse(readFileSync(join(out, "api", "v2", "data.json"), "utf8")) as {
+        current: Record<string, RunReference>
+        versions: Record<string, RunReference[]>
+        history: Record<string, RunReference[]>
+      }
+      const refs = [
+        v2.current["app:kitty"],
+        v2.versions["mux:screen"]?.[0],
+        v2.history["app:kitty"]?.[0],
+      ]
+      for (const ref of refs) {
+        if (!ref) throw new Error("Expected current, version and history run references")
+        expect(ref).toMatchObject({
+          runId: expect.any(String),
+          target: expect.any(Object),
+          measuredAt: expect.any(String),
+          suiteId: expect.any(String),
+          probeHash: expect.any(String),
+          suiteFreshness: expect.any(String),
+          sourceRevision: expect.any(String),
+          sha256: expect.any(String),
+          counts: expect.any(Object),
+          url: expect.stringMatching(/^\/api\/v2\/runs\/[a-f0-9]{64}\.json$/),
+          documentSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        })
+        const documentBytes = readFileSync(join(out, ref.url))
+        expect(createHash("sha256").update(documentBytes).digest("hex")).toBe(ref.documentSha256)
+        const document = JSON.parse(documentBytes.toString("utf8")) as Record<string, unknown>
+        expect(document).toMatchObject({ runId: ref.runId, sha256: ref.sha256, target: ref.target })
+        expect(document.cells).toBeDefined()
+      }
+    } finally {
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
   it("ships current cells without global selection history while routes retain versions", () => {
     const site = probesLoader.load()
     expect(Object.hasOwn(site, "selected")).toBe(false)
@@ -498,18 +555,64 @@ describe("selected-run consumer parity", () => {
     }
   })
 
+  it("withdraws an owned run document after its last public projection reference is removed", () => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-stale-run-"))
+    const runPath = join(out, "api", "v2", "runs", `${fixture.runSha256}.json`)
+    const current = fixture.projection.current["app:kitty"]
+    const versions = fixture.projection.versions["app:kitty"]
+    const history = fixture.projection.history["app:kitty"]
+    try {
+      generateApi(out)
+      expect(existsSync(runPath)).toBe(true)
+      delete fixture.projection.current["app:kitty"]
+      fixture.projection.versions["app:kitty"] = []
+      fixture.projection.history["app:kitty"] = []
+      generateApi(out)
+      expect(existsSync(runPath)).toBe(false)
+    } finally {
+      if (current) fixture.projection.current["app:kitty"] = current
+      fixture.projection.versions["app:kitty"] = versions ?? []
+      fixture.projection.history["app:kitty"] = history ?? []
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
+  it("reports the real output path when the conservative file-count cap is exceeded", () => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-api-file-count-"))
+    try {
+      for (let index = 0; index < 20_000; index++) {
+        writeFileSync(join(out, `ordinary-${index}.txt`), "x")
+      }
+      let failure: unknown
+      try {
+        generateApi(out)
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toBeInstanceOf(Error)
+      expect((failure as Error).message).toContain(out)
+      expect((failure as Error).message).toMatch(/files exceeds the 20000-file Cloudflare Pages Free-plan limit/)
+    } finally {
+      rmSync(out, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   it("refuses an API asset above the deployment byte limit before writing it", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-api-size-"))
-    const review = fixture.selected.reviews[0]!
-    const originalReason = review.reason
+    const cell = fixture.selected.cells["sgr.bold"]!
+    const originalNote = cell.note
     try {
-      // The review appears in current/version/history groups. UTF-8 bytes exceed
-      // the limit even though the serialized JavaScript string length does not.
-      review.reason = "界".repeat(3 * 1024 * 1024)
-      expect(() => generateApi(out)).toThrow(/api\/v2\/data\.json.*bytes.*26214400.*Cloudflare Pages/)
+      // A reviewed correction note is public run content. The raw UTF-8 body
+      // exceeds the single-file cap even though string length alone would not.
+      cell.chain.correctionId = "large-reviewed-correction"
+      cell.note = "界".repeat(3 * 1024 * 1024)
+      expect(() => generateApi(out)).toThrow(
+        new RegExp(`api/v2/runs/${fixture.runSha256}\\.json.*bytes.*26214400.*Cloudflare Pages`),
+      )
       expect(existsSync(join(out, "api", "v2", "data.json"))).toBe(false)
     } finally {
-      review.reason = originalReason
+      delete cell.chain.correctionId
+      cell.note = originalNote
       rmSync(out, { recursive: true, force: true })
     }
   })

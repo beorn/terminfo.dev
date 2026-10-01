@@ -26,6 +26,48 @@ const docsDir = join(root, "docs")
 const publicDir = join(docsDir, "public")
 const apiDir = join(publicDir, "api", "v1")
 const contentDir = join(root, "content")
+// Cloudflare Pages Free-plan limits. The account tier is not verified, so use the conservative file cap.
+const maxAssetBytes = 25 * 1024 * 1024
+const maxOutputFiles = 20_000
+
+function writeAsset(path: string, data: string | Buffer): void {
+  const bytes = typeof data === "string" ? Buffer.byteLength(data, "utf8") : data.byteLength
+  if (bytes > maxAssetBytes) {
+    throw new Error(`${path}: ${bytes} bytes exceeds the ${maxAssetBytes}-byte Cloudflare Pages asset limit`)
+  }
+  writeFileSync(path, data)
+}
+
+/** Check the complete deployment tree, including files written by VitePress after API generation. */
+export function assertDeploymentLimits(dir: string): { fileCount: number; fileLimit: number; fileHeadroom: number } {
+  let fileCount = 0
+  const visit = (current: string): void => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const path = join(current, entry.name)
+      if (entry.isSymbolicLink()) throw new Error(`${path}: symlink in deployment output`)
+      if (entry.isDirectory()) {
+        visit(path)
+      } else if (entry.isFile()) {
+        const bytes = lstatSync(path).size
+        if (bytes > maxAssetBytes) {
+          throw new Error(`${path}: ${bytes} bytes exceeds the ${maxAssetBytes}-byte Cloudflare Pages asset limit`)
+        }
+        fileCount++
+      } else {
+        throw new Error(`${path}: unexpected deployment output type`)
+      }
+    }
+  }
+  visit(dir)
+  if (fileCount > maxOutputFiles) {
+    throw new Error(`${dir}: ${fileCount} files exceeds the ${maxOutputFiles}-file Cloudflare Pages Free-plan limit`)
+  }
+  const fileHeadroom = maxOutputFiles - fileCount
+  console.log(
+    `Cloudflare Pages Free-plan file count: ${fileCount}/${maxOutputFiles} (${fileHeadroom} remaining; account tier unverified)`,
+  )
+  return { fileCount, fileLimit: maxOutputFiles, fileHeadroom }
+}
 
 // --- Types ---
 
@@ -217,7 +259,11 @@ function generateBadgeSvg(label: string, pass: number, total: number, pct: numbe
 // --- Main ---
 
 /** Replace only previously emitted, byte-matching files; unknown surviving artifacts fail by path. */
-function writeEvidence(out: string, documents: ReturnType<typeof publicResults>["documents"]): void {
+function writeEvidence(
+  out: string,
+  documents: ReturnType<typeof publicResults>["documents"],
+  runDocuments: ReadonlyMap<string, Buffer>,
+): void {
   const expected = new Map<string, Buffer>()
   for (const [url, { bytes, document }] of documents) {
     expected.set(url.slice(1), Buffer.from(bytes))
@@ -230,10 +276,13 @@ function writeEvidence(out: string, documents: ReturnType<typeof publicResults>[
       }
     }
   }
+  for (const [url, bytes] of runDocuments) expected.set(url.slice(1), bytes)
   const inventoryPath = join(out, "api", "v2", "evidence-files.json")
   const owned = new Map<string, string>()
   const isOwnedPath = (path: string) =>
-    /^(?:artifacts\/[a-f0-9]{64}\.png|api\/v2\/evidence\/[a-f0-9]{64}\/[A-Za-z0-9_.%~-]+\.json)$/.test(path)
+    /^(?:artifacts\/[a-f0-9]{64}\.png|api\/v2\/evidence\/[a-f0-9]{64}\/[A-Za-z0-9_.%~-]+\.json|api\/v2\/runs\/[a-f0-9]{64}\.json)$/.test(
+      path,
+    )
   if (existsSync(inventoryPath)) {
     if (lstatSync(inventoryPath).isSymbolicLink()) throw new Error(`${inventoryPath}: evidence inventory is a symlink`)
     const prior = parseJsonStrict(inventoryPath, readFileSync(inventoryPath, "utf8"))
@@ -271,6 +320,7 @@ function writeEvidence(out: string, documents: ReturnType<typeof publicResults>[
   }
   visit("artifacts")
   visit("api/v2/evidence")
+  visit("api/v2/runs")
   // Check the complete population before performing any replacement or withdrawal.
   for (const [relative, bytes] of existing) {
     if (expected.get(relative)?.equals(bytes)) continue
@@ -284,10 +334,10 @@ function writeEvidence(out: string, documents: ReturnType<typeof publicResults>[
   for (const [relative, bytes] of expected) {
     const path = join(out, relative)
     mkdirSync(dirname(path), { recursive: true })
-    writeFileSync(path, bytes)
+    writeAsset(path, bytes)
   }
   mkdirSync(dirname(inventoryPath), { recursive: true })
-  writeFileSync(
+  writeAsset(
     inventoryPath,
     JSON.stringify(
       {
@@ -305,7 +355,13 @@ function writeEvidence(out: string, documents: ReturnType<typeof publicResults>[
   )
 }
 
-export function generateApi(outDir?: string): { dataPath: string; badgeCount: number } {
+export function generateApi(outDir?: string): {
+  dataPath: string
+  badgeCount: number
+  fileCount: number
+  fileLimit: number
+  fileHeadroom: number
+} {
   const targetApiDir = outDir ? join(outDir, "api", "v1") : apiDir
   const targetBadgesDir = join(targetApiDir, "badges")
   mkdirSync(targetBadgesDir, { recursive: true })
@@ -315,7 +371,57 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
   const { projection } = loadCurrentResults(contentDir)
   const published = publicResults(projection, compatibilityTargets(projection, contentDir))
   const byTarget = new Map(Object.entries(published.selectedByBackend))
-  writeEvidence(outDir ?? publicDir, published.documents)
+  type PublicVersion = (typeof published.projection.current)[string]
+  type RunRef = Pick<
+    PublicVersion,
+    | "runId"
+    | "target"
+    | "measuredAt"
+    | "suiteId"
+    | "probeHash"
+    | "suiteFreshness"
+    | "suite"
+    | "sourceRevision"
+    | "sha256"
+    | "counts"
+  > & { url: string; documentSha256: string }
+  const runDocuments = new Map<string, Buffer>()
+  const ref = (version: PublicVersion): RunRef => {
+    const url = `/api/v2/runs/${version.sha256}.json`
+    const bytes = Buffer.from(JSON.stringify(version) + "\n")
+    const prior = runDocuments.get(url)
+    if (prior && !prior.equals(bytes)) throw new Error(`Conflicting run document ${url}`)
+    runDocuments.set(url, bytes)
+    const { runId, target, measuredAt, suiteId, probeHash, suiteFreshness, suite, sourceRevision, sha256, counts } =
+      version
+    return {
+      runId,
+      target,
+      measuredAt,
+      suiteId,
+      probeHash,
+      suiteFreshness,
+      suite,
+      sourceRevision,
+      sha256,
+      counts,
+      url,
+      documentSha256: createHash("sha256").update(bytes).digest("hex"),
+    }
+  }
+  const refs = {
+    current: Object.fromEntries(
+      Object.entries(published.projection.current).map(([key, version]) => [key, ref(version)]),
+    ),
+    versions: Object.fromEntries(
+      Object.entries(published.projection.versions).map(([key, versions]) => [key, versions.map(ref)]),
+    ),
+    history: Object.fromEntries(
+      Object.entries(published.projection.history).map(([key, versions]) => [key, versions.map(ref)]),
+    ),
+    exclusions: published.projection.exclusions,
+  }
+  writeEvidence(outDir ?? publicDir, published.documents, runDocuments)
   // Catalog metadata stays available, but only reviewed, conclusive observations become v1 result keys.
   const allFeatureIds = new Set(Object.keys(featuresJson))
 
@@ -401,7 +507,7 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
 
   // Write data.json
   const dataPath = join(targetApiDir, "data.json")
-  writeFileSync(dataPath, JSON.stringify(apiData, null, 2) + "\n")
+  writeAsset(dataPath, JSON.stringify(apiData, null, 2) + "\n")
 
   // v2 retains exact context keys and every selected cell's outcome and provenance.
   const v2Dir = outDir ? join(outDir, "api", "v2") : join(publicDir, "api", "v2")
@@ -412,28 +518,20 @@ export function generateApi(outDir?: string): { dataPath: string; badgeCount: nu
       generated: apiData.generated,
       methodology: apiData.methodology,
       features,
-      ...published.projection,
+      ...refs,
     }) + "\n"
-  // https://developers.cloudflare.com/pages/platform/limits/#file-size
-  const maxAssetBytes = 25 * 1024 * 1024
-  const v2Bytes = Buffer.byteLength(v2Json, "utf8")
-  if (v2Bytes > maxAssetBytes) {
-    throw new Error(
-      `${v2Path}: ${v2Bytes} bytes exceeds the ${maxAssetBytes}-byte Cloudflare Pages asset limit. Split the API payload before publishing; retain all observations and history.`,
-    )
-  }
   mkdirSync(v2Dir, { recursive: true })
-  writeFileSync(v2Path, v2Json)
+  writeAsset(v2Path, v2Json)
 
   // Generate badges
   let badgeCount = 0
   for (const [slug, terminal] of Object.entries(terminals)) {
     const svg = generateBadgeSvg(terminal.name, terminal.score.pass, terminal.score.total, terminal.score.pct)
-    writeFileSync(join(targetBadgesDir, `${slug}.svg`), svg)
+    writeAsset(join(targetBadgesDir, `${slug}.svg`), svg)
     badgeCount++
   }
 
-  return { dataPath, badgeCount }
+  return { dataPath, badgeCount, ...assertDeploymentLimits(outDir ?? publicDir) }
 }
 
 // Allow standalone execution
