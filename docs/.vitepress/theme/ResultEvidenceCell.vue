@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
+import type { ObservationReason } from "@terminfo/probe-defs"
 import type { EvidenceDocument, PublicCell, PublicVersion } from "../../data/public-results"
 
 const props = withDefaults(
@@ -30,6 +31,16 @@ const id = useId()
 const tooltipId = `${id}-preview`
 const dialogTitleId = `${id}-title`
 
+const reasonExplanations: Record<ObservationReason, string> = {
+  "no-response": "No terminal reply was recorded for this query.",
+  timeout: "The probe did not finish before its time limit.",
+  permission: "Required permission was not available for this probe.",
+  "policy-refused": "The configured policy declined to run or allow this probe.",
+  "collector-error": "The collector failed to complete this probe.",
+  "invalid-reply": "The recorded reply did not match this probe’s expected format.",
+  "insufficient-evidence": "The recorded observation does not establish support; more evidence is needed.",
+}
+
 const status = computed(() => {
   if (!props.version) return { text: "No reviewed current result", icon: "?", tone: "unknown" }
   if (!props.cell) return { text: "Not tested by this run", icon: "?", tone: "unknown" }
@@ -48,6 +59,12 @@ const shortLabel = computed(() => {
   return status.value.text
 })
 const methodLabel = computed(() => (props.cell?.evidence === "none" ? "Not measured" : (props.cell?.evidence ?? "")))
+const selectionExplanation = computed(() => {
+  if (!props.version) return "No reviewed current result is available for this context."
+  if (!props.cell) return "This feature was not measured by this selected run."
+  return undefined
+})
+const reasonExplanation = computed(() => (props.cell?.reason ? reasonExplanations[props.cell.reason] : undefined))
 
 const probeGuidanceText = computed(() => props.probeGuidance?.replace(/<\/?code>/g, ""))
 const presentation = computed(() => props.cell?.presentation)
@@ -272,6 +289,9 @@ onBeforeUnmount(() => {
         <span v-if="cell"
           >Method: {{ methodLabel }}<template v-if="cell.reason"> · Reason: {{ cell.reason }}</template></span
         >
+        <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
+        <span v-else-if="cell?.evidence === 'none'">This probe made no terminal measurement.</span>
+        <span v-if="reasonExplanation">{{ reasonExplanation }}</span>
         <span v-if="cell?.note">{{ cell.note }}</span>
         <img
           v-if="previewImageUrl"
@@ -311,6 +331,9 @@ onBeforeUnmount(() => {
           This result covers the recorded query only, not other requests or the protocol's full behavior.
         </p>
         <p v-if="cell?.reason">Reason: {{ cell.reason }}</p>
+        <p v-if="selectionExplanation">{{ selectionExplanation }}</p>
+        <p v-else-if="cell?.evidence === 'none'">This probe made no terminal measurement.</p>
+        <p v-if="reasonExplanation">{{ reasonExplanation }}</p>
 
         <h3>Evidence</h3>
         <p v-if="!version">No reviewed current run is selected for this terminal context.</p>
