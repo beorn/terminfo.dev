@@ -26,6 +26,7 @@ interface VersionInfo {
   total: number
   yes: number
   pct: number | null
+  suiteFreshness: string
 }
 
 /** Versions displayed on a terminal page come only from reviewed, exact-context runs. */
@@ -42,6 +43,7 @@ function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: st
       version: selected.target.version,
       total: selected.counts.conclusive,
       yes: selected.counts.supported,
+      suiteFreshness: selected.suiteFreshness,
       pct:
         selected.counts.conclusive > 0
           ? Math.round((selected.counts.supported / selected.counts.conclusive) * 100)

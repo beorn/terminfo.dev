@@ -123,6 +123,7 @@ const fixture = vi.hoisted(() => {
     ...selected,
     runId: "screen-older-reviewed",
     sha256: "c".repeat(64),
+    suiteFreshness: "older suite (1 probes)",
     target: { ...screen.target, version: "4.9" },
     cells: Object.fromEntries(
       Object.entries(cells).map(([id, cell]) => [
@@ -782,8 +783,8 @@ describe("selected-run consumer parity", () => {
       pct: "",
     })
     expect(JSON.parse(terminal?.params.versions ?? "[]")).toEqual([
-      expect.objectContaining({ version: fixture.screen.target.version, pct: null }),
-      expect.objectContaining({ version: "4.9", pct: 50 }),
+      expect.objectContaining({ version: fixture.screen.target.version, pct: null, suiteFreshness: "current" }),
+      expect.objectContaining({ version: "4.9", pct: 50, suiteFreshness: "older suite (1 probes)" }),
     ])
     const comparison = comparePaths
       .paths()

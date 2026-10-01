@@ -188,6 +188,7 @@ const breadcrumbParent = (() => {
 
 <div v-if="versions.length > 1 && selectedRun?.sha256 === defaultRun?.sha256" class="version-history">
   <h2 id="version-history">Version History</h2>
+  <p>Scores summarize each version's reviewed suite; different suites are not a direct version-to-version comparison.</p>
   <table class="version-table">
     <thead>
       <tr>
@@ -199,7 +200,7 @@ const breadcrumbParent = (() => {
     </thead>
     <tbody>
       <tr v-for="v in versions" :key="v.version" :class="{ 'version-current': v.version === p.version }">
-        <td class="version-name">{{ v.version }}</td>
+        <td class="version-name">{{ v.version }} <small>({{ v.suiteFreshness }})</small></td>
         <td class="version-bar-cell">
           <div class="version-bar">
             <div class="version-bar-fill" :style="{ width: v.total ? (v.yes / v.total * 100) + '%' : '0%' }"></div>
