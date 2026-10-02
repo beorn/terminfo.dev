@@ -228,7 +228,7 @@ export const resetProbes: ProbeDefinition[] = [
           ctx.write("\x1b#8")
           const postAlignmentCursor = await ctx.queryCursorPosition()
           const target = await capture({ role: "target", label: "DECALN alignment grid after ESC # 8" })
-          const delayedCaptureMs = 1000
+          const delayedCaptureMs = 5000
           await new Promise<void>((resolve) => {
             setTimeout(resolve, delayedCaptureMs)
           })
@@ -236,7 +236,9 @@ export const resetProbes: ProbeDefinition[] = [
             role: "target",
             label: "DECALN alignment grid after delayed checkpoint",
           })
-          ctx.write("\x1b[HX")
+          ctx.write("\x1b[H")
+          const cursorOnlyControl = await capture({ role: "control", label: "Cursor-only control after CUP home" })
+          ctx.write("X")
           const redrawControl = await capture({ role: "control", label: "Redraw control after one ordinary glyph" })
           const observed = JSON.stringify({
             rows,
@@ -247,6 +249,7 @@ export const resetProbes: ProbeDefinition[] = [
             target,
             delayedCaptureMs,
             delayedTarget,
+            cursorOnlyControl,
             redrawControl,
           })
           return {
@@ -257,8 +260,8 @@ export const resetProbes: ProbeDefinition[] = [
               reason: "insufficient-evidence",
               evidence: "pixels",
               screenshotRef: target.ref,
-              frames: [control, target, delayedTarget, redrawControl],
-              note: `${postAlignmentCursor === null ? "No post-DECALN CPR response; processing barrier unconfirmed. " : ""}Known non-E grid, initial and delayed DECALN targets and diagnostic redraw control after one ordinary glyph captured; repeated E glyphs across measured rows and columns require independent review`,
+              frames: [control, target, delayedTarget, cursorOnlyControl, redrawControl],
+              note: `${postAlignmentCursor === null ? "No post-DECALN CPR response; processing barrier unconfirmed. " : ""}Known non-E grid, initial and delayed DECALN targets, cursor-only control and ordinary-glyph redraw control captured; repeated E glyphs across measured rows and columns require independent review. CPR at the already-homed cursor records responsiveness, not DECALN recognition or render completion`,
             },
             assertions: [
               {

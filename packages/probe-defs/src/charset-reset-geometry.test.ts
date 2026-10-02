@@ -118,7 +118,7 @@ function decaln() {
 }
 
 test.each([{ row: 1, col: 1 }, null])(
-  "DECALN retains CPR %j before its initial target and independent ordinary-glyph redraw control without grading pixels",
+  "DECALN retains CPR %j and separates five-second, cursor-only and ordinary-glyph checkpoints without grading pixels",
   async (cursor) => {
     vi.useFakeTimers()
     const events: string[] = []
@@ -131,7 +131,7 @@ test.each([{ row: 1, col: 1 }, null])(
       return { role, label, capturedAt: checkpoints.length, ref: `frame-${role}-${checkpoints.length}` }
     }
     const pending = decaln().term!(context)
-    await vi.advanceTimersByTimeAsync(999)
+    await vi.advanceTimersByTimeAsync(4999)
     expect(checkpoints).toHaveLength(2)
     await vi.advanceTimersByTimeAsync(1)
     const result = await pending
@@ -140,16 +140,24 @@ test.each([{ row: 1, col: 1 }, null])(
     expect(checkpoints[0]).not.toContain("CPR")
     expect(checkpoints[1]).toContain("\x1b#8")
     expect(checkpoints[1]).toMatch(/\x1b#8CPR$/)
-    expect(checkpoints).toHaveLength(4)
+    expect(checkpoints).toHaveLength(5)
     expect(checkpoints[1]).not.toContain("\x1b[HX")
     expect(checkpoints[2]).toBe(checkpoints[1])
-    expect(checkpointTimes[2]! - checkpointTimes[1]!).toBe(1000)
-    expect(checkpoints[3]).toMatch(/\x1b\[HX$/)
+    expect(checkpointTimes[2]! - checkpointTimes[1]!).toBe(5000)
+    expect(checkpoints[3]).toBe(`${checkpoints[2]}\x1b[H`)
+    expect(checkpoints[4]).toBe(`${checkpoints[3]}X`)
     expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
     if (cursor === null) expect(result.observation?.note).toContain("processing barrier unconfirmed")
-    expect(result.observation?.frames?.map(({ role }) => role)).toEqual(["control", "target", "target", "control"])
+    expect(result.observation?.frames?.map(({ role }) => role)).toEqual([
+      "control",
+      "target",
+      "target",
+      "control",
+      "control",
+    ])
     expect(result.observation?.frames?.[2]?.label).toBe("DECALN alignment grid after delayed checkpoint")
-    expect(result.observation?.frames?.[3]?.label).toBe("Redraw control after one ordinary glyph")
+    expect(result.observation?.frames?.[3]?.label).toBe("Cursor-only control after CUP home")
+    expect(result.observation?.frames?.[4]?.label).toBe("Redraw control after one ordinary glyph")
     expect(result.observation?.screenshotRef).toBe("frame-target-2")
     expect(JSON.parse(result.response ?? "")).toMatchObject({
       rows: 3,
@@ -157,9 +165,10 @@ test.each([{ row: 1, col: 1 }, null])(
       seed: "ABABAB",
       postAlignmentCursor: cursor,
       target: { ref: "frame-target-2" },
-      delayedCaptureMs: 1000,
+      delayedCaptureMs: 5000,
       delayedTarget: { ref: "frame-target-3" },
-      redrawControl: { ref: "frame-control-4" },
+      cursorOnlyControl: { ref: "frame-control-4" },
+      redrawControl: { ref: "frame-control-5" },
     })
     expect(result.assertions).toMatchObject([{ kind: "positive", note: expect.stringContaining("capture-only") }])
     expect(result.assertions?.[0]?.expected).toContain("DECALN target shows repeated E across that same measured grid")
@@ -167,7 +176,7 @@ test.each([{ row: 1, col: 1 }, null])(
   },
 )
 
-test.each([1, 2, 3, 4])("DECALN cleans its disposable fixture when capture %i fails", async (failedCapture) => {
+test.each([1, 2, 3, 4, 5])("DECALN cleans its disposable fixture when capture %i fails", async (failedCapture) => {
   vi.useFakeTimers()
   const events: string[] = []
   const context = app(3, 6, events)
