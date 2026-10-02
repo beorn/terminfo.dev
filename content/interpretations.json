@@ -327475,7 +327475,7 @@
     "supersedes": [],
     "id": "present-3735cb3e4a13cfc3231be1b04d54f798-reset.decaln",
     "featureId": "reset.decaln",
-    "reason": "AB persists initial/delayed5239ms/CUP-only; X-only reveals X/E. Bounded redraw observation; general support inconclusive. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "reason": "AB stays visible in the initial, 5,239 ms delayed and CUP-only captures; a following X shows X and the E fill. The E fill is not observed before that X. General support inconclusive; observed only in this Linux Kitty, font and software-renderer configuration.",
     "presentsEvidence": true
   },
   {
