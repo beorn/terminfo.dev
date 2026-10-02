@@ -1,15 +1,15 @@
 {
-  "$generated": "2026-10-01T16:33:45.022Z",
+  "$generated": "2026-10-02T02:51:48.840Z",
   "terminals/kitty": {
-    "analysis": "<p><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> has <strong>98%</strong> support (94/96) among conclusive feature results, with observed unsupported results in the Modern TUI, Rich TUI baselines. Observed unsupported: <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/modes/decset-1048-save-restore-cursor\" class=\"hover-link\">Save/restore cursor (?1048)</a>.</p>",
-    "date": "2026-10-01",
-    "probeCount": 96,
+    "analysis": "<p><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> has <strong>98%</strong> support (104/106) among conclusive feature results, with observed unsupported results in the Modern TUI, Rich TUI baselines. Observed unsupported: <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/modes/decset-1048-save-restore-cursor\" class=\"hover-link\">Save/restore cursor (?1048)</a>.</p>",
+    "date": "2026-10-02",
+    "probeCount": 106,
     "changes": null,
-    "runSha256": "3874d6db7e6615cdd36c09ea47dd83b29b3201fe2559b72b29025ef983d13d28",
-    "measuredAt": "2026-10-01T05:07:50.026Z",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "measuredAt": "2026-10-02T02:29:23.530Z",
     "counts": {
-      "conclusive": 96,
-      "supported": 94,
+      "conclusive": 106,
+      "supported": 104,
       "unsupported": 2
     }
   },
@@ -158,262 +158,262 @@
   },
   "terminals/vt52-historical": {
     "analysis": "<p><strong><a href=\"/terminals/vt52-historical\" class=\"hover-link\">DEC VT52</a></strong> (1975) was manufactured by Digital Equipment Corporation (DEC). First DEC video terminal with <a href=\"/cursor\" class=\"hover-link\" title=\"Text Cursor\">cursor</a> addressing. This is a historical reference entry — no automated probe data is available for this terminal.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "probeCount": 0,
     "changes": null
   },
   "terminals/vt100-historical": {
     "analysis": "<p><strong><a href=\"/terminals/vt100-historical\" class=\"hover-link\">DEC VT100</a></strong> (1978) was manufactured by Digital Equipment Corporation (DEC). Defined the <a href=\"/features\" class=\"hover-link\" title=\"Escape Sequence\">escape sequence</a> grammar used by every modern terminal. This is a historical reference entry — no automated probe data is available for this terminal.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "probeCount": 0,
     "changes": null
   },
   "terminals/vt220-historical": {
     "analysis": "<p><strong><a href=\"/terminals/vt220-historical\" class=\"hover-link\">DEC VT220</a></strong> (1983) was manufactured by Digital Equipment Corporation (DEC). Introduced editing operations (ICH/DCH/IL/DL) used by every TUI application. This is a historical reference entry — no automated probe data is available for this terminal.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "probeCount": 0,
     "changes": null
   },
   "terminals/xterm-historical": {
     "analysis": "<p><strong><a href=\"/terminals/xterm-historical\" class=\"hover-link\" title=\"X Terminal Emulator\">xterm</a></strong> (1984) was manufactured by MIT / Thomas Dickey. De facto reference implementation — defined most 'standard' terminal behavior. This is a historical reference entry — no automated probe data is available for this terminal.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "probeCount": 0,
     "changes": null
   },
   "terminals/vt510-historical": {
     "analysis": "<p><strong><a href=\"/terminals/vt510-historical\" class=\"hover-link\">DEC VT510</a></strong> (1993) was manufactured by Digital Equipment Corporation (DEC). Reference manual remains the most cited terminal specification. This is a historical reference entry — no automated probe data is available for this terminal.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "probeCount": 0,
     "changes": null
   },
   "baseline/core": {
     "analysis": "<p><strong>0</strong> of 12 selected targets have conclusive support for every Core TUI feature. Known unsupported results: vt100 (Rust) (54/67 conclusive baseline features supported), <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (47/57 conclusive baseline features supported), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a> (54/62 conclusive baseline features supported). Most commonly unsupported: <a href=\"/reset/decstr-soft-reset\" class=\"hover-link\">Soft reset (DECSTR)</a>, <a href=\"/cursor/hpa-horizontal-position-absolute\" class=\"hover-link\">HPA horizontal position absolute (CSI `)</a>, <a href=\"/text/hts-set-tab-stop\" class=\"hover-link\">HTS set tab stop (ESC H)</a>.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "baseline/modern": {
     "analysis": "<p><strong>0</strong> of 12 selected targets have conclusive support for every Modern TUI feature. Known unsupported results: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (10/19 conclusive baseline features supported), vt100 (Rust) (15/22 conclusive baseline features supported), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a> (16/23 conclusive baseline features supported). Most commonly unsupported: <a href=\"/modes/decset-1048-save-restore-cursor\" class=\"hover-link\">Save/restore cursor (?1048)</a>, <a href=\"/cursor/decscusr-cursor-shape\" class=\"hover-link\">Cursor shape (DECSCUSR)</a>, <a href=\"/editing/rep-repeat-character\" class=\"hover-link\">Repeat character (REP)</a>.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "baseline/rich": {
     "analysis": "<p><strong>0</strong> of 12 selected targets have conclusive support for every Rich TUI feature. Known unsupported results: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (1/9 conclusive baseline features supported), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a> (1/8 conclusive baseline features supported), vt100 (Rust) (1/7 conclusive baseline features supported). Most commonly unsupported: <a href=\"/extensions/osc66-text-sizing\" class=\"hover-link\">OSC 66 text sizing</a>, <a href=\"/editing/sl-shift-left\" class=\"hover-link\">SL — shift left (CSI Ps SP @)</a>, <a href=\"/editing/sr-shift-right\" class=\"hover-link\">SR — shift right (CSI Ps SP A)</a>.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "baseline/legacy": {
     "analysis": "<p><strong>0</strong> of 12 selected targets have conclusive support for every Legacy feature. Known unsupported results: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a> (0/6 conclusive baseline features supported), <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>) (0/7 conclusive baseline features supported), <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>) (0/6 conclusive baseline features supported). Most commonly unsupported: <a href=\"/editing/decfra-fill-rectangle\" class=\"hover-link\">DECFRA — fill rectangular area</a>, <a href=\"/editing/decera-erase-rectangle\" class=\"hover-link\">DECERA — erase rectangular area</a>, <a href=\"/editing/decsera-selective-erase-rectangle\" class=\"hover-link\">DECSERA — selective erase rectangular area</a>.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "baseline/unicode": {
     "analysis": "<p><strong>3</strong> of 12 selected targets have conclusive support for every <a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a> feature. Known unsupported results: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> (1/5 conclusive baseline features supported), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a> (1/5 conclusive baseline features supported), <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a> (4/6 conclusive baseline features supported). Most commonly unsupported: <a href=\"/unicode/grapheme-cursor\" class=\"hover-link\">ZWJ Emoji Sample Display Width</a>, <a href=\"/text/emoji-regional-indicator-flags\" class=\"hover-link\">Regional indicator flags (2 cols)</a>, <a href=\"/unicode/wrap-boundary\" class=\"hover-link\">Wide Char at Line Wrap</a>.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr": {
     "analysis": "<p>The <strong>SGR (<a href=\"/text\" class=\"hover-link\">Text</a> Styling)</strong> category covers 32 features. Common gaps: <a href=\"/sgr/38-2-truecolor-fg\" class=\"hover-link\">24-bit fg (SGR 38;2)</a> (1 terminal fails), <a href=\"/sgr/48-2-truecolor-bg\" class=\"hover-link\">24-bit bg (SGR 48;2)</a> (1 terminal fails). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor": {
     "analysis": "<p>The <strong><a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a></strong> category covers 22 features. Targets with support for every category check (100%): <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>). Common gaps: <a href=\"/cursor/reverse-wrap-45\" class=\"hover-link\">Reverse Wrap (Mode 45)</a> (6 terminals fail), <a href=\"/cursor/decscusr-cursor-shape\" class=\"hover-link\">Cursor shape (DECSCUSR)</a> (5 terminals fail), <a href=\"/cursor/hpa-horizontal-position-absolute\" class=\"hover-link\">HPA horizontal position absolute (CSI `)</a> (3 terminals fail). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text": {
     "analysis": "<p>The <strong><a href=\"/text\" class=\"hover-link\">Text</a></strong> category covers 20 features. Targets with support for every category check (100%): <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>. Common gaps: <a href=\"/text/emoji-regional-indicator-flags\" class=\"hover-link\">Regional indicator flags (2 cols)</a> (4 terminals fail), <a href=\"/text/hts-set-tab-stop\" class=\"hover-link\">HTS set tab stop (ESC H)</a> (3 terminals fail), <a href=\"/text/tbc-clear-tab-stop\" class=\"hover-link\">TBC clear tab stop (CSI g)</a> (3 terminals fail). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase": {
     "analysis": "<p>The <strong><a href=\"/erase\" class=\"hover-link\">Erase</a></strong> category covers 11 features. Targets with support for every category check (100%): <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Common gaps: <a href=\"/erase/selective-decsed\" class=\"hover-link\">Selective Erase (DECSED)</a> (3 terminals fail), <a href=\"/erase/ech-erase-character\" class=\"hover-link\">Erase character (ECH)</a> (1 terminal fails). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing": {
     "analysis": "<p>The <strong><a href=\"/editing\" class=\"hover-link\">Editing</a></strong> category covers 17 features. Common gaps: <a href=\"/editing/decfra-fill-rectangle\" class=\"hover-link\">DECFRA — fill rectangular area</a> (10 terminals fail), <a href=\"/editing/decera-erase-rectangle\" class=\"hover-link\">DECERA — erase rectangular area</a> (10 terminals fail), <a href=\"/editing/decsera-selective-erase-rectangle\" class=\"hover-link\">DECSERA — selective erase rectangular area</a> (10 terminals fail). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes": {
     "analysis": "<p>The <strong><a href=\"/modes\" class=\"hover-link\">Modes</a></strong> category covers 30 features. Common gaps: <a href=\"/modes/decset-1048-save-restore-cursor\" class=\"hover-link\">Save/restore cursor (?1048)</a> (6 terminals fail), <a href=\"/modes/irm-insert-replace-mode\" class=\"hover-link\">Insert/replace mode (IRM)</a> (2 terminals fail). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "scrollback": {
     "analysis": "<p>The <strong><a href=\"/scrollback\" class=\"hover-link\">Scrollback</a></strong> category covers 10 features. Common gaps: <a href=\"/scrollback/accumulates\" class=\"hover-link\">Scrollback accumulates</a> (2 terminals fail), <a href=\"/scrollback/total-lines\" class=\"hover-link\">Total line count</a> (2 terminals fail). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "reset": {
     "analysis": "<p>The <strong><a href=\"/reset\" class=\"hover-link\">Reset</a></strong> category covers 5 features. Targets with support for every category check (100%): <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Common gaps: <a href=\"/reset/decstr-soft-reset\" class=\"hover-link\">Soft reset (DECSTR)</a> (6 terminals fail), <a href=\"/reset/decaln-screen-alignment\" class=\"hover-link\">DECALN screen alignment (ESC # 8)</a> (3 terminals fail). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions": {
     "analysis": "<p>The <strong><a href=\"/extensions\" class=\"hover-link\">Extensions</a></strong> category covers 79 features. Common gaps: <a href=\"/extensions/osc66-text-sizing\" class=\"hover-link\">OSC 66 text sizing</a> (10 terminals fail), <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a> (5 terminals fail), <a href=\"/extensions/osc-720-scroll-up\" class=\"hover-link\">Scroll view up (OSC 720)</a> (4 terminals fail). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "charsets": {
     "analysis": "<p>The <strong><a href=\"/charsets\" class=\"hover-link\">Character Sets</a></strong> category covers 4 features. Targets with support for every category check (100%): <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), libvterm (Neovim fork) and 3 more. Common gaps: <a href=\"/charsets/dec-special-graphics\" class=\"hover-link\" title=\"DEC Special Graphics Character Set\">DEC Special Graphics</a> (3 terminals fail), <a href=\"/charsets/g0-g1-charset-switching\" class=\"hover-link\">G0/G1 character set switching</a> (1 terminal fails), <a href=\"/charsets/dec-line-drawing-chars\" class=\"hover-link\">DEC line drawing character set</a> (1 terminal fails). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device": {
     "analysis": "<p>The <strong><a href=\"/device\" class=\"hover-link\">Device Status</a></strong> category covers 28 features. App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "input": {
     "analysis": "<p>The <strong><a href=\"/input\" class=\"hover-link\">Input Protocols</a></strong> category covers 8 features. App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "unicode": {
     "analysis": "<p>The <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> category covers 11 features. Targets with support for every category check (100%): <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>. Common gaps: <a href=\"/unicode/grapheme-cursor\" class=\"hover-link\">ZWJ Emoji Sample Display Width</a> (8 terminals fail), <a href=\"/text/emoji-regional-indicator-flags\" class=\"hover-link\">Regional indicator flags (2 cols)</a> (4 terminals fail), <a href=\"/unicode/wrap-boundary\" class=\"hover-link\">Wide Char at Line Wrap</a> (3 terminals fail). App and <a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a> checks establish different evidence scopes; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "ecma-48": {
     "analysis": "<p><strong><a href=\"/ecma-48\" class=\"hover-link\">ECMA-48 Standard</a></strong> defines 73 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average support among conclusive tagged-feature results: <strong>96%</strong>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 78% (43/55).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "vt100": {
     "analysis": "<p><strong><a href=\"/vt100\" class=\"hover-link\" title=\"Video Terminal 100\">VT100</a></strong> defines 57 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average support among conclusive tagged-feature results: <strong>96%</strong>. Lowest: vt100 (Rust) at 83% (38/46).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "vt220": {
     "analysis": "<p><strong><a href=\"/vt220\" class=\"hover-link\" title=\"Video Terminal 220\">VT220</a></strong> defines 4 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average support among conclusive tagged-feature results: <strong>86%</strong>. Full compliance (100%): libvterm (Neovim fork), <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 0% (0/3).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "vt510": {
     "analysis": "<p><strong><a href=\"/vt510\" class=\"hover-link\" title=\"Video Terminal 510\">VT510</a></strong> defines 20 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average support among conclusive tagged-feature results: <strong>47%</strong>. Lowest: vt100 (Rust) at 27% (3/11).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "dec-private-modes": {
     "analysis": "<p><strong><a href=\"/dec-private-modes\" class=\"hover-link\">DEC Private Modes</a></strong> defines 30 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average support among conclusive tagged-feature results: <strong>81%</strong>. Lowest: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a> at 50% (4/8).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "xterm-extensions": {
     "analysis": "<p><strong><a href=\"/xterm-extensions\" class=\"hover-link\">Xterm Extensions</a></strong> defines 82 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average support among conclusive tagged-feature results: <strong>75%</strong>. Lowest: <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a> at 47% (8/17).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "kitty-extensions": {
     "analysis": "<p><strong><a href=\"/kitty-extensions\" class=\"hover-link\">Kitty Extensions</a></strong> defines 27 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average support among conclusive tagged-feature results: <strong>52%</strong>. Lowest: <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a> at 0% (0/1).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "iterm2": {
     "analysis": "<p><strong><a href=\"/iterm2\" class=\"hover-link\">iTerm2 Extensions</a></strong> defines 4 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average support among conclusive tagged-feature results: <strong>100%</strong>.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "conemu": {
     "analysis": "<p><strong><a href=\"/conemu\" class=\"hover-link\">ConEmu Extensions</a></strong> defines 1 feature in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Analysis awaiting verified measurements for this standard.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "vscode-extensions": {
     "analysis": "<p><strong><a href=\"/vscode-extensions\" class=\"hover-link\">VS Code Extensions</a></strong> defines 7 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Analysis awaiting verified measurements for this standard.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "osc": {
     "analysis": "<p><strong>Operating System Commands (OSC)</strong> defines 61 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average support among conclusive tagged-feature results: <strong>46%</strong>. Lowest: libvterm (Neovim fork) at 0% (0/3).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sixel": {
     "analysis": "<p><strong><a href=\"/sixel\" class=\"hover-link\">Sixel Graphics</a></strong> defines 3 features in the <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix. Average support among conclusive tagged-feature results: <strong>17%</strong>. Lowest: <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a> at 0% (0/1).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/1-bold": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/2-faint-dim": {
     "analysis": "<p>Recorded checks report support in <strong>all 8</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/3-italic": {
     "analysis": "<p>Recorded checks report support in <strong>all 10</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/4-underline": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/21-double-underline": {
     "analysis": "<p>Recorded checks report support in <strong>all 7</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/4-3-curly-underline": {
     "analysis": "<p>Recorded checks report support in <strong>all 8</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/4-4-dotted-underline": {
     "analysis": "<p>Recorded checks report support in <strong>all 7</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/4-5-dashed-underline": {
     "analysis": "<p>Recorded checks report support in <strong>all 7</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/58-underline-color": {
-    "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/58-5-underline-color-indexed": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/58-2-underline-color-rgb": {
-    "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/59-underline-color-reset": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/5-blink": {
     "analysis": "<p>Recorded checks report support in <strong>all 6</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/7-inverse-video": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/8-hidden": {
     "analysis": "<p>Recorded checks report support in <strong>all 4</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/9-strikethrough": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/53-overline": {
@@ -423,317 +423,317 @@
   },
   "sgr/30-37-standard-fg": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/40-47-standard-bg": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/90-97-bright-fg": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/100-107-bright-bg": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/39-default-fg": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/49-default-bg": {
     "analysis": "<p>Recorded checks report support in <strong>all 10</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/38-5-256-color-fg": {
     "analysis": "<p>Recorded checks report support in <strong>all 8</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/48-5-256-color-bg": {
     "analysis": "<p>Recorded checks report support in <strong>all 8</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/38-2-truecolor-fg": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>10</strong> conclusively measured targets (90%). Not supported by: <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/48-2-truecolor-bg": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>10</strong> conclusively measured targets (90%). Not supported by: <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/22-reset-bold": {
     "analysis": "<p>Recorded checks report support in <strong>all 6</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/24-reset-underline": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/27-reset-inverse": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/23-reset-italic": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "sgr/0-reset": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/dectcem-hide-cursor": {
-    "analysis": "<p>Recorded checks report support in <strong>all 10</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/decscusr-cursor-shape": {
-    "analysis": "<p>Recorded checks report support for <strong>5</strong> of <strong>10</strong> conclusively measured targets (50%). Not supported by: <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>Recorded checks report support for <strong>6</strong> of <strong>11</strong> conclusively measured targets (55%). Not supported by: <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cup-cursor-position": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cuu-cursor-up": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cud-cursor-down": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cuf-cursor-forward": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cub-cursor-back": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/home": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cha-cursor-horizontal-absolute": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cnl-cursor-next-line": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/dsr-6-cursor-position-report": {
     "analysis": "<p>Recorded checks report support in <strong>all 7</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/decsc-save-restore-cursor": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/ansi-save-cursor": {
     "analysis": "<p>Recorded checks report support for <strong>10</strong> of <strong>12</strong> conclusively measured targets (83%). Not supported by: libvterm (Neovim fork), vt100 (Rust). Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/ansi-restore-cursor": {
     "analysis": "<p>Recorded checks report support for <strong>10</strong> of <strong>12</strong> conclusively measured targets (83%). Not supported by: libvterm (Neovim fork), vt100 (Rust). Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/reverse-wrap-45": {
     "analysis": "<p>Recorded checks report support for <strong>5</strong> of <strong>11</strong> conclusively measured targets (45%). Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cup-screen-boundaries": {
     "analysis": "<p>Recorded checks report support for <strong>11</strong> of <strong>12</strong> conclusively measured targets (92%). Not supported by: <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cuu-past-top": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cud-past-bottom": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cup-decom-scroll-region": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>11</strong> conclusively measured targets (82%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/vpa-vertical-position-absolute": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/cpl-cursor-preceding-line": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "cursor/hpa-horizontal-position-absolute": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>12</strong> conclusively measured targets (75%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/el-0-erase-to-eol": {
-    "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/el-1-erase-to-bol": {
-    "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/el-2-erase-line": {
-    "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/ed-1-erase-above": {
-    "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/ed-2-erase-screen": {
-    "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/ed-0-erase-below": {
-    "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/ed-3-erase-scrollback": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/ech-erase-character": {
     "analysis": "<p>Recorded checks report support for <strong>10</strong> of <strong>11</strong> conclusively measured targets (91%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/selective-decsed": {
     "analysis": "<p>Recorded checks report support for <strong>5</strong> of <strong>8</strong> conclusively measured targets (63%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/el-erase-with-bg-color": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "erase/ed-scroll-region-boundary": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/ich-insert-characters": {
     "analysis": "<p>Recorded checks report support for <strong>10</strong> of <strong>11</strong> conclusively measured targets (91%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/dch-delete-characters": {
     "analysis": "<p>Recorded checks report support for <strong>10</strong> of <strong>11</strong> conclusively measured targets (91%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/il-insert-lines": {
     "analysis": "<p>Recorded checks report support for <strong>10</strong> of <strong>11</strong> conclusively measured targets (91%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/dl-delete-lines": {
     "analysis": "<p>Recorded checks report support for <strong>10</strong> of <strong>11</strong> conclusively measured targets (91%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/rep-repeat-character": {
     "analysis": "<p>Recorded checks report support for <strong>8</strong> of <strong>11</strong> conclusively measured targets (73%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/sl-shift-left": {
     "analysis": "<p>Recorded checks report support for <strong>2</strong> of <strong>11</strong> conclusively measured targets (18%). Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/sr-shift-right": {
     "analysis": "<p>Recorded checks report support for <strong>2</strong> of <strong>11</strong> conclusively measured targets (18%). Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/decic-insert-columns": {
     "analysis": "<p>Recorded checks report support for <strong>3</strong> of <strong>11</strong> conclusively measured targets (27%). Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/decdc-delete-columns": {
     "analysis": "<p>Recorded checks report support for <strong>3</strong> of <strong>11</strong> conclusively measured targets (27%). Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/decfra-fill-rectangle": {
     "analysis": "<p>Recorded checks report support for <strong>1</strong> of <strong>11</strong> conclusively measured targets (9%). Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/decera-erase-rectangle": {
     "analysis": "<p>Recorded checks report support for <strong>1</strong> of <strong>11</strong> conclusively measured targets (9%). Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/decsera-selective-erase-rectangle": {
     "analysis": "<p>No conclusive support among <strong>10</strong> measured targets. Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/deccra-copy-rectangle": {
     "analysis": "<p>Recorded checks report support for <strong>1</strong> of <strong>11</strong> conclusively measured targets (9%). Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/deccara-change-attrs-rectangle": {
     "analysis": "<p>Recorded checks report support for <strong>1</strong> of <strong>10</strong> conclusively measured targets (10%). Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/decrara-reverse-attrs-rectangle": {
     "analysis": "<p>Recorded checks report support for <strong>1</strong> of <strong>11</strong> conclusively measured targets (9%). Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "editing/decsace-select-attribute-change-extent": {
@@ -743,7 +743,7 @@
   },
   "editing/decrqcra-checksum-rectangle": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "input/modify-other-keys": {
@@ -753,7 +753,7 @@
   },
   "input/csi-u-encoding": {
     "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "input/pixel-mouse-1016": {
@@ -778,7 +778,7 @@
   },
   "modes/decset-1049-alt-screen-enter": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decrst-1049-alt-screen-exit": {
@@ -788,42 +788,42 @@
   },
   "modes/decset-2004-bracketed-paste": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decset-2026-synchronized-output": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decset-1000-mouse-tracking": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decset-1006-sgr-mouse": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decset-1003-all-motion-mouse": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decset-1004-focus-tracking": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decscnm-reverse-video": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decom-origin-mode": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/left-right-margin-69": {
@@ -833,12 +833,12 @@
   },
   "modes/irm-insert-replace-mode": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>11</strong> conclusively measured targets (82%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust). Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decckm-app-cursor-keys": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/deckpam-application-keypad": {
@@ -848,7 +848,7 @@
   },
   "modes/decawm-auto-wrap": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decset-47-alt-screen-legacy": {
@@ -863,7 +863,7 @@
   },
   "modes/decset-1048-save-restore-cursor": {
     "analysis": "<p>Recorded checks report support for <strong>6</strong> of <strong>12</strong> conclusively measured targets (50%). Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/decset-1007-alt-scroll": {
@@ -873,37 +873,37 @@
   },
   "modes/decset-1005-utf8-mouse": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/deccolm-80-132-column": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "scrollback/accumulates": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>11</strong> conclusively measured targets (82%). Not supported by: libvterm (Neovim fork), vt100 (Rust). Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "scrollback/total-lines": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>11</strong> conclusively measured targets (82%). Not supported by: libvterm (Neovim fork), vt100 (Rust). Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "scrollback/su-scroll-up": {
     "analysis": "<p>Recorded checks report support in <strong>all 10</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "scrollback/sd-scroll-down": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "scrollback/ri-reverse-index": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "scrollback/decstbm-scroll-region": {
@@ -918,7 +918,7 @@
   },
   "scrollback/decstbm-constrained-scrolling": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "scrollback/decstbm-reset-full-screen": {
@@ -933,12 +933,12 @@
   },
   "extensions/kitty-keyboard-protocol": {
     "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/kitty-graphics-protocol": {
     "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/sixel-graphics": {
@@ -948,12 +948,12 @@
   },
   "extensions/osc-8-hyperlinks": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-2-window-title": {
     "analysis": "<p>Recorded checks report support for <strong>8</strong> of <strong>11</strong> conclusively measured targets (73%). Not supported by: <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), libvterm (Neovim fork). Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-0-icon-title": {
@@ -963,17 +963,17 @@
   },
   "extensions/osc-52-clipboard": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-10-fg-color-query": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-11-bg-color-query": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-7-current-directory": {
@@ -1063,212 +1063,212 @@
   },
   "extensions/24-bit-truecolor": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>10</strong> conclusively measured targets (90%). Not supported by: <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/basic-text-rendering": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/wrap-at-width": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/cjk-wide-chars": {
     "analysis": "<p>Recorded checks report support for <strong>10</strong> of <strong>12</strong> conclusively measured targets (83%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/emoji-wide-chars": {
     "analysis": "<p>Recorded checks report support in <strong>all 10</strong> conclusive measurements for this feature. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/emoji-zwj-sequences": {
     "analysis": "<p>Recorded checks report support in <strong>all 4</strong> conclusive measurements for this feature. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/emoji-regional-indicator-flags": {
     "analysis": "<p>Recorded checks report support for <strong>4</strong> of <strong>8</strong> conclusively measured targets (50%). Not supported by: <a href=\"/terminals/alacritty\" class=\"hover-link\" title=\"Alacritty Terminal Emulator\">Alacritty</a>, libvterm (Neovim fork), vt100 (Rust), <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/variation-selector-16-emoji": {
     "analysis": "<p>Recorded checks report support for <strong>3</strong> of <strong>5</strong> conclusively measured targets (60%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/combining-characters": {
     "analysis": "<p>Recorded checks report support for <strong>10</strong> of <strong>12</strong> conclusively measured targets (83%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "unicode/east-asian-ambiguous": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "unicode/grapheme-cursor": {
     "analysis": "<p>Recorded checks report support for <strong>4</strong> of <strong>12</strong> conclusively measured targets (33%). Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "unicode/wrap-boundary": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>12</strong> conclusively measured targets (75%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>, <a href=\"/terminals/wezterm\" class=\"hover-link\" title=\"WezTerm Terminal Emulator\">WezTerm</a>. Part of the <strong><a href=\"/unicode\" class=\"hover-link\" title=\"Unicode Standard\">Unicode</a></strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/ht-tab-stops": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "unicode/tab-stops": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/cr-carriage-return": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/lf-line-feed": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/bs-backspace": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/ind-index": {
     "analysis": "<p>Recorded checks report support for <strong>11</strong> of <strong>12</strong> conclusively measured targets (92%). Not supported by: vt100 (Rust). Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/nel-next-line": {
     "analysis": "<p>Recorded checks report support for <strong>11</strong> of <strong>12</strong> conclusively measured targets (92%). Not supported by: vt100 (Rust). Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/reverse-index-scroll": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/overwrite-at-cursor": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/hts-set-tab-stop": {
     "analysis": "<p>Recorded checks report support for <strong>8</strong> of <strong>11</strong> conclusively measured targets (73%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/tbc-clear-tab-stop": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>12</strong> conclusively measured targets (75%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/cht-forward-tab": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>12</strong> conclusively measured targets (75%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "text/cbt-backward-tab": {
     "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>12</strong> conclusively measured targets (75%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "reset/sgr-0-reset-clears-attributes": {
     "analysis": "<p>Recorded checks report support in <strong>all 9</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "reset/ris-full-reset": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "reset/decstr-soft-reset": {
     "analysis": "<p>Recorded checks report support for <strong>5</strong> of <strong>11</strong> conclusively measured targets (45%). Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "reset/backend-reset-method": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "reset/decaln-screen-alignment": {
     "analysis": "<p>Recorded checks report support for <strong>8</strong> of <strong>11</strong> conclusively measured targets (73%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "charsets/dec-special-graphics": {
     "analysis": "<p>Recorded checks report support for <strong>8</strong> of <strong>11</strong> conclusively measured targets (73%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "charsets/utf8-mode": {
     "analysis": "<p>Recorded checks report support in <strong>all 11</strong> conclusive measurements for this feature. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "charsets/g0-g1-charset-switching": {
     "analysis": "<p>Recorded checks report support for <strong>8</strong> of <strong>9</strong> conclusively measured targets (89%). Not supported by: vt100 (Rust). Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "charsets/dec-line-drawing-chars": {
     "analysis": "<p>Recorded checks report support for <strong>8</strong> of <strong>9</strong> conclusively measured targets (89%). Not supported by: vt100 (Rust). Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/da1-primary-device-attributes": {
     "analysis": "<p>Recorded checks report support in <strong>all 6</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/dsr-5-device-status-report": {
     "analysis": "<p>Recorded checks report support in <strong>all 8</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/da2-secondary-device-attributes": {
     "analysis": "<p>Recorded checks report support in <strong>all 6</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/da3-tertiary-device-attributes": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/decrqss": {
     "analysis": "<p>Recorded checks report support in <strong>all 4</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/xtgettcap": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/decrpm": {
     "analysis": "<p>Recorded checks report support in <strong>all 5</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/xtversion": {
     "analysis": "<p>Recorded checks report support in <strong>all 4</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/term-features": {
@@ -1278,17 +1278,17 @@
   },
   "device/xtwinops-14-window-size-pixels": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/xtwinops-16-cell-size-pixels": {
     "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/xtwinops-18-text-area-chars": {
     "analysis": "<p>Recorded checks report support in <strong>all 12</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/xtwinops-20-icon-label": {
@@ -1298,22 +1298,22 @@
   },
   "device/xtwinops-21-window-title": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/xtwinops-22-push-title": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/xtwinops-23-pop-title": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/xtreportcolors": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "device/xtgetxres": {
@@ -1368,17 +1368,17 @@
   },
   "extensions/osc1337-cellsize": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc1337-capabilities": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/sixel-da1": {
     "analysis": "<p>Recorded checks report support for <strong>1</strong> of <strong>6</strong> conclusively measured targets (17%). Not supported by: <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a>, libvterm (Neovim fork), <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/sixel-geometry-report": {
@@ -1393,17 +1393,17 @@
   },
   "extensions/osc66-text-sizing": {
     "analysis": "<p>Recorded checks report support for <strong>2</strong> of <strong>12</strong> conclusively measured targets (17%). Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc5522-clipboard": {
     "analysis": "<p>Recorded checks report support for <strong>2</strong> of <strong>5</strong> conclusively measured targets (40%). Not supported by: libvterm (Neovim fork), <a href=\"/terminals/vterm-js\" class=\"hover-link\">vterm.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/mode-2031-color-scheme": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "modes/xtpushsgr-push-sgr": {
@@ -1443,37 +1443,37 @@
   },
   "extensions/kitty-keyboard-disambiguate": {
     "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/kitty-keyboard-report-events": {
     "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/kitty-keyboard-report-alternate": {
     "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/kitty-keyboard-report-all-keys": {
     "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/kitty-keyboard-report-text": {
     "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/kitty-graphics-transmit": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/kitty-graphics-display": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/kitty-graphics-animation": {
@@ -1488,12 +1488,12 @@
   },
   "extensions/osc52-clipboard-write": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc52-clipboard-read": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-1-icon-name": {
@@ -1503,37 +1503,37 @@
   },
   "extensions/osc-4-color-palette": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-5-special-color": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-12-cursor-color": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-104-reset-palette": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-110-reset-fg": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-111-reset-bg": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-112-reset-cursor": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-117-reset-highlight-bg": {
@@ -1548,12 +1548,12 @@
   },
   "extensions/osc-17-highlight-bg": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-19-highlight-fg": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-22-pointer-shape": {
@@ -1563,7 +1563,7 @@
   },
   "extensions/osc-99-kitty-notify": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-777-notify": {
@@ -1583,27 +1583,27 @@
   },
   "extensions/osc-113-reset-pointer-fg": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-114-reset-pointer-bg": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-21-kitty-color": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-30001-color-stack-push": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-30101-color-stack-pop": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-176-app-id": {
@@ -1623,22 +1623,22 @@
   },
   "extensions/osc-7770-font-size": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-7777-font-window-size": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-701-locale": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-702-version": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-710-font-normal": {
@@ -1648,12 +1648,12 @@
   },
   "extensions/osc-720-scroll-up": {
     "analysis": "<p>Recorded checks report support for <strong>1</strong> of <strong>5</strong> conclusively measured targets (20%). Not supported by: <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/osc-776-cell-size": {
     "analysis": "<p>Recorded checks report support in <strong>all 1</strong> conclusive measurements for this feature. Part of the <strong>Legacy</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "extensions/system-clipboard-paste": {
@@ -1683,47 +1683,47 @@
   },
   "device/dsr-996-color-scheme": {
     "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "framework/silvery": {
     "analysis": "<p>Silvery requires the <a href=\"/baseline/modern\" class=\"hover-link\">Modern TUI baseline</a> — <strong>0</strong> of 12 selected targets have conclusive support for every required feature. Same baseline tier (Modern TUI) as <a href=\"https://textual.textualize.io\" class=\"hover-link\">Textual</a>, <a href=\"https://github.com/charmbracelet/bubbletea\" class=\"hover-link\">Bubbletea</a>, Ratatui. Other frameworks target: <a href=\"https://github.com/vadimdemedes/ink\" class=\"hover-link\">Ink</a>, Blessed (Core TUI).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "framework/ink": {
     "analysis": "<p><a href=\"https://github.com/vadimdemedes/ink\" class=\"hover-link\">Ink</a> requires the <a href=\"/baseline/core\" class=\"hover-link\">Core TUI baseline</a> — <strong>0</strong> of 12 selected targets have conclusive support for every required feature. Same baseline tier (Core TUI) as Blessed. Other frameworks target: Silvery, <a href=\"https://textual.textualize.io\" class=\"hover-link\">Textual</a>, <a href=\"https://github.com/charmbracelet/bubbletea\" class=\"hover-link\">Bubbletea</a>, Ratatui (Modern TUI).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "framework/textual": {
     "analysis": "<p><a href=\"https://textual.textualize.io\" class=\"hover-link\">Textual</a> requires the <a href=\"/baseline/modern\" class=\"hover-link\">Modern TUI baseline</a> — <strong>0</strong> of 12 selected targets have conclusive support for every required feature. Same baseline tier (Modern TUI) as Silvery, <a href=\"https://github.com/charmbracelet/bubbletea\" class=\"hover-link\">Bubbletea</a>, Ratatui. Other frameworks target: <a href=\"https://github.com/vadimdemedes/ink\" class=\"hover-link\">Ink</a>, Blessed (Core TUI).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "framework/bubbletea": {
     "analysis": "<p><a href=\"https://github.com/charmbracelet/bubbletea\" class=\"hover-link\">Bubbletea</a> requires the <a href=\"/baseline/modern\" class=\"hover-link\">Modern TUI baseline</a> — <strong>0</strong> of 12 selected targets have conclusive support for every required feature. Same baseline tier (Modern TUI) as Silvery, <a href=\"https://textual.textualize.io\" class=\"hover-link\">Textual</a>, Ratatui. Other frameworks target: <a href=\"https://github.com/vadimdemedes/ink\" class=\"hover-link\">Ink</a>, Blessed (Core TUI).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "framework/ratatui": {
     "analysis": "<p>Ratatui requires the <a href=\"/baseline/modern\" class=\"hover-link\">Modern TUI baseline</a> — <strong>0</strong> of 12 selected targets have conclusive support for every required feature. Same baseline tier (Modern TUI) as Silvery, <a href=\"https://textual.textualize.io\" class=\"hover-link\">Textual</a>, <a href=\"https://github.com/charmbracelet/bubbletea\" class=\"hover-link\">Bubbletea</a>. Other frameworks target: <a href=\"https://github.com/vadimdemedes/ink\" class=\"hover-link\">Ink</a>, Blessed (Core TUI).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "framework/blessed": {
     "analysis": "<p>Blessed requires the <a href=\"/baseline/core\" class=\"hover-link\">Core TUI baseline</a> — <strong>0</strong> of 12 selected targets have conclusive support for every required feature. Same baseline tier (Core TUI) as <a href=\"https://github.com/vadimdemedes/ink\" class=\"hover-link\">Ink</a>. Other frameworks target: Silvery, <a href=\"https://textual.textualize.io\" class=\"hover-link\">Textual</a>, <a href=\"https://github.com/charmbracelet/bubbletea\" class=\"hover-link\">Bubbletea</a>, Ratatui (Modern TUI).</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "standards-index": {
     "analysis": "<p>Terminfo.dev tracks <strong>13</strong> terminal standards and protocol families, including <a href=\"/ecma-48\" class=\"hover-link\" title=\"European Computer Manufacturers Association standard 48\">ECMA-48</a> and <a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> extensions.. Highest average support among conclusive tagged-feature checks: <strong><a href=\"/iterm2\" class=\"hover-link\">iTerm2 Extensions</a></strong> at 100%. Lowest: <strong><a href=\"/sixel\" class=\"hover-link\">Sixel Graphics</a></strong> at 17%.</p>",
-    "date": "2026-10-01",
+    "date": "2026-10-02",
     "changes": null
   },
   "features-index": {
-    "analysis": "<p>The <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix covers <strong>270</strong> features across <strong>13</strong> categories. Highest observed average support among conclusive category checks: <strong><a href=\"/device\" class=\"hover-link\">Device Status</a></strong> (100%). Lowest observed average: <strong><a href=\"/editing\" class=\"hover-link\">Editing</a></strong> (39%). <strong>24</strong> features have conclusive support in every selected target. <strong>1</strong> feature has no conclusive support among targets that measured them.</p>",
-    "date": "2026-10-01",
+    "analysis": "<p>The <a href=\"/about\" class=\"hover-link\" title=\"Terminal Information Database\">terminfo</a>.dev matrix covers <strong>270</strong> features across <strong>13</strong> categories. Highest observed average support among conclusive category checks: <strong><a href=\"/device\" class=\"hover-link\">Device Status</a></strong> (100%). Lowest observed average: <strong><a href=\"/editing\" class=\"hover-link\">Editing</a></strong> (39%). <strong>30</strong> features have conclusive support in every selected target. <strong>1</strong> feature has no conclusive support among targets that measured them.</p>",
+    "date": "2026-10-02",
     "changes": null
   },
   "terminals/ghostty": {

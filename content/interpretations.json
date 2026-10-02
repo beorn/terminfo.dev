@@ -326895,5 +326895,1553 @@
       "note": "A horizontal stroke crosses target glyph bodies and is absent from control. Observed in this Linux Kitty, font and software-renderer configuration.",
       "rawReplyRef": "sgr.strikethrough"
     }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Codex and Sol (automated provenance review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": ["content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json"],
+    "supersedes": [],
+    "id": "identity-app-kitty-3735cb3e4a13cfc3231be1b04d54f798",
+    "reason": "Verified this complete controlled Linux run against owned launch, collector, executable/archive, frozen runner, configuration and display receipts and measured DA1/XTVERSION. Identity review does not establish every rendered feature.",
+    "verifiesIdentity": true,
+    "reviewed": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/c696699bc5e39ed5d2e78f7008831dbabc34d4a3032e8c145c3bf0ef796a3a33.png",
+      "content/artifacts/734c87cb3be45bbb322fa653f823c14963eff89b5d189dc462a58ce1e79e2182.png",
+      "content/artifacts/0d574af2406164e15077f7d1a860e39597de38e075d51286053f68829d9a9922.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-erase.line.right",
+    "featureId": "erase.line.right",
+    "reason": "Fresh blank/ABCDE/KEEP controls valid; AB retained, right tail blank, KEEP retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "erase.line.right",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:0d574af2406164e15077f7d1a860e39597de38e075d51286053f68829d9a9922",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790908150306,
+          "ref": "sha256:c696699bc5e39ed5d2e78f7008831dbabc34d4a3032e8c145c3bf0ef796a3a33",
+          "sourceRef": "sha256:b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790908150505,
+          "ref": "sha256:734c87cb3be45bbb322fa653f823c14963eff89b5d189dc462a58ce1e79e2182",
+          "sourceRef": "sha256:984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790908150708,
+          "ref": "sha256:0d574af2406164e15077f7d1a860e39597de38e075d51286053f68829d9a9922",
+          "sourceRef": "sha256:3a29e23470cc02347221575478c3e1b6cafed5be341add833b98ffa0f582557c"
+        }
+      ],
+      "note": "Fresh blank/ABCDE/KEEP controls valid; AB retained, right tail blank, KEEP retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "erase.line.right"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/c696699bc5e39ed5d2e78f7008831dbabc34d4a3032e8c145c3bf0ef796a3a33.png",
+      "content/artifacts/734c87cb3be45bbb322fa653f823c14963eff89b5d189dc462a58ce1e79e2182.png",
+      "content/artifacts/0d574af2406164e15077f7d1a860e39597de38e075d51286053f68829d9a9922.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-erase.line.right",
+    "featureId": "erase.line.right",
+    "reason": "Fresh blank/ABCDE/KEEP controls valid; AB retained, right tail blank, KEEP retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/8f85b4d19d7d84d6c9f50118435fb9bc219b8ec7d543b6f56c59448151b5eecb.png",
+      "content/artifacts/44e44dc5e8bf42466c53916c901deedd6be54bfe91dc0ddec298b5e203aa415d.png",
+      "content/artifacts/f76b0cf2635478def03f34c1305d50f65cd6250e42cc33b73f03c52d4779e036.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-erase.line.left",
+    "featureId": "erase.line.left",
+    "reason": "Fresh controls valid; prefix blank, DE and KEEP retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "erase.line.left",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:f76b0cf2635478def03f34c1305d50f65cd6250e42cc33b73f03c52d4779e036",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790908150918,
+          "ref": "sha256:8f85b4d19d7d84d6c9f50118435fb9bc219b8ec7d543b6f56c59448151b5eecb",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790908151126,
+          "ref": "sha256:44e44dc5e8bf42466c53916c901deedd6be54bfe91dc0ddec298b5e203aa415d",
+          "sourceRef": "sha256:8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790908151335,
+          "ref": "sha256:f76b0cf2635478def03f34c1305d50f65cd6250e42cc33b73f03c52d4779e036",
+          "sourceRef": "sha256:cc157ed17026bf6e309227a28fdd240b06ca08e3187b397c22bc897e7cccb015"
+        }
+      ],
+      "note": "Fresh controls valid; prefix blank, DE and KEEP retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "erase.line.left"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/8f85b4d19d7d84d6c9f50118435fb9bc219b8ec7d543b6f56c59448151b5eecb.png",
+      "content/artifacts/44e44dc5e8bf42466c53916c901deedd6be54bfe91dc0ddec298b5e203aa415d.png",
+      "content/artifacts/f76b0cf2635478def03f34c1305d50f65cd6250e42cc33b73f03c52d4779e036.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-erase.line.left",
+    "featureId": "erase.line.left",
+    "reason": "Fresh controls valid; prefix blank, DE and KEEP retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/1f788c3f77d4fb699063b11d1d19fc68ac30a61b7c5d387390045a9f5fac3568.png",
+      "content/artifacts/90c691b03571cdd3bc6eff1c59530f40b2f9e3c1eb54f1825ce2fc1e776f3fbc.png",
+      "content/artifacts/151dc4c3c9e914b9947b1c02c2742a69436249dd37bc815ca18acae3e9351b78.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-erase.line.all",
+    "featureId": "erase.line.all",
+    "reason": "Fresh controls valid; row1 blank, KEEP retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "erase.line.all",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:151dc4c3c9e914b9947b1c02c2742a69436249dd37bc815ca18acae3e9351b78",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790908151540,
+          "ref": "sha256:1f788c3f77d4fb699063b11d1d19fc68ac30a61b7c5d387390045a9f5fac3568",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790908151739,
+          "ref": "sha256:90c691b03571cdd3bc6eff1c59530f40b2f9e3c1eb54f1825ce2fc1e776f3fbc",
+          "sourceRef": "sha256:984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790908151958,
+          "ref": "sha256:151dc4c3c9e914b9947b1c02c2742a69436249dd37bc815ca18acae3e9351b78",
+          "sourceRef": "sha256:6eda3fca2f4f53d374b05d576975173506103220ea05c56ac99adddde2b3905f"
+        }
+      ],
+      "note": "Fresh controls valid; row1 blank, KEEP retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "erase.line.all"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/1f788c3f77d4fb699063b11d1d19fc68ac30a61b7c5d387390045a9f5fac3568.png",
+      "content/artifacts/90c691b03571cdd3bc6eff1c59530f40b2f9e3c1eb54f1825ce2fc1e776f3fbc.png",
+      "content/artifacts/151dc4c3c9e914b9947b1c02c2742a69436249dd37bc815ca18acae3e9351b78.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-erase.line.all",
+    "featureId": "erase.line.all",
+    "reason": "Fresh controls valid; row1 blank, KEEP retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/91f54f88a3771526225650e530db057c7028ca3a3e8b8a5ea00064a3a9416fb5.png",
+      "content/artifacts/8b775e9e1605afca7a98ad4a73d4a64ac54ccfd1c826466cfff46ef1e53aa46c.png",
+      "content/artifacts/4747678ee538a0e3db324a39ad96b82879aaad9f30e4d42b3022dd76836382ea.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-erase.screen.below",
+    "featureId": "erase.screen.below",
+    "reason": "Fresh controls valid; AAAAA and middle BB retained; lower region blank. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "erase.screen.below",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:4747678ee538a0e3db324a39ad96b82879aaad9f30e4d42b3022dd76836382ea",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790908152174,
+          "ref": "sha256:91f54f88a3771526225650e530db057c7028ca3a3e8b8a5ea00064a3a9416fb5",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790908152373,
+          "ref": "sha256:8b775e9e1605afca7a98ad4a73d4a64ac54ccfd1c826466cfff46ef1e53aa46c",
+          "sourceRef": "sha256:329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790908152572,
+          "ref": "sha256:4747678ee538a0e3db324a39ad96b82879aaad9f30e4d42b3022dd76836382ea",
+          "sourceRef": "sha256:2a098340307be83380a10b32841590d98809ae3c907a42993aff46bab2337eff"
+        }
+      ],
+      "note": "Fresh controls valid; AAAAA and middle BB retained; lower region blank. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "erase.screen.below"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/91f54f88a3771526225650e530db057c7028ca3a3e8b8a5ea00064a3a9416fb5.png",
+      "content/artifacts/8b775e9e1605afca7a98ad4a73d4a64ac54ccfd1c826466cfff46ef1e53aa46c.png",
+      "content/artifacts/4747678ee538a0e3db324a39ad96b82879aaad9f30e4d42b3022dd76836382ea.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-erase.screen.below",
+    "featureId": "erase.screen.below",
+    "reason": "Fresh controls valid; AAAAA and middle BB retained; lower region blank. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/364cd95137476c894649ae57db9c16ecab7b3852dda192bef503c55eb7ae8fa2.png",
+      "content/artifacts/b070e7f4fb84b170a415d774aa1d5cb90f885980624787565ce7f05b1e568607.png",
+      "content/artifacts/20bf28bfa190a12a2f24b6b260df105b88d4747d8dd1e3d4302269128e4049fd.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-erase.screen.above",
+    "featureId": "erase.screen.above",
+    "reason": "Fresh controls valid; upper region blank; middle suffix BB and CCCCC retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "erase.screen.above",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:20bf28bfa190a12a2f24b6b260df105b88d4747d8dd1e3d4302269128e4049fd",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790908152772,
+          "ref": "sha256:364cd95137476c894649ae57db9c16ecab7b3852dda192bef503c55eb7ae8fa2",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790908152974,
+          "ref": "sha256:b070e7f4fb84b170a415d774aa1d5cb90f885980624787565ce7f05b1e568607",
+          "sourceRef": "sha256:329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790908153173,
+          "ref": "sha256:20bf28bfa190a12a2f24b6b260df105b88d4747d8dd1e3d4302269128e4049fd",
+          "sourceRef": "sha256:2c291fd452656036001b08f233f4b3d613cb871910732601773e9093326f3352"
+        }
+      ],
+      "note": "Fresh controls valid; upper region blank; middle suffix BB and CCCCC retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "erase.screen.above"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/364cd95137476c894649ae57db9c16ecab7b3852dda192bef503c55eb7ae8fa2.png",
+      "content/artifacts/b070e7f4fb84b170a415d774aa1d5cb90f885980624787565ce7f05b1e568607.png",
+      "content/artifacts/20bf28bfa190a12a2f24b6b260df105b88d4747d8dd1e3d4302269128e4049fd.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-erase.screen.above",
+    "featureId": "erase.screen.above",
+    "reason": "Fresh controls valid; upper region blank; middle suffix BB and CCCCC retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/ebace68d1b9160cb96c516f2b2275f92e705936f194587e5c79ceab1e5fb6c77.png",
+      "content/artifacts/9f647cb3ffe452e16bde656abb803d5c421cfc9e8d6ffa71eeccb4ff93f904f8.png",
+      "content/artifacts/7e4bf5d17f9b4300fe029b32cd2db59640d6683a2dae76e908e0537af2d68825.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-erase.screen.all",
+    "featureId": "erase.screen.all",
+    "reason": "Fresh blank and seeded controls valid; visible text grid blank. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "erase.screen.all",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:7e4bf5d17f9b4300fe029b32cd2db59640d6683a2dae76e908e0537af2d68825",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790908153376,
+          "ref": "sha256:ebace68d1b9160cb96c516f2b2275f92e705936f194587e5c79ceab1e5fb6c77",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790908153575,
+          "ref": "sha256:9f647cb3ffe452e16bde656abb803d5c421cfc9e8d6ffa71eeccb4ff93f904f8",
+          "sourceRef": "sha256:3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790908153793,
+          "ref": "sha256:7e4bf5d17f9b4300fe029b32cd2db59640d6683a2dae76e908e0537af2d68825",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        }
+      ],
+      "note": "Fresh blank and seeded controls valid; visible text grid blank. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "erase.screen.all"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/ebace68d1b9160cb96c516f2b2275f92e705936f194587e5c79ceab1e5fb6c77.png",
+      "content/artifacts/9f647cb3ffe452e16bde656abb803d5c421cfc9e8d6ffa71eeccb4ff93f904f8.png",
+      "content/artifacts/7e4bf5d17f9b4300fe029b32cd2db59640d6683a2dae76e908e0537af2d68825.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-erase.screen.all",
+    "featureId": "erase.screen.all",
+    "reason": "Fresh blank and seeded controls valid; visible text grid blank. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/63e107a7ca7dd7aeeef2470127f60ccd6528b83a61ea813c8c7b652968807031.png",
+      "content/artifacts/15850ef5a13711a92da0c96a994c749378be30f37a1d9fa82e7203d3996ccaf7.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-cursor.hide",
+    "featureId": "cursor.hide",
+    "reason": "Fresh shown control visibly has block at2,3; target removes block and preserves text. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:15850ef5a13711a92da0c96a994c749378be30f37a1d9fa82e7203d3996ccaf7",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Shown steady block cursor requested at row 2 column 3",
+          "capturedAt": 1790908148729,
+          "ref": "sha256:63e107a7ca7dd7aeeef2470127f60ccd6528b83a61ea813c8c7b652968807031",
+          "sourceRef": "sha256:fe8f300a7d9a63135bcc416a63ec6689db6e596b8270ba587fe16a98211161fc"
+        },
+        {
+          "role": "target",
+          "label": "Hidden cursor requested at the same cell",
+          "capturedAt": 1790908148934,
+          "ref": "sha256:15850ef5a13711a92da0c96a994c749378be30f37a1d9fa82e7203d3996ccaf7",
+          "sourceRef": "sha256:45ed76eea7c0e1d66b6d8bdb762685ebf6ded8ca453dc4fe497cd52ff9cb148a"
+        }
+      ],
+      "note": "Fresh shown control visibly has block at2,3; target removes block and preserves text. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/63e107a7ca7dd7aeeef2470127f60ccd6528b83a61ea813c8c7b652968807031.png",
+      "content/artifacts/15850ef5a13711a92da0c96a994c749378be30f37a1d9fa82e7203d3996ccaf7.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-cursor.hide",
+    "featureId": "cursor.hide",
+    "reason": "Fresh shown control visibly has block at2,3; target removes block and preserves text. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/e3db0e9c5f24f4269c0bde932fe3c77c6749b3d1071a01a7c9e3488673f8b8a4.png",
+      "content/artifacts/e3db0e9c5f24f4269c0bde932fe3c77c6749b3d1071a01a7c9e3488673f8b8a4.png",
+      "content/artifacts/e6c7cd6756938648c048f39e54fc1a34e3a19082a3a3ffc5aadf588c7a5e0851.png",
+      "content/artifacts/398379a2b6f06dc5f96c53826a268d7ca9c365eddfc50c3b48ff601fe42b20d1.png",
+      "content/artifacts/5ef12f69d440833ea444c41abf68961e334b31d4ac5f03c10177ccdc9997f93c.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-reset.decaln",
+    "featureId": "reset.decaln",
+    "reason": "AB persists initial/delayed5239ms/CUP-only; X-only reveals X/E. Bounded redraw observation; general support inconclusive. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/e3e7e2da0dd50229c11ef3608de5485cc76d41a877b9ff4372997be5b299f813.png",
+      "content/artifacts/5f623ca15602f980bf0ea0e3a82e88b63d659b298359c9be422322d443343f66.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.bold",
+    "featureId": "sgr.bold",
+    "reason": "Heavier glyph strokes in target; full unstyled sample visible in own control. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.bold",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:5f623ca15602f980bf0ea0e3a82e88b63d659b298359c9be422322d443343f66",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908142050,
+          "ref": "sha256:e3e7e2da0dd50229c11ef3608de5485cc76d41a877b9ff4372997be5b299f813",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.bold",
+          "capturedAt": 1790908142252,
+          "ref": "sha256:5f623ca15602f980bf0ea0e3a82e88b63d659b298359c9be422322d443343f66",
+          "sourceRef": "sha256:13949dd8493604e7d0322bbfbea1086f6ce531e8759cfe85b3b6b1ec991077a6"
+        }
+      ],
+      "note": "Heavier glyph strokes in target; full unstyled sample visible in own control. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.bold"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/e3e7e2da0dd50229c11ef3608de5485cc76d41a877b9ff4372997be5b299f813.png",
+      "content/artifacts/5f623ca15602f980bf0ea0e3a82e88b63d659b298359c9be422322d443343f66.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.bold",
+    "featureId": "sgr.bold",
+    "reason": "Heavier glyph strokes in target; full unstyled sample visible in own control. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/e3e7e2da0dd50229c11ef3608de5485cc76d41a877b9ff4372997be5b299f813.png",
+      "content/artifacts/4c8e246da7bf60780275e47e5d5a376211da3dc31ccb3980447e4f25c69ce786.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.faint",
+    "featureId": "sgr.faint",
+    "reason": "Target sample visibly dimmer than own normal-intensity control; sample retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.faint",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:4c8e246da7bf60780275e47e5d5a376211da3dc31ccb3980447e4f25c69ce786",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908142477,
+          "ref": "sha256:e3e7e2da0dd50229c11ef3608de5485cc76d41a877b9ff4372997be5b299f813",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.faint",
+          "capturedAt": 1790908142719,
+          "ref": "sha256:4c8e246da7bf60780275e47e5d5a376211da3dc31ccb3980447e4f25c69ce786",
+          "sourceRef": "sha256:d6409f44015529621f216fb4086b2c19d8c73a6d3743123abf31ca879114e97d"
+        }
+      ],
+      "note": "Target sample visibly dimmer than own normal-intensity control; sample retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.faint"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/e3e7e2da0dd50229c11ef3608de5485cc76d41a877b9ff4372997be5b299f813.png",
+      "content/artifacts/4c8e246da7bf60780275e47e5d5a376211da3dc31ccb3980447e4f25c69ce786.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.faint",
+    "featureId": "sgr.faint",
+    "reason": "Target sample visibly dimmer than own normal-intensity control; sample retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/8f9e4a4660fc9b22838df7dbab2b773681f0726400d07020f402e4f3e49f9479.png",
+      "content/artifacts/1a2d1e2f31d3c4e13a7076de940691b6c3f9d2adfa05c8694e7e4457459cd63d.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.italic",
+    "featureId": "sgr.italic",
+    "reason": "Target glyphs visibly slant right compared with own upright control; sample retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.italic",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:1a2d1e2f31d3c4e13a7076de940691b6c3f9d2adfa05c8694e7e4457459cd63d",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908142981,
+          "ref": "sha256:8f9e4a4660fc9b22838df7dbab2b773681f0726400d07020f402e4f3e49f9479",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.italic",
+          "capturedAt": 1790908143225,
+          "ref": "sha256:1a2d1e2f31d3c4e13a7076de940691b6c3f9d2adfa05c8694e7e4457459cd63d",
+          "sourceRef": "sha256:0bb9e66d4132d41e2b41aff2832adb2397806b4574da39a829e1133cf20ff9e4"
+        }
+      ],
+      "note": "Target glyphs visibly slant right compared with own upright control; sample retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.italic"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/8f9e4a4660fc9b22838df7dbab2b773681f0726400d07020f402e4f3e49f9479.png",
+      "content/artifacts/1a2d1e2f31d3c4e13a7076de940691b6c3f9d2adfa05c8694e7e4457459cd63d.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.italic",
+    "featureId": "sgr.italic",
+    "reason": "Target glyphs visibly slant right compared with own upright control; sample retained. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/8f9e4a4660fc9b22838df7dbab2b773681f0726400d07020f402e4f3e49f9479.png",
+      "content/artifacts/658ebf68e494808ee8ac1006adaa5994f1f054cce56cb846cd99f42d29f7ad9f.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.single",
+    "featureId": "sgr.underline.single",
+    "reason": "One continuous underline appears beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.underline.single",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:658ebf68e494808ee8ac1006adaa5994f1f054cce56cb846cd99f42d29f7ad9f",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908143488,
+          "ref": "sha256:8f9e4a4660fc9b22838df7dbab2b773681f0726400d07020f402e4f3e49f9479",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.single",
+          "capturedAt": 1790908143733,
+          "ref": "sha256:658ebf68e494808ee8ac1006adaa5994f1f054cce56cb846cd99f42d29f7ad9f",
+          "sourceRef": "sha256:7bf6296347ff143cedb9f7aa634db43a136564798df97b06b13cdced77b1d23a"
+        }
+      ],
+      "note": "One continuous underline appears beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.underline.single"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/8f9e4a4660fc9b22838df7dbab2b773681f0726400d07020f402e4f3e49f9479.png",
+      "content/artifacts/658ebf68e494808ee8ac1006adaa5994f1f054cce56cb846cd99f42d29f7ad9f.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.single",
+    "featureId": "sgr.underline.single",
+    "reason": "One continuous underline appears beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/180aa679c99549c14de0ae3ebde2ed4af2e8d00c1426d531fba2f1a22249d0c7.png",
+      "content/artifacts/5b3f2b810f17bcf328384bbb105742b7d407712beb9d68840dde78574caede0a.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.double",
+    "featureId": "sgr.underline.double",
+    "reason": "Two separate underline rules appear beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.underline.double",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:5b3f2b810f17bcf328384bbb105742b7d407712beb9d68840dde78574caede0a",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908143974,
+          "ref": "sha256:180aa679c99549c14de0ae3ebde2ed4af2e8d00c1426d531fba2f1a22249d0c7",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.double",
+          "capturedAt": 1790908144178,
+          "ref": "sha256:5b3f2b810f17bcf328384bbb105742b7d407712beb9d68840dde78574caede0a",
+          "sourceRef": "sha256:85405c4c15b246ff63911252423754c1ed6afa5393215b5f7b96d5daa8d1e9f8"
+        }
+      ],
+      "note": "Two separate underline rules appear beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.underline.double"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/180aa679c99549c14de0ae3ebde2ed4af2e8d00c1426d531fba2f1a22249d0c7.png",
+      "content/artifacts/5b3f2b810f17bcf328384bbb105742b7d407712beb9d68840dde78574caede0a.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.double",
+    "featureId": "sgr.underline.double",
+    "reason": "Two separate underline rules appear beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/fd53a0307ebdf9a4f6cdaec73fd5a0dc81b1d51a196b8cfa78b025085aa45986.png",
+      "content/artifacts/6c7355e13c2f9d729d4c17cc7885278abba3824e8960f8315bfaabd287838eb6.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.curly",
+    "featureId": "sgr.underline.curly",
+    "reason": "Wavy underline appears beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.underline.curly",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:6c7355e13c2f9d729d4c17cc7885278abba3824e8960f8315bfaabd287838eb6",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908144380,
+          "ref": "sha256:fd53a0307ebdf9a4f6cdaec73fd5a0dc81b1d51a196b8cfa78b025085aa45986",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.curly",
+          "capturedAt": 1790908144581,
+          "ref": "sha256:6c7355e13c2f9d729d4c17cc7885278abba3824e8960f8315bfaabd287838eb6",
+          "sourceRef": "sha256:10385cb1bd071f7988bccacb6c48fabdc2f2d9a29dce95e854cc764c6ef549d1"
+        }
+      ],
+      "note": "Wavy underline appears beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.underline.curly"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/fd53a0307ebdf9a4f6cdaec73fd5a0dc81b1d51a196b8cfa78b025085aa45986.png",
+      "content/artifacts/6c7355e13c2f9d729d4c17cc7885278abba3824e8960f8315bfaabd287838eb6.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.curly",
+    "featureId": "sgr.underline.curly",
+    "reason": "Wavy underline appears beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/6896b60f53b7f462eb536e56fc4acc8aa852189de45ce7a881ae4239ae68d163.png",
+      "content/artifacts/06f7476359eebadad3ddc8c42bdc27ebb496bcf6f298bdaf8e003395e4512a3b.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.dotted",
+    "featureId": "sgr.underline.dotted",
+    "reason": "Closely spaced dot pattern appears beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.underline.dotted",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:06f7476359eebadad3ddc8c42bdc27ebb496bcf6f298bdaf8e003395e4512a3b",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908144781,
+          "ref": "sha256:6896b60f53b7f462eb536e56fc4acc8aa852189de45ce7a881ae4239ae68d163",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.dotted",
+          "capturedAt": 1790908144982,
+          "ref": "sha256:06f7476359eebadad3ddc8c42bdc27ebb496bcf6f298bdaf8e003395e4512a3b",
+          "sourceRef": "sha256:b43cdc4a60d5bb439982374218e6d4beca6f3eb482df5c3023343b5f6106b891"
+        }
+      ],
+      "note": "Closely spaced dot pattern appears beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.underline.dotted"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/6896b60f53b7f462eb536e56fc4acc8aa852189de45ce7a881ae4239ae68d163.png",
+      "content/artifacts/06f7476359eebadad3ddc8c42bdc27ebb496bcf6f298bdaf8e003395e4512a3b.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.dotted",
+    "featureId": "sgr.underline.dotted",
+    "reason": "Closely spaced dot pattern appears beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/ad8a3c59dc7cef972be538634cc4a49ee8c2f61bd81dd5d868a02908a6299eec.png",
+      "content/artifacts/b080fa29b1af38ac26af0e0bddb4de28d17f73754135d0867572022798cb8413.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.dashed",
+    "featureId": "sgr.underline.dashed",
+    "reason": "Separated dash segments appear beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.underline.dashed",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:b080fa29b1af38ac26af0e0bddb4de28d17f73754135d0867572022798cb8413",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908145190,
+          "ref": "sha256:ad8a3c59dc7cef972be538634cc4a49ee8c2f61bd81dd5d868a02908a6299eec",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.dashed",
+          "capturedAt": 1790908145406,
+          "ref": "sha256:b080fa29b1af38ac26af0e0bddb4de28d17f73754135d0867572022798cb8413",
+          "sourceRef": "sha256:ddf200eb265af16a95399fc5c4732f8b30e33e748841585ae25e6b961eeada70"
+        }
+      ],
+      "note": "Separated dash segments appear beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.underline.dashed"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/ad8a3c59dc7cef972be538634cc4a49ee8c2f61bd81dd5d868a02908a6299eec.png",
+      "content/artifacts/b080fa29b1af38ac26af0e0bddb4de28d17f73754135d0867572022798cb8413.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.dashed",
+    "featureId": "sgr.underline.dashed",
+    "reason": "Separated dash segments appear beneath target sample; own control has none. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/19799e1f5898b8e77527acbae454532215f2c84bbe7da322b5c7264d3dd9656c.png",
+      "content/artifacts/49fa96cf0adb5cb7291fce5d8cf787bf1603b6e5f753e73ebfe2e9bb2d463604.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.blink",
+    "featureId": "sgr.blink",
+    "reason": "Own control text visible; single SGR5 target blank. Consistent with off phase, but one target cannot establish temporal blinking or distinguish blank rendering. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/beaf57b2b84b180f571a8016243e11a829656a4289d30dc973c10b6708ef883a.png",
+      "content/artifacts/fc6199eee8b4a9bdc090e5928ffdc26a3c223bff724f50a63884d13795e0c77d.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.inverse",
+    "featureId": "sgr.inverse",
+    "reason": "Target has dark glyphs on a light cell background versus own light-on-black control. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.inverse",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:fc6199eee8b4a9bdc090e5928ffdc26a3c223bff724f50a63884d13795e0c77d",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908146010,
+          "ref": "sha256:beaf57b2b84b180f571a8016243e11a829656a4289d30dc973c10b6708ef883a",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.inverse",
+          "capturedAt": 1790908146209,
+          "ref": "sha256:fc6199eee8b4a9bdc090e5928ffdc26a3c223bff724f50a63884d13795e0c77d",
+          "sourceRef": "sha256:0068ec248995c93dd66ae56aec9dff852bbbc93c2f8b257e1e3b2a0c432d6f74"
+        }
+      ],
+      "note": "Target has dark glyphs on a light cell background versus own light-on-black control. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.inverse"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/beaf57b2b84b180f571a8016243e11a829656a4289d30dc973c10b6708ef883a.png",
+      "content/artifacts/fc6199eee8b4a9bdc090e5928ffdc26a3c223bff724f50a63884d13795e0c77d.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.inverse",
+    "featureId": "sgr.inverse",
+    "reason": "Target has dark glyphs on a light cell background versus own light-on-black control. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/beaf57b2b84b180f571a8016243e11a829656a4289d30dc973c10b6708ef883a.png",
+      "content/artifacts/230c24dd69cf8c3402ed9597d79f976197daa367514d468a1dd714ef6c7fc9b8.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.hidden",
+    "featureId": "sgr.hidden",
+    "reason": "Own control valid and visible; SGR8 target retains full visible sample. Concealment is not observed, but no general unsupported grade is inferred from this static pair. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/230c24dd69cf8c3402ed9597d79f976197daa367514d468a1dd714ef6c7fc9b8.png",
+      "content/artifacts/63b1b043818f968d0a94d10fc10a03260ec0c58a9d34e961b1ab5ed057840425.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.strikethrough",
+    "featureId": "sgr.strikethrough",
+    "reason": "Rule crosses target glyph bodies; own control has no rule. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.strikethrough",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:63b1b043818f968d0a94d10fc10a03260ec0c58a9d34e961b1ab5ed057840425",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908146825,
+          "ref": "sha256:230c24dd69cf8c3402ed9597d79f976197daa367514d468a1dd714ef6c7fc9b8",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.strikethrough",
+          "capturedAt": 1790908147036,
+          "ref": "sha256:63b1b043818f968d0a94d10fc10a03260ec0c58a9d34e961b1ab5ed057840425",
+          "sourceRef": "sha256:506e6d58e15c1297116d824eae0413251f8796f024a1f4814b23fbff9850f169"
+        }
+      ],
+      "note": "Rule crosses target glyph bodies; own control has no rule. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.strikethrough"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/230c24dd69cf8c3402ed9597d79f976197daa367514d468a1dd714ef6c7fc9b8.png",
+      "content/artifacts/63b1b043818f968d0a94d10fc10a03260ec0c58a9d34e961b1ab5ed057840425.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.strikethrough",
+    "featureId": "sgr.strikethrough",
+    "reason": "Rule crosses target glyph bodies; own control has no rule. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/39abfd045d7343be85920ce47466a70995cf19862d69f7283865bbefbdd5f285.png",
+      "content/artifacts/39abfd045d7343be85920ce47466a70995cf19862d69f7283865bbefbdd5f285.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.overline",
+    "featureId": "sgr.overline",
+    "reason": "Own control and SGR53 target both show the full visible sample unchanged, including the end cursor block, without a visible overline. The intended overline effect is not observed; general support remains inconclusive. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/2975b9f938fdb8ebd3bc74e5d3a68a2d0cbb05c7fa04a22cf488451448cb6fb8.png",
+      "content/artifacts/0e0ebbdeed40b9152eddd08d4db2c89dbc7be8a15297f04e069a15309126a93b.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.color",
+    "featureId": "sgr.underline.color",
+    "reason": "Own unstyled sample visible; target keeps light glyphs and adds a distinct pink underline after SGR4 plus SGR58; limited to this observed color effect, not numeric RGB fidelity. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.underline.color",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:0e0ebbdeed40b9152eddd08d4db2c89dbc7be8a15297f04e069a15309126a93b",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908147674,
+          "ref": "sha256:2975b9f938fdb8ebd3bc74e5d3a68a2d0cbb05c7fa04a22cf488451448cb6fb8",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.color",
+          "capturedAt": 1790908147876,
+          "ref": "sha256:0e0ebbdeed40b9152eddd08d4db2c89dbc7be8a15297f04e069a15309126a93b",
+          "sourceRef": "sha256:d260de894a09f29ca529de4525040f4c3ed6882340d8b506ddbcb66da684692a"
+        }
+      ],
+      "note": "Own unstyled sample visible; target keeps light glyphs and adds a distinct pink underline after SGR4 plus SGR58; limited to this observed color effect, not numeric RGB fidelity. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.underline.color"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/2975b9f938fdb8ebd3bc74e5d3a68a2d0cbb05c7fa04a22cf488451448cb6fb8.png",
+      "content/artifacts/0e0ebbdeed40b9152eddd08d4db2c89dbc7be8a15297f04e069a15309126a93b.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline.color",
+    "featureId": "sgr.underline.color",
+    "reason": "Own unstyled sample visible; target keeps light glyphs and adds a distinct pink underline after SGR4 plus SGR58; limited to this observed color effect, not numeric RGB fidelity. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/59649637c04eeac941442abed6d7dfeeb65b019e99798e636bbf99c951c76f0f.png",
+      "content/artifacts/d7ad61b97262ba991aeaaed8667ff66e2701a8d38d7bb390c49505918084eab0.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline-color-rgb",
+    "featureId": "sgr.underline-color-rgb",
+    "reason": "Own unstyled sample visible; target keeps light glyphs and adds a distinct pink underline after SGR4 plus SGR58; limited to this observed color effect, not numeric RGB fidelity. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "sgr.underline-color-rgb",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:d7ad61b97262ba991aeaaed8667ff66e2701a8d38d7bb390c49505918084eab0",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790908148086,
+          "ref": "sha256:59649637c04eeac941442abed6d7dfeeb65b019e99798e636bbf99c951c76f0f",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline-color-rgb",
+          "capturedAt": 1790908148289,
+          "ref": "sha256:d7ad61b97262ba991aeaaed8667ff66e2701a8d38d7bb390c49505918084eab0",
+          "sourceRef": "sha256:290d847dba2c723b8d7880813157d547dbb8fc9b2d139a3e9719800f600c72e2"
+        }
+      ],
+      "note": "Own unstyled sample visible; target keeps light glyphs and adds a distinct pink underline after SGR4 plus SGR58; limited to this observed color effect, not numeric RGB fidelity. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "sgr.underline-color-rgb"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/59649637c04eeac941442abed6d7dfeeb65b019e99798e636bbf99c951c76f0f.png",
+      "content/artifacts/d7ad61b97262ba991aeaaed8667ff66e2701a8d38d7bb390c49505918084eab0.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-sgr.underline-color-rgb",
+    "featureId": "sgr.underline-color-rgb",
+    "reason": "Own unstyled sample visible; target keeps light glyphs and adds a distinct pink underline after SGR4 plus SGR58; limited to this observed color effect, not numeric RGB fidelity. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/6fcae9df3e8e7dc9d034e39dca258a8fd2c26f7c08fd791a5ef10f2418fb5538.png",
+      "content/artifacts/233489f33fb8b1975119ac6350324b0e1fe053c34261fc66dea74bc55f788c47.png"
+    ],
+    "supersedes": [],
+    "id": "pixels-3735cb3e4a13cfc3231be1b04d54f798-cursor.shape",
+    "featureId": "cursor.shape",
+    "reason": "Own default control visibly shows a block at home; target visibly shows a thin vertical bar at the same cell after CSI5 SP q. Blink behavior is not measured. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "observation": {
+      "featureId": "cursor.shape",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:233489f33fb8b1975119ac6350324b0e1fe053c34261fc66dea74bc55f788c47",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Default cursor shape",
+          "capturedAt": 1790908149139,
+          "ref": "sha256:6fcae9df3e8e7dc9d034e39dca258a8fd2c26f7c08fd791a5ef10f2418fb5538",
+          "sourceRef": "sha256:66054984f9d78bfa0ffec97516f272e3357587f2370ca028aa0d4fde539f3032"
+        },
+        {
+          "role": "target",
+          "label": "Bar cursor shape",
+          "capturedAt": 1790908149337,
+          "ref": "sha256:233489f33fb8b1975119ac6350324b0e1fe053c34261fc66dea74bc55f788c47",
+          "sourceRef": "sha256:62060465d695257e5c2fd140016ead4fd394871c0410f73202586cab06e78010"
+        }
+      ],
+      "note": "Own default control visibly shows a block at home; target visibly shows a thin vertical bar at the same cell after CSI5 SP q. Blink behavior is not measured. Observed only in this Linux Kitty, font and software-renderer configuration.",
+      "rawReplyRef": "cursor.shape"
+    }
+  },
+  {
+    "runId": "3735cb3e4a13cfc3231be1b04d54f798",
+    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
+    "reviewer": "Sol (automated visual review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["d6769f934106", "d6769f934106"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-3735cb3e4a13cfc3231be1b04d54f798.json",
+      "content/artifacts/6fcae9df3e8e7dc9d034e39dca258a8fd2c26f7c08fd791a5ef10f2418fb5538.png",
+      "content/artifacts/233489f33fb8b1975119ac6350324b0e1fe053c34261fc66dea74bc55f788c47.png"
+    ],
+    "supersedes": [],
+    "id": "present-3735cb3e4a13cfc3231be1b04d54f798-cursor.shape",
+    "featureId": "cursor.shape",
+    "reason": "Own default control visibly shows a block at home; target visibly shows a thin vertical bar at the same cell after CSI5 SP q. Blink behavior is not measured. Observed only in this Linux Kitty, font and software-renderer configuration.",
+    "presentsEvidence": true
   }
 ]
