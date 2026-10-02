@@ -81,3 +81,30 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: 3fea5563acad414fa36c40d5c440368f
           command: pages deploy docs/.vitepress/dist --project-name terminfo-dev
+
+      - name: Verify live build identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          readback_file=$(mktemp)
+          trap 'rm -f "$readback_file"' EXIT
+          curl --fail --show-error --silent --connect-timeout 10 --max-time 30 \
+            -H 'Cache-Control: no-cache' \
+            "https://terminfo.dev/api/v1/build.json?run=$GITHUB_RUN_ID&attempt=$GITHUB_RUN_ATTEMPT" -o "$readback_file"
+          python3 - "$readback_file" <<'PY'
+          import json, os, sys
+          try:
+              with open("docs/.vitepress/dist/api/v1/build.json") as archive:
+                  expected = json.load(archive)
+              with open(sys.argv[1]) as response:
+                  actual = json.load(response)
+              if (expected["sourceCommit"] != os.environ["GITHUB_SHA"]
+                      or expected["githubRun"]["id"] != os.environ["GITHUB_RUN_ID"]
+                      or expected["dirty"] is not False or expected["context"] != "github"):
+                  raise ValueError("Validated archive is not this clean GitHub build")
+              if json.dumps(actual, sort_keys=True) != json.dumps(expected, sort_keys=True):
+                  raise ValueError("Live build identity differs from validated archive")
+          except (OSError, ValueError, KeyError, TypeError) as error:
+              sys.exit(f"Cannot verify live build identity: {error}")
+          print("Verified live build identity against validated archive and GitHub run")
+          PY
