@@ -328443,5 +328443,1571 @@
     "featureId": "cursor.shape",
     "reason": "Own default control visibly shows a block at home; target visibly shows a thin vertical bar at the same cell after CSI5 SP q. Blink behavior is not measured. Observed only in this Linux Kitty, font and software-renderer configuration.",
     "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Codex and Sol (automated provenance review)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": ["content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json"],
+    "supersedes": [],
+    "id": "identity-app-kitty-87e19041fc46d925c8d66007b84c96d2",
+    "reason": "Verified this complete controlled Linux run against owned launch, collector, executable/archive, frozen runner, configuration and display receipts and measured DA1/XTVERSION. Identity review does not establish every rendered feature.",
+    "verifiesIdentity": true,
+    "reviewed": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Codex and Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/89c4542cf58bdbfba4372e0022fa9cf39c57cb3a7d949124026e576abfcc8350.png",
+      "content/artifacts/0656b69f339380cb3c81fc7542c160b4c8141baff67380ff3c7d0ccf86811131.png"
+    ],
+    "supersedes": [],
+    "featureId": "charsets.dec-special",
+    "reason": "On this exact Kitty 0.49.2 Linux run, row 3 column 2 changes from a q-shaped glyph in the control to a horizontal line matching the appearance of the direct Unicode line on row 2. The ASCII q controls on rows 1, 3 and 4 remain intact, including the right-hand q written after restoring ASCII; the parked cursor at row 4 column 6 and the surrounding composition are unchanged. This candidate reason concerns only that single sampled-cell appearance in the bound control/target pair, without numeric-codepoint measurement, full-charset proof, inferred font history, or transfer to another run or backend.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-charsets.dec-special",
+    "observation": {
+      "featureId": "charsets.dec-special",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:0656b69f339380cb3c81fc7542c160b4c8141baff67380ff3c7d0ccf86811131",
+      "frames": [
+        {
+          "role": "control",
+          "label": "ASCII q controls on rows 1, 3 and 4; direct Unicode q─q on row 2",
+          "capturedAt": 1790924903167,
+          "ref": "sha256:89c4542cf58bdbfba4372e0022fa9cf39c57cb3a7d949124026e576abfcc8350",
+          "sourceRef": "sha256:846b2cc97a13c1750a46dca59d3ed1a5dd1152cd39423b5cd9dcbab8d3f3d7fe"
+        },
+        {
+          "role": "target",
+          "label": "DEC Special Graphics sample at row 3, column 2; restored ASCII qqq on row 4",
+          "capturedAt": 1790924903360,
+          "ref": "sha256:0656b69f339380cb3c81fc7542c160b4c8141baff67380ff3c7d0ccf86811131",
+          "sourceRef": "sha256:c82b0962123fd7ada4cc4e3d46769cdc2f4ae5b57ac5865f9e18eb80aced3609"
+        }
+      ],
+      "note": "On this exact Kitty 0.49.2 Linux run, row 3 column 2 changes from a q-shaped glyph in the control to a horizontal line matching the appearance of the direct Unicode line on row 2. The ASCII q controls on rows 1, 3 and 4 remain intact, including the right-hand q written after restoring ASCII; the parked cursor at row 4 column 6 and the surrounding composition are unchanged. This candidate reason concerns only that single sampled-cell appearance in the bound control/target pair, without numeric-codepoint measurement, full-charset proof, inferred font history, or transfer to another run or backend.",
+      "rawReplyRef": "charsets.dec-special"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Codex and Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/89c4542cf58bdbfba4372e0022fa9cf39c57cb3a7d949124026e576abfcc8350.png",
+      "content/artifacts/0656b69f339380cb3c81fc7542c160b4c8141baff67380ff3c7d0ccf86811131.png"
+    ],
+    "supersedes": [],
+    "featureId": "charsets.dec-special",
+    "reason": "On this exact Kitty 0.49.2 Linux run, row 3 column 2 changes from a q-shaped glyph in the control to a horizontal line matching the appearance of the direct Unicode line on row 2. The ASCII q controls on rows 1, 3 and 4 remain intact, including the right-hand q written after restoring ASCII; the parked cursor at row 4 column 6 and the surrounding composition are unchanged. This candidate reason concerns only that single sampled-cell appearance in the bound control/target pair, without numeric-codepoint measurement, full-charset proof, inferred font history, or transfer to another run or backend.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-charsets.dec-special",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/35525bc3abf39d7387776cb5c07fc47defefbe4d98777aeb3625ca7afceadc57.png",
+      "content/artifacts/c326c4199b20010fff2a610b4e305b053404f45a82941234dfbdf755eeb55e4e.png"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "reason": "The fresh shown control visibly has a block between L and R; the target removes it while retaining the text. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:c326c4199b20010fff2a610b4e305b053404f45a82941234dfbdf755eeb55e4e",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Shown steady block cursor requested at row 2 column 3",
+          "capturedAt": 1790924889821,
+          "ref": "sha256:35525bc3abf39d7387776cb5c07fc47defefbe4d98777aeb3625ca7afceadc57",
+          "sourceRef": "sha256:fe8f300a7d9a63135bcc416a63ec6689db6e596b8270ba587fe16a98211161fc"
+        },
+        {
+          "role": "target",
+          "label": "Hidden cursor requested at the same cell",
+          "capturedAt": 1790924890019,
+          "ref": "sha256:c326c4199b20010fff2a610b4e305b053404f45a82941234dfbdf755eeb55e4e",
+          "sourceRef": "sha256:45ed76eea7c0e1d66b6d8bdb762685ebf6ded8ca453dc4fe497cd52ff9cb148a"
+        }
+      ],
+      "note": "The fresh shown control visibly has a block between L and R; the target removes it while retaining the text. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/35525bc3abf39d7387776cb5c07fc47defefbe4d98777aeb3625ca7afceadc57.png",
+      "content/artifacts/c326c4199b20010fff2a610b4e305b053404f45a82941234dfbdf755eeb55e4e.png"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "reason": "The fresh shown control visibly has a block between L and R; the target removes it while retaining the text. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-cursor.hide",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/73cbcad5112a4efb586a85c9345025d29e8131daae228f0244b7dbc8a6c9389d.png"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.shape",
+    "reason": "Neither the default control nor the bar target shows a visible cursor; both PNG and XWD bytes are identical. Shape and blink behavior remain unmeasured. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-cursor.shape",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/d89079b5d892c3f7809904b255b747c78915db2a12efff66b2109e9d007afe41.png",
+      "content/artifacts/b59ed40e59b80d9d202c3af1e92100d19e43a09620f62f9290c65152e4cecc3a.png",
+      "content/artifacts/a2339c97889300b4cabb924f42cc14c17c82d33d944a9d1e2c1c243392c8371c.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.all",
+    "reason": "Fresh blank and seeded controls are valid; ABCDE becomes blank while KEEP! remains. The parked block is retained in seed and target outside the erased row. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-erase.line.all",
+    "observation": {
+      "featureId": "erase.line.all",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:a2339c97889300b4cabb924f42cc14c17c82d33d944a9d1e2c1c243392c8371c",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790924892490,
+          "ref": "sha256:d89079b5d892c3f7809904b255b747c78915db2a12efff66b2109e9d007afe41",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790924892692,
+          "ref": "sha256:b59ed40e59b80d9d202c3af1e92100d19e43a09620f62f9290c65152e4cecc3a",
+          "sourceRef": "sha256:8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790924892887,
+          "ref": "sha256:a2339c97889300b4cabb924f42cc14c17c82d33d944a9d1e2c1c243392c8371c",
+          "sourceRef": "sha256:37fa80c3e36d93d08f3c08d81d412316a8dd37b2f228f912389f722984552239"
+        }
+      ],
+      "note": "Fresh blank and seeded controls are valid; ABCDE becomes blank while KEEP! remains. The parked block is retained in seed and target outside the erased row. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+      "rawReplyRef": "erase.line.all"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/d89079b5d892c3f7809904b255b747c78915db2a12efff66b2109e9d007afe41.png",
+      "content/artifacts/b59ed40e59b80d9d202c3af1e92100d19e43a09620f62f9290c65152e4cecc3a.png",
+      "content/artifacts/a2339c97889300b4cabb924f42cc14c17c82d33d944a9d1e2c1c243392c8371c.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.all",
+    "reason": "Fresh blank and seeded controls are valid; ABCDE becomes blank while KEEP! remains. The parked block is retained in seed and target outside the erased row. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-erase.line.all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/d0a346186719d43064b0172518cf2f2cfca04f3585134afb0a414b67318e260f.png",
+      "content/artifacts/88a794297f72781cc916ce2094e3d0a05a5ad003e12267217bae07a0909121b6.png",
+      "content/artifacts/49adc46e6312604e5077ca1dcb608fc8c93be25cc8bc294817c1aeaa8772c2df.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.left",
+    "reason": "Fresh blank and seeded controls are valid; ABC becomes blank while DE and KEEP! remain. Parked cursor visibility differs outside the erase sample. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-erase.line.left",
+    "observation": {
+      "featureId": "erase.line.left",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:49adc46e6312604e5077ca1dcb608fc8c93be25cc8bc294817c1aeaa8772c2df",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790924891892,
+          "ref": "sha256:d0a346186719d43064b0172518cf2f2cfca04f3585134afb0a414b67318e260f",
+          "sourceRef": "sha256:b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790924892084,
+          "ref": "sha256:88a794297f72781cc916ce2094e3d0a05a5ad003e12267217bae07a0909121b6",
+          "sourceRef": "sha256:984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790924892292,
+          "ref": "sha256:49adc46e6312604e5077ca1dcb608fc8c93be25cc8bc294817c1aeaa8772c2df",
+          "sourceRef": "sha256:3903df97c81f5469b495754f6619c0a49cc787ae82d459c1f29d42d91d9d484d"
+        }
+      ],
+      "note": "Fresh blank and seeded controls are valid; ABC becomes blank while DE and KEEP! remain. Parked cursor visibility differs outside the erase sample. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+      "rawReplyRef": "erase.line.left"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/d0a346186719d43064b0172518cf2f2cfca04f3585134afb0a414b67318e260f.png",
+      "content/artifacts/88a794297f72781cc916ce2094e3d0a05a5ad003e12267217bae07a0909121b6.png",
+      "content/artifacts/49adc46e6312604e5077ca1dcb608fc8c93be25cc8bc294817c1aeaa8772c2df.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.left",
+    "reason": "Fresh blank and seeded controls are valid; ABC becomes blank while DE and KEEP! remain. Parked cursor visibility differs outside the erase sample. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-erase.line.left",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/e718862bf53874d1fdfcf8a5db311dd3b4a27d4a02aec78e5ee7a1b530caab7a.png",
+      "content/artifacts/24b52b41c7eb74cfdf68aa3ac2e1e061430f8cdfd7c7cf90ea855378003e6503.png",
+      "content/artifacts/73fea17e9e9a1b1ef9a77db497aa3eadcb6d11461ab0024166a69f8a4897a7fe.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.right",
+    "reason": "Fresh blank and ABCDE/KEEP! controls are valid; AB remains, CDE becomes blank, and KEEP! remains. A parked cursor appears outside the erase sample only in the target. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-erase.line.right",
+    "observation": {
+      "featureId": "erase.line.right",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:73fea17e9e9a1b1ef9a77db497aa3eadcb6d11461ab0024166a69f8a4897a7fe",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790924891304,
+          "ref": "sha256:e718862bf53874d1fdfcf8a5db311dd3b4a27d4a02aec78e5ee7a1b530caab7a",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790924891496,
+          "ref": "sha256:24b52b41c7eb74cfdf68aa3ac2e1e061430f8cdfd7c7cf90ea855378003e6503",
+          "sourceRef": "sha256:984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790924891694,
+          "ref": "sha256:73fea17e9e9a1b1ef9a77db497aa3eadcb6d11461ab0024166a69f8a4897a7fe",
+          "sourceRef": "sha256:c26193f8a8ceca8d20d28bc214541b76b5874e0b93f3fdd61ef70938a1074fcd"
+        }
+      ],
+      "note": "Fresh blank and ABCDE/KEEP! controls are valid; AB remains, CDE becomes blank, and KEEP! remains. A parked cursor appears outside the erase sample only in the target. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+      "rawReplyRef": "erase.line.right"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/e718862bf53874d1fdfcf8a5db311dd3b4a27d4a02aec78e5ee7a1b530caab7a.png",
+      "content/artifacts/24b52b41c7eb74cfdf68aa3ac2e1e061430f8cdfd7c7cf90ea855378003e6503.png",
+      "content/artifacts/73fea17e9e9a1b1ef9a77db497aa3eadcb6d11461ab0024166a69f8a4897a7fe.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.right",
+    "reason": "Fresh blank and ABCDE/KEEP! controls are valid; AB remains, CDE becomes blank, and KEEP! remains. A parked cursor appears outside the erase sample only in the target. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-erase.line.right",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/a0bdd76504fc26e8740cacea9b241e4d4611e3b5494def3171c96fa41e336cfa.png",
+      "content/artifacts/cb4547e1a60f61bed030e578df468fc2941223168bf72b21df1838fca08f21bd.png",
+      "content/artifacts/1ee14e13a04ee5454d1ee6048685940e54c1d2e02b3d06216e79ac2207bbcd27.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.above",
+    "reason": "Fresh blank and seeded controls are valid; the upper sample and middle prefix become blank while middle suffix BB and bottom CCCCC remain. The parked block remains outside the erased region. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-erase.screen.above",
+    "observation": {
+      "featureId": "erase.screen.above",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:1ee14e13a04ee5454d1ee6048685940e54c1d2e02b3d06216e79ac2207bbcd27",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790924893684,
+          "ref": "sha256:a0bdd76504fc26e8740cacea9b241e4d4611e3b5494def3171c96fa41e336cfa",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790924893878,
+          "ref": "sha256:cb4547e1a60f61bed030e578df468fc2941223168bf72b21df1838fca08f21bd",
+          "sourceRef": "sha256:329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790924894073,
+          "ref": "sha256:1ee14e13a04ee5454d1ee6048685940e54c1d2e02b3d06216e79ac2207bbcd27",
+          "sourceRef": "sha256:2c291fd452656036001b08f233f4b3d613cb871910732601773e9093326f3352"
+        }
+      ],
+      "note": "Fresh blank and seeded controls are valid; the upper sample and middle prefix become blank while middle suffix BB and bottom CCCCC remain. The parked block remains outside the erased region. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+      "rawReplyRef": "erase.screen.above"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/a0bdd76504fc26e8740cacea9b241e4d4611e3b5494def3171c96fa41e336cfa.png",
+      "content/artifacts/cb4547e1a60f61bed030e578df468fc2941223168bf72b21df1838fca08f21bd.png",
+      "content/artifacts/1ee14e13a04ee5454d1ee6048685940e54c1d2e02b3d06216e79ac2207bbcd27.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.above",
+    "reason": "Fresh blank and seeded controls are valid; the upper sample and middle prefix become blank while middle suffix BB and bottom CCCCC remain. The parked block remains outside the erased region. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-erase.screen.above",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/a61fa5ba953644f8231009c8ddda155bed5867e8d2006b48be6560830924ac1e.png",
+      "content/artifacts/b80342ab40273698fe03c89681f2bcce0589db6677358b24788bb09f95a5479c.png",
+      "content/artifacts/bf8f982806ab9885ad24cd9ab7dd6274600ab32ae5fb57ad56def4f0459360ee.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.all",
+    "reason": "Fresh blank and seeded controls are valid; AAAAA, BBBBB and CCCCC become blank. A parked cursor appears outside the seeded glyph samples only in the target. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-erase.screen.all",
+    "observation": {
+      "featureId": "erase.screen.all",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:bf8f982806ab9885ad24cd9ab7dd6274600ab32ae5fb57ad56def4f0459360ee",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790924894274,
+          "ref": "sha256:a61fa5ba953644f8231009c8ddda155bed5867e8d2006b48be6560830924ac1e",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790924894475,
+          "ref": "sha256:b80342ab40273698fe03c89681f2bcce0589db6677358b24788bb09f95a5479c",
+          "sourceRef": "sha256:3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790924894672,
+          "ref": "sha256:bf8f982806ab9885ad24cd9ab7dd6274600ab32ae5fb57ad56def4f0459360ee",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        }
+      ],
+      "note": "Fresh blank and seeded controls are valid; AAAAA, BBBBB and CCCCC become blank. A parked cursor appears outside the seeded glyph samples only in the target. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+      "rawReplyRef": "erase.screen.all"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/a61fa5ba953644f8231009c8ddda155bed5867e8d2006b48be6560830924ac1e.png",
+      "content/artifacts/b80342ab40273698fe03c89681f2bcce0589db6677358b24788bb09f95a5479c.png",
+      "content/artifacts/bf8f982806ab9885ad24cd9ab7dd6274600ab32ae5fb57ad56def4f0459360ee.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.all",
+    "reason": "Fresh blank and seeded controls are valid; AAAAA, BBBBB and CCCCC become blank. A parked cursor appears outside the seeded glyph samples only in the target. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-erase.screen.all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/e24fc13df5865920143a392c85edb7f4f5f033764d419ed5a38f46abfb7adc8f.png",
+      "content/artifacts/fd651b9279e7a9b443dc43234e538938e7185a9a28a39a45a6165cc13c3246fa.png",
+      "content/artifacts/a874dcb8e2cdafb68c5cfa63ee9086d104c54e43fe35054ae62903cc1f0ec137.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.below",
+    "reason": "Fresh blank and seeded controls are valid; AAAAA and middle BB remain while the middle tail and lower seeded region become blank. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-erase.screen.below",
+    "observation": {
+      "featureId": "erase.screen.below",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:a874dcb8e2cdafb68c5cfa63ee9086d104c54e43fe35054ae62903cc1f0ec137",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790924893085,
+          "ref": "sha256:e24fc13df5865920143a392c85edb7f4f5f033764d419ed5a38f46abfb7adc8f",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790924893278,
+          "ref": "sha256:fd651b9279e7a9b443dc43234e538938e7185a9a28a39a45a6165cc13c3246fa",
+          "sourceRef": "sha256:3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790924893480,
+          "ref": "sha256:a874dcb8e2cdafb68c5cfa63ee9086d104c54e43fe35054ae62903cc1f0ec137",
+          "sourceRef": "sha256:2a098340307be83380a10b32841590d98809ae3c907a42993aff46bab2337eff"
+        }
+      ],
+      "note": "Fresh blank and seeded controls are valid; AAAAA and middle BB remain while the middle tail and lower seeded region become blank. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+      "rawReplyRef": "erase.screen.below"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/e24fc13df5865920143a392c85edb7f4f5f033764d419ed5a38f46abfb7adc8f.png",
+      "content/artifacts/fd651b9279e7a9b443dc43234e538938e7185a9a28a39a45a6165cc13c3246fa.png",
+      "content/artifacts/a874dcb8e2cdafb68c5cfa63ee9086d104c54e43fe35054ae62903cc1f0ec137.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.below",
+    "reason": "Fresh blank and seeded controls are valid; AAAAA and middle BB remain while the middle tail and lower seeded region become blank. Observed only in this Linux Kitty, DejaVu Sans Mono and llvmpipe software-renderer configuration.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-erase.screen.below",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/owned_identity_derivation)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/a763ec3a504828d1389e683e6ae6136d0357074431b20e768df04c868c32d8cd.png",
+      "content/artifacts/73750502549fed0e85698d01efda8358b8f00c4fc4b8172d60ae7d9284e0a719.png",
+      "content/artifacts/8fb6d657b71525831c60c21eac84479db1c6630ad71a3997d5529ae1d7af45af.png"
+    ],
+    "supersedes": [],
+    "featureId": "reset.decaln",
+    "reason": "AB stays visible in the initial, 5,202 ms delayed and CUP-only captures; a following X shows X and the E fill. The E fill is not observed before that X. General support inconclusive; observed only in this Linux Kitty, font and software-renderer configuration.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-reset.decaln",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/87d064618f8b1c0984c224234fb1b60ab4dbb1fe409a8a733c363a0deddbdfe3.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.blink",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows the same full, visible text appearance in both static frames; the end-cursor block is visible in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof; static snapshots cannot establish or exclude temporal blinking; keep the existing inconclusive observation.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.blink",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/a05e55867513ce3d32cacf673bcbefb9eef7b331bb643dd9b4ca0abecc14665f.png",
+      "content/artifacts/4c1d0ad2df3e260eed059b19f6a0150af6ca63146c2955b37cd33be14b7b708b.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.bold",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows heavier, thicker glyph strokes; the end-cursor block is absent → visible (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.bold",
+    "observation": {
+      "featureId": "sgr.bold",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:4c1d0ad2df3e260eed059b19f6a0150af6ca63146c2955b37cd33be14b7b708b",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924883525,
+          "ref": "sha256:a05e55867513ce3d32cacf673bcbefb9eef7b331bb643dd9b4ca0abecc14665f",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.bold",
+          "capturedAt": 1790924883733,
+          "ref": "sha256:4c1d0ad2df3e260eed059b19f6a0150af6ca63146c2955b37cd33be14b7b708b",
+          "sourceRef": "sha256:13949dd8493604e7d0322bbfbea1086f6ce531e8759cfe85b3b6b1ec991077a6"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows heavier, thicker glyph strokes; the end-cursor block is absent → visible (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+      "rawReplyRef": "sgr.bold"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/a05e55867513ce3d32cacf673bcbefb9eef7b331bb643dd9b4ca0abecc14665f.png",
+      "content/artifacts/4c1d0ad2df3e260eed059b19f6a0150af6ca63146c2955b37cd33be14b7b708b.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.bold",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows heavier, thicker glyph strokes; the end-cursor block is absent → visible (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.bold",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/f4983c1e3c854f4595067b188ce829f10d0c97c34bb1b8ede7ef8334ecdd0df7.png",
+      "content/artifacts/b4db0b53c8bd81aad0fbf9d7d020092ab6728f1458c1835fc2f129cfe4a7b8d9.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.faint",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows visibly dimmer gray glyphs, with full text retained; the end-cursor block is visible → absent (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.faint",
+    "observation": {
+      "featureId": "sgr.faint",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:b4db0b53c8bd81aad0fbf9d7d020092ab6728f1458c1835fc2f129cfe4a7b8d9",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924883934,
+          "ref": "sha256:f4983c1e3c854f4595067b188ce829f10d0c97c34bb1b8ede7ef8334ecdd0df7",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.faint",
+          "capturedAt": 1790924884136,
+          "ref": "sha256:b4db0b53c8bd81aad0fbf9d7d020092ab6728f1458c1835fc2f129cfe4a7b8d9",
+          "sourceRef": "sha256:d6409f44015529621f216fb4086b2c19d8c73a6d3743123abf31ca879114e97d"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows visibly dimmer gray glyphs, with full text retained; the end-cursor block is visible → absent (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+      "rawReplyRef": "sgr.faint"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/f4983c1e3c854f4595067b188ce829f10d0c97c34bb1b8ede7ef8334ecdd0df7.png",
+      "content/artifacts/b4db0b53c8bd81aad0fbf9d7d020092ab6728f1458c1835fc2f129cfe4a7b8d9.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.faint",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows visibly dimmer gray glyphs, with full text retained; the end-cursor block is visible → absent (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.faint",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/2b5a88916a4b758750348b4b6f6679f19058cda31d48fef97cac56a82b5c616e.png",
+      "content/artifacts/1df40ecfd23ff6241c2ed7103673efbb3a2abb7fa514de68a7fbf85d1339d18a.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.hidden",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows full readable text retained; concealment is not visible; the end-cursor block is absent → visible (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof; visible target glyphs do not warrant a general unsupported/occlusion claim; keep the existing inconclusive observation.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.hidden",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/2b5a88916a4b758750348b4b6f6679f19058cda31d48fef97cac56a82b5c616e.png",
+      "content/artifacts/b88f8ca929ca254e5c9667f5fdb4d3a40e953e9ede8189b2e4a5a901a0970bd5.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.inverse",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows dark glyphs on a light sample-cell band versus light glyphs on black; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.inverse",
+    "observation": {
+      "featureId": "sgr.inverse",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:b88f8ca929ca254e5c9667f5fdb4d3a40e953e9ede8189b2e4a5a901a0970bd5",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924887123,
+          "ref": "sha256:2b5a88916a4b758750348b4b6f6679f19058cda31d48fef97cac56a82b5c616e",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.inverse",
+          "capturedAt": 1790924887327,
+          "ref": "sha256:b88f8ca929ca254e5c9667f5fdb4d3a40e953e9ede8189b2e4a5a901a0970bd5",
+          "sourceRef": "sha256:616ca9de808d391cc1af40bd5722980642efaee67e57b466d1b59ff01f983365"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows dark glyphs on a light sample-cell band versus light glyphs on black; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+      "rawReplyRef": "sgr.inverse"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/2b5a88916a4b758750348b4b6f6679f19058cda31d48fef97cac56a82b5c616e.png",
+      "content/artifacts/b88f8ca929ca254e5c9667f5fdb4d3a40e953e9ede8189b2e4a5a901a0970bd5.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.inverse",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows dark glyphs on a light sample-cell band versus light glyphs on black; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.inverse",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/30026dd780ce96445d7371bd944ffb976cf437fe8cca711ce9af84bf24ca934a.png",
+      "content/artifacts/98424ae2e2c2eff4712c310fcd4f1039d9dbf91a58be9a7a1ccf75e6aaddda80.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.italic",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows right-slanted glyphs versus upright control; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.italic",
+    "observation": {
+      "featureId": "sgr.italic",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:98424ae2e2c2eff4712c310fcd4f1039d9dbf91a58be9a7a1ccf75e6aaddda80",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924884332,
+          "ref": "sha256:30026dd780ce96445d7371bd944ffb976cf437fe8cca711ce9af84bf24ca934a",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.italic",
+          "capturedAt": 1790924884532,
+          "ref": "sha256:98424ae2e2c2eff4712c310fcd4f1039d9dbf91a58be9a7a1ccf75e6aaddda80",
+          "sourceRef": "sha256:c81c3a159d3667af0e4d0e71d685fd86efc3ce40b1e62eacda68b5429d3be72f"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows right-slanted glyphs versus upright control; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+      "rawReplyRef": "sgr.italic"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/30026dd780ce96445d7371bd944ffb976cf437fe8cca711ce9af84bf24ca934a.png",
+      "content/artifacts/98424ae2e2c2eff4712c310fcd4f1039d9dbf91a58be9a7a1ccf75e6aaddda80.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.italic",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows right-slanted glyphs versus upright control; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.italic",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/55b259b3c5e8b339023804c0a69c11a1993dd525e9d6052b5a7a2a857d9d08a1.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.overline",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows full text remains visible with no visible rule above it; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof; no observed overline does not establish general lack of support; keep the existing inconclusive observation.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.overline",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/1df40ecfd23ff6241c2ed7103673efbb3a2abb7fa514de68a7fbf85d1339d18a.png",
+      "content/artifacts/d02bc5b2e76d222e45f9f0cd860a21d953d559df6dcdf6e9dd17c845bcdd6892.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.strikethrough",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a horizontal rule crossing glyph bodies; the end-cursor block is visible → absent (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.strikethrough",
+    "observation": {
+      "featureId": "sgr.strikethrough",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:d02bc5b2e76d222e45f9f0cd860a21d953d559df6dcdf6e9dd17c845bcdd6892",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924887928,
+          "ref": "sha256:1df40ecfd23ff6241c2ed7103673efbb3a2abb7fa514de68a7fbf85d1339d18a",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.strikethrough",
+          "capturedAt": 1790924888124,
+          "ref": "sha256:d02bc5b2e76d222e45f9f0cd860a21d953d559df6dcdf6e9dd17c845bcdd6892",
+          "sourceRef": "sha256:c6fac3d3f67890b4fa66c9a1c7ec9247f72690ab9e576fcba9862519c2f7af1a"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a horizontal rule crossing glyph bodies; the end-cursor block is visible → absent (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+      "rawReplyRef": "sgr.strikethrough"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/1df40ecfd23ff6241c2ed7103673efbb3a2abb7fa514de68a7fbf85d1339d18a.png",
+      "content/artifacts/d02bc5b2e76d222e45f9f0cd860a21d953d559df6dcdf6e9dd17c845bcdd6892.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.strikethrough",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a horizontal rule crossing glyph bodies; the end-cursor block is visible → absent (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.strikethrough",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/fd40093b908766b24ebc7a966a89cdb0b896e9ff38083e362f37e0c241e015e9.png",
+      "content/artifacts/496eef0e77ca49cf05f358b48ecaf887d4d530f70199eefae8b53319808fbc00.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline-color-rgb",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a pink underline below light glyphs after combined SGR 4 and SGR 58; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof; no numeric RGB fidelity or isolation from a separately captured SGR-4-only control is established.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.underline-color-rgb",
+    "observation": {
+      "featureId": "sgr.underline-color-rgb",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:496eef0e77ca49cf05f358b48ecaf887d4d530f70199eefae8b53319808fbc00",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924889195,
+          "ref": "sha256:fd40093b908766b24ebc7a966a89cdb0b896e9ff38083e362f37e0c241e015e9",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline-color-rgb",
+          "capturedAt": 1790924889391,
+          "ref": "sha256:496eef0e77ca49cf05f358b48ecaf887d4d530f70199eefae8b53319808fbc00",
+          "sourceRef": "sha256:d260de894a09f29ca529de4525040f4c3ed6882340d8b506ddbcb66da684692a"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a pink underline below light glyphs after combined SGR 4 and SGR 58; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof; no numeric RGB fidelity or isolation from a separately captured SGR-4-only control is established.",
+      "rawReplyRef": "sgr.underline-color-rgb"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/fd40093b908766b24ebc7a966a89cdb0b896e9ff38083e362f37e0c241e015e9.png",
+      "content/artifacts/496eef0e77ca49cf05f358b48ecaf887d4d530f70199eefae8b53319808fbc00.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline-color-rgb",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a pink underline below light glyphs after combined SGR 4 and SGR 58; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof; no numeric RGB fidelity or isolation from a separately captured SGR-4-only control is established.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.underline-color-rgb",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/b20e6048c791b0a3669f4a484e52601c9added63e51c36c2c84bea4b980a56f1.png",
+      "content/artifacts/af4464d54fc8d9de30909c3664a5263aa997b9c6afeefe8a284fd6308f1deb95.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.color",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a pink underline below light glyphs after combined SGR 4 and SGR 58; the end-cursor block is visible in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof; no numeric RGB fidelity or isolation from a separately captured SGR-4-only control is established.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.underline.color",
+    "observation": {
+      "featureId": "sgr.underline.color",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:af4464d54fc8d9de30909c3664a5263aa997b9c6afeefe8a284fd6308f1deb95",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924888795,
+          "ref": "sha256:b20e6048c791b0a3669f4a484e52601c9added63e51c36c2c84bea4b980a56f1",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.color",
+          "capturedAt": 1790924888992,
+          "ref": "sha256:af4464d54fc8d9de30909c3664a5263aa997b9c6afeefe8a284fd6308f1deb95",
+          "sourceRef": "sha256:290d847dba2c723b8d7880813157d547dbb8fc9b2d139a3e9719800f600c72e2"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a pink underline below light glyphs after combined SGR 4 and SGR 58; the end-cursor block is visible in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof; no numeric RGB fidelity or isolation from a separately captured SGR-4-only control is established.",
+      "rawReplyRef": "sgr.underline.color"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/b20e6048c791b0a3669f4a484e52601c9added63e51c36c2c84bea4b980a56f1.png",
+      "content/artifacts/af4464d54fc8d9de30909c3664a5263aa997b9c6afeefe8a284fd6308f1deb95.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.color",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a pink underline below light glyphs after combined SGR 4 and SGR 58; the end-cursor block is visible in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof; no numeric RGB fidelity or isolation from a separately captured SGR-4-only control is established.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.underline.color",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/e9afa6abadc68f101a7755eef8346b08605f41dbb33bb644139e7576048d7541.png",
+      "content/artifacts/e145b04355453fd4557a970aa207caf8ae45b2b0bcd5dc7970a45c92bec2999c.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.curly",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a wavy rule beneath the sample; the end-cursor block is absent → visible (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.underline.curly",
+    "observation": {
+      "featureId": "sgr.underline.curly",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:e145b04355453fd4557a970aa207caf8ae45b2b0bcd5dc7970a45c92bec2999c",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924885517,
+          "ref": "sha256:e9afa6abadc68f101a7755eef8346b08605f41dbb33bb644139e7576048d7541",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.curly",
+          "capturedAt": 1790924885717,
+          "ref": "sha256:e145b04355453fd4557a970aa207caf8ae45b2b0bcd5dc7970a45c92bec2999c",
+          "sourceRef": "sha256:e2e3508027a9ee1b4084cd5ae8e94801f9874c2b672a7762aede338bb4316c0e"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a wavy rule beneath the sample; the end-cursor block is absent → visible (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+      "rawReplyRef": "sgr.underline.curly"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/e9afa6abadc68f101a7755eef8346b08605f41dbb33bb644139e7576048d7541.png",
+      "content/artifacts/e145b04355453fd4557a970aa207caf8ae45b2b0bcd5dc7970a45c92bec2999c.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.curly",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a wavy rule beneath the sample; the end-cursor block is absent → visible (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.underline.curly",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/3ebbae12414263fe71c9356827d2e79fd3366f9110e024238baacca899daa3c4.png",
+      "content/artifacts/7aa529ca270ea87b2e111916e761f2836c14f81327e0cc1df577c1b47c5a0a29.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.dashed",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a broken rule with separated short horizontal dashes beneath the sample; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.underline.dashed",
+    "observation": {
+      "featureId": "sgr.underline.dashed",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:7aa529ca270ea87b2e111916e761f2836c14f81327e0cc1df577c1b47c5a0a29",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924886313,
+          "ref": "sha256:3ebbae12414263fe71c9356827d2e79fd3366f9110e024238baacca899daa3c4",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.dashed",
+          "capturedAt": 1790924886513,
+          "ref": "sha256:7aa529ca270ea87b2e111916e761f2836c14f81327e0cc1df577c1b47c5a0a29",
+          "sourceRef": "sha256:874bf71a89dea004f681ee14fcfb724252cdfcb60d9e9f1bfd7bf8b21b389970"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a broken rule with separated short horizontal dashes beneath the sample; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+      "rawReplyRef": "sgr.underline.dashed"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/3ebbae12414263fe71c9356827d2e79fd3366f9110e024238baacca899daa3c4.png",
+      "content/artifacts/7aa529ca270ea87b2e111916e761f2836c14f81327e0cc1df577c1b47c5a0a29.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.dashed",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a broken rule with separated short horizontal dashes beneath the sample; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.underline.dashed",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/034f2fe30ef35bd575db2394504b26cb9fdaeaf91373c2f96a427a00a18a9658.png",
+      "content/artifacts/2bd006753d495b7015e7ed34b43ed5601ece6087774e699f01e3aa4dafc5301c.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.dotted",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a fine dotted rule beneath the sample; the end-cursor block is visible → absent (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.underline.dotted",
+    "observation": {
+      "featureId": "sgr.underline.dotted",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:2bd006753d495b7015e7ed34b43ed5601ece6087774e699f01e3aa4dafc5301c",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924885914,
+          "ref": "sha256:034f2fe30ef35bd575db2394504b26cb9fdaeaf91373c2f96a427a00a18a9658",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.dotted",
+          "capturedAt": 1790924886112,
+          "ref": "sha256:2bd006753d495b7015e7ed34b43ed5601ece6087774e699f01e3aa4dafc5301c",
+          "sourceRef": "sha256:3e88985e35e937a35d31ee48603a98dca06ce6be2bf0c322c917903b334a336b"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a fine dotted rule beneath the sample; the end-cursor block is visible → absent (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+      "rawReplyRef": "sgr.underline.dotted"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/034f2fe30ef35bd575db2394504b26cb9fdaeaf91373c2f96a427a00a18a9658.png",
+      "content/artifacts/2bd006753d495b7015e7ed34b43ed5601ece6087774e699f01e3aa4dafc5301c.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.dotted",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows a fine dotted rule beneath the sample; the end-cursor block is visible → absent (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.underline.dotted",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/e9afa6abadc68f101a7755eef8346b08605f41dbb33bb644139e7576048d7541.png",
+      "content/artifacts/9346dc4478a9739524a861b8470fd31920524a8abdb20c405f2c40ad1fe305ff.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.double",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows two closely spaced horizontal rules beneath the sample; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.underline.double",
+    "observation": {
+      "featureId": "sgr.underline.double",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:9346dc4478a9739524a861b8470fd31920524a8abdb20c405f2c40ad1fe305ff",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924885124,
+          "ref": "sha256:e9afa6abadc68f101a7755eef8346b08605f41dbb33bb644139e7576048d7541",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.double",
+          "capturedAt": 1790924885319,
+          "ref": "sha256:9346dc4478a9739524a861b8470fd31920524a8abdb20c405f2c40ad1fe305ff",
+          "sourceRef": "sha256:ac7d8fd26cf444b952f2a4bb45cbf2a6c3c048e04844c4caeb3c7ab05f4d912d"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows two closely spaced horizontal rules beneath the sample; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+      "rawReplyRef": "sgr.underline.double"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/e9afa6abadc68f101a7755eef8346b08605f41dbb33bb644139e7576048d7541.png",
+      "content/artifacts/9346dc4478a9739524a861b8470fd31920524a8abdb20c405f2c40ad1fe305ff.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.double",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows two closely spaced horizontal rules beneath the sample; the end-cursor block is absent in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.underline.double",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/294189b274b7b65433773f79f7111f0c63fdbfb7ff4a7efab657f5bd054a3b8e.png",
+      "content/artifacts/6bec2cbcfbe884cf6434e2bef5f9ef126f5f10d8c403313a41e4d968912b0b30.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.single",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows one continuous rule beneath the sample; the end-cursor block is visible in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "pixels-87e19041fc46d925c8d66007b84c96d2-sgr.underline.single",
+    "observation": {
+      "featureId": "sgr.underline.single",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:6bec2cbcfbe884cf6434e2bef5f9ef126f5f10d8c403313a41e4d968912b0b30",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790924884731,
+          "ref": "sha256:294189b274b7b65433773f79f7111f0c63fdbfb7ff4a7efab657f5bd054a3b8e",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.single",
+          "capturedAt": 1790924884928,
+          "ref": "sha256:6bec2cbcfbe884cf6434e2bef5f9ef126f5f10d8c403313a41e4d968912b0b30",
+          "sourceRef": "sha256:1ae7e0f3dd4d35323bb716ed91913ae8dc859b218da6a996304925d0284fe5b8"
+        }
+      ],
+      "note": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows one continuous rule beneath the sample; the end-cursor block is visible in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+      "rawReplyRef": "sgr.underline.single"
+    }
+  },
+  {
+    "runId": "87e19041fc46d925c8d66007b84c96d2",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "reviewer": "Sol (automated visual review: /root/verify_release_checker)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["b85bf0f61e24", "b85bf0f61e24"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-87e19041fc46d925c8d66007b84c96d2.json",
+      "content/artifacts/294189b274b7b65433773f79f7111f0c63fdbfb7ff4a7efab657f5bd054a3b8e.png",
+      "content/artifacts/6bec2cbcfbe884cf6434e2bef5f9ef126f5f10d8c403313a41e4d968912b0b30.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.single",
+    "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows one continuous rule beneath the sample; the end-cursor block is visible in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
+    "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.underline.single",
+    "presentsEvidence": true
   }
 ]

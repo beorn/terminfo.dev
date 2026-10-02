@@ -1,12 +1,12 @@
 {
-  "$generated": "2026-10-02T02:51:48.840Z",
+  "$generated": "2026-10-02T08:03:48.538Z",
   "terminals/kitty": {
     "analysis": "<p><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> has <strong>98%</strong> support (104/106) among conclusive feature results, with observed unsupported results in the Modern TUI, Rich TUI baselines. Observed unsupported: <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/modes/decset-1048-save-restore-cursor\" class=\"hover-link\">Save/restore cursor (?1048)</a>.</p>",
     "date": "2026-10-02",
     "probeCount": 106,
     "changes": null,
-    "runSha256": "c203fae84077148a62cfc6878fbc958be4e291106834ceaf20c86d571c040b9a",
-    "measuredAt": "2026-10-02T02:29:23.530Z",
+    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
+    "measuredAt": "2026-10-02T07:08:24.472Z",
     "counts": {
       "conclusive": 106,
       "supported": 104,
@@ -502,7 +502,7 @@
     "changes": null
   },
   "cursor/decscusr-cursor-shape": {
-    "analysis": "<p>Recorded checks report support for <strong>6</strong> of <strong>11</strong> conclusively measured targets (55%). Not supported by: <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "analysis": "<p>Recorded checks report support for <strong>5</strong> of <strong>10</strong> conclusively measured targets (50%). Not supported by: <a href=\"/terminals/ghostty\" class=\"hover-link\" title=\"Ghostty Terminal Emulator\">Ghostty</a> (<a href=\"/about\" class=\"hover-link\" title=\"Headless Terminal\">headless</a>), <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>, <a href=\"/terminals/xterm-js\" class=\"hover-link\">xterm.js</a>. Part of the <strong>Modern TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
     "date": "2026-10-02",
     "changes": null
   },
@@ -1212,7 +1212,7 @@
     "changes": null
   },
   "charsets/dec-special-graphics": {
-    "analysis": "<p>Recorded checks report support for <strong>8</strong> of <strong>11</strong> conclusively measured targets (73%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "analysis": "<p>Recorded checks report support for <strong>9</strong> of <strong>12</strong> conclusively measured targets (75%). Not supported by: <a href=\"/terminals/vt100-js\" class=\"hover-link\">vt100.js</a>, vt100 (Rust), <a href=\"/terminals/vt220-js\" class=\"hover-link\">vt220.js</a>. Part of the <strong>Core TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
     "date": "2026-10-02",
     "changes": null
   },
