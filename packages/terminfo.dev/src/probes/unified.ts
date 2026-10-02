@@ -287,6 +287,9 @@ export async function runProbeBatch(
         if (geometryCheck) geometryCheck.post = await readGeometry()
       }
       if (result.observation) {
+        if (result.response !== undefined) {
+          batch.rawReplies[`${probe.id}.callbackResponse`] = result.response
+        }
         const rawReplyRef =
           queries.length || captureAttempted || clipboardEvents.length || result.observation.evidence === "none"
             ? probe.id
