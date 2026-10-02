@@ -124,6 +124,56 @@ function temporaryContent() {
 }
 
 describe("selected results", () => {
+  it("selects collector-only identity while keeping subsets in history and refusing explicit DA1 conflicts", () => {
+    const rawReplies = {
+      "collector.xtversion": "\x1bP>|kitty(0.46.2)\x1b\\\x1b[?62;52;c",
+      "extensions.query": "ACK",
+      "extensions.graphics": "NO",
+    }
+    const complete = parseRun("collector-only.json", JSON.stringify(run("collector-only", { rawReplies })), catalog)
+    const partial = parseRun(
+      "collector-subset.json",
+      JSON.stringify(
+        run("collector-subset", {
+          rawReplies,
+          suiteComplete: false,
+          observations: [observation("extensions.query", "supported", "query")],
+        }),
+      ),
+      catalog,
+    )
+    const conflicting = parseRun(
+      "collector-conflict.json",
+      JSON.stringify(
+        run("collector-conflict", {
+          rawReplies: { ...rawReplies, "device.primary-da": "\x1b[?1;2c" },
+        }),
+      ),
+      catalog,
+    )
+    const disagreement = parseRun(
+      "collector-disagreement.json",
+      JSON.stringify(
+        run("collector-disagreement", {
+          rawReplies: { ...rawReplies, "device.primary-da": "\x1b[?62;4;c" },
+        }),
+      ),
+      catalog,
+    )
+    const candidates = [complete, partial, conflicting, disagreement]
+    const projection = projectResults(candidates, candidates.map(reviewFor), catalog, { currentProbeHash: "current" })
+    expect(projection.current["app:kitty"]?.runId).toBe("collector-only")
+    expect(projection.versions["app:kitty"]?.map((value) => value.runId)).toEqual(["collector-only"])
+    expect(projection.history["app:kitty"]?.map((value) => value.runId).sort()).toEqual(
+      ["collector-only", "collector-subset", "collector-conflict", "collector-disagreement"].sort(),
+    )
+    expect(projection.exclusions).toEqual([
+      { runId: partial.runId, path: partial.path, reason: "suite-incomplete" },
+      { runId: conflicting.runId, path: conflicting.path, reason: "identity-replies-mismatch" },
+      { runId: disagreement.runId, path: disagreement.path, reason: "identity-replies-mismatch" },
+    ])
+  })
+
   it("rejects conclusive v2 consumed or legacy claims without measured assertions", () => {
     const base = run("claimed", {
       identity: "unverified",

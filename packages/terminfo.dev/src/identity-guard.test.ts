@@ -8,6 +8,83 @@ import { describe, it, expect } from "vitest"
 import { resolveMeasuredAppVersion, verifyTerminalIdentity } from "./identity-guard.ts"
 
 describe("verifyTerminalIdentity", () => {
+  it("measures Kitty version and DA1 from collector identity without feature keys", () => {
+    const responses = { "collector.xtversion": "\x1bP>|kitty(0.49.2)\x1b\\\x1b[?62;52;c" }
+    expect(resolveMeasuredAppVersion("kitty", "", responses)).toBe("0.49.2")
+    expect(verifyTerminalIdentity("kitty", responses, { "device.xtversion": false })).toEqual({
+      ok: true,
+      checked: true,
+    })
+    expect(verifyTerminalIdentity("kitty", { "collector.xtversion": "\x1bP>|kitty(0.49.2)\x1b\\" }).reason).toContain(
+      "DA1 mismatch",
+    )
+    // Legacy feature frames must not donate their trailing DA1 to identity.
+    expect(verifyTerminalIdentity("kitty", { "device.xtversion": responses["collector.xtversion"] }).reason).toContain(
+      "DA1 mismatch",
+    )
+  })
+
+  it.each(["", "malformed", "garbage\x1b[?62;52;c", "\x1b[?1;2c"])(
+    "preserves an explicit DA1 %j beside a valid collector suffix",
+    (da1) => {
+      expect(
+        verifyTerminalIdentity("kitty", {
+          "collector.xtversion": "\x1bP>|kitty(0.49.2)\x1b\\\x1b[?62;52;c",
+          "device.primary-da": da1,
+        }).reason,
+      ).toMatch(/DA1 (?:mismatch|malformed)/)
+    },
+  )
+
+  it("requires explicit DA1 bytes to agree with the collector witness and judges suffixless frames independently", () => {
+    const da1 = "\x1b[?62;52;c"
+    const responses = {
+      "collector.xtversion": `\x1bP>|kitty(0.49.2)\x1b\\${da1}`,
+      "device.primary-da": da1,
+    }
+    expect(verifyTerminalIdentity("kitty", responses).ok).toBe(true)
+    const other = "\x1b[?62;4;c"
+    const mismatch = { ...responses, "device.primary-da": other }
+    const refused = verifyTerminalIdentity("kitty", mismatch)
+    expect(refused.ok).toBe(false)
+    expect(refused.reason).toContain("DA1 mismatch")
+    expect(refused.reason).toContain("[?62;52;c")
+    expect(refused.reason).toContain("[?62;4;c")
+    expect(() => resolveMeasuredAppVersion("kitty", "", mismatch)).toThrow(/DA1 mismatch/)
+    for (const raw of [da1 + da1, `stray${da1}`]) {
+      const malformed = { ...responses, "device.primary-da": raw }
+      expect(verifyTerminalIdentity("kitty", malformed).reason).toContain("DA1 malformed")
+      expect(() => resolveMeasuredAppVersion("kitty", "", malformed)).toThrow(/DA1 malformed/)
+    }
+    expect(
+      verifyTerminalIdentity("kitty", { ...mismatch, "collector.xtversion": "\x1bP>|kitty(0.49.2)\x1b\\" }).ok,
+    ).toBe(true)
+  })
+
+  it("uses a collector DA1-only reply for Terminal.app while retaining DA2 and forbidden XTVERSION", () => {
+    const responses = {
+      "collector.xtversion": "\x1b[?1;2c",
+      "device.secondary-da": "\x1b[>1;95;0c",
+    }
+    expect(verifyTerminalIdentity("terminal-app", responses)).toEqual({ ok: true, checked: true })
+    expect(
+      verifyTerminalIdentity("terminal-app", { "collector.xtversion": responses["collector.xtversion"] }).reason,
+    ).toContain("DA2 mismatch")
+    expect(
+      verifyTerminalIdentity("terminal-app", {
+        ...responses,
+        "collector.xtversion": "",
+        "device.primary-da": "\x1b[?1;2c",
+      }).ok,
+    ).toBe(true)
+    expect(
+      verifyTerminalIdentity("terminal-app", {
+        ...responses,
+        "collector.xtversion": "\x1bP>|xterm(370)\x1b\\\x1b[?1;2c",
+      }).reason,
+    ).toContain("does not support XTVERSION")
+  })
+
   it("prefers owned preflight identity without borrowing the feature's outcome", () => {
     const responses = {
       "device.primary-da": "\x1b[?62;52;c",

@@ -55,17 +55,43 @@ export interface VerificationResult {
   checked: boolean
 }
 
-export const COMPLETE_XTVERSION = /^\x1bP>\|([^\x1b]+)\x1b\\(?:\x1b\[\?[0-9;]+c)?$/
+const DA1_GRAMMAR = String.raw`\x1b\[\?[0-9;]+c`
+const DA1_ONLY = new RegExp(`^${DA1_GRAMMAR}$`)
+export const COMPLETE_XTVERSION = new RegExp(String.raw`^\x1bP>\|([^\x1b]+)\x1b\\(${DA1_GRAMMAR})?$`)
 
 /** Owned identity is independent of the selected feature and never falls back on failure. */
-function identityFrame(responses: Record<string, string> | undefined, required: boolean): string | undefined {
-  if (!responses || !Object.hasOwn(responses, "collector.xtversion")) return responses?.["device.xtversion"]
-  const raw = responses["collector.xtversion"]
-  if (required && (!raw || !COMPLETE_XTVERSION.test(raw))) {
-    if (!raw || /^\x1b\[\?[0-9;]+c$/.test(raw)) throw new Error("identity: XTVERSION preflight silent")
+export function deriveIdentity(responses: Record<string, string> | undefined): {
+  source: "collector" | "feature"
+  xtversionRaw?: string
+  xtversionPayload?: string
+  da1?: string
+} {
+  const source = responses && Object.hasOwn(responses, "collector.xtversion") ? "collector" : "feature"
+  const raw = responses?.[source === "collector" ? "collector.xtversion" : "device.xtversion"]
+  const complete = raw ? COMPLETE_XTVERSION.exec(raw) : null
+  const da1Only = DA1_ONLY.test(raw ?? "")
+  if (source === "collector" && raw && !complete && !da1Only) {
     throw new Error(`identity: XTVERSION preflight malformed, raw ${Buffer.from(raw).toString("base64")}`)
   }
-  return raw
+  const collectorDa1 = source === "collector" ? (complete?.[2] ?? (da1Only ? raw : undefined)) : undefined
+  const explicitDa1 = responses && Object.hasOwn(responses, "device.primary-da")
+  const da1 = explicitDa1 ? responses["device.primary-da"] : collectorDa1
+  if (explicitDa1 && source === "collector" && complete?.[2]) {
+    if (!DA1_ONLY.test(da1 ?? "")) {
+      throw new Error(`identity: DA1 malformed, raw ${Buffer.from(da1 ?? "").toString("base64")}`)
+    }
+    if (da1 !== collectorDa1) {
+      throw new Error(
+        `identity: DA1 mismatch, explicit ${JSON.stringify(da1)}, collector ${JSON.stringify(collectorDa1)}`,
+      )
+    }
+  }
+  return {
+    source,
+    xtversionRaw: raw,
+    xtversionPayload: complete ? complete[1] : da1Only || raw?.startsWith("\x1bP") ? undefined : raw,
+    da1,
+  }
 }
 
 /** Use only a complete measured Kitty reply; a detected version must agree with it. */
@@ -75,8 +101,13 @@ export function resolveMeasuredAppVersion(
   responses: Record<string, string>,
 ): string {
   if (terminal !== "kitty") return detectedVersion || "unknown"
-  const frame = identityFrame(responses, true)
-  const payload = frame ? COMPLETE_XTVERSION.exec(frame)?.[1] : undefined
+  const identity = deriveIdentity(responses)
+  if (identity.source === "collector" && !identity.xtversionPayload) {
+    throw new Error("identity: XTVERSION preflight silent")
+  }
+  // Legacy measured-version resolution requires the complete DCS, as before.
+  if (identity.source === "feature" && !identity.xtversionRaw?.startsWith("\x1bP")) return detectedVersion || "unknown"
+  const payload = identity.xtversionPayload
   if (!payload) return detectedVersion || "unknown"
   const version = /^kitty\((\d+(?:\.\d+){1,3}(?:[-+][a-zA-Z0-9.-]+)?)\)$/i.exec(payload)?.[1]
   if (!version) throw new Error(`Kitty identity mismatch: measured XTVERSION ${payload}`)
@@ -102,22 +133,20 @@ export function verifyTerminalIdentity(
     return { ok: true, checked: false }
   }
 
-  const da1 = responses?.["device.primary-da"]
-  let xtversionRaw: string | undefined
+  let identity: ReturnType<typeof deriveIdentity>
   try {
-    xtversionRaw = identityFrame(responses, rule.requireXtversion === true)
+    identity = deriveIdentity(responses)
+    if (rule.requireXtversion && identity.source === "collector" && !identity.xtversionPayload) {
+      throw new Error("identity: XTVERSION preflight silent")
+    }
   } catch (error) {
     return { ok: false, checked: true, reason: (error as Error).message }
   }
-  const dcs = xtversionRaw?.startsWith("\x1bP") ? COMPLETE_XTVERSION.exec(xtversionRaw) : null
-  if (xtversionRaw?.startsWith("\x1bP") && !dcs) {
+  const { da1, xtversionRaw, xtversionPayload: xtversion } = identity
+  if (xtversionRaw?.startsWith("\x1bP") && !xtversion) {
     return { ok: false, checked: true, reason: `Terminal "${terminal}" returned an incomplete XTVERSION DCS frame` }
   }
-  // The collector retains a DA1-only end marker when the XTVERSION query received no reply.
-  const da1SentinelOnly = /^\x1b\[\?[0-9;]+c$/.test(xtversionRaw ?? "")
-  const xtversion = da1SentinelOnly ? undefined : dcs ? dcs[1] : xtversionRaw
-  const xtversionResult =
-    responses && Object.hasOwn(responses, "collector.xtversion") ? undefined : results?.["device.xtversion"]
+  const xtversionResult = identity.source === "feature" ? results?.["device.xtversion"] : undefined
 
   // Check required XTVERSION
   if (rule.requireXtversion) {

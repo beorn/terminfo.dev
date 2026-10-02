@@ -22,7 +22,7 @@ import {
   validateObservationOutcome,
   validateObservation,
 } from "@terminfo/run-parser"
-import { verifyTerminalIdentity, TERMINAL_IDENTITY_RULES } from "terminfo.dev/src/identity-guard.ts"
+import { deriveIdentity, verifyTerminalIdentity, TERMINAL_IDENTITY_RULES } from "terminfo.dev/src/identity-guard.ts"
 
 export interface SelectedCell extends Observation {
   conclusive: boolean
@@ -272,16 +272,17 @@ function identityRepliesMatch(run: LoadedRun): boolean {
     return receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree
   }
   const rule = TERMINAL_IDENTITY_RULES[run.target.id]
-  if (!rule || !nonempty(run.rawReplies["device.primary-da"])) return false
+  if (!rule) return false
   const results = Object.fromEntries(run.observations.map((o) => [o.featureId, o.outcome === "supported"]))
   const verification = verifyTerminalIdentity(run.target.id, run.rawReplies, results)
   if (!verification.checked || !verification.ok) return false
+  const identity = deriveIdentity(run.rawReplies)
+  if (!nonempty(identity.da1)) return false
   if (rule.forbidXtversion) {
     const receipt = run.origin.appLaunch
     return !!receipt && run.target.version !== "unknown" && receipt.cfBundleShortVersionString === run.target.version
   }
-  if (rule.requireXtversion && !nonempty(run.rawReplies["device.xtversion"])) return false
-  const versionReply = run.rawReplies["device.xtversion"]
+  const versionReply = identity.xtversionPayload
   if (!versionReply) return false
   const escapedVersion = run.target.version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
   return new RegExp(`(^|[^a-zA-Z0-9])${escapedVersion}($|[^a-zA-Z0-9])`).test(versionReply)
@@ -560,8 +561,9 @@ export function projectResults(
     if (!hasPresentationDecision(entry)) continue
     const key = `${entry.runId}\0${entry.featureId}`
     const prior = presented.get(key)
-    if (prior)
+    if (prior) {
       throw new Error(`presentation ${entry.id} conflicts with active ${prior} for ${entry.runId}/${entry.featureId}`)
+    }
     presented.set(key, entry.id)
   }
   const contextCounts = new Map<string, Set<string>>()
