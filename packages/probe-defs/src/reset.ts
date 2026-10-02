@@ -226,8 +226,11 @@ export const resetProbes: ProbeDefinition[] = [
           ctx.write("\x1b[H")
           const control = await capture({ role: "control", label: "Known non-E AB grid before DECALN" })
           ctx.write("\x1b#8")
+          const postAlignmentCursor = await ctx.queryCursorPosition()
           const target = await capture({ role: "target", label: "DECALN alignment grid after ESC # 8" })
-          const observed = JSON.stringify({ rows, cols, seed, control, target })
+          ctx.write("\x1b[HX")
+          const redrawControl = await capture({ role: "control", label: "Redraw control after one ordinary glyph" })
+          const observed = JSON.stringify({ rows, cols, seed, postAlignmentCursor, control, target, redrawControl })
           return {
             pass: false,
             response: observed,
@@ -236,8 +239,8 @@ export const resetProbes: ProbeDefinition[] = [
               reason: "insufficient-evidence",
               evidence: "pixels",
               screenshotRef: target.ref,
-              frames: [control, target],
-              note: "Known non-E grid and DECALN pixels captured; repeated E glyphs across measured rows and columns require independent review",
+              frames: [control, target, redrawControl],
+              note: `${postAlignmentCursor === null ? "No post-DECALN CPR response; processing barrier unconfirmed. " : ""}Known non-E grid, initial DECALN target and diagnostic redraw control after one ordinary glyph captured; repeated E glyphs across measured rows and columns require independent review`,
             },
             assertions: [
               {

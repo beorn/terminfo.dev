@@ -186,8 +186,11 @@ export const cursorProbes: ProbeDefinition[] = [
         // Only used inside the collector's owned disposable terminal, not an arbitrary user's screen.
         try {
           ctx.write("\x1b[0m\x1b[2J\x1b[H")
-          ctx.write("\x1b[1;1HCURSOR\x1b[2;1HL  R\x1b[2;3H\x1b[?25h")
-          const control = await capture({ role: "control", label: "Shown cursor requested at row 2 column 3" })
+          ctx.write("\x1b[1;1HCURSOR\x1b[2;1HL  R\x1b[2;3H\x1b[2 q\x1b[?25h")
+          const control = await capture({
+            role: "control",
+            label: "Shown steady block cursor requested at row 2 column 3",
+          })
           ctx.write("\x1b[?25l")
           const target = await capture({ role: "target", label: "Hidden cursor requested at the same cell" })
           const observed = JSON.stringify({ rows, cols, cursor: { row: 2, col: 3 }, control, target })
@@ -213,7 +216,8 @@ export const cursorProbes: ProbeDefinition[] = [
             ],
           }
         } finally {
-          ctx.write("\x1b[0m\x1b[2J\x1b[H\x1b[?25h")
+          // Return this owned window to its configured default, without claiming prior-style restoration.
+          ctx.write("\x1b[0m\x1b[2J\x1b[H\x1b[?25h\x1b[0 q")
         }
       },
     ),

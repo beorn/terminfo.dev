@@ -722,7 +722,7 @@ test("app CUP refuses nonfinite geometry before a feature write", async () => {
 })
 
 // Capture safety is distinct from the independent review of the resulting pixels.
-test("app cursor hide seeds a shown fixed-cell control and records geometry without grading pixels", async () => {
+test("app cursor hide seeds a shown steady fixed-cell control and records geometry without grading pixels", async () => {
   const context = app(null)
   const writes: string[] = []
   const checkpoints: string[] = []
@@ -733,6 +733,7 @@ test("app cursor hide seeds a shown fixed-cell control and records geometry with
   }
   const result = await byId("cursor.hide").term!(context)
   expect(checkpoints[0]).toContain("\x1b[?25h")
+  expect(checkpoints[0]).toContain("\x1b[2 q")
   expect(checkpoints[0]).toContain("\x1b[2;3H")
   expect(checkpoints[0]).toContain("CURSOR")
   expect(checkpoints[0]).toContain("\x1b[2;1HL  R")
@@ -742,6 +743,7 @@ test("app cursor hide seeds a shown fixed-cell control and records geometry with
   expect(result.assertions).toMatchObject([{ kind: "positive", note: expect.stringContaining("capture-only") }])
   expect(writes.at(-1)).toContain("\x1b[2J")
   expect(writes.at(-1)).toContain("\x1b[?25h")
+  expect(writes.at(-1)).toContain("\x1b[0 q")
 })
 
 test.each([1, 2])("app cursor hide cleans its disposable fixture when capture %i fails", async (failedCapture) => {
@@ -757,6 +759,7 @@ test.each([1, 2])("app cursor hide cleans its disposable fixture when capture %i
   await expect(byId("cursor.hide").term!(context)).rejects.toBe(failure)
   expect(writes.at(-1)).toContain("\x1b[2J")
   expect(writes.at(-1)).toContain("\x1b[?25h")
+  expect(writes.at(-1)).toContain("\x1b[0 q")
 })
 
 test("app cursor hide refuses invalid geometry or absent capture before fixture writes", async () => {

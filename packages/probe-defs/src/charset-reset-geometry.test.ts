@@ -115,25 +115,45 @@ function decaln() {
   return definition
 }
 
-test("DECALN captures a known non-E grid spanning measured rows and columns without grading pixels", async () => {
-  const events: string[] = []
-  const context = app(3, 6, events)
-  const checkpoints: string[] = []
-  context.capture = async ({ role, label }) => {
-    checkpoints.push(events.join(""))
-    return { role, label, capturedAt: checkpoints.length, ref: `frame-${role}` }
-  }
-  const result = await decaln().term!(context)
-  for (const row of [1, 2, 3]) expect(checkpoints[0]).toContain(`\x1b[${row};1HABABAB`)
-  expect(checkpoints[0]).not.toContain("\x1b#8")
-  expect(checkpoints[1]).toContain("\x1b#8")
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
-  expect(JSON.parse(result.response ?? "")).toMatchObject({ rows: 3, cols: 6, seed: "ABABAB" })
-  expect(result.assertions).toMatchObject([{ kind: "positive", note: expect.stringContaining("capture-only") }])
-  expect(events.at(-1)).toContain("\x1b[2J")
-})
+test.each([{ row: 1, col: 1 }, null])(
+  "DECALN retains CPR %j before its initial target and independent ordinary-glyph redraw control without grading pixels",
+  async (cursor) => {
+    const events: string[] = []
+    const context = app(3, 6, events, [cursor])
+    const checkpoints: string[] = []
+    context.capture = async ({ role, label }) => {
+      checkpoints.push(events.join(""))
+      return { role, label, capturedAt: checkpoints.length, ref: `frame-${role}-${checkpoints.length}` }
+    }
+    const result = await decaln().term!(context)
+    for (const row of [1, 2, 3]) expect(checkpoints[0]).toContain(`\x1b[${row};1HABABAB`)
+    expect(checkpoints[0]).not.toContain("\x1b#8")
+    expect(checkpoints[0]).not.toContain("CPR")
+    expect(checkpoints[1]).toContain("\x1b#8")
+    expect(checkpoints[1]).toMatch(/\x1b#8CPR$/)
+    expect(checkpoints).toHaveLength(3)
+    expect(checkpoints[1]).not.toContain("\x1b[HX")
+    expect(checkpoints[2]).toMatch(/\x1b\[HX$/)
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+    if (cursor === null) expect(result.observation?.note).toContain("processing barrier unconfirmed")
+    expect(result.observation?.frames?.map(({ role }) => role)).toEqual(["control", "target", "control"])
+    expect(result.observation?.frames?.[2]?.label).toBe("Redraw control after one ordinary glyph")
+    expect(result.observation?.screenshotRef).toBe("frame-target-2")
+    expect(JSON.parse(result.response ?? "")).toMatchObject({
+      rows: 3,
+      cols: 6,
+      seed: "ABABAB",
+      postAlignmentCursor: cursor,
+      target: { ref: "frame-target-2" },
+      redrawControl: { ref: "frame-control-3" },
+    })
+    expect(result.assertions).toMatchObject([{ kind: "positive", note: expect.stringContaining("capture-only") }])
+    expect(result.assertions?.[0]?.expected).toContain("DECALN target shows repeated E across that same measured grid")
+    expect(events.at(-1)).toContain("\x1b[2J")
+  },
+)
 
-test.each([1, 2])("DECALN cleans its disposable fixture when capture %i fails", async (failedCapture) => {
+test.each([1, 2, 3])("DECALN cleans its disposable fixture when capture %i fails", async (failedCapture) => {
   const events: string[] = []
   const context = app(3, 6, events)
   let calls = 0
