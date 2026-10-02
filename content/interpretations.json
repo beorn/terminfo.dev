@@ -330009,5 +330009,1528 @@
     "reason": "The feature’s own control shows the complete upright, normal-intensity unstyled sample on black. The current target shows one continuous rule beneath the sample; the end-cursor block is visible in both (control → target where shown). Only this exact sample, Linux Kitty 0.49.2, font and runtime configuration; no transfer, reset semantics, or numeric style-state proof.",
     "id": "present-87e19041fc46d925c8d66007b84c96d2-sgr.underline.single",
     "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "supersedes": [],
+    "reviewer": "Codex (automated exact-run provenance review)",
+    "sources": ["content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json"],
+    "id": "identity-app-kitty-aada55d94d68f0b2710e1e71e0cf3dcb",
+    "reason": "Measured DA1 and XTVERSION identify Kitty 0.49.2 in this complete owned Linux run, with exact raw, frozen runner, executable, configuration, display and launch receipts checked. Executable and archive digests agree with retained independent measurements; those binaries were not independently rehashed by this review. This review establishes run attribution, not every rendered feature or public disclosure approval.",
+    "verifiesIdentity": true,
+    "reviewed": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/453a1cc6eee64630de6468200faac7988167bc11b1a898f553c1d77fc80e34b8.png",
+      "content/artifacts/a5c90e0c0baaf5824ee231cde16e66628ce9c3a9ff1e1b2d10565e8c1cad6477.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.bold",
+    "reason": "The own control has regular strokes and the own target has visibly heavier strokes across the same text. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.bold",
+    "observation": {
+      "featureId": "sgr.bold",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:a5c90e0c0baaf5824ee231cde16e66628ce9c3a9ff1e1b2d10565e8c1cad6477",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934604500,
+          "ref": "sha256:453a1cc6eee64630de6468200faac7988167bc11b1a898f553c1d77fc80e34b8",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.bold",
+          "capturedAt": 1790934604702,
+          "ref": "sha256:a5c90e0c0baaf5824ee231cde16e66628ce9c3a9ff1e1b2d10565e8c1cad6477",
+          "sourceRef": "sha256:13949dd8493604e7d0322bbfbea1086f6ce531e8759cfe85b3b6b1ec991077a6"
+        }
+      ],
+      "rawReplyRef": "sgr.bold",
+      "outcome": "supported",
+      "note": "The own control has regular strokes and the own target has visibly heavier strokes across the same text. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/453a1cc6eee64630de6468200faac7988167bc11b1a898f553c1d77fc80e34b8.png",
+      "content/artifacts/a5c90e0c0baaf5824ee231cde16e66628ce9c3a9ff1e1b2d10565e8c1cad6477.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.bold",
+    "reason": "The own control has regular strokes and the own target has visibly heavier strokes across the same text. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.bold",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/a0c8817a8130de779672ec954f0cfbaeddd9a7a83553a2b8fca7fa0447bf91e5.png",
+      "content/artifacts/1ed82c9fda713a835fc38285e3bc425e1d2d40ea7b06a9d317e59e4e383ce22d.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.faint",
+    "reason": "The own control has bright gray text and the own target has visibly dimmer gray text across the same sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.faint",
+    "observation": {
+      "featureId": "sgr.faint",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:1ed82c9fda713a835fc38285e3bc425e1d2d40ea7b06a9d317e59e4e383ce22d",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934604907,
+          "ref": "sha256:a0c8817a8130de779672ec954f0cfbaeddd9a7a83553a2b8fca7fa0447bf91e5",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.faint",
+          "capturedAt": 1790934605110,
+          "ref": "sha256:1ed82c9fda713a835fc38285e3bc425e1d2d40ea7b06a9d317e59e4e383ce22d",
+          "sourceRef": "sha256:d6409f44015529621f216fb4086b2c19d8c73a6d3743123abf31ca879114e97d"
+        }
+      ],
+      "rawReplyRef": "sgr.faint",
+      "outcome": "supported",
+      "note": "The own control has bright gray text and the own target has visibly dimmer gray text across the same sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/a0c8817a8130de779672ec954f0cfbaeddd9a7a83553a2b8fca7fa0447bf91e5.png",
+      "content/artifacts/1ed82c9fda713a835fc38285e3bc425e1d2d40ea7b06a9d317e59e4e383ce22d.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.faint",
+    "reason": "The own control has bright gray text and the own target has visibly dimmer gray text across the same sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.faint",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/2d3c91adb82a284e95f7a83f1b9a42c496816d312b37ef909a872421f88624ca.png",
+      "content/artifacts/ad0e95e049afd9d111075b05b900cab61dfe2060f6707d07a1700553e32e1f6d.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.italic",
+    "reason": "The own control has upright glyphs and the own target has visibly slanted glyphs across the same text. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.italic",
+    "observation": {
+      "featureId": "sgr.italic",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:ad0e95e049afd9d111075b05b900cab61dfe2060f6707d07a1700553e32e1f6d",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934605322,
+          "ref": "sha256:2d3c91adb82a284e95f7a83f1b9a42c496816d312b37ef909a872421f88624ca",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.italic",
+          "capturedAt": 1790934605536,
+          "ref": "sha256:ad0e95e049afd9d111075b05b900cab61dfe2060f6707d07a1700553e32e1f6d",
+          "sourceRef": "sha256:c81c3a159d3667af0e4d0e71d685fd86efc3ce40b1e62eacda68b5429d3be72f"
+        }
+      ],
+      "rawReplyRef": "sgr.italic",
+      "outcome": "supported",
+      "note": "The own control has upright glyphs and the own target has visibly slanted glyphs across the same text. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/2d3c91adb82a284e95f7a83f1b9a42c496816d312b37ef909a872421f88624ca.png",
+      "content/artifacts/ad0e95e049afd9d111075b05b900cab61dfe2060f6707d07a1700553e32e1f6d.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.italic",
+    "reason": "The own control has upright glyphs and the own target has visibly slanted glyphs across the same text. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.italic",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/86ab80f1c93e7c7edfbac366937c08b698d984468cb31d353fe5220e3d97957d.png",
+      "content/artifacts/64e94dc34c9744dfc0ec9edbc65c09e836c4076d636d0debc09fa5fd0d6e8b68.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.single",
+    "reason": "The own control has no underline and the own target adds one continuous straight line below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.single",
+    "observation": {
+      "featureId": "sgr.underline.single",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:64e94dc34c9744dfc0ec9edbc65c09e836c4076d636d0debc09fa5fd0d6e8b68",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934605751,
+          "ref": "sha256:86ab80f1c93e7c7edfbac366937c08b698d984468cb31d353fe5220e3d97957d",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.single",
+          "capturedAt": 1790934605958,
+          "ref": "sha256:64e94dc34c9744dfc0ec9edbc65c09e836c4076d636d0debc09fa5fd0d6e8b68",
+          "sourceRef": "sha256:1ae7e0f3dd4d35323bb716ed91913ae8dc859b218da6a996304925d0284fe5b8"
+        }
+      ],
+      "rawReplyRef": "sgr.underline.single",
+      "outcome": "supported",
+      "note": "The own control has no underline and the own target adds one continuous straight line below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/86ab80f1c93e7c7edfbac366937c08b698d984468cb31d353fe5220e3d97957d.png",
+      "content/artifacts/64e94dc34c9744dfc0ec9edbc65c09e836c4076d636d0debc09fa5fd0d6e8b68.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.single",
+    "reason": "The own control has no underline and the own target adds one continuous straight line below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.single",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/ea4bd7bd3fdc59c1474d006ca5d0a4f1aebad4cc25ccb0cf7593d242952d8d94.png",
+      "content/artifacts/14bc2b22269d218d35a4d594d8c47909f9022d1550fc6775b6fbe1331159784f.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.double",
+    "reason": "The own control has no underline and the own target adds two closely spaced straight strokes below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.double",
+    "observation": {
+      "featureId": "sgr.underline.double",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:14bc2b22269d218d35a4d594d8c47909f9022d1550fc6775b6fbe1331159784f",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934606162,
+          "ref": "sha256:ea4bd7bd3fdc59c1474d006ca5d0a4f1aebad4cc25ccb0cf7593d242952d8d94",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.double",
+          "capturedAt": 1790934606369,
+          "ref": "sha256:14bc2b22269d218d35a4d594d8c47909f9022d1550fc6775b6fbe1331159784f",
+          "sourceRef": "sha256:ac7d8fd26cf444b952f2a4bb45cbf2a6c3c048e04844c4caeb3c7ab05f4d912d"
+        }
+      ],
+      "rawReplyRef": "sgr.underline.double",
+      "outcome": "supported",
+      "note": "The own control has no underline and the own target adds two closely spaced straight strokes below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/ea4bd7bd3fdc59c1474d006ca5d0a4f1aebad4cc25ccb0cf7593d242952d8d94.png",
+      "content/artifacts/14bc2b22269d218d35a4d594d8c47909f9022d1550fc6775b6fbe1331159784f.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.double",
+    "reason": "The own control has no underline and the own target adds two closely spaced straight strokes below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.double",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/a6d9e2204128ce4bb3763812ba4a636e7873e22e3d2f17e0e0ea1c69c407c9ac.png",
+      "content/artifacts/2986dc6df62052603c5519d121201c1e48d004132a9a626c918e7a122e8e34e4.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.curly",
+    "reason": "The own control has no underline and the own target adds a visibly wavy line below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.curly",
+    "observation": {
+      "featureId": "sgr.underline.curly",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:2986dc6df62052603c5519d121201c1e48d004132a9a626c918e7a122e8e34e4",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934606590,
+          "ref": "sha256:a6d9e2204128ce4bb3763812ba4a636e7873e22e3d2f17e0e0ea1c69c407c9ac",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.curly",
+          "capturedAt": 1790934606801,
+          "ref": "sha256:2986dc6df62052603c5519d121201c1e48d004132a9a626c918e7a122e8e34e4",
+          "sourceRef": "sha256:e2e3508027a9ee1b4084cd5ae8e94801f9874c2b672a7762aede338bb4316c0e"
+        }
+      ],
+      "rawReplyRef": "sgr.underline.curly",
+      "outcome": "supported",
+      "note": "The own control has no underline and the own target adds a visibly wavy line below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/a6d9e2204128ce4bb3763812ba4a636e7873e22e3d2f17e0e0ea1c69c407c9ac.png",
+      "content/artifacts/2986dc6df62052603c5519d121201c1e48d004132a9a626c918e7a122e8e34e4.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.curly",
+    "reason": "The own control has no underline and the own target adds a visibly wavy line below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.curly",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/b1181945f79d9f15abade5b0609a26faec39647ebf9c65feadf9c5166fb92f0f.png",
+      "content/artifacts/caf2290cbd6626685b1738f0340e7bd2689194f5589c4817cd266a4ee8a07ac0.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.dotted",
+    "reason": "The own control has no underline and the own target adds a line of small separate dots below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.dotted",
+    "observation": {
+      "featureId": "sgr.underline.dotted",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:caf2290cbd6626685b1738f0340e7bd2689194f5589c4817cd266a4ee8a07ac0",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934607007,
+          "ref": "sha256:b1181945f79d9f15abade5b0609a26faec39647ebf9c65feadf9c5166fb92f0f",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.dotted",
+          "capturedAt": 1790934607218,
+          "ref": "sha256:caf2290cbd6626685b1738f0340e7bd2689194f5589c4817cd266a4ee8a07ac0",
+          "sourceRef": "sha256:3e88985e35e937a35d31ee48603a98dca06ce6be2bf0c322c917903b334a336b"
+        }
+      ],
+      "rawReplyRef": "sgr.underline.dotted",
+      "outcome": "supported",
+      "note": "The own control has no underline and the own target adds a line of small separate dots below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/b1181945f79d9f15abade5b0609a26faec39647ebf9c65feadf9c5166fb92f0f.png",
+      "content/artifacts/caf2290cbd6626685b1738f0340e7bd2689194f5589c4817cd266a4ee8a07ac0.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.dotted",
+    "reason": "The own control has no underline and the own target adds a line of small separate dots below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.dotted",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/bd3d19461226b1b7fdd2c0f6bc567e5a43c2184a7123ca5c08827ab00a1e78d5.png",
+      "content/artifacts/7a89198ea7e4378ceb62d50c686b1f6c18f76c359804acf60412c13b396a6308.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.dashed",
+    "reason": "The own control has no underline and the own target adds separated horizontal dashes below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.dashed",
+    "observation": {
+      "featureId": "sgr.underline.dashed",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:7a89198ea7e4378ceb62d50c686b1f6c18f76c359804acf60412c13b396a6308",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934607422,
+          "ref": "sha256:bd3d19461226b1b7fdd2c0f6bc567e5a43c2184a7123ca5c08827ab00a1e78d5",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.dashed",
+          "capturedAt": 1790934607626,
+          "ref": "sha256:7a89198ea7e4378ceb62d50c686b1f6c18f76c359804acf60412c13b396a6308",
+          "sourceRef": "sha256:ddf200eb265af16a95399fc5c4732f8b30e33e748841585ae25e6b961eeada70"
+        }
+      ],
+      "rawReplyRef": "sgr.underline.dashed",
+      "outcome": "supported",
+      "note": "The own control has no underline and the own target adds separated horizontal dashes below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/bd3d19461226b1b7fdd2c0f6bc567e5a43c2184a7123ca5c08827ab00a1e78d5.png",
+      "content/artifacts/7a89198ea7e4378ceb62d50c686b1f6c18f76c359804acf60412c13b396a6308.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.dashed",
+    "reason": "The own control has no underline and the own target adds separated horizontal dashes below the sample. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.dashed",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/b1181945f79d9f15abade5b0609a26faec39647ebf9c65feadf9c5166fb92f0f.png",
+      "content/artifacts/8291430db923ab25612c55c5c14c6dba603f0918d75db7fde86241637b4d295c.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.blink",
+    "reason": "The own control and own target both show the complete visible text sample at their capture instants. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. Two still captures do not establish blinking over time or exclude a visible phase.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.blink",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/4c5ce636056d723e570222295566cb2b6fc51ac63648ed1915134b253762995f.png",
+      "content/artifacts/00203b82399a398dab882eb785dfb3c1268761274a6a4a5bebcf934989d9be13.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.inverse",
+    "reason": "The own control has light text on black and the own target has dark text on a light rectangular text background. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.inverse",
+    "observation": {
+      "featureId": "sgr.inverse",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:00203b82399a398dab882eb785dfb3c1268761274a6a4a5bebcf934989d9be13",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934608247,
+          "ref": "sha256:4c5ce636056d723e570222295566cb2b6fc51ac63648ed1915134b253762995f",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.inverse",
+          "capturedAt": 1790934608459,
+          "ref": "sha256:00203b82399a398dab882eb785dfb3c1268761274a6a4a5bebcf934989d9be13",
+          "sourceRef": "sha256:616ca9de808d391cc1af40bd5722980642efaee67e57b466d1b59ff01f983365"
+        }
+      ],
+      "rawReplyRef": "sgr.inverse",
+      "outcome": "supported",
+      "note": "The own control has light text on black and the own target has dark text on a light rectangular text background. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/4c5ce636056d723e570222295566cb2b6fc51ac63648ed1915134b253762995f.png",
+      "content/artifacts/00203b82399a398dab882eb785dfb3c1268761274a6a4a5bebcf934989d9be13.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.inverse",
+    "reason": "The own control has light text on black and the own target has dark text on a light rectangular text background. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.inverse",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/8291430db923ab25612c55c5c14c6dba603f0918d75db7fde86241637b4d295c.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.hidden",
+    "reason": "The own control and own target show the same visible text sample and have identical PNG and source XWD references. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. An unchanged paired sample cannot establish concealment or justify a general unsupported or defect claim.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.hidden",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/712eda3907c9c6e5cefa2585d260c216ea045ae215342977ec8e6c869f203cbf.png",
+      "content/artifacts/1fb41aa823eb8960ad16e073bb341cd9998afd62d399b311886aa77ebf79f363.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.strikethrough",
+    "reason": "The own control has no crossing line and the own target adds a continuous horizontal line through the glyphs. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.strikethrough",
+    "observation": {
+      "featureId": "sgr.strikethrough",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:1fb41aa823eb8960ad16e073bb341cd9998afd62d399b311886aa77ebf79f363",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934609099,
+          "ref": "sha256:712eda3907c9c6e5cefa2585d260c216ea045ae215342977ec8e6c869f203cbf",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.strikethrough",
+          "capturedAt": 1790934609305,
+          "ref": "sha256:1fb41aa823eb8960ad16e073bb341cd9998afd62d399b311886aa77ebf79f363",
+          "sourceRef": "sha256:c6fac3d3f67890b4fa66c9a1c7ec9247f72690ab9e576fcba9862519c2f7af1a"
+        }
+      ],
+      "rawReplyRef": "sgr.strikethrough",
+      "outcome": "supported",
+      "note": "The own control has no crossing line and the own target adds a continuous horizontal line through the glyphs. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/712eda3907c9c6e5cefa2585d260c216ea045ae215342977ec8e6c869f203cbf.png",
+      "content/artifacts/1fb41aa823eb8960ad16e073bb341cd9998afd62d399b311886aa77ebf79f363.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.strikethrough",
+    "reason": "The own control has no crossing line and the own target adds a continuous horizontal line through the glyphs. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. The finding does not cover other fonts, profiles, sample contents or platforms.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.strikethrough",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/712eda3907c9c6e5cefa2585d260c216ea045ae215342977ec8e6c869f203cbf.png",
+      "content/artifacts/3025bcb9b072dd9569890465a0bcabaa0e5d7b726e7557138405044eaeca58bc.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.overline",
+    "reason": "The own control and own target both show the sample without a visible line above the glyphs. This finding applies only to this own paired fixture in Kitty 0.49.2 on Linux with the recorded default profile, software GL and 800 by 600 geometry. An unchanged paired sample cannot establish overlining or justify a general unsupported or defect claim.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.overline",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/3025bcb9b072dd9569890465a0bcabaa0e5d7b726e7557138405044eaeca58bc.png",
+      "content/artifacts/e6dde666269f0facc199e8f9e14c37221c43e3ac5099d4996f0379c77e2ce1e0.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.color",
+    "reason": "The own control has no underline. After one SGR 4 plus SGR 58;2;255;0;128 request the own target shows an underline colored differently from its gray glyphs, so the underline carried a color of its own rather than the text color. The underline's channel values were not sampled and no second color was requested, so the exact color is not claimed. Observed only in this Linux Kitty 0.49.2 default profile with software GL at 800 by 600.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.color",
+    "observation": {
+      "featureId": "sgr.underline.color",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:e6dde666269f0facc199e8f9e14c37221c43e3ac5099d4996f0379c77e2ce1e0",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1790934609919,
+          "ref": "sha256:3025bcb9b072dd9569890465a0bcabaa0e5d7b726e7557138405044eaeca58bc",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.color",
+          "capturedAt": 1790934610120,
+          "ref": "sha256:e6dde666269f0facc199e8f9e14c37221c43e3ac5099d4996f0379c77e2ce1e0",
+          "sourceRef": "sha256:d260de894a09f29ca529de4525040f4c3ed6882340d8b506ddbcb66da684692a"
+        }
+      ],
+      "rawReplyRef": "sgr.underline.color",
+      "outcome": "supported",
+      "note": "The own control has no underline. After one SGR 4 plus SGR 58;2;255;0;128 request the own target shows an underline colored differently from its gray glyphs, so the underline carried a color of its own rather than the text color. The underline's channel values were not sampled and no second color was requested, so the exact color is not claimed. Observed only in this Linux Kitty 0.49.2 default profile with software GL at 800 by 600."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/3025bcb9b072dd9569890465a0bcabaa0e5d7b726e7557138405044eaeca58bc.png",
+      "content/artifacts/e6dde666269f0facc199e8f9e14c37221c43e3ac5099d4996f0379c77e2ce1e0.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline.color",
+    "reason": "The own control has no underline. After one SGR 4 plus SGR 58;2;255;0;128 request the own target shows an underline colored differently from its gray glyphs, so the underline carried a color of its own rather than the text color. The underline's channel values were not sampled and no second color was requested, so the exact color is not claimed. Observed only in this Linux Kitty 0.49.2 default profile with software GL at 800 by 600.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline.color",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_sgr_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/0a0e4004f6e14a75bcaaa42f405490e9c1ef3acc765300eb315163bcab4c2952.png",
+      "content/artifacts/e6dde666269f0facc199e8f9e14c37221c43e3ac5099d4996f0379c77e2ce1e0.png"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.underline-color-rgb",
+    "reason": "After one SGR 4 plus SGR 58;2;255;0;128 request the own target shows an underline colored differently from its gray glyphs, so the 58;2 form was parsed as a color request. Whether the rendered color is the requested 24-bit value rather than a nearby 256-color or palette value was not measured: no channel values were sampled and no second request in the same 256-color cell was made. Inconclusive for truecolor; observed only in this Linux Kitty 0.49.2 default profile with software GL at 800 by 600.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-sgr.underline-color-rgb",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/73630aa4131c533e42088402805cb339bbfeb8258a7ef06753d729667592c823.png",
+      "content/artifacts/d7b31a95b79bb91b7bb8289a6fad30716d9bb6d26d9ed496ee9bcb6d891a0126.png"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "reason": "The own shown control visibly has a light block between L and R on row 2, and the target removes that block while CURSOR and L/R stay visible. This supports sampled cursor hiding at row 2 column 3 after CSI ?25l in this owned fixture. These two still frames do not establish timing behavior, all cursor modes, or restoration of arbitrary prior state.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:d7b31a95b79bb91b7bb8289a6fad30716d9bb6d26d9ed496ee9bcb6d891a0126",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Shown steady block cursor requested at row 2 column 3",
+          "capturedAt": 1790934610954,
+          "ref": "sha256:73630aa4131c533e42088402805cb339bbfeb8258a7ef06753d729667592c823",
+          "sourceRef": "sha256:fe8f300a7d9a63135bcc416a63ec6689db6e596b8270ba587fe16a98211161fc"
+        },
+        {
+          "role": "target",
+          "label": "Hidden cursor requested at the same cell",
+          "capturedAt": 1790934611155,
+          "ref": "sha256:d7b31a95b79bb91b7bb8289a6fad30716d9bb6d26d9ed496ee9bcb6d891a0126",
+          "sourceRef": "sha256:45ed76eea7c0e1d66b6d8bdb762685ebf6ded8ca453dc4fe497cd52ff9cb148a"
+        }
+      ],
+      "rawReplyRef": "cursor.hide",
+      "outcome": "supported",
+      "note": "The own shown control visibly has a light block between L and R on row 2, and the target removes that block while CURSOR and L/R stay visible. This supports sampled cursor hiding at row 2 column 3 after CSI ?25l in this owned fixture. These two still frames do not establish timing behavior, all cursor modes, or restoration of arbitrary prior state."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/73630aa4131c533e42088402805cb339bbfeb8258a7ef06753d729667592c823.png",
+      "content/artifacts/d7b31a95b79bb91b7bb8289a6fad30716d9bb6d26d9ed496ee9bcb6d891a0126.png"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "reason": "The own shown control visibly has a light block between L and R on row 2, and the target removes that block while CURSOR and L/R stay visible. This supports sampled cursor hiding at row 2 column 3 after CSI ?25l in this owned fixture. These two still frames do not establish timing behavior, all cursor modes, or restoration of arbitrary prior state.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-cursor.hide",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/34cf9bfc009775ef95430c29f140bd9f6153d489b01c64f03b71ffa751df75ac.png",
+      "content/artifacts/11f20a7dc57f9407324ec1f58376ecd49ff8838ad461ce24925130177229f089.png"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.shape",
+    "reason": "The own default control is black with no visible cursor, and the target shows a thin vertical light bar near the upper left after CSI 5 SP q. This establishes sampled bar appearance in the target, but provides no visible default shape for a shape-change comparison. The requested bar blinks and the control did not force a steady visible baseline, so complete shape verification remains inconclusive.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-cursor.shape",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/1fd5adbc857ab5166ed99005c31ab1979b7d9cad729884d43d2ca1d5f32c730c.png",
+      "content/artifacts/67d0c2cb3536d5ae41f779636cf600b1936b4815d476522e06cc82bf0e115057.png",
+      "content/artifacts/b3ecde5b8e7590a59404eacdcc08faa547b0402dacf10f34683a37921c57b21b.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.right",
+    "reason": "The own blank comparator is black, the seeded control shows ABCDE above KEEP!, and the target shows AB above KEEP!. This supports removal of the sampled CDE glyphs after CSI 0K at row 1 column 3 with the sampled AB and neighboring KEEP! glyphs preserved. Pixels establish appearance in these seeded cells, not cell metadata, erase attributes, cursor preservation, or every possible line state.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-erase.line.right",
+    "observation": {
+      "featureId": "erase.line.right",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:b3ecde5b8e7590a59404eacdcc08faa547b0402dacf10f34683a37921c57b21b",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790934612516,
+          "ref": "sha256:1fd5adbc857ab5166ed99005c31ab1979b7d9cad729884d43d2ca1d5f32c730c",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790934612712,
+          "ref": "sha256:67d0c2cb3536d5ae41f779636cf600b1936b4815d476522e06cc82bf0e115057",
+          "sourceRef": "sha256:8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790934612908,
+          "ref": "sha256:b3ecde5b8e7590a59404eacdcc08faa547b0402dacf10f34683a37921c57b21b",
+          "sourceRef": "sha256:c26193f8a8ceca8d20d28bc214541b76b5874e0b93f3fdd61ef70938a1074fcd"
+        }
+      ],
+      "rawReplyRef": "erase.line.right",
+      "outcome": "supported",
+      "note": "The own blank comparator is black, the seeded control shows ABCDE above KEEP!, and the target shows AB above KEEP!. This supports removal of the sampled CDE glyphs after CSI 0K at row 1 column 3 with the sampled AB and neighboring KEEP! glyphs preserved. Pixels establish appearance in these seeded cells, not cell metadata, erase attributes, cursor preservation, or every possible line state."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/1fd5adbc857ab5166ed99005c31ab1979b7d9cad729884d43d2ca1d5f32c730c.png",
+      "content/artifacts/67d0c2cb3536d5ae41f779636cf600b1936b4815d476522e06cc82bf0e115057.png",
+      "content/artifacts/b3ecde5b8e7590a59404eacdcc08faa547b0402dacf10f34683a37921c57b21b.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.right",
+    "reason": "The own blank comparator is black, the seeded control shows ABCDE above KEEP!, and the target shows AB above KEEP!. This supports removal of the sampled CDE glyphs after CSI 0K at row 1 column 3 with the sampled AB and neighboring KEEP! glyphs preserved. Pixels establish appearance in these seeded cells, not cell metadata, erase attributes, cursor preservation, or every possible line state.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-erase.line.right",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/0f816dbd0842ac368e5b3346a4b02b0b60e7f23d477c1425ad265c0b274c58a9.png",
+      "content/artifacts/fb232fb203ba1591e3d47b7ce73c7aa5bed6e88a54eacf6531d61613db6bea78.png",
+      "content/artifacts/a7512288598e7dda41ccbfd89506062350ad778897c5628da81afd950324fdec.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.left",
+    "reason": "The own blank comparator is black, the seeded control shows ABCDE above KEEP!, and the target shows blank space followed by DE above KEEP!. This supports removal of the sampled ABC glyphs after CSI 1K at row 1 column 3 with the sampled DE and neighboring KEEP! glyphs preserved. Pixels establish appearance in these seeded cells, not cell metadata, erase attributes, cursor preservation, or every possible line state.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-erase.line.left",
+    "observation": {
+      "featureId": "erase.line.left",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:a7512288598e7dda41ccbfd89506062350ad778897c5628da81afd950324fdec",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790934613106,
+          "ref": "sha256:0f816dbd0842ac368e5b3346a4b02b0b60e7f23d477c1425ad265c0b274c58a9",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790934613301,
+          "ref": "sha256:fb232fb203ba1591e3d47b7ce73c7aa5bed6e88a54eacf6531d61613db6bea78",
+          "sourceRef": "sha256:984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790934613499,
+          "ref": "sha256:a7512288598e7dda41ccbfd89506062350ad778897c5628da81afd950324fdec",
+          "sourceRef": "sha256:3903df97c81f5469b495754f6619c0a49cc787ae82d459c1f29d42d91d9d484d"
+        }
+      ],
+      "rawReplyRef": "erase.line.left",
+      "outcome": "supported",
+      "note": "The own blank comparator is black, the seeded control shows ABCDE above KEEP!, and the target shows blank space followed by DE above KEEP!. This supports removal of the sampled ABC glyphs after CSI 1K at row 1 column 3 with the sampled DE and neighboring KEEP! glyphs preserved. Pixels establish appearance in these seeded cells, not cell metadata, erase attributes, cursor preservation, or every possible line state."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/0f816dbd0842ac368e5b3346a4b02b0b60e7f23d477c1425ad265c0b274c58a9.png",
+      "content/artifacts/fb232fb203ba1591e3d47b7ce73c7aa5bed6e88a54eacf6531d61613db6bea78.png",
+      "content/artifacts/a7512288598e7dda41ccbfd89506062350ad778897c5628da81afd950324fdec.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.left",
+    "reason": "The own blank comparator is black, the seeded control shows ABCDE above KEEP!, and the target shows blank space followed by DE above KEEP!. This supports removal of the sampled ABC glyphs after CSI 1K at row 1 column 3 with the sampled DE and neighboring KEEP! glyphs preserved. Pixels establish appearance in these seeded cells, not cell metadata, erase attributes, cursor preservation, or every possible line state.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-erase.line.left",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/9f1e4af0038de5b6625979c11fe919fd86f176426bdf4f229671843b52e6e4c9.png",
+      "content/artifacts/39f64bce778a0880f64543d68d5585ff40851b13abb410f2d6f89930d4c63a7d.png",
+      "content/artifacts/e16c20aecfc7ec08c0db81c4271ec4db05636c7b8189292258e57a7449376d19.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.all",
+    "reason": "The own blank comparator has no text with a cursor on row 2, the seeded control shows ABCDE above KEEP!, and the target removes the first-row glyphs while KEEP! stays visible. This supports removal of the five sampled row 1 glyphs after CSI 2K with neighboring KEEP! preserved. Pixels establish appearance in these seeded cells, not cell metadata, erase attributes, cursor preservation, or every possible line state.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-erase.line.all",
+    "observation": {
+      "featureId": "erase.line.all",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:e16c20aecfc7ec08c0db81c4271ec4db05636c7b8189292258e57a7449376d19",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790934613700,
+          "ref": "sha256:9f1e4af0038de5b6625979c11fe919fd86f176426bdf4f229671843b52e6e4c9",
+          "sourceRef": "sha256:b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790934613896,
+          "ref": "sha256:39f64bce778a0880f64543d68d5585ff40851b13abb410f2d6f89930d4c63a7d",
+          "sourceRef": "sha256:8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790934614094,
+          "ref": "sha256:e16c20aecfc7ec08c0db81c4271ec4db05636c7b8189292258e57a7449376d19",
+          "sourceRef": "sha256:6eda3fca2f4f53d374b05d576975173506103220ea05c56ac99adddde2b3905f"
+        }
+      ],
+      "rawReplyRef": "erase.line.all",
+      "outcome": "supported",
+      "note": "The own blank comparator has no text with a cursor on row 2, the seeded control shows ABCDE above KEEP!, and the target removes the first-row glyphs while KEEP! stays visible. This supports removal of the five sampled row 1 glyphs after CSI 2K with neighboring KEEP! preserved. Pixels establish appearance in these seeded cells, not cell metadata, erase attributes, cursor preservation, or every possible line state."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/9f1e4af0038de5b6625979c11fe919fd86f176426bdf4f229671843b52e6e4c9.png",
+      "content/artifacts/39f64bce778a0880f64543d68d5585ff40851b13abb410f2d6f89930d4c63a7d.png",
+      "content/artifacts/e16c20aecfc7ec08c0db81c4271ec4db05636c7b8189292258e57a7449376d19.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.line.all",
+    "reason": "The own blank comparator has no text with a cursor on row 2, the seeded control shows ABCDE above KEEP!, and the target removes the first-row glyphs while KEEP! stays visible. This supports removal of the five sampled row 1 glyphs after CSI 2K with neighboring KEEP! preserved. Pixels establish appearance in these seeded cells, not cell metadata, erase attributes, cursor preservation, or every possible line state.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-erase.line.all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/c65920e5e03a17ab9108c9d1552ac6f9bd77ffa212dc2e3086c2f167c15174fc.png",
+      "content/artifacts/7305ce218b0d9613a22a7297bae03e0dd17c222264a552a748f24b9a420228dd.png",
+      "content/artifacts/4625e4d8d98b19ed020f611269161b56338cad2a0d23ea88905771eb7e0b73b6.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.below",
+    "reason": "The own blank comparator has no seeded glyphs, the seeded control shows AAAAA on row 1, BBBBB on row 12 and CCCCC on row 24, and the target preserves AAAAA, retains the first two B glyphs and removes the C glyphs. This supports the sampled glyph removal and opposite-side preservation after CSI 0J at row 12 column 3. Pixels do not establish metadata, erase attributes, cursor preservation before the explicit post-erase CUP, or every screen cell beyond the sampled fixture.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-erase.screen.below",
+    "observation": {
+      "featureId": "erase.screen.below",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:4625e4d8d98b19ed020f611269161b56338cad2a0d23ea88905771eb7e0b73b6",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790934614295,
+          "ref": "sha256:c65920e5e03a17ab9108c9d1552ac6f9bd77ffa212dc2e3086c2f167c15174fc",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790934614487,
+          "ref": "sha256:7305ce218b0d9613a22a7297bae03e0dd17c222264a552a748f24b9a420228dd",
+          "sourceRef": "sha256:3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790934614681,
+          "ref": "sha256:4625e4d8d98b19ed020f611269161b56338cad2a0d23ea88905771eb7e0b73b6",
+          "sourceRef": "sha256:a66e278e70a2c23650b829fc2515d064f0ff6282b7b2d6af7bb14212a8805621"
+        }
+      ],
+      "rawReplyRef": "erase.screen.below",
+      "outcome": "supported",
+      "note": "The own blank comparator has no seeded glyphs, the seeded control shows AAAAA on row 1, BBBBB on row 12 and CCCCC on row 24, and the target preserves AAAAA, retains the first two B glyphs and removes the C glyphs. This supports the sampled glyph removal and opposite-side preservation after CSI 0J at row 12 column 3. Pixels do not establish metadata, erase attributes, cursor preservation before the explicit post-erase CUP, or every screen cell beyond the sampled fixture."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/c65920e5e03a17ab9108c9d1552ac6f9bd77ffa212dc2e3086c2f167c15174fc.png",
+      "content/artifacts/7305ce218b0d9613a22a7297bae03e0dd17c222264a552a748f24b9a420228dd.png",
+      "content/artifacts/4625e4d8d98b19ed020f611269161b56338cad2a0d23ea88905771eb7e0b73b6.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.below",
+    "reason": "The own blank comparator has no seeded glyphs, the seeded control shows AAAAA on row 1, BBBBB on row 12 and CCCCC on row 24, and the target preserves AAAAA, retains the first two B glyphs and removes the C glyphs. This supports the sampled glyph removal and opposite-side preservation after CSI 0J at row 12 column 3. Pixels do not establish metadata, erase attributes, cursor preservation before the explicit post-erase CUP, or every screen cell beyond the sampled fixture.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-erase.screen.below",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/fc98fd9e2d5f4411b386ea55589d0f98e54a4d5931baeda6d2f5b6839f2f0b0c.png",
+      "content/artifacts/b7e97ae042ca40e72c851f44ebb9b31945921cd57265d8abf94720a713b00a59.png",
+      "content/artifacts/c7f1d7a6933f40219f21d19051ff85e2d3de9993639dd5745a10d11e22b9d076.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.above",
+    "reason": "The own blank comparator has no seeded glyphs, the seeded control shows AAAAA on row 1, BBBBB on row 12 and CCCCC on row 24, and the target removes the A glyphs, retains the last two B glyphs and preserves CCCCC. This supports the sampled glyph removal and opposite-side preservation after CSI 1J at row 12 column 3. Pixels do not establish metadata, erase attributes, cursor preservation before the explicit post-erase CUP, or every screen cell beyond the sampled fixture.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-erase.screen.above",
+    "observation": {
+      "featureId": "erase.screen.above",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:c7f1d7a6933f40219f21d19051ff85e2d3de9993639dd5745a10d11e22b9d076",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790934614877,
+          "ref": "sha256:fc98fd9e2d5f4411b386ea55589d0f98e54a4d5931baeda6d2f5b6839f2f0b0c",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790934615068,
+          "ref": "sha256:b7e97ae042ca40e72c851f44ebb9b31945921cd57265d8abf94720a713b00a59",
+          "sourceRef": "sha256:3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790934615264,
+          "ref": "sha256:c7f1d7a6933f40219f21d19051ff85e2d3de9993639dd5745a10d11e22b9d076",
+          "sourceRef": "sha256:d5db72aa1620a9dbe0220d3ca56a94ebeeab5bd0d8d00fc528c2f9dd4d27779d"
+        }
+      ],
+      "rawReplyRef": "erase.screen.above",
+      "outcome": "supported",
+      "note": "The own blank comparator has no seeded glyphs, the seeded control shows AAAAA on row 1, BBBBB on row 12 and CCCCC on row 24, and the target removes the A glyphs, retains the last two B glyphs and preserves CCCCC. This supports the sampled glyph removal and opposite-side preservation after CSI 1J at row 12 column 3. Pixels do not establish metadata, erase attributes, cursor preservation before the explicit post-erase CUP, or every screen cell beyond the sampled fixture."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/fc98fd9e2d5f4411b386ea55589d0f98e54a4d5931baeda6d2f5b6839f2f0b0c.png",
+      "content/artifacts/b7e97ae042ca40e72c851f44ebb9b31945921cd57265d8abf94720a713b00a59.png",
+      "content/artifacts/c7f1d7a6933f40219f21d19051ff85e2d3de9993639dd5745a10d11e22b9d076.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.above",
+    "reason": "The own blank comparator has no seeded glyphs, the seeded control shows AAAAA on row 1, BBBBB on row 12 and CCCCC on row 24, and the target removes the A glyphs, retains the last two B glyphs and preserves CCCCC. This supports the sampled glyph removal and opposite-side preservation after CSI 1J at row 12 column 3. Pixels do not establish metadata, erase attributes, cursor preservation before the explicit post-erase CUP, or every screen cell beyond the sampled fixture.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-erase.screen.above",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/747caf537475954a5c5e79b9b03df754ba65113797775958c2ec090ffd2c857d.png",
+      "content/artifacts/7bed2d84befb380391f8f486508fc3566f8d69170bd3b37ce85c3369a279ba3b.png",
+      "content/artifacts/2fc02d8a76043fbb07b5f51a52eefe2a5600deded1c02675174205f1c68418c4.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.all",
+    "reason": "The own blank comparator is black, the seeded control shows AAAAA, BBBBB and CCCCC at rows 1, 12 and 24, and the target shows no seeded glyphs with a cursor at row 24 column 6. This supports removal of those fifteen sampled glyphs after CSI 2J in this owned fixture. It does not establish metadata, cursor preservation before the explicit post-erase CUP, scrollback semantics, or all screen cells through glyph sampling alone.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-erase.screen.all",
+    "observation": {
+      "featureId": "erase.screen.all",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:2fc02d8a76043fbb07b5f51a52eefe2a5600deded1c02675174205f1c68418c4",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1790934615462,
+          "ref": "sha256:747caf537475954a5c5e79b9b03df754ba65113797775958c2ec090ffd2c857d",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1790934615659,
+          "ref": "sha256:7bed2d84befb380391f8f486508fc3566f8d69170bd3b37ce85c3369a279ba3b",
+          "sourceRef": "sha256:329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1790934615854,
+          "ref": "sha256:2fc02d8a76043fbb07b5f51a52eefe2a5600deded1c02675174205f1c68418c4",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        }
+      ],
+      "rawReplyRef": "erase.screen.all",
+      "outcome": "supported",
+      "note": "The own blank comparator is black, the seeded control shows AAAAA, BBBBB and CCCCC at rows 1, 12 and 24, and the target shows no seeded glyphs with a cursor at row 24 column 6. This supports removal of those fifteen sampled glyphs after CSI 2J in this owned fixture. It does not establish metadata, cursor preservation before the explicit post-erase CUP, scrollback semantics, or all screen cells through glyph sampling alone."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/747caf537475954a5c5e79b9b03df754ba65113797775958c2ec090ffd2c857d.png",
+      "content/artifacts/7bed2d84befb380391f8f486508fc3566f8d69170bd3b37ce85c3369a279ba3b.png",
+      "content/artifacts/2fc02d8a76043fbb07b5f51a52eefe2a5600deded1c02675174205f1c68418c4.png"
+    ],
+    "supersedes": [],
+    "featureId": "erase.screen.all",
+    "reason": "The own blank comparator is black, the seeded control shows AAAAA, BBBBB and CCCCC at rows 1, 12 and 24, and the target shows no seeded glyphs with a cursor at row 24 column 6. This supports removal of those fifteen sampled glyphs after CSI 2J in this owned fixture. It does not establish metadata, cursor preservation before the explicit post-erase CUP, scrollback semantics, or all screen cells through glyph sampling alone.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-erase.screen.all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/0207caf668e24f778dd622f9e201afcea27e1eff4a317e6ec33fd9edd0fbd7f3.png",
+      "content/artifacts/c04ba876c90a0ec0e8bbdd98c26f61d8fa956f6dc1f2e661ee4ee1409bd5888a.png",
+      "content/artifacts/285256d02bf20c015d2b1ab0d973327fdccda803b00625dbe45cabdf677062cb.png",
+      "content/artifacts/28abeab5fa2da04a9929a20c6505a90bd8a73eae9f3dea62e91a33c18747ca68.png"
+    ],
+    "supersedes": [],
+    "featureId": "reset.decaln",
+    "reason": "The own AB control and both DECALN targets retain the AB grid, the later CUP-only control also retains AB, and only the later ordinary-X redraw control shows X followed by an E grid. This establishes an E-filled appearance after the additional ordinary glyph, while direct and delayed appearance after ESC # 8 alone is not established. A deferred repaint is one hypothesis, but CPR at an already-homed cursor is only responsiveness evidence and these frames neither prove the cause nor justify a general Kitty bug or unsupported classification.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-reset.decaln",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/e13b94c50573e7844f4a860de4ab70650b2efd0bf38853ae421de678c9990112.png",
+      "content/artifacts/1195a867abaa2e72640d800acabc6d95056ad6393c5cfcb181098ba5e34a6dd0.png"
+    ],
+    "supersedes": [],
+    "featureId": "charsets.dec-special",
+    "reason": "The own control shows qqq on rows 1, 3 and 4 with q-horizontal-line-q on row 2, and the target changes the middle row 3 q to a horizontal line while ASCII flank q glyphs and row 4 qqq remain visible. This supports the sampled row 3 column 2 horizontal-line appearance after ESC (0 q followed by ASCII designation, with a direct Unicode line comparator. It does not measure a numeric codepoint or the full charset, and unrelated residual text outside the five-column fixture differs between captures so no whole-frame stability claim is made.",
+    "id": "pixels-aada55d94d68f0b2710e1e71e0cf3dcb-charsets.dec-special",
+    "observation": {
+      "featureId": "charsets.dec-special",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:1195a867abaa2e72640d800acabc6d95056ad6393c5cfcb181098ba5e34a6dd0",
+      "frames": [
+        {
+          "role": "control",
+          "label": "ASCII q controls on rows 1, 3 and 4; direct Unicode q\u2500q on row 2",
+          "capturedAt": 1790934624595,
+          "ref": "sha256:e13b94c50573e7844f4a860de4ab70650b2efd0bf38853ae421de678c9990112",
+          "sourceRef": "sha256:846b2cc97a13c1750a46dca59d3ed1a5dd1152cd39423b5cd9dcbab8d3f3d7fe"
+        },
+        {
+          "role": "target",
+          "label": "DEC Special Graphics sample at row 3, column 2; restored ASCII qqq on row 4",
+          "capturedAt": 1790934624815,
+          "ref": "sha256:1195a867abaa2e72640d800acabc6d95056ad6393c5cfcb181098ba5e34a6dd0",
+          "sourceRef": "sha256:c82b0962123fd7ada4cc4e3d46769cdc2f4ae5b57ac5865f9e18eb80aced3609"
+        }
+      ],
+      "rawReplyRef": "charsets.dec-special",
+      "outcome": "supported",
+      "note": "The own control shows qqq on rows 1, 3 and 4 with q-horizontal-line-q on row 2, and the target changes the middle row 3 q to a horizontal line while ASCII flank q glyphs and row 4 qqq remain visible. This supports the sampled row 3 column 2 horizontal-line appearance after ESC (0 q followed by ASCII designation, with a direct Unicode line comparator. It does not measure a numeric codepoint or the full charset, and unrelated residual text outside the five-column fixture differs between captures so no whole-frame stability claim is made."
+    }
+  },
+  {
+    "runId": "aada55d94d68f0b2710e1e71e0cf3dcb",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "reviewer": "Sol (automated visual review: /root/review_current_effect_pixels)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["280f128e491b", "280f128e491b"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-aada55d94d68f0b2710e1e71e0cf3dcb.json",
+      "content/artifacts/e13b94c50573e7844f4a860de4ab70650b2efd0bf38853ae421de678c9990112.png",
+      "content/artifacts/1195a867abaa2e72640d800acabc6d95056ad6393c5cfcb181098ba5e34a6dd0.png"
+    ],
+    "supersedes": [],
+    "featureId": "charsets.dec-special",
+    "reason": "The own control shows qqq on rows 1, 3 and 4 with q-horizontal-line-q on row 2, and the target changes the middle row 3 q to a horizontal line while ASCII flank q glyphs and row 4 qqq remain visible. This supports the sampled row 3 column 2 horizontal-line appearance after ESC (0 q followed by ASCII designation, with a direct Unicode line comparator. It does not measure a numeric codepoint or the full charset, and unrelated residual text outside the five-column fixture differs between captures so no whole-frame stability claim is made.",
+    "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-charsets.dec-special",
+    "presentsEvidence": true
   }
 ]

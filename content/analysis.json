@@ -1,15 +1,15 @@
 {
-  "$generated": "2026-10-02T08:03:48.538Z",
+  "$generated": "2026-10-02T10:38:34.527Z",
   "terminals/kitty": {
-    "analysis": "<p><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> has <strong>98%</strong> support (104/106) among conclusive feature results, with observed unsupported results in the Modern TUI, Rich TUI baselines. Observed unsupported: <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/modes/decset-1048-save-restore-cursor\" class=\"hover-link\">Save/restore cursor (?1048)</a>.</p>",
+    "analysis": "<p><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> has <strong>98%</strong> support (103/105) among conclusive feature results, with observed unsupported results in the Modern TUI, Rich TUI baselines. Observed unsupported: <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/modes/decset-1048-save-restore-cursor\" class=\"hover-link\">Save/restore cursor (?1048)</a>.</p>",
     "date": "2026-10-02",
-    "probeCount": 106,
+    "probeCount": 105,
     "changes": null,
-    "runSha256": "3e768f75c3f8061c1c2d3ea9deb87fd9b68d9dfb320680c7436507f830c115a2",
-    "measuredAt": "2026-10-02T07:08:24.472Z",
+    "runSha256": "dc7635961b363a29360c5c48ab0250d7f4482ffd46bb4fcb997e39288e8ef844",
+    "measuredAt": "2026-10-02T09:50:25.959Z",
     "counts": {
-      "conclusive": 106,
-      "supported": 104,
+      "conclusive": 105,
+      "supported": 103,
       "unsupported": 2
     }
   },
@@ -387,7 +387,7 @@
     "changes": null
   },
   "sgr/58-2-underline-color-rgb": {
-    "analysis": "<p>Recorded checks report support in <strong>all 3</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
+    "analysis": "<p>Recorded checks report support in <strong>all 2</strong> conclusive measurements for this feature. Part of the <strong>Rich TUI</strong> baseline. These summaries describe the recorded checks; open individual results for their method and evidence.</p>",
     "date": "2026-10-02",
     "changes": null
   },

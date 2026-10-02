@@ -5,6 +5,7 @@
 - Corrected results attributed to the wrong terminal or backend by checking the measured run and runtime identity.
 - Required catalog loaders reject missing files and invalid root or row shapes; discovery rejects corrupt retained records.
 - Downgraded claims where a recognized sequence, missing reply or limited screenshot did not establish the reported behavior.
+- Kitty's app screenshots establish a separately colored underline; the 24-bit RGB result remains inconclusive because channel values were not measured.
 - Results separate immutable observations from reviewed interpretations, with probe coverage shown independently of support among conclusive results.
 - Reviewed measurements cover Kitty 0.49.2 on Linux in three permission contexts and eleven Termless headless targets. Earlier excluded runs remain history; the corrected suite has not measured macOS or Windows apps.
 - Per-result evidence links expose raw responses, assertions and available screenshots. A query response or headless cell check is not presented as proof of app rendering.
