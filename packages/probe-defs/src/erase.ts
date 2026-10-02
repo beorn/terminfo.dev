@@ -177,7 +177,10 @@ async function captureEraseFixture(
     kind === "line" ? "\x1b[1;1HABCDE\x1b[2;1HKEEP!" : `\x1b[1;1HAAAAA\x1b[${middle};1HBBBBB\x1b[${rows};1HCCCCC`
   const eraseAt = `\x1b[${kind === "line" ? 1 : middle};3H`
   try {
-    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+    ctx.write("\x1b[0m")
+    const blankRow = " ".repeat(cols)
+    // CUP clears pending wrap between full rows without scrolling the bottom row.
+    for (let row = 1; row <= rows; row++) ctx.write(`\x1b[${row};1H${blankRow}`)
     ctx.write(safeCursor)
     const blank = await capture({ role: "control", label: "Blank erase comparator" })
     ctx.write(seed)

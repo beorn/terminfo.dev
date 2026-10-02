@@ -223,6 +223,7 @@ test.each([
 
 // A CPR reply cannot prove erasure. The app fixture must retain its seeded
 // control, blank comparator, and target even when independent pixel review is pending.
+// Ordinary-space controls must stay blank even if the tested erase family is ignored.
 test.each(capturedCases)(
   "%s captures a qualified erase fixture without grading pixels",
   async (id, erase, expected) => {
@@ -255,7 +256,12 @@ test.each(capturedCases)(
     const seedIndex = writes.indexOf(seed)
     const eraseAtIndex = writes.indexOf(eraseAt)
     const eraseIndex = writes.indexOf(erase)
-    expect(writes[0]).toContain("\x1b[2J")
+    const blankWrites = writes.slice(0, captures[0]!.writeCount).join("")
+    expect(blankWrites).toMatch(/^\x1b\[0m/)
+    for (let row = 1; row <= 24; row++) {
+      expect(blankWrites, `blank row ${row}`).toContain(`\x1b[${row};1H${" ".repeat(80)}`)
+    }
+    expect(writes.slice(0, eraseIndex).join("")).not.toMatch(/\x1b\[[0-9;?]*[JKX]/)
     expect(captures.map(({ writeCount }) => writes[writeCount - 1])).toEqual([safeCursor, safeCursor, safeCursor])
     expect(seedIndex).toBeGreaterThanOrEqual(captures[0]!.writeCount)
     expect(seedIndex).toBeLessThan(captures[1]!.writeCount)
