@@ -41,6 +41,54 @@ export const charsetsProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        const capture = ctx.capture
+        if (capture) {
+          const rows = ctx.rows
+          const cols = ctx.cols
+          if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 4 || cols < 6) {
+            return {
+              pass: false,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "none",
+                note: `Charset capture fixture needs at least 4x6, measured ${rows}x${cols}`,
+              },
+            }
+          }
+          try {
+            ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
+            ctx.write("\x1b[1;1H     \x1b[1;1Hqqq")
+            ctx.write("\x1b[2;1H     \x1b[2;1Hq─q")
+            ctx.write("\x1b[3;1H     \x1b[3;1Hqqq")
+            ctx.write("\x1b[4;1H     \x1b[4;1Hqqq")
+            ctx.write("\x1b[4;6H")
+            const control = await capture({
+              role: "control",
+              label: "ASCII q controls on rows 1, 3 and 4; direct Unicode q─q on row 2",
+            })
+            ctx.write("\x1b[3;2H\x1b(0q\x1b(Bq")
+            ctx.write("\x0f\x1b(B\x1b)B\x1b[4;1Hqqq\x1b[4;6H")
+            const target = await capture({
+              role: "target",
+              label: "DEC Special Graphics sample at row 3, column 2; restored ASCII qqq on row 4",
+            })
+            return {
+              pass: false,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "Sampled row 3, column 2 horizontal-line appearance relative to row 2 Unicode and ASCII q controls requires independent review; pixels do not measure a numeric codepoint or the whole charset",
+              },
+            }
+          } finally {
+            // Normalize the owned disposable fixture, not arbitrary prior terminal state.
+            ctx.write("\x1b[0m\x0f\x1b(B\x1b)B")
+          }
+        }
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
           return {
             pass: false,

@@ -7,7 +7,7 @@
 import { afterEach, expect, test, vi } from "vitest"
 import { charsetsProbes } from "./charsets.ts"
 import { resetProbes } from "./reset.ts"
-import type { TermContext } from "./types.ts"
+import type { ObservationFrame, TermContext } from "./types.ts"
 
 afterEach(() => vi.useRealTimers())
 
@@ -110,6 +110,132 @@ test("fixed charset and reset fixtures require valid measured room before any by
     }
   }
 })
+
+test("DEC special pixels retain independent glyph controls, exact designation order and ungraded frame bindings", async () => {
+  const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
+  if (!definition?.term) throw new Error("missing app DEC special callback")
+  const events: string[] = []
+  const context = app(4, 6, events)
+  const snapshots: string[][] = []
+  const frames: ObservationFrame[] = []
+  context.capture = async ({ role, label }) => {
+    snapshots.push([...events])
+    const frame = { role, label, capturedAt: frames.length + 1, ref: `sha256:${String(frames.length + 1).repeat(64)}` }
+    frames.push(frame)
+    return frame
+  }
+  const result = await definition.term(context)
+  const controlWrites = [
+    "\x0f\x1b(B\x1b)B\x1b[0m",
+    "\x1b[1;1H     \x1b[1;1Hqqq",
+    "\x1b[2;1H     \x1b[2;1Hq─q",
+    "\x1b[3;1H     \x1b[3;1Hqqq",
+    "\x1b[4;1H     \x1b[4;1Hqqq",
+    "\x1b[4;6H",
+  ]
+  expect(snapshots).toEqual([
+    controlWrites,
+    [...controlWrites, "\x1b[3;2H\x1b(0q\x1b(Bq", "\x0f\x1b(B\x1b)B\x1b[4;1Hqqq\x1b[4;6H"],
+  ])
+  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
+  expect(frames[0]?.label).toContain("row 2")
+  expect(frames[0]?.label).toContain("Unicode")
+  expect(frames[1]?.label).toContain("row 3, column 2")
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+    frames,
+    screenshotRef: frames[1]?.ref,
+    note: expect.stringContaining("horizontal-line appearance"),
+  })
+  expect(result.observation?.note).toContain("independent review")
+  expect(result.assertions ?? []).toEqual([])
+  expect(events.at(-1)).toBe("\x1b[0m\x0f\x1b(B\x1b)B")
+})
+
+test("DEC special capture requires safe measured 4x6 before writes or captures", async () => {
+  const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
+  if (!definition?.term) throw new Error("missing app DEC special callback")
+  for (const [rows, cols] of [
+    [3, 6],
+    [4, 5],
+    [NaN, 6],
+    [4, Infinity],
+    [4.5, 6],
+    [4, 6.5],
+    [Number.MAX_SAFE_INTEGER + 1, 6],
+  ]) {
+    const events: string[] = []
+    const context = app(rows!, cols!, events)
+    const capture = vi.fn(async ({ role, label }: { role: ObservationFrame["role"]; label: string }) => ({
+      role,
+      label,
+      capturedAt: 1,
+      ref: "never",
+    }))
+    context.capture = capture
+    const result = await definition.term(context)
+    expect(events, `${rows}x${cols}`).toEqual([])
+    expect(capture, `${rows}x${cols}`).not.toHaveBeenCalled()
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(result.observation?.note).toContain(`4x6, measured ${rows}x${cols}`)
+  }
+})
+
+test.each([1, 2])(
+  "DEC special normalizes SGR and both ASCII designations when capture %i rejects",
+  async (failedCapture) => {
+    const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
+    if (!definition?.term) throw new Error("missing app DEC special callback")
+    const events: string[] = []
+    const context = app(4, 6, events)
+    const failure = new Error("owned charset capture failed")
+    let calls = 0
+    context.capture = async ({ role, label }) => {
+      if (++calls === failedCapture) throw failure
+      return { role, label, capturedAt: calls, ref: "control" }
+    }
+    await expect(definition.term(context)).rejects.toBe(failure)
+    expect(calls).toBe(failedCapture)
+    expect(events.at(-1)).toBe("\x1b[0m\x0f\x1b(B\x1b)B")
+  },
+)
+
+test.each([{ row: 1, col: 2 }, null])(
+  "DEC special without capture preserves exact legacy writes and CPR labels for %j",
+  async (cursor) => {
+    const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
+    if (!definition?.term) throw new Error("missing app DEC special callback")
+    const events: string[] = []
+    const result = await definition.term(app(1, 2, events, [cursor]))
+    expect(events).toEqual(["\x1b[1;1H\x1b[2K", "\x1b(0", "q", "\x1b(B", "CPR"])
+    expect(result).toEqual(
+      cursor
+        ? {
+            pass: false,
+            response: JSON.stringify(cursor),
+            note: "Cursor movement does not verify charset glyph rendering or mapping",
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "consumed",
+              note: "Cursor movement does not verify charset glyph rendering or mapping",
+            },
+          }
+        : {
+            pass: false,
+            note: "No cursor response",
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          },
+    )
+  },
+)
 
 function decaln() {
   const definition = resetProbes.find((probe) => probe.id === "reset.decaln")
