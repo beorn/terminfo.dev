@@ -24,7 +24,7 @@ import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
-import { resolveMeasuredAppVersion } from "./identity-guard.ts"
+import { COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
 import { withRawMode, drainStdin, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
@@ -174,6 +174,9 @@ export async function collectProbeRun(
   try {
     batch = await withRawMode(async () => {
       let geometryCorroboration: GeometryCorroboration | undefined
+      let identityQuery:
+        | { sequence: string; outbound: string; reason: string; raw: string; rawBase64: string }
+        | undefined
       if (ownedTerminal) {
         const response = await queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/, 700)
         const query = {
@@ -202,6 +205,15 @@ export async function collectProbeRun(
             query,
           }
         }
+        const identity = await queryWithSentinelOutcome("\x1b[>0q", COMPLETE_XTVERSION, 700)
+        identityQuery = {
+          sequence: "\x1b[>0q",
+          outbound: "\x1b[>0q\x1b[c",
+          reason: identity.reason,
+          raw: identity.raw,
+          rawBase64: identity.rawBase64,
+        }
+        resolveMeasuredAppVersion(terminal.name, terminal.version, { "collector.xtversion": identity.raw })
       }
       const result = await runProbeBatch({
         ids: options.ids,
@@ -211,6 +223,10 @@ export async function collectProbeRun(
         ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),
       })
+      if (identityQuery) {
+        result.rawReplies["collector.xtversion"] = identityQuery.raw
+        result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)
+      }
       await drainStdin(1000)
       return result
     }, out)

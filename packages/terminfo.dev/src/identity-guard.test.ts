@@ -8,6 +8,35 @@ import { describe, it, expect } from "vitest"
 import { resolveMeasuredAppVersion, verifyTerminalIdentity } from "./identity-guard.ts"
 
 describe("verifyTerminalIdentity", () => {
+  it("prefers owned preflight identity without borrowing the feature's outcome", () => {
+    const responses = {
+      "device.primary-da": "\x1b[?62;52;c",
+      "device.xtversion": "\x1bP>|kitty(0.48.0)\x1b\\",
+      "collector.xtversion": "\x1bP>|kitty(0.49.2)\x1b\\\x1b[?62;52;c",
+    }
+    expect(resolveMeasuredAppVersion("kitty", "", responses)).toBe("0.49.2")
+    expect(verifyTerminalIdentity("kitty", responses, { "device.xtversion": false }).ok).toBe(true)
+    const { "collector.xtversion": _collector, ...fallback } = responses
+    expect(resolveMeasuredAppVersion("kitty", "", fallback)).toBe("0.48.0")
+    expect(resolveMeasuredAppVersion("vterm", "1.2.3", responses)).toBe("1.2.3")
+  })
+
+  it.each(["", "\x1b[?62;52;c", "\x1bP>|kitty(0.49.2)"])(
+    "names invalid collector preflight %j without falling back to a feature reply",
+    (raw) => {
+      const responses = {
+        "collector.xtversion": raw,
+        "device.xtversion": "\x1bP>|kitty(0.49.2)\x1b\\",
+        "device.primary-da": "\x1b[?62;52;c",
+      }
+      expect(() => resolveMeasuredAppVersion("kitty", "0.49.2", responses)).toThrow(/identity: XTVERSION preflight/)
+      expect(verifyTerminalIdentity("kitty", responses).reason).toMatch(/identity: XTVERSION preflight/)
+      if (raw.startsWith("\x1bP")) {
+        expect(verifyTerminalIdentity("kitty", responses).reason).toContain(Buffer.from(raw).toString("base64"))
+      }
+    },
+  )
+
   it("accepts complete XTVERSION DCS bytes and refuses a truncated frame", () => {
     const da1 = "\x1b[?62;52;c"
     expect(
@@ -114,6 +143,13 @@ describe("verifyTerminalIdentity", () => {
       { "device.xtversion": false },
     )
     expect(termRes.ok).toBe(true)
+    expect(
+      verifyTerminalIdentity("terminal-app", {
+        "device.primary-da": "\x1b[?1;2c",
+        "device.secondary-da": "\x1b[>1;95;0c",
+        "collector.xtversion": "\x1b[?1;2c",
+      }).ok,
+    ).toBe(true)
     expect(verifyTerminalIdentity("terminal-app", { "device.primary-da": "\u001b[?1;2c" }).ok).toBe(false)
     expect(
       verifyTerminalIdentity("terminal-app", {

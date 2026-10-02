@@ -141,6 +141,79 @@ describe("daemon HTTP boundary", () => {
 })
 
 describe("private finite daemon startup", () => {
+  it("measures owned subset identity independently, retains feature replies and disposes on refusal", () => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-identity-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `
+      import { mock } from "bun:test"
+      import assert from "node:assert/strict"
+      import { parseRunProvenance } from "@terminfo/run-parser"
+      const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const tty = await import("./packages/terminfo.dev/src/tty.ts")
+      const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      let raw = "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c", disposed = 0, calls = []
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+        manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        collectorRevision: "b".repeat(40)
+      }
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => ({name:"kitty",version:"",os:"linux",osVersion:"fixture"}) }))
+      mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({...owned, createOwnedTerminal: async () => ({
+        geometryAtGrant:{status:"measured",rows:24,cols:80},summary:"owned fixture",dispose:async()=>{disposed++}
+      })}))
+      mock.module("./packages/terminfo.dev/src/tty.ts", () => ({...tty,
+        withRawMode:async callback=>callback(),drainStdin:async()=>{},
+        queryWithSentinelOutcome:async(sequence,pattern)=>{
+          calls.push(sequence)
+          const reply=sequence === "\\x1b[18t" ? "\\x1b[8;24;80t" : raw
+          return {raw:reply,rawBase64:Buffer.from(reply).toString("base64"),match:pattern.exec(reply),reason:pattern.test(reply)?"reply":"sentinel"}
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({...unified,runProbeBatch:async options=>({
+        rawReplies:options.ids.includes("device.xtversion")?{"device.xtversion":"feature-owned reply"}:{},
+        observations:options.ids.map(featureId=>({featureId})), assertions:[],screenshotRefs:[],ungradedDiagnostics:{},suiteComplete:false
+      })}))
+      const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
+      const ids=unified.ALL_PROBES.filter(p=>p.id!=="device.xtversion").slice(0,10).map(p=>p.id)
+      const run=await collectProbeRun({ids,terminalAppOwner:{}})
+      assert.equal(run.target.version,"0.49.2")
+      assert.deepEqual(run.observations.map(o=>o.featureId),ids)
+      assert.equal(run.suiteComplete,false)
+      assert.equal(run.rawReplies["device.xtversion"],undefined)
+      assert.equal(run.rawReplies["collector.xtversion"],raw)
+      assert.deepEqual(calls,["\\x1b[18t","\\x1b[>0q"])
+      const query=JSON.parse(run.rawReplies["collector.xtversionQuery"])
+      assert.equal(query.sequence,"\\x1b[>0q")
+      assert.equal(query.outbound,"\\x1b[>0q\\x1b[c")
+      assert.equal(query.rawBase64,Buffer.from(raw).toString("base64"))
+      const provenance={executable:{path:"/fixture/kitty",sha256:"c".repeat(64),version:"kitty 0.49.2"},
+        sourceArtifact:{url:"https://example.invalid/kitty.txz",sha256:"d".repeat(64)},
+        runtime:{imageId:"sha256:"+"e".repeat(64),imageTarSha256:"f".repeat(64),arch:"amd64",nixLockRevision:"1".repeat(40),sourceRevision:"b".repeat(40),cleanTree:true,suiteHash:"a".repeat(12)},
+        fixture:{definition:"fixture",config:"fixture",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}
+      assert.equal(parseRunProvenance(provenance,run.target,{probeHash:run.probeHash,sourceRevision:run.sourceRevision},"fixture").executable.version,"kitty 0.49.2")
+      const feature=await collectProbeRun({ids:["device.xtversion"],terminalAppOwner:{}})
+      assert.equal(feature.rawReplies["device.xtversion"],"feature-owned reply")
+      assert.equal(feature.rawReplies["collector.xtversion"],raw)
+      for(const invalid of ["\\x1b[?62;52;c","\\x1bP>|kitty(0.49.2)"]){
+        raw=invalid
+        await assert.rejects(collectProbeRun({ids,terminalAppOwner:{}}),/identity: XTVERSION preflight/)
+      }
+      assert.equal(disposed,4)
+      calls=[]
+      const nonowned=await collectProbeRun({ids})
+      assert.equal(nonowned.target.version,"unknown")
+      assert.equal(nonowned.rawReplies["collector.xtversion"],undefined)
+      assert.deepEqual(calls,[])
+    `,
+      ],
+      { cwd: packageRoot, env: { ...process.env, HOME: home }, encoding: "utf8", timeout: 5000 },
+    )
+    expect(result.stderr).toBe("")
+    expect(result.status).toBe(0)
+  })
+
   it.each([undefined, '["cursor.hide","reset.decaln"]'])(
     "forwards startup selection %s once and preserves producer completeness",
     async (selection) => {
