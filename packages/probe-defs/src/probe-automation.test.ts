@@ -205,7 +205,7 @@ describe("partial probe automation candidates", () => {
 
   /**
    * @failure text.tbc accepts only a cursor that stays put after CSI 3 g, so a
-   * terminal that sends HT to the right margin — the ECMA-48 8.3.61 behaviour —
+   * terminal that sends HT to the right margin — the DEC VT220 §4.8 behaviour —
    * is published as failing a feature it actually supports (beorn/terminfo.dev#37).
    * @level l1
    * @consumer the published text.tbc verdict and the app-probe matrix on terminfo.dev.

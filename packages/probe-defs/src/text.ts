@@ -281,7 +281,7 @@ export const textProbes: ProbeDefinition[] = [
     "text.tbc",
     (ctx) => {
       ctx.feed("\x1b[3g") // TBC 3 — clear all tab stops
-      ctx.feed("\t") // tab — with no remaining stop, HT advances to the right margin (ECMA-48 8.3.61)
+      ctx.feed("\t") // tab — with no remaining stop, HT advances to the right margin (DEC VT220 ref. §4.8)
       const expected = ctx.cols - 1 // termless cursor x is 0-based
       const actual = ctx.getCursor().x
       return {
@@ -292,7 +292,7 @@ export const textProbes: ProbeDefinition[] = [
     async (ctx) => {
       ctx.write("\x1b[1;1H") // move to col 1
       ctx.write("\x1b[3g") // TBC 3 — clear all tab stops
-      ctx.write("\t") // tab — with no remaining stop, HT advances to the right margin (ECMA-48 8.3.61)
+      ctx.write("\t") // tab — with no remaining stop, HT advances to the right margin (DEC VT220 ref. §4.8)
       const pos = await ctx.queryCursorPosition()
       if (!pos) return { pass: false, note: "No cursor response" }
       return {
