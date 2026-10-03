@@ -33,6 +33,8 @@ export interface TermlessContext {
   getScrollback(): { viewportOffset: number; totalLines: number; screenLines: number }
   getTitle(): string
   reset(): void
+  /** Terminal width in columns. HT with no remaining tab stop advances to the right margin. */
+  readonly cols: number
   capabilities: {
     truecolor: boolean
     kittyKeyboard: boolean

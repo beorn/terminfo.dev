@@ -281,21 +281,23 @@ export const textProbes: ProbeDefinition[] = [
     "text.tbc",
     (ctx) => {
       ctx.feed("\x1b[3g") // TBC 3 — clear all tab stops
-      ctx.feed("\t") // tab — should not advance since all stops are cleared
+      ctx.feed("\t") // tab — with no remaining stop, HT advances to the right margin (ECMA-48 8.3.61)
+      const expected = ctx.cols - 1 // termless cursor x is 0-based
+      const actual = ctx.getCursor().x
       return {
-        pass: ctx.getCursor().x === 0,
-        note: ctx.getCursor().x === 0 ? undefined : `cursor at col ${ctx.getCursor().x}, expected 0`,
+        pass: actual === expected,
+        note: actual === expected ? undefined : "cursor at col " + actual + ", expected " + expected,
       }
     },
     async (ctx) => {
       ctx.write("\x1b[1;1H") // move to col 1
       ctx.write("\x1b[3g") // TBC 3 — clear all tab stops
-      ctx.write("\t") // tab — should not advance
+      ctx.write("\t") // tab — with no remaining stop, HT advances to the right margin (ECMA-48 8.3.61)
       const pos = await ctx.queryCursorPosition()
       if (!pos) return { pass: false, note: "No cursor response" }
       return {
-        pass: pos.col === 1,
-        note: pos.col === 1 ? undefined : `cursor at col ${pos.col}, expected 1`,
+        pass: pos.col === ctx.cols, // DSR columns are 1-based
+        note: pos.col === ctx.cols ? undefined : "cursor at col " + pos.col + ", expected " + ctx.cols,
       }
     },
   ),

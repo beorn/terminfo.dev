@@ -46,6 +46,7 @@ function context(overrides: Partial<TermlessContext>): TermlessContext {
       return ""
     },
     reset() {},
+    cols: 80,
     capabilities: {
       truecolor: false,
       kittyKeyboard: false,
@@ -200,5 +201,36 @@ describe("partial probe automation candidates", () => {
 
     expect(result.pass).toBe(true)
     expect(fed).toContain("\x1b]720\x07")
+  })
+
+  test("text.tbc expects HT to reach the right margin once every stop is cleared", () => {
+    const p = probe("text.tbc")
+    expect(p.termless).toBeTypeOf("function")
+
+    const fed: string[] = []
+    const atMargin = p.termless!(
+      context({
+        cols: 80,
+        feed(text) {
+          fed.push(text)
+        },
+        getCursor() {
+          return { x: 79, y: 0, visible: true, style: "block" }
+        },
+      }),
+    )
+    expect(fed).toEqual(["\x1b[3g", "\t"])
+    expect(atMargin.pass).toBe(true)
+
+    const atStart = p.termless!(
+      context({
+        cols: 80,
+        getCursor() {
+          return { x: 0, y: 0, visible: true, style: "block" }
+        },
+      }),
+    )
+    expect(atStart.pass).toBe(false)
+    expect(atStart.note).toContain("expected 79")
   })
 })

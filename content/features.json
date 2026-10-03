@@ -1670,8 +1670,8 @@
     "slug": "tbc-clear-tab-stop",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
     "tags": ["ecma-48", "vt100"],
-    "body": "TBC (Tab Clear) clears tab stops. <code>CSI 0 g</code> clears the tab stop at the current cursor position; <code>CSI 3 g</code> clears all tab stops. After clearing all tab stops, tab characters have no effect (cursor does not advance). TBC is used together with HTS to set up custom tab stop patterns for formatted output.",
-    "probe": "Clear all tab stops with <code>\\x1b[3g</code>, send a tab from column 0 — verify cursor does not advance (stays at column 0), confirming all tab stops were cleared.",
+    "body": "TBC (Tab Clear) clears tab stops. <code>CSI 0 g</code> clears the tab stop at the current cursor position; <code>CSI 3 g</code> clears all tab stops. With no tab stop remaining, a tab (HT) advances the cursor to the right margin rather than doing nothing (ECMA-48 §8.3.61 and the DEC VT specifications). TBC is used together with HTS to set up custom tab stop patterns for formatted output.",
+    "probe": "Clear all tab stops with <code>\\x1b[3g</code>, send a tab from column 1 — verify the cursor advances to the right margin (ECMA-48 §8.3.61), confirming no tab stop remained.",
     "baseline": "core",
     "sequence": "CSI Ps g"
   },

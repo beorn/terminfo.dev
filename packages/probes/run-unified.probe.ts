@@ -73,7 +73,7 @@ if (backends.length === 0) {
 const enc = new TextEncoder()
 const dec = new TextDecoder()
 
-function createTermlessContext(b: TerminalBackend): TermlessContext {
+function createTermlessContext(b: TerminalBackend, cols: number): TermlessContext {
   return {
     feed(text: string) {
       b.feed(enc.encode(text))
@@ -109,6 +109,7 @@ function createTermlessContext(b: TerminalBackend): TermlessContext {
     reset() {
       b.reset()
     },
+    cols,
     get capabilities() {
       return b.capabilities
     },
@@ -116,6 +117,11 @@ function createTermlessContext(b: TerminalBackend): TermlessContext {
 }
 
 // ── Run all probes against all backends ──
+
+// Geometry every termless probe runs in, declared once. The sync probes read it as
+// ctx.cols; TerminalBackend itself exposes no width accessor.
+const TERMLESS_COLS = 80
+const TERMLESS_ROWS = 24
 
 // Group probes by category (prefix before first dot)
 const categories = new Map<string, typeof ALL_PROBES>()
@@ -134,8 +140,8 @@ for (const [backendName, factory] of backends) {
 
     beforeAll(async () => {
       _b = await factory()
-      _b.init({ cols: 80, rows: 24 })
-      ctx = createTermlessContext(_b)
+      _b.init({ cols: TERMLESS_COLS, rows: TERMLESS_ROWS })
+      ctx = createTermlessContext(_b, TERMLESS_COLS)
     })
 
     afterAll(() => {
