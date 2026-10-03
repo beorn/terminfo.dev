@@ -55,5 +55,8 @@
   },
   "engines": {
     "node": ">=23.6.0"
+  },
+  "verifyPublishable": {
+    "build": "bun run validate && bun run --cwd packages/probe-defs build"
   }
 }
