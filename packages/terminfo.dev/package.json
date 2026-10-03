@@ -25,20 +25,38 @@
     "terminfo": "./bin/terminfo.mjs"
   },
   "files": [
-    "src",
+    "dist",
     "bin"
   ],
   "type": "module",
   "publishConfig": {
     "access": "public"
   },
+  "scripts": {
+    "build": "tsdown"
+  },
   "dependencies": {
     "@silvery/ansi": "^0.19.0",
     "@silvery/commander": "^0.19.0",
-    "@terminfo/probe-defs": "workspace:*",
     "commander": "^15.0.0",
     "react": "^19.2.7",
     "silvery": "^0.19.0"
+  },
+  "devDependencies": {
+    "@terminfo/probe-defs": "workspace:*",
+    "tsdown": "0.22.13"
+  },
+  "tsdown": {
+    "clean": true,
+    "deps": {
+      "alwaysBundle": [
+        "@terminfo/probe-defs"
+      ]
+    },
+    "dts": false,
+    "entry": "src/index.tsx",
+    "format": "esm",
+    "platform": "node"
   },
   "engines": {
     "node": ">=23.6.0"

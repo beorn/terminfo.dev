@@ -57,6 +57,6 @@
     "node": ">=23.6.0"
   },
   "verifyPublishable": {
-    "build": "bun run validate && bun run --cwd packages/probe-defs build"
+    "build": "bun run validate && bun run --cwd packages/probe-defs build && bun run --cwd packages/terminfo.dev build"
   }
 }
