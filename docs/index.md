@@ -758,21 +758,9 @@ strips, or mishandles.
 /* Baseline 2026 cards */
 .baseline-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
   gap: 12px;
   margin: 1em 0 2em;
-}
-
-@media (max-width: 900px) {
-  .baseline-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 500px) {
-  .baseline-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 .baseline-card {

@@ -3,6 +3,25 @@
   background-color: var(--vp-c-bg);
 }
 
+/* Use the existing compact menu until the full navigation fits. */
+@media (min-width: 768px) and (max-width: 1359px) {
+  .VPNav .VPNavBarMenu,
+  .VPNav .VPNavBarTranslations,
+  .VPNav .VPNavBarAppearance,
+  .VPNav .VPNavBarSocialLinks,
+  .VPNav .VPNavBarExtra {
+    display: none;
+  }
+
+  .VPNav .VPNavBarHamburger {
+    display: flex;
+  }
+
+  .VPNav .VPNavScreen {
+    display: block;
+  }
+}
+
 /* Make links in hero tagline visually clickable */
 .VPHero .tagline a {
   text-decoration: underline dotted;
