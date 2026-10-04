@@ -331807,5 +331807,3294 @@
     "supersedes": [],
     "reviewed": true,
     "verifiesIdentity": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "identity-app-kitty-2c32346873c0f34fa83b91684e6019ee",
+    "reviewer": "@adhoc/1 (automated exact-run identity review; independent Sol mechanical PASS)",
+    "reason": "Measured collector XTVERSION contains complete kitty(0.49.2) and DA1 ?62;52;c frames. Existing deriveIdentity and verifyTerminalIdentity independently return checked/ok, and the actual private selected-results projection admits this exact run without exclusion. Independent mechanical checks bind its clean source 8d3423cc445e273ab323d03b771cb53ed276d2c1, frozen runner, image, executable SHA256 a46736d89c768bd727701663ae594195aafc854e814b286d07c171f46497c8e6, configuration, permissions and window/collector ownership to the recorded raw SHA256. This review establishes exact-run attribution in the recorded Linux/Xvfb/llvmpipe 800 by 600 profile; it does not establish every rendered feature or full protocol conformance.",
+    "sources": ["content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json"],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.bold",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Target letters and digits have visibly heavier strokes than the own upright control. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/86f70527e4785732bdcd127fb35346b3d9ccd83916f797609df59ddaa67888cf.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/06770a0711e4e5a749efa49ca40899edfc93ea522e3323920251f5f9a7b73415.png",
+      "content/artifacts/13949dd8493604e7d0322bbfbea1086f6ce531e8759cfe85b3b6b1ec991077a6.xwd"
+    ],
+    "featureId": "sgr.bold",
+    "observation": {
+      "featureId": "sgr.bold",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:06770a0711e4e5a749efa49ca40899edfc93ea522e3323920251f5f9a7b73415",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131193941,
+          "ref": "sha256:86f70527e4785732bdcd127fb35346b3d9ccd83916f797609df59ddaa67888cf",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.bold",
+          "capturedAt": 1791131194147,
+          "ref": "sha256:06770a0711e4e5a749efa49ca40899edfc93ea522e3323920251f5f9a7b73415",
+          "sourceRef": "sha256:13949dd8493604e7d0322bbfbea1086f6ce531e8759cfe85b3b6b1ec991077a6"
+        }
+      ],
+      "note": "Target letters and digits have visibly heavier strokes than the own upright control. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.bold"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.bold",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Target letters and digits have visibly heavier strokes than the own upright control. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/86f70527e4785732bdcd127fb35346b3d9ccd83916f797609df59ddaa67888cf.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/06770a0711e4e5a749efa49ca40899edfc93ea522e3323920251f5f9a7b73415.png",
+      "content/artifacts/13949dd8493604e7d0322bbfbea1086f6ce531e8759cfe85b3b6b1ec991077a6.xwd"
+    ],
+    "featureId": "sgr.bold",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.faint",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Target sample is darker gray than the own light-gray control on the same black field. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/aeb979bc45fc0bd38e150fc2542ce958d7f9717bd07821bb431c8fca9e1370dd.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/ab39e6d8707402a623e7fde7dcdf0ffd1aafd8bbf127cf1f338b4927ed6ca617.png",
+      "content/artifacts/d6409f44015529621f216fb4086b2c19d8c73a6d3743123abf31ca879114e97d.xwd"
+    ],
+    "featureId": "sgr.faint",
+    "observation": {
+      "featureId": "sgr.faint",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:ab39e6d8707402a623e7fde7dcdf0ffd1aafd8bbf127cf1f338b4927ed6ca617",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131194354,
+          "ref": "sha256:aeb979bc45fc0bd38e150fc2542ce958d7f9717bd07821bb431c8fca9e1370dd",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.faint",
+          "capturedAt": 1791131194556,
+          "ref": "sha256:ab39e6d8707402a623e7fde7dcdf0ffd1aafd8bbf127cf1f338b4927ed6ca617",
+          "sourceRef": "sha256:d6409f44015529621f216fb4086b2c19d8c73a6d3743123abf31ca879114e97d"
+        }
+      ],
+      "note": "Target sample is darker gray than the own light-gray control on the same black field. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.faint"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.faint",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Target sample is darker gray than the own light-gray control on the same black field. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/aeb979bc45fc0bd38e150fc2542ce958d7f9717bd07821bb431c8fca9e1370dd.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/ab39e6d8707402a623e7fde7dcdf0ffd1aafd8bbf127cf1f338b4927ed6ca617.png",
+      "content/artifacts/d6409f44015529621f216fb4086b2c19d8c73a6d3743123abf31ca879114e97d.xwd"
+    ],
+    "featureId": "sgr.faint",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.italic",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Target sample slants to the right; the own control has upright strokes. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/24b290357e87d6061fba8ecd95dbc605fb7de763b3a5e3009974e50688d34924.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/6b09b9d5237130cb69061d64603bd08fdf059cca492914eba02fee399b013290.png",
+      "content/artifacts/c81c3a159d3667af0e4d0e71d685fd86efc3ce40b1e62eacda68b5429d3be72f.xwd"
+    ],
+    "featureId": "sgr.italic",
+    "observation": {
+      "featureId": "sgr.italic",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:6b09b9d5237130cb69061d64603bd08fdf059cca492914eba02fee399b013290",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131194763,
+          "ref": "sha256:24b290357e87d6061fba8ecd95dbc605fb7de763b3a5e3009974e50688d34924",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.italic",
+          "capturedAt": 1791131194970,
+          "ref": "sha256:6b09b9d5237130cb69061d64603bd08fdf059cca492914eba02fee399b013290",
+          "sourceRef": "sha256:c81c3a159d3667af0e4d0e71d685fd86efc3ce40b1e62eacda68b5429d3be72f"
+        }
+      ],
+      "note": "Target sample slants to the right; the own control has upright strokes. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.italic"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.italic",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Target sample slants to the right; the own control has upright strokes. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/24b290357e87d6061fba8ecd95dbc605fb7de763b3a5e3009974e50688d34924.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/6b09b9d5237130cb69061d64603bd08fdf059cca492914eba02fee399b013290.png",
+      "content/artifacts/c81c3a159d3667af0e4d0e71d685fd86efc3ce40b1e62eacda68b5429d3be72f.xwd"
+    ],
+    "featureId": "sgr.italic",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.underline.single",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: A single straight light line runs immediately beneath the target sample; the own control has no such line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/72aeabff354ae8fe6b1b6c48a6fa665e44d92862966d84cc23ec13d7b6cbc2a3.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/6d32b8bdff036537c3b677b6e6785c5295de2126f314e01d2ba7bcb6853654f5.png",
+      "content/artifacts/1ae7e0f3dd4d35323bb716ed91913ae8dc859b218da6a996304925d0284fe5b8.xwd"
+    ],
+    "featureId": "sgr.underline.single",
+    "observation": {
+      "featureId": "sgr.underline.single",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:6d32b8bdff036537c3b677b6e6785c5295de2126f314e01d2ba7bcb6853654f5",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131195175,
+          "ref": "sha256:72aeabff354ae8fe6b1b6c48a6fa665e44d92862966d84cc23ec13d7b6cbc2a3",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.single",
+          "capturedAt": 1791131195378,
+          "ref": "sha256:6d32b8bdff036537c3b677b6e6785c5295de2126f314e01d2ba7bcb6853654f5",
+          "sourceRef": "sha256:1ae7e0f3dd4d35323bb716ed91913ae8dc859b218da6a996304925d0284fe5b8"
+        }
+      ],
+      "note": "A single straight light line runs immediately beneath the target sample; the own control has no such line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.underline.single"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.underline.single",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: A single straight light line runs immediately beneath the target sample; the own control has no such line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/72aeabff354ae8fe6b1b6c48a6fa665e44d92862966d84cc23ec13d7b6cbc2a3.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/6d32b8bdff036537c3b677b6e6785c5295de2126f314e01d2ba7bcb6853654f5.png",
+      "content/artifacts/1ae7e0f3dd4d35323bb716ed91913ae8dc859b218da6a996304925d0284fe5b8.xwd"
+    ],
+    "featureId": "sgr.underline.single",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.underline.double",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Two closely spaced straight light lines sit beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/7d3d713b77fce4ea9086d5d78ebf48be90a955e80d30d02ce0164ed2d1f0582e.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/07130f43be84836eb4a361183767f78513700c149cb209611b9a2f2a65e28014.png",
+      "content/artifacts/ac7d8fd26cf444b952f2a4bb45cbf2a6c3c048e04844c4caeb3c7ab05f4d912d.xwd"
+    ],
+    "featureId": "sgr.underline.double",
+    "observation": {
+      "featureId": "sgr.underline.double",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:07130f43be84836eb4a361183767f78513700c149cb209611b9a2f2a65e28014",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131195581,
+          "ref": "sha256:7d3d713b77fce4ea9086d5d78ebf48be90a955e80d30d02ce0164ed2d1f0582e",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.double",
+          "capturedAt": 1791131195780,
+          "ref": "sha256:07130f43be84836eb4a361183767f78513700c149cb209611b9a2f2a65e28014",
+          "sourceRef": "sha256:ac7d8fd26cf444b952f2a4bb45cbf2a6c3c048e04844c4caeb3c7ab05f4d912d"
+        }
+      ],
+      "note": "Two closely spaced straight light lines sit beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.underline.double"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.underline.double",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Two closely spaced straight light lines sit beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/7d3d713b77fce4ea9086d5d78ebf48be90a955e80d30d02ce0164ed2d1f0582e.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/07130f43be84836eb4a361183767f78513700c149cb209611b9a2f2a65e28014.png",
+      "content/artifacts/ac7d8fd26cf444b952f2a4bb45cbf2a6c3c048e04844c4caeb3c7ab05f4d912d.xwd"
+    ],
+    "featureId": "sgr.underline.double",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.underline.curly",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: A repeating wavy light line runs beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/d761516a1c66923415659dce3b8c4d04b600385f9c46ce20c5f7a6ff232ea7ca.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/4e26e2fb20e1114fb82fce1b021b6c5b9d2d53b3f7223a3dfe308c319f667757.png",
+      "content/artifacts/e2e3508027a9ee1b4084cd5ae8e94801f9874c2b672a7762aede338bb4316c0e.xwd"
+    ],
+    "featureId": "sgr.underline.curly",
+    "observation": {
+      "featureId": "sgr.underline.curly",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:4e26e2fb20e1114fb82fce1b021b6c5b9d2d53b3f7223a3dfe308c319f667757",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131195981,
+          "ref": "sha256:d761516a1c66923415659dce3b8c4d04b600385f9c46ce20c5f7a6ff232ea7ca",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.curly",
+          "capturedAt": 1791131196182,
+          "ref": "sha256:4e26e2fb20e1114fb82fce1b021b6c5b9d2d53b3f7223a3dfe308c319f667757",
+          "sourceRef": "sha256:e2e3508027a9ee1b4084cd5ae8e94801f9874c2b672a7762aede338bb4316c0e"
+        }
+      ],
+      "note": "A repeating wavy light line runs beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.underline.curly"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.underline.curly",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: A repeating wavy light line runs beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/d761516a1c66923415659dce3b8c4d04b600385f9c46ce20c5f7a6ff232ea7ca.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/4e26e2fb20e1114fb82fce1b021b6c5b9d2d53b3f7223a3dfe308c319f667757.png",
+      "content/artifacts/e2e3508027a9ee1b4084cd5ae8e94801f9874c2b672a7762aede338bb4316c0e.xwd"
+    ],
+    "featureId": "sgr.underline.curly",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.underline.dotted",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Fine separate dots form a line beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/fc91ff74c03479a5b59c0edc4425cdf450922c60dd53514d88d060a5b6c46377.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/12336e38f8270b263f2767ae220621949980d74ef2726dc3eb90e517c2574d87.png",
+      "content/artifacts/3e88985e35e937a35d31ee48603a98dca06ce6be2bf0c322c917903b334a336b.xwd"
+    ],
+    "featureId": "sgr.underline.dotted",
+    "observation": {
+      "featureId": "sgr.underline.dotted",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:12336e38f8270b263f2767ae220621949980d74ef2726dc3eb90e517c2574d87",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131196388,
+          "ref": "sha256:fc91ff74c03479a5b59c0edc4425cdf450922c60dd53514d88d060a5b6c46377",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.dotted",
+          "capturedAt": 1791131196593,
+          "ref": "sha256:12336e38f8270b263f2767ae220621949980d74ef2726dc3eb90e517c2574d87",
+          "sourceRef": "sha256:3e88985e35e937a35d31ee48603a98dca06ce6be2bf0c322c917903b334a336b"
+        }
+      ],
+      "note": "Fine separate dots form a line beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.underline.dotted"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.underline.dotted",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Fine separate dots form a line beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/fc91ff74c03479a5b59c0edc4425cdf450922c60dd53514d88d060a5b6c46377.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/12336e38f8270b263f2767ae220621949980d74ef2726dc3eb90e517c2574d87.png",
+      "content/artifacts/3e88985e35e937a35d31ee48603a98dca06ce6be2bf0c322c917903b334a336b.xwd"
+    ],
+    "featureId": "sgr.underline.dotted",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.underline.dashed",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Short light horizontal segments separated by gaps run beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/cb1e7c7b8654bb746ccaf8dab0e131dfa0fbb3e03a5e1814b835111b6bb3f46b.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/0697d2556a4f4c80dd37963becfeb0830e199dcd03c38a272476a14445dbe8b4.png",
+      "content/artifacts/874bf71a89dea004f681ee14fcfb724252cdfcb60d9e9f1bfd7bf8b21b389970.xwd"
+    ],
+    "featureId": "sgr.underline.dashed",
+    "observation": {
+      "featureId": "sgr.underline.dashed",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:0697d2556a4f4c80dd37963becfeb0830e199dcd03c38a272476a14445dbe8b4",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131196798,
+          "ref": "sha256:cb1e7c7b8654bb746ccaf8dab0e131dfa0fbb3e03a5e1814b835111b6bb3f46b",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.dashed",
+          "capturedAt": 1791131197002,
+          "ref": "sha256:0697d2556a4f4c80dd37963becfeb0830e199dcd03c38a272476a14445dbe8b4",
+          "sourceRef": "sha256:874bf71a89dea004f681ee14fcfb724252cdfcb60d9e9f1bfd7bf8b21b389970"
+        }
+      ],
+      "note": "Short light horizontal segments separated by gaps run beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.underline.dashed"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.underline.dashed",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Short light horizontal segments separated by gaps run beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/cb1e7c7b8654bb746ccaf8dab0e131dfa0fbb3e03a5e1814b835111b6bb3f46b.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/0697d2556a4f4c80dd37963becfeb0830e199dcd03c38a272476a14445dbe8b4.png",
+      "content/artifacts/874bf71a89dea004f681ee14fcfb724252cdfcb60d9e9f1bfd7bf8b21b389970.xwd"
+    ],
+    "featureId": "sgr.underline.dashed",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.blink",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The sample is readable at the captured instant, with the same local lettering as its control. A still frame cannot establish a blink cycle. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/8570f1b96533a6911424fb4810d434522da455ad21e17514d7848f60fd1fff9f.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd"
+    ],
+    "featureId": "sgr.blink",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.inverse",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Target letters are black inside a light rectangular strip; the own control has light letters on black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/f65a28e81612bfa7945acf5aa6b746455c72bf49a610ef6d764389c8916fc5e9.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/671f25b736629ffda1fd0a48930b02bdd7cf436e350bb03656c63fe6ad428a97.png",
+      "content/artifacts/616ca9de808d391cc1af40bd5722980642efaee67e57b466d1b59ff01f983365.xwd"
+    ],
+    "featureId": "sgr.inverse",
+    "observation": {
+      "featureId": "sgr.inverse",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:671f25b736629ffda1fd0a48930b02bdd7cf436e350bb03656c63fe6ad428a97",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131197630,
+          "ref": "sha256:f65a28e81612bfa7945acf5aa6b746455c72bf49a610ef6d764389c8916fc5e9",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.inverse",
+          "capturedAt": 1791131197888,
+          "ref": "sha256:671f25b736629ffda1fd0a48930b02bdd7cf436e350bb03656c63fe6ad428a97",
+          "sourceRef": "sha256:616ca9de808d391cc1af40bd5722980642efaee67e57b466d1b59ff01f983365"
+        }
+      ],
+      "note": "Target letters are black inside a light rectangular strip; the own control has light letters on black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.inverse"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.inverse",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Target letters are black inside a light rectangular strip; the own control has light letters on black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/f65a28e81612bfa7945acf5aa6b746455c72bf49a610ef6d764389c8916fc5e9.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/671f25b736629ffda1fd0a48930b02bdd7cf436e350bb03656c63fe6ad428a97.png",
+      "content/artifacts/616ca9de808d391cc1af40bd5722980642efaee67e57b466d1b59ff01f983365.xwd"
+    ],
+    "featureId": "sgr.inverse",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.hidden",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The sample remains readable in the target capture and matches the own control lettering. This unchanged local appearance does not prove concealment or runtime non-support. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/a3bcb4e07a89e1308a264cc9b2702f09fc4f8e9c7d14ee17ad4feef55bc3df95.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd"
+    ],
+    "featureId": "sgr.hidden",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.strikethrough",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: A straight light line crosses through the lower-middle portion of the target letters; the own control has no crossing line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/54f1250e2118b90135bfc562835545d337946cf98296b2ddecbe16a2d618b2c8.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/e3bb53edc3aad7b065c806befadccb92f36ff65d50fb586648c9e1dd7af82985.png",
+      "content/artifacts/c6fac3d3f67890b4fa66c9a1c7ec9247f72690ab9e576fcba9862519c2f7af1a.xwd"
+    ],
+    "featureId": "sgr.strikethrough",
+    "observation": {
+      "featureId": "sgr.strikethrough",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:e3bb53edc3aad7b065c806befadccb92f36ff65d50fb586648c9e1dd7af82985",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131198568,
+          "ref": "sha256:54f1250e2118b90135bfc562835545d337946cf98296b2ddecbe16a2d618b2c8",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.strikethrough",
+          "capturedAt": 1791131198768,
+          "ref": "sha256:e3bb53edc3aad7b065c806befadccb92f36ff65d50fb586648c9e1dd7af82985",
+          "sourceRef": "sha256:c6fac3d3f67890b4fa66c9a1c7ec9247f72690ab9e576fcba9862519c2f7af1a"
+        }
+      ],
+      "note": "A straight light line crosses through the lower-middle portion of the target letters; the own control has no crossing line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.strikethrough"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.strikethrough",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: A straight light line crosses through the lower-middle portion of the target letters; the own control has no crossing line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/54f1250e2118b90135bfc562835545d337946cf98296b2ddecbe16a2d618b2c8.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/e3bb53edc3aad7b065c806befadccb92f36ff65d50fb586648c9e1dd7af82985.png",
+      "content/artifacts/c6fac3d3f67890b4fa66c9a1c7ec9247f72690ab9e576fcba9862519c2f7af1a.xwd"
+    ],
+    "featureId": "sgr.strikethrough",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.overline",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The own control and target both show readable upright text. No added top line is visible above this local target sample. This supports only that capture observation, not a general feature absence. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/54f1250e2118b90135bfc562835545d337946cf98296b2ddecbe16a2d618b2c8.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/7e133117cfb9a94533219858717cbbc81254870baa4531c1d8f443766faf9d20.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd"
+    ],
+    "featureId": "sgr.overline",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-sgr.underline.color",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: A pink/magenta straight underline appears beneath otherwise light-gray target letters; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/7e133117cfb9a94533219858717cbbc81254870baa4531c1d8f443766faf9d20.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/44cc6a9ef1f910c678d644ccd85be290a753544d2b2ad0fb3474d136fbe2fa05.png",
+      "content/artifacts/d260de894a09f29ca529de4525040f4c3ed6882340d8b506ddbcb66da684692a.xwd"
+    ],
+    "featureId": "sgr.underline.color",
+    "observation": {
+      "featureId": "sgr.underline.color",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:44cc6a9ef1f910c678d644ccd85be290a753544d2b2ad0fb3474d136fbe2fa05",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131199398,
+          "ref": "sha256:7e133117cfb9a94533219858717cbbc81254870baa4531c1d8f443766faf9d20",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.color",
+          "capturedAt": 1791131199599,
+          "ref": "sha256:44cc6a9ef1f910c678d644ccd85be290a753544d2b2ad0fb3474d136fbe2fa05",
+          "sourceRef": "sha256:d260de894a09f29ca529de4525040f4c3ed6882340d8b506ddbcb66da684692a"
+        }
+      ],
+      "note": "A pink/magenta straight underline appears beneath otherwise light-gray target letters; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "sgr.underline.color"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.underline.color",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: A pink/magenta straight underline appears beneath otherwise light-gray target letters; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/7e133117cfb9a94533219858717cbbc81254870baa4531c1d8f443766faf9d20.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/44cc6a9ef1f910c678d644ccd85be290a753544d2b2ad0fb3474d136fbe2fa05.png",
+      "content/artifacts/d260de894a09f29ca529de4525040f4c3ed6882340d8b506ddbcb66da684692a.xwd"
+    ],
+    "featureId": "sgr.underline.color",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-sgr.underline-color-rgb",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: A pink/magenta straight underline appears beneath otherwise light-gray target letters; the own control has no underline. Exact RGB equality is not judged by eye. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty. Pink/magenta appearance does not establish the exact RGB triplet; retain the raw inconclusive result.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/b399b6edae62947ba36ba0d14c3081fdee105a95c79408a72e9bd7e5761bae36.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/b07551ad1a54840bb7d69933a305e00b36366a885d791b00710c1e1182dfea35.png",
+      "content/artifacts/290d847dba2c723b8d7880813157d547dbb8fc9b2d139a3e9719800f600c72e2.xwd"
+    ],
+    "featureId": "sgr.underline-color-rgb",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-cursor.hide",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: The control has a solid light block between L and R on row 2; the target has black space at that cell while CURSOR, L and R remain visible. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/dd092e9827bc970bacbc2e4a77beb63419b58b978f3f9954028c66d08c034cc8.png",
+      "content/artifacts/fe8f300a7d9a63135bcc416a63ec6689db6e596b8270ba587fe16a98211161fc.xwd",
+      "content/artifacts/74b2b2cccb56fe102436ddf1c5585c4d1eacbe913d95ad73218310c283d66b06.png",
+      "content/artifacts/45ed76eea7c0e1d66b6d8bdb762685ebf6ded8ca453dc4fe497cd52ff9cb148a.xwd"
+    ],
+    "featureId": "cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:74b2b2cccb56fe102436ddf1c5585c4d1eacbe913d95ad73218310c283d66b06",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Shown steady block cursor requested at row 2 column 3",
+          "capturedAt": 1791131200416,
+          "ref": "sha256:dd092e9827bc970bacbc2e4a77beb63419b58b978f3f9954028c66d08c034cc8",
+          "sourceRef": "sha256:fe8f300a7d9a63135bcc416a63ec6689db6e596b8270ba587fe16a98211161fc"
+        },
+        {
+          "role": "target",
+          "label": "Hidden cursor requested at the same cell",
+          "capturedAt": 1791131200617,
+          "ref": "sha256:74b2b2cccb56fe102436ddf1c5585c4d1eacbe913d95ad73218310c283d66b06",
+          "sourceRef": "sha256:45ed76eea7c0e1d66b6d8bdb762685ebf6ded8ca453dc4fe497cd52ff9cb148a"
+        }
+      ],
+      "note": "The control has a solid light block between L and R on row 2; the target has black space at that cell while CURSOR, L and R remain visible. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-cursor.hide",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The control has a solid light block between L and R on row 2; the target has black space at that cell while CURSOR, L and R remain visible. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/dd092e9827bc970bacbc2e4a77beb63419b58b978f3f9954028c66d08c034cc8.png",
+      "content/artifacts/fe8f300a7d9a63135bcc416a63ec6689db6e596b8270ba587fe16a98211161fc.xwd",
+      "content/artifacts/74b2b2cccb56fe102436ddf1c5585c4d1eacbe913d95ad73218310c283d66b06.png",
+      "content/artifacts/45ed76eea7c0e1d66b6d8bdb762685ebf6ded8ca453dc4fe497cd52ff9cb148a.xwd"
+    ],
+    "featureId": "cursor.hide",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-cursor.shape",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The default-shape control instant is black at the home cell, while the target instant shows a thin vertical light bar there. The target bar is visible, but a block-to-bar comparison is unavailable. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/5fbc664ac978a3fc289e69b45cc9c2785a3c3a3b627bbfa9c5d1971e2f3bfadc.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/debbe6e5ad009a8049f802c06305e81b922ff779dcd9ba77130cdd91ba5bf520.png",
+      "content/artifacts/62060465d695257e5c2fd140016ead4fd394871c0410f73202586cab06e78010.xwd"
+    ],
+    "featureId": "cursor.shape",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-erase.line.right",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has AB at the original left edge and black cells in place of CDE; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/6078e6d7f9eedf78c8b24bcf126653c86b4e9641cc43a9ed449aed0025610196.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/4627aee043e35641656fcbf3e6c35d9203d323266ce5d27a075bcf4ba19ab7bb.png",
+      "content/artifacts/8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f.xwd",
+      "content/artifacts/3a94fb8452bfc134c282b3462a6d53bff440584c55244654c5a159fc50cd1565.png",
+      "content/artifacts/c26193f8a8ceca8d20d28bc214541b76b5874e0b93f3fdd61ef70938a1074fcd.xwd"
+    ],
+    "featureId": "erase.line.right",
+    "observation": {
+      "featureId": "erase.line.right",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:3a94fb8452bfc134c282b3462a6d53bff440584c55244654c5a159fc50cd1565",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131201961,
+          "ref": "sha256:6078e6d7f9eedf78c8b24bcf126653c86b4e9641cc43a9ed449aed0025610196",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131202161,
+          "ref": "sha256:4627aee043e35641656fcbf3e6c35d9203d323266ce5d27a075bcf4ba19ab7bb",
+          "sourceRef": "sha256:8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131202363,
+          "ref": "sha256:3a94fb8452bfc134c282b3462a6d53bff440584c55244654c5a159fc50cd1565",
+          "sourceRef": "sha256:c26193f8a8ceca8d20d28bc214541b76b5874e0b93f3fdd61ef70938a1074fcd"
+        }
+      ],
+      "note": "Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has AB at the original left edge and black cells in place of CDE; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "erase.line.right"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-erase.line.right",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has AB at the original left edge and black cells in place of CDE; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/6078e6d7f9eedf78c8b24bcf126653c86b4e9641cc43a9ed449aed0025610196.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/4627aee043e35641656fcbf3e6c35d9203d323266ce5d27a075bcf4ba19ab7bb.png",
+      "content/artifacts/8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f.xwd",
+      "content/artifacts/3a94fb8452bfc134c282b3462a6d53bff440584c55244654c5a159fc50cd1565.png",
+      "content/artifacts/c26193f8a8ceca8d20d28bc214541b76b5874e0b93f3fdd61ef70938a1074fcd.xwd"
+    ],
+    "featureId": "erase.line.right",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-erase.line.left",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has DE at their original right positions and black cells in place of ABC; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/883487d582b3d807cd2de86f31fa2303c64ac02d7cc9bdd2bb15473d3691f265.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/bf716b43719ed659aadf69ddd6f42cf6f628bac1fcf6ab66a2c43d60f79e4f17.png",
+      "content/artifacts/984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c.xwd",
+      "content/artifacts/d4853eb8269fd5f59692f1fc318fe559c4c587f2565234e0046d420ae353e24f.png",
+      "content/artifacts/cc157ed17026bf6e309227a28fdd240b06ca08e3187b397c22bc897e7cccb015.xwd"
+    ],
+    "featureId": "erase.line.left",
+    "observation": {
+      "featureId": "erase.line.left",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:d4853eb8269fd5f59692f1fc318fe559c4c587f2565234e0046d420ae353e24f",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131202568,
+          "ref": "sha256:883487d582b3d807cd2de86f31fa2303c64ac02d7cc9bdd2bb15473d3691f265",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131202791,
+          "ref": "sha256:bf716b43719ed659aadf69ddd6f42cf6f628bac1fcf6ab66a2c43d60f79e4f17",
+          "sourceRef": "sha256:984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131203046,
+          "ref": "sha256:d4853eb8269fd5f59692f1fc318fe559c4c587f2565234e0046d420ae353e24f",
+          "sourceRef": "sha256:cc157ed17026bf6e309227a28fdd240b06ca08e3187b397c22bc897e7cccb015"
+        }
+      ],
+      "note": "Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has DE at their original right positions and black cells in place of ABC; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "erase.line.left"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-erase.line.left",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has DE at their original right positions and black cells in place of ABC; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/883487d582b3d807cd2de86f31fa2303c64ac02d7cc9bdd2bb15473d3691f265.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/bf716b43719ed659aadf69ddd6f42cf6f628bac1fcf6ab66a2c43d60f79e4f17.png",
+      "content/artifacts/984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c.xwd",
+      "content/artifacts/d4853eb8269fd5f59692f1fc318fe559c4c587f2565234e0046d420ae353e24f.png",
+      "content/artifacts/cc157ed17026bf6e309227a28fdd240b06ca08e3187b397c22bc897e7cccb015.xwd"
+    ],
+    "featureId": "erase.line.left",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-erase.line.all",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target row 1 is black where ABCDE appeared; KEEP! remains on row 2. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/db0c9b215c5e59ff07f9180a0776a93f93ba66dbd0ba98929740ee8050ab127c.png",
+      "content/artifacts/b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9.xwd",
+      "content/artifacts/b747d5319afcdd5f5cb6a14f49ae2f6ecd353be70f7ecdacb768277fe28edcd4.png",
+      "content/artifacts/8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f.xwd",
+      "content/artifacts/2ac21a24b3389eb99b51254f3463ca66266710cf3f8670a367b240da79f31824.png",
+      "content/artifacts/6eda3fca2f4f53d374b05d576975173506103220ea05c56ac99adddde2b3905f.xwd"
+    ],
+    "featureId": "erase.line.all",
+    "observation": {
+      "featureId": "erase.line.all",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:2ac21a24b3389eb99b51254f3463ca66266710cf3f8670a367b240da79f31824",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131203268,
+          "ref": "sha256:db0c9b215c5e59ff07f9180a0776a93f93ba66dbd0ba98929740ee8050ab127c",
+          "sourceRef": "sha256:b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131203463,
+          "ref": "sha256:b747d5319afcdd5f5cb6a14f49ae2f6ecd353be70f7ecdacb768277fe28edcd4",
+          "sourceRef": "sha256:8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131203656,
+          "ref": "sha256:2ac21a24b3389eb99b51254f3463ca66266710cf3f8670a367b240da79f31824",
+          "sourceRef": "sha256:6eda3fca2f4f53d374b05d576975173506103220ea05c56ac99adddde2b3905f"
+        }
+      ],
+      "note": "Seeded control has ABCDE on row 1 and KEEP! on row 2. Target row 1 is black where ABCDE appeared; KEEP! remains on row 2. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "erase.line.all"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-erase.line.all",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target row 1 is black where ABCDE appeared; KEEP! remains on row 2. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/db0c9b215c5e59ff07f9180a0776a93f93ba66dbd0ba98929740ee8050ab127c.png",
+      "content/artifacts/b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9.xwd",
+      "content/artifacts/b747d5319afcdd5f5cb6a14f49ae2f6ecd353be70f7ecdacb768277fe28edcd4.png",
+      "content/artifacts/8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f.xwd",
+      "content/artifacts/2ac21a24b3389eb99b51254f3463ca66266710cf3f8670a367b240da79f31824.png",
+      "content/artifacts/6eda3fca2f4f53d374b05d576975173506103220ea05c56ac99adddde2b3905f.xwd"
+    ],
+    "featureId": "erase.line.all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-erase.screen.below",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target keeps AAAAA and the left BB at mid-height; the right BBB and bottom CCCCC are black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/3d94a78cd88c6f7ea558455b82970000468a91c91f6ee4da6fdb51c11d42e1bd.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/0ed04a7c9e4cbe80809d85ab3a1376eb09409869150c2b4ac3a2940fbc3acde6.png",
+      "content/artifacts/329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c.xwd",
+      "content/artifacts/e7862e9b2d9a01651cbba0dca8658571785290bd6372ea23a5351a8d013b2428.png",
+      "content/artifacts/a66e278e70a2c23650b829fc2515d064f0ff6282b7b2d6af7bb14212a8805621.xwd"
+    ],
+    "featureId": "erase.screen.below",
+    "observation": {
+      "featureId": "erase.screen.below",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:e7862e9b2d9a01651cbba0dca8658571785290bd6372ea23a5351a8d013b2428",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131203852,
+          "ref": "sha256:3d94a78cd88c6f7ea558455b82970000468a91c91f6ee4da6fdb51c11d42e1bd",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131204051,
+          "ref": "sha256:0ed04a7c9e4cbe80809d85ab3a1376eb09409869150c2b4ac3a2940fbc3acde6",
+          "sourceRef": "sha256:329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131204249,
+          "ref": "sha256:e7862e9b2d9a01651cbba0dca8658571785290bd6372ea23a5351a8d013b2428",
+          "sourceRef": "sha256:a66e278e70a2c23650b829fc2515d064f0ff6282b7b2d6af7bb14212a8805621"
+        }
+      ],
+      "note": "Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target keeps AAAAA and the left BB at mid-height; the right BBB and bottom CCCCC are black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "erase.screen.below"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-erase.screen.below",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target keeps AAAAA and the left BB at mid-height; the right BBB and bottom CCCCC are black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/3d94a78cd88c6f7ea558455b82970000468a91c91f6ee4da6fdb51c11d42e1bd.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/0ed04a7c9e4cbe80809d85ab3a1376eb09409869150c2b4ac3a2940fbc3acde6.png",
+      "content/artifacts/329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c.xwd",
+      "content/artifacts/e7862e9b2d9a01651cbba0dca8658571785290bd6372ea23a5351a8d013b2428.png",
+      "content/artifacts/a66e278e70a2c23650b829fc2515d064f0ff6282b7b2d6af7bb14212a8805621.xwd"
+    ],
+    "featureId": "erase.screen.below",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-erase.screen.above",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target has black in place of AAAAA and the left BBB; the right BB and bottom CCCCC remain. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/f2fe40a206201492af7a86ade289070115b76349878a198e340bfa11565f0721.png",
+      "content/artifacts/4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99.xwd",
+      "content/artifacts/10472b919f7da334e01e652bb109e74b7a70333ffea76b762e484f3b365f68be.png",
+      "content/artifacts/3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee.xwd",
+      "content/artifacts/02a6a5800eddb0997e1bce8a4fd3257e3730521418e7248eb454c3b47aa708f9.png",
+      "content/artifacts/d5db72aa1620a9dbe0220d3ca56a94ebeeab5bd0d8d00fc528c2f9dd4d27779d.xwd"
+    ],
+    "featureId": "erase.screen.above",
+    "observation": {
+      "featureId": "erase.screen.above",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:02a6a5800eddb0997e1bce8a4fd3257e3730521418e7248eb454c3b47aa708f9",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131204450,
+          "ref": "sha256:f2fe40a206201492af7a86ade289070115b76349878a198e340bfa11565f0721",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131204646,
+          "ref": "sha256:10472b919f7da334e01e652bb109e74b7a70333ffea76b762e484f3b365f68be",
+          "sourceRef": "sha256:3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131204847,
+          "ref": "sha256:02a6a5800eddb0997e1bce8a4fd3257e3730521418e7248eb454c3b47aa708f9",
+          "sourceRef": "sha256:d5db72aa1620a9dbe0220d3ca56a94ebeeab5bd0d8d00fc528c2f9dd4d27779d"
+        }
+      ],
+      "note": "Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target has black in place of AAAAA and the left BBB; the right BB and bottom CCCCC remain. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "erase.screen.above"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-erase.screen.above",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target has black in place of AAAAA and the left BBB; the right BB and bottom CCCCC remain. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/f2fe40a206201492af7a86ade289070115b76349878a198e340bfa11565f0721.png",
+      "content/artifacts/4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99.xwd",
+      "content/artifacts/10472b919f7da334e01e652bb109e74b7a70333ffea76b762e484f3b365f68be.png",
+      "content/artifacts/3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee.xwd",
+      "content/artifacts/02a6a5800eddb0997e1bce8a4fd3257e3730521418e7248eb454c3b47aa708f9.png",
+      "content/artifacts/d5db72aa1620a9dbe0220d3ca56a94ebeeab5bd0d8d00fc528c2f9dd4d27779d.xwd"
+    ],
+    "featureId": "erase.screen.above",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-erase.screen.all",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control shows AAAAA, BBBBB and CCCCC in their three separated rows. Target has black at all three seeded text regions, matching the blank comparator locally. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/2833373eb8f5bf0a2310ba380d9fa4cb500f49cb7e83565971213694014a2787.png",
+      "content/artifacts/4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99.xwd",
+      "content/artifacts/268d47ab352aeffc2aeb5c22695fb19b3bed8dff486be57299a3bf71c315a17d.png",
+      "content/artifacts/329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c.xwd"
+    ],
+    "featureId": "erase.screen.all",
+    "observation": {
+      "featureId": "erase.screen.all",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:2833373eb8f5bf0a2310ba380d9fa4cb500f49cb7e83565971213694014a2787",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131205052,
+          "ref": "sha256:2833373eb8f5bf0a2310ba380d9fa4cb500f49cb7e83565971213694014a2787",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131205252,
+          "ref": "sha256:268d47ab352aeffc2aeb5c22695fb19b3bed8dff486be57299a3bf71c315a17d",
+          "sourceRef": "sha256:329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131205452,
+          "ref": "sha256:2833373eb8f5bf0a2310ba380d9fa4cb500f49cb7e83565971213694014a2787",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        }
+      ],
+      "note": "Seeded control shows AAAAA, BBBBB and CCCCC in their three separated rows. Target has black at all three seeded text regions, matching the blank comparator locally. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "erase.screen.all"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-erase.screen.all",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control shows AAAAA, BBBBB and CCCCC in their three separated rows. Target has black at all three seeded text regions, matching the blank comparator locally. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/2833373eb8f5bf0a2310ba380d9fa4cb500f49cb7e83565971213694014a2787.png",
+      "content/artifacts/4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99.xwd",
+      "content/artifacts/268d47ab352aeffc2aeb5c22695fb19b3bed8dff486be57299a3bf71c315a17d.png",
+      "content/artifacts/329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c.xwd"
+    ],
+    "featureId": "erase.screen.all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-reset.decaln",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The seed, immediate target, delayed target and CUP-only control retain the repeated AB pattern. The final ordinary-glyph redraw control shows X at the top-left followed by an E-filled grid. These five checkpoints do not support a global claim that an E pattern never appears, or isolate the runtime cause. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/2a2cc49d0dd5c1da0ea7e39ee4adad03b63a1ddfe7ca6d618a3545708b76a865.png",
+      "content/artifacts/ef10e845afe7a3630bcdd55dc04a4048e1ddab836ee80174c390ce0ddb61d1f6.xwd",
+      "content/artifacts/8a8fdce05e1aa662d67fa071a564ec797afcfeb454a476353a9f51561ccfa609.png",
+      "content/artifacts/960d6f3c03317a9677429f6eef43071d66f0b75a4e2e9d2c8b143e39b5a9be3e.png",
+      "content/artifacts/d7e4c48d590aab10090a143af5af0531992b02ea6233e2a9e7488073b6fd7391.png",
+      "content/artifacts/e099aa68d6dbed023be943076dc8ee5595cbae8812e9ef943eab365ce220fccf.xwd"
+    ],
+    "featureId": "reset.decaln",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-2c32346873c0f34fa83b91684e6019ee-charsets.dec-special",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Control rows 1, 3 and 4 show qqq; row 2 shows q─q. Target row 3 shows q─q like the Unicode comparator on row 2, with ASCII q flanks; rows 1 and 4 remain qqq. Residual _TOP and scroll text outside those three cells per row are excluded. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/7aa185878082f9b7cabbb2d42d3a43f418868a01324d454555cdcbc1333bbe89.png",
+      "content/artifacts/846b2cc97a13c1750a46dca59d3ed1a5dd1152cd39423b5cd9dcbab8d3f3d7fe.xwd",
+      "content/artifacts/f4418a55ba7e722b59eede42b0aa4669dcdc41aaa8f5cab3971ef92f2da02b04.png",
+      "content/artifacts/c82b0962123fd7ada4cc4e3d46769cdc2f4ae5b57ac5865f9e18eb80aced3609.xwd"
+    ],
+    "featureId": "charsets.dec-special",
+    "observation": {
+      "featureId": "charsets.dec-special",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:f4418a55ba7e722b59eede42b0aa4669dcdc41aaa8f5cab3971ef92f2da02b04",
+      "frames": [
+        {
+          "role": "control",
+          "label": "ASCII q controls on rows 1, 3 and 4; direct Unicode q─q on row 2",
+          "capturedAt": 1791131214151,
+          "ref": "sha256:7aa185878082f9b7cabbb2d42d3a43f418868a01324d454555cdcbc1333bbe89",
+          "sourceRef": "sha256:846b2cc97a13c1750a46dca59d3ed1a5dd1152cd39423b5cd9dcbab8d3f3d7fe"
+        },
+        {
+          "role": "target",
+          "label": "DEC Special Graphics sample at row 3, column 2; restored ASCII qqq on row 4",
+          "capturedAt": 1791131214386,
+          "ref": "sha256:f4418a55ba7e722b59eede42b0aa4669dcdc41aaa8f5cab3971ef92f2da02b04",
+          "sourceRef": "sha256:c82b0962123fd7ada4cc4e3d46769cdc2f4ae5b57ac5865f9e18eb80aced3609"
+        }
+      ],
+      "note": "Control rows 1, 3 and 4 show qqq; row 2 shows q─q. Target row 3 shows q─q like the Unicode comparator on row 2, with ASCII q flanks; rows 1 and 4 remain qqq. Residual _TOP and scroll text outside those three cells per row are excluded. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile.",
+      "rawReplyRef": "charsets.dec-special"
+    }
+  },
+  {
+    "runId": "2c32346873c0f34fa83b91684e6019ee",
+    "runSha256": "b809d850249da92d872207757c79a924438d16850ce03e31117e714451c2623d",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-2c32346873c0f34fa83b91684e6019ee-charsets.dec-special",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Control rows 1, 3 and 4 show qqq; row 2 shows q─q. Target row 3 shows q─q like the Unicode comparator on row 2, with ASCII q flanks; rows 1 and 4 remain qqq. Residual _TOP and scroll text outside those three cells per row are excluded. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 allow profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-allow-2c32346873c0f34fa83b91684e6019ee.json",
+      "content/artifacts/7aa185878082f9b7cabbb2d42d3a43f418868a01324d454555cdcbc1333bbe89.png",
+      "content/artifacts/846b2cc97a13c1750a46dca59d3ed1a5dd1152cd39423b5cd9dcbab8d3f3d7fe.xwd",
+      "content/artifacts/f4418a55ba7e722b59eede42b0aa4669dcdc41aaa8f5cab3971ef92f2da02b04.png",
+      "content/artifacts/c82b0962123fd7ada4cc4e3d46769cdc2f4ae5b57ac5865f9e18eb80aced3609.xwd"
+    ],
+    "featureId": "charsets.dec-special",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "identity-app-kitty-52dbe531b94838b2f3c8a7effae174e7",
+    "reviewer": "@adhoc/1 (automated exact-run identity review; independent Sol mechanical PASS)",
+    "reason": "Measured collector XTVERSION contains complete kitty(0.49.2) and DA1 ?62;52;c frames. Existing deriveIdentity and verifyTerminalIdentity independently return checked/ok, and the actual private selected-results projection admits this exact run without exclusion. Independent mechanical checks bind its clean source 8d3423cc445e273ab323d03b771cb53ed276d2c1, frozen runner, image, executable SHA256 a46736d89c768bd727701663ae594195aafc854e814b286d07c171f46497c8e6, configuration, permissions and window/collector ownership to the recorded raw SHA256. This review establishes exact-run attribution in the recorded Linux/Xvfb/llvmpipe 800 by 600 profile; it does not establish every rendered feature or full protocol conformance.",
+    "sources": ["content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json"],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.bold",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Target letters and digits have visibly heavier strokes than the own upright control. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/453018f1f95e75eba1fd5c598169b448df3a6ae443c21e4082528d67a58dc86b.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/1b9cc3ed8ce472d36bbfe2970dd9fc625c81d303962f1d13f7d1699401cd0c5b.png",
+      "content/artifacts/13949dd8493604e7d0322bbfbea1086f6ce531e8759cfe85b3b6b1ec991077a6.xwd"
+    ],
+    "featureId": "sgr.bold",
+    "observation": {
+      "featureId": "sgr.bold",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:1b9cc3ed8ce472d36bbfe2970dd9fc625c81d303962f1d13f7d1699401cd0c5b",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131303015,
+          "ref": "sha256:453018f1f95e75eba1fd5c598169b448df3a6ae443c21e4082528d67a58dc86b",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.bold",
+          "capturedAt": 1791131303227,
+          "ref": "sha256:1b9cc3ed8ce472d36bbfe2970dd9fc625c81d303962f1d13f7d1699401cd0c5b",
+          "sourceRef": "sha256:13949dd8493604e7d0322bbfbea1086f6ce531e8759cfe85b3b6b1ec991077a6"
+        }
+      ],
+      "note": "Target letters and digits have visibly heavier strokes than the own upright control. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.bold"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.bold",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Target letters and digits have visibly heavier strokes than the own upright control. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/453018f1f95e75eba1fd5c598169b448df3a6ae443c21e4082528d67a58dc86b.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/1b9cc3ed8ce472d36bbfe2970dd9fc625c81d303962f1d13f7d1699401cd0c5b.png",
+      "content/artifacts/13949dd8493604e7d0322bbfbea1086f6ce531e8759cfe85b3b6b1ec991077a6.xwd"
+    ],
+    "featureId": "sgr.bold",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.faint",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Target sample is darker gray than the own light-gray control on the same black field. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/4505ba462b4c09aa3c7db4ace2357ce9ae41c0a14a9bf2027cb39b03139a2d23.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/23dc519e0c3545d06c93ef35fedc3b3e25085232ca2fb1ce43673c2f51f08949.png",
+      "content/artifacts/d6409f44015529621f216fb4086b2c19d8c73a6d3743123abf31ca879114e97d.xwd"
+    ],
+    "featureId": "sgr.faint",
+    "observation": {
+      "featureId": "sgr.faint",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:23dc519e0c3545d06c93ef35fedc3b3e25085232ca2fb1ce43673c2f51f08949",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131303438,
+          "ref": "sha256:4505ba462b4c09aa3c7db4ace2357ce9ae41c0a14a9bf2027cb39b03139a2d23",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.faint",
+          "capturedAt": 1791131303642,
+          "ref": "sha256:23dc519e0c3545d06c93ef35fedc3b3e25085232ca2fb1ce43673c2f51f08949",
+          "sourceRef": "sha256:d6409f44015529621f216fb4086b2c19d8c73a6d3743123abf31ca879114e97d"
+        }
+      ],
+      "note": "Target sample is darker gray than the own light-gray control on the same black field. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.faint"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.faint",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Target sample is darker gray than the own light-gray control on the same black field. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/4505ba462b4c09aa3c7db4ace2357ce9ae41c0a14a9bf2027cb39b03139a2d23.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/23dc519e0c3545d06c93ef35fedc3b3e25085232ca2fb1ce43673c2f51f08949.png",
+      "content/artifacts/d6409f44015529621f216fb4086b2c19d8c73a6d3743123abf31ca879114e97d.xwd"
+    ],
+    "featureId": "sgr.faint",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.italic",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Target sample slants to the right; the own control has upright strokes. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/453018f1f95e75eba1fd5c598169b448df3a6ae443c21e4082528d67a58dc86b.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/8627d47b8a7a47fddea3580d46705d3694c783e0880ba4eb56667f023956d708.png",
+      "content/artifacts/c81c3a159d3667af0e4d0e71d685fd86efc3ce40b1e62eacda68b5429d3be72f.xwd"
+    ],
+    "featureId": "sgr.italic",
+    "observation": {
+      "featureId": "sgr.italic",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:8627d47b8a7a47fddea3580d46705d3694c783e0880ba4eb56667f023956d708",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131303844,
+          "ref": "sha256:453018f1f95e75eba1fd5c598169b448df3a6ae443c21e4082528d67a58dc86b",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.italic",
+          "capturedAt": 1791131304048,
+          "ref": "sha256:8627d47b8a7a47fddea3580d46705d3694c783e0880ba4eb56667f023956d708",
+          "sourceRef": "sha256:c81c3a159d3667af0e4d0e71d685fd86efc3ce40b1e62eacda68b5429d3be72f"
+        }
+      ],
+      "note": "Target sample slants to the right; the own control has upright strokes. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.italic"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.italic",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Target sample slants to the right; the own control has upright strokes. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/453018f1f95e75eba1fd5c598169b448df3a6ae443c21e4082528d67a58dc86b.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/8627d47b8a7a47fddea3580d46705d3694c783e0880ba4eb56667f023956d708.png",
+      "content/artifacts/c81c3a159d3667af0e4d0e71d685fd86efc3ce40b1e62eacda68b5429d3be72f.xwd"
+    ],
+    "featureId": "sgr.italic",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.single",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: A single straight light line runs immediately beneath the target sample; the own control has no such line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/cc51aba27d33c0f88fb0d490818e944280e28e6a7562f328d2c517e9aba13aa8.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/4310b0ae1142f4678c601d1150fc23c22a986fec18dc79eb1197031e83e39770.png",
+      "content/artifacts/1ae7e0f3dd4d35323bb716ed91913ae8dc859b218da6a996304925d0284fe5b8.xwd"
+    ],
+    "featureId": "sgr.underline.single",
+    "observation": {
+      "featureId": "sgr.underline.single",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:4310b0ae1142f4678c601d1150fc23c22a986fec18dc79eb1197031e83e39770",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131304257,
+          "ref": "sha256:cc51aba27d33c0f88fb0d490818e944280e28e6a7562f328d2c517e9aba13aa8",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.single",
+          "capturedAt": 1791131304458,
+          "ref": "sha256:4310b0ae1142f4678c601d1150fc23c22a986fec18dc79eb1197031e83e39770",
+          "sourceRef": "sha256:1ae7e0f3dd4d35323bb716ed91913ae8dc859b218da6a996304925d0284fe5b8"
+        }
+      ],
+      "note": "A single straight light line runs immediately beneath the target sample; the own control has no such line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.underline.single"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.single",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: A single straight light line runs immediately beneath the target sample; the own control has no such line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/cc51aba27d33c0f88fb0d490818e944280e28e6a7562f328d2c517e9aba13aa8.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/4310b0ae1142f4678c601d1150fc23c22a986fec18dc79eb1197031e83e39770.png",
+      "content/artifacts/1ae7e0f3dd4d35323bb716ed91913ae8dc859b218da6a996304925d0284fe5b8.xwd"
+    ],
+    "featureId": "sgr.underline.single",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.double",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Two closely spaced straight light lines sit beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/320a1a04c64c652503c44c4958f02016851dd015bb8c944d632977884154f0f4.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/d51c559ae9f2d7e625ff3517bbc0fa5ec7270f75b20505812d2f23c200ec55d5.png",
+      "content/artifacts/ac7d8fd26cf444b952f2a4bb45cbf2a6c3c048e04844c4caeb3c7ab05f4d912d.xwd"
+    ],
+    "featureId": "sgr.underline.double",
+    "observation": {
+      "featureId": "sgr.underline.double",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:d51c559ae9f2d7e625ff3517bbc0fa5ec7270f75b20505812d2f23c200ec55d5",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131304669,
+          "ref": "sha256:320a1a04c64c652503c44c4958f02016851dd015bb8c944d632977884154f0f4",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.double",
+          "capturedAt": 1791131304877,
+          "ref": "sha256:d51c559ae9f2d7e625ff3517bbc0fa5ec7270f75b20505812d2f23c200ec55d5",
+          "sourceRef": "sha256:ac7d8fd26cf444b952f2a4bb45cbf2a6c3c048e04844c4caeb3c7ab05f4d912d"
+        }
+      ],
+      "note": "Two closely spaced straight light lines sit beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.underline.double"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.double",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Two closely spaced straight light lines sit beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/320a1a04c64c652503c44c4958f02016851dd015bb8c944d632977884154f0f4.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/d51c559ae9f2d7e625ff3517bbc0fa5ec7270f75b20505812d2f23c200ec55d5.png",
+      "content/artifacts/ac7d8fd26cf444b952f2a4bb45cbf2a6c3c048e04844c4caeb3c7ab05f4d912d.xwd"
+    ],
+    "featureId": "sgr.underline.double",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.curly",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: A repeating wavy light line runs beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/6d974b440b5b73d409328d79ef743e2ee65dc60e41541c6c419b1398502518b5.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/b11c307da3d6f43285e867e398515c1923398aece379a38cc3bc2b9e9c8ea589.png",
+      "content/artifacts/e2e3508027a9ee1b4084cd5ae8e94801f9874c2b672a7762aede338bb4316c0e.xwd"
+    ],
+    "featureId": "sgr.underline.curly",
+    "observation": {
+      "featureId": "sgr.underline.curly",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:b11c307da3d6f43285e867e398515c1923398aece379a38cc3bc2b9e9c8ea589",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131305077,
+          "ref": "sha256:6d974b440b5b73d409328d79ef743e2ee65dc60e41541c6c419b1398502518b5",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.curly",
+          "capturedAt": 1791131305272,
+          "ref": "sha256:b11c307da3d6f43285e867e398515c1923398aece379a38cc3bc2b9e9c8ea589",
+          "sourceRef": "sha256:e2e3508027a9ee1b4084cd5ae8e94801f9874c2b672a7762aede338bb4316c0e"
+        }
+      ],
+      "note": "A repeating wavy light line runs beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.underline.curly"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.curly",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: A repeating wavy light line runs beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/6d974b440b5b73d409328d79ef743e2ee65dc60e41541c6c419b1398502518b5.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/b11c307da3d6f43285e867e398515c1923398aece379a38cc3bc2b9e9c8ea589.png",
+      "content/artifacts/e2e3508027a9ee1b4084cd5ae8e94801f9874c2b672a7762aede338bb4316c0e.xwd"
+    ],
+    "featureId": "sgr.underline.curly",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.dotted",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Fine separate dots form a line beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/8de2811bda6c0b79dafc4318b32e0b7a0af96cb982dbc17251b7dfcde80b9efd.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/6dc39350706d852817612a46109a5860500a20d61b8987bd2c410c4982de227e.png",
+      "content/artifacts/3e88985e35e937a35d31ee48603a98dca06ce6be2bf0c322c917903b334a336b.xwd"
+    ],
+    "featureId": "sgr.underline.dotted",
+    "observation": {
+      "featureId": "sgr.underline.dotted",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:6dc39350706d852817612a46109a5860500a20d61b8987bd2c410c4982de227e",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131305470,
+          "ref": "sha256:8de2811bda6c0b79dafc4318b32e0b7a0af96cb982dbc17251b7dfcde80b9efd",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.dotted",
+          "capturedAt": 1791131305665,
+          "ref": "sha256:6dc39350706d852817612a46109a5860500a20d61b8987bd2c410c4982de227e",
+          "sourceRef": "sha256:3e88985e35e937a35d31ee48603a98dca06ce6be2bf0c322c917903b334a336b"
+        }
+      ],
+      "note": "Fine separate dots form a line beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.underline.dotted"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.dotted",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Fine separate dots form a line beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/8de2811bda6c0b79dafc4318b32e0b7a0af96cb982dbc17251b7dfcde80b9efd.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/6dc39350706d852817612a46109a5860500a20d61b8987bd2c410c4982de227e.png",
+      "content/artifacts/3e88985e35e937a35d31ee48603a98dca06ce6be2bf0c322c917903b334a336b.xwd"
+    ],
+    "featureId": "sgr.underline.dotted",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.dashed",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Short light horizontal segments separated by gaps run beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/6d974b440b5b73d409328d79ef743e2ee65dc60e41541c6c419b1398502518b5.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/4bb0fb4bfb2e91d9e363c53d5a8e7d962adc00212a054acc02265440ba172fe4.png",
+      "content/artifacts/874bf71a89dea004f681ee14fcfb724252cdfcb60d9e9f1bfd7bf8b21b389970.xwd"
+    ],
+    "featureId": "sgr.underline.dashed",
+    "observation": {
+      "featureId": "sgr.underline.dashed",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:4bb0fb4bfb2e91d9e363c53d5a8e7d962adc00212a054acc02265440ba172fe4",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131305863,
+          "ref": "sha256:6d974b440b5b73d409328d79ef743e2ee65dc60e41541c6c419b1398502518b5",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.dashed",
+          "capturedAt": 1791131306058,
+          "ref": "sha256:4bb0fb4bfb2e91d9e363c53d5a8e7d962adc00212a054acc02265440ba172fe4",
+          "sourceRef": "sha256:874bf71a89dea004f681ee14fcfb724252cdfcb60d9e9f1bfd7bf8b21b389970"
+        }
+      ],
+      "note": "Short light horizontal segments separated by gaps run beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.underline.dashed"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.dashed",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Short light horizontal segments separated by gaps run beneath the target sample; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/6d974b440b5b73d409328d79ef743e2ee65dc60e41541c6c419b1398502518b5.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/4bb0fb4bfb2e91d9e363c53d5a8e7d962adc00212a054acc02265440ba172fe4.png",
+      "content/artifacts/874bf71a89dea004f681ee14fcfb724252cdfcb60d9e9f1bfd7bf8b21b389970.xwd"
+    ],
+    "featureId": "sgr.underline.dashed",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.blink",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The sample is readable at the captured instant, with the same local lettering as its control. A still frame cannot establish a blink cycle. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/e8f265bc5d07021ec0c3f3467809f4fff4bb2b04b6725b2660bcaacfa580562a.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd"
+    ],
+    "featureId": "sgr.blink",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.inverse",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Target letters are black inside a light rectangular strip; the own control has light letters on black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/ede4c95eb2372b178d91d29c054a744cbd846a35229a1fd44233bed2f33984fc.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/06b0880d2e19614d57f086ac26df8cb12b04603897b85220be0392de30fa0f0b.png",
+      "content/artifacts/616ca9de808d391cc1af40bd5722980642efaee67e57b466d1b59ff01f983365.xwd"
+    ],
+    "featureId": "sgr.inverse",
+    "observation": {
+      "featureId": "sgr.inverse",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:06b0880d2e19614d57f086ac26df8cb12b04603897b85220be0392de30fa0f0b",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131306649,
+          "ref": "sha256:ede4c95eb2372b178d91d29c054a744cbd846a35229a1fd44233bed2f33984fc",
+          "sourceRef": "sha256:1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e"
+        },
+        {
+          "role": "target",
+          "label": "sgr.inverse",
+          "capturedAt": 1791131306844,
+          "ref": "sha256:06b0880d2e19614d57f086ac26df8cb12b04603897b85220be0392de30fa0f0b",
+          "sourceRef": "sha256:616ca9de808d391cc1af40bd5722980642efaee67e57b466d1b59ff01f983365"
+        }
+      ],
+      "note": "Target letters are black inside a light rectangular strip; the own control has light letters on black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.inverse"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.inverse",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Target letters are black inside a light rectangular strip; the own control has light letters on black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/ede4c95eb2372b178d91d29c054a744cbd846a35229a1fd44233bed2f33984fc.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/06b0880d2e19614d57f086ac26df8cb12b04603897b85220be0392de30fa0f0b.png",
+      "content/artifacts/616ca9de808d391cc1af40bd5722980642efaee67e57b466d1b59ff01f983365.xwd"
+    ],
+    "featureId": "sgr.inverse",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.hidden",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The sample remains readable in the target capture and matches the own control lettering. This unchanged local appearance does not prove concealment or runtime non-support. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/c6ab73c4aceffb6930f9ffc0b7bbbc09e57e8dea3939f1a6b5d6a49c1b0bdb2d.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/e084ee5d9d82a69ed19e7de7f7449943effba6c99bb1b2c7b2241c354a240a02.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd"
+    ],
+    "featureId": "sgr.hidden",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.strikethrough",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: A straight light line crosses through the lower-middle portion of the target letters; the own control has no crossing line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/e084ee5d9d82a69ed19e7de7f7449943effba6c99bb1b2c7b2241c354a240a02.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/4e7bdb359fa488f0223721cb685ed6bfd8553f5ebc2301f772f969fc7e98400f.png",
+      "content/artifacts/c6fac3d3f67890b4fa66c9a1c7ec9247f72690ab9e576fcba9862519c2f7af1a.xwd"
+    ],
+    "featureId": "sgr.strikethrough",
+    "observation": {
+      "featureId": "sgr.strikethrough",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:4e7bdb359fa488f0223721cb685ed6bfd8553f5ebc2301f772f969fc7e98400f",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131307428,
+          "ref": "sha256:e084ee5d9d82a69ed19e7de7f7449943effba6c99bb1b2c7b2241c354a240a02",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.strikethrough",
+          "capturedAt": 1791131307622,
+          "ref": "sha256:4e7bdb359fa488f0223721cb685ed6bfd8553f5ebc2301f772f969fc7e98400f",
+          "sourceRef": "sha256:c6fac3d3f67890b4fa66c9a1c7ec9247f72690ab9e576fcba9862519c2f7af1a"
+        }
+      ],
+      "note": "A straight light line crosses through the lower-middle portion of the target letters; the own control has no crossing line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.strikethrough"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.strikethrough",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: A straight light line crosses through the lower-middle portion of the target letters; the own control has no crossing line. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/e084ee5d9d82a69ed19e7de7f7449943effba6c99bb1b2c7b2241c354a240a02.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/4e7bdb359fa488f0223721cb685ed6bfd8553f5ebc2301f772f969fc7e98400f.png",
+      "content/artifacts/c6fac3d3f67890b4fa66c9a1c7ec9247f72690ab9e576fcba9862519c2f7af1a.xwd"
+    ],
+    "featureId": "sgr.strikethrough",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.overline",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The own control and target both show readable upright text. No added top line is visible above this local target sample. This supports only that capture observation, not a general feature absence. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/c6ab73c4aceffb6930f9ffc0b7bbbc09e57e8dea3939f1a6b5d6a49c1b0bdb2d.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/dde47e2550369fe049ae1513b88b421fbb796ac61304b386814b762d604c066c.png"
+    ],
+    "featureId": "sgr.overline",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.color",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: A pink/magenta straight underline appears beneath otherwise light-gray target letters; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/2629c7e95f70980247381c6323c1d2f75d3e356c3e281147c6bfa08c59d815a2.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/e42ee86c68241c7fd6c16f6519222cee88bf9627efbc6477cffa3a28ee3dfe0c.png",
+      "content/artifacts/290d847dba2c723b8d7880813157d547dbb8fc9b2d139a3e9719800f600c72e2.xwd"
+    ],
+    "featureId": "sgr.underline.color",
+    "observation": {
+      "featureId": "sgr.underline.color",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:e42ee86c68241c7fd6c16f6519222cee88bf9627efbc6477cffa3a28ee3dfe0c",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Unstyled text sample",
+          "capturedAt": 1791131308213,
+          "ref": "sha256:2629c7e95f70980247381c6323c1d2f75d3e356c3e281147c6bfa08c59d815a2",
+          "sourceRef": "sha256:5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753"
+        },
+        {
+          "role": "target",
+          "label": "sgr.underline.color",
+          "capturedAt": 1791131308405,
+          "ref": "sha256:e42ee86c68241c7fd6c16f6519222cee88bf9627efbc6477cffa3a28ee3dfe0c",
+          "sourceRef": "sha256:290d847dba2c723b8d7880813157d547dbb8fc9b2d139a3e9719800f600c72e2"
+        }
+      ],
+      "note": "A pink/magenta straight underline appears beneath otherwise light-gray target letters; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "sgr.underline.color"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.underline.color",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: A pink/magenta straight underline appears beneath otherwise light-gray target letters; the own control has no underline. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/2629c7e95f70980247381c6323c1d2f75d3e356c3e281147c6bfa08c59d815a2.png",
+      "content/artifacts/5cd4f3d41ea1979546b8ef9894f983a7cb942dc02d9ff965178fd25b19dec753.xwd",
+      "content/artifacts/e42ee86c68241c7fd6c16f6519222cee88bf9627efbc6477cffa3a28ee3dfe0c.png",
+      "content/artifacts/290d847dba2c723b8d7880813157d547dbb8fc9b2d139a3e9719800f600c72e2.xwd"
+    ],
+    "featureId": "sgr.underline.color",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-sgr.underline-color-rgb",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: A pink/magenta straight underline appears beneath otherwise light-gray target letters; the own control has no underline. Exact RGB equality is not judged by eye. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty. Pink/magenta appearance does not establish the exact RGB triplet; retain the raw inconclusive result.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/dde47e2550369fe049ae1513b88b421fbb796ac61304b386814b762d604c066c.png",
+      "content/artifacts/1d5663a4e2b83ba095f5b7316d3d5a8fa805d9fe2b522449f96057aa472b121e.xwd",
+      "content/artifacts/23dd7584a32eea2ca98f105b1080060cf0662440f48545944de58a57411f8c2e.png",
+      "content/artifacts/d260de894a09f29ca529de4525040f4c3ed6882340d8b506ddbcb66da684692a.xwd"
+    ],
+    "featureId": "sgr.underline-color-rgb",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-cursor.hide",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: The control has a solid light block between L and R on row 2; the target has black space at that cell while CURSOR, L and R remain visible. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/d1826c0f077d306c0bfca855afc9a6bb82f07fbbd3ff3bdbf2478b224a886b1a.png",
+      "content/artifacts/fe8f300a7d9a63135bcc416a63ec6689db6e596b8270ba587fe16a98211161fc.xwd",
+      "content/artifacts/3f1ffb939d01bcf9ef17ac366ec9c828ce7785270ab52ffd5f1c82362f78ee5d.png",
+      "content/artifacts/45ed76eea7c0e1d66b6d8bdb762685ebf6ded8ca453dc4fe497cd52ff9cb148a.xwd"
+    ],
+    "featureId": "cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:3f1ffb939d01bcf9ef17ac366ec9c828ce7785270ab52ffd5f1c82362f78ee5d",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Shown steady block cursor requested at row 2 column 3",
+          "capturedAt": 1791131309169,
+          "ref": "sha256:d1826c0f077d306c0bfca855afc9a6bb82f07fbbd3ff3bdbf2478b224a886b1a",
+          "sourceRef": "sha256:fe8f300a7d9a63135bcc416a63ec6689db6e596b8270ba587fe16a98211161fc"
+        },
+        {
+          "role": "target",
+          "label": "Hidden cursor requested at the same cell",
+          "capturedAt": 1791131309363,
+          "ref": "sha256:3f1ffb939d01bcf9ef17ac366ec9c828ce7785270ab52ffd5f1c82362f78ee5d",
+          "sourceRef": "sha256:45ed76eea7c0e1d66b6d8bdb762685ebf6ded8ca453dc4fe497cd52ff9cb148a"
+        }
+      ],
+      "note": "The control has a solid light block between L and R on row 2; the target has black space at that cell while CURSOR, L and R remain visible. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-cursor.hide",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The control has a solid light block between L and R on row 2; the target has black space at that cell while CURSOR, L and R remain visible. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/d1826c0f077d306c0bfca855afc9a6bb82f07fbbd3ff3bdbf2478b224a886b1a.png",
+      "content/artifacts/fe8f300a7d9a63135bcc416a63ec6689db6e596b8270ba587fe16a98211161fc.xwd",
+      "content/artifacts/3f1ffb939d01bcf9ef17ac366ec9c828ce7785270ab52ffd5f1c82362f78ee5d.png",
+      "content/artifacts/45ed76eea7c0e1d66b6d8bdb762685ebf6ded8ca453dc4fe497cd52ff9cb148a.xwd"
+    ],
+    "featureId": "cursor.hide",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-cursor.shape",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The default-shape control shows a solid light block at the top-left cell. The target instant is black there; no bar is visible. This still-frame pair does not establish a shape transition. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/72eba0fdce79413666e21973ede2c7b0d3620cdb1a988c9dddbff9edf9b5fef0.png",
+      "content/artifacts/66054984f9d78bfa0ffec97516f272e3357587f2370ca028aa0d4fde539f3032.xwd",
+      "content/artifacts/e70e81986023d1d67b55aa14820642cfd52c86040113576abff95e389deb86b1.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd"
+    ],
+    "featureId": "cursor.shape",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-erase.line.right",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has AB at the original left edge and black cells in place of CDE; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/ab66c9041398fe0db5eb11b8eeab2dec3f0deb1a5699b381e732b455e289da79.png",
+      "content/artifacts/b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9.xwd",
+      "content/artifacts/27c1625a793d2f353a71c18870d67ecbacd8709575a826edba3399179bbdf338.png",
+      "content/artifacts/984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c.xwd",
+      "content/artifacts/e2dca1950c714e54ba0c2687fb8ab56b4fc94c244c4007919764bad92a8a12f5.png",
+      "content/artifacts/3a29e23470cc02347221575478c3e1b6cafed5be341add833b98ffa0f582557c.xwd"
+    ],
+    "featureId": "erase.line.right",
+    "observation": {
+      "featureId": "erase.line.right",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:e2dca1950c714e54ba0c2687fb8ab56b4fc94c244c4007919764bad92a8a12f5",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131310531,
+          "ref": "sha256:ab66c9041398fe0db5eb11b8eeab2dec3f0deb1a5699b381e732b455e289da79",
+          "sourceRef": "sha256:b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131310721,
+          "ref": "sha256:27c1625a793d2f353a71c18870d67ecbacd8709575a826edba3399179bbdf338",
+          "sourceRef": "sha256:984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131310914,
+          "ref": "sha256:e2dca1950c714e54ba0c2687fb8ab56b4fc94c244c4007919764bad92a8a12f5",
+          "sourceRef": "sha256:3a29e23470cc02347221575478c3e1b6cafed5be341add833b98ffa0f582557c"
+        }
+      ],
+      "note": "Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has AB at the original left edge and black cells in place of CDE; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "erase.line.right"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-erase.line.right",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has AB at the original left edge and black cells in place of CDE; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/ab66c9041398fe0db5eb11b8eeab2dec3f0deb1a5699b381e732b455e289da79.png",
+      "content/artifacts/b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9.xwd",
+      "content/artifacts/27c1625a793d2f353a71c18870d67ecbacd8709575a826edba3399179bbdf338.png",
+      "content/artifacts/984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c.xwd",
+      "content/artifacts/e2dca1950c714e54ba0c2687fb8ab56b4fc94c244c4007919764bad92a8a12f5.png",
+      "content/artifacts/3a29e23470cc02347221575478c3e1b6cafed5be341add833b98ffa0f582557c.xwd"
+    ],
+    "featureId": "erase.line.right",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-erase.line.left",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has DE at their original right positions and black cells in place of ABC; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/8ef744149c0b250aa4d05b1381b1b1f2db50d1025a20d250c129705913098588.png",
+      "content/artifacts/b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9.xwd",
+      "content/artifacts/d1e76862aecd8c6c616b1f58656681cee3673bc18bcfbe397819d875794ba646.png",
+      "content/artifacts/8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f.xwd",
+      "content/artifacts/bf10681751eb68a8f4a526030ad91c6d192044c028a77d878beffa63ecd5da78.png",
+      "content/artifacts/cc157ed17026bf6e309227a28fdd240b06ca08e3187b397c22bc897e7cccb015.xwd"
+    ],
+    "featureId": "erase.line.left",
+    "observation": {
+      "featureId": "erase.line.left",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:bf10681751eb68a8f4a526030ad91c6d192044c028a77d878beffa63ecd5da78",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131311112,
+          "ref": "sha256:8ef744149c0b250aa4d05b1381b1b1f2db50d1025a20d250c129705913098588",
+          "sourceRef": "sha256:b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131311304,
+          "ref": "sha256:d1e76862aecd8c6c616b1f58656681cee3673bc18bcfbe397819d875794ba646",
+          "sourceRef": "sha256:8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131311497,
+          "ref": "sha256:bf10681751eb68a8f4a526030ad91c6d192044c028a77d878beffa63ecd5da78",
+          "sourceRef": "sha256:cc157ed17026bf6e309227a28fdd240b06ca08e3187b397c22bc897e7cccb015"
+        }
+      ],
+      "note": "Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has DE at their original right positions and black cells in place of ABC; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "erase.line.left"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-erase.line.left",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target has DE at their original right positions and black cells in place of ABC; KEEP! remains. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/8ef744149c0b250aa4d05b1381b1b1f2db50d1025a20d250c129705913098588.png",
+      "content/artifacts/b4c45c1501cd88b2cd6806d2e91a1c6e6733757533b52e9fb19bb39fda5a4ee9.xwd",
+      "content/artifacts/d1e76862aecd8c6c616b1f58656681cee3673bc18bcfbe397819d875794ba646.png",
+      "content/artifacts/8cf8e854ff26f0fcd38fc7858d087fc395249c2398d49f20728a790970b40e1f.xwd",
+      "content/artifacts/bf10681751eb68a8f4a526030ad91c6d192044c028a77d878beffa63ecd5da78.png",
+      "content/artifacts/cc157ed17026bf6e309227a28fdd240b06ca08e3187b397c22bc897e7cccb015.xwd"
+    ],
+    "featureId": "erase.line.left",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-erase.line.all",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target row 1 is black where ABCDE appeared; KEEP! remains on row 2. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/02896d6169048ebc1ab8bc1496d694f7523127cb27aa1ae4db89d06ad7bc24dc.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/6b243484a13bbd0630ec75be1c5df10e494a6c88de30e7964579b421ac42c6e3.png",
+      "content/artifacts/984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c.xwd",
+      "content/artifacts/42c9f409c22bb5fb475de1a90d3fc8d2175c6d3f3150debc1d1ab4db90710748.png",
+      "content/artifacts/37fa80c3e36d93d08f3c08d81d412316a8dd37b2f228f912389f722984552239.xwd"
+    ],
+    "featureId": "erase.line.all",
+    "observation": {
+      "featureId": "erase.line.all",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:42c9f409c22bb5fb475de1a90d3fc8d2175c6d3f3150debc1d1ab4db90710748",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131311700,
+          "ref": "sha256:02896d6169048ebc1ab8bc1496d694f7523127cb27aa1ae4db89d06ad7bc24dc",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131311914,
+          "ref": "sha256:6b243484a13bbd0630ec75be1c5df10e494a6c88de30e7964579b421ac42c6e3",
+          "sourceRef": "sha256:984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131312135,
+          "ref": "sha256:42c9f409c22bb5fb475de1a90d3fc8d2175c6d3f3150debc1d1ab4db90710748",
+          "sourceRef": "sha256:37fa80c3e36d93d08f3c08d81d412316a8dd37b2f228f912389f722984552239"
+        }
+      ],
+      "note": "Seeded control has ABCDE on row 1 and KEEP! on row 2. Target row 1 is black where ABCDE appeared; KEEP! remains on row 2. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "erase.line.all"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-erase.line.all",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control has ABCDE on row 1 and KEEP! on row 2. Target row 1 is black where ABCDE appeared; KEEP! remains on row 2. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/02896d6169048ebc1ab8bc1496d694f7523127cb27aa1ae4db89d06ad7bc24dc.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/6b243484a13bbd0630ec75be1c5df10e494a6c88de30e7964579b421ac42c6e3.png",
+      "content/artifacts/984cad64ca4c6b7ff5bed0aba08ca439b76823d0ca98bef6385eba78c37fb87c.xwd",
+      "content/artifacts/42c9f409c22bb5fb475de1a90d3fc8d2175c6d3f3150debc1d1ab4db90710748.png",
+      "content/artifacts/37fa80c3e36d93d08f3c08d81d412316a8dd37b2f228f912389f722984552239.xwd"
+    ],
+    "featureId": "erase.line.all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-erase.screen.below",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target keeps AAAAA and the left BB at mid-height; the right BBB and bottom CCCCC are black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/a3e479703533fe3f64f1e4a6c6314fc4e071f3da08113a9c92a2060e9648dc1f.png",
+      "content/artifacts/4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99.xwd",
+      "content/artifacts/665e12a76e6e34e5b6c7f0c512f9e527c00d0fc888d32cc683b15e747f7c7829.png",
+      "content/artifacts/329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c.xwd",
+      "content/artifacts/e2acb262c3a8976a2d56d9867ff2cde63230c5c374ac64345b303d791d2814a1.png",
+      "content/artifacts/2a098340307be83380a10b32841590d98809ae3c907a42993aff46bab2337eff.xwd"
+    ],
+    "featureId": "erase.screen.below",
+    "observation": {
+      "featureId": "erase.screen.below",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:e2acb262c3a8976a2d56d9867ff2cde63230c5c374ac64345b303d791d2814a1",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131312368,
+          "ref": "sha256:a3e479703533fe3f64f1e4a6c6314fc4e071f3da08113a9c92a2060e9648dc1f",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131312578,
+          "ref": "sha256:665e12a76e6e34e5b6c7f0c512f9e527c00d0fc888d32cc683b15e747f7c7829",
+          "sourceRef": "sha256:329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131312771,
+          "ref": "sha256:e2acb262c3a8976a2d56d9867ff2cde63230c5c374ac64345b303d791d2814a1",
+          "sourceRef": "sha256:2a098340307be83380a10b32841590d98809ae3c907a42993aff46bab2337eff"
+        }
+      ],
+      "note": "Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target keeps AAAAA and the left BB at mid-height; the right BBB and bottom CCCCC are black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "erase.screen.below"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-erase.screen.below",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target keeps AAAAA and the left BB at mid-height; the right BBB and bottom CCCCC are black. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/a3e479703533fe3f64f1e4a6c6314fc4e071f3da08113a9c92a2060e9648dc1f.png",
+      "content/artifacts/4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99.xwd",
+      "content/artifacts/665e12a76e6e34e5b6c7f0c512f9e527c00d0fc888d32cc683b15e747f7c7829.png",
+      "content/artifacts/329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c.xwd",
+      "content/artifacts/e2acb262c3a8976a2d56d9867ff2cde63230c5c374ac64345b303d791d2814a1.png",
+      "content/artifacts/2a098340307be83380a10b32841590d98809ae3c907a42993aff46bab2337eff.xwd"
+    ],
+    "featureId": "erase.screen.below",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-erase.screen.above",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target has black in place of AAAAA and the left BBB; the right BB and bottom CCCCC remain. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/a5b6c076b36c7f1363973f43b922e7f2de1c5bf835588fedd52d2af6e8b16308.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/5a3434604ebac9ea247be9d5d87a440f21cc3c89f523cab20b2d77881e514b56.png",
+      "content/artifacts/329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c.xwd",
+      "content/artifacts/56f7ce3152ec4bb57c4d19616118d3f897bfcb73945c8bfe61ff5a701e5d2303.png",
+      "content/artifacts/2c291fd452656036001b08f233f4b3d613cb871910732601773e9093326f3352.xwd"
+    ],
+    "featureId": "erase.screen.above",
+    "observation": {
+      "featureId": "erase.screen.above",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:56f7ce3152ec4bb57c4d19616118d3f897bfcb73945c8bfe61ff5a701e5d2303",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131312970,
+          "ref": "sha256:a5b6c076b36c7f1363973f43b922e7f2de1c5bf835588fedd52d2af6e8b16308",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131313179,
+          "ref": "sha256:5a3434604ebac9ea247be9d5d87a440f21cc3c89f523cab20b2d77881e514b56",
+          "sourceRef": "sha256:329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131313384,
+          "ref": "sha256:56f7ce3152ec4bb57c4d19616118d3f897bfcb73945c8bfe61ff5a701e5d2303",
+          "sourceRef": "sha256:2c291fd452656036001b08f233f4b3d613cb871910732601773e9093326f3352"
+        }
+      ],
+      "note": "Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target has black in place of AAAAA and the left BBB; the right BB and bottom CCCCC remain. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "erase.screen.above"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-erase.screen.above",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control shows AAAAA at top, BBBBB at mid-height and CCCCC at bottom. Target has black in place of AAAAA and the left BBB; the right BB and bottom CCCCC remain. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/a5b6c076b36c7f1363973f43b922e7f2de1c5bf835588fedd52d2af6e8b16308.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd",
+      "content/artifacts/5a3434604ebac9ea247be9d5d87a440f21cc3c89f523cab20b2d77881e514b56.png",
+      "content/artifacts/329d0d63e8913dbba658100bc2f345dddb8da6920e2a2004e8e4d7322108896c.xwd",
+      "content/artifacts/56f7ce3152ec4bb57c4d19616118d3f897bfcb73945c8bfe61ff5a701e5d2303.png",
+      "content/artifacts/2c291fd452656036001b08f233f4b3d613cb871910732601773e9093326f3352.xwd"
+    ],
+    "featureId": "erase.screen.above",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-erase.screen.all",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Seeded control shows AAAAA, BBBBB and CCCCC in their three separated rows. Target has black at all three seeded text regions, matching the blank comparator locally. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/9b9e5187d95bd81ccaf7e5a6d2e8108ee114fe97f34bb5929b637ce33aa4b1f3.png",
+      "content/artifacts/4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99.xwd",
+      "content/artifacts/dd100f73471364c4b5b0d97a40b52506b905dcc076d92b193d5099a4e4ff43f3.png",
+      "content/artifacts/3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee.xwd",
+      "content/artifacts/5f309ce4456f12c5fff82eb7e8f4f54e8085679e5a67e062322f6dfef911f057.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd"
+    ],
+    "featureId": "erase.screen.all",
+    "observation": {
+      "featureId": "erase.screen.all",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:5f309ce4456f12c5fff82eb7e8f4f54e8085679e5a67e062322f6dfef911f057",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Blank erase comparator",
+          "capturedAt": 1791131313580,
+          "ref": "sha256:9b9e5187d95bd81ccaf7e5a6d2e8108ee114fe97f34bb5929b637ce33aa4b1f3",
+          "sourceRef": "sha256:4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99"
+        },
+        {
+          "role": "control",
+          "label": "Before erase: seeded and unaffected cells",
+          "capturedAt": 1791131313775,
+          "ref": "sha256:dd100f73471364c4b5b0d97a40b52506b905dcc076d92b193d5099a4e4ff43f3",
+          "sourceRef": "sha256:3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee"
+        },
+        {
+          "role": "target",
+          "label": "After erase: target and unaffected cells",
+          "capturedAt": 1791131313972,
+          "ref": "sha256:5f309ce4456f12c5fff82eb7e8f4f54e8085679e5a67e062322f6dfef911f057",
+          "sourceRef": "sha256:c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470"
+        }
+      ],
+      "note": "Seeded control shows AAAAA, BBBBB and CCCCC in their three separated rows. Target has black at all three seeded text regions, matching the blank comparator locally. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "erase.screen.all"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-erase.screen.all",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Seeded control shows AAAAA, BBBBB and CCCCC in their three separated rows. Target has black at all three seeded text regions, matching the blank comparator locally. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/9b9e5187d95bd81ccaf7e5a6d2e8108ee114fe97f34bb5929b637ce33aa4b1f3.png",
+      "content/artifacts/4c098fef50ca3de7365dd7de51db884022ba1f211eb2c23e4693df865451ae99.xwd",
+      "content/artifacts/dd100f73471364c4b5b0d97a40b52506b905dcc076d92b193d5099a4e4ff43f3.png",
+      "content/artifacts/3a55a8ac9975b20acf45468fb0d70889bd7d377a3b9b7075680b7fe4cdd0abee.xwd",
+      "content/artifacts/5f309ce4456f12c5fff82eb7e8f4f54e8085679e5a67e062322f6dfef911f057.png",
+      "content/artifacts/c5c2780f3ca934a07bc1e3716bae1be475c5b1380d6f08d75e773979239dc470.xwd"
+    ],
+    "featureId": "erase.screen.all",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-reset.decaln",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: The seed, immediate target, delayed target and CUP-only control retain the repeated AB pattern. The final ordinary-glyph redraw control shows X at the top-left followed by an E-filled grid. These five checkpoints do not support a global claim that an E pattern never appears, or isolate the runtime cause. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/d51de3ead940b34979ac65d2b12e333c8c0d03d28e0704df83f3c0a71464ec7b.png",
+      "content/artifacts/ef10e845afe7a3630bcdd55dc04a4048e1ddab836ee80174c390ce0ddb61d1f6.xwd",
+      "content/artifacts/cd288a6138d364d34f2eafe39b71c990b690ec84081a79f1c635e80e3ac337a9.png",
+      "content/artifacts/e4db3ac6dbedba891b50c47b7eec83d39cb756342646ffa5e0f5b7875626cc2e.png",
+      "content/artifacts/9b004798a0444f5866235c5c35f80a849763f156e03180589a3ccee3c932ea25.png",
+      "content/artifacts/e099aa68d6dbed023be943076dc8ee5595cbae8812e9ef943eab365ce220fccf.xwd"
+    ],
+    "featureId": "reset.decaln",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "pixels-52dbe531b94838b2f3c8a7effae174e7-charsets.dec-special",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Fresh control/target pixel review: Control rows 1, 3 and 4 show qqq; row 2 shows q─q. Target row 3 shows q─q like the Unicode comparator on row 2, with ASCII q flanks; rows 1 and 4 remain qqq. Residual _TOP and scroll text outside those three cells per row are excluded. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/47335ad74b922c163bb5547b555b315f0b10a4ee79fcd176432aad936307af80.png",
+      "content/artifacts/846b2cc97a13c1750a46dca59d3ed1a5dd1152cd39423b5cd9dcbab8d3f3d7fe.xwd",
+      "content/artifacts/315ba6647c820002f47fb04b545e4383e586e1fe2be9cf5bb0ad00fdd17f55bb.png",
+      "content/artifacts/c82b0962123fd7ada4cc4e3d46769cdc2f4ae5b57ac5865f9e18eb80aced3609.xwd"
+    ],
+    "featureId": "charsets.dec-special",
+    "observation": {
+      "featureId": "charsets.dec-special",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:315ba6647c820002f47fb04b545e4383e586e1fe2be9cf5bb0ad00fdd17f55bb",
+      "frames": [
+        {
+          "role": "control",
+          "label": "ASCII q controls on rows 1, 3 and 4; direct Unicode q─q on row 2",
+          "capturedAt": 1791131322464,
+          "ref": "sha256:47335ad74b922c163bb5547b555b315f0b10a4ee79fcd176432aad936307af80",
+          "sourceRef": "sha256:846b2cc97a13c1750a46dca59d3ed1a5dd1152cd39423b5cd9dcbab8d3f3d7fe"
+        },
+        {
+          "role": "target",
+          "label": "DEC Special Graphics sample at row 3, column 2; restored ASCII qqq on row 4",
+          "capturedAt": 1791131322657,
+          "ref": "sha256:315ba6647c820002f47fb04b545e4383e586e1fe2be9cf5bb0ad00fdd17f55bb",
+          "sourceRef": "sha256:c82b0962123fd7ada4cc4e3d46769cdc2f4ae5b57ac5865f9e18eb80aced3609"
+        }
+      ],
+      "note": "Control rows 1, 3 and 4 show qqq; row 2 shows q─q. Target row 3 shows q─q like the Unicode comparator on row 2, with ASCII q flanks; rows 1 and 4 remain qqq. Residual _TOP and scroll text outside those three cells per row are excluded. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+      "rawReplyRef": "charsets.dec-special"
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "present-52dbe531b94838b2f3c8a7effae174e7-charsets.dec-special",
+    "reviewer": "Sol (actual original-pixel review; /root/kitty_current_pixel_review)",
+    "reason": "Present this feature’s own controlled evidence: Control rows 1, 3 and 4 show qqq; row 2 shows q─q. Target row 3 shows q─q like the Unicode comparator on row 2, with ASCII q flanks; rows 1 and 4 remain qqq. Residual _TOP and scroll text outside those three cells per row are excluded. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile. The presentation decision changes no observation, identity or assertion; retain all original frame entries and their uncertainty.",
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json",
+      "content/artifacts/47335ad74b922c163bb5547b555b315f0b10a4ee79fcd176432aad936307af80.png",
+      "content/artifacts/846b2cc97a13c1750a46dca59d3ed1a5dd1152cd39423b5cd9dcbab8d3f3d7fe.xwd",
+      "content/artifacts/315ba6647c820002f47fb04b545e4383e586e1fe2be9cf5bb0ad00fdd17f55bb.png",
+      "content/artifacts/c82b0962123fd7ada4cc4e3d46769cdc2f4ae5b57ac5865f9e18eb80aced3609.xwd"
+    ],
+    "featureId": "charsets.dec-special",
+    "presentsEvidence": true
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "policy-52dbe531b94838b2f3c8a7effae174e7-extensions.osc52-read",
+    "reviewer": "@adhoc/1 (automated exact-run clipboard transcript review)",
+    "reason": "The separate OSC 52 read test is blocked by this recorded read-denied profile. This exact profile explicitly configures write-only clipboard permission. The read query returns a complete empty OSC 52 c reply (rawBase64 G101MjtjOxtc), not a timeout. Independent clipboard readback confirms the controlled nonce was present and verifies restoration to baseline SHA256 89976971395a99accfbdf5407cd38eceac85e364132d9e762d3835525726f140, length 57. This refusal is contextual policy evidence, not unsupported terminal capability. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": ["content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json"],
+    "featureId": "extensions.osc52-read",
+    "observation": {
+      "featureId": "extensions.osc52-read",
+      "outcome": "inconclusive",
+      "reason": "policy-refused",
+      "evidence": "query",
+      "rawReplyRef": "extensions.osc52-read",
+      "note": "The separate OSC 52 read test is blocked by this recorded read-denied profile. This exact profile explicitly configures write-only clipboard permission. The read query returns a complete empty OSC 52 c reply (rawBase64 G101MjtjOxtc), not a timeout. Independent clipboard readback confirms the controlled nonce was present and verifies restoration to baseline SHA256 89976971395a99accfbdf5407cd38eceac85e364132d9e762d3835525726f140, length 57. This refusal is contextual policy evidence, not unsupported terminal capability. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile."
+    }
+  },
+  {
+    "runId": "52dbe531b94838b2f3c8a7effae174e7",
+    "runSha256": "5338b857952c4eb88c35680e165971af60470f905e16f3dc782fa887b201acd5",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
+    },
+    "supersedes": [],
+    "id": "policy-52dbe531b94838b2f3c8a7effae174e7-extensions.osc52-clipboard",
+    "reviewer": "@adhoc/1 (automated exact-run clipboard transcript review)",
+    "reason": "The combined OSC 52 write/read test confirms writing, while its read step is blocked by this recorded read-denied profile. This exact profile explicitly configures write-only clipboard permission. The read query returns a complete empty OSC 52 c reply (rawBase64 G101MjtjOxtc), not a timeout. Independent clipboard readback confirms the controlled nonce was present and verifies restoration to baseline SHA256 89976971395a99accfbdf5407cd38eceac85e364132d9e762d3835525726f140, length 57. This refusal is contextual policy evidence, not unsupported terminal capability. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile.",
+    "sources": ["content/probes-apps/kitty-0.49.2-linux-deny-read-52dbe531b94838b2f3c8a7effae174e7.json"],
+    "featureId": "extensions.osc52-clipboard",
+    "observation": {
+      "featureId": "extensions.osc52-clipboard",
+      "outcome": "inconclusive",
+      "reason": "policy-refused",
+      "evidence": "query",
+      "rawReplyRef": "extensions.osc52-clipboard",
+      "note": "The combined OSC 52 write/read test confirms writing, while its read step is blocked by this recorded read-denied profile. This exact profile explicitly configures write-only clipboard permission. The read query returns a complete empty OSC 52 c reply (rawBase64 G101MjtjOxtc), not a timeout. Independent clipboard readback confirms the controlled nonce was present and verifies restoration to baseline SHA256 89976971395a99accfbdf5407cd38eceac85e364132d9e762d3835525726f140, length 57. This refusal is contextual policy evidence, not unsupported terminal capability. Observed only in this exact Kitty 0.49.2 Linux/Xvfb/llvmpipe 800×600 deny-read profile."
+    }
   }
 ]

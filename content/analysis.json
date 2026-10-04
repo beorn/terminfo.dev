@@ -1,5 +1,5 @@
 {
-  "$generated": "2026-10-04T16:43:20.821Z",
+  "$generated": "2026-10-04T17:25:15.162Z",
   "terminals/kitty": {
     "analysis": "<p><a href=\"/terminals/kitty\" class=\"hover-link\" title=\"Kitty Terminal Emulator\">Kitty</a> has <strong>98%</strong> support (103/105) among conclusive feature results, with observed unsupported results in the Modern TUI, Rich TUI baselines. Observed unsupported: <a href=\"/extensions/sixel-da1\" class=\"hover-link\">Sixel support in DA1</a>, <a href=\"/modes/decset-1048-save-restore-cursor\" class=\"hover-link\">Save/restore cursor (?1048)</a>.</p>",
     "date": "2026-10-02",
