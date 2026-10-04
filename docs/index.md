@@ -305,13 +305,14 @@ function backendTooltip(name, version) {
   </label>
 </div>
 
-<div v-if="appBackends.length > 0" class="matrix-wrapper">
+<p class="footer-note">Scroll to compare columns. Select a result for recorded evidence.</p>
+<div v-if="appBackends.length > 0" class="matrix-wrapper" tabindex="0" role="region" aria-label="Terminal application feature matrix">
 <table class="matrix">
   <thead>
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in appBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
         <span class="th-platforms" v-html="platformIcons(b.name)"></span>
       </th>
     </tr>
@@ -323,7 +324,7 @@ function backendTooltip(name, version) {
       </td>
     </tr>
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
-      <td class="feature-name" :data-tooltip="featureTooltip(f)">
+      <td class="feature-name" :title="featureTooltip(f)">
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in appBackends" :key="b.name">
@@ -380,13 +381,14 @@ function backendTooltip(name, version) {
   </a>
 </div>
 
-<div class="matrix-wrapper">
+<p class="footer-note">Scroll to compare columns. Select a result for recorded evidence.</p>
+<div class="matrix-wrapper" tabindex="0" role="region" aria-label="Headless backend feature matrix">
 <table class="matrix matrix-muted">
   <thead>
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in headlessBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
       </th>
     </tr>
   </thead>
@@ -397,7 +399,7 @@ function backendTooltip(name, version) {
       </td>
     </tr>
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
-      <td class="feature-name" :data-tooltip="featureTooltip(f)">
+      <td class="feature-name" :title="featureTooltip(f)">
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in headlessBackends" :key="b.name">
@@ -430,13 +432,14 @@ function backendTooltip(name, version) {
   </div>
 </div>
 
-<div class="matrix-wrapper">
+<p class="footer-note">Scroll to compare columns. Select a result for recorded evidence.</p>
+<div class="matrix-wrapper" tabindex="0" role="region" aria-label="Multiplexer feature matrix">
 <table class="matrix matrix-muted">
   <thead>
     <tr>
       <th class="feature-col"></th>
       <th v-for="b in muxBackends" :key="b.name">
-        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
       </th>
     </tr>
   </thead>
@@ -447,7 +450,7 @@ function backendTooltip(name, version) {
       </td>
     </tr>
     <tr v-for="f in filteredFeatures(cat)" :key="f.id">
-      <td class="feature-name" :data-tooltip="featureTooltip(f)">
+      <td class="feature-name" :title="featureTooltip(f)">
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in muxBackends" :key="b.name">
@@ -462,7 +465,7 @@ function backendTooltip(name, version) {
 </div>
 
 <p class="footer-note">
-  Hover over any cell for details.<br/>
+  Select any result for recorded evidence.<br/>
   Data from <a href="https://termless.dev">Termless</a> probes and <a href="https://www.npmjs.com/package/terminfo.dev">community submissions</a>.
   {{ data.generated ? 'Latest selected measurement: ' + data.generated : '' }}
 </p>
@@ -882,17 +885,19 @@ strips, or mishandles.
   flex-shrink: 1;
 }
 
-/* Matrix table — page scrolls naturally, only headers stick */
+/* Keep growing matrices within the page, with headers in their scroll region. */
 .matrix-wrapper {
   margin: 1em 0;
-  overflow: visible;
+  overflow: auto;
+  max-height: 70vh;
 }
 
-@media (max-width: 900px) {
-  .VPHome .matrix-wrapper { overflow-x: auto; }
+.matrix-wrapper:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
 }
 
-/* Override VitePress default table overflow-x:auto which breaks sticky */
+/* The wrapper owns scrolling; table headers stick within it. */
 .matrix-wrapper table {
   display: table;
   overflow: visible;
@@ -924,7 +929,7 @@ strips, or mishandles.
   padding-bottom: 10px !important;
   line-height: 1.2;
   position: sticky;
-  top: var(--vp-nav-height, 64px);
+  top: 0;
   z-index: 10;
   box-shadow: 0 1px 0 var(--vp-c-divider);
 }
