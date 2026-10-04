@@ -509,20 +509,105 @@ function osc720ScrollProbe(): ProbeDefinition["termless"] {
   }
 }
 
-/** Kitty keyboard flag probe — push flags, query, check specific bit. */
+/** A complete DA1 reply (CSI ? <params> c); a truncated `\x1b[?62;` is not a reply. */
+const DA1_COMPLETE = /\x1b\[\?[0-9;]+c/
+/** The Kitty keyboard flags reply (CSI ? <flags> u). */
+const KITTY_FLAGS = /\x1b\[\?(\d+)u/
+
+type KittyDetection =
+  | { readonly kind: "answered" }
+  | { readonly kind: "absent" }
+  | { readonly kind: "inconclusive"; readonly reason: "no-response" | "invalid-reply" }
+
+/**
+ * Kitty protocol-support detection (spec "Detection of support for this protocol"): the unmutating flags query
+ * (CSI ? u) is followed by DA1 (CSI c). A complete flags reply answers for the protocol; a complete DA1 with no
+ * flags reply is the documented negative; neither, a truncated reply, or a DA1 that precedes the flags reply is
+ * inconclusive. For a per-enhancement id this negative proves only the necessary condition (the protocol is
+ * absent), never that key events work.
+ */
+function kittyDetection(raw: string): KittyDetection {
+  const flags = KITTY_FLAGS.exec(raw)
+  const da1 = DA1_COMPLETE.exec(raw)
+  if (flags !== null && da1 !== null && da1.index < flags.index)
+    return { kind: "inconclusive", reason: "invalid-reply" }
+  if (flags !== null) return { kind: "answered" }
+  if (da1 !== null) return { kind: "absent" }
+  return { kind: "inconclusive", reason: "no-response" }
+}
+
+function kittyProtocolAbsent(response: string): ProbeResult {
+  const note =
+    "DA1 answered without any Kitty keyboard flags reply; the protocol is not supported (necessary-condition negative; key-event conformance was not tested)"
+  return {
+    pass: false,
+    response,
+    note,
+    observation: { outcome: "unsupported", evidence: "query", note },
+    assertions: [
+      {
+        kind: "negative",
+        expected: "A complete Kitty keyboard flags reply answers before the DA1 reply",
+        observed: response,
+      },
+    ],
+  }
+}
+
+function kittyInconclusive(
+  detection: Extract<KittyDetection, { kind: "inconclusive" }>,
+  reason: "no-response" | "invalid-reply" | "timeout",
+  response: string,
+): ProbeResult {
+  const note =
+    detection.reason === "invalid-reply"
+      ? "DA1 answered before the Kitty keyboard flags reply; ambiguous ordering, no support conclusion"
+      : "No answer to the Kitty keyboard flags query or the DA1 follow-up; no support conclusion"
+  return {
+    pass: false,
+    response,
+    note,
+    observation: { outcome: "inconclusive", evidence: "query", reason, note },
+  }
+}
+
+/**
+ * Kitty keyboard flag probe — detect protocol support with an unmutating CSI ? u + DA1 capture, then push the
+ * requested flags, query, and check one bit. The detection step never pushes, so a pre-detection return pops nothing.
+ */
 export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: number): ProbeDefinition {
   const definition = probe(
     id,
     (ctx) => {
+      const detectionRaw = ctx.feedCapture(`\x1b[?u\x1b[c`)
+      const detection = kittyDetection(detectionRaw)
+      if (detection.kind !== "answered") {
+        return detection.kind === "absent"
+          ? kittyProtocolAbsent(detectionRaw)
+          : kittyInconclusive(detection, detection.reason, detectionRaw)
+      }
       try {
         return keyboardFlagsResult(ctx.feedCapture(`\x1b[>${pushValue}u\x1b[?u`), flagBit)
       } finally {
-        ctx.feed("\x1b[<u")
+        ctx.feed("\x1b[<u") // pop the mode pushed for this probe, even if the query fails
       }
     },
     async (ctx) => {
+      // queryWithSentinelOutcome appends the DA1 follow-up, so this write is exactly CSI ? u + CSI c, unmutating.
+      const detection = await ctx.queryWithSentinelOutcome(`\x1b[?u`, KITTY_FLAGS)
+      const verdict = kittyDetection(detection.raw)
+      if (verdict.kind !== "answered") {
+        if (verdict.kind === "absent") return kittyProtocolAbsent(detection.raw)
+        const reason =
+          verdict.reason === "invalid-reply"
+            ? "invalid-reply"
+            : detection.reason === "timeout"
+              ? "timeout"
+              : "no-response"
+        return kittyInconclusive(verdict, reason, detection.raw)
+      }
       try {
-        const reply = await ctx.queryWithSentinelOutcome(`\x1b[>${pushValue}u\x1b[?u`, /\x1b\[\?(\d+)u/)
+        const reply = await ctx.queryWithSentinelOutcome(`\x1b[>${pushValue}u\x1b[?u`, KITTY_FLAGS)
         if (!reply.match) return unansweredQuery(reply, "No Kitty keyboard reply; key events were not tested")
         return keyboardFlagsResult(reply.match[0] ?? "", flagBit)
       } finally {

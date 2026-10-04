@@ -584,8 +584,9 @@ describe("Kitty protocol detection", () => {
     })
   })
 
-  // A rejected query used to skip the pop and leak this probe's keyboard mode into later probes.
-  test("Kitty keyboard probes pop their own stack entry after a reply, no reply, or query error", async () => {
+  // The detection step (CSI ? u + DA1) is unmutating: an absent protocol returns before any push, so nothing is
+  // popped. A push that is attempted and then fails must still be popped before the probe returns.
+  test("Kitty keyboard probes detect protocol support before pushing, and pop only a push they made", async () => {
     const cases = [
       ["extensions.kitty-keyboard", 1],
       ["extensions.kitty-keyboard.disambiguate", 1],
@@ -599,20 +600,42 @@ describe("Kitty protocol detection", () => {
     for (const [id, flags] of cases) {
       const p = probe(id)
       if (!p.term) throw new Error(`${id} needs a TTY callback`)
-      for (const outcome of ["reply", "no-reply", "error"] as const) {
+
+      // DA1-only detection: unsupported, no push, no pop.
+      {
+        const writes: string[] = []
+        const absentCtx = terminalContext({
+          write(text) {
+            writes.push(text)
+          },
+          queryWithSentinelOutcome: async (sequence) => {
+            writes.push(sequence)
+            if (sequence === "\x1b[?u") {
+              const raw = "\x1b[?1;2c"
+              return { match: null, reason: "sentinel", raw, rawBase64: btoa(raw) }
+            }
+            throw new Error(`${id}: push must not run when the protocol is absent`)
+          },
+        })
+        const result = await p.term(absentCtx)
+        expect(result.observation?.outcome, `${id}: absent`).toBe("unsupported")
+        expect(writes, `${id}: absent`).toEqual(["\x1b[?u"])
+      }
+
+      // Flags answered: push, then pop even if the flag query replies or throws.
+      for (const outcome of ["reply", "error"] as const) {
         const writes: string[] = []
         const failure = new Error(`${id}: query failed`)
         const ctx = terminalContext({
           write(text) {
             writes.push(text)
           },
-          queryWithSentinel: async (sequence) => {
-            writes.push(sequence)
-            if (outcome === "error") throw failure
-            return outcome === "reply" ? ["\x1b[?31u", "31"] : null
-          },
           queryWithSentinelOutcome: async (sequence) => {
             writes.push(sequence)
+            if (sequence === "\x1b[?u") {
+              const raw = "\x1b[?1u"
+              return { match: [raw, "1"], reason: "reply", raw, rawBase64: btoa(raw) }
+            }
             if (outcome === "error") throw failure
             const raw = outcome === "reply" ? "\x1b[?31u" : ""
             return {
@@ -622,16 +645,66 @@ describe("Kitty protocol detection", () => {
               rawBase64: btoa(raw),
             }
           },
-          queryCursorPosition: async () => {
-            if (outcome === "error") throw failure
-            return outcome === "reply" ? { row: 1, col: 1 } : null
-          },
         })
 
         if (outcome === "error") await expect(p.term(ctx)).rejects.toBe(failure)
         else expect((await p.term(ctx)).pass, `${id}: ${outcome}`).toBe(outcome === "reply")
-        expect(writes, `${id}: ${outcome}`).toEqual([`\x1b[>${flags}u\x1b[?u`, "\x1b[<u"])
+        expect(writes, `${id}: ${outcome}`).toEqual(["\x1b[?u", `\x1b[>${flags}u\x1b[?u`, "\x1b[<u"])
       }
+    }
+  })
+
+  test("Kitty protocol detection reads flags, DA1-only negatives, and transport controls without a push", async () => {
+    const p = probe("extensions.kitty-keyboard.report-text")
+    if (!p.termless || !p.term) throw new Error("missing keyboard callbacks")
+
+    const detections = [
+      ["\x1b[?25u\x1b[?62;4c", "supported"], // flags + DA1
+      ["\x1b[?25u", "supported"], // flags only, the no-DA1 control
+      ["\x1b[?1;2c", "unsupported"], // DA1 only, the documented negative
+      ["", "inconclusive"], // neither reply
+      ["\x1b[?62;", "inconclusive"], // truncated DA1 is not a reply
+      ["\x1b[?1;2c\x1b[?25u", "inconclusive"], // DA1 before flags, ambiguous ordering
+    ] as const
+
+    for (const [raw, outcome] of detections) {
+      const captures: string[] = []
+      const result = p.termless(
+        context({
+          feedCapture(sequence) {
+            captures.push(sequence)
+            return raw
+          },
+        }),
+      )
+      expect(result.observation?.outcome, `termless ${JSON.stringify(raw)}`).toBe(outcome)
+      expect(captures[0], `termless ${JSON.stringify(raw)}`).toBe("\x1b[?u\x1b[c")
+      if (outcome !== "supported") expect(captures, `termless ${JSON.stringify(raw)} push count`).toHaveLength(1)
+    }
+
+    for (const [raw, outcome] of detections) {
+      const writes: string[] = []
+      const result = await p.term(
+        terminalContext({
+          write(text) {
+            writes.push(text)
+          },
+          queryWithSentinelOutcome: async (sequence, pattern) => {
+            writes.push(sequence)
+            const match = raw.match(pattern)
+            const sentinel = /\x1b\[\?[0-9;]+c/.test(raw) && !match
+            return {
+              match: match ? [...match] : null,
+              reason: match ? "reply" : sentinel ? "sentinel" : "timeout",
+              raw,
+              rawBase64: btoa(raw),
+            }
+          },
+        }),
+      )
+      expect(result.observation?.outcome, `term ${JSON.stringify(raw)}`).toBe(outcome)
+      expect(writes[0], `term ${JSON.stringify(raw)}`).toBe("\x1b[?u")
+      if (outcome !== "supported") expect(writes, `term ${JSON.stringify(raw)} push/pop`).toEqual(["\x1b[?u"])
     }
   })
 
@@ -646,6 +719,7 @@ describe("Kitty protocol detection", () => {
       const result = await p.term(
         terminalContext({
           queryWithSentinelOutcome: async (sequence, pattern) => {
+            if (sequence === "\x1b[?u") return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
             const push = /\x1b\[>(\d+)u/.exec(sequence)
             expect(Number(push?.[1]) & 24).toBe(24) // Associated text requires all-keys mode too.
             return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
