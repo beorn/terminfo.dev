@@ -331532,5 +331532,346 @@
     "reason": "The own control shows qqq on rows 1, 3 and 4 with q-horizontal-line-q on row 2, and the target changes the middle row 3 q to a horizontal line while ASCII flank q glyphs and row 4 qqq remain visible. This supports the sampled row 3 column 2 horizontal-line appearance after ESC (0 q followed by ASCII designation, with a direct Unicode line comparator. It does not measure a numeric codepoint or the full charset, and unrelated residual text outside the five-column fixture differs between captures so no whole-frame stability claim is made.",
     "id": "present-aada55d94d68f0b2710e1e71e0cf3dcb-charsets.dec-special",
     "presentsEvidence": true
+  },
+  {
+    "id": "identity-headless-da0d2b69-daf1-4441-a4b5-d366fccd7abf",
+    "runId": "da0d2b69-daf1-4441-a4b5-d366fccd7abf",
+    "runSha256": "2249a96d8f8cfbd5ee2d140d1c23d155d20f89f76bc03b1e96b7d8d8625a8204",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless alacritty 0.26.0: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked loaded binary SHA256 1ab3171861f6af82b2fc60089d7627a85049470773f80730ccfb5cbecf9ecee8 matches the named artifact; native build receipt matches binary, engine version, source commit b58c7580d85ab865b56845fb289e854bc6bdc38d, native tree and lock SHA256 1f89f2579b7d786a116d8fefb8267c4af076bd3a3893adcf14b00c4466740497. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "alacritty"
+      },
+      "versions": [
+        "0.26.0",
+        "0.26.0"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/alacritty-da0d2b69-daf1-4441-a4b5-d366fccd7abf.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/alacritty-da0d2b69-daf1-4441-a4b5-d366fccd7abf.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-e83e033d-7cc8-491a-af34-67bb9ac6d138",
+    "runId": "e83e033d-7cc8-491a-af34-67bb9ac6d138",
+    "runSha256": "c56a51b2f13d249ebef62bf9bf894de76918063e129b6656ea3e66015cf57c22",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless ghostty 0.4.0: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked loaded binary SHA256 d6f0326f1874ad2ce9f289e3a4a0c5f3507d4cb38d8747e4b287def470a0c60a matches the named artifact; resolved registry module /hh/var/wt/@si/terminfo/15323-quality-plateau/node_modules/.bun/ghostty-web@0.4.0/node_modules/ghostty-web/dist/ghostty-web.js and its captured integrity sha512-0puDBik2qapbD/QQBW9o5ZHfXnZBqZWx/ctBiVtKZ6ZLds4NYb+wZuw1cRLXZk9zYovIQ908z3rvFhexAvc5Hg== match bun.lock. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "ghostty"
+      },
+      "versions": [
+        "0.4.0",
+        "0.4.0"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/ghostty-e83e033d-7cc8-491a-af34-67bb9ac6d138.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/ghostty-e83e033d-7cc8-491a-af34-67bb9ac6d138.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-5bac247e-feb3-47b9-bb3e-979dbc2003d7",
+    "runId": "5bac247e-feb3-47b9-bb3e-979dbc2003d7",
+    "runSha256": "a00161ecccc1d05597c8e4541000b279c8e9ae664d2dcf0802c2df1d3e08d9ef",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless ghostty-native 1.3.1: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked loaded binary SHA256 89fa01a30036e551dfe2128ac05179a907aac123b28b6c9680c45459a6955df4 matches the named artifact; native build receipt matches binary, engine version, source commit 332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28, native tree and lock SHA256 3ec775507556db01d08055836b26183f629a9cbb0b5802a1566661e95988d74a. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "ghostty-native"
+      },
+      "versions": [
+        "1.3.1",
+        "1.3.1"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/ghostty-native-5bac247e-feb3-47b9-bb3e-979dbc2003d7.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/ghostty-native-5bac247e-feb3-47b9-bb3e-979dbc2003d7.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-0a186dd7-851a-4d34-8153-db92d278d5fe",
+    "runId": "0a186dd7-851a-4d34-8153-db92d278d5fe",
+    "runSha256": "578204e3400a5de9ea66f19d2d8ad172846a110d7d2136c68fd85138aeb92f2b",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless kitty 0.49.2: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked loaded binary SHA256 a46736d89c768bd727701663ae594195aafc854e814b286d07c171f46497c8e6 matches the named artifact; loaded official Kitty Nix artifact agrees with the captured 0.49.2 engine and Nix store/archive provenance. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": [
+        "0.49.2",
+        "0.49.2"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/kitty-0a186dd7-851a-4d34-8153-db92d278d5fe.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/kitty-0a186dd7-851a-4d34-8153-db92d278d5fe.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-36ccd79b-cbca-4235-b3dd-5750a22af8a5",
+    "runId": "36ccd79b-cbca-4235-b3dd-5750a22af8a5",
+    "runSha256": "2eb381835d6b4e095117a3f46467144582a1654ff9b4a3a39555841e062ba850",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless vt100 0.7.1: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked resolved source module /hh/var/wt/@si/terminfo/15323-quality-plateau/vendor/vterm/packages/vt100/src/index.ts matches clean package tree 5aa145a36c3b49e4baf826eac2484b12f3615b36 at commit 70b4d34e31173261ebc9ef79dae3d4b887dd783a. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vt100"
+      },
+      "versions": [
+        "0.7.1",
+        "0.7.1"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/vt100-36ccd79b-cbca-4235-b3dd-5750a22af8a5.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/vt100-36ccd79b-cbca-4235-b3dd-5750a22af8a5.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-f1805799-e2bf-4623-b2f1-644a672e3848",
+    "runId": "f1805799-e2bf-4623-b2f1-644a672e3848",
+    "runSha256": "4f362205d4c28536392313768d7a988623cd92d2de19d621d44461ca54f3b546",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless vt100-rust 0.16.2: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked loaded binary SHA256 d6e560f4a03758054cb0fb8cb861a233e7ac35d829c258b9a03de6d9ef11e5ae matches the named artifact; native build receipt matches binary, engine version, source commit b58c7580d85ab865b56845fb289e854bc6bdc38d, native tree and lock SHA256 2e3a100df5ad81d8de0f2d7d9e38ac3e2207177c81803d3d3e3ba0b4394ed5d6. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vt100-rust"
+      },
+      "versions": [
+        "0.16.2",
+        "0.16.2"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/vt100-rust-f1805799-e2bf-4623-b2f1-644a672e3848.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/vt100-rust-f1805799-e2bf-4623-b2f1-644a672e3848.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-48a1c870-e90d-4c36-a0ea-1753d977184e",
+    "runId": "48a1c870-e90d-4c36-a0ea-1753d977184e",
+    "runSha256": "3fae3d2a58c1b7a9d7394da12c155615c1b0849c11537ceb76ae80cdaf387a1d",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless vt220 0.7.1: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked resolved source module /hh/var/wt/@si/terminfo/15323-quality-plateau/vendor/vterm/packages/vt220/src/index.ts matches clean package tree f1ca60b6ef5cb82def65bf27e96af696a6d9dcb6 at commit 70b4d34e31173261ebc9ef79dae3d4b887dd783a. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vt220"
+      },
+      "versions": [
+        "0.7.1",
+        "0.7.1"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/vt220-48a1c870-e90d-4c36-a0ea-1753d977184e.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/vt220-48a1c870-e90d-4c36-a0ea-1753d977184e.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-7e148786-fefe-4764-bab9-77267de9b1de",
+    "runId": "7e148786-fefe-4764-bab9-77267de9b1de",
+    "runSha256": "ba028cfa694a8dd34f755cde518aafdc55caad9bbf3aa3e8791d6dfd869d858c",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless vterm 0.7.1: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked resolved source module /hh/var/wt/@si/terminfo/15323-quality-plateau/vendor/vterm/packages/vterm/src/index.ts matches clean package tree d6979ff6c3b0c2b8d0abb11d8f81ecd2fe8d06ef at commit 70b4d34e31173261ebc9ef79dae3d4b887dd783a. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": [
+        "0.7.1",
+        "0.7.1"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/vterm-7e148786-fefe-4764-bab9-77267de9b1de.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/vterm-7e148786-fefe-4764-bab9-77267de9b1de.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-37342da8-05fe-456b-b3af-89ac196ce073",
+    "runId": "37342da8-05fe-456b-b3af-89ac196ce073",
+    "runSha256": "7f879293b72bd331f6d77cb9b8d786c9dbed02377ab3f426308eaaa93cd837ba",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless wezterm 0.1.0-fork.5: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked loaded binary SHA256 b2948661a0ee6b855829c16b7bce769f2d6393d95aacd3c60954306e930f1a5a matches the named artifact; native build receipt matches binary, engine version, source commit b58c7580d85ab865b56845fb289e854bc6bdc38d, native tree and lock SHA256 8eaeab733cced8d47feb223d773d5ae158b2e6af8c994f993d4071d9ba3231d4. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "wezterm"
+      },
+      "versions": [
+        "0.1.0-fork.5",
+        "0.1.0-fork.5"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/wezterm-37342da8-05fe-456b-b3af-89ac196ce073.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/wezterm-37342da8-05fe-456b-b3af-89ac196ce073.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-5d3e9042-e20c-4cae-b6dd-51a1c7d3528b",
+    "runId": "5d3e9042-e20c-4cae-b6dd-51a1c7d3528b",
+    "runSha256": "c6ff2975c0f545c8fe125d93b16b8e3ff001c5e57d68971a4f76b7934e9d549b",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless xtermjs 6.0.0: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked resolved registry module /hh/var/wt/@si/terminfo/15323-quality-plateau/node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js and its captured integrity sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw== match bun.lock. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "xtermjs"
+      },
+      "versions": [
+        "6.0.0",
+        "6.0.0"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/xtermjs-5d3e9042-e20c-4cae-b6dd-51a1c7d3528b.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/xtermjs-5d3e9042-e20c-4cae-b6dd-51a1c7d3528b.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-all-headless-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-ed8ddc8a-85bd-4721-90e7-422ee4cb7f74",
+    "runId": "ed8ddc8a-85bd-4721-90e7-422ee4cb7f74",
+    "runSha256": "ab36ba69bdee4bdbe69b0d0c3ce6183163b493e55bff50626965ca270bccb038",
+    "reviewer": "@adhoc/1",
+    "reason": "Identity review of headless libvterm 0.3.3: parseRun and checkCurrentSuiteManifest accept all 245 exact headless IDs for suite 992977a987ba at committed probe source 6c5178ea4e7ebe1fb388badc8c6536987e95f980; runtime adapter 0.10.2 and engineVersion agree with the target. Independently checked loaded binary SHA256 9e35be98a7397d81fa241d587e4c77b3e1179660b3c6af20e3da751623f78845 matches the named artifact; resolved source module /hh/var/wt/@si/terminfo/15323-quality-plateau/vendor/termless/packages/libvterm/src/index.ts matches clean package tree d1706bc9a78de58bdabf5f74b918272ba76937ef at commit 3fe156569982e6ee57a73f8b5d0ed7e495fb29ae; isolated successful collection follows the retained failed stale-receipt attempt; rebuilding regenerated a receipt for the current wrapper tree while retaining unchanged WASM bytes. This decision verifies this exact runtime identity and retains the collected observations without per-feature overrides or pixel claims.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": [
+        "0.3.3",
+        "0.3.3"
+      ],
+      "suites": [
+        "992977a987ba",
+        "992977a987ba"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/libvterm-ed8ddc8a-85bd-4721-90e7-422ee4cb7f74.json",
+      "content/suites/992977a987ba.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-libvterm-current/libvterm-ed8ddc8a-85bd-4721-90e7-422ee4cb7f74.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn295-libvterm-current/collection.json",
+      "/hh/var/@adhoc1/terminfo-mac-adapter/phase1-review/turn296-headless-admission-validation.log"
+    ],
+    "supersedes": [],
+    "reviewed": true,
+    "verifiesIdentity": true
   }
 ]
