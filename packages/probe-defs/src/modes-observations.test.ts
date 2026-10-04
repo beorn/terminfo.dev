@@ -345,12 +345,11 @@ test("1049 enter grades only on the full roundtrip, with enter-specific defect c
   const ignoredResult = definition.termless!(ignored.context)
   expect(ignoredResult.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
   expect(ignoredResult.assertions).toMatchObject([{ kind: "negative" }])
-  for (const scenario of ["erasure-mimic", "broken-exit", "marker-leak"] as const) {
+  for (const scenario of ["erasure-mimic", "broken-exit", "marker-leak", "broken-cursor"] as const) {
     const { context } = alt1049Context(scenario)
     const result = definition.termless!(context)
-    expect(result.observation, scenario).not.toMatchObject({ outcome: "supported" })
-    expect(result.observation, scenario).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
-    expect(result.assertions, scenario).toMatchObject([{ kind: "negative" }])
+    expect(result.observation, scenario).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.assertions, scenario).toBeUndefined()
   }
   const clipped = alt1049Context("roundtrip", 6)
   const clippedResult = definition.termless!(clipped.context)
@@ -365,7 +364,7 @@ test("1049 enter grades only on the full roundtrip, with enter-specific defect c
   expect(clippedRowsResult.assertions).toBeUndefined()
 })
 
-test("1049 exit concludes the full roundtrip and separates erase, leak, exit and cursor defects", () => {
+test("1049 exit concludes only the full roundtrip and keeps restoration defects inconclusive", () => {
   const definition = alt1049Probe("exit")
   const ok = alt1049Context("roundtrip")
   expect(definition.termless!(ok.context).observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
@@ -373,8 +372,8 @@ test("1049 exit concludes the full roundtrip and separates erase, leak, exit and
   for (const scenario of ["erasure-mimic", "marker-leak", "broken-exit", "broken-cursor"] as const) {
     const { context } = alt1049Context(scenario)
     const result = definition.termless!(context)
-    expect(result.observation, scenario).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
-    expect(result.assertions, scenario).toMatchObject([{ kind: "negative" }])
+    expect(result.observation, scenario).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.assertions, scenario).toBeUndefined()
   }
 })
 

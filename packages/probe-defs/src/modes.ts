@@ -25,7 +25,7 @@ function alt1049SpanBlank(ctx: TermlessContext, row: number, length: number): bo
  * BOTH callbacks grade supported only when the entire seeded roundtrip holds: blank alternate
  * spans, distinct ALT-MARK readback, exact PRIMARY-A/PRIMARY-B restoration, ALT-MARK absent from
  * the restored position, and saved-cursor restoration. Inadequate geometry, an unmeasured seed,
- * an unavailable readback and an unattributed exit failure are inconclusive; a negative needs
+ * an unavailable readback and an unattributed restoration failure are inconclusive; a negative needs
  * measured setup plus a feature-specific failed assertion. Cleanup returns to normal mode in
  * finally and stays loud: a cleanup failure is never swallowed into a result.
  */
@@ -130,7 +130,14 @@ function altScreen1049Roundtrip(ctx: TermlessContext, phase: "enter" | "exit"): 
     if (leaked) failures.push("ALT-MARK leaked into the restored position")
     if (after.x !== before.x || after.y !== before.y) failures.push("saved cursor not restored")
     if (failures.length === 0) return parserStateResult(true, expected, state, undefined)
-    return parserStateResult(false, expected, state, "1049 roundtrip failed: " + failures.join("; "))
+    return parserStateResult(
+      null,
+      expected,
+      state,
+      "1049 roundtrip failed: " +
+        failures.join("; ") +
+        "; cannot attribute failure to enter or exit: blank spans and ALT-MARK do not distinguish an alternate buffer from erasure, and cursor mismatch does not distinguish save from restore",
+    )
   } finally {
     ctx.feed("\x1b[?1049l\x1b[0m")
   }
