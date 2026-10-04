@@ -229,7 +229,7 @@ describe("consumer selection", () => {
         ...Object.values(expected.history).flat(),
       ]
       for (const version of allExpectedVersions) expectedRuns.set(version.sha256, version)
-      expect(expectedRuns.size).toBe(165)
+      expect(expectedRuns.size).toBe(166)
 
       const assertGroup = (
         actual: Record<string, RunReference> | Record<string, RunReference[]>,
