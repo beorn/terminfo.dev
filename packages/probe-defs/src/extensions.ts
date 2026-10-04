@@ -529,8 +529,9 @@ type KittyDetection =
 function kittyDetection(raw: string): KittyDetection {
   const flags = KITTY_FLAGS.exec(raw)
   const da1 = DA1_COMPLETE.exec(raw)
-  if (flags !== null && da1 !== null && da1.index < flags.index)
+  if (flags !== null && da1 !== null && da1.index < flags.index) {
     return { kind: "inconclusive", reason: "invalid-reply" }
+  }
   if (flags !== null) return { kind: "answered" }
   if (da1 !== null) return { kind: "absent" }
   return { kind: "inconclusive", reason: "no-response" }
