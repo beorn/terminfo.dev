@@ -651,12 +651,13 @@ describe("Kitty protocol detection", () => {
   test("Kitty probes pop only a push they actually wrote", async () => {
     const p = probe("extensions.kitty-keyboard")
     if (!p.term || !p.termless) throw new Error("missing keyboard callbacks")
+    const termless = p.termless
 
     // Termless: the push feed throws before it is written -> no pop.
     {
       const feeds: string[] = []
       expect(() =>
-        p.termless(
+        termless(
           context({
             feedCapture: () => "\x1b[?1u",
             feed(sequence) {
@@ -674,7 +675,7 @@ describe("Kitty protocol detection", () => {
       const feeds: string[] = []
       let captureCall = 0
       expect(() =>
-        p.termless(
+        termless(
           context({
             feed(sequence) {
               feeds.push(sequence)
