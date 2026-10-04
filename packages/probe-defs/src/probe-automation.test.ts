@@ -733,8 +733,12 @@ describe("Kitty protocol detection", () => {
       ["\x1b[?1;2c\x1b[?25u", "inconclusive"], // DA1 before flags, ambiguous ordering
       ["\x1b[?;u\x1b[?1;2c", "inconclusive"], // malformed flags (empty params) with DA1
       ["\x1b[?1;2u\x1b[?1;2c", "inconclusive"], // malformed flags (extra params) with DA1
+      ["\x1b[?1:2u\x1b[?1;2c", "inconclusive"], // malformed flags (colon params) before DA1 — not the digits-only shape
       ["\x1b[?12", "inconclusive"], // truncated flags, no terminator
       ["\x1b[?12\x1b[?1;2c", "inconclusive"], // truncated flags before DA1
+      ["\x00\x1b[?1;2c", "inconclusive"], // residual byte before an otherwise complete DA1
+      ["\x1b[?1;2c\x07", "inconclusive"], // residual byte after an otherwise complete DA1
+      ["\x1b[?1;2c\x1b[?1;2c", "inconclusive"], // duplicate DA1 — residual bytes around the first reply
     ] as const
 
     for (const [raw, outcome] of detections) {
