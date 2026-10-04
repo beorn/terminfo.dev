@@ -30,7 +30,8 @@
   ],
   "type": "module",
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "tag": "next"
   },
   "scripts": {
     "build": "bun ../../scripts/build-cli.ts",
