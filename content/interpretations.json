@@ -331544,14 +331544,8 @@
         "kind": "headless",
         "id": "alacritty"
       },
-      "versions": [
-        "0.26.0",
-        "0.26.0"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["0.26.0", "0.26.0"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/alacritty-da0d2b69-daf1-4441-a4b5-d366fccd7abf.json",
@@ -331575,14 +331569,8 @@
         "kind": "headless",
         "id": "ghostty"
       },
-      "versions": [
-        "0.4.0",
-        "0.4.0"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["0.4.0", "0.4.0"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/ghostty-e83e033d-7cc8-491a-af34-67bb9ac6d138.json",
@@ -331606,14 +331594,8 @@
         "kind": "headless",
         "id": "ghostty-native"
       },
-      "versions": [
-        "1.3.1",
-        "1.3.1"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/ghostty-native-5bac247e-feb3-47b9-bb3e-979dbc2003d7.json",
@@ -331637,14 +331619,8 @@
         "kind": "headless",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/kitty-0a186dd7-851a-4d34-8153-db92d278d5fe.json",
@@ -331668,14 +331644,8 @@
         "kind": "headless",
         "id": "vt100"
       },
-      "versions": [
-        "0.7.1",
-        "0.7.1"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/vt100-36ccd79b-cbca-4235-b3dd-5750a22af8a5.json",
@@ -331699,14 +331669,8 @@
         "kind": "headless",
         "id": "vt100-rust"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/vt100-rust-f1805799-e2bf-4623-b2f1-644a672e3848.json",
@@ -331730,14 +331694,8 @@
         "kind": "headless",
         "id": "vt220"
       },
-      "versions": [
-        "0.7.1",
-        "0.7.1"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/vt220-48a1c870-e90d-4c36-a0ea-1753d977184e.json",
@@ -331761,14 +331719,8 @@
         "kind": "headless",
         "id": "vterm"
       },
-      "versions": [
-        "0.7.1",
-        "0.7.1"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/vterm-7e148786-fefe-4764-bab9-77267de9b1de.json",
@@ -331792,14 +331744,8 @@
         "kind": "headless",
         "id": "wezterm"
       },
-      "versions": [
-        "0.1.0-fork.5",
-        "0.1.0-fork.5"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["0.1.0-fork.5", "0.1.0-fork.5"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/wezterm-37342da8-05fe-456b-b3af-89ac196ce073.json",
@@ -331823,14 +331769,8 @@
         "kind": "headless",
         "id": "xtermjs"
       },
-      "versions": [
-        "6.0.0",
-        "6.0.0"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["6.0.0", "6.0.0"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/xtermjs-5d3e9042-e20c-4cae-b6dd-51a1c7d3528b.json",
@@ -331854,14 +331794,8 @@
         "kind": "headless",
         "id": "libvterm"
       },
-      "versions": [
-        "0.3.3",
-        "0.3.3"
-      ],
-      "suites": [
-        "992977a987ba",
-        "992977a987ba"
-      ]
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["992977a987ba", "992977a987ba"]
     },
     "sources": [
       "content/probes-libs/libvterm-ed8ddc8a-85bd-4721-90e7-422ee4cb7f74.json",
