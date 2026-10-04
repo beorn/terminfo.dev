@@ -1700,8 +1700,8 @@
     "slug": "tbc-clear-tab-stop",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
     "tags": ["ecma-48", "vt100"],
-    "body": "TBC (Tab Clear) clears tab stops. <code>CSI 0 g</code> clears the stop at the current cursor position; <code>CSI 3 g</code> clears all character tab stops. The probe measures stops at columns 9, 17 and 25, clears them, and installs a new stop at column 33. A tab from column 1 must reach the new stop without landing on an old one. This avoids depending on where a tab goes when no stops remain. The probe restores conventional eight-column stops afterward; it cannot reconstruct unknown custom stops.",
-    "probe": "In a disposable fixture at least 34 columns wide, measure stops at columns 9, 17 and 25, clear all stops with <code>CSI 3 g</code>, then install a stop at column 33. Measure HT from column 1: reaching an old stop is a failed clear; missing setup or ambiguous cursor evidence is inconclusive. Restore conventional eight-column stops afterward.",
+    "body": "TBC (Tab Clear) clears tab stops. <code>CSI 0 g</code> clears the stop at the current cursor position; <code>CSI 3 g</code> clears all character tab stops. The probe measures stops at columns 9, 17 and 25, then clears them. With no remaining stop, a tab from column 1 must advance to the right margin (DEC VT220 reference manual section 4.8). The probe restores conventional eight-column stops afterward; it cannot reconstruct unknown custom stops.",
+    "probe": "In a disposable fixture at least 34 columns wide, measure stops at columns 9, 17 and 25, clear all stops with <code>CSI 3 g</code>, then measure HT from column 1: it must reach the right margin. Reaching an old stop or staying at column 1 is unsupported; missing setup or ambiguous cursor evidence is inconclusive. Restore conventional eight-column stops afterward.",
     "baseline": "core",
     "sequence": "CSI Ps g"
   },

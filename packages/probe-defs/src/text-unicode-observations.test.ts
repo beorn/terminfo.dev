@@ -146,10 +146,9 @@ test("app cursor motion needs a measured start while cell-only text stays ungrad
   expect(basic.assertions).toBeUndefined()
 })
 
-// vterm.js stays at the current column when no stops exist. The model keeps
-// that behavior so this test catches a probe that mistakes the no-stop HT
-// destination for evidence that TBC cleared its old stops.
-function tabTerminal(ignoreClear = false, ignoreNewStop = false) {
+// Model the DEC right-margin fallback and a broken stationary fallback independently
+// of the probe, while preserving old-stop calibration and cleanup evidence.
+function tabTerminal(ignoreClear = false, stationaryFallback = false) {
   let col = 1
   const stops = new Set(Array.from({ length: 10 }, (_, index) => 9 + index * 8))
   const writes: string[] = []
@@ -165,14 +164,20 @@ function tabTerminal(ignoreClear = false, ignoreNewStop = false) {
         else if (match[3] === "3") {
           if (!ignoreClear) stops.clear()
         } else if (match[0] === "\x1bH") {
-          if (!ignoreNewStop || col !== 33) stops.add(col)
-        } else if (match[0] === "\t") col = [...stops].filter((stop) => stop > col).sort((a, b) => a - b)[0] ?? col
+          stops.add(col)
+        } else if (match[0] === "\t") {
+          col = [...stops].filter((stop) => stop > col).sort((a, b) => a - b)[0] ?? (stationaryFallback ? col : 80)
+        }
       }
     },
   }
 }
 
-test("TBC measures old stops removed and a new later stop, including vterm's stationary no-stop HT", async () => {
+/** @failure TBC misgrades conforming right-margin HT or accepts a stationary fallback.
+ * @level l1
+ * @consumer text.tbc app and headless observations
+ */
+test("TBC measures old stops removed and HT reaching the right margin", async () => {
   const probe = byId("text.tbc")
   for (const ignoredClear of [false, true]) {
     const terminal = tabTerminal(ignoredClear)
@@ -191,10 +196,10 @@ test("TBC measures old stops removed and a new later stop, including vterm's sta
       oldFirst: { col: 9 },
       oldSecond: { col: 17 },
       oldThird: { col: 25 },
-      after: { col: ignoredClear ? 9 : 33 },
+      after: { col: ignoredClear ? 9 : 80 },
     })
     expect(appResult.assertions).toMatchObject([{ kind: ignoredClear ? "negative" : "positive" }])
-    expect(terminal.writes.join("")).toContain("\x1b[3g\x1b[1;33H\x1bH\x1b[1;1H\t")
+    expect(terminal.writes.join("")).toContain("\x1b[3g\x1b[1;1H\t")
     expect(terminal.writes.at(-1)).toContain("\x1b[1;73H\x1bH")
 
     const parser = tabTerminal(ignoredClear)
@@ -213,21 +218,21 @@ test("TBC measures old stops removed and a new later stop, including vterm's sta
       oldFirst: { col: 9 },
       oldSecond: { col: 17 },
       oldThird: { col: 25 },
-      after: { col: ignoredClear ? 9 : 33 },
+      after: { col: ignoredClear ? 9 : 80 },
     })
     expect(parser.writes.at(-1)).toContain("\x1b[1;73H\x1bH")
   }
 
-  const noNewStop = tabTerminal(false, true)
+  const stationary = tabTerminal(false, true)
   const noStopResult = probe.termless(
     headless({
-      feed: noNewStop.write,
-      getCursor: () => ({ x: noNewStop.col - 1, y: 0, visible: true, style: null }),
+      feed: stationary.write,
+      getCursor: () => ({ x: stationary.col - 1, y: 0, visible: true, style: null }),
     }),
   )
-  expect(noStopResult.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(noStopResult.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
   expect(JSON.parse(noStopResult.response ?? "")).toMatchObject({ after: { col: 1 } })
-  expect(noStopResult.assertions).toBeUndefined()
+  expect(noStopResult.assertions).toMatchObject([{ kind: "negative" }])
 })
 
 test("TBC leaves failed setup, narrow geometry and absent or malformed cursor evidence inconclusive", async () => {

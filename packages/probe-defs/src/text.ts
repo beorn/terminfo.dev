@@ -68,22 +68,22 @@ function tabClearResult(
       },
     }
   }
-  const pass = after.row === 1 && after.col === 33
-  const staleStop = after.row === 1 && [9, 17, 25].includes(after.col)
+  const pass = after.row === 1 && after.col === cols
+  const failedClear = after.row === 1 && [1, 9, 17, 25].includes(after.col)
   return {
     pass,
     response,
     observation: {
-      outcome: pass ? "supported" : staleStop ? "unsupported" : "inconclusive",
-      ...(pass || staleStop ? {} : { reason: "insufficient-evidence" as const }),
+      outcome: pass ? "supported" : failedClear ? "unsupported" : "inconclusive",
+      ...(pass || failedClear ? {} : { reason: "insufficient-evidence" as const }),
       evidence,
     },
-    ...(pass || staleStop
+    ...(pass || failedClear
       ? {
           assertions: [
             {
               kind: pass ? ("positive" as const) : ("negative" as const),
-              expected: "After clearing old stops at columns 9, 17 and 25, tab reaches new stop at column 33",
+              expected: "After clearing old stops at columns 9, 17 and 25, tab reaches the right margin",
               observed: response,
             },
           ],
@@ -813,7 +813,7 @@ export const textProbes: ProbeDefinition[] = [
           const oldSecond = ctx.getCursor()
           ctx.feed("\t")
           const oldThird = ctx.getCursor()
-          ctx.feed("\x1b[3g\x1b[1;33H\x1bH\x1b[1;1H\t")
+          ctx.feed("\x1b[3g\x1b[1;1H\t")
           const after = ctx.getCursor()
           const position = (cursor: { x: number; y: number }) => ({ row: cursor.y + 1, col: cursor.x + 1 })
           return tabClearResult(
@@ -851,7 +851,7 @@ export const textProbes: ProbeDefinition[] = [
           const oldSecond = await ctx.queryCursorPosition()
           ctx.write("\t")
           const oldThird = await ctx.queryCursorPosition()
-          ctx.write("\x1b[3g\x1b[1;33H\x1bH\x1b[1;1H\t")
+          ctx.write("\x1b[3g\x1b[1;1H\t")
           const after = await ctx.queryCursorPosition()
           return tabClearResult({ oldFirst, oldSecond, oldThird, after }, ctx.cols, "behavior")
         } finally {

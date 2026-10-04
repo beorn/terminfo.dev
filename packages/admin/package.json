@@ -10,13 +10,13 @@
     ".": "./entry.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": {
         "types": "./dist/entry.d.mts",
         "import": "./dist/entry.mjs"
       }
-    },
-    "access": "public"
+    }
   },
   "scripts": {
     "build": "tsdown"
@@ -24,7 +24,7 @@
   "dependencies": {
     "@silvery/commander": "0.26.0",
     "@terminfo/probe-defs": "workspace:*",
-    "@termless/core": "^0.10.0",
+    "@termless/core": "0.10.2",
     "loggily": "0.12.0",
     "react": "19.3.0",
     "silvery": "0.26.0",
