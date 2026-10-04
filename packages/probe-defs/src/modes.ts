@@ -1,31 +1,155 @@
-import type { ProbeDefinition } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
 import { probe, decrpmModeProbe, parserStateResult, isBlank } from "./helpers.ts"
 
-export const modesProbes: ProbeDefinition[] = [
-  // Alt screen enter
-  decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) => {
-    ctx.feed("\x1b[?1049h")
+const ALT_1049_SEED_A = "PRIMARY-A"
+const ALT_1049_SEED_B = "PRIMARY-B"
+const ALT_1049_MARK = "ALT-MARK"
+
+/** Read the exact characters of a horizontal span; never an inequality shortcut. */
+function readAlt1049Span(ctx: TermlessContext, row: number, length: number): string {
+  let text = ""
+  for (let index = 0; index < length; index += 1) text += ctx.getCell(row, index).char
+  return text
+}
+
+function alt1049SpanBlank(ctx: TermlessContext, row: number, length: number): boolean {
+  for (let index = 0; index < length; index += 1) {
+    if (!isBlank(ctx.getCell(row, index).char)) return false
+  }
+  return true
+}
+
+/**
+ * One measured 1049 roundtrip shared by the enter and exit callbacks. Existing ctx only: feed,
+ * getCell, getCursor, getScrollback and cols. No rows API and no entry-homing requirement.
+ * BOTH callbacks grade supported only when the entire seeded roundtrip holds: blank alternate
+ * spans, distinct ALT-MARK readback, exact PRIMARY-A/PRIMARY-B restoration, ALT-MARK absent from
+ * the restored position, and saved-cursor restoration. Inadequate geometry, an unmeasured seed,
+ * an unavailable readback and an unattributed exit failure are inconclusive; a negative needs
+ * measured setup plus a feature-specific failed assertion. Cleanup returns to normal mode in
+ * finally and stays loud: a cleanup failure is never swallowed into a result.
+ */
+function altScreen1049Roundtrip(ctx: TermlessContext, phase: "enter" | "exit"): ProbeResult {
+  const expected =
+    phase === "enter"
+      ? "CSI ? 1049 h switches to a cleared alternate buffer (full seeded roundtrip)"
+      : "CSI ? 1049 l restores the primary buffer and the saved cursor"
+  const rows = ctx.getScrollback().screenLines
+  const cols = ctx.cols
+  const needed = Math.max(ALT_1049_SEED_A.length, ALT_1049_SEED_B.length, ALT_1049_MARK.length)
+  // Pre-cursor parks at row 4/col 6 (\x1b[5;7H): the measured geometry must cover the seeds,
+  // the marker AND that saved cursor, so 5 rows are required, not just 3.
+  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 5 || cols < needed) {
     return parserStateResult(
       null,
-      "Alt-screen entry changes the visible buffer",
-      { mode: ctx.getMode("altScreen") },
-      "Mode metadata does not measure the alternate buffer",
+      expected,
+      { rows, cols, needed },
+      "1049 fixture needs at least 5 visible rows and " + needed + " columns",
     )
-  }),
+  }
+  ctx.feed("\x1b[2J\x1b[1;1H" + ALT_1049_SEED_A)
+  ctx.feed("\x1b[3;1H" + ALT_1049_SEED_B)
+  ctx.feed("\x1b[5;7H")
+  let before: { x: number; y: number }
+  let seedA: string
+  let seedB: string
+  try {
+    before = { ...ctx.getCursor() }
+    seedA = readAlt1049Span(ctx, 0, ALT_1049_SEED_A.length)
+    seedB = readAlt1049Span(ctx, 2, ALT_1049_SEED_B.length)
+  } catch (error) {
+    return alt1049ReadbackInconclusive(expected, "Primary seed readback failed", error)
+  }
+  if (seedA !== ALT_1049_SEED_A || seedB !== ALT_1049_SEED_B) {
+    return parserStateResult(null, expected, { rows, cols, seedA, seedB }, "Primary seed was not measured")
+  }
+  // The saved-cursor claim is only measurable if the pre-cursor was actually parked at the
+  // commanded row 4/col 6. A constant getCursor would make before==after trivially true, so an
+  // unmeasured or mismatched pre-cursor is setup failure, checked before 1049h is fed.
+  if (!Number.isSafeInteger(before.x) || !Number.isSafeInteger(before.y) || before.x !== 6 || before.y !== 4) {
+    return parserStateResult(
+      null,
+      expected,
+      { before, expectedCursor: { x: 6, y: 4 } },
+      "Parked pre-cursor was not measured at row 4/col 6",
+    )
+  }
+  try {
+    ctx.feed("\x1b[?1049h")
+    let blankA: boolean
+    let blankB: boolean
+    try {
+      blankA = alt1049SpanBlank(ctx, 0, ALT_1049_SEED_A.length)
+      blankB = alt1049SpanBlank(ctx, 2, ALT_1049_SEED_B.length)
+    } catch (error) {
+      return alt1049ReadbackInconclusive(expected, "Alternate-buffer readback failed", error)
+    }
+    if (!blankA || !blankB) {
+      if (phase === "exit") {
+        return parserStateResult(
+          null,
+          expected,
+          { seedA, seedB, blankA, blankB },
+          "Entry did not clear the seeded primary spans; exit cannot be attributed",
+        )
+      }
+      return parserStateResult(
+        false,
+        expected,
+        { seedA, seedB, blankA, blankB },
+        "CSI ? 1049 h did not clear the seeded primary spans",
+      )
+    }
+    ctx.feed("\x1b[1;1H" + ALT_1049_MARK)
+    let mark: string
+    try {
+      mark = readAlt1049Span(ctx, 0, ALT_1049_MARK.length)
+    } catch (error) {
+      return alt1049ReadbackInconclusive(expected, "Alternate-marker readback failed", error)
+    }
+    if (mark !== ALT_1049_MARK) {
+      return parserStateResult(null, expected, { mark }, "Alternate marker was not measured")
+    }
+    ctx.feed("\x1b[?1049l")
+    let restoredA: string
+    let restoredB: string
+    let leaked: boolean
+    let after: { x: number; y: number }
+    try {
+      restoredA = readAlt1049Span(ctx, 0, ALT_1049_SEED_A.length)
+      restoredB = readAlt1049Span(ctx, 2, ALT_1049_SEED_B.length)
+      leaked = readAlt1049Span(ctx, 0, ALT_1049_MARK.length) === ALT_1049_MARK
+      after = { ...ctx.getCursor() }
+    } catch (error) {
+      return alt1049ReadbackInconclusive(expected, "Restored-primary readback failed", error)
+    }
+    const state = { before, seedA, seedB, mark, restoredA, restoredB, leaked, after }
+    const failures: string[] = []
+    if (restoredA !== ALT_1049_SEED_A) failures.push("PRIMARY-A not restored")
+    if (restoredB !== ALT_1049_SEED_B) failures.push("PRIMARY-B not restored")
+    if (leaked) failures.push("ALT-MARK leaked into the restored position")
+    if (after.x !== before.x || after.y !== before.y) failures.push("saved cursor not restored")
+    if (failures.length === 0) return parserStateResult(true, expected, state, undefined)
+    return parserStateResult(false, expected, state, "1049 roundtrip failed: " + failures.join("; "))
+  } finally {
+    ctx.feed("\x1b[?1049l\x1b[0m")
+  }
+}
+
+function alt1049ReadbackInconclusive(expected: string, note: string, error: unknown): ProbeResult {
+  const message = error instanceof Error ? error.message : String(error)
+  return parserStateResult(null, expected, { readbackError: message }, note)
+}
+
+export const modesProbes: ProbeDefinition[] = [
+  // Alt screen enter — measured roundtrip (narrow CTO-approved 1049 slice)
+  decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) => altScreen1049Roundtrip(ctx, "enter")),
 
   // Alt screen exit
   {
     ...probe(
       "modes.alt-screen.exit",
-      (ctx) => {
-        ctx.feed("\x1b[?1049h\x1b[?1049l")
-        return parserStateResult(
-          null,
-          "Alt-screen exit restores the visible buffer",
-          { mode: ctx.getMode("altScreen") },
-          "Mode metadata does not measure buffer restoration",
-        )
-      },
+      (ctx) => altScreen1049Roundtrip(ctx, "exit"),
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 3) {
           return {

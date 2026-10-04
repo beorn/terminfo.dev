@@ -261,3 +261,149 @@ test("DECAWM refuses one-row geometry before a second-row read and enables its o
   expect(writes).toContain("\x1b[?7h")
   expect(writes.at(-1)).toBe("\x1b[?7l")
 })
+
+type Alt1049Scenario =
+  | "roundtrip"
+  | "ignored-entry"
+  | "erasure-mimic"
+  | "marker-leak"
+  | "broken-exit"
+  | "broken-cursor"
+  | "readback-failure"
+  | "cleanup-failure"
+  | "constant-cursor"
+
+/** Minimal primary/alternate model: only the two seeded spans, the ALT marker and the cursor. */
+function alt1049Context(scenario: Alt1049Scenario, cols = 20, rows = 5) {
+  const writes: string[] = []
+  const pad = (text: string) => (text + " ".repeat(cols)).slice(0, cols)
+  const blank = " ".repeat(cols)
+  const saved = { x: 6, y: 4 }
+  let primaryA = blank
+  let primaryB = blank
+  let altA = blank
+  let altB = blank
+  let onAlt = false
+  let cursor = { x: 0, y: 0 }
+  const line = (row: number) =>
+    onAlt ? (row === 0 ? altA : row === 2 ? altB : blank) : row === 0 ? primaryA : row === 2 ? primaryB : blank
+  const context = {
+    cols,
+    getScrollback: () => ({ viewportOffset: 0, totalLines: rows, screenLines: rows }),
+    feed(sequence: string) {
+      writes.push(sequence)
+      if (sequence === "\x1b[2J\x1b[1;1HPRIMARY-A") primaryA = pad("PRIMARY-A")
+      else if (sequence === "\x1b[3;1HPRIMARY-B") primaryB = pad("PRIMARY-B")
+      else if (sequence === "\x1b[5;7H") cursor = { ...saved }
+      else if (sequence === "\x1b[?1049h") {
+        if (scenario !== "ignored-entry") {
+          onAlt = true
+          cursor = { x: 0, y: 0 }
+          altA = blank
+          altB = blank
+        }
+      } else if (sequence === "\x1b[1;1HALT-MARK") altA = pad("ALT-MARK")
+      else if (sequence === "\x1b[?1049l") {
+        if (scenario !== "broken-exit") {
+          onAlt = false
+          if (scenario === "erasure-mimic") {
+            primaryA = blank
+            primaryB = blank
+          }
+          if (scenario === "marker-leak") primaryA = pad("ALT-MARK")
+          if (scenario !== "broken-cursor") cursor = { ...saved }
+        }
+      } else if (sequence === "\x1b[?1049l\x1b[0m") {
+        if (scenario === "cleanup-failure") throw new Error("cleanup failed")
+        onAlt = false
+      }
+    },
+    getCell(row: number, col: number) {
+      if (scenario === "readback-failure" && writes.length > 3) throw new Error("readback failed")
+      const text = line(row)
+      return { char: col < text.length ? text[col] : " " } as ReturnType<TermlessContext["getCell"]>
+    },
+    getCursor: () =>
+      scenario === "constant-cursor"
+        ? { x: 0, y: 0, visible: true, style: null }
+        : { ...cursor, visible: true, style: null },
+  }
+  return { context: context as unknown as TermlessContext, writes }
+}
+
+function alt1049Probe(id: "enter" | "exit") {
+  const definition = modesProbes.find((item) => item.id === `modes.alt-screen.${id}`)
+  if (!definition?.termless) throw new Error(`Missing 1049 ${id} headless callback`)
+  return definition
+}
+
+test("1049 enter grades only on the full roundtrip, with enter-specific defect controls", () => {
+  const definition = alt1049Probe("enter")
+  const ok = alt1049Context("roundtrip")
+  expect(definition.termless!(ok.context).observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  const ignored = alt1049Context("ignored-entry")
+  const ignoredResult = definition.termless!(ignored.context)
+  expect(ignoredResult.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(ignoredResult.assertions).toMatchObject([{ kind: "negative" }])
+  for (const scenario of ["erasure-mimic", "broken-exit", "marker-leak"] as const) {
+    const { context } = alt1049Context(scenario)
+    const result = definition.termless!(context)
+    expect(result.observation, scenario).not.toMatchObject({ outcome: "supported" })
+    expect(result.observation, scenario).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(result.assertions, scenario).toMatchObject([{ kind: "negative" }])
+  }
+  const clipped = alt1049Context("roundtrip", 6)
+  const clippedResult = definition.termless!(clipped.context)
+  expect(clippedResult.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(clipped.writes).toEqual([])
+  expect(clippedResult.assertions).toBeUndefined()
+  // Four rows cover the two seeds but not the row-4 saved pre-cursor; must refuse before feeding.
+  const clippedRows = alt1049Context("roundtrip", 20, 4)
+  const clippedRowsResult = definition.termless!(clippedRows.context)
+  expect(clippedRowsResult.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(clippedRows.writes).toEqual([])
+  expect(clippedRowsResult.assertions).toBeUndefined()
+})
+
+test("1049 exit concludes the full roundtrip and separates erase, leak, exit and cursor defects", () => {
+  const definition = alt1049Probe("exit")
+  const ok = alt1049Context("roundtrip")
+  expect(definition.termless!(ok.context).observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(ok.writes.at(-1)).toBe("\x1b[?1049l\x1b[0m")
+  for (const scenario of ["erasure-mimic", "marker-leak", "broken-exit", "broken-cursor"] as const) {
+    const { context } = alt1049Context(scenario)
+    const result = definition.termless!(context)
+    expect(result.observation, scenario).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(result.assertions, scenario).toMatchObject([{ kind: "negative" }])
+  }
+})
+
+test("1049 exit keeps an unattributed entry failure inconclusive", () => {
+  const definition = alt1049Probe("exit")
+  const { context } = alt1049Context("ignored-entry")
+  const result = definition.termless!(context)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("1049 constant-cursor context cannot pass as a saved-cursor restoration", () => {
+  for (const id of ["enter", "exit"] as const) {
+    const definition = alt1049Probe(id)
+    const { context, writes } = alt1049Context("constant-cursor")
+    const result = definition.termless!(context)
+    expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.assertions, id).toBeUndefined()
+    expect(writes, id).not.toContain("\x1b[?1049h")
+  }
+})
+
+test("1049 readback failure is inconclusive while a cleanup failure stays loud", () => {
+  const definition = alt1049Probe("exit")
+  const { context, writes } = alt1049Context("readback-failure")
+  const result = definition.termless!(context)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.assertions).toBeUndefined()
+  expect(writes.at(-1)).toBe("\x1b[?1049l\x1b[0m")
+  const cleanup = alt1049Context("cleanup-failure")
+  expect(() => definition.termless!(cleanup.context)).toThrow("cleanup failed")
+})
