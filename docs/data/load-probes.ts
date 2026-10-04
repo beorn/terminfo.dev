@@ -22,9 +22,6 @@ export function loadProbes(): ProbeData {
   return _cached
 }
 
-/** @deprecated Use loadProbes() */
-export const loadCensus = loadProbes
-
 export interface FeatureMeta {
   name: string
   slug?: string
