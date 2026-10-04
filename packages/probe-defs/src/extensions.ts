@@ -525,10 +525,12 @@ type KittyDetection =
 
 /**
  * Kitty protocol-support detection (spec "Detection of support for this protocol"): the unmutating flags query
- * (CSI ? u) is followed by DA1 (CSI c). A complete flags reply answers for the protocol; a complete DA1 with no
- * flags reply is the documented negative; neither reply, a malformed or truncated flags reply, or a DA1 that precedes
- * the flags reply is inconclusive. For a per-enhancement id this negative proves only the necessary condition (the
- * protocol is absent), never that key events work.
+ * (CSI ? u) is followed by DA1 (CSI c). A complete flags reply answers for the protocol. Absence is proven only by a
+ * complete DA1 reply that is the ENTIRE retained capture; any other byte around it (a malformed, truncated or
+ * colon-parameter flags reply, a duplicate DA1, noise, or a DA1 that precedes the flags reply) means a reply came
+ * back that cannot be read, so absence is unproven and the observation is inconclusive — as is neither reply at all.
+ * For a per-enhancement id this negative proves only the necessary condition (the protocol is absent), never that key
+ * events work.
  */
 function kittyDetection(raw: string): KittyDetection {
   const flags = KITTY_FLAGS.exec(raw)
@@ -542,7 +544,13 @@ function kittyDetection(raw: string): KittyDetection {
   if (KITTY_FLAGS_SHAPED.test(raw) || KITTY_FLAGS_TRUNCATED.test(raw)) {
     return { kind: "inconclusive", reason: "invalid-reply" }
   }
-  if (da1 !== null) return { kind: "absent" }
+  if (da1 !== null) {
+    // The documented DA1-only negative holds only when the DA1 reply is the whole capture. A leading or trailing byte
+    // (colon-parameter flags the digits-only shape misses, a duplicate DA1, noise) is unread output, not absence.
+    return da1.index === 0 && da1[0].length === raw.length
+      ? { kind: "absent" }
+      : { kind: "inconclusive", reason: "invalid-reply" }
+  }
   return { kind: "inconclusive", reason: "no-response" }
 }
 
@@ -571,7 +579,7 @@ function kittyInconclusive(
 ): ProbeResult {
   const note =
     detection.reason === "invalid-reply"
-      ? "DA1 answered before the Kitty keyboard flags reply; ambiguous ordering, no support conclusion"
+      ? "Unreadable or out-of-order Kitty keyboard flags / DA1 reply (malformed, truncated, duplicate or residual bytes); no support conclusion"
       : "No answer to the Kitty keyboard flags query or the DA1 follow-up; no support conclusion"
   return {
     pass: false,
