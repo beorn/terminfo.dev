@@ -4,7 +4,7 @@
 }
 
 /* Use the existing compact menu until the full navigation fits. */
-@media (min-width: 768px) and (max-width: 1359px) {
+@media (min-width: 768px) and (max-width: 1535px) {
   .VPNav .VPNavBarMenu,
   .VPNav .VPNavBarTranslations,
   .VPNav .VPNavBarAppearance,
