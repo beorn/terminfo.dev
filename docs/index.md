@@ -786,10 +786,8 @@ strips, or mishandles.
 }
 
 /* Prevent VitePress link styling inside baseline cards */
-/* Lock ALL text inside baseline cards to inherit color — prevent VitePress a:hover blue */
 .baseline-card-link,
-.baseline-card-link:hover,
-.baseline-card-link:hover * {
+.baseline-card-link:hover {
   color: inherit !important;
   text-decoration: none !important;
 }

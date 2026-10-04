@@ -11,7 +11,7 @@ Help measure what your terminal does. A probe can establish a particular behavio
 npx terminfo.dev
 ```
 
-This shows the available commands. Run `npx terminfo.dev detect` to see the detected terminal. The current source's `test` command records one unreviewed run; `submit RAW --draft FILE` prepares an offline contribution draft. Neither command posts a result. Check the installed CLI's `--version` and `--help`: the corrected package is still being verified and older published versions may differ.
+This shows the available commands. Run `npx terminfo.dev detect` to see the detected terminal. The current source's `test` command records one unreviewed run; `submit RAW --draft FILE` prepares an offline contribution draft. Neither command posts a result. These examples describe the corrected source. Check the installed CLI's `--version` and `--help`; published versions may differ until the reviewed CLI release.
 
 `npx` comes with [Node.js](https://nodejs.org/en/download). A fresh terminal window keeps test output separate but does not by itself make that window a disposable test environment. Record whether tmux, Screen or a remote connection is involved.
 
