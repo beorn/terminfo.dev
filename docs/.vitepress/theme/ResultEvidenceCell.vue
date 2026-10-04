@@ -383,7 +383,7 @@ onBeforeUnmount(() => {
                 <figure v-for="(frame, index) in evidenceFrames" :key="index" class="result-evidence__image">
                   <img :src="withBase(frame.url)" :alt="`${frame.role} frame: ${frame.label}`" />
                   <figcaption>
-                    <strong>{{ frame.role === "control" ? "Before" : "After" }}</strong> · {{ frame.label }}
+                    <strong>{{ frame.role === "control" ? "Control" : "Target" }}</strong> · {{ frame.label }}
                     <details>
                       <summary>Image details</summary>
                       Captured {{ frameTime(frame.capturedAt) }} · SHA-256 {{ frame.sha256 }}
