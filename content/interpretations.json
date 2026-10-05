@@ -336725,14 +336725,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -336779,14 +336773,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -336833,14 +336821,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -336887,14 +336869,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -336941,14 +336917,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -336995,14 +336965,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
