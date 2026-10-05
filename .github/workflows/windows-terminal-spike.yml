@@ -1,0 +1,474 @@
+name: windows-terminal-spike
+
+on:
+  push:
+    branches:
+      - spike/hosted-windows-27480
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-spike:
+    name: windows-terminal-matrix-spike
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Gather system, display, and session context
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force -Path C:\spike-artifacts | Out-Null
+          $logPath = "C:\spike-artifacts\context.txt"
+
+          function Log($msg) {
+            Write-Output $msg
+            $msg | Out-File -Append -FilePath $logPath
+          }
+
+          Log "=== WINDOWS OS / BUILD ==="
+          $os = Get-CimInstance Win32_OperatingSystem
+          Log "Caption: $($os.Caption)"
+          Log "Version: $($os.Version)"
+          Log "BuildNumber: $($os.BuildNumber)"
+          Log "OSArchitecture: $($os.OSArchitecture)"
+
+          Log "`n=== RUNNER ENVIRONMENT ==="
+          Log "ImageOS: $env:ImageOS"
+          Log "ImageVersion: $env:ImageVersion"
+          Log "RUNNER_ARCH: $env:RUNNER_ARCH"
+          Log "RUNNER_OS: $env:RUNNER_OS"
+          Log "User: $env:USERNAME"
+          Log "UserDomain: $env:USERDOMAIN"
+
+          Log "`n=== SESSION & INTERACTIVE STATUS ==="
+          Log "Process SessionId: $((Get-Process -Id $PID).SessionId)"
+          Log "Environment.UserInteractive: $([System.Environment]::UserInteractive)"
+          try {
+            $sessions = qwinsta 2>&1
+            Log "qwinsta output:`n$($sessions -join "`n")"
+          } catch {
+            Log "qwinsta failed: $_"
+          }
+
+          Log "`n=== DISPLAY & GRAPHICS ==="
+          try {
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $screens = [System.Windows.Forms.Screen]::AllScreens
+            Log "Screen count: $($screens.Count)"
+            foreach ($s in $screens) {
+              Log "Screen: DeviceName=$($s.DeviceName), Bounds=$($s.Bounds.Width)x$($s.Bounds.Height), Primary=$($s.Primary), BitsPerPixel=$($s.BitsPerPixel)"
+            }
+          } catch {
+            Log "System.Windows.Forms Screen query failed: $_"
+          }
+
+          try {
+            $video = Get-CimInstance Win32_VideoController
+            foreach ($v in $video) {
+              Log "VideoController: $($v.Name), Res=$($v.CurrentHorizontalResolution)x$($v.CurrentVerticalResolution), Colors=$($v.CurrentNumberOfColors), DriverVersion=$($v.DriverVersion)"
+            }
+          } catch {
+            Log "Win32_VideoController failed: $_"
+          }
+
+      - name: Locate or Install Terminal Matrix (Windows Terminal, WezTerm)
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $logPath = "C:\spike-artifacts\context.txt"
+          function Log($msg) {
+            Write-Output $msg
+            $msg | Out-File -Append -FilePath $logPath
+          }
+
+          Log "`n=== TERMINAL INVENTORY ==="
+
+          # Check for pre-existing wt.exe
+          $wtPath = (Get-Command wt.exe -ErrorAction SilentlyContinue)?.Source
+          if (-not $wtPath) {
+            $localAppWt = "$env:LOCALAPPDATA\Microsoft\WindowsApps\wt.exe"
+            if (Test-Path $localAppWt) { $wtPath = $localAppWt }
+          }
+
+          # Try chocolatey
+          if (-not $wtPath) {
+            Log "Windows Terminal not found on PATH. Attempting install via choco..."
+            try {
+              choco install microsoft-windows-terminal -y --no-progress
+              $wtPath = (Get-Command wt.exe -ErrorAction SilentlyContinue)?.Source
+              if (-not $wtPath) {
+                $localAppWt = "$env:LOCALAPPDATA\Microsoft\WindowsApps\wt.exe"
+                if (Test-Path $localAppWt) { $wtPath = $localAppWt }
+              }
+            } catch {
+              Log "Choco install failed: $_"
+            }
+          }
+
+          # Try standalone zip from GitHub release
+          if (-not $wtPath) {
+            Log "Attempting standalone zip download for Windows Terminal..."
+            try {
+              $wtZip = "C:\wt.zip"
+              $wtDir = "C:\WindowsTerminal"
+              [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+              Invoke-WebRequest -Uri "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -OutFile $wtZip -UseBasicParsing
+              Expand-Archive -Path $wtZip -DestinationPath $wtDir -Force
+              if (Test-Path "$wtDir\wt.exe") {
+                $wtPath = "$wtDir\wt.exe"
+              }
+            } catch {
+              Log "Download standalone Windows Terminal failed: $_"
+            }
+          }
+
+          if ($wtPath) {
+            Log "Windows Terminal resolved at: $wtPath"
+            try {
+              $wtVer = (Get-Item $wtPath).VersionInfo.ProductVersion
+              Log "Windows Terminal ProductVersion: $wtVer"
+            } catch {}
+            [Environment]::SetEnvironmentVariable("WT_BIN", $wtPath, "Machine")
+            $env:WT_BIN = $wtPath
+          } else {
+            Log "Windows Terminal could not be installed or resolved."
+          }
+
+          # Download WezTerm portable zip
+          Log "`n=== Installing WezTerm (Portable) ==="
+          try {
+            $wezZip = "C:\wezterm.zip"
+            $wezDir = "C:\WezTerm"
+            Invoke-WebRequest -Uri "https://github.com/wez/wezterm/releases/download/20240203-110809-5046fc22/WezTerm-windows-20240203-110809-5046fc22.zip" -OutFile $wezZip -UseBasicParsing
+            Expand-Archive -Path $wezZip -DestinationPath $wezDir -Force
+            $wezPath = (Get-ChildItem -Path $wezDir -Filter "wezterm.exe" -Recurse | Select-Object -First 1)?.FullName
+            Log "WezTerm resolved at: $wezPath"
+            if ($wezPath) {
+              $wezVer = & $wezPath --version
+              Log "WezTerm version: $wezVer"
+              [Environment]::SetEnvironmentVariable("WEZTERM_BIN", $wezPath, "Machine")
+              $env:WEZTERM_BIN = $wezPath
+            }
+          } catch {
+            Log "WezTerm download/extract failed: $_"
+          }
+
+      - name: "Test 1: Windows Terminal (DEC Special Graphics + DA1)"
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Write-Output "=== Testing Windows Terminal ==="
+
+          # Write fixture script
+          @'
+          import ctypes
+          import os
+          import sys
+          import time
+          import msvcrt
+
+          kernel32 = ctypes.windll.kernel32
+          try:
+              hOut = kernel32.GetStdHandle(-11)
+              mode = ctypes.c_ulong()
+              kernel32.GetConsoleMode(hOut, ctypes.byref(mode))
+              kernel32.SetConsoleMode(hOut, mode.value | 0x0004)
+          except Exception as e:
+              pass
+
+          try:
+              hIn = kernel32.GetStdHandle(-10)
+              in_mode = ctypes.c_ulong()
+              kernel32.GetConsoleMode(hIn, ctypes.byref(in_mode))
+              kernel32.SetConsoleMode(hIn, in_mode.value | 0x0200)
+          except Exception as e:
+              pass
+
+          sys.stdout.write("\033[2J\033[H\r\n\r\n")
+          sys.stdout.write("  \033[1;36m\033(0qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\033(B\033[0m\r\n\r\n")
+          sys.stdout.write("  Windows Terminal Spike: DEC Special Graphics + DA1\r\n\r\n")
+          sys.stdout.flush()
+
+          time.sleep(0.5)
+
+          # Send DA1
+          sys.stdout.write("\033[c")
+          sys.stdout.flush()
+
+          reply = bytearray()
+          deadline = time.time() + 3.0
+          while time.time() < deadline:
+              if msvcrt.kbhit():
+                  c = msvcrt.getch()
+                  reply.extend(c)
+                  if b"c" in reply or b"C" in reply:
+                      break
+              else:
+                  time.sleep(0.05)
+
+          os.makedirs("C:/spike-artifacts", exist_ok=True)
+          with open("C:/spike-artifacts/da1_reply_wt.bin", "wb") as f:
+              f.write(reply)
+
+          with open("C:/spike-artifacts/da1_reply_wt.txt", "w") as f:
+              f.write(f"Bytes received: {len(reply)}\n")
+              f.write(f"Raw repr: {repr(bytes(reply))}\n")
+              f.write(f"Decoded: {bytes(reply).decode('latin1', errors='replace')}\n")
+
+          with open("C:/spike-artifacts/wt_ready.txt", "w") as f:
+              f.write("ready\n")
+
+          time.sleep(15)
+          '@ | Out-File -FilePath "C:\fixture_wt.py" -Encoding utf8
+
+          $wtBin = [Environment]::GetEnvironmentVariable("WT_BIN", "Machine")
+          if (-not $wtBin) { $wtBin = (Get-Command wt.exe -ErrorAction SilentlyContinue)?.Source }
+          if (-not $wtBin) { $wtBin = "C:\WindowsTerminal\wt.exe" }
+
+          if (Test-Path $wtBin) {
+            Write-Output "Launching Windows Terminal via: $wtBin"
+            $proc = Start-Process -FilePath $wtBin -ArgumentList "new-tab", "--title", "WTSpike", "-d", "C:\", "cmd.exe", "/c", "python -u C:\fixture_wt.py" -PassThru
+            for ($i = 0; $i -lt 25; $i++) {
+              if (Test-Path "C:\spike-artifacts\wt_ready.txt") {
+                Write-Output "WT fixture ready after $i seconds."
+                break
+              }
+              Start-Sleep -Seconds 1
+            }
+            Start-Sleep -Seconds 2
+
+            # Capture screenshot
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+            $bmp.Save("C:\spike-artifacts\screenshot_wt_desktop.png", [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose()
+            $bmp.Dispose()
+            Write-Output "Saved screenshot_wt_desktop.png ($($bounds.Width)x$($bounds.Height))"
+
+            Stop-Process -Name "WindowsTerminal" -Force -ErrorAction SilentlyContinue
+          } else {
+            Write-Output "WT binary not available, skipping launch."
+          }
+
+      - name: "Test 2: WezTerm (DEC Special Graphics + DA1)"
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Write-Output "=== Testing WezTerm ==="
+
+          # Write fixture script
+          @'
+          import ctypes
+          import os
+          import sys
+          import time
+          import msvcrt
+
+          kernel32 = ctypes.windll.kernel32
+          try:
+              hOut = kernel32.GetStdHandle(-11)
+              mode = ctypes.c_ulong()
+              kernel32.GetConsoleMode(hOut, ctypes.byref(mode))
+              kernel32.SetConsoleMode(hOut, mode.value | 0x0004)
+          except Exception as e:
+              pass
+
+          try:
+              hIn = kernel32.GetStdHandle(-10)
+              in_mode = ctypes.c_ulong()
+              kernel32.GetConsoleMode(hIn, ctypes.byref(in_mode))
+              kernel32.SetConsoleMode(hIn, in_mode.value | 0x0200)
+          except Exception as e:
+              pass
+
+          sys.stdout.write("\033[2J\033[H\r\n\r\n")
+          sys.stdout.write("  \033[1;35m\033(0qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\033(B\033[0m\r\n\r\n")
+          sys.stdout.write("  WezTerm Spike: DEC Special Graphics + DA1\r\n\r\n")
+          sys.stdout.flush()
+
+          time.sleep(0.5)
+
+          # Send DA1
+          sys.stdout.write("\033[c")
+          sys.stdout.flush()
+
+          reply = bytearray()
+          deadline = time.time() + 3.0
+          while time.time() < deadline:
+              if msvcrt.kbhit():
+                  c = msvcrt.getch()
+                  reply.extend(c)
+                  if b"c" in reply or b"C" in reply:
+                      break
+              else:
+                  time.sleep(0.05)
+
+          os.makedirs("C:/spike-artifacts", exist_ok=True)
+          with open("C:/spike-artifacts/da1_reply_wezterm.bin", "wb") as f:
+              f.write(reply)
+
+          with open("C:/spike-artifacts/da1_reply_wezterm.txt", "w") as f:
+              f.write(f"Bytes received: {len(reply)}\n")
+              f.write(f"Raw repr: {repr(bytes(reply))}\n")
+              f.write(f"Decoded: {bytes(reply).decode('latin1', errors='replace')}\n")
+
+          with open("C:/spike-artifacts/wezterm_ready.txt", "w") as f:
+              f.write("ready\n")
+
+          time.sleep(15)
+          '@ | Out-File -FilePath "C:\fixture_wezterm.py" -Encoding utf8
+
+          $wezBin = [Environment]::GetEnvironmentVariable("WEZTERM_BIN", "Machine")
+          if (-not $wezBin) {
+            $wezBin = (Get-ChildItem -Path "C:\WezTerm" -Filter "wezterm.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1)?.FullName
+          }
+
+          if (Test-Path $wezBin) {
+            Write-Output "Launching WezTerm via: $wezBin"
+            $proc = Start-Process -FilePath $wezBin -ArgumentList "start", "--", "cmd.exe", "/c", "python -u C:\fixture_wezterm.py" -PassThru
+            for ($i = 0; $i -lt 25; $i++) {
+              if (Test-Path "C:\spike-artifacts\wezterm_ready.txt") {
+                Write-Output "WezTerm fixture ready after $i seconds."
+                break
+              }
+              Start-Sleep -Seconds 1
+            }
+            Start-Sleep -Seconds 2
+
+            # Capture screenshot
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+            $bmp.Save("C:\spike-artifacts\screenshot_wezterm_desktop.png", [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose()
+            $bmp.Dispose()
+            Write-Output "Saved screenshot_wezterm_desktop.png"
+
+            Stop-Process -Name "wezterm-gui" -Force -ErrorAction SilentlyContinue
+            Stop-Process -Name "wezterm" -Force -ErrorAction SilentlyContinue
+          } else {
+            Write-Output "WezTerm binary not found, skipping launch."
+          }
+
+      - name: "Test 3: Windows Console / conhost (Control: DEC Special Graphics + DA1)"
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Write-Output "=== Testing conhost control ==="
+
+          # Write fixture script
+          @'
+          import ctypes
+          import os
+          import sys
+          import time
+          import msvcrt
+
+          kernel32 = ctypes.windll.kernel32
+          try:
+              hOut = kernel32.GetStdHandle(-11)
+              mode = ctypes.c_ulong()
+              kernel32.GetConsoleMode(hOut, ctypes.byref(mode))
+              kernel32.SetConsoleMode(hOut, mode.value | 0x0004)
+          except Exception as e:
+              pass
+
+          try:
+              hIn = kernel32.GetStdHandle(-10)
+              in_mode = ctypes.c_ulong()
+              kernel32.GetConsoleMode(hIn, ctypes.byref(in_mode))
+              kernel32.SetConsoleMode(hIn, in_mode.value | 0x0200)
+          except Exception as e:
+              pass
+
+          sys.stdout.write("\033[2J\033[H\r\n\r\n")
+          sys.stdout.write("  \033[1;32m\033(0qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\033(B\033[0m\r\n\r\n")
+          sys.stdout.write("  Conhost Control Test: DEC Special Graphics + DA1\r\n\r\n")
+          sys.stdout.flush()
+
+          time.sleep(0.5)
+
+          # Send DA1
+          sys.stdout.write("\033[c")
+          sys.stdout.flush()
+
+          reply = bytearray()
+          deadline = time.time() + 3.0
+          while time.time() < deadline:
+              if msvcrt.kbhit():
+                  c = msvcrt.getch()
+                  reply.extend(c)
+                  if b"c" in reply or b"C" in reply:
+                      break
+              else:
+                  time.sleep(0.05)
+
+          os.makedirs("C:/spike-artifacts", exist_ok=True)
+          with open("C:/spike-artifacts/da1_reply_conhost.bin", "wb") as f:
+              f.write(reply)
+
+          with open("C:/spike-artifacts/da1_reply_conhost.txt", "w") as f:
+              f.write(f"Bytes received: {len(reply)}\n")
+              f.write(f"Raw repr: {repr(bytes(reply))}\n")
+              f.write(f"Decoded: {bytes(reply).decode('latin1', errors='replace')}\n")
+
+          with open("C:/spike-artifacts/conhost_ready.txt", "w") as f:
+              f.write("ready\n")
+
+          time.sleep(15)
+          '@ | Out-File -FilePath "C:\fixture_conhost.py" -Encoding utf8
+
+          $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "python -u C:\fixture_conhost.py" -PassThru
+          for ($i = 0; $i -lt 20; $i++) {
+            if (Test-Path "C:\spike-artifacts\conhost_ready.txt") {
+              Write-Output "Conhost fixture ready after $i seconds."
+              break
+            }
+            Start-Sleep -Seconds 1
+          }
+          Start-Sleep -Seconds 2
+
+          # Capture screenshot
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+          $bmp.Save("C:\spike-artifacts\screenshot_conhost_desktop.png", [System.Drawing.Imaging.ImageFormat]::Png)
+          $g.Dispose()
+          $bmp.Dispose()
+          Write-Output "Saved screenshot_conhost_desktop.png"
+
+          Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+
+      - name: List Artifacts Inventory
+        continue-on-error: true
+        shell: powershell
+        run: |
+          Get-ChildItem -Path C:\spike-artifacts -Recurse | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+
+      - name: Upload Spike Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-terminal-spike-artifacts
+          path: C:\spike-artifacts\*
+
+      - name: Conclude successfully
+        run: echo "Windows Terminal spike workflow completed."
