@@ -13,7 +13,7 @@ next:
 
 # How to read a result
 
-Every result carries one label: the outcome, then the evidence or the reason, as in "Supported: verified in screenshot" or "Inconclusive: no reply". Each label on the site links to its entry here. A page that shows a single result may name what was checked: "Supported: underline shows in screenshot", "Supported: bracketed paste reported in terminal response". A missing reply is Inconclusive, never Unsupported.
+A result label states the outcome, then the evidence or the reason, as in "Supported: verified in screenshot" or "Inconclusive: no reply". A page that shows a single result may name what was checked: "Supported: underline shows in screenshot", "Supported: bracketed paste reported in terminal response". A missing reply is Inconclusive, never Unsupported.
 
 ## Supported and Unsupported: verified in …
 
@@ -45,7 +45,8 @@ Inconclusive means we could not tell, not that the feature failed.
 
 - **Not graded: old result, kept without evidence** — a pass/fail from before we kept evidence; it cannot be graded now.
 - **Probe error: our test failed** — nothing about the terminal.
-- **Not tested: not in this run** — the run did not include this feature, for example because its probe came later. Not a deliberate skip, and not Unsupported.
+- **Not tested: no semantic observable** — the probe ran and retained a trace, but this target exposes no way to measure the feature. A named coverage record says which observable is missing; it is not a failed probe or a support claim.
+- **Not tested: not in this run** — no measurement or named coverage record exists for this feature, for example because its probe came later. This is different from a probe that ran without a semantic observable, and from a deliberate skip. Neither kind of not-tested coverage means Unsupported.
 - **No result: no reviewed run for this terminal yet** — see [Contribute a run](/how-it-works/contribute-a-run).
 
 ## Review history
