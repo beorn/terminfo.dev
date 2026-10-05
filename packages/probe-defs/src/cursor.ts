@@ -821,38 +821,57 @@ export const cursorProbes: ProbeDefinition[] = [
             },
           }
         }
+        const rows = ctx.rows
+        const expected = "CUD past the newline-measured bottom clamps at the last row"
+        const measured: Array<{ step: string; report: { row: number; col: number } | null }> = []
+        const ask = async (step: string) => {
+          const pos = await ctx.queryCursorPosition()
+          measured.push({ step, report: pos })
+          return pos
+        }
+        const inconclusive = (note?: string) => ({
+          pass: false,
+          response: JSON.stringify({ rows, measured }),
+          observation: {
+            outcome: "inconclusive" as const,
+            ...(note ? { reason: "insufficient-evidence" as const, note } : { reason: "no-response" as const }),
+            evidence: "query" as const,
+          },
+        })
         ctx.write("\x1b[1;1H") // position at row 1
-        const origin = await ctx.queryCursorPosition()
-        if (!origin) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        const origin = await ask("origin")
+        if (!origin) return inconclusive()
+        if (origin.row !== 1 || origin.col !== 1) return inconclusive("CUD home control did not reach 1;1")
+        // Independent setup: reach the bottom with newlines, not with CUD, so the reported bottom
+        // cannot be an echo of the CUD argument. Scrolling at the last row keeps the cursor there.
+        ctx.write("\r\n".repeat(rows - 1))
+        const bottom = await ask("bottom")
+        if (!bottom) return inconclusive()
+        if (bottom.row !== rows || bottom.col !== 1) {
+          return inconclusive("Newline-induced bottom was not reported at " + rows + ";1")
         }
-        if (origin.row !== 1 || origin.col !== 1) {
+        const target = Math.max(999, rows + 1)
+        ctx.write("\x1b[" + target + "B") // move past the measured bottom
+        const final = await ask("clamped")
+        if (!final) return inconclusive()
+        const response = JSON.stringify({ rows, measured })
+        if (final.row === rows && final.col === 1) {
           return {
-            pass: false,
-            response: JSON.stringify({ origin }),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "CUD home control did not reach 1;1",
-            },
+            pass: true,
+            response,
+            observation: { outcome: "supported", evidence: "query" },
+            assertions: [{ kind: "positive", expected, observed: response }],
           }
-        }
-        const target = Math.max(999, ctx.rows + 1)
-        ctx.write(`\x1b[${target}B`) // move past the measured bottom
-        const final = await ctx.queryCursorPosition()
-        if (!final) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
         }
         return {
           pass: false,
-          response: JSON.stringify({ rows: ctx.rows, origin, final, target }),
+          response,
           observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
+            outcome: "unsupported",
             evidence: "query",
-            note: "CUD home and final CPR were recorded; this callback does not independently qualify bottom behavior",
+            note: "CUD " + target + " did not clamp at row " + rows,
           },
+          assertions: [{ kind: "negative", expected, observed: response }],
         }
       },
     ),

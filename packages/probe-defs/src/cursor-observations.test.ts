@@ -117,6 +117,36 @@ function appWrapper(cols: number): TermContext {
   }
 }
 
+function appGoto(rows: number, cols: number, opts: { noClamp?: boolean } = {}): TermContext {
+  const base = app({ row: 1, col: 1 })
+  let row = 1
+  let col = 1
+  return {
+    ...base,
+    rows,
+    cols,
+    write(sequence: string) {
+      if (sequence === "\x1b[1;1H") {
+        row = 1
+        col = 1
+        return
+      }
+      const cud = /^\u001b\[(\d+)B$/.exec(sequence)
+      if (cud) {
+        row += Number(cud[1])
+        if (!opts.noClamp && row > rows) row = rows
+        return
+      }
+      for (const ch of sequence) {
+        if (ch === "\r") col = 1
+        else if (ch === "\n") row = row < rows ? row + 1 : rows
+        else if (ch >= " ") col += 1
+      }
+    },
+    queryCursorPosition: async () => ({ row, col }),
+  }
+}
+
 function headless(x: number, y: number, rows = 24, reply = ""): TermlessContext {
   return {
     cols: 80,
@@ -786,27 +816,34 @@ test("headless CUD qualifies home and targets beyond an initialized grid over 99
 })
 
 // A fixed 999-row move cannot reach the bottom of a taller measured app grid.
-test("app CUD verifies home and uses a move beyond the measured row count without grading", async () => {
+test("app CUD grades against a newline-measured bottom and refuses an unqualified one", async () => {
   const probe = byId("cursor.cud-past-bottom")
   const writes: string[] = []
   const context = app(null)
   context.rows = 1001
   context.write = (sequence) => writes.push(sequence)
-  let replies = [
+  const replies = [
     { row: 1, col: 1 },
+    { row: 1001, col: 1 },
     { row: 1001, col: 1 },
   ]
   context.queryCursorPosition = async () => replies.shift() ?? null
   const result = await probe.term!(context)
-  expect(writes).toEqual(["\x1b[1;1H", "\x1b[1002B"])
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-  expect(JSON.parse(result.response ?? "")).toMatchObject({ origin: { row: 1, col: 1 }, final: { row: 1001, col: 1 } })
+  expect(writes).toEqual(["\x1b[1;1H", "\r\n".repeat(1000), "\x1b[1002B"])
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
 
-  writes.length = 0
-  replies = [{ row: 4, col: 1 }]
-  const unqualified = await probe.term!(context)
-  expect(writes).toEqual(["\x1b[1;1H"])
+  const unqualified = await probe.term!(app({ row: 4, col: 1 }))
   expect(unqualified.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+})
+
+test("app CUD positive and clamp controls", async () => {
+  const probe = byId("cursor.cud-past-bottom")
+  const ok = await probe.term!(appGoto(24, 80))
+  expect(ok.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(ok.assertions).toMatchObject([{ kind: "positive" }])
+  const noClamp = await probe.term!(appGoto(24, 80, { noClamp: true }))
+  expect(noClamp.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(noClamp.assertions).toMatchObject([{ kind: "negative" }])
 })
 
 test("app CUP refuses nonfinite geometry before a feature write", async () => {
