@@ -1,4 +1,4 @@
-import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
+import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { isBlank, parserStateResult, probe, unmeasuredCellResult } from "./helpers.ts"
 
 /** Each tab probe owns its stops; the app runner supplies a disposable terminal fixture. */
@@ -191,6 +191,158 @@ function tabPositionResult(
     response,
     observation: { outcome: pass ? "supported" : "unsupported", evidence },
     assertions: [{ kind: pass ? "positive" : "negative", expected: `row 1, col ${expectedCol}`, observed: response }],
+  }
+}
+
+/** Exact declared-width samples measured by the shared termless emoji-width helper. */
+type DeclaredWidthSample = {
+  /** The declared sample, written verbatim after setup qualification. */
+  sample: string
+  /** Worst-case columns the sample's scalars may occupy when the terminal does not combine them. */
+  maxColumns: number
+}
+
+/** A lone UTF-16 surrogate half means the scalar was split rather than decoded faithfully. */
+function isLoneSurrogate(value: string): boolean {
+  if (value.length !== 1) return false
+  const code = value.charCodeAt(0)
+  return code >= 0xd800 && code <= 0xdfff
+}
+
+/**
+ * Measure a declared-width emoji sample from the headless parser grid without trusting the sample's
+ * expected two-column offset. Setup, readout and the sentinel are each qualified independently:
+ * distinct ASCII calibration proves cells and cursor move together, a supplementary-plane control
+ * proves scalars survive encoding, and the width is taken from wherever the unique ASCII sentinel
+ * actually landed. A genuinely different measured width therefore concludes unsupported instead of
+ * being discarded as insufficient evidence, while constant/stale/wrapped/ambiguous readbacks stay
+ * inconclusive. Width two is claimed only for the declared sample, never for a rendered glyph.
+ */
+function emojiWidthResult(ctx: TermlessContext, { sample, maxColumns }: DeclaredWidthSample): ProbeResult {
+  const expected = "Declared-width sample occupies two parser columns after qualified setup"
+  const home = "\x1b[1;1H\x1b[2K"
+  const marker = "X"
+  const supplementary = "\u{1F30D}"
+  const required = maxColumns + 2
+  if (!Number.isSafeInteger(ctx.cols) || ctx.cols < required) {
+    return {
+      pass: false,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+        note: `Emoji width fixture needs at least ${required} columns to place the sample and sentinel without wrapping; measured ${ctx.cols}`,
+      },
+    }
+  }
+  try {
+    // 1. Readout qualification: distinct ASCII, exact advance, then erased home.
+    ctx.feed(home)
+    ctx.feed("ABX")
+    const calibration = [ctx.getCell(0, 0).char, ctx.getCell(0, 1).char, ctx.getCell(0, 2).char]
+    const calibrationCursor = ctx.getCursor()
+    ctx.feed(home)
+    const erased = Array.from({ length: required }, (_, col) => ctx.getCell(0, col).char)
+    const homeCursor = ctx.getCursor()
+    const readoutQualified =
+      calibration[0] === "A" &&
+      calibration[1] === "B" &&
+      calibration[2] === "X" &&
+      calibrationCursor.y === 0 &&
+      calibrationCursor.x === 3 &&
+      erased.every(isBlank) &&
+      homeCursor.y === 0 &&
+      homeCursor.x === 0
+    if (!readoutQualified) {
+      return parserStateResult(
+        null,
+        expected,
+        { calibration, calibrationCursor, erased, homeCursor },
+        "ASCII calibration, erase or home readout was not coherent; cells or cursor are constant, stale or unqualified",
+      )
+    }
+
+    // 2. Supplementary-plane control: a faithful scalar and the sentinel must both survive encoding.
+    ctx.feed(supplementary + marker)
+    const control = Array.from({ length: 4 }, (_, col) => ctx.getCell(0, col).char)
+    const controlCursor = ctx.getCursor()
+    const controlIndex = control.indexOf(marker)
+    const controlTarget = controlIndex < 0 ? control : control.slice(0, controlIndex)
+    const controlQualified =
+      controlIndex >= 1 &&
+      controlCursor.y === 0 &&
+      controlCursor.x === controlIndex + 1 &&
+      controlTarget.some((char) => char !== "" && !isLoneSurrogate(char)) &&
+      !controlTarget.some(isLoneSurrogate)
+    if (!controlQualified) {
+      return parserStateResult(
+        null,
+        expected,
+        { control, controlCursor, controlIndex },
+        controlTarget.some(isLoneSurrogate)
+          ? "Supplementary-plane control exposed lone surrogate halves, so scalar encoding is ambiguous"
+          : "Supplementary-plane control did not expose a faithful scalar with the sentinel surviving",
+      )
+    }
+    ctx.feed(home)
+
+    // 3. Target: exact sample plus unique sentinel, located wherever it actually landed.
+    const cursorBefore = ctx.getCursor()
+    ctx.feed(sample + marker)
+    const row = Array.from({ length: ctx.cols }, (_, col) => ctx.getCell(0, col).char)
+    const cursorAfter = ctx.getCursor()
+    const markerColumns: number[] = []
+    for (let col = 0; col < row.length; col += 1) if (row[col] === marker) markerColumns.push(col)
+    const state = { sample, cursorBefore, cursorAfter, row, markerColumns }
+    if (markerColumns.length === 0) {
+      return parserStateResult(null, expected, state, "Sentinel marker was not exposed after the sample")
+    }
+    if (markerColumns.length > 1) {
+      return parserStateResult(
+        null,
+        expected,
+        state,
+        "Sentinel marker was duplicated; target advance cannot be attributed",
+      )
+    }
+    if (cursorBefore.x !== 0 || cursorBefore.y !== 0) {
+      return parserStateResult(null, expected, state, "Home before the target was not measured")
+    }
+    if (cursorAfter.y !== 0 || cursorAfter.x >= ctx.cols) {
+      return parserStateResult(
+        null,
+        expected,
+        state,
+        "Sample plus sentinel wrapped the row; width is not measurable in this geometry",
+      )
+    }
+    const markerColumn = markerColumns[0]
+    const target = row.slice(0, markerColumn)
+    if (target.some(isLoneSurrogate)) {
+      return parserStateResult(
+        null,
+        expected,
+        state,
+        "Sample cells exposed lone surrogate halves, so target encoding is ambiguous",
+      )
+    }
+    if (ctx.getCell(0, markerColumn).wide || cursorAfter.x !== markerColumn + 1) {
+      return parserStateResult(
+        null,
+        expected,
+        state,
+        "Sentinel cursor or cell disagreed; the marker is not a validated one-column glyph",
+      )
+    }
+    const width = markerColumn
+    return parserStateResult(
+      width === 2,
+      expected,
+      { ...state, width },
+      width === 2 ? undefined : "Declared sample measured a width other than two parser columns",
+    )
+  } finally {
+    ctx.feed(home)
   }
 }
 
@@ -1241,21 +1393,7 @@ export const textProbes: ProbeDefinition[] = [
   {
     ...probe(
       "text.wide.emoji-flags",
-      (ctx) => {
-        ctx.feed("AA")
-        const ascii = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
-        ctx.feed("\x1b[1;1H\x1b[2K")
-        ctx.feed("\u{1F1FA}\u{1F1F8}X")
-        const cell = ctx.getCell(0, 0)
-        const next = ctx.getCell(0, 2)
-        const ready = ascii[0]?.char === "A" && ascii[1]?.char === "A" && cell.char.includes("🇺") && next.char === "X"
-        return parserStateResult(
-          ready ? cell.wide === true : null,
-          "Flag sample occupies one wide parser cell before X",
-          { ascii, cell, next },
-          ready ? undefined : "ASCII, flag, or X control cells were not exposed",
-        )
-      },
+      (ctx) => emojiWidthResult(ctx, { sample: "\u{1F1FA}\u{1F1F8}", maxColumns: 4 }),
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 4)
         if (refusal) return refusal
@@ -1294,21 +1432,7 @@ export const textProbes: ProbeDefinition[] = [
   {
     ...probe(
       "text.wide.emoji-vs16",
-      (ctx) => {
-        ctx.feed("AA")
-        const ascii = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
-        ctx.feed("\x1b[1;1H\x1b[2K")
-        ctx.feed("\u263A\uFE0FX")
-        const cell = ctx.getCell(0, 0)
-        const next = ctx.getCell(0, 2)
-        const ready = ascii[0]?.char === "A" && ascii[1]?.char === "A" && cell.char.includes("☺") && next.char === "X"
-        return parserStateResult(
-          ready ? cell.wide === true : null,
-          "VS16 sample occupies one wide parser cell before X",
-          { ascii, cell, next },
-          ready ? undefined : "ASCII, VS16, or X control cells were not exposed",
-        )
-      },
+      (ctx) => emojiWidthResult(ctx, { sample: "\u263A\uFE0F", maxColumns: 2 }),
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
@@ -1347,21 +1471,7 @@ export const textProbes: ProbeDefinition[] = [
   {
     ...probe(
       "text.wide.emoji-zwj",
-      (ctx) => {
-        ctx.feed("AA")
-        const ascii = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
-        ctx.feed("\x1b[1;1H\x1b[2K")
-        ctx.feed("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}X")
-        const cell = ctx.getCell(0, 0)
-        const next = ctx.getCell(0, 2)
-        const ready = ascii[0]?.char === "A" && ascii[1]?.char === "A" && cell.char.includes("👨") && next.char === "X"
-        return parserStateResult(
-          ready ? cell.wide === true : null,
-          "ZWJ sample occupies one wide parser cell before X",
-          { ascii, cell, next },
-          ready ? undefined : "ASCII, ZWJ, or X control cells were not exposed",
-        )
-      },
+      (ctx) => emojiWidthResult(ctx, { sample: "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}", maxColumns: 6 }),
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 4)
         if (refusal) return refusal
