@@ -20,6 +20,7 @@ const selectedRun = computed(() => runs.find(run => run.sha256 === runSha.value)
 const counts = computed(() => selectedRun.value?.counts)
 const inconclusive = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'inconclusive').length)
 const errors = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'error').length)
+const namedNotTested = computed(() => selectedRun.value?.notTestedCoverage?.namedCount ?? 0)
 function runLabel(run) {
   return `${run.target.version} · ${run.target.os || 'OS not recorded'} · ${run.target.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
 }
@@ -165,7 +166,7 @@ const breadcrumbParent = (() => {
     <li><strong>{{ counts.supported }}</strong> supported <small>Positive evidence</small></li>
     <li><strong>{{ counts.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
     <li><strong>{{ inconclusive }}</strong> inconclusive <small>Cannot decide</small></li>
-    <li><strong>{{ counts.notTested }}</strong> not tested <small>No observation</small></li>
+    <li><strong>{{ counts.notTested }}</strong> not tested <small>{{ namedNotTested ? namedNotTested + ' named: no applicable observable' : 'No observation' }}</small></li>
     <li><strong>{{ errors }}</strong> errors <small>Probe error</small></li>
   </ul>
   <p class="score-detail">Inconclusive includes checks blocked by permissions or policy before execution. This distribution is not an overall compatibility score. <a href="/contribute#reading-results">How to read results</a></p>
@@ -173,6 +174,7 @@ const breadcrumbParent = (() => {
     <summary>How these results are counted</summary>
     <p>{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. This includes checks that could not run, such as a probe refused by a permission policy.</p>
     <p v-if="counts.conclusive">Of {{ counts.conclusive }} results that could be decided, {{ counts.supported }} were supported and {{ counts.unsupported }} were unsupported. Inconclusive, error and not-tested results are separate.</p>
+    <p v-if="namedNotTested">{{ counts.tested }} measured + {{ namedNotTested }} named not-tested + {{ counts.notTested - namedNotTested }} unrecorded remainder = {{ counts.catalog }} catalog features; each feature is in exactly one bucket.</p>
     <p v-else>No conclusive results in this reviewed run.</p>
   </details>
 </div>

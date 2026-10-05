@@ -62,7 +62,7 @@ export interface SelectedVersion {
   suiteId: string
   probeHash: string | null
   suiteFreshness: string
-  suite: { observed: number; expected: number | null; complete: boolean }
+  suite: { observed: number; expected: number | null; complete: boolean; namedNotTested: number }
   sourceRevision: string | null
   sha256: string
   cells: Record<string, SelectedCell>
@@ -80,6 +80,13 @@ export interface SelectedVersion {
     conclusive: number
     supported: number
     unsupported: number
+  }
+  /** Named coverage records (a subset of counts.notTested) and their disjoint partition of the catalog. */
+  notTestedCoverage: {
+    named: Array<{ featureId: string; reason: "no-semantic-observable"; noObservable: string; rawReplyRef: string }>
+    measured: number
+    namedCount: number
+    remainder: number
   }
 }
 
@@ -477,12 +484,27 @@ function projectRun(
     if (cell.conclusive && cell.outcome === "supported") v1[id] = true
     else if (cell.conclusive && cell.outcome === "unsupported") v1[id] = false
   }
+  const named = (run.notTested ?? []).map((entry) => ({
+    featureId: entry.featureId,
+    reason: entry.reason,
+    noObservable: entry.noObservable,
+    rawReplyRef: entry.rawReplyRef,
+  }))
+  for (const entry of named) {
+    if (cells[entry.featureId]) {
+      throw new Error(`named not-tested ${entry.featureId} is also measured in ${run.runId}`)
+    }
+  }
+  const namedCount = named.length
+  const remainder = catalogIds.length - tested - namedCount
+  if (remainder < 0) throw new Error(`not-tested partition exceeds catalog for ${run.runId}`)
+  const suiteObserved = run.observations.length + namedCount
   const suiteFreshness =
     !run.legacy && !run.suiteComplete
-      ? `partial (${run.observations.length} of ${run.suiteProbeCount} probes)`
+      ? `partial (${suiteObserved} of ${run.suiteProbeCount} probes)`
       : run.probeHash === currentProbeHash && run.suiteComplete
         ? "current suite"
-        : `older suite (${run.observations.length} probes)${run.probeHash ? "" : "; missing probeHash"}`
+        : `older suite (${suiteObserved} probes)${run.probeHash ? "" : "; missing probeHash"}`
   return {
     runId: run.runId,
     target: run.target,
@@ -490,7 +512,12 @@ function projectRun(
     suiteId: run.suiteId,
     probeHash: run.probeHash,
     suiteFreshness,
-    suite: { observed: run.observations.length, expected: run.suiteProbeCount, complete: run.suiteComplete },
+    suite: {
+      observed: suiteObserved,
+      expected: run.suiteProbeCount,
+      complete: run.suiteComplete,
+      namedNotTested: namedCount,
+    },
     sourceRevision: run.sourceRevision,
     sha256: run.sha256,
     cells,
@@ -521,6 +548,7 @@ function projectRun(
       supported,
       unsupported,
     },
+    notTestedCoverage: { named, measured: tested, namedCount, remainder },
   }
 }
 

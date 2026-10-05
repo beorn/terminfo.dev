@@ -48,9 +48,10 @@ for (const [name, create] of [
         outcome: "supported",
         evidence: "parser-state",
       })
-      expect(batch.observations.find((item) => item.featureId === "modes.reverse-video")).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
+      expect(batch.observations.find((item) => item.featureId === "modes.reverse-video")).toBeUndefined()
+      expect(batch.notTested.find((item) => item.featureId === "modes.reverse-video")).toMatchObject({
+        reason: "no-semantic-observable",
+        noObservable: "rendered colors (pixels)",
       })
     }
   })
@@ -251,6 +252,7 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
       },
     ],
     assertions: [],
+    notTested: [],
     rawReplies: {},
     ungradedDiagnostics: {},
   })
@@ -305,6 +307,7 @@ test("attributes a context operation failure and restores the backend response l
       },
     ],
     assertions: [],
+    notTested: [],
     rawReplies: {},
     ungradedDiagnostics: {},
   })
@@ -372,6 +375,7 @@ test("rejects a returned method that disagrees with the marker and preserves mat
       { featureId: "refused", outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
     ],
     assertions: [],
+    notTested: [],
     rawReplies: {},
     ungradedDiagnostics: {},
   })
@@ -413,6 +417,7 @@ test.each(["supported", "error", "raw", "assertion"] as const)(
         },
       ],
       assertions: [],
+      notTested: [],
       rawReplies: {},
       ungradedDiagnostics: {},
     })
@@ -428,9 +433,72 @@ test("does not promote a marked legacy callback's conclusion into an observation
   expect(batch).toEqual({
     observations: [],
     assertions: [],
+    notTested: [],
     rawReplies: {},
     ungradedDiagnostics: { legacy: { kind: "legacy-callback", pass: true, note: "Legacy conclusion" } },
   })
+})
+
+// A named coverage record is additive state, not an observation, and it must keep its own raw capture.
+test("records named not-tested coverage without an observation and keeps its raw trace", async () => {
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition(
+      "modes.bracketed-paste",
+      () => ({
+        pass: false,
+        response: JSON.stringify({ mode: false }),
+        notTested: { reason: "no-semantic-observable", noObservable: "input events" },
+      }),
+      { termlessObservationEvidence: "parser-state" },
+    ),
+  ])
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.notTested).toEqual([
+    {
+      featureId: "modes.bracketed-paste",
+      reason: "no-semantic-observable",
+      noObservable: "input events",
+      rawReplyRef: "modes.bracketed-paste",
+    },
+  ])
+  expect(JSON.parse(batch.rawReplies["modes.bracketed-paste"] ?? "")).toEqual({ mode: false })
+})
+
+// Coverage without retained raw state is a loud collector error, never a not-tested claim.
+test("refuses named coverage with no retained raw capture", async () => {
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition(
+      "modes.bracketed-paste",
+      () => ({
+        pass: false,
+        notTested: { reason: "no-semantic-observable", noObservable: "input events" },
+      }),
+      { termlessObservationEvidence: "parser-state" },
+    ),
+  ])
+  expect(batch.notTested).toEqual([])
+  expect(batch.observations).toMatchObject([
+    { featureId: "modes.bracketed-paste", outcome: "error", reason: "collector-error" },
+  ])
+})
+
+// A probe that never captured state cannot be recorded as not tested either.
+test("a failed probe never becomes named coverage", async () => {
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition(
+      "modes.bracketed-paste",
+      () => {
+        throw new Error("backend read failed")
+      },
+      { termlessObservationEvidence: "parser-state" },
+    ),
+  ])
+  expect(batch.notTested).toEqual([])
+  expect(batch.observations).toMatchObject([
+    { featureId: "modes.bracketed-paste", outcome: "error", reason: "collector-error" },
+  ])
 })
 
 // AC3: feature support cannot authorize metadata readback. Existing tests grade

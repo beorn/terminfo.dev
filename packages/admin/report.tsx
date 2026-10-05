@@ -49,8 +49,11 @@ function CurrentSummary({ column }: { column: CurrentColumn }): React.ReactEleme
       </Text>
       <Text color="$muted">context {column.contextKey}</Text>
       <Text>
-        {score(column.run)} · {counts.tested} tested · {counts.notTested} not tested · {counts.supported} supported ·{" "}
-        {counts.unsupported} unsupported · {inconclusive} inconclusive · {errors} error
+        {score(column.run)} · {counts.tested} tested · {counts.notTested} not tested
+        {column.run.notTestedCoverage.namedCount > 0
+          ? ` (${column.run.notTestedCoverage.namedCount} named: no observable)`
+          : ""}{" "}
+        · {counts.supported} supported · {counts.unsupported} unsupported · {inconclusive} inconclusive · {errors} error
       </Text>
     </Box>
   )

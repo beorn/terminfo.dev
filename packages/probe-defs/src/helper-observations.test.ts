@@ -234,11 +234,19 @@ test("unexposed overline and default conceal flags cannot establish negative sup
     if (!probe?.termless) throw new Error(`missing headless ${id} probe`)
     const result = probe.termless(headless())
     expect(result.pass, id).toBe(false)
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "parser-state",
-    })
+    if (id === "sgr.overline") {
+      expect(result.observation, id).toBeUndefined()
+      expect(result.notTested, id).toEqual({
+        reason: "no-semantic-observable",
+        noObservable: "cell.overline field not exposed",
+      })
+    } else {
+      expect(result.observation, id).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "parser-state",
+      })
+    }
     expect(JSON.parse(result.response ?? ""), id).toMatchObject({ char: "X" })
     expect(result.assertions, id).toBeUndefined()
     const measured = probe.termless(headless({ getCell: () => ({ ...baseCell, hidden: true, overline: true }) }))

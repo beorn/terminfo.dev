@@ -8,6 +8,7 @@
 
 import {
   ALL_PROBES as PROBE_DEFS,
+  type NotTestedCoverage,
   type Observation,
   type ObservationFrame,
   type ProbeAssertion,
@@ -104,6 +105,7 @@ export interface ProbeBatch {
   rawReplies: Record<string, string>
   observations: Observation[]
   assertions: ProbeAssertion[]
+  notTested: NotTestedCoverage[]
   ungradedDiagnostics: Record<string, UngradedDiagnostic>
   suiteComplete: boolean
   screenshotRefs: string[]
@@ -166,6 +168,7 @@ export async function runProbeBatch(
     rawReplies: {},
     observations: [],
     assertions: [],
+    notTested: [],
     ungradedDiagnostics: {},
     suiteComplete: false,
     screenshotRefs: [],
@@ -286,7 +289,19 @@ export async function runProbeBatch(
       } finally {
         if (geometryCheck) geometryCheck.post = await readGeometry()
       }
-      if (result.observation) {
+      if (result.notTested) {
+        const reason = result.notTested.reason
+        const noObservable = result.notTested.noObservable
+        if (reason !== "no-semantic-observable" || noObservable.trim().length === 0) {
+          batch.ungradedDiagnostics[probe.id] = {
+            kind: "collector-error",
+            name: "Error",
+            message: "Not-tested coverage for " + probe.id + " requires a closed reason and a specific noObservable",
+          }
+        } else {
+          batch.notTested.push({ featureId: probe.id, reason, noObservable, rawReplyRef: probe.id })
+        }
+      } else if (result.observation) {
         if (result.response !== undefined) {
           batch.rawReplies[`${probe.id}.callbackResponse`] = result.response
         }
@@ -364,7 +379,9 @@ export async function runProbeBatch(
     })
   }
   const observed = new Set(batch.observations.map((item) => item.featureId))
+  const namedNotTested = new Set(batch.notTested.map((item) => item.featureId))
   batch.suiteComplete =
-    expected.every((probe) => observed.has(probe.id)) && Object.keys(batch.ungradedDiagnostics).length === 0
+    expected.every((probe) => observed.has(probe.id) || namedNotTested.has(probe.id)) &&
+    Object.keys(batch.ungradedDiagnostics).length === 0
   return batch
 }

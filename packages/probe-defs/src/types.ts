@@ -1,3 +1,11 @@
+/** A probe ran and retained raw state, but this environment exposes no applicable observable for the claim. */
+export interface NoSemanticObservable {
+  /** Closed reason for a coverage record. */
+  reason: "no-semantic-observable"
+  /** The specific semantic observable this environment cannot expose. */
+  noObservable: string
+}
+
 export interface ProbeResult {
   pass: boolean
   note?: string
@@ -5,6 +13,8 @@ export interface ProbeResult {
   /** Explicit measured result; the legacy pass boolean is never promoted. */
   observation?: Omit<Observation, "featureId" | "rawReplyRef">
   assertions?: Array<Omit<ProbeAssertion, "featureId" | "rawReplyRef">>
+  /** Per-result coverage: the probe ran and captured raw state, but no applicable observable exists here. */
+  notTested?: NoSemanticObservable
 }
 
 /** A proposition's measured outcome. Missing catalog IDs mean not tested. */
@@ -133,6 +143,19 @@ export type UngradedDiagnostic =
   | { kind: "legacy-callback"; pass: boolean; note?: string; response?: string }
   | { kind: "collector-error"; name: string; message?: string }
 
+/**
+ * One named coverage record: the probe ran and its raw state is retained, but the environment exposes
+ * no applicable observable for the feature. Additive; disjoint from observations and assertions.
+ */
+export interface NotTestedCoverage {
+  featureId: string
+  reason: "no-semantic-observable"
+  /** The specific semantic observable this environment cannot expose. */
+  noObservable: string
+  /** Points at the retained nonempty raw trace for this feature. */
+  rawReplyRef: string
+}
+
 /** Captured from the module/binary actually loaded by a headless run. */
 export interface LoadedEngineBinary {
   path: string
@@ -195,6 +218,8 @@ export interface ProbeRun {
   assertions: ProbeAssertion[]
   screenshotRefs: string[]
   observations: Observation[]
+  /** Named coverage records for features with no applicable observable here; disjoint from observations. */
+  notTested?: NotTestedCoverage[]
   ungradedDiagnostics?: Record<string, UngradedDiagnostic>
 }
 

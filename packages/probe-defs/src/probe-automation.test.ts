@@ -1061,10 +1061,10 @@ describe("extensions without a complete behavior oracle", () => {
           }),
         )
         expect(result.pass, id).toBe(false)
-        expect(result.observation, id).toMatchObject({
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "parser-state",
+        expect(result.observation, id).toBeUndefined()
+        expect(result.notTested, id).toEqual({
+          reason: "no-semantic-observable",
+          noObservable: "icon-name state",
         })
         expect(JSON.parse(result.response ?? "null"), id).toEqual({ before: "original", after })
         expect(result.assertions ?? [], id).toEqual([])

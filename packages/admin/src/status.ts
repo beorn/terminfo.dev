@@ -71,7 +71,7 @@ export async function handleStatus(): Promise<void> {
     const inconclusive = cells.filter((cell) => cell.outcome === "inconclusive").length
     const errors = cells.filter((cell) => cell.outcome === "error").length
     console.log(
-      `    ${key} ${run.target.version} (${run.runId}): ${run.counts.tested} tested, ${run.counts.notTested} not tested, ${run.counts.conclusive} conclusive (${run.counts.supported} supported, ${run.counts.unsupported} unsupported), ${inconclusive} inconclusive, ${errors} error`,
+      `    ${key} ${run.target.version} (${run.runId}): ${run.counts.tested} tested, ${run.counts.notTested} not tested${run.notTestedCoverage.namedCount ? ` (${run.notTestedCoverage.namedCount} named: no observable)` : ""}, ${run.counts.conclusive} conclusive (${run.counts.supported} supported, ${run.counts.unsupported} unsupported), ${inconclusive} inconclusive, ${errors} error`,
     )
   }
   console.log(`    Excluded archived runs: ${projection.exclusions.length}`)

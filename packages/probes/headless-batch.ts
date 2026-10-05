@@ -4,6 +4,7 @@
 import { hasExtension, type HyperlinkExtension, type TerminalBackend } from "@termless/core"
 import { readHyperlinkMetadata } from "@terminfo/probe-defs"
 import type {
+  NotTestedCoverage,
   Observation,
   ProbeAssertion,
   ProbeDefinition,
@@ -97,6 +98,7 @@ interface Batch {
   rawReplies: Record<string, string>
   observations: Observation[]
   assertions: ProbeAssertion[]
+  notTested: NotTestedCoverage[]
   ungradedDiagnostics: Record<string, UngradedDiagnostic>
 }
 
@@ -107,6 +109,10 @@ export function errorMessage(error: unknown): string {
 /** A callback conclusion without its raw state cannot become a support claim. */
 function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult): void {
   const id = probe.id
+  if (result.notTested) {
+    recordNotTested(batch, probe, result)
+    return
+  }
   const explicit = result.observation
   if (!explicit) {
     batch.ungradedDiagnostics[id] = {
@@ -165,12 +171,52 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
   }
 }
 
+/**
+ * A named coverage record is admitted only after the probe ran and retained raw state. A missing raw
+ * capture or an unclosed reason stays a loud collector error, never a not-tested claim.
+ */
+function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeResult): void {
+  const id = probe.id
+  const notTested = result.notTested
+  if (!notTested) return
+  const bound = result.response !== undefined && result.response.length > 0
+  const message =
+    "Not-tested coverage for " + id + " requires a closed reason, a specific noObservable, and its retained raw capture"
+  if (notTested.reason !== "no-semantic-observable" || notTested.noObservable.trim().length === 0 || !bound) {
+    if (probe.termlessObservationEvidence) {
+      batch.observations.push({
+        featureId: id,
+        outcome: "error",
+        reason: "collector-error",
+        evidence: probe.termlessObservationEvidence,
+        note: message,
+      })
+    } else {
+      batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message }
+    }
+    return
+  }
+  batch.rawReplies[id] = result.response
+  batch.notTested.push({
+    featureId: id,
+    reason: notTested.reason,
+    noObservable: notTested.noObservable,
+    rawReplyRef: id,
+  })
+}
+
 export async function collectBatch(
   createBackend: () => Promise<TerminalBackend>,
   backendName: string,
   definitions: readonly ProbeDefinition[],
 ): Promise<Batch> {
-  const batch: Batch = { rawReplies: {}, observations: [], assertions: [], ungradedDiagnostics: {} }
+  const batch: Batch = {
+    rawReplies: {},
+    observations: [],
+    assertions: [],
+    notTested: [],
+    ungradedDiagnostics: {},
+  }
   for (const probe of definitions) {
     if (!probe.termless) continue
     process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)

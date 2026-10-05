@@ -1,6 +1,7 @@
 export type {
   ProbeDefinition,
   ProbeResult,
+  NoSemanticObservable,
   TermlessContext,
   TermContext,
   TerminalQueryOutcome,
@@ -26,6 +27,7 @@ export type {
   AppSourceArtifact,
   ProbeAssertion,
   UngradedDiagnostic,
+  NotTestedCoverage,
   HeadlessRuntimeIdentity,
   ProbeRun,
   RunProvenance,
