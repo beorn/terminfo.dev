@@ -26,6 +26,32 @@ async function consumedSgr(ctx: TermContext, id: string, sequence: string): Prom
     }
   }
   try {
+    if (ctx.capture) {
+      const sample = "AaBb 0123456789 - terminal text"
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sample)
+      const control = await ctx.capture({ role: "control", label: "Unstyled text sample" })
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sequence + sample)
+      const target = await ctx.capture({ role: "target", label: id })
+      return {
+        pass: false,
+        response: JSON.stringify({
+          sample,
+          startRow: 3,
+          startCol: 3,
+          sampleCells: sample.length,
+          control: control.label,
+          target: target.label,
+        }),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.ref,
+          frames: [control, target],
+          note: "Control and target pixels captured; visual interpretation requires review",
+        },
+      }
+    }
     ctx.write("\x1b[1;1H\x1b[2K")
     ctx.write(sequence + "X")
     const pos = await ctx.queryCursorPosition()
@@ -217,6 +243,24 @@ async function consumedResetSgr(ctx: TermContext, id: string, setup: string, res
     }
   }
   try {
+    if (ctx.capture) {
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + setup + "X")
+      const control = await ctx.capture({ role: "control", label: `${id} styled setup` })
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + setup + "X" + reset + "Y")
+      const target = await ctx.capture({ role: "target", label: id })
+      return {
+        pass: false,
+        response: JSON.stringify({ setup, reset, control: control.label, target: target.label }),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.ref,
+          frames: [control, target],
+          note: "Control and target pixels captured; visual interpretation requires review",
+        },
+      }
+    }
     ctx.write("\x1b[1;1H\x1b[2K")
     ctx.write(`${setup}X${reset}Y`)
     const pos = await ctx.queryCursorPosition()
