@@ -361,13 +361,15 @@ onBeforeUnmount(() => {
         </p>
 
         <p class="result-evidence__outcome" :class="`result-evidence__outcome--${status.tone}`">
-          {{ status.text }}<template v-if="cell"> · {{ isDecSampleResult ? "screenshots" : methodLabel }}</template>
+          <template v-if="isDecSampleResult">Supported: verified in screenshot</template>
+          <template v-else
+            >{{ status.text }}<template v-if="cell"> · {{ methodLabel }}</template></template
+          >
         </p>
         <template v-if="isDecSampleResult">
           <p>
-            Supported applies only to this sample. Screenshots is the plain-language label for the recorded
-            <code>pixels</code> evidence: captured images of the application. Sol, an AI reviewer, assessed these
-            images; this was not a human review.
+            Supported applies only to this sample. Sol, an AI reviewer, assessed the two captured images.
+            <a :href="withBase('/how-it-works/how-to-read-a-result')">How does this work?</a>
           </p>
           <p>
             Tested in Kitty 0.49.2 on Linux, using Xvfb and the llvmpipe renderer, an 800×600 window, and the default
@@ -419,8 +421,9 @@ onBeforeUnmount(() => {
                 not necessarily mean an old terminal or version.
               </li>
               <li>
-                <strong>none (Not measured)</strong>: the collector did not measure a terminal effect or reply. A record
-                can still contain the bytes it sent, diagnostic traces or notes; none does not mean the record is empty.
+                <strong>none (Not measured)</strong>: the collector did not measure a terminal effect or reply. A
+                zero-byte collector trace or explanatory notes may still be retained; this does not mean the record is
+                empty.
               </li>
             </ul>
             <p>Consumed, legacy and none cannot by themselves establish supported or unsupported.</p>
@@ -533,6 +536,7 @@ onBeforeUnmount(() => {
             <details v-if="rawReply !== undefined" class="result-evidence__details">
               <summary>{{ isDecSampleResult ? "Recorded test trace" : "Technical details · raw trace" }}</summary>
               <template v-if="rawReply !== undefined">
+                <p v-if="isDecSampleResult">Recorded evidence kind: <code>pixels</code>.</p>
                 <h4>
                   {{
                     isDecSampleResult
