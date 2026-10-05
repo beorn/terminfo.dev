@@ -205,6 +205,33 @@ test("cursor shape without style readback and reverse-wrap CPR remain ungraded",
   expect(reverse.assertions).toBeUndefined()
 })
 
+test("cursor.shape capture names measured geometry and roles without inventing a cursor cell", async () => {
+  const context = {
+    ...app({ row: 1, col: 1 }),
+    capture: async ({ role, label }: { role: "control" | "target"; label: string }) => ({
+      role,
+      label,
+      capturedAt: 1,
+      ref: `sha256:${"d".repeat(64)}`,
+    }),
+  } as TermContext
+  const result = await byId("cursor.shape").term!(context)
+  expect(JSON.parse(result.response ?? "")).toMatchObject({
+    rows: 24,
+    cols: 80,
+    cursorCell: null,
+    control: "Default cursor shape",
+    target: "Bar cursor shape",
+  })
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(result.observation?.frames).toHaveLength(2)
+  expect(result.assertions).toBeUndefined()
+})
+
 test("reverse-wrap grades a measured backward wrap, not a bare CPR", async () => {
   const probe = byId("cursor.reverse-wrap")
   const ok = await probe.term!(appWrapper(4))

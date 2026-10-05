@@ -224,6 +224,16 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
     }),
   )
   expect(captured.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(JSON.parse(captured.response ?? "")).toMatchObject({
+    sample: "AaBb 0123456789 - terminal text",
+    startRow: 3,
+    startCol: 3,
+    sampleCells: 31,
+    control: "Unstyled text sample",
+    target: "sgr.bold",
+  })
+  expect(captured.observation?.frames).toHaveLength(2)
+  expect(captured.assertions).toBeUndefined()
   expect(roles).toEqual(["control", "target"])
   expect(captureWrites.length).toBeGreaterThan(0)
 })

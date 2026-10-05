@@ -115,6 +115,14 @@ export function sgrProbe(
           const target = await ctx.capture({ role: "target", label: id })
           return {
             pass: false,
+            response: JSON.stringify({
+              sample,
+              startRow: 3,
+              startCol: 3,
+              sampleCells: sample.length,
+              control: control.label,
+              target: target.label,
+            }),
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",

@@ -188,6 +188,29 @@ test("DEC special capture requires safe measured 4x6 before writes or captures",
   }
 })
 
+test("DEC special capture names its measured sample cell and keeps the raw pixels observation", async () => {
+  const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
+  if (!definition?.term) throw new Error("missing app DEC special callback")
+  const events: string[] = []
+  const context = app(4, 6, events)
+  context.capture = async ({ role, label }) => ({ role, label, capturedAt: 1, ref: `sha256:${"c".repeat(64)}` })
+  const result = await definition.term(context)
+  expect(JSON.parse(result.response ?? "")).toMatchObject({
+    rows: 4,
+    cols: 6,
+    sampleCell: { row: 3, col: 2 },
+    control: "ASCII q controls on rows 1, 3 and 4; direct Unicode q─q on row 2",
+    target: "DEC Special Graphics sample at row 3, column 2; restored ASCII qqq on row 4",
+  })
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(result.observation?.frames).toHaveLength(2)
+  expect(result.assertions).toBeUndefined()
+})
+
 test.each([1, 2])(
   "DEC special normalizes SGR and both ASCII designations when capture %i rejects",
   async (failedCapture) => {
