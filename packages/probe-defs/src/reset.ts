@@ -17,7 +17,7 @@ export const resetProbes: ProbeDefinition[] = [
         }
         return parserStateResult(!after.bold && !after.italic && !after.inverse, expected, state)
       },
-      (ctx) => measuredResetSgrTerm(ctx, "reset.sgr", "\x1b[1m", "\x1b[0m", ["bold"], [], false),
+      (ctx) => measuredResetSgrTerm(ctx, "reset.sgr", "\x1b[1m", "\x1b[0m", ["bold"], []),
     ),
     termNeedsGeometry: true,
   },

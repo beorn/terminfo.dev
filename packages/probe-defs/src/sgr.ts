@@ -462,7 +462,6 @@ export async function measuredResetSgrTerm(
   reset: string,
   set: readonly ResetAttribute[],
   preserve: readonly ResetAttribute[] = [],
-  cleanInFinally = true,
 ): Promise<ProbeResult> {
   const minRows = ctx.capture ? 3 : 1
   const minCols = ctx.capture ? 34 : 2
@@ -480,7 +479,7 @@ export async function measuredResetSgrTerm(
     }
   }
 
-  let setupApplied = false
+  let cleanupNeeded = id !== "reset.sgr"
   try {
     if (typeof ctx.queryWithSentinelOutcome === "function") {
       // Phase 1: Measure baseline and ensure neutral control state
@@ -525,7 +524,7 @@ export async function measuredResetSgrTerm(
 
         // Phase 2: Apply setup and qualify intermediate state
         ctx.write(setup)
-        setupApplied = true
+        cleanupNeeded = true
         const setupOutcome = await ctx.queryWithSentinelOutcome(
           "\x1bP$qm\x1b\\",
           /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
@@ -561,6 +560,9 @@ export async function measuredResetSgrTerm(
 
           // Phase 3: Apply reset and verify clearing of target attributes and preservation of others
           ctx.write(reset)
+          if (id === "reset.sgr") {
+            cleanupNeeded = false
+          }
           const resetOutcome = await ctx.queryWithSentinelOutcome(
             "\x1bP$qm\x1b\\",
             /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
@@ -568,6 +570,7 @@ export async function measuredResetSgrTerm(
           if (resetOutcome?.match && resetOutcome.match[1] === "1") {
             const resetParsed = parseSgrReport(resetOutcome.match[2] ?? "")
             if (!resetParsed) {
+              cleanupNeeded = true
               return {
                 pass: false,
                 response: resetOutcome.raw,
@@ -582,6 +585,9 @@ export async function measuredResetSgrTerm(
             const cleared = set.every((attr) => !resetParsed.attributes.has(attr))
             const retained = preserve.every((attr) => resetParsed.attributes.has(attr))
             const matches = cleared && retained
+            if (!matches) {
+              cleanupNeeded = true
+            }
             if (matches) {
               // DECRQSS confirmed reported parameters; visual rendering is not measured by query alone.
               if (!ctx.capture) {
@@ -617,6 +623,8 @@ export async function measuredResetSgrTerm(
                 ],
               }
             }
+          } else {
+            cleanupNeeded = true
           }
         }
       }
@@ -626,7 +634,12 @@ export async function measuredResetSgrTerm(
       const sample = "AaBb 0123456789 - terminal text"
       ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sample)
       const control = await ctx.capture({ role: "control", label: "Unstyled text sample" })
-      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + setup + reset + sample)
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + setup)
+      cleanupNeeded = true
+      ctx.write(reset + sample)
+      if (id === "reset.sgr") {
+        cleanupNeeded = false
+      }
       const target = await ctx.capture({ role: "target", label: id })
       return {
         pass: false,
@@ -660,8 +673,11 @@ export async function measuredResetSgrTerm(
         note: advanced ? "Cursor advance does not verify SGR reset" : "Cursor did not reach the expected position",
       },
     }
+  } catch (err) {
+    cleanupNeeded = true
+    throw err
   } finally {
-    if (cleanInFinally) {
+    if (cleanupNeeded) {
       ctx.write("\x1b[0m")
     }
   }

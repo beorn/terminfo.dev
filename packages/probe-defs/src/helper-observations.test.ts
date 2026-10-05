@@ -955,3 +955,68 @@ test("selective reset qualifies setup before grading reset support", async () =>
     evidence: "query",
   })
 })
+
+test("reset.sgr cleans up with SGR 0 in finally when query or capture fails after setup", async () => {
+  const { resetProbes } = await import("./reset.ts")
+  const sgrReset = resetProbes.find((p) => p.id === "reset.sgr")
+  if (!sgrReset?.term) throw new Error("missing reset.sgr term callback")
+
+  // Scenario A: Setup SGR report is invalid / not reflected -> finally writes \x1b[0m
+  const setupFailWrites: string[] = []
+  let setupCalls = 0
+  const setupFailResult = await sgrReset.term(
+    terminal({
+      write(s) {
+        setupFailWrites.push(s)
+      },
+      queryWithSentinelOutcome: async () => {
+        setupCalls++
+        if (setupCalls === 1) {
+          // baseline neutral
+          return { match: ["\x1bP1$r0m\x1b\\", "1", "0"], reason: "reply", raw: "\x1bP1$r0m\x1b\\", rawBase64: "" }
+        }
+        // setup fails (no bold)
+        return { match: ["\x1bP1$r0m\x1b\\", "1", "0"], reason: "reply", raw: "\x1bP1$r0m\x1b\\", rawBase64: "" }
+      },
+    }),
+  )
+  expect(setupFailResult.pass).toBe(false)
+  expect(setupFailWrites.includes("\x1b[1m")).toBe(true) // setup was applied
+  expect(setupFailWrites.at(-1)).toBe("\x1b[0m") // cleaned up in finally!
+
+  // Scenario B: Capture throws after setup -> finally writes \x1b[0m
+  const captureFailWrites: string[] = []
+  const captureContext = terminal({
+    rows: 10,
+    cols: 40,
+    write(s) {
+      captureFailWrites.push(s)
+    },
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+  })
+  let captureCallCount = 0
+  captureContext.capture = async () => {
+    captureCallCount++
+    if (captureCallCount === 1) {
+      return { role: "control", label: "control", capturedAt: 1, ref: "control-ref" }
+    }
+    throw new Error("capture failure after setup")
+  }
+  await expect(sgrReset.term(captureContext)).rejects.toThrow("capture failure after setup")
+  expect(captureFailWrites.at(-1)).toBe("\x1b[0m") // cleaned up in finally!
+
+  // Scenario C: TTY cursor query throws after setup -> finally writes \x1b[0m
+  const cursorFailWrites: string[] = []
+  const cursorContext = terminal({
+    rows: 10,
+    cols: 40,
+    write(s) {
+      cursorFailWrites.push(s)
+    },
+    queryCursorPosition: async () => {
+      throw new Error("cursor query failed after setup")
+    },
+  })
+  await expect(sgrReset.term(cursorContext)).rejects.toThrow("cursor query failed after setup")
+  expect(cursorFailWrites.at(-1)).toBe("\x1b[0m") // cleaned up in finally!
+})
