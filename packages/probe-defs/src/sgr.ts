@@ -3,6 +3,32 @@ import { parserStateResult, sgrProbe, sgrCaptureFrames, sgrCaptureTooSmall, prob
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
+const SGR_CAPTURE_MIN_ROWS = 3
+const SGR_CAPTURE_MIN_COLS = 34
+
+/** Shared capture-dimension guard, matching helpers.ts sgrProbe: small terminals clamp CUP or wrap/scroll. */
+function sgrCaptureTooSmall(ctx: TermContext): ProbeResult | undefined {
+  if (!ctx.capture) return undefined
+  const { rows, cols } = ctx
+  if (
+    Number.isSafeInteger(rows) &&
+    Number.isSafeInteger(cols) &&
+    rows >= SGR_CAPTURE_MIN_ROWS &&
+    cols >= SGR_CAPTURE_MIN_COLS
+  ) {
+    return undefined
+  }
+  return {
+    pass: false,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: `SGR fixture needs at least ${SGR_CAPTURE_MIN_ROWS}x${SGR_CAPTURE_MIN_COLS}, measured ${rows}x${cols}`,
+    },
+  }
+}
+
 function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): boolean {
   return a.r === b.r && a.g === b.g && a.b === b.b
 }
