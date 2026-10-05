@@ -897,9 +897,23 @@ test("parseSgrReport isolates color subparameters and rejects truncated structur
   expect(parseSgrReport("38:2:999:255:0:128")).toBeNull()
   expect(parseSgrReport("38:2:0:255:0:128")).not.toBeNull()
 
-  // Counterexample 1H: semicolon 6-field invalid colorspace is rejected, not reinterpreted
-  expect(parseSgrReport("38;2;999;3;4;7")).toBeNull()
-  expect(parseSgrReport("38;2;0;255;0;128")).not.toBeNull()
+  // Semicolon 38;2 follows canonical 5-field ECMA-48 grammar (38;2;r;g;b); trailing number is parsed as subsequent SGR operand, not colorspace entity
+  const semiFiveField = parseSgrReport("38;2;0;255;0;128")
+  expect(semiFiveField).not.toBeNull()
+  expect(semiFiveField!.colors).toEqual([{ kind: "rgb", target: "38", r: 0, g: 255, b: 0 }])
+  expect(semiFiveField!.rawCodes).toContain("38;2;0;255;0")
+  expect(semiFiveField!.rawCodes).toContain("128")
+
+  // Counterexample 1H: underline colon arity must be exactly 2 elements (4:0 .. 4:5); excess arity is rejected
+  expect(parseSgrReport("4:0:3")).toBeNull()
+  expect(parseSgrReport("4:3:999")).toBeNull()
+  expect(parseSgrReport("4:6")).toBeNull()
+  const validUnderline = parseSgrReport("4:3")
+  expect(validUnderline).not.toBeNull()
+  expect(validUnderline!.attributes.has("underline")).toBe(true)
+  const validUnderlineClear = parseSgrReport("4:0")
+  expect(validUnderlineClear).not.toBeNull()
+  expect(validUnderlineClear!.attributes.has("underline")).toBe(false)
 })
 
 test("selective reset qualifies setup before grading reset support", async () => {
@@ -1019,4 +1033,32 @@ test("reset.sgr cleans up with SGR 0 in finally when query or capture fails afte
   })
   await expect(sgrReset.term(cursorContext)).rejects.toThrow("cursor query failed after setup")
   expect(cursorFailWrites.at(-1)).toBe("\x1b[0m") // cleaned up in finally!
+})
+
+test("reset probes reject DECRQSS status 0 on baseline neutralization reread", async () => {
+  const { resetProbes } = await import("./reset.ts")
+  const sgrReset = resetProbes.find((p) => p.id === "reset.sgr")
+  if (!sgrReset?.term) throw new Error("missing reset.sgr term callback")
+
+  let queryIndex = 0
+  const result = await sgrReset.term(
+    terminal({
+      queryWithSentinelOutcome: async () => {
+        queryIndex++
+        if (queryIndex === 1) {
+          // initial baseline has bold active
+          return { match: ["\x1bP1$r1m\x1b\\", "1", "1"], reason: "reply", raw: "\x1bP1$r1m\x1b\\", rawBase64: "" }
+        }
+        // neutralization reread returns status 0 (rejected/unsupported)
+        return { match: ["\x1bP0$r0m\x1b\\", "0", "0"], reason: "reply", raw: "\x1bP0$r0m\x1b\\", rawBase64: "" }
+      },
+    }),
+  )
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+  expect(result.observation?.note).toContain("could not be neutralized")
 })

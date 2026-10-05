@@ -413,6 +413,7 @@ test("XTSAVE and XTRESTORE measure mode 7 restoration via DECRPM queryMode", asy
     if (!probe?.term) throw new Error(`Missing ${id} app callback`)
 
     let mode7State: "set" | "reset" = "set"
+    let savedMode7State: "set" | "reset" | null = null
     const writes: string[] = []
     const context: TermContext = {
       cols: 80,
@@ -421,7 +422,10 @@ test("XTSAVE and XTRESTORE measure mode 7 restoration via DECRPM queryMode", asy
         writes.push(text)
         if (text === "\x1b[?7h") mode7State = "set"
         else if (text === "\x1b[?7l") mode7State = "reset"
-        else if (text === "\x1b[?7r") mode7State = "set"
+        else if (text === "\x1b[?7s") savedMode7State = mode7State
+        else if (text === "\x1b[?7r") {
+          if (savedMode7State !== null) mode7State = savedMode7State
+        }
       },
       queryCursorPosition: async () => ({ row: 1, col: 1 }),
       measureRenderedWidth: async () => null,
@@ -436,6 +440,75 @@ test("XTSAVE and XTRESTORE measure mode 7 restoration via DECRPM queryMode", asy
     expect(result.pass, id).toBe(true)
     expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
     expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
+    expect(savedMode7State, id).toBe("set")
+  }
+})
+
+test("XTSAVE and XTRESTORE reject ignored save when mode 7 restore is attempted", async () => {
+  for (const id of ["modes.xtsave", "modes.xtrestore"] as const) {
+    const probe = modesProbes.find((p) => p.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} app callback`)
+
+    let mode7State: "set" | "reset" = "set"
+    // Terminal that ignores \x1b[?7s (never saves state), so restore cannot recover "set"
+    const context: TermContext = {
+      cols: 80,
+      rows: 24,
+      write(text) {
+        if (text === "\x1b[?7h") mode7State = "set"
+        else if (text === "\x1b[?7l") mode7State = "reset"
+        // \x1b[?7s ignored!
+        // \x1b[?7r does not change mode7State because nothing was saved
+      },
+      queryCursorPosition: async () => ({ row: 1, col: 1 }),
+      measureRenderedWidth: async () => null,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryMode: async (mode) => (mode === 7 ? mode7State : null),
+    }
+
+    const result = await probe.term(context)
+    expect(result.pass, id).toBe(false)
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(result.assertions).toBeUndefined()
+  }
+})
+
+test("XTSAVE and XTRESTORE without DECRPM queryMode return inconclusive without false behavior assertions", async () => {
+  for (const id of ["modes.xtsave", "modes.xtrestore"] as const) {
+    const probe = modesProbes.find((p) => p.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} app callback`)
+
+    const writes: string[] = []
+    const context: TermContext = {
+      cols: 80,
+      rows: 24,
+      write(text) {
+        writes.push(text)
+      },
+      queryCursorPosition: async () => ({ row: 2, col: 1 }),
+      measureRenderedWidth: async () => null,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    }
+
+    const result = await probe.term(context)
+    expect(result.pass, id).toBe(false)
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "consumed",
+    })
+    expect(result.assertions).toBeUndefined()
+    expect(writes).toContain("\x1b[1;80HXX")
   }
 })
 

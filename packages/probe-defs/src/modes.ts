@@ -268,30 +268,22 @@ async function xtsaveRestoreTerm(id: string, ctx: TermContext): Promise<ProbeRes
     }
 
     ctx.write("\x1b[?7h\x1b[?7s\x1b[?7l\x1b[?7r")
-    ctx.write(`\x1b[1;${ctx.cols}HX`)
+    ctx.write(`\x1b[1;${ctx.cols}HXX`)
     const pos = await ctx.queryCursorPosition()
-    if (pos) {
-      const wrapped = pos.row === 2 && pos.col === 1
+    if (!pos) {
       return {
-        pass: wrapped,
-        response: `${pos.row};${pos.col}`,
-        observation: { outcome: wrapped ? "supported" : "unsupported", evidence: "behavior" },
-        assertions: [
-          {
-            kind: wrapped ? "positive" : "negative",
-            expected: `${id}: cursor wraps to next line when mode 7 is restored`,
-            observed: `${pos.row};${pos.col}`,
-          },
-        ],
+        pass: false,
+        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
       }
     }
     return {
       pass: false,
+      response: `${pos.row};${pos.col}`,
       observation: {
         outcome: "inconclusive",
-        reason: "no-response",
-        evidence: "query",
-        note: "Mode 7 query and behavior could not be determined",
+        reason: "insufficient-evidence",
+        evidence: "consumed",
+        note: "Cursor positioning does not verify mode 7 saved/restored state without DECRPM queryMode",
       },
     }
   } finally {
@@ -380,26 +372,45 @@ async function xtpushpopsgrTerm(id: string, ctx: TermContext): Promise<ProbeResu
         "\x1bP$qm\x1b\\",
         /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
       )
-      if (baselineOutcome?.match && baselineOutcome.match[1] === "1") {
-        let baselineParsed = parseSgrReport(baselineOutcome.match[2] ?? "")
-        if (baselineParsed && (baselineParsed.attributes.has("bold") || baselineParsed.rawCodes.includes("1"))) {
-          ctx.write("\x1b[0m")
-          const reread = await ctx.queryWithSentinelOutcome(
-            "\x1bP$qm\x1b\\",
-            /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
-          )
-          baselineParsed = reread?.match ? parseSgrReport(reread.match[2] ?? "") : null
-          if (!baselineParsed || baselineParsed.attributes.has("bold") || baselineParsed.rawCodes.includes("1")) {
-            return {
-              pass: false,
-              response: reread?.raw,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "query",
-                note: `${id}: Baseline bold styling active and could not be neutralized; cannot qualify push/pop`,
-              },
-            }
+      if (!baselineOutcome?.match || baselineOutcome.match[1] !== "1") {
+        return {
+          pass: false,
+          response: baselineOutcome?.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Baseline DECRQSS SGR query failed or returned status 0; cannot qualify push/pop`,
+          },
+        }
+      }
+      let baselineParsed = parseSgrReport(baselineOutcome.match[2] ?? "")
+      if (!baselineParsed) {
+        return {
+          pass: false,
+          response: baselineOutcome.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Baseline SGR report contains invalid parameters; cannot qualify push/pop`,
+          },
+        }
+      }
+      if (baselineParsed.attributes.has("bold") || baselineParsed.rawCodes.includes("1")) {
+        ctx.write("\x1b[0m")
+        const reread = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/)
+        baselineParsed = reread?.match && reread.match[1] === "1" ? parseSgrReport(reread.match[2] ?? "") : null
+        if (!baselineParsed || baselineParsed.attributes.has("bold") || baselineParsed.rawCodes.includes("1")) {
+          return {
+            pass: false,
+            response: reread?.raw,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: `${id}: Baseline bold styling active and could not be neutralized; cannot qualify push/pop`,
+            },
           }
         }
       }
@@ -410,19 +421,29 @@ async function xtpushpopsgrTerm(id: string, ctx: TermContext): Promise<ProbeResu
         "\x1bP$qm\x1b\\",
         /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
       )
-      if (setupOutcome?.match && setupOutcome.match[1] === "1") {
-        const setupParsed = parseSgrReport(setupOutcome.match[2] ?? "")
-        if (!setupParsed || (!setupParsed.attributes.has("bold") && !setupParsed.rawCodes.includes("1"))) {
-          return {
-            pass: false,
-            response: setupOutcome.raw,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: `${id}: Setup bold styling not reflected in DECRQSS; cannot qualify push/pop`,
-            },
-          }
+      if (!setupOutcome?.match || setupOutcome.match[1] !== "1") {
+        return {
+          pass: false,
+          response: setupOutcome?.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Setup bold styling query failed or returned status 0; cannot qualify push/pop`,
+          },
+        }
+      }
+      const setupParsed = parseSgrReport(setupOutcome.match[2] ?? "")
+      if (!setupParsed || (!setupParsed.attributes.has("bold") && !setupParsed.rawCodes.includes("1"))) {
+        return {
+          pass: false,
+          response: setupOutcome.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Setup bold styling not reflected in DECRQSS; cannot qualify push/pop`,
+          },
         }
       }
 
@@ -436,85 +457,105 @@ async function xtpushpopsgrTerm(id: string, ctx: TermContext): Promise<ProbeResu
         "\x1bP$qm\x1b\\",
         /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
       )
-      if (intermediateOutcome?.match && intermediateOutcome.match[1] === "1") {
-        const intermediateParsed = parseSgrReport(intermediateOutcome.match[2] ?? "")
-        if (!intermediateParsed) {
+      if (!intermediateOutcome?.match || intermediateOutcome.match[1] !== "1") {
+        return {
+          pass: false,
+          response: intermediateOutcome?.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Intermediate SGR report missing or returned status 0; cannot qualify restore`,
+          },
+        }
+      }
+      const intermediateParsed = parseSgrReport(intermediateOutcome.match[2] ?? "")
+      if (!intermediateParsed) {
+        return {
+          pass: false,
+          response: intermediateOutcome.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Intermediate SGR report contains invalid parameters; cannot qualify restore`,
+          },
+        }
+      }
+      const intermediateCleared =
+        !intermediateParsed.attributes.has("bold") && !intermediateParsed.rawCodes.includes("1")
+      if (!intermediateCleared) {
+        return {
+          pass: false,
+          response: intermediateOutcome.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Intermediate cleared styling not reflected in DECRQSS; cannot qualify restore`,
+          },
+        }
+      }
+
+      // Step 5: Pop stack
+      ctx.write("\x1b[#}")
+      pushed = false
+
+      // Step 6: Verify restored bold state
+      const finalOutcome = await ctx.queryWithSentinelOutcome(
+        "\x1bP$qm\x1b\\",
+        /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
+      )
+      if (!finalOutcome?.match || finalOutcome.match[1] !== "1") {
+        return {
+          pass: false,
+          response: finalOutcome?.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Restored SGR query failed or returned status 0; cannot qualify restore`,
+          },
+        }
+      }
+      const finalParsed = parseSgrReport(finalOutcome.match[2] ?? "")
+      if (!finalParsed) {
+        return {
+          pass: false,
+          response: finalOutcome.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Restored SGR report contains invalid parameters; cannot qualify restore`,
+          },
+        }
+      }
+      const restored = finalParsed.attributes.has("bold") || finalParsed.rawCodes.includes("1")
+      if (restored) {
+        // Parameter reporting acknowledged. Do not promote to rendering support without capture.
+        if (!ctx.capture) {
           return {
             pass: false,
-            response: intermediateOutcome.raw,
+            response: finalOutcome.raw,
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "query",
-              note: `${id}: Intermediate SGR report contains invalid parameters; cannot qualify restore`,
+              note: "DECRQSS confirmed SGR stack parameter restoration; visual rendering not measured",
             },
           }
         }
-        const intermediateCleared =
-          !intermediateParsed.attributes.has("bold") && !intermediateParsed.rawCodes.includes("1")
-        if (!intermediateCleared) {
-          return {
-            pass: false,
-            response: intermediateOutcome.raw,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: `${id}: Intermediate cleared styling not reflected in DECRQSS; cannot qualify restore`,
-            },
-          }
-        }
-
-        // Step 5: Pop stack
-        ctx.write("\x1b[#}")
-        pushed = false
-
-        // Step 6: Verify restored bold state
-        const finalOutcome = await ctx.queryWithSentinelOutcome(
-          "\x1bP$qm\x1b\\",
-          /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
-        )
-        if (finalOutcome?.match && finalOutcome.match[1] === "1") {
-          const finalParsed = parseSgrReport(finalOutcome.match[2] ?? "")
-          if (!finalParsed) {
-            return {
-              pass: false,
-              response: finalOutcome.raw,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "query",
-                note: `${id}: Restored SGR report contains invalid parameters; cannot qualify restore`,
-              },
-            }
-          }
-          const restored = finalParsed.attributes.has("bold") || finalParsed.rawCodes.includes("1")
-          if (restored) {
-            // Parameter reporting acknowledged. Do not promote to rendering support without capture.
-            if (!ctx.capture) {
-              return {
-                pass: false,
-                response: finalOutcome.raw,
-                observation: {
-                  outcome: "inconclusive",
-                  reason: "insufficient-evidence",
-                  evidence: "query",
-                  note: "DECRQSS confirmed SGR stack parameter restoration; visual rendering not measured",
-                },
-              }
-            }
-          } else {
-            return {
-              pass: false,
-              response: finalOutcome.raw,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "query",
-                note: `${id}: SGR stack roundtrip failed to restore bold; cannot attribute failure to push vs pop`,
-              },
-            }
-          }
+      } else {
+        return {
+          pass: false,
+          response: finalOutcome.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: SGR stack roundtrip failed to restore bold; cannot attribute failure to push vs pop`,
+          },
         }
       }
     }

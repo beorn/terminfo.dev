@@ -103,9 +103,12 @@ export function parseSgrReport(params: string): ParsedSgrReport | null {
           return null
         }
       } else if (leader === "4") {
+        if (sub.length !== 2 || !["0", "1", "2", "3", "4", "5"].includes(sub[1])) {
+          return null
+        }
         if (sub[1] === "0") {
           attributes.delete("underline")
-        } else if (["1", "2", "3", "4", "5"].includes(sub[1])) {
+        } else {
           attributes.add("underline")
           rawCodes.push(elem)
         }
@@ -149,30 +152,6 @@ export function parseSgrReport(params: string): ParsedSgrReport | null {
             rawCodes.push(`${target};2;${r};${g};${b}`)
             i += 4
             continue
-          }
-        }
-        if (i + 5 < elements.length) {
-          const cs = elements[i + 2]
-          if (cs === "" || cs === "0") {
-            const r = Number(elements[i + 3])
-            const g = Number(elements[i + 4])
-            const b = Number(elements[i + 5])
-            if (
-              Number.isInteger(r) &&
-              Number.isInteger(g) &&
-              Number.isInteger(b) &&
-              r >= 0 &&
-              r <= 255 &&
-              g >= 0 &&
-              g <= 255 &&
-              b >= 0 &&
-              b <= 255
-            ) {
-              colors.push({ kind: "rgb", target, r, g, b })
-              rawCodes.push(`${target};2;${cs};${r};${g};${b}`)
-              i += 5
-              continue
-            }
           }
         }
         return null
@@ -507,7 +486,8 @@ export async function measuredResetSgrTerm(
             "\x1bP$qm\x1b\\",
             /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
           )
-          baselineParsed = rereadOutcome?.match ? parseSgrReport(rereadOutcome.match[2] ?? "") : null
+          baselineParsed =
+            rereadOutcome?.match && rereadOutcome.match[1] === "1" ? parseSgrReport(rereadOutcome.match[2] ?? "") : null
           if (!baselineParsed || set.some((attr) => baselineParsed!.attributes.has(attr))) {
             return {
               pass: false,
