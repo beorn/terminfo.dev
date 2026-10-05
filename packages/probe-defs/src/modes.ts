@@ -148,6 +148,23 @@ async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeR
   }
 }
 
+/** Refuse a modes capture fixture before any bytes when the measured geometry is too small. */
+function captureRefusal(ctx: TermContext, minRows: number, minCols: number, feature: string): ProbeResult | undefined {
+  if (!ctx.capture) return undefined
+  if (Number.isSafeInteger(ctx.rows) && Number.isSafeInteger(ctx.cols) && ctx.rows >= minRows && ctx.cols >= minCols) {
+    return undefined
+  }
+  return {
+    pass: false,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: `${feature} capture needs at least ${minRows}x${minCols}, measured ${ctx.rows}x${ctx.cols}`,
+    },
+  }
+}
+
 const ALT_1049_SEED_A = "PRIMARY-A"
 const ALT_1049_SEED_B = "PRIMARY-B"
 const ALT_1049_MARK = "ALT-MARK"
