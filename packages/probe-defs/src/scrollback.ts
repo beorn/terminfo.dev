@@ -75,7 +75,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
                 evidence: "pixels",
                 screenshotRef: target.ref,
                 frames: [control, target],
-                note: "Advanced top-of-screen line numbering relative to the TOP control shows written lines entered scrollback; the exact history count is not readable from the screen and requires independent pixel review",
+                note: "A line numbering beyond the TOP control shows the viewport scrolled past one screen; whether the terminal retained those lines as scrollback history, and how many, is not readable from the screen",
               },
             }
           } finally {
@@ -165,7 +165,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
                 evidence: "pixels",
                 screenshotRef: target.ref,
                 frames: [control, target],
-                note: "The TOP control leaving the top of the screen after more lines than a screen can hold shows total lines grew beyond the viewport; the exact retained count is not readable from the screen and requires independent pixel review",
+                note: "The TOP control leaving the top of the screen after more lines than a screen can hold shows the viewport scrolled past its height; retained-history existence and count are not readable from the screen",
               },
             }
           } finally {
@@ -787,7 +787,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
             for (let i = 0; i < 8; i++) ctx.write(`region-${i}\r\n`) // scrolls only inside rows 5-10
             const activeRegion = await capture({
               role: "control",
-              label: "Region rows 5-10 active: FIXED_TOP stays on row 1 while region-* scrolled inside the region",
+              label:
+                "Region rows 5-10 active: region-* stays confined inside rows 5-10 while FIXED_TOP on row 1 is untouched",
             })
             ctx.write("\x1b[r") // reset to full screen
             ctx.write("\x1b[2;1H") // start below row 1 so FIXED_TOP leaves only by scrolling
@@ -813,7 +814,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
                 evidence: "pixels",
                 screenshotRef: target.ref,
                 frames: [control, activeRegion, target],
-                note: "Three frames: FIXED_TOP before the region, rows 5-10 provably active (FIXED_TOP unmoved while region-* scrolled inside), and FIXED_TOP scrolled off after reset. A terminal ignoring both region commands never holds FIXED_TOP through the middle frame; the exact retained count is not readable from the screen",
+                note: "Three frames: FIXED_TOP before the region, region-* confined to rows 5-10 while that region is active, and FIXED_TOP scrolled off after reset. The middle frame discriminates by confinement: a terminal ignoring the region writes region-* past row 10 into rows 11-17, whereas FIXED_TOP on row 1 is untouched either way and is not the discriminator. Retained-history existence and count are not readable from the screen",
               },
             }
           } finally {

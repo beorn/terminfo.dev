@@ -359,3 +359,28 @@ test("DECALN refuses invalid geometry and absent capture without writes", async 
   expect((await decaln().term!(app(3, 6, events))).observation?.evidence).toBe("none")
   expect(events).toEqual([])
 })
+
+test("charsets.utf8 keeps the Z flank outside the two-cell glyph and reports both occupied cells", async () => {
+  const definition = charsetsProbes.find((probe) => probe.id === "charsets.utf8")
+  if (!definition?.term) throw new Error("missing app charsets.utf8 callback")
+  const events: string[] = []
+  const context = app(4, 6, events)
+  const frames: ObservationFrame[] = []
+  context.capture = async ({ role, label }) => {
+    const frame = { role, label, capturedAt: frames.length + 1, ref: `sha256:${String(frames.length + 1).repeat(64)}` }
+    frames.push(frame)
+    return frame
+  }
+  const result = await definition.term(context)
+  expect(events).toContain("\x1b[1;1H     \x1b[1;1HA??Z")
+  expect(events).toContain("\x1b[2;1H     \x1b[2;1HA??Z")
+  const response = JSON.parse(String(result.response)) as { sampleCells: { row: number; col: number }[] }
+  expect(response.sampleCells).toEqual([
+    { row: 1, col: 2 },
+    { row: 2, col: 2 },
+    { row: 2, col: 3 },
+  ])
+  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
+  expect(frames[1]?.label).toContain("cols 2-3")
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+})
