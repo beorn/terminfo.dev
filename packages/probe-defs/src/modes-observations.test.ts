@@ -540,13 +540,15 @@ test("modes capture refuses undersized geometry before any bytes or frames", asy
 })
 
 test.each([
-  ["modes.xtpushsgr", "\x1b[#{"],
-  ["modes.xtpopsgr", "\x1b[#}"],
-  ["modes.xtsave", "\x1b[?7s"],
-  ["modes.xtrestore", "\x1b[?7r"],
-  ["modes.xtpushcolors", "\x1b[#P"],
-  ["modes.xtpopcolors", "\x1b[#Q"],
-] as const)("%s capture records control and target pixels for its stack sequence", async (id, marker) => {
+  ["modes.xtpushsgr", "\x1b[#{", ["control"]],
+  ["modes.xtpopsgr", "\x1b[#}", ["control"]],
+  ["modes.xtsave", "\x1b[?7s", ["control"]],
+  ["modes.xtrestore", "\x1b[?7r", ["control"]],
+  // Color-stack adds a pushed-palette control frame so the index-1 redefinition is proven to have
+  // taken effect before Y is judged against the blue baseline (turn362 review blocker 1).
+  ["modes.xtpushcolors", "\x1b[#P", ["control", "control"]],
+  ["modes.xtpopcolors", "\x1b[#Q", ["control", "control"]],
+] as const)("%s capture records control and target pixels for its stack sequence", async (id, marker, controls) => {
   const definition = modesProbes.find((item) => item.id === id)
   if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
   const writes: string[] = []
@@ -559,7 +561,7 @@ test.each([
   expect(
     frames.map(({ role }) => role),
     id,
-  ).toEqual(["control", "target"])
+  ).toEqual([...controls, "target"])
   expect(result.pass, id).toBe(false)
   expect(result.observation, id).toMatchObject({
     outcome: "inconclusive",

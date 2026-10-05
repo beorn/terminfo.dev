@@ -104,11 +104,12 @@ async function xtModeSaveCapture(ctx: TermContext, id: string): Promise<ProbeRes
 
 /**
  * Color-stack capture: index 1 is first set to a KNOWN baseline (blue) so a pop is measurably
- * distinct. The target pushes the palette, redefines index 1 green, prints X green, pops, then
- * prints Y: Y must be the restored blue baseline. Both X and Y are in one frame, so the green-vs-blue
- * difference is directly reviewable. A working push/pop therefore shows green X and blue Y; an
- * ignored push/pop shows blue X and blue Y. A pending push is popped only when one is open, so a
- * successful roundtrip is never double-popped.
+ * distinct. The target pushes the palette, redefines index 1 green, prints X while still pushed
+ * (the mutation control), pops, then prints Y. The discriminator is Y against the measured blue
+ * control: a working push/pop restores blue, and an ignored pop leaves the mutated green. X is
+ * printed before the pop only to prove the redefinition took effect; a terminal may recolor X once
+ * the palette is popped, so X is never the discriminator. A pending push is popped on failure so the
+ * fixture never leaves the stack unbalanced.
  */
 async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
   const refusal = captureRefusal(ctx, 3, 8, id)
@@ -118,18 +119,28 @@ async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeR
     ctx.write("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07\x1b[38;5;1mXY")
     const control = await ctx.capture!({
       role: "control",
-      label: `${id}: palette index 1 set to the blue baseline; X and Y both use it`,
+      label: `${id}: palette index 1 at the blue baseline; X and Y both use it`,
     })
     ctx.write("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07")
     ctx.write("\x1b[#P")
     pushed = true
-    ctx.write("\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mX\x1b[#Q\x1b[38;5;1mY")
+    ctx.write("\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mX")
+    const pushedMutation = await ctx.capture!({
+      role: "control",
+      label: `${id}: X under the pushed palette; index 1 must read green here for the redefinition to count as measured`,
+    })
+    ctx.write("\x1b[#Q")
     pushed = false
+    ctx.write("\x1b[38;5;1mY")
     const target = await ctx.capture!({
       role: "target",
-      label: `${id}: X uses the pushed green index 1; Y uses the blue baseline restored by the pop`,
+      label: `${id}: Y after the pop; Y must match the blue baseline control if the pop restored index 1`,
     })
-    const observed = JSON.stringify({ control: control.label, target: target.label })
+    const observed = JSON.stringify({
+      control: control.label,
+      pushedMutation: pushedMutation.label,
+      target: target.label,
+    })
     return {
       pass: false,
       response: observed,
@@ -138,8 +149,8 @@ async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeR
         reason: "insufficient-evidence",
         evidence: "pixels",
         screenshotRef: target.ref,
-        frames: [control, target],
-        note: "Control shows X and Y in the blue baseline index 1; the target pushes the palette, redefines index 1 green, prints X, pops before Y, so Y should return to the blue baseline. Green X with blue Y shows the roundtrip; blue X with blue Y shows an ignored push/pop. Requires independent pixel review",
+        frames: [control, pushedMutation, target],
+        note: "Control sets index 1 to the blue baseline and prints X and Y in it. The pushed frame redefines index 1 green and prints X while the palette change is still on the stack: X must read green there, or the mutation did not take effect and the row stays inconclusive. The target pops, then prints Y: a working push/pop restores the blue baseline, so Y must match the control, while an ignored pop leaves index 1 green and Y green. X may recolor to blue once the palette is popped on terminals that re-resolve indices, so judge Y against the blue control, never X. Requires independent pixel review",
       },
     }
   } finally {
