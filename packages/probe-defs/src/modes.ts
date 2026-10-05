@@ -45,14 +45,6 @@ async function xtSgrStackCapture(ctx: TermContext, id: string, label: string): P
         frames: [control, target],
         note: "Control shows Y plain; the target pushes the bold, styles X italic, then pops, so Y must be bold again if the SGR stack round-tripped. Requires independent pixel review",
       },
-      assertions: [
-        {
-          kind: "positive",
-          expected: `${id}: control shows Y unstyled; the target shows Y carrying the saved bold`,
-          observed,
-          note: "capture-only assertion; the restored SGR must be independently reviewed",
-        },
-      ],
     }
   } finally {
     ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -86,14 +78,6 @@ async function xtModeSaveCapture(ctx: TermContext, id: string): Promise<ProbeRes
         frames: [control, target],
         note: "Control keeps the overflow on row 1 with wrap off; the target saves wrap on, disables it, then restores it, so the overflow should wrap to row 2. Whether the restore re-enabled wrap requires independent pixel review",
       },
-      assertions: [
-        {
-          kind: "positive",
-          expected: `${id}: control keeps ! on row 1; the target wraps ! to row 2 column 1`,
-          observed,
-          note: "capture-only assertion; the restored mode must be independently reviewed",
-        },
-      ],
     }
   } finally {
     ctx.write("\x1b[?7h\x1b[0m\x1b[2J\x1b[H")
@@ -127,14 +111,6 @@ async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeR
         frames: [control, target],
         note: "Control shows X and Y in the redefined green index 1; the target pushes the palette, redefines index 1, prints X, then pops before Y, so Y should return to the original index 1. Requires independent pixel review",
       },
-      assertions: [
-        {
-          kind: "positive",
-          expected: `${id}: control shows X and Y both green; the target shows X green and Y in the restored index 1`,
-          observed,
-          note: "capture-only assertion; the restored palette entry must be independently reviewed",
-        },
-      ],
     }
   } finally {
     ctx.write("\x1b[#Q\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
@@ -348,15 +324,6 @@ export const modesProbes: ProbeDefinition[] = [
                 frames: [control, alternate, restored],
                 note: "Control shows PRIMARY; the alternate frame shows ALTONLY; the restored frame must show PRIMARY again with ALTONLY gone. Whether the primary buffer came back requires independent pixel review, because CPR after exit proves nothing about buffer contents",
               },
-              assertions: [
-                {
-                  kind: "positive",
-                  expected:
-                    "Control and restored frames show PRIMARY at row 1; the alternate frame shows ALTONLY at row 1 instead",
-                  observed,
-                  note: "capture-only assertion; the restored buffer must be independently reviewed",
-                },
-              ],
             }
           } finally {
             ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
@@ -583,14 +550,6 @@ export const modesProbes: ProbeDefinition[] = [
                 frames: [control, target],
                 note: "Control replaces A with X (XBCD); the IRM target inserts X and shifts the run (XABCD). Whether the shift actually happened requires independent pixel review",
               },
-              assertions: [
-                {
-                  kind: "positive",
-                  expected: "Control shows XBCD; the IRM target shows XABCD, with the run shifted right by one cell",
-                  observed,
-                  note: "capture-only assertion; the displaced cells must be independently reviewed",
-                },
-              ],
             }
           } finally {
             ctx.write("\x1b[4l\x1b[0m\x1b[2J\x1b[H")
@@ -724,15 +683,6 @@ export const modesProbes: ProbeDefinition[] = [
               frames: [control, target],
               note: "Control keeps ABCDE on row 1; with DECLRMM margins 3-6 the fifth glyph wraps at column 6 onto row 2. Whether the wrap respected the margin requires independent pixel review",
             },
-            assertions: [
-              {
-                kind: "positive",
-                expected:
-                  "Control shows ABCDE on row 1; the margin target shows ABCD at row 1 columns 3-6 and E at row 2 column 3",
-                observed,
-                note: "capture-only assertion; the margin-confined wrap must be independently reviewed",
-              },
-            ],
           }
         } finally {
           ctx.write("\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
@@ -803,15 +753,6 @@ export const modesProbes: ProbeDefinition[] = [
               frames: [control, alternate, restored],
               note: "Control shows MAIN47; the alternate frame shows ALT47; the restored frame must show MAIN47 again with ALT47 gone. Whether ?47 actually swapped buffers requires independent pixel review",
             },
-            assertions: [
-              {
-                kind: "positive",
-                expected:
-                  "Control and restored frames show MAIN47 at row 1; the alternate frame shows ALT47 at row 1 instead",
-                observed,
-                note: "capture-only assertion; the swapped buffer must be independently reviewed",
-              },
-            ],
           }
         } finally {
           ctx.write("\x1b[?47l\x1b[0m\x1b[2J\x1b[H")
@@ -882,15 +823,6 @@ export const modesProbes: ProbeDefinition[] = [
               frames: [control, alternate, restored],
               note: "Control shows MAIN47; the alternate frame shows ALT1047; the restored frame must show MAIN47 again with ALT1047 gone. Whether ?1047 actually swapped and cleared buffers requires independent pixel review",
             },
-            assertions: [
-              {
-                kind: "positive",
-                expected:
-                  "Control and restored frames show MAIN47 at row 1; the alternate frame shows ALT1047 at row 1 instead",
-                observed,
-                note: "capture-only assertion; the swapped and cleared buffer must be independently reviewed",
-              },
-            ],
           }
         } finally {
           ctx.write("\x1b[?1047l\x1b[0m\x1b[2J\x1b[H")

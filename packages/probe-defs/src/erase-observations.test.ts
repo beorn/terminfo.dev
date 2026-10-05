@@ -679,5 +679,6 @@ test.each([
     frames,
     note: expect.stringContaining("independent review"),
   })
+  expect(result.assertions, id).toBeUndefined()
   expect(result.observation?.note, id).toContain(expectation)
 })

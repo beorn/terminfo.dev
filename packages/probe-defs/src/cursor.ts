@@ -981,15 +981,6 @@ export const cursorProbes: ProbeDefinition[] = [
                 frames: [control, target],
                 note: "Control marks physical rows 1, 5 and 15; the target places a marker at DECOM region-relative rows 1 and 11. Whether those markers land on physical rows 5 and 15 requires independent pixel review, and CPR stays region-relative so it cannot prove the physical row",
               },
-              assertions: [
-                {
-                  kind: "positive",
-                  expected:
-                    "Control shows R01/R05/R15 on physical rows 1/5/15; the DECOM target shows < on physical row 5 and > on physical row 15",
-                  observed,
-                  note: "capture-only assertion; glyph placement must be independently reviewed",
-                },
-              ],
             }
           } finally {
             ctx.write("\x1b[?6l")

@@ -213,14 +213,6 @@ async function eraseSequenceCapture(
         frames: [before, target],
         note: `${feature} control and target pixels captured; the erase effect requires independent review. Visual expectation: ${expected}`,
       },
-      assertions: [
-        {
-          kind: "positive",
-          expected: `Capture the seeded control and the post-${sequence} target; visual expectation ${expected}`,
-          observed,
-          note: "capture-only assertion; no erase support judgment",
-        },
-      ],
     }
   } finally {
     ctx.write(cleanup)

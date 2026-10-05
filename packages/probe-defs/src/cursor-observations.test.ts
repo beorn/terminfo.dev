@@ -1022,6 +1022,7 @@ test("cup-scroll-region capture marks physical rows while the relative CPR stays
     frames,
     screenshotRef: frames[1]?.ref,
   })
+  expect(result.assertions).toBeUndefined()
 })
 
 test("cup-scroll-region capture refuses a narrow terminal before any bytes", async () => {
