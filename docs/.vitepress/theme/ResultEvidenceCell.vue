@@ -641,12 +641,16 @@ onBeforeUnmount(() => {
 
         <details class="result-evidence__details">
           <summary>Test environment</summary>
+          <p v-if="version?.target.kind === 'headless'">
+            Version labels are recorded by the collector. Source qualification below identifies what was measured; a
+            version label alone does not verify a published package.
+          </p>
           <dl class="result-evidence__metadata">
             <dt>Feature ID</dt>
             <dd>{{ featureId }}</dd>
             <dt>Target</dt>
             <dd>{{ version ? `${version.target.kind}:${version.target.id}` : "No reviewed current run" }}</dd>
-            <dt>Version</dt>
+            <dt>Recorded version</dt>
             <dd>{{ version?.target.version ?? "Not recorded" }}</dd>
             <dt>Operating system</dt>
             <dd>
@@ -681,8 +685,16 @@ onBeforeUnmount(() => {
                 {{ version.suiteFreshness }}</template
               >
             </dd>
-            <dt>Source revision</dt>
+            <dt>Collector source revision</dt>
             <dd>{{ version?.sourceRevision ?? "Not recorded" }}</dd>
+            <template v-if="version?.target.kind === 'headless'">
+              <template v-for="review in version.reviews" :key="review.id">
+                <dt>Source qualification</dt>
+                <dd>{{ review.reason }}</dd>
+                <dt>Reviewed by</dt>
+                <dd>{{ review.reviewer }}</dd>
+              </template>
+            </template>
             <dt>Correction</dt>
             <dd>{{ cell?.chain.correctionId ?? "None" }}</dd>
           </dl>

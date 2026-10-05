@@ -188,14 +188,22 @@ const breadcrumbParent = (() => {
 <details v-if="selectedRun" class="run-context">
   <summary>Test environment</summary>
 
+  <p v-if="selectedRun.target.kind === 'headless'">Version labels are recorded by the collector. Source qualification below identifies what was measured; a version label alone does not verify a published package.</p>
   <dl>
     <dt>Run</dt><dd><a href="/api/v2/data.json">{{ selectedRun.sha256 }}</a></dd>
     <dt>Suite</dt><dd>{{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }} · {{ selectedRun.suite.observed }}/{{ selectedRun.suite.expected ?? '?' }} outcomes recorded</dd>
     <dt>Target</dt><dd>{{ selectedRun.target.kind }} · {{ selectedRun.target.id }} {{ selectedRun.target.version }}</dd>
+    <dt>Collector source revision</dt><dd>{{ selectedRun.sourceRevision || 'Not recorded' }}</dd>
     <dt>OS</dt><dd>{{ selectedRun.target.os || 'Not recorded' }} {{ selectedRun.target.osVersion || '' }}</dd>
     <dt>Permissions</dt><dd>{{ selectedRun.target.permissions || 'No explicit override recorded' }}</dd>
     <dt>Configuration</dt><dd><code>{{ selectedRun.target.config || 'Not recorded' }}</code></dd>
     <dt>Outer terminal / multiplexer</dt><dd>{{ selectedRun.target.outerTerminal || 'None recorded' }} / {{ selectedRun.target.mux || 'None recorded' }}</dd>
+    <template v-if="selectedRun.target.kind === 'headless'">
+      <template v-for="review in selectedRun.reviews" :key="review.id">
+        <dt>Source qualification</dt><dd>{{ review.reason }}</dd>
+        <dt>Reviewed by</dt><dd>{{ review.reviewer }}</dd>
+      </template>
+    </template>
   </dl>
 </details>
 

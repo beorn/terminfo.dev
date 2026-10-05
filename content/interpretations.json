@@ -349899,5 +349899,248 @@
       "rawReplyRef": "extensions.osc52-write",
       "note": "Supported only for OSC52 c nonce write in this owned disposable X11 selection under deny-read: independent X11 read hash equals the written nonce after CPR responsiveness barrier; original clipboard restored and independently verified. Other selections/remote hosts/configurations are unmeasured."
     }
+  },
+  {
+    "id": "identity-headless-5ca9b13c-c177-4627-b586-dae15d2aa8fe-source-disclosure",
+    "runId": "5ca9b13c-c177-4627-b586-dae15d2aa8fe",
+    "runSha256": "3df1acb9208d2184384df772d7cde1a2c4a3b994eb7bf7f89815cd53114cd5b6",
+    "reviewer": "@adhoc/1; Independent Sol source census; @cto, rulings f2f85bd6 + e9603bdf",
+    "reason": "Measured vt100 from clean private vterm repository source f574dda9d0b0d3a97dbae6bfd773ce118f624261, through private Termless source 3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Package tree 5aa145a36c3b49e4baf826eac2484b12f3615b36 is identical to its package tree in the public source at public source 6a7d5dcb988405a42afce551a91f4dd27d9cbdd8. Manifest version 0.7.1 is recorded; published npm artifact equivalence was not measured. CTO-approved private run-level qualification under ruling f2f85bd6; Durable packet retained and checksum-verified in STATE5da3d5b36d6f. Exact headless vt100 0.7.1 run 5ca9b13c-c177-4627-b586-dae15d2aa8fe / raw SHA256 3df1acb9208d2184384df772d7cde1a2c4a3b994eb7bf7f89815cd53114cd5b6: at-collection runtimeIdentity.integrity.treeOid=5aa145a36c3b49e4baf826eac2484b12f3615b36; independently checked current Git SHA-1 tree OID matches. source package tree digest captured at collection; recorded cleanTree/revision and current clean tree bind resolved source. This is not a historical per-file SHA-256. Existing parseRun/current suite validation accepts211 observations +34 named no-semantic-observable cases as exact disjoint245 callback membership for suitea00b545425a9, collector6c24ef1058ef981e800e0122ef65b8f47699ef28, adapter0.10.2, Termless3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Retain all outcomes unchanged. Query flags/acknowledgements and parser-state claims are not full-protocol/key-event/pixel conformance. No per-feature or presentation change. ",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vt100"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vt100-5ca9b13c-c177-4627-b586-dae15d2aa8fe.json",
+      "content/suites/a00b545425a9.json",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-review.md",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-qualification.json",
+      "/hh/hub/terminfo-review/2026-10-05/turn370-frozen-producer.json",
+      "/hh/hub/terminfo-review/2026-10-05/private-version-disclosure.md",
+      "/hh/hub/terminfo-review/2026-10-05/nine-source-census.json"
+    ],
+    "supersedes": ["identity-headless-5ca9b13c-c177-4627-b586-dae15d2aa8fe"],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-080bf878-b91f-4c98-8cfe-a3b0de0b3fbd-source-disclosure",
+    "runId": "080bf878-b91f-4c98-8cfe-a3b0de0b3fbd",
+    "runSha256": "eaa7f460009843c3c7eb05de51240685a99e57ea26165ea803d772f8bc38e620",
+    "reviewer": "@adhoc/1; Independent Sol source census; @cto, rulings f2f85bd6 + e9603bdf",
+    "reason": "Measured vt220 from clean private vterm repository source f574dda9d0b0d3a97dbae6bfd773ce118f624261, through private Termless source 3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Package tree f1ca60b6ef5cb82def65bf27e96af696a6d9dcb6 is identical to its package tree in the public source at public source 6a7d5dcb988405a42afce551a91f4dd27d9cbdd8. Manifest version 0.7.1 is recorded; published npm artifact equivalence was not measured. CTO-approved private run-level qualification under ruling f2f85bd6; Durable packet retained and checksum-verified in STATE5da3d5b36d6f. Exact headless vt220 0.7.1 run 080bf878-b91f-4c98-8cfe-a3b0de0b3fbd / raw SHA256 eaa7f460009843c3c7eb05de51240685a99e57ea26165ea803d772f8bc38e620: at-collection runtimeIdentity.integrity.treeOid=f1ca60b6ef5cb82def65bf27e96af696a6d9dcb6; independently checked current Git SHA-1 tree OID matches. source package tree digest captured at collection; recorded cleanTree/revision and current clean tree bind resolved source. This is not a historical per-file SHA-256. Existing parseRun/current suite validation accepts211 observations +34 named no-semantic-observable cases as exact disjoint245 callback membership for suitea00b545425a9, collector6c24ef1058ef981e800e0122ef65b8f47699ef28, adapter0.10.2, Termless3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Retain all outcomes unchanged. Query flags/acknowledgements and parser-state claims are not full-protocol/key-event/pixel conformance. No per-feature or presentation change. ",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vt220"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vt220-080bf878-b91f-4c98-8cfe-a3b0de0b3fbd.json",
+      "content/suites/a00b545425a9.json",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-review.md",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-qualification.json",
+      "/hh/hub/terminfo-review/2026-10-05/turn370-frozen-producer.json",
+      "/hh/hub/terminfo-review/2026-10-05/private-version-disclosure.md",
+      "/hh/hub/terminfo-review/2026-10-05/nine-source-census.json"
+    ],
+    "supersedes": ["identity-headless-080bf878-b91f-4c98-8cfe-a3b0de0b3fbd"],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-source-disclosure",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol source census; @cto, rulings f2f85bd6 + e9603bdf",
+    "reason": "Measured vterm from clean private vterm repository source f574dda9d0b0d3a97dbae6bfd773ce118f624261, through private Termless source 3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Package tree 8419d421dd5452cb8819bd4cdcea7a0dffa052fc differs from public package tree d6979ff6c3b0c2b8d0abb11d8f81ecd2fe8d06ef at public source 6a7d5dcb988405a42afce551a91f4dd27d9cbdd8. Manifest version 0.7.1 is recorded; published npm artifact equivalence was not measured. CTO-approved private run-level qualification under ruling f2f85bd6; Durable packet retained and checksum-verified in STATE5da3d5b36d6f. Exact headless vterm 0.7.1 run 85abedc8-aa6d-40c4-81bf-fd9104325e73 / raw SHA256 76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151: at-collection runtimeIdentity.integrity.treeOid=8419d421dd5452cb8819bd4cdcea7a0dffa052fc; independently checked current Git SHA-1 tree OID matches. source package tree digest captured at collection; recorded cleanTree/revision and current clean tree bind resolved source. This is not a historical per-file SHA-256. Existing parseRun/current suite validation accepts211 observations +34 named no-semantic-observable cases as exact disjoint245 callback membership for suitea00b545425a9, collector6c24ef1058ef981e800e0122ef65b8f47699ef28, adapter0.10.2, Termless3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Retain all outcomes unchanged. Query flags/acknowledgements and parser-state claims are not full-protocol/key-event/pixel conformance. No per-feature or presentation change. ",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "content/suites/a00b545425a9.json",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-review.md",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-qualification.json",
+      "/hh/hub/terminfo-review/2026-10-05/turn370-frozen-producer.json",
+      "/hh/hub/terminfo-review/2026-10-05/private-version-disclosure.md",
+      "/hh/hub/terminfo-review/2026-10-05/nine-source-census.json"
+    ],
+    "supersedes": ["identity-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73"],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-source-disclosure",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol source census; @cto, rulings f2f85bd6 + e9603bdf",
+    "reason": "Measured Nix-packaged Kitty0.49.2 through its +runpy parser path (binary a46736d8), via private Termless source3fe15656. This is not a GUI measurement or proof of published Termless adapter artifact equivalence. CTO-approved private run-level qualification under ruling f2f85bd6; Durable packet retained and checksum-verified in STATE5da3d5b36d6f. Exact headless kitty 0.49.2 run 423a9f5a-5202-45de-9fc6-86e5d7f82f31 / raw SHA256 ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a: at-collection runtimeIdentity.loadedBinary.sha256=a46736d89c768bd727701663ae594195aafc854e814b286d07c171f46497c8e6; independently checked current SHA-256 matches. loaded engine bytes captured by trusted collector preflight before the batch. Existing parseRun/current suite validation accepts211 observations +34 named no-semantic-observable cases as exact disjoint245 callback membership for suitea00b545425a9, collector6c24ef1058ef981e800e0122ef65b8f47699ef28, adapter0.10.2, Termless3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Retain all outcomes unchanged. Query flags/acknowledgements and parser-state claims are not full-protocol/key-event/pixel conformance. No per-feature or presentation change. Kitty +runpy parser backend, not GUI. Explicit binary/version/hash preflight retained; no per-callback child /proc executable sample.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "content/suites/a00b545425a9.json",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-review.md",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-qualification.json",
+      "/hh/hub/terminfo-review/2026-10-05/turn370-frozen-producer.json",
+      "/hh/hub/terminfo-review/2026-10-05/private-version-disclosure.md",
+      "/hh/hub/terminfo-review/2026-10-05/nine-source-census.json"
+    ],
+    "supersedes": ["identity-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31"],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-0effa144-9995-4e8c-8bbf-6d19a183df2f-source-disclosure",
+    "runId": "0effa144-9995-4e8c-8bbf-6d19a183df2f",
+    "runSha256": "ab385cfab63015c6a5d6958b4cab13dc649c2d7b9acf1c093c70e7149c15907a",
+    "reviewer": "@adhoc/1; Independent Sol source census; @cto, rulings f2f85bd6 + e9603bdf",
+    "reason": "Measured alacritty_terminal0.26.0 via native artifact14f385f0 built from receipt source3fe15656 and its pinned upstream crate checksum. The Termless adapter is from private source; published adapter artifact equivalence was not measured. CTO-approved private run-level qualification under ruling f2f85bd6; Durable packet retained and checksum-verified in STATE5da3d5b36d6f. Exact headless alacritty 0.26.0 run 0effa144-9995-4e8c-8bbf-6d19a183df2f / raw SHA256 ab385cfab63015c6a5d6958b4cab13dc649c2d7b9acf1c093c70e7149c15907a: at-collection runtimeIdentity.loadedBinary.sha256=14f385f0a01dd79ad5a0853f1c95c61f4252be718e4b0b6de176537c01959bca; independently checked current SHA-256 matches. loaded engine bytes captured by trusted collector preflight before the batch. Existing parseRun/current suite validation accepts211 observations +34 named no-semantic-observable cases as exact disjoint245 callback membership for suitea00b545425a9, collector6c24ef1058ef981e800e0122ef65b8f47699ef28, adapter0.10.2, Termless3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Retain all outcomes unchanged. Query flags/acknowledgements and parser-state claims are not full-protocol/key-event/pixel conformance. No per-feature or presentation change. Runtime artifact and original receipt were reused after exact input checks and fresh load checks; not built here. ",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "alacritty"
+      },
+      "versions": ["0.26.0", "0.26.0"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/alacritty-0effa144-9995-4e8c-8bbf-6d19a183df2f.json",
+      "content/suites/a00b545425a9.json",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-review.md",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-qualification.json",
+      "/hh/hub/terminfo-review/2026-10-05/turn372-headless-five-freeze.json",
+      "/hh/hub/terminfo-review/2026-10-05/private-version-disclosure.md",
+      "/hh/hub/terminfo-review/2026-10-05/nine-source-census.json"
+    ],
+    "supersedes": ["identity-headless-0effa144-9995-4e8c-8bbf-6d19a183df2f"],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-2e798d97-c259-420a-8633-4728dc3a3def-source-disclosure",
+    "runId": "2e798d97-c259-420a-8633-4728dc3a3def",
+    "runSha256": "d79f2621a71bcd7e23b3b9fa3beef4f81e7da9eec4e5f793f36126c7bf6427d0",
+    "reviewer": "@adhoc/1; Independent Sol source census; @cto, rulings f2f85bd6 + e9603bdf",
+    "reason": "Measured tattoy-wezterm-term0.1.0-fork.5 via native artifacta0e33d90 built from receipt source3fe15656 and its pinned upstream crate checksum. The Termless adapter is from private source; published adapter artifact equivalence was not measured. CTO-approved private run-level qualification under ruling f2f85bd6; Durable packet retained and checksum-verified in STATE5da3d5b36d6f. Exact headless wezterm 0.1.0-fork.5 run 2e798d97-c259-420a-8633-4728dc3a3def / raw SHA256 d79f2621a71bcd7e23b3b9fa3beef4f81e7da9eec4e5f793f36126c7bf6427d0: at-collection runtimeIdentity.loadedBinary.sha256=a0e33d906a21ce7edb4383683b195f3b86d2c6aa8f67bee99cc92a6b869807d2; independently checked current SHA-256 matches. loaded engine bytes captured by trusted collector preflight before the batch. Existing parseRun/current suite validation accepts211 observations +34 named no-semantic-observable cases as exact disjoint245 callback membership for suitea00b545425a9, collector6c24ef1058ef981e800e0122ef65b8f47699ef28, adapter0.10.2, Termless3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Retain all outcomes unchanged. Query flags/acknowledgements and parser-state claims are not full-protocol/key-event/pixel conformance. No per-feature or presentation change. Runtime artifact and original receipt were reused after exact input checks and fresh load checks; not built here. ",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "wezterm"
+      },
+      "versions": ["0.1.0-fork.5", "0.1.0-fork.5"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/wezterm-2e798d97-c259-420a-8633-4728dc3a3def.json",
+      "content/suites/a00b545425a9.json",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-review.md",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-qualification.json",
+      "/hh/hub/terminfo-review/2026-10-05/turn372-headless-five-freeze.json",
+      "/hh/hub/terminfo-review/2026-10-05/private-version-disclosure.md",
+      "/hh/hub/terminfo-review/2026-10-05/nine-source-census.json"
+    ],
+    "supersedes": ["identity-headless-2e798d97-c259-420a-8633-4728dc3a3def"],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-a5f18ac8-66b6-4e2b-a91a-928aabaeb255-source-disclosure",
+    "runId": "a5f18ac8-66b6-4e2b-a91a-928aabaeb255",
+    "runSha256": "8e4ab4735d0ae9a2fcfdccdc5b69adad955516e9f2e317f539737418a9ea1bf3",
+    "reviewer": "@adhoc/1; Independent Sol source census; @cto, rulings f2f85bd6 + e9603bdf",
+    "reason": "Measured vt1000.16.2 via native artifacta478127f built from receipt source3fe15656 and its pinned upstream crate checksum. The Termless adapter is from private source; published adapter artifact equivalence was not measured. CTO-approved private run-level qualification under ruling f2f85bd6; Durable packet retained and checksum-verified in STATE5da3d5b36d6f. Exact headless vt100-rust 0.16.2 run a5f18ac8-66b6-4e2b-a91a-928aabaeb255 / raw SHA256 8e4ab4735d0ae9a2fcfdccdc5b69adad955516e9f2e317f539737418a9ea1bf3: at-collection runtimeIdentity.loadedBinary.sha256=a478127f571a25cf0e2b52e2972aa26d4344df03d9b3fba93ca03efd9cc9a0fa; independently checked current SHA-256 matches. loaded engine bytes captured by trusted collector preflight before the batch. Existing parseRun/current suite validation accepts211 observations +34 named no-semantic-observable cases as exact disjoint245 callback membership for suitea00b545425a9, collector6c24ef1058ef981e800e0122ef65b8f47699ef28, adapter0.10.2, Termless3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Retain all outcomes unchanged. Query flags/acknowledgements and parser-state claims are not full-protocol/key-event/pixel conformance. No per-feature or presentation change. Runtime artifact and original receipt were reused after exact input checks and fresh load checks; not built here. ",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vt100-rust"
+      },
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vt100-rust-a5f18ac8-66b6-4e2b-a91a-928aabaeb255.json",
+      "content/suites/a00b545425a9.json",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-review.md",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-qualification.json",
+      "/hh/hub/terminfo-review/2026-10-05/turn372-headless-five-freeze.json",
+      "/hh/hub/terminfo-review/2026-10-05/private-version-disclosure.md",
+      "/hh/hub/terminfo-review/2026-10-05/nine-source-census.json"
+    ],
+    "supersedes": ["identity-headless-a5f18ac8-66b6-4e2b-a91a-928aabaeb255"],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-d77f30e8-7b80-47ea-a621-2ffe73967852-source-disclosure",
+    "runId": "d77f30e8-7b80-47ea-a621-2ffe73967852",
+    "runSha256": "ce7007344b7abadae0a6bf25a4f9dc879e886f388d1e359ac7c930818d64e5f9",
+    "reviewer": "@adhoc/1; Independent Sol source census; @cto, rulings f2f85bd6 + e9603bdf",
+    "reason": "Measured Ghostty native1.3.1 from pinned upstream source332b2aef (native binary3b8df43f), with wrapper source3fe15656. The Termless adapter is from private source; published adapter artifact equivalence was not measured. CTO-approved private run-level qualification under ruling f2f85bd6; Durable packet retained and checksum-verified in STATE5da3d5b36d6f. Exact headless ghostty-native 1.3.1 run d77f30e8-7b80-47ea-a621-2ffe73967852 / raw SHA256 ce7007344b7abadae0a6bf25a4f9dc879e886f388d1e359ac7c930818d64e5f9: at-collection runtimeIdentity.loadedBinary.sha256=3b8df43f7b6b7acc0d398c94ec001c4957578a458c7a96a55888e23cf12f4c84; independently checked current SHA-256 matches. loaded engine bytes captured by trusted collector preflight before the batch. Existing parseRun/current suite validation accepts211 observations +34 named no-semantic-observable cases as exact disjoint245 callback membership for suitea00b545425a9, collector6c24ef1058ef981e800e0122ef65b8f47699ef28, adapter0.10.2, Termless3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Retain all outcomes unchanged. Query flags/acknowledgements and parser-state claims are not full-protocol/key-event/pixel conformance. No per-feature or presentation change. Runtime artifact and original receipt were reused after exact input checks and fresh load checks; not built here. ",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "ghostty-native"
+      },
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/ghostty-native-d77f30e8-7b80-47ea-a621-2ffe73967852.json",
+      "content/suites/a00b545425a9.json",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-review.md",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-qualification.json",
+      "/hh/hub/terminfo-review/2026-10-05/turn372-headless-five-freeze.json",
+      "/hh/hub/terminfo-review/2026-10-05/private-version-disclosure.md",
+      "/hh/hub/terminfo-review/2026-10-05/nine-source-census.json"
+    ],
+    "supersedes": ["identity-headless-d77f30e8-7b80-47ea-a621-2ffe73967852"],
+    "reviewed": true,
+    "verifiesIdentity": true
+  },
+  {
+    "id": "identity-headless-30c64c12-6c6f-4636-ab7a-f476643aa032-source-disclosure",
+    "runId": "30c64c12-6c6f-4636-ab7a-f476643aa032",
+    "runSha256": "d0b467e66c620e816e4612c8558ef0939751452824f38ef74595e21217caee13",
+    "reviewer": "@adhoc/1; Independent Sol source census; @cto, rulings f2f85bd6 + e9603bdf",
+    "reason": "Measured libvterm WASM0.3.3 from pinned upstream source9d6d2112 (WASM9e35be98), with wrapper source3fe15656. The Termless adapter is from private source; published adapter artifact equivalence was not measured. CTO-approved private run-level qualification under ruling f2f85bd6; Durable packet retained and checksum-verified in STATE5da3d5b36d6f. Exact headless libvterm 0.3.3 run 30c64c12-6c6f-4636-ab7a-f476643aa032 / raw SHA256 d0b467e66c620e816e4612c8558ef0939751452824f38ef74595e21217caee13: at-collection runtimeIdentity.loadedBinary.sha256=9e35be98a7397d81fa241d587e4c77b3e1179660b3c6af20e3da751623f78845; independently checked current SHA-256 matches. loaded engine bytes captured by trusted collector preflight before the batch. Existing parseRun/current suite validation accepts211 observations +34 named no-semantic-observable cases as exact disjoint245 callback membership for suitea00b545425a9, collector6c24ef1058ef981e800e0122ef65b8f47699ef28, adapter0.10.2, Termless3fe156569982e6ee57a73f8b5d0ed7e495fb29ae. Retain all outcomes unchanged. Query flags/acknowledgements and parser-state claims are not full-protocol/key-event/pixel conformance. No per-feature or presentation change. Runtime artifact and original receipt were reused after exact input checks and fresh load checks; not built here. ",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "libvterm"
+      },
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/libvterm-30c64c12-6c6f-4636-ab7a-f476643aa032.json",
+      "content/suites/a00b545425a9.json",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-review.md",
+      "/hh/hub/terminfo-review/2026-10-05/headless-run-level-qualification.json",
+      "/hh/hub/terminfo-review/2026-10-05/turn372-headless-five-freeze.json",
+      "/hh/hub/terminfo-review/2026-10-05/private-version-disclosure.md",
+      "/hh/hub/terminfo-review/2026-10-05/nine-source-census.json"
+    ],
+    "supersedes": ["identity-headless-30c64c12-6c6f-4636-ab7a-f476643aa032"],
+    "reviewed": true,
+    "verifiesIdentity": true
   }
 ]
