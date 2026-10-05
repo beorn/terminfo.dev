@@ -602,37 +602,6 @@ export const textProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
-        const refusal = tooSmall(ctx, 1, 3)
-        if (refusal) return refusal
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("AB") // cursor at col 3
-        ctx.write("\x1b[1;2H") // move back to col 2
-        ctx.write("X") // overwrite B
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "overwritten B cell")
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  {
-    ...probe(
-      "text.cr",
-      (ctx) => {
-        ctx.feed("AB")
-        const before = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
-        ctx.feed("\rC")
-        const first = ctx.getCell(0, 0)
-        const second = ctx.getCell(0, 1)
-        const ready = before[0]?.char === "A" && before[1]?.char === "B"
-        return parserStateResult(
-          ready ? first.char === "C" && second.char === "B" : null,
-          "CR returns C to the first column while B remains",
-          { before, first, second },
-          ready ? undefined : "AB control was not measured",
-        )
-      },
-      async (ctx) => {
         const capture = ctx.capture
         if (capture) {
           const refusal = tooSmall(ctx, 1, 3)
@@ -671,6 +640,37 @@ export const textProbes: ProbeDefinition[] = [
             ctx.write("\x1b[0m\x1b[1;1H\x1b[2K")
           }
         }
+        const refusal = tooSmall(ctx, 1, 3)
+        if (refusal) return refusal
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("AB") // cursor at col 3
+        ctx.write("\x1b[1;2H") // move back to col 2
+        ctx.write("X") // overwrite B
+        const pos = await ctx.queryCursorPosition()
+        return unmeasuredCellResult(pos, "overwritten B cell")
+      },
+    ),
+    termNeedsGeometry: true,
+  },
+
+  {
+    ...probe(
+      "text.cr",
+      (ctx) => {
+        ctx.feed("AB")
+        const before = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
+        ctx.feed("\rC")
+        const first = ctx.getCell(0, 0)
+        const second = ctx.getCell(0, 1)
+        const ready = before[0]?.char === "A" && before[1]?.char === "B"
+        return parserStateResult(
+          ready ? first.char === "C" && second.char === "B" : null,
+          "CR returns C to the first column while B remains",
+          { before, first, second },
+          ready ? undefined : "AB control was not measured",
+        )
+      },
+      async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
         ctx.write("\x1b[1;1H\x1b[2K")
