@@ -42,7 +42,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
       async (ctx) => {
         const capture = ctx.capture
         if (capture) {
-          const refusal = tooSmall(ctx, 1, `line-${ctx.rows + 9}`.length)
+          const refusal = tooSmall(ctx, 3, `line-${ctx.rows + 9}`.length)
           if (refusal) return refusal
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -51,7 +51,9 @@ export const scrollbackProbes: ProbeDefinition[] = [
               role: "control",
               label: "Before overflow: TOP marker on row 1 with two written lines",
             })
-            ctx.write("\x1b[H")
+            // Start below row 1 so TOP scrolls off only when the screen actually scrolls; a home
+            // here would overwrite TOP and make its disappearance no scrolling control.
+            ctx.write("\x1b[2;1H")
             const lineCount = ctx.rows + 10
             for (let i = 0; i < lineCount; i++) ctx.write(`line-${i}\r\n`)
             const target = await capture({
@@ -140,7 +142,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
               role: "control",
               label: "Before overflow: TOP marker on row 1 with no history written",
             })
-            ctx.write("\x1b[H")
+            // Start below row 1 so TOP is not overwritten before scrolling can be observed.
+            ctx.write("\x1b[2;1H")
             const lineCount = ctx.rows + 10
             for (let i = 0; i < lineCount; i++) ctx.write(`total-${i}\n`)
             const target = await capture({
@@ -475,7 +478,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
       async (ctx) => {
         const capture = ctx.capture
         if (capture) {
-          const refusal = tooSmall(ctx, 10, 3)
+          const refusal = tooSmall(ctx, 10, 6)
           if (refusal) return refusal
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -557,21 +560,25 @@ export const scrollbackProbes: ProbeDefinition[] = [
       async (ctx) => {
         const capture = ctx.capture
         if (capture) {
-          const refusal = tooSmall(ctx, 1, 19)
+          const refusal = tooSmall(ctx, 2, 19)
           if (refusal) return refusal
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
             ctx.write("MAIN_SCREEN_MARKER")
             const control = await capture({
               role: "control",
-              label: "Main screen shows MAIN_SCREEN_MARKER before entering the alt screen",
+              label: "Main screen shows MAIN_SCREEN_MARKER on row 1 before entering the alt screen",
             })
-            ctx.write("\x1b[?1049h\x1b[2J\x1b[H")
-            ctx.write("ALT_SCREEN")
+            ctx.write("\x1b[?1049h")
+            ctx.write("\x1b[2;1HALT_SCREEN")
+            const altActive = await capture({
+              role: "control",
+              label: "Alt screen active: ALT_SCREEN on row 2 and no MAIN_SCREEN_MARKER on row 1",
+            })
             ctx.write("\x1b[?1049l")
             const target = await capture({
               role: "target",
-              label: "After leaving the alt screen: MAIN_SCREEN_MARKER is restored on the main screen",
+              label: "After leaving the alt screen: MAIN_SCREEN_MARKER is restored on row 1 and ALT_SCREEN is gone",
             })
             return {
               pass: false,
@@ -579,6 +586,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
                 rows: ctx.rows,
                 cols: ctx.cols,
                 control: control.label,
+                altActive: altActive.label,
                 target: target.label,
               }),
               observation: {
@@ -586,8 +594,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
                 reason: "insufficient-evidence",
                 evidence: "pixels",
                 screenshotRef: target.ref,
-                frames: [control, target],
-                note: "MAIN_SCREEN_MARKER restored after leaving the alt screen requires independent pixel review; mode metadata alone does not measure retained contents",
+                frames: [control, altActive, target],
+                note: "Three frames: the main screen with MAIN_SCREEN_MARKER, the alt screen showing ALT_SCREEN with no marker, and the restored main screen. A terminal that ignores both 1049 sequences shows MAIN_SCREEN_MARKER in the middle frame; mode metadata alone does not measure retained contents",
               },
             }
           } finally {
@@ -765,23 +773,29 @@ export const scrollbackProbes: ProbeDefinition[] = [
       async (ctx) => {
         const capture = ctx.capture
         if (capture) {
-          const refusal = tooSmall(ctx, 10, 8)
+          const refusal = tooSmall(ctx, 10, 9)
           if (refusal) return refusal
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
-            ctx.write("FIXED_TOP\r\n")
-            ctx.write("\x1b[5;10r") // set region rows 5-10
-            ctx.write("\x1b[r") // reset to full screen
-            ctx.write("\x1b[H")
+            ctx.write("FIXED_TOP")
             const control = await capture({
               role: "control",
-              label: "FIXED_TOP on row 1 after a rows 5-10 region was set and then reset",
+              label: "FIXED_TOP on row 1 before a scroll region is set",
             })
+            ctx.write("\x1b[5;10r") // set region rows 5-10
+            ctx.write("\x1b[10;1H")
+            for (let i = 0; i < 8; i++) ctx.write(`region-${i}\r\n`) // scrolls only inside rows 5-10
+            const activeRegion = await capture({
+              role: "control",
+              label: "Region rows 5-10 active: FIXED_TOP stays on row 1 while region-* scrolled inside the region",
+            })
+            ctx.write("\x1b[r") // reset to full screen
+            ctx.write("\x1b[2;1H") // start below row 1 so FIXED_TOP leaves only by scrolling
             const lineCount = ctx.rows + 10
             for (let i = 0; i < lineCount; i++) ctx.write(`line-${i}\r\n`)
             const target = await capture({
               role: "target",
-              label: `After ${lineCount} lines: FIXED_TOP has scrolled off row 1, showing full-screen scrolling resumed`,
+              label: `After reset and ${lineCount} lines: FIXED_TOP has scrolled off row 1, showing full-screen scrolling resumed`,
             })
             return {
               pass: false,
@@ -790,6 +804,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
                 cols: ctx.cols,
                 lineCount,
                 control: control.label,
+                activeRegion: activeRegion.label,
                 target: target.label,
               }),
               observation: {
@@ -797,8 +812,8 @@ export const scrollbackProbes: ProbeDefinition[] = [
                 reason: "insufficient-evidence",
                 evidence: "pixels",
                 screenshotRef: target.ref,
-                frames: [control, target],
-                note: "FIXED_TOP leaving row 1 after a region set-then-reset shows full-screen scrolling into history resumed; independent pixel review is required and the exact retained count is not readable from the screen",
+                frames: [control, activeRegion, target],
+                note: "Three frames: FIXED_TOP before the region, rows 5-10 provably active (FIXED_TOP unmoved while region-* scrolled inside), and FIXED_TOP scrolled off after reset. A terminal ignoring both region commands never holds FIXED_TOP through the middle frame; the exact retained count is not readable from the screen",
               },
             }
           } finally {

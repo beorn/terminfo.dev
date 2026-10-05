@@ -3,12 +3,42 @@ import { parserStateResult, sgrProbe, probe } from "./helpers.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
+const SGR_CAPTURE_MIN_ROWS = 3
+const SGR_CAPTURE_MIN_COLS = 34
+
+/** Shared capture-dimension guard, matching helpers.ts sgrProbe: small terminals clamp CUP or wrap/scroll. */
+function sgrCaptureTooSmall(ctx: TermContext): ProbeResult | undefined {
+  if (!ctx.capture) return undefined
+  const { rows, cols } = ctx
+  if (
+    Number.isSafeInteger(rows) &&
+    Number.isSafeInteger(cols) &&
+    rows >= SGR_CAPTURE_MIN_ROWS &&
+    cols >= SGR_CAPTURE_MIN_COLS
+  ) {
+    return undefined
+  }
+  return {
+    pass: false,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: `SGR fixture needs at least ${SGR_CAPTURE_MIN_ROWS}x${SGR_CAPTURE_MIN_COLS}, measured ${rows}x${cols}`,
+    },
+  }
+}
+
 function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): boolean {
   return a.r === b.r && a.g === b.g && a.b === b.b
 }
 
 /** A cursor reply proves consumption of the SGR sequence, never the visual attribute. */
 async function consumedSgr(ctx: TermContext, id: string, sequence: string): Promise<ProbeResult> {
+  if (ctx.capture) {
+    const refusal = sgrCaptureTooSmall(ctx)
+    if (refusal) return refusal
+  }
   try {
     if (ctx.capture) {
       const sample = "AaBb 0123456789 - terminal text"
@@ -55,6 +85,68 @@ async function consumedSgr(ctx: TermContext, id: string, sequence: string): Prom
         reason: "insufficient-evidence",
         evidence: pos.row === 1 && pos.col === 2 ? "consumed" : "query",
         note: "Cursor advance does not verify SGR styling",
+      },
+    }
+  } finally {
+    ctx.write("\x1b[0m")
+  }
+}
+
+/**
+ * Capture check for a reset sequence (SGR 39/49/59). The control is an unstyled reference run;
+ * the target renders the setup color on XX and the reset on YY, so an ignored reset cannot look
+ * identical to a supported one. Consumption alone never proves the visual reset.
+ */
+async function consumedSgrReset(ctx: TermContext, id: string, setup: string, reset: string): Promise<ProbeResult> {
+  if (ctx.capture) {
+    const refusal = sgrCaptureTooSmall(ctx)
+    if (refusal) return refusal
+  }
+  try {
+    if (ctx.capture) {
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3HXXYY")
+      const control = await ctx.capture({ role: "control", label: "Unstyled XXYY reference run" })
+      ctx.write(`\x1b[0m\x1b[2J\x1b[3;3H${setup}XX${reset}YY`)
+      const target = await ctx.capture({ role: "target", label: id })
+      return {
+        pass: false,
+        response: JSON.stringify({
+          startRow: 3,
+          startCol: 3,
+          setupCells: 2,
+          resetCells: 2,
+          control: control.label,
+          target: target.label,
+        }),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.ref,
+          frames: [control, target],
+          note: "XX carries the setup color and YY carries the reset; compare YY against the unstyled control before grading the reset",
+        },
+      }
+    }
+    ctx.write("\x1b[1;1H\x1b[2K")
+    ctx.write(setup + "X" + reset + "Y")
+    const pos = await ctx.queryCursorPosition()
+    if (!pos) {
+      return {
+        pass: false,
+        note: "No cursor response",
+        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+      }
+    }
+    return {
+      pass: false,
+      note: "Cursor advance does not verify the reset rendered",
+      response: `${pos.row};${pos.col}`,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: pos.row === 1 && pos.col === 3 ? "consumed" : "query",
+        note: "Cursor advance does not verify the reset rendered",
       },
     }
   } finally {
@@ -388,7 +480,7 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
-      (ctx) => consumedSgr(ctx, id, `\x1b[${reset}m`),
+      (ctx) => consumedSgrReset(ctx, id, `\x1b[${setup}m`, `\x1b[${reset}m`),
       "consumed",
     ),
     termNeedsGeometry: true,
@@ -532,7 +624,7 @@ export const sgrProbes: ProbeDefinition[] = [
         }
         return parserStateResult(sameRgb(baseline.underlineColor, after.underlineColor), expected, state)
       },
-      (ctx) => consumedSgr(ctx, "sgr.underline-color-reset", "\x1b[4m\x1b[58;2;255;0;128m\x1b[59m"),
+      (ctx) => consumedSgrReset(ctx, "sgr.underline-color-reset", "\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m"),
       "consumed",
     ),
     termNeedsGeometry: true,
