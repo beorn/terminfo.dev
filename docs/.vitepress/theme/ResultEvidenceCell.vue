@@ -17,6 +17,23 @@ const props = withDefaults(
   { display: "compact" },
 )
 
+const isDecSampleResult = computed(
+  () =>
+    props.featureId === "charsets.dec-special" &&
+    props.version?.runId === "e81b65484899493ffb9b5eacc3a6062d" &&
+    props.version.sha256 === "cab396be1c52f450e7203039119a98355392c0b2d16bffb6a488922544b3d8c2" &&
+    props.version.target.kind === "app" &&
+    props.version.target.id === "kitty" &&
+    props.version.target.version === "0.49.2" &&
+    props.version.target.os === "linux" &&
+    props.cell?.outcome === "supported" &&
+    props.cell.conclusive === true &&
+    props.cell.evidence === "pixels" &&
+    props.cell.chain.correctionId === "pixels-e81b65484899493ffb9b5eacc3a6062d-charsets.dec-special" &&
+    props.cell.presentation.state === "presented" &&
+    props.cell.presentation.review.id === "present-e81b65484899493ffb9b5eacc3a6062d-charsets.dec-special",
+)
+
 const trigger = ref<HTMLButtonElement | null>(null)
 const dialog = ref<HTMLDialogElement | null>(null)
 const previewVisible = ref(false)
@@ -332,10 +349,104 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <p class="result-evidence__outcome" :class="`result-evidence__outcome--${status.tone}`">
-          {{ status.text }}<template v-if="cell"> · {{ methodLabel }}</template>
+        <p v-if="isDecSampleResult">
+          Kitty passed this sample: <code>q</code> became a horizontal line, then ASCII text was restored. Only this
+          character mapping and restoration were checked, not the full charset.
         </p>
-        <p v-if="cell?.note">{{ cell.note }}</p>
+        <p v-if="isDecSampleResult">
+          DEC Special Graphics lets older terminal programs draw borders by displaying ordinary letters as line-drawing
+          symbols.
+          <a :href="withBase('/charsets/dec-special-graphics')">About this feature</a> ·
+          <a :href="withBase('/glossary')">Terminal glossary</a>
+        </p>
+
+        <p class="result-evidence__outcome" :class="`result-evidence__outcome--${status.tone}`">
+          {{ status.text }}<template v-if="cell"> · {{ isDecSampleResult ? "screenshots" : methodLabel }}</template>
+        </p>
+        <template v-if="isDecSampleResult">
+          <p>
+            Supported applies only to this sample. Screenshots is the plain-language label for the recorded
+            <code>pixels</code> evidence: captured images of the application. Sol, an AI reviewer, assessed these
+            images; this was not a human review.
+          </p>
+          <p>
+            Tested in Kitty 0.49.2 on Linux, using Xvfb and the llvmpipe renderer, an 800×600 window, and the default
+            profile with DejaVu Sans Mono at size 16. Other versions and configurations need their own results.
+          </p>
+          <details class="result-evidence__details">
+            <summary>How to read the status</summary>
+            <p>The status describes the tested claim. The evidence label describes how it was observed.</p>
+            <h4>Result states</h4>
+            <ul>
+              <li><strong>Supported</strong>: the evidence establishes the tested effect.</li>
+              <li><strong>Unsupported</strong>: the evidence establishes that the tested effect did not occur.</li>
+              <li><strong>Inconclusive</strong>: the evidence does not establish either result.</li>
+              <li><strong>Probe error (Error)</strong>: the probe failed to complete its measurement.</li>
+              <li>
+                <strong>Ungraded observation (Ungraded)</strong>: a result was recorded, but it lacks a usable
+                conclusive assessment of the tested claim. For example, a legacy callback may record a pass/fail value
+                without enough measured evidence to grade it. This does not necessarily mean test criteria were absent.
+              </li>
+              <li>
+                <strong>Not tested by this run (Not tested)</strong>: the site has selected a reviewed run for this
+                context, but that run has no observation for this feature. For example, the run may predate this feature
+                being added to its suite. This does not prove unsupported or a deliberate skip.
+              </li>
+              <li>
+                <strong>No reviewed current result (No result)</strong>: the site has not selected any reviewed run for
+                this terminal context. For example, it may have only an unreviewed capture for this version and
+                configuration. Private or older runs may also exist. This differs from Not tested, where a run is
+                selected but lacks this feature; you do not need to select a run, and this does not describe human
+                consensus.
+              </li>
+            </ul>
+            <h4>Evidence kinds</h4>
+            <ul>
+              <li>
+                <strong>query (Terminal query)</strong>: a recorded reply from the terminal. Recognition of a query
+                alone does not prove every operation of the feature.
+              </li>
+              <li><strong>behavior</strong>: an observed effect of a terminal operation.</li>
+              <li>
+                <strong>parser-state</strong>: internal state exposed by a headless terminal emulator. This does not
+                establish the pixels displayed by an application.
+              </li>
+              <li><strong>pixels</strong>: captured images of the terminal application's display.</li>
+              <li><strong>interaction</strong>: an observed result of an input action performed during the test.</li>
+              <li><strong>consumed</strong>: the sequence was accepted, without proof of its intended effect.</li>
+              <li>
+                <strong>legacy</strong>: an older-style callback result without the current measurement record. It does
+                not necessarily mean an old terminal or version.
+              </li>
+              <li>
+                <strong>none (Not measured)</strong>: the collector did not measure a terminal effect or reply. A record
+                can still contain the bytes it sent, diagnostic traces or notes; none does not mean the record is empty.
+              </li>
+            </ul>
+            <p>Consumed, legacy and none cannot by themselves establish supported or unsupported.</p>
+          </details>
+          <h3>What was tested</h3>
+          <ol>
+            <li>
+              Write ordinary ASCII <code>qqq</code> on rows 1, 3 and 4, and a Unicode <code>q─q</code> comparator on row
+              2. Capture the control image.
+            </li>
+            <li>
+              Switch to DEC Special Graphics for the middle <code>q</code> on row 3, then restore ASCII and write
+              <code>qqq</code> on row 4. Capture the target image.
+            </li>
+            <li>
+              Sol performs an AI image review of the same two images: the middle <code>q</code> on row 3 becomes a line
+              matching the Unicode comparator; the restored row 4 remains ordinary text.
+            </li>
+          </ol>
+          <p>This test recorded writes and two captures, with no terminal queries or automated assertion values.</p>
+        </template>
+        <details v-if="isDecSampleResult && cell?.note" class="result-evidence__details">
+          <summary>Detailed review note</summary>
+          <p>{{ cell.note }}</p>
+        </details>
+        <p v-else-if="cell?.note">{{ cell.note }}</p>
         <p v-if="cell?.evidence === 'query' && cell?.conclusive">
           This result is based on the query's recorded evidence, not every use of this feature.
         </p>
@@ -361,7 +472,17 @@ onBeforeUnmount(() => {
             Evidence could not be verified: {{ evidenceError }}
           </p>
           <template v-else-if="evidenceDocument">
-            <p v-if="correction">
+            <p v-if="correction && isDecSampleResult">
+              The collector captured the images but did not automatically judge their content. It left the result
+              inconclusive until image review. Sol, an AI reviewer, then compared the unchanged frames against two
+              criteria: the middle <code>q</code> on row 3 must look like the horizontal line in row 2, and row 4 must
+              remain ordinary ASCII text. That review established support for this sample. It used no numeric confidence
+              score, new frames or updated terminal. “Corrected after review” means the assessment changed; Kitty was
+              not fixed and this was not a rerun. The same AI reviewer made the support assessment and the separate
+              decision to display the evidence, not two independent tests or human approvals. The original result and
+              both decisions are preserved in Review history.
+            </p>
+            <p v-else-if="correction">
               This result was corrected after review. See Review history for the original result and reason.
             </p>
             <template v-if="assertions.length">
@@ -410,31 +531,82 @@ onBeforeUnmount(() => {
 
             <p v-if="!hasRecordedDetail">No raw evidence was captured for this observation.</p>
             <details v-if="rawReply !== undefined" class="result-evidence__details">
-              <summary>Technical details · raw trace</summary>
+              <summary>{{ isDecSampleResult ? "Recorded test trace" : "Technical details · raw trace" }}</summary>
               <template v-if="rawReply !== undefined">
-                <h4>{{ evidenceDocument.observation.evidence === "none" ? "Collector trace" : "Raw reply" }}</h4>
+                <h4>
+                  {{
+                    isDecSampleResult
+                      ? "Recorded test trace"
+                      : evidenceDocument.observation.evidence === "none"
+                        ? "Collector trace"
+                        : "Raw reply"
+                  }}
+                </h4>
                 <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
               </template>
             </details>
             <details class="result-evidence__details">
               <summary>Review history</summary>
-              <p v-if="correction">
-                Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
-                Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
-              </p>
-              <details>
-                <summary>Evidence publication check</summary>
-                <p>{{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
-              </details>
-              <template v-if="originalDiffers">
-                <h4>Original recorded observation</h4>
+              <template v-if="isDecSampleResult">
+                <p>
+                  The original result and the review decisions are preserved below in order: collection, support review,
+                  then evidence presentation approval.
+                </p>
+                <h4>1. Original recorded result</h4>
                 <p>
                   {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
                   <template v-if="evidenceDocument.observation.reason">
                     · {{ evidenceDocument.observation.reason }}</template
                   >
                 </p>
+                <p>
+                  Inconclusive meant the images still needed review. Insufficient-evidence meant the collector had not
+                  yet established a supported or unsupported result.
+                </p>
                 <p v-if="evidenceDocument.observation.note">{{ evidenceDocument.observation.note }}</p>
+                <h4>2. Support review</h4>
+                <p>
+                  Sol, an AI image reviewer, changed the assessment from inconclusive to supported for this sample using
+                  the same original control and target frames. The frames were retained; Kitty was not fixed and the
+                  test was not rerun.
+                </p>
+                <details v-if="correction">
+                  <summary>Support review record</summary>
+                  <p>
+                    Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
+                    Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
+                  </p>
+                </details>
+                <h4>3. Evidence presentation approval</h4>
+                <p>
+                  The same AI reviewer, Sol, separately approved displaying these frames. This was not a second
+                  independent test or a human approval, and it did not change the support result, terminal identity or
+                  recorded assertions.
+                </p>
+                <details>
+                  <summary>Evidence presentation record</summary>
+                  <p>{{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
+                </details>
+              </template>
+              <template v-else>
+                <p v-if="correction">
+                  Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
+                  Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
+                </p>
+                <details>
+                  <summary>Evidence publication check</summary>
+                  <p>{{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
+                </details>
+                <template v-if="originalDiffers">
+                  <h4>Original recorded observation</h4>
+                  <p>
+                    {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
+                    <template v-if="evidenceDocument.observation.reason">
+                      · {{ evidenceDocument.observation.reason }}</template
+                    >
+                  </p>
+                  <p v-if="evidenceDocument.observation.note">{{ evidenceDocument.observation.note }}</p>
+                </template>
               </template>
             </details>
 
@@ -442,8 +614,15 @@ onBeforeUnmount(() => {
               <summary>Current probe guidance</summary>
               <p>{{ probeGuidanceText }}</p>
               <p>
-                Current catalog guidance, not a recorded assertion or proof. Parser checks do not establish visible
-                styling.
+                <template v-if="isDecSampleResult">
+                  This is the current catalog guidance, separate from this recorded run. Its headless check reads
+                  emulator cells for U+2500; this app result comes from the captured images above. The guidance does not
+                  say a pixel review must prove a numeric character code, and is not a recorded assertion from this run.
+                </template>
+                <template v-else>
+                  Current catalog guidance, not a recorded assertion or proof. Parser checks do not establish visible
+                  styling.
+                </template>
               </p>
             </details>
           </template>
