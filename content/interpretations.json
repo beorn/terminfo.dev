@@ -337013,14 +337013,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -337067,14 +337061,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -337121,14 +337109,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -337175,14 +337157,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -337229,14 +337205,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -337283,14 +337253,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -337337,14 +337301,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -337401,14 +337359,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -337465,14 +337417,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -337529,14 +337475,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -337583,14 +337523,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -337637,14 +337571,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -337691,14 +337619,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -337755,14 +337677,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -337819,14 +337735,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -337883,14 +337793,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -337937,14 +337841,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -337991,14 +337889,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -338045,14 +337937,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -338099,14 +337985,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -338153,14 +338033,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -338207,14 +338081,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -338261,14 +338129,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -338315,14 +338177,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -338369,14 +338225,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -338424,14 +338274,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -338479,14 +338323,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -338534,14 +338372,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -338589,14 +338421,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -338644,14 +338470,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -338699,14 +338519,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -338753,14 +338567,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -338807,14 +338615,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -338861,14 +338663,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -338916,14 +338712,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -338971,14 +338761,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -339026,14 +338810,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -339081,14 +338859,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -339136,14 +338908,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -339191,14 +338957,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -339246,14 +339006,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -339301,14 +339055,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -339356,14 +339104,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -339411,14 +339153,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -339466,14 +339202,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -339521,14 +339251,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -339575,14 +339299,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -339629,14 +339347,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -339683,14 +339395,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -339738,14 +339444,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -339793,14 +339493,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -339848,14 +339542,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -339903,14 +339591,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -339958,14 +339640,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -340013,14 +339689,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -340068,14 +339738,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -340123,14 +339787,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -340178,14 +339836,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -340233,14 +339885,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -340288,14 +339934,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -340343,14 +339983,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -340398,14 +340032,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -340453,14 +340081,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -340508,14 +340130,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -340563,14 +340179,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -340618,14 +340228,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -340673,14 +340277,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -340728,14 +340326,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -340783,14 +340375,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -340838,14 +340424,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -340892,14 +340472,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -340946,14 +340520,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -341000,18 +340568,10 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
-    "sources": [
-      "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json"
-    ],
+    "sources": ["content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json"],
     "supersedes": [],
     "id": "present-533040cff581361d90eb99888a6c0454-text.basic",
     "reason": "The raw terminal run already records the position-sensitive query result (home 1;1 then 1;6) with outcome supported; this packet exposes that evidence rather than inventing a pixel correction. Context: Kitty 0.49.2 Linux, allow clipboard profile, suite 014b255c9130, run 533040cff581361d90eb99888a6c0454.",
@@ -341027,18 +340587,10 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
-    "sources": [
-      "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json"
-    ],
+    "sources": ["content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json"],
     "supersedes": [],
     "id": "present-6cc76d5f7a0388a3eb1b0f77c9d7fe08-text.basic",
     "reason": "The raw terminal run already records the position-sensitive query result (home 1;1 then 1;6) with outcome supported; this packet exposes that evidence rather than inventing a pixel correction. Context: Kitty 0.49.2 Linux, default clipboard profile, suite 014b255c9130, run 6cc76d5f7a0388a3eb1b0f77c9d7fe08.",
@@ -341054,18 +340606,10 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
-    "sources": [
-      "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json"
-    ],
+    "sources": ["content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json"],
     "supersedes": [],
     "id": "present-66caf2e251268e3152e1e6221922f5ff-text.basic",
     "reason": "The raw terminal run already records the position-sensitive query result (home 1;1 then 1;6) with outcome supported; this packet exposes that evidence rather than inventing a pixel correction. Context: Kitty 0.49.2 Linux, deny-read clipboard profile, suite 014b255c9130, run 66caf2e251268e3152e1e6221922f5ff.",
@@ -341081,14 +340625,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "e150bdbfd817",
-        "e150bdbfd817"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["e150bdbfd817", "e150bdbfd817"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-b4df817b68e6ff6bf94a7603777c7959.json",
@@ -341135,14 +340673,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "e150bdbfd817",
-        "e150bdbfd817"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["e150bdbfd817", "e150bdbfd817"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-45fa5730ed4f83e717e4c2d5db82a5dd.json",
@@ -341189,14 +340721,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "e150bdbfd817",
-        "e150bdbfd817"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["e150bdbfd817", "e150bdbfd817"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-d1e57fbc5bf5e2e7a9632b66502dc091.json",
@@ -341243,14 +340769,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -341297,14 +340817,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -341351,14 +340865,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -341405,14 +340913,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
@@ -341421,9 +340923,7 @@
       "content/artifacts/7700a2aa406554fd229d7e5e6b96e23257c0eda3c826251732bbb2699afccc9a.png",
       "content/artifacts/02a7d1f14ef72ee639f4984230207b4c29daef9556d0ec89fe9c4394e3a2568e.xwd"
     ],
-    "supersedes": [
-      "pixels-6cc76d5f7a0388a3eb1b0f77c9d7fe08-sgr.reset"
-    ],
+    "supersedes": ["pixels-6cc76d5f7a0388a3eb1b0f77c9d7fe08-sgr.reset"],
     "featureId": "sgr.reset",
     "reason": "The target measures underline clearing after SGR 0. Bold and italic clearing are not independently discriminated by the different X/Y glyphs, so the full three-attribute reset contract remains inconclusive.",
     "id": "pixels-6cc76d5f7a0388a3eb1b0f77c9d7fe08-sgr.reset-complete-contract",
@@ -341462,14 +340962,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
@@ -341478,9 +340972,7 @@
       "content/artifacts/51a936dd5916bc5a3f577ae645822f81d01188b59eae5cca96afa1ecfd2d24da.png",
       "content/artifacts/02a7d1f14ef72ee639f4984230207b4c29daef9556d0ec89fe9c4394e3a2568e.xwd"
     ],
-    "supersedes": [
-      "pixels-533040cff581361d90eb99888a6c0454-sgr.reset"
-    ],
+    "supersedes": ["pixels-533040cff581361d90eb99888a6c0454-sgr.reset"],
     "featureId": "sgr.reset",
     "reason": "The target measures underline clearing after SGR 0. Bold and italic clearing are not independently discriminated by the different X/Y glyphs, so the full three-attribute reset contract remains inconclusive.",
     "id": "pixels-533040cff581361d90eb99888a6c0454-sgr.reset-complete-contract",
@@ -341519,14 +341011,8 @@
         "kind": "app",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "014b255c9130",
-        "014b255c9130"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["014b255c9130", "014b255c9130"]
     },
     "sources": [
       "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
@@ -341535,9 +341021,7 @@
       "content/artifacts/9fb8c8470123a08f2414818c0a18aebcdcb54acf199c3b2b48ac93b5be673ff7.png",
       "content/artifacts/ad808b2bd8b75e640553e0a6e95b5ca4656852119179bfb68337912d0187faac.xwd"
     ],
-    "supersedes": [
-      "pixels-66caf2e251268e3152e1e6221922f5ff-sgr.reset"
-    ],
+    "supersedes": ["pixels-66caf2e251268e3152e1e6221922f5ff-sgr.reset"],
     "featureId": "sgr.reset",
     "reason": "The target measures underline clearing after SGR 0. Bold and italic clearing are not independently discriminated by the different X/Y glyphs, so the full three-attribute reset contract remains inconclusive.",
     "id": "pixels-66caf2e251268e3152e1e6221922f5ff-sgr.reset-complete-contract",
