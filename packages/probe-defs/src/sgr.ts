@@ -3,32 +3,6 @@ import { parserStateResult, sgrProbe, sgrCaptureFrames, sgrCaptureTooSmall, prob
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
-const SGR_CAPTURE_MIN_ROWS = 3
-const SGR_CAPTURE_MIN_COLS = 34
-
-/** Shared capture-dimension guard, matching helpers.ts sgrProbe: small terminals clamp CUP or wrap/scroll. */
-function sgrCaptureTooSmall(ctx: TermContext): ProbeResult | undefined {
-  if (!ctx.capture) return undefined
-  const { rows, cols } = ctx
-  if (
-    Number.isSafeInteger(rows) &&
-    Number.isSafeInteger(cols) &&
-    rows >= SGR_CAPTURE_MIN_ROWS &&
-    cols >= SGR_CAPTURE_MIN_COLS
-  ) {
-    return undefined
-  }
-  return {
-    pass: false,
-    observation: {
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-      note: `SGR fixture needs at least ${SGR_CAPTURE_MIN_ROWS}x${SGR_CAPTURE_MIN_COLS}, measured ${rows}x${cols}`,
-    },
-  }
-}
-
 function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): boolean {
   return a.r === b.r && a.g === b.g && a.b === b.b
 }
@@ -52,32 +26,6 @@ async function consumedSgr(ctx: TermContext, id: string, sequence: string): Prom
     }
   }
   try {
-    if (ctx.capture) {
-      const sample = "AaBb 0123456789 - terminal text"
-      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sample)
-      const control = await ctx.capture({ role: "control", label: "Unstyled text sample" })
-      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sequence + sample)
-      const target = await ctx.capture({ role: "target", label: id })
-      return {
-        pass: false,
-        response: JSON.stringify({
-          sample,
-          startRow: 3,
-          startCol: 3,
-          sampleCells: sample.length,
-          control: control.label,
-          target: target.label,
-        }),
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "pixels",
-          screenshotRef: target.ref,
-          frames: [control, target],
-          note: "Control and target pixels captured; visual interpretation requires review",
-        },
-      }
-    }
     ctx.write("\x1b[1;1H\x1b[2K")
     ctx.write(sequence + "X")
     const pos = await ctx.queryCursorPosition()
@@ -287,6 +235,8 @@ async function consumedResetSgr(ctx: TermContext, id: string, setup: string, res
         },
       }
     }
+  }
+  try {
     ctx.write("\x1b[1;1H\x1b[2K")
     ctx.write(`${setup}X${reset}Y`)
     const pos = await ctx.queryCursorPosition()
