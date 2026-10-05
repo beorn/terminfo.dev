@@ -12,16 +12,9 @@ import { ALL_PROBES, type ProbeRun } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
 import { checkCurrentSuiteManifest } from "../../scripts/suite-manifest.ts"
-import { headlessRuntimeIdentity } from "./headless-identity.ts"
 import { collectBatch, errorMessage } from "./headless-batch.ts"
 
 const ROOT = resolve(import.meta.dir, "../..")
-let TERMLESS_ROOT: string
-try {
-  TERMLESS_ROOT = realpathSync(resolve(ROOT, "../termless"))
-} catch (cause) {
-  throw new Error(`Local headless v2 collection requires the owned Termless checkout beside ${ROOT}`, { cause })
-}
 // Match the existing Linux full-probe HTTP budget for one engine.
 const WORKER_TIMEOUT_MS = 120_000
 const WORKER_STOP_GRACE_MS = 2_000
@@ -64,6 +57,13 @@ function trustedSuite() {
 
 /** The same collector runs in a fresh process for each engine: a native abort cannot hide another engine. */
 async function collectOne(name: string, directory: string): Promise<string> {
+  let termlessRoot: string
+  try {
+    termlessRoot = realpathSync(resolve(ROOT, "../termless"))
+  } catch (cause) {
+    throw new Error(`Local headless v2 collection requires the owned Termless checkout beside ${ROOT}`, { cause })
+  }
+  const { headlessRuntimeIdentity } = await import("./headless-identity.ts")
   const entry = manifest().backends[name]
   if (!entry || entry.type === "os") throw new Error(`Unknown or OS-only headless backend ${name}`)
   const suite = trustedSuite()
@@ -94,7 +94,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     } catch (cause) {
       throw new Error(`${name} requires installed ${entry.package} in the owned source workspace`, { cause })
     }
-    const adapterRelative = relative(TERMLESS_ROOT, adapterPath)
+    const adapterRelative = relative(termlessRoot, adapterPath)
     if (adapterRelative.startsWith("../") || adapterRelative === ".." || adapterRelative.startsWith("/")) {
       throw new Error(`${entry.package} resolved outside owned Termless: ${adapterPath}`)
     }

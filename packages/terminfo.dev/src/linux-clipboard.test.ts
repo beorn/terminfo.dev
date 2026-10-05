@@ -8,7 +8,7 @@
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, expect, test } from "vitest"
 import { createClipboardTransaction, createLinuxClipboardAdapter, type ClipboardTraceEvent } from "./linux-clipboard.ts"
@@ -78,8 +78,8 @@ test.runIf(process.platform === "linux")(
 
 /** This child checks real Linux fds; Vitest workers replace stdin even when Vitest itself has a PTY. */
 test.runIf(process.platform === "linux")("owned Linux output proof uses a real controlling PTY", () => {
-  const codeRoot = resolve(fileURLToPath(import.meta.url), "../../../../../..")
-  const sourceRoot = join(codeRoot, "vendor/terminfo.dev/packages/terminfo.dev/src")
+  const sourceRoot = dirname(fileURLToPath(import.meta.url))
+  const codeRoot = resolve(sourceRoot, "../../..")
   const child = String.raw`
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
@@ -148,7 +148,7 @@ try {
   const base = pathToFileURL(root + "/").href
   const verifier = await import(base + "owned-terminal.ts")
   const { runProbeBatch } = await import(base + "probes/unified.ts")
-  const { openControllingTTY } = await import(base + "tty.ts")
+  const { openControllingTTY, withRawMode } = await import(base + "tty.ts")
   const executable = { path: kittyExecutable, sha256: digest("owned-kitty-binary") }
   const factory = (out, run = capture, live = executable) =>
     verifier.createOwnedTerminal({ expectedLaunchRunId: launch, captureRunId: run, out,
@@ -209,10 +209,18 @@ try {
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, "c".repeat(32), process.stdout), false)
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, foreign), false)
     assert.equal(verifier.ownedTerminalVerifiedFor({ ...adapter }, capture, process.stdout), false)
-    const owned = await runProbeBatch({ ids: ["reset.ris", "extensions.osc52-write"], captureRunId: capture,
-      ownedTerminal: adapter, out: process.stdout })
+    const owned = await withRawMode(() => runProbeBatch({ ids: ["reset.ris", "extensions.osc52-write"], captureRunId: capture,
+      ownedTerminal: adapter, out: process.stdout }))
     assert.match(owned.rawReplies["reset.ris"], /\\u001bc/)
-    assert.equal(owned.ungradedDiagnostics["reset.ris"].kind, "legacy-callback")
+    assert.equal(owned.ungradedDiagnostics["reset.ris"], undefined)
+    const reset = owned.observations.find((item) => item.featureId === "reset.ris")
+    assert.equal(reset.outcome, "supported")
+    assert.equal(reset.evidence, "query")
+    assert.deepEqual(JSON.parse(owned.rawReplies["reset.ris.callbackResponse"]), {
+      before: { row: 5, col: 5 }, after: { row: 1, col: 1 }
+    })
+    assert.deepEqual(JSON.parse(owned.rawReplies["reset.ris"]).queries.map(query => query.raw),
+      ["\x1b[5;5R", "\x1b[1;1R"])
     assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write").reason, "policy-refused")
     assert.deepEqual(JSON.parse(owned.rawReplies["extensions.osc52-write"]).writes, [])
     for (const [run, out] of [["c".repeat(32), process.stdout], [capture, foreign], [capture, fake]]) {
@@ -231,8 +239,8 @@ try {
       ["measured", 31, 73])
     const aliasSize = await aliasAdapter.readGeometry()
     assert.deepEqual([aliasSize.status, aliasSize.rows, aliasSize.cols], ["measured", 31, 73])
-    const aliasBatch = await runProbeBatch({ ids: ["reset.ris"], captureRunId: "d".repeat(32),
-      ownedTerminal: aliasAdapter, out: alias })
+    const aliasBatch = await withRawMode(() => runProbeBatch({ ids: ["reset.ris"], captureRunId: "d".repeat(32),
+      ownedTerminal: aliasAdapter, out: alias }), alias)
     assert.match(aliasBatch.rawReplies["reset.ris"], /\\u001bc/)
     await aliasAdapter.dispose()
     await new Promise((resolve) => alias.end(resolve))
@@ -252,7 +260,7 @@ try {
 }
 `
   const python = String.raw`
-import fcntl, os, pty, struct, subprocess, sys, termios, threading
+import fcntl, os, pty, re, struct, subprocess, sys, termios, threading
 mode = sys.argv[1]
 primary_master, primary_slave = pty.openpty()
 foreign_master, foreign_slave = pty.openpty()
@@ -267,13 +275,27 @@ os.close(primary_slave)
 os.close(foreign_slave)
 primary = bytearray()
 foreign = bytearray()
-def drain(fd, output):
+def drain(fd, output, answer_cursor=False):
+    # Only the existing RIS fixture protocol: CUP 5;5, RIS, and DSR 6.
+    # Buffer across reads so a split control sequence receives the same answer.
+    pending = b''
+    cursor = (1, 1)
     while True:
         try: chunk = os.read(fd, 65536)
         except OSError: return
         if not chunk: return
         output.extend(chunk)
-readers = [threading.Thread(target=drain, args=(primary_master, primary), daemon=True),
+        if answer_cursor:
+            pending += chunk
+            while True:
+                match = re.search(rb'\x1b(?:\[5;5H|c|\[6n)', pending)
+                if not match: break
+                sequence = match.group()
+                pending = pending[match.end():]
+                if sequence == b'\x1b[5;5H': cursor = (5, 5)
+                elif sequence == b'\x1bc': cursor = (1, 1)
+                else: os.write(fd, ('\x1b[%d;%dR' % cursor).encode())
+readers = [threading.Thread(target=drain, args=(primary_master, primary, True), daemon=True),
            threading.Thread(target=drain, args=(foreign_master, foreign), daemon=True)]
 for reader in readers: reader.start()
 try:
