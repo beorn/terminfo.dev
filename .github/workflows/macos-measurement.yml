@@ -1,0 +1,396 @@
+name: macos-terminal-measurement
+
+on:
+  push:
+    branches:
+      - spike/hosted-macos-27493
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: macos-4-terminal-measurement
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - name: Gather system and display context
+        continue-on-error: true
+        run: |
+          caffeinate -u -t 1500 &
+          mkdir -p /tmp/spike-artifacts
+          {
+            echo "=== SYSTEM VERSION ==="
+            sw_vers
+            echo ""
+            echo "=== RUNNER INFO ==="
+            echo "ImageOS: ${ImageOS:-unknown}"
+            echo "ImageVersion: ${ImageVersion:-unknown}"
+            echo "RUNNER_ARCH: ${RUNNER_ARCH:-unknown}"
+            echo "RUNNER_OS: ${RUNNER_OS:-unknown}"
+            echo ""
+            echo "=== DISPLAY / GRAPHICS ==="
+            system_profiler SPDisplaysDataType 2>/dev/null || true
+            echo ""
+            echo "=== DESKTOP BOUNDS ==="
+            osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null || true
+          } > /tmp/spike-artifacts/context.txt
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Prepare Global Node & CLI Environment
+        run: |
+          echo "=== Setting up global symlinks ==="
+          NODE_BIN="$(which node)"
+          NPM_BIN="$(which npm)"
+          NPX_BIN="$(which npx)"
+          echo "node at: $NODE_BIN"
+          echo "npm at: $NPM_BIN"
+          echo "npx at: $NPX_BIN"
+
+          sudo ln -sf "$NODE_BIN" /usr/local/bin/node
+          sudo ln -sf "$NPM_BIN" /usr/local/bin/npm
+          sudo ln -sf "$NPX_BIN" /usr/local/bin/npx
+
+          echo "=== Pre-installing terminfo.dev@4.0.0 ==="
+          npm install -g terminfo.dev@4.0.0
+          TERMINFO_BIN="$(which terminfo 2>/dev/null || echo "")"
+          if [ -n "$TERMINFO_BIN" ]; then
+            sudo ln -sf "$TERMINFO_BIN" /usr/local/bin/terminfo
+          fi
+
+          echo "=== Warmup check ==="
+          npx terminfo.dev@4.0.0 --version
+          terminfo --version || true
+
+      - name: Install terminal matrix (iTerm2, Ghostty via Brew; Alacritty via GitHub release)
+        run: |
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          export HOMEBREW_NO_INSTALL_CLEANUP=1
+
+          for app in iterm2 ghostty; do
+            echo "=== Installing $app ==="
+            brew install --cask "$app" || echo "WARNING: Failed to install $app via brew cask"
+          done
+
+          echo "=== Installing Alacritty from GitHub Releases v0.17.0 ==="
+          curl -sL https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg -o /tmp/Alacritty.dmg
+          if [ -f /tmp/Alacritty.dmg ]; then
+            hdiutil attach /tmp/Alacritty.dmg -mountpoint /Volumes/Alacritty
+            cp -R /Volumes/Alacritty/Alacritty.app /Applications/
+            hdiutil detach /Volumes/Alacritty
+          fi
+
+          sudo xattr -cr /Applications/*.app 2>/dev/null || true
+
+      - name: "Measure 1 - Terminal.app"
+        continue-on-error: true
+        run: |
+          echo "=== Measuring Terminal.app ==="
+          NODE_DIR="$(dirname $(which node))"
+
+          cat << CMDEOF > /tmp/run_terminal.command
+          #!/bin/bash
+          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
+          echo "=== Terminal.app test starting at \$(date) ===" > /tmp/spike-artifacts/output_terminal_app.txt
+          echo "TTY: \$(tty 2>/dev/null || echo 'not a tty')" >> /tmp/spike-artifacts/output_terminal_app.txt
+          echo "TERM: \$TERM, TERM_PROGRAM: \$TERM_PROGRAM" >> /tmp/spike-artifacts/output_terminal_app.txt
+          echo "Node: \$(which node) (\$(node -v 2>/dev/null))" >> /tmp/spike-artifacts/output_terminal_app.txt
+          echo "Running CLI test..." >> /tmp/spike-artifacts/output_terminal_app.txt
+
+          npx terminfo.dev@4.0.0 test --output /tmp/spike-artifacts/results_terminal_app.json 2>&1 | tee -a /tmp/spike-artifacts/output_terminal_app.txt
+          EXIT_CODE=\${PIPESTATUS[0]}
+          echo "EXIT_CODE=\$EXIT_CODE" >> /tmp/spike-artifacts/output_terminal_app.txt
+          echo "\$EXIT_CODE" > /tmp/terminal_app_exit.txt
+          touch /tmp/terminal_app_done.txt
+          sleep 30
+          CMDEOF
+          chmod +x /tmp/run_terminal.command
+
+          open -a /System/Applications/Utilities/Terminal.app /tmp/run_terminal.command
+          sleep 2
+          osascript -e 'tell application "Terminal" to set bounds of front window to {50, 50, 850, 650}' 2>/dev/null || true
+
+          for i in {1..90}; do
+            if [ -f /tmp/terminal_app_done.txt ]; then
+              echo "Terminal.app run completed in \$i seconds."
+              break
+            fi
+            sleep 1
+          done
+
+          sleep 2
+          screencapture -x /tmp/spike-artifacts/screenshot_terminal_app.png > /tmp/spike-artifacts/screencapture_terminal.log 2>&1 || true
+
+          osascript -e 'tell application "Terminal" to quit saving no' 2>/dev/null || killall Terminal 2>/dev/null || true
+          sleep 2
+
+      - name: "Measure 2 - iTerm2"
+        continue-on-error: true
+        run: |
+          echo "=== Measuring iTerm2 ==="
+          if [ -d "/Applications/iTerm.app" ]; then
+            defaults write com.googlecode.iterm2 DisableGPUWhenUnplugged -bool true
+            defaults write com.googlecode.iterm2 UseMetal -bool false
+            defaults write com.googlecode.iterm2 MetalAllowed -bool false
+
+            NODE_DIR="$(dirname $(which node))"
+
+            cat << 'SHEOF' > /tmp/run_iterm2.sh
+            #!/bin/bash
+            export PATH="__NODE_DIR__:/usr/local/bin:/opt/homebrew/bin:$PATH"
+            echo "=== iTerm2 test starting at $(date) ===" > /tmp/spike-artifacts/output_iterm2.txt
+            echo "TTY: $(tty 2>/dev/null || echo 'not a tty')" >> /tmp/spike-artifacts/output_iterm2.txt
+            echo "TERM: $TERM, TERM_PROGRAM: $TERM_PROGRAM" >> /tmp/spike-artifacts/output_iterm2.txt
+            echo "Node: $(which node) ($(node -v 2>/dev/null))" >> /tmp/spike-artifacts/output_iterm2.txt
+            echo "Running CLI test..." >> /tmp/spike-artifacts/output_iterm2.txt
+
+            npx terminfo.dev@4.0.0 test --output /tmp/spike-artifacts/results_iterm2.json 2>&1 | tee -a /tmp/spike-artifacts/output_iterm2.txt
+            EXIT_CODE=${PIPESTATUS[0]}
+            echo "EXIT_CODE=$EXIT_CODE" >> /tmp/spike-artifacts/output_iterm2.txt
+            echo "$EXIT_CODE" > /tmp/iterm2_exit.txt
+            touch /tmp/iterm2_done.txt
+            sleep 30
+          SHEOF
+            sed -i '' "s|__NODE_DIR__|$NODE_DIR|g" /tmp/run_iterm2.sh
+            chmod +x /tmp/run_iterm2.sh
+
+            mkdir -p ~/Library/Application\ Support/iTerm2/DynamicProfiles
+            cat << DPEOF > ~/Library/Application\ Support/iTerm2/DynamicProfiles/measurement.json
+            {
+              "Profiles": [
+                {
+                  "Name": "Default",
+                  "Guid": "00000000-0000-0000-0000-000000000001",
+                  "Custom Command": "Yes",
+                  "Command": "/bin/bash /tmp/run_iterm2.sh",
+                  "Working Directory": "/tmp"
+                }
+              ]
+            }
+          DPEOF
+
+            cat << 'ZEOF' >> ~/.zshrc
+            if [ -n "$ITERM_SESSION_ID" ] && [ -f /tmp/run_iterm2.sh ] && [ ! -f /tmp/iterm2_done.txt ]; then
+              /bin/bash /tmp/run_iterm2.sh
+            fi
+          ZEOF
+
+            cat << 'ZEOF' >> ~/.zprofile
+            if [ -n "$ITERM_SESSION_ID" ] && [ -f /tmp/run_iterm2.sh ] && [ ! -f /tmp/iterm2_done.txt ]; then
+              /bin/bash /tmp/run_iterm2.sh
+            fi
+          ZEOF
+
+            /Applications/iTerm.app/Contents/MacOS/iTerm2 > /tmp/spike-artifacts/iterm2.log 2>&1 &
+            ITERM_PID=$!
+
+            for i in {1..90}; do
+              if [ -f /tmp/iterm2_done.txt ]; then
+                echo "iTerm2 run completed in \$i seconds."
+                break
+              fi
+              sleep 1
+            done
+
+            sleep 2
+            screencapture -x /tmp/spike-artifacts/screenshot_iterm2.png > /tmp/spike-artifacts/screencapture_iterm2.log 2>&1 || true
+
+            killall iTerm2 2>/dev/null || kill -TERM "$ITERM_PID" 2>/dev/null || true
+            sleep 2
+          else
+            echo "iTerm.app not found in /Applications" > /tmp/spike-artifacts/iterm2.log
+          fi
+
+      - name: "Measure 3 - Ghostty"
+        continue-on-error: true
+        run: |
+          echo "=== Measuring Ghostty ==="
+          if [ -d "/Applications/Ghostty.app" ]; then
+            NODE_DIR="$(dirname $(which node))"
+
+            cat << 'SHEOF' > /tmp/run_ghostty.sh
+            #!/bin/bash
+            export PATH="__NODE_DIR__:/usr/local/bin:/opt/homebrew/bin:$PATH"
+            echo "=== Ghostty test starting at $(date) ===" > /tmp/spike-artifacts/output_ghostty.txt
+            echo "TTY: $(tty 2>/dev/null || echo 'not a tty')" >> /tmp/spike-artifacts/output_ghostty.txt
+            echo "TERM: $TERM, TERM_PROGRAM: $TERM_PROGRAM" >> /tmp/spike-artifacts/output_ghostty.txt
+            echo "Node: $(which node) ($(node -v 2>/dev/null))" >> /tmp/spike-artifacts/output_ghostty.txt
+            echo "Running CLI test..." >> /tmp/spike-artifacts/output_ghostty.txt
+
+            npx terminfo.dev@4.0.0 test --output /tmp/spike-artifacts/results_ghostty.json 2>&1 | tee -a /tmp/spike-artifacts/output_ghostty.txt
+            EXIT_CODE=${PIPESTATUS[0]}
+            echo "EXIT_CODE=$EXIT_CODE" >> /tmp/spike-artifacts/output_ghostty.txt
+            echo "$EXIT_CODE" > /tmp/ghostty_exit.txt
+            touch /tmp/ghostty_done.txt
+            sleep 30
+          SHEOF
+            sed -i '' "s|__NODE_DIR__|$NODE_DIR|g" /tmp/run_ghostty.sh
+            chmod +x /tmp/run_ghostty.sh
+
+            GHOSTTY_BIN="/Applications/Ghostty.app/Contents/MacOS/ghostty"
+            "$GHOSTTY_BIN" -e /bin/bash /tmp/run_ghostty.sh > /tmp/spike-artifacts/ghostty.log 2>&1 &
+            GHOST_PID=$!
+
+            for i in {1..90}; do
+              if [ -f /tmp/ghostty_done.txt ]; then
+                echo "Ghostty run completed in \$i seconds."
+                break
+              fi
+              sleep 1
+            done
+
+            sleep 2
+            screencapture -x /tmp/spike-artifacts/screenshot_ghostty.png > /tmp/spike-artifacts/screencapture_ghostty.log 2>&1 || true
+
+            kill -TERM "$GHOST_PID" 2>/dev/null || killall ghostty 2>/dev/null || true
+            sleep 2
+          else
+            echo "Ghostty.app not found in /Applications" > /tmp/spike-artifacts/ghostty.log
+          fi
+
+      - name: "Measure 4 - Alacritty"
+        continue-on-error: true
+        run: |
+          echo "=== Measuring Alacritty ==="
+          if [ -d "/Applications/Alacritty.app" ]; then
+            NODE_DIR="$(dirname $(which node))"
+
+            cat << 'SHEOF' > /tmp/run_alacritty.sh
+            #!/bin/bash
+            export PATH="__NODE_DIR__:/usr/local/bin:/opt/homebrew/bin:$PATH"
+            echo "=== Alacritty test starting at $(date) ===" > /tmp/spike-artifacts/output_alacritty.txt
+            echo "TTY: $(tty 2>/dev/null || echo 'not a tty')" >> /tmp/spike-artifacts/output_alacritty.txt
+            echo "TERM: $TERM, TERM_PROGRAM: $TERM_PROGRAM" >> /tmp/spike-artifacts/output_alacritty.txt
+            echo "Node: $(which node) ($(node -v 2>/dev/null))" >> /tmp/spike-artifacts/output_alacritty.txt
+            echo "Running CLI test..." >> /tmp/spike-artifacts/output_alacritty.txt
+
+            npx terminfo.dev@4.0.0 test --output /tmp/spike-artifacts/results_alacritty.json 2>&1 | tee -a /tmp/spike-artifacts/output_alacritty.txt
+            EXIT_CODE=${PIPESTATUS[0]}
+            echo "EXIT_CODE=$EXIT_CODE" >> /tmp/spike-artifacts/output_alacritty.txt
+            echo "$EXIT_CODE" > /tmp/alacritty_exit.txt
+            touch /tmp/alacritty_done.txt
+            sleep 30
+          SHEOF
+            sed -i '' "s|__NODE_DIR__|$NODE_DIR|g" /tmp/run_alacritty.sh
+            chmod +x /tmp/run_alacritty.sh
+
+            ALACRITTY_BIN="/Applications/Alacritty.app/Contents/MacOS/alacritty"
+            "$ALACRITTY_BIN" -e /bin/bash /tmp/run_alacritty.sh > /tmp/spike-artifacts/alacritty.log 2>&1 &
+            ALAC_PID=$!
+
+            for i in {1..90}; do
+              if [ -f /tmp/alacritty_done.txt ]; then
+                echo "Alacritty run completed in \$i seconds."
+                break
+              fi
+              sleep 1
+            done
+
+            sleep 2
+            screencapture -x /tmp/spike-artifacts/screenshot_alacritty.png > /tmp/spike-artifacts/screencapture_alacritty.log 2>&1 || true
+
+            kill -TERM "$ALAC_PID" 2>/dev/null || killall alacritty 2>/dev/null || true
+            sleep 2
+          else
+            echo "Alacritty.app not found in /Applications" > /tmp/spike-artifacts/alacritty.log
+          fi
+
+      - name: Parse and summarize probe results
+        continue-on-error: true
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import glob
+          import os
+
+          # Look for manifest
+          manifest_path = "content/suites/16a690f34c0e.json"
+          catalog_probes = set()
+          if os.path.exists(manifest_path):
+              with open(manifest_path) as f:
+                  m = json.load(f)
+                  catalog_probes = set(m.get("probes", {}).get("app", []))
+
+          files = sorted(glob.glob("/tmp/spike-artifacts/results_*.json"))
+          lines = []
+          lines.append("# Hosted macOS 4-Terminal Measurement Summary\n")
+          lines.append(f"Suite manifest app probe count: {len(catalog_probes) if catalog_probes else 'N/A'}\n")
+          lines.append("| Terminal | Target ID | Detected Version | Total Executed | Supported | Unsupported | Inconclusive | Error | Not Tested |")
+          lines.append("|---|---|---|---|---|---|---|---|---|")
+
+          summary_data = {}
+
+          for p in files:
+              term_key = os.path.basename(p).replace("results_", "").replace(".json", "")
+              try:
+                  with open(p) as f:
+                      data = json.load(f)
+              except Exception as e:
+                  lines.append(f"| {term_key} | ERROR | {e} | - | - | - | - | - | - |")
+                  continue
+
+              target = data.get("target", {})
+              tid = target.get("id", term_key)
+              tver = target.get("version", "unknown")
+              obs = data.get("observations", [])
+              executed = len(obs)
+
+              counts = {"supported": 0, "unsupported": 0, "inconclusive": 0, "error": 0}
+              reasons = {}
+              tested_ids = set()
+
+              for o in obs:
+                  fid = o.get("featureId")
+                  if fid:
+                      tested_ids.add(fid)
+                  outc = o.get("outcome", "unknown")
+                  counts[outc] = counts.get(outc, 0) + 1
+                  r = o.get("reason")
+                  if r:
+                      reasons[r] = reasons.get(r, 0) + 1
+
+              not_tested = (len(catalog_probes) - len(tested_ids)) if catalog_probes else 0
+              summary_data[term_key] = {
+                  "target": target,
+                  "counts": counts,
+                  "reasons": reasons,
+                  "not_tested": not_tested,
+                  "executed": executed
+              }
+
+              lines.append(f"| {term_key} | {tid} | {tver} | {executed} | {counts.get('supported', 0)} | {counts.get('unsupported', 0)} | {counts.get('inconclusive', 0)} | {counts.get('error', 0)} | {not_tested} |")
+
+          lines.append("\n## Observation Reasons Breakdown\n")
+          for term_key, d in summary_data.items():
+              lines.append(f"### {term_key}\n")
+              lines.append(f"- **Total Executed**: {d['executed']}")
+              lines.append(f"- **Supported**: {d['counts'].get('supported', 0)}")
+              lines.append(f"- **Unsupported**: {d['counts'].get('unsupported', 0)}")
+              lines.append(f"- **Inconclusive**: {d['counts'].get('inconclusive', 0)}")
+              lines.append(f"- **Error**: {d['counts'].get('error', 0)}")
+              lines.append(f"- **Not Tested**: {d['not_tested']}")
+              lines.append(f"- **Reasons**: {json.dumps(d['reasons'], indent=2)}\n")
+
+          report = "\n".join(lines)
+          print(report)
+          with open("/tmp/spike-artifacts/summary.md", "w") as f:
+              f.write(report)
+          PYEOF
+
+      - name: Report file inventory
+        continue-on-error: true
+        run: |
+          echo "=== Artifacts Directory ==="
+          ls -lah /tmp/spike-artifacts
+
+      - name: Upload measurement artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-terminal-measurement-artifacts
+          path: /tmp/spike-artifacts
