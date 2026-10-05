@@ -1127,7 +1127,8 @@ export const extensionsProbes: ProbeDefinition[] = [
               "Two direct-RGB foreground samples; compare each against the unstyled control run before grading",
             )
           } finally {
-            ctx.write("\x1b[0m")
+            // Disposable owned run: clear the surface so no sample text is left behind.
+            ctx.write("\x1b[0m\x1b[2J\x1b[H")
           }
         }
         ctx.write("\x1b[1;1H\x1b[2K")
@@ -1141,6 +1142,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         )
       },
     ),
+    termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
   },
 
@@ -1226,42 +1228,46 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // Sixel — rendering remains unmeasured without pixel readback.
-  probe(
-    "extensions.sixel",
-    (ctx) => {
-      const note = "Declared Sixel capability does not establish rendered pixels"
-      return {
-        pass: false,
-        response: JSON.stringify({ declared: ctx.capabilities.sixel === true }),
-        note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
-      }
-    },
-    async (ctx) => {
-      if (ctx.capture) {
-        const refusal = sgrCaptureTooSmall(ctx, "extensions.sixel")
-        if (refusal) return refusal
-        try {
-          return await sgrCaptureFrames(
-            ctx,
-            "\x1b[0m\x1b[2J\x1b[H",
-            '\x1b[0m\x1b[2J\x1b[3;3H\x1bP0;1;0q"1;1;6;6#0;2;100;0;0#0~~~~~~\x1b\\',
-            "extensions.sixel",
-            { startRow: 3, startCol: 3, sixel: "6x6 solid #0 red block" },
-            "A rendered sixel block appears only if the payload was decoded; compare against the blank control",
-          )
-        } finally {
-          ctx.write("\x1b[0m")
+  {
+    ...probe(
+      "extensions.sixel",
+      (ctx) => {
+        const note = "Declared Sixel capability does not establish rendered pixels"
+        return {
+          pass: false,
+          response: JSON.stringify({ declared: ctx.capabilities.sixel === true }),
+          note,
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
         }
-      }
-      const note = "No pixel readback for Sixel rendering"
-      return {
-        pass: false,
-        note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
-      }
-    },
-  ),
+      },
+      async (ctx) => {
+        if (ctx.capture) {
+          const refusal = sgrCaptureTooSmall(ctx, "extensions.sixel")
+          if (refusal) return refusal
+          try {
+            return await sgrCaptureFrames(
+              ctx,
+              "\x1b[0m\x1b[2J\x1b[H",
+              '\x1b[0m\x1b[2J\x1b[3;3H\x1bP0;1;0q"1;1;6;6#0;2;100;0;0#0~~~~~~\x1b\\',
+              "extensions.sixel",
+              { startRow: 3, startCol: 3, sixel: "6x6 solid #0 red block" },
+              "A rendered sixel block appears only if the payload was decoded; compare against the blank control",
+            )
+          } finally {
+            // SGR 0 alone does not remove a drawn sixel graphic; clear the owned disposable surface.
+            ctx.write("\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
+        const note = "No pixel readback for Sixel rendering"
+        return {
+          pass: false,
+          note,
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // OSC 8 — hyperlinks
   {
@@ -1755,42 +1761,46 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 1337 — iTerm2 inline images
-  probe(
-    "extensions.iterm2-images",
-    (ctx) => {
-      const note = "Declared iTerm2 image capability does not establish rendered image pixels"
-      return {
-        pass: false,
-        response: JSON.stringify({ declared: ctx.capabilities.extensions.has("iterm2Images") }),
-        note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
-      }
-    },
-    async (ctx) => {
-      if (ctx.capture) {
-        const refusal = sgrCaptureTooSmall(ctx, "extensions.iterm2-images")
-        if (refusal) return refusal
-        try {
-          return await sgrCaptureFrames(
-            ctx,
-            "\x1b[0m\x1b[2J\x1b[H",
-            "\x1b[0m\x1b[2J\x1b[3;3H\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07",
-            "extensions.iterm2-images",
-            { startRow: 3, startCol: 3, image: "8x8 solid red PNG" },
-            "A red inline image appears only if the OSC 1337 payload was decoded; compare against the blank control",
-          )
-        } finally {
-          ctx.write("\x1b[0m")
+  {
+    ...probe(
+      "extensions.iterm2-images",
+      (ctx) => {
+        const note = "Declared iTerm2 image capability does not establish rendered image pixels"
+        return {
+          pass: false,
+          response: JSON.stringify({ declared: ctx.capabilities.extensions.has("iterm2Images") }),
+          note,
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
         }
-      }
-      const note = "No pixel readback for iTerm2 inline image rendering"
-      return {
-        pass: false,
-        note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
-      }
-    },
-  ),
+      },
+      async (ctx) => {
+        if (ctx.capture) {
+          const refusal = sgrCaptureTooSmall(ctx, "extensions.iterm2-images")
+          if (refusal) return refusal
+          try {
+            return await sgrCaptureFrames(
+              ctx,
+              "\x1b[0m\x1b[2J\x1b[H",
+              "\x1b[0m\x1b[2J\x1b[3;3H\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07",
+              "extensions.iterm2-images",
+              { startRow: 3, startCol: 3, image: "8x8 solid red PNG" },
+              "A red inline image appears only if the OSC 1337 payload was decoded; compare against the blank control",
+            )
+          } finally {
+            // SGR 0 alone does not remove a drawn inline image; clear the owned disposable surface.
+            ctx.write("\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
+        const note = "No pixel readback for iTerm2 inline image rendering"
+        return {
+          pass: false,
+          note,
+          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // OSC 1337 ReportCellSize — query cell dimensions in pixels
   oscSimpleQueryProbe(

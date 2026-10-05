@@ -941,7 +941,10 @@ export const cursorProbes: ProbeDefinition[] = [
         }
         if (ctx.capture) {
           try {
-            // Control: label physical rows 1, 5 and 15 with no scroll region or origin mode.
+            // Control: label physical rows 1, 5 and 15 with no scroll region or origin mode, and
+            // reset DECOM and margins explicitly so a carried-in mode cannot contaminate the control.
+            ctx.write("\x1b[?6l")
+            ctx.write("\x1b[r")
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
             ctx.write("\x1b[1;1HR01")
             ctx.write("\x1b[5;1HR05")

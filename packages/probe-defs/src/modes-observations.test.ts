@@ -572,16 +572,18 @@ test.each([
 })
 
 test("xt stack capture refuses undersized geometry before any bytes or frames", async () => {
-  for (const [id, need] of [
-    ["modes.xtpushsgr", "3x6"],
-    ["modes.xtsave", "3x12"],
-    ["modes.xtpushcolors", "3x8"],
+  for (const [id, rows, cols, need] of [
+    ["modes.xtpushsgr", 2, 80, "3x6"],
+    // XT-save/restore derives its wrap boundary from the measured width, so an undersized
+    // fixture is under two rows or two columns, not an absolute column count.
+    ["modes.xtsave", 1, 80, "2x2"],
+    ["modes.xtpushcolors", 2, 80, "3x8"],
   ] as const) {
     const definition = modesProbes.find((item) => item.id === id)
     if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
     const writes: string[] = []
     const frames: ObservationFrame[] = []
-    const result = await definition.term(captureContext(2, 80, writes, frames))
+    const result = await definition.term(captureContext(rows, cols, writes, frames))
     expect(writes, id).toEqual([])
     expect(frames, id).toEqual([])
     expect(result.observation, id).toMatchObject({

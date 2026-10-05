@@ -520,7 +520,7 @@ export const eraseProbes: ProbeDefinition[] = [
           6,
           "EL with background",
           ["\x1b[1;1H\x1b[42mXXXXX"],
-          "\x1b[1;1H",
+          "\x1b[1;1H\x1b[42m",
           "\x1b[K",
           "row 1 erased to the end with the green background retained",
           "\x1b[0m",

@@ -112,20 +112,20 @@ const EDITING_CAPTURE_SPECS: Record<string, EditingCaptureSpec> = {
     note: "DECCRA should copy ABCDE/FGHIJ to row 5 column 10 and leave the source rows intact",
   },
   "editing.deccara": {
-    minRows: 3,
+    minRows: 1,
     minCols: 6,
-    seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW",
-    edit: "\x1b[1;1H\x1b[1;1;3;5;7$r",
-    region: { row: 1, col: 1, rows: 3, cols: 5 },
-    note: "DECCARA should set inverse on the measured 3x5 area, preserving text and the right flank",
+    seed: "\x1b[1;1HaaaaaZ",
+    edit: "\x1b[1;1H\x1b[1;1;1;5;7$r",
+    region: { row: 1, col: 1, rows: 1, cols: 5 },
+    note: "DECCARA (stream and rectangle extent agree on one row) should set inverse on the five measured cells and leave the sixth-column flank plain",
   },
   "editing.decrara": {
-    minRows: 3,
+    minRows: 1,
     minCols: 6,
-    seed: "\x1b[1;1H\x1b[7maaaaa\x1b[0mZ\x1b[2;1H\x1b[7mbbbbb\x1b[0mY\x1b[3;1H\x1b[7mccccc\x1b[0mX",
-    edit: "\x1b[1;1H\x1b[1;1;3;5;7$t",
-    region: { row: 1, col: 1, rows: 3, cols: 5 },
-    note: "DECRARA should clear inverse on the measured 3x5 area, preserving text and the right flank",
+    seed: "\x1b[1;1H\x1b[7maaaaa\x1b[0mZ",
+    edit: "\x1b[1;1H\x1b[1;1;1;5;7$t",
+    region: { row: 1, col: 1, rows: 1, cols: 5 },
+    note: "DECRARA (one row) should clear inverse on the five measured cells and leave the sixth-column flank already-plain",
   },
   "editing.sl": {
     minRows: 2,
@@ -179,21 +179,26 @@ async function editCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
     }
   }
   ctx.write("\x1b[0m\x1b[2J")
-  ctx.write(spec.seed)
-  const control = await ctx.capture!({ role: "control", label: `${id}: pre-edit seed` })
-  ctx.write(spec.edit)
-  const target = await ctx.capture!({ role: "target", label: id })
-  return {
-    pass: false,
-    response: JSON.stringify({ region: spec.region, control: control.label, target: target.label }),
-    observation: {
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "pixels",
-      screenshotRef: target.ref,
-      frames: [control, target],
-      note: spec.note,
-    },
+  try {
+    ctx.write(spec.seed)
+    const control = await ctx.capture!({ role: "control", label: `${id}: pre-edit seed` })
+    ctx.write(spec.edit)
+    const target = await ctx.capture!({ role: "target", label: id })
+    return {
+      pass: false,
+      response: JSON.stringify({ region: spec.region, control: control.label, target: target.label }),
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [control, target],
+        note: spec.note,
+      },
+    }
+  } finally {
+    // A capture failure can leave the seed or the edit behind; always reset SGR, clear and home.
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
   }
 }
 
