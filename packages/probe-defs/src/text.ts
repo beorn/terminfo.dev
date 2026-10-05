@@ -214,9 +214,40 @@ export const textProbes: ProbeDefinition[] = [
         const refusal = tooSmall(ctx, 1, 6)
         if (refusal) return refusal
         ctx.write("\x1b[1;1H\x1b[2K") // clear line, move to 1;1
+        const before = await ctx.queryCursorPosition()
+        if (!before) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        if (before.row !== 1 || before.col !== 1) {
+          return {
+            pass: false,
+            response: JSON.stringify({ before }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "Measured home position was not row 1, column 1; the cursor-query provider is not position-sensitive",
+            },
+          }
+        }
         ctx.write("Hello")
         const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "rendered Hello text")
+        if (!pos) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        const pass = pos.row === 1 && pos.col === 6
+        return {
+          pass,
+          response: JSON.stringify({ before, pos }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: "writing Hello advances the cursor five columns to row 1, column 6",
+              observed: JSON.stringify({ before, pos }),
+            },
+          ],
+        }
       },
     ),
     termNeedsGeometry: true,
@@ -602,6 +633,44 @@ export const textProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        const capture = ctx.capture
+        if (capture) {
+          const refusal = tooSmall(ctx, 1, 3)
+          if (refusal) return refusal
+          try {
+            ctx.write("\x1b[0m\x1b[1;1H\x1b[2K")
+            ctx.write("AB")
+            const control = await capture({
+              role: "control",
+              label: "Row 1 shows AB before the overwrite write",
+            })
+            ctx.write("\x1b[1;2H")
+            ctx.write("X")
+            const target = await capture({
+              role: "target",
+              label: "Row 1 shows AX after writing X over B at column 2",
+            })
+            return {
+              pass: false,
+              response: JSON.stringify({
+                rows: ctx.rows,
+                cols: ctx.cols,
+                control: control.label,
+                target: target.label,
+              }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "The second cell changing from B to X requires independent pixel review; cursor position does not measure cell contents",
+              },
+            }
+          } finally {
+            ctx.write("\x1b[0m\x1b[1;1H\x1b[2K")
+          }
+        }
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
         ctx.write("\x1b[1;1H\x1b[2K")
@@ -841,6 +910,45 @@ export const textProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        const capture = ctx.capture
+        if (capture) {
+          const refusal = tooSmall(ctx, 10, 7)
+          if (refusal) return refusal
+          try {
+            ctx.write("\x1b[0m\x1b[2J\x1b[H")
+            ctx.write("\x1b[3;10r") // scroll region rows 3-10
+            ctx.write("\x1b[3;1HMARKER")
+            ctx.write("\x1b[4;1Hregion4")
+            const control = await capture({
+              role: "control",
+              label: "MARKER on row 3 at the region top with region4 on row 4",
+            })
+            ctx.write("\x1b[3;1H\x1bM") // RI at the region top
+            const target = await capture({
+              role: "target",
+              label: "After reverse index at the region top: MARKER moved down to row 4",
+            })
+            return {
+              pass: false,
+              response: JSON.stringify({
+                rows: ctx.rows,
+                cols: ctx.cols,
+                control: control.label,
+                target: target.label,
+              }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "MARKER shifting down one row after RI at the region top requires independent pixel review; cursor position does not measure region contents",
+              },
+            }
+          } finally {
+            ctx.write("\x1b[r\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
         const refusal = tooSmall(ctx, 10, 1)
         if (refusal) return refusal
         try {
