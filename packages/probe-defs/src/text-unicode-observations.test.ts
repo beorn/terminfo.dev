@@ -75,7 +75,7 @@ function byId(id: string) {
 /** Sequential CPR fixture: each call returns the next scripted reply, null once exhausted. */
 function cursorQueue(...positions: Array<{ row: number; col: number } | null>) {
   let index = 0
-  return async () => (index < positions.length ? positions[index++] : null)
+  return async () => (index < positions.length ? positions[index++] : null) ?? null
 }
 
 test("text width claims require an ASCII control and the named sample", async () => {

@@ -4,13 +4,12 @@ description: How a probe run works, for real terminal apps and for terminal engi
 prev:
   text: How it works
   link: /how-it-works/
-next: 
+next:
   text: How to read a result
   link: /how-it-works/how-to-read-a-result
 ---
 
 [How it works](/how-it-works/) › How we measure
-
 
 # How we measure
 

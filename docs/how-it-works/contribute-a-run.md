@@ -9,7 +9,6 @@ next: false
 
 [How it works](/how-it-works/) › Contribute a run
 
-
 # Contribute a run
 
 We run the probes ourselves on everything our lab can hold ([How we measure](/how-it-works/how-we-measure)). If your terminal, OS or setup has no current result on the [home page](/), or you use tmux, GNU Screen, a remote session or a non-default configuration, you can run the probes and send us the result.

@@ -4,13 +4,12 @@ description: What each result label means and cannot show, and what "corrected a
 prev:
   text: How we measure
   link: /how-it-works/how-we-measure
-next: 
+next:
   text: Contribute a run
   link: /how-it-works/contribute-a-run
 ---
 
 [How it works](/how-it-works/) › How to read a result
-
 
 # How to read a result
 

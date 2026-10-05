@@ -6,7 +6,7 @@ head:
       href: https://terminfo.dev/how-it-works/how-we-measure
   - - meta
     - http-equiv: refresh
-      content: '0; url=/how-it-works/how-we-measure'
+      content: "0; url=/how-it-works/how-we-measure"
 prev: false
 next: false
 ---

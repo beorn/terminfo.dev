@@ -6,7 +6,7 @@ head:
       href: https://terminfo.dev/how-it-works/contribute-a-run
   - - meta
     - http-equiv: refresh
-      content: '0; url=/how-it-works/contribute-a-run'
+      content: "0; url=/how-it-works/contribute-a-run"
 prev: false
 next: false
 ---

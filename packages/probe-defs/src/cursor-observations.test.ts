@@ -408,11 +408,11 @@ test("cup-scroll-region records the DECOM relative samples and never grades plac
   context.queryCursorPosition = async () => replies.shift() ?? null
   const result = await probe.term!(context)
   // A correct relative measurement still must not become support for the physical-placement claim.
-  expect(result.observation.outcome).toBe("inconclusive")
-  expect(result.observation.reason).toBe("insufficient-evidence")
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.reason).toBe("insufficient-evidence")
   expect(result.assertions).toBeUndefined()
-  expect(result.observation.note).toContain("region top is 1, bottom is 11")
-  expect(result.observation.note).toContain("1;1, 2;1, 11;1")
+  expect(result.observation?.note).toContain("region top is 1, bottom is 11")
+  expect(result.observation?.note).toContain("1;1, 2;1, 11;1")
   expect(writes).toEqual(["\x1b[5;15r", "\x1b[?6h", "\x1b[1;1H", "\x1b[2;1H", "\x1b[999B", "\x1b[?6l", "\x1b[r"])
 })
 

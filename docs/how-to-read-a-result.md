@@ -6,7 +6,7 @@ head:
       href: https://terminfo.dev/how-it-works/how-to-read-a-result
   - - meta
     - http-equiv: refresh
-      content: '0; url=/how-it-works/how-to-read-a-result'
+      content: "0; url=/how-it-works/how-to-read-a-result"
 prev: false
 next: false
 ---
