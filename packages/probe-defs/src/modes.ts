@@ -165,6 +165,129 @@ function captureRefusal(ctx: TermContext, minRows: number, minCols: number, feat
   }
 }
 
+/** SGR-stack capture: the control leaves Y plain; the target pushes bold, styles X, pops, so Y must be bold. */
+async function xtSgrStackCapture(ctx: TermContext, id: string, label: string): Promise<ProbeResult> {
+  const refusal = captureRefusal(ctx, 3, 6, id)
+  if (refusal) return refusal
+  try {
+    ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[1m\x1b[3mX\x1b[0mY")
+    const control = await ctx.capture!({
+      role: "control",
+      label: `${id}: X bold+italic, Y plain after SGR 0 (no stack)`,
+    })
+    ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[1m\x1b[#{\x1b[3mX\x1b[#}Y")
+    const target = await ctx.capture!({
+      role: "target",
+      label: `${id}: ${label} — Y should carry the bold saved before X`,
+    })
+    const observed = JSON.stringify({ control: control.label, target: target.label })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [control, target],
+        note: "Control shows Y plain; the target pushes the bold, styles X italic, then pops, so Y must be bold again if the SGR stack round-tripped. Requires independent pixel review",
+      },
+      assertions: [
+        {
+          kind: "positive",
+          expected: `${id}: control shows Y unstyled; the target shows Y carrying the saved bold`,
+          observed,
+          note: "capture-only assertion; the restored SGR must be independently reviewed",
+        },
+      ],
+    }
+  } finally {
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
+/** Mode save/restore capture: wrap is off in the control; the target saves wrap on, disables then restores it. */
+async function xtModeSaveCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
+  const refusal = captureRefusal(ctx, 3, 12, id)
+  if (refusal) return refusal
+  try {
+    ctx.write("\x1b[?7l\x1b[0m\x1b[2J\x1b[1;1HXXXXXXXXXX!")
+    const control = await ctx.capture!({
+      role: "control",
+      label: `${id}: auto-wrap off, so the overflow ! stays on row 1`,
+    })
+    ctx.write("\x1b[?7h\x1b[?7s\x1b[?7l\x1b[?7r\x1b[0m\x1b[2J\x1b[1;1HXXXXXXXXXX!")
+    const target = await ctx.capture!({
+      role: "target",
+      label: `${id}: wrap saved on, disabled and restored; the overflow ! should wrap to row 2`,
+    })
+    const observed = JSON.stringify({ control: control.label, target: target.label })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [control, target],
+        note: "Control keeps the overflow on row 1 with wrap off; the target saves wrap on, disables it, then restores it, so the overflow should wrap to row 2. Whether the restore re-enabled wrap requires independent pixel review",
+      },
+      assertions: [
+        {
+          kind: "positive",
+          expected: `${id}: control keeps ! on row 1; the target wraps ! to row 2 column 1`,
+          observed,
+          note: "capture-only assertion; the restored mode must be independently reviewed",
+        },
+      ],
+    }
+  } finally {
+    ctx.write("\x1b[?7h\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
+/** Color-stack capture: palette index 1 is green in both frames; only the popped target restores it for Y. */
+async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
+  const refusal = captureRefusal(ctx, 3, 8, id)
+  if (refusal) return refusal
+  try {
+    ctx.write("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mXY")
+    const control = await ctx.capture!({
+      role: "control",
+      label: `${id}: palette index 1 redefined to green; X and Y both use it`,
+    })
+    ctx.write("\x1b[0m\x1b[2J\x1b[1;1H\x1b[#P\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mX\x1b[#Q\x1b[38;5;1mY")
+    const target = await ctx.capture!({
+      role: "target",
+      label: `${id}: X uses the pushed green index 1; Y uses the index 1 restored by the pop`,
+    })
+    const observed = JSON.stringify({ control: control.label, target: target.label })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [control, target],
+        note: "Control shows X and Y in the redefined green index 1; the target pushes the palette, redefines index 1, prints X, then pops before Y, so Y should return to the original index 1. Requires independent pixel review",
+      },
+      assertions: [
+        {
+          kind: "positive",
+          expected: `${id}: control shows X and Y both green; the target shows X green and Y in the restored index 1`,
+          observed,
+          note: "capture-only assertion; the restored palette entry must be independently reviewed",
+        },
+      ],
+    }
+  } finally {
+    ctx.write("\x1b[#Q\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
 const ALT_1049_SEED_A = "PRIMARY-A"
 const ALT_1049_SEED_B = "PRIMARY-B"
 const ALT_1049_MARK = "ALT-MARK"
