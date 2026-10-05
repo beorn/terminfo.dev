@@ -564,6 +564,8 @@ it("reports undeclared geometry reads as collector errors without invented evide
 })
 
 it.each([
+  "cursor.shape",
+  "cursor.reverse-wrap",
   "modes.left-right-margin",
   "modes.altscreen-47",
   "modes.altscreen-1047",
