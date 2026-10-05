@@ -262,3 +262,72 @@ describe("private finite launch arguments", () => {
     expect(readdirSync(dir)).toEqual([])
   })
 })
+
+/**
+ * @failure Exact requested coverage rejects named missing observables or admits duplicate/missing outcomes.
+ * @level l1 — executes the launcher's real jq coverage predicate, without starting a container.
+ * @consumer The private runner's post-collection requested-ID coverage gate.
+ * @testonly none
+ */
+describe("requested measured and named not-tested coverage", () => {
+  const observedId = "extensions.truecolor"
+  const missingObserverIds = [
+    "erase.screen.scrollback",
+    "input.modify-other-keys",
+    "input.pixel-mouse",
+    "input.urxvt-mouse",
+    "input.x10-mouse",
+    "input.modify-other-keys-3",
+    "input.button-event-mouse",
+    "modes.application-keypad",
+    "modes.alt-scroll-1007",
+    "modes.decsclm",
+  ]
+  const ids = [observedId, ...missingObserverIds]
+  const observation = { featureId: observedId, outcome: "inconclusive", evidence: "pixels" }
+  const named = missingObserverIds.map((featureId) => ({
+    featureId,
+    reason: "no-semantic-observable",
+    noObservable: "No applicable effect observer in this fixture run",
+    rawReplyRef: featureId,
+  }))
+
+  function coverage(observations: object[], notTested?: object[], ungradedDiagnostics = {}) {
+    // Execute production jq, not a copied predicate that could pass while the launcher stays broken.
+    const expression = readFileSync(launcher, "utf8").match(
+      /jq -e --argjson ids "\$selected_ids" '([^']*)' \/out\/v2-run\.json/,
+    )?.[1]
+    if (!expression) throw new Error("Launcher requested-ID jq coverage gate was not found")
+    const result = spawnSync("jq", ["-e", "--argjson", "ids", JSON.stringify(ids), expression], {
+      encoding: "utf8",
+      input: JSON.stringify({ observations, ...(notTested && { notTested }), ungradedDiagnostics }),
+    })
+    expect(result.error).toBeUndefined()
+    expect(result.stderr).toBe("")
+    return result
+  }
+
+  it("accepts one observation plus all ten named missing-observer IDs", () => {
+    const result = coverage([observation], named)
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim()).toBe("true")
+  })
+
+  it("accepts complete measured coverage when optional notTested is absent", () => {
+    expect(coverage(ids.map((featureId) => ({ featureId }))).status).toBe(0)
+  })
+
+  it.each([
+    ["missing requested ID", [observation], named.slice(1), {}],
+    ["ID in both outcome sets", [observation], [...named, { ...named[0], featureId: observedId }], {}],
+    ["unrequested observed ID", [{ ...observation, featureId: "cursor.hide" }], named, {}],
+    ["unrequested named ID", [observation], [{ ...named[0], featureId: "cursor.hide" }, ...named.slice(1)], {}],
+    ["duplicate observed ID", [observation, observation], named, {}],
+    ["duplicate named ID", [observation], [...named, named[0]], {}],
+    ["collector diagnostic", [observation], named, { [observedId]: { kind: "collector-error" } }],
+  ])("refuses %s", (_label, observations, notTested, diagnostics) => {
+    const result = coverage(observations as object[], notTested as object[], diagnostics)
+    expect(result.status).toBe(1)
+    expect(result.stdout.trim()).toBe("false")
+  })
+})

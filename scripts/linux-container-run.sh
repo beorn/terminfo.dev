@@ -326,7 +326,10 @@ if [[ "${1:-}" == "--inside" ]]; then
   [[ "$batch_status" == 0 ]] || { echo "Probe batch HTTP request failed: $batch_status" >&2; exit "$batch_status"; }
   if [[ "$selected_ids" != null ]]; then
     jq -e --argjson ids "$selected_ids" '
-      (.observations | map(.featureId)) as $actual |
+      (.observations | map(.featureId)) as $observed |
+      ((.notTested // []) | map(.featureId)) as $notTested |
+      ($observed + $notTested) as $actual |
+      all($observed[]; . as $id | ($notTested | index($id)) == null) and
       ($actual | length) == ($ids | length) and ($actual | unique | length) == ($ids | length) and
       ($actual | sort) == ($ids | sort) and (.ungradedDiagnostics | length) == 0' /out/v2-run.json >/dev/null || {
       echo "Actual observation selection differs from requested IDs or has diagnostics" >&2; exit 2;
