@@ -455,7 +455,7 @@ it("uses the injected TTY for callback writes, columns, and nested cursor querie
   const original = definition.termNeedsGeometry
   definition.termNeedsGeometry = true
   const writes: string[] = []
-  const cursorReplies = ["\x1b[1;12R", "\x1b[2;2R"]
+  const cursorReplies = ["\x1b[1;1R", "\x1b[1;12R", "\x1b[2;2R"]
   const out = {
     columns: 12,
     write(chunk: string) {
@@ -494,6 +494,8 @@ it("uses the injected TTY for callback writes, columns, and nested cursor querie
   }
   expect(writes).toEqual([
     "\x1b[?7$p\x1b[c",
+    "\x1b[1;1H",
+    "\x1b[6n",
     "\x1b[1;1H\x1b[2K",
     "W".repeat(11),
     "\x1b[6n",
@@ -508,9 +510,16 @@ it("uses the injected TTY for callback writes, columns, and nested cursor querie
   expect(batch.ungradedDiagnostics["text.wrap"]).toBeUndefined()
   expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({ corroboration: { status: "silent" } })
   const trace = JSON.parse(batch.rawReplies["text.wrap"]!) as { writes: string[]; queries: Array<{ sequence: string }> }
-  expect(trace.writes).toEqual(["\x1b[1;1H\x1b[2K", "W".repeat(11), "\x1b[1;1H\x1b[2K", `${"W".repeat(12)}X`])
+  expect(trace.writes).toEqual([
+    "\x1b[1;1H",
+    "\x1b[1;1H\x1b[2K",
+    "W".repeat(11),
+    "\x1b[1;1H\x1b[2K",
+    `${"W".repeat(12)}X`,
+  ])
   expect(trace.queries).toMatchObject([
     { sequence: "\x1b[?7$p\x1b[c" },
+    { sequence: "\x1b[6n" },
     { sequence: "\x1b[6n" },
     { sequence: "\x1b[6n" },
   ])
