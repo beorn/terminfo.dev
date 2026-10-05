@@ -130,17 +130,6 @@ jobs:
             }
           }
 
-          if (-not $wtPath) {
-            Log "Attempting choco install for Windows Terminal..."
-            try {
-              choco install microsoft-windows-terminal -y --no-progress
-              $cmd = Get-Command wt.exe -ErrorAction SilentlyContinue
-              $wtPath = if ($cmd) { $cmd.Source } else { $null }
-            } catch {
-              Log "Choco install failed: $_"
-            }
-          }
-
           if ($wtPath) {
             Log "Windows Terminal resolved at: $wtPath"
             try {
@@ -167,14 +156,13 @@ jobs:
           import sys
           import time
 
-          # Enable Virtual Terminal sequences on Windows console
           kernel32 = ctypes.windll.kernel32
           try:
               hOut = kernel32.GetStdHandle(-11)
               mode = ctypes.c_ulong()
               kernel32.GetConsoleMode(hOut, ctypes.byref(mode))
               kernel32.SetConsoleMode(hOut, mode.value | 0x0004) # ENABLE_VIRTUAL_TERMINAL_PROCESSING
-          except Exception as e:
+          except Exception:
               pass
 
           try:
@@ -182,19 +170,46 @@ jobs:
               in_mode = ctypes.c_ulong()
               kernel32.GetConsoleMode(hIn, ctypes.byref(in_mode))
               kernel32.SetConsoleMode(hIn, in_mode.value | 0x0200) # ENABLE_VIRTUAL_TERMINAL_INPUT
-          except Exception as e:
+          except Exception:
               pass
 
           artifacts_dir = r"C:\artifacts"
           os.makedirs(artifacts_dir, exist_ok=True)
           log_file = os.path.join(artifacts_dir, "terminal-output.txt")
           raw_json = os.path.join(artifacts_dir, "terminfo-run.json")
+          screen_dump = os.path.join(artifacts_dir, "terminal-full-screen.txt")
 
           def log(msg):
               sys.stdout.write(msg + "\r\n")
               sys.stdout.flush()
               with open(log_file, "a", encoding="utf-8") as f:
                   f.write(msg + "\n")
+
+          def dump_screen(path):
+              try:
+                  hOut = kernel32.GetStdHandle(-11)
+                  class COORD(ctypes.Structure):
+                      _fields_ = [("X", ctypes.c_short), ("Y", ctypes.c_short)]
+                  class SMALL_RECT(ctypes.Structure):
+                      _fields_ = [("Left", ctypes.c_short), ("Top", ctypes.c_short), ("Right", ctypes.c_short), ("Bottom", ctypes.c_short)]
+                  class CONSOLE_SCREEN_BUFFER_INFO(ctypes.Structure):
+                      _fields_ = [("dwSize", COORD), ("dwCursorPosition", COORD), ("wAttributes", ctypes.c_ushort),
+                                  ("srWindow", SMALL_RECT), ("dwMaximumWindowSize", COORD)]
+                  csbi = CONSOLE_SCREEN_BUFFER_INFO()
+                  kernel32.GetConsoleScreenBufferInfo(hOut, ctypes.byref(csbi))
+                  width = csbi.dwSize.X
+                  height = max(csbi.dwCursorPosition.Y + 1, csbi.srWindow.Bottom + 1)
+                  num_chars = width * height
+                  buf = ctypes.create_unicode_buffer(num_chars)
+                  read = ctypes.c_ulong()
+                  origin = COORD(0, 0)
+                  kernel32.ReadConsoleOutputCharacterW(hOut, buf, num_chars, origin, ctypes.byref(read))
+                  lines = [buf.value[i * width : (i + 1) * width].rstrip() for i in range(height)]
+                  with open(path, "w", encoding="utf-8") as f:
+                      f.write("\n".join(lines) + "\n")
+              except Exception as e:
+                  with open(path, "a", encoding="utf-8") as f:
+                      f.write(f"dump_screen error: {e}\n")
 
           sys.stdout.write("\033[2J\033[H\r\n")
           sys.stdout.write("  \033[1;36m====================================================\033[0m\r\n")
@@ -209,28 +224,11 @@ jobs:
           for v in ["WT_SESSION", "TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION"]:
               log(f"env:{v} = {os.environ.get(v, '<unset>')}")
 
-          # Check npx help and version
-          log("\n=== NPX VERSION CHECK ===")
-          try:
-              ver_res = subprocess.run(["npx.cmd", "--yes", "terminfo.dev@4.0.0", "--version"], capture_output=True, text=True, timeout=30)
-              log(f"terminfo.dev --version exit: {ver_res.returncode}, output: {ver_res.stdout.strip()}")
-          except Exception as e:
-              log(f"terminfo.dev --version failed: {e}")
-
-          log("\n=== NPX HELP CHECK ===")
-          try:
-              help_res = subprocess.run(["npx.cmd", "--yes", "terminfo.dev@4.0.0", "test", "--help"], capture_output=True, text=True, timeout=30)
-              log(f"terminfo.dev test --help exit: {help_res.returncode}")
-              log(help_res.stdout)
-          except Exception as e:
-              log(f"terminfo.dev test --help failed: {e}")
-
           # RUN ATTEMPT 1: test with --output (offline result file)
           log("\n=== RUN ATTEMPT 1: npx terminfo.dev test --output ===")
           log(f"Command: npx.cmd --yes terminfo.dev@4.0.0 test --output {raw_json}")
           t0 = time.time()
           try:
-              # Run with inherited console I/O to test controlling TTY behavior
               proc1 = subprocess.run(
                   ["npx.cmd", "--yes", "terminfo.dev@4.0.0", "test", "--output", raw_json],
                   capture_output=True,
@@ -249,35 +247,21 @@ jobs:
           else:
               log(f"NOTE: Result file {raw_json} was not generated by --output.")
 
-          # RUN ATTEMPT 2: Interactive test (no --output, direct TTY probes)
-          log("\n=== RUN ATTEMPT 2: npx terminfo.dev test (interactive) ===")
+          # RUN ATTEMPT 2: Direct interactive console test inside Windows Terminal
+          log("\n=== RUN ATTEMPT 2: Direct console execution in Windows Terminal ===")
+          sys.stdout.write("\r\n\033[1;33m--- Starting interactive terminfo probe run ---\033[0m\r\n\r\n")
+          sys.stdout.flush()
           t0 = time.time()
           try:
-              # Run with inherited console I/O so isTTY is True
-              proc2 = subprocess.run(
-                  ["npx.cmd", "--yes", "terminfo.dev@4.0.0", "test"],
-                  capture_output=True,
-                  text=True,
-                  timeout=90
-              )
+              # Run directly connected to Windows Terminal console (no pipes)
+              proc2 = subprocess.run(["npx.cmd", "--yes", "terminfo.dev@4.0.0", "test"], timeout=120)
               dur2 = time.time() - t0
               log(f"Attempt 2 exit code: {proc2.returncode} in {dur2:.2f}s")
-              log("Attempt 2 STDOUT:\n" + proc2.stdout)
-              log("Attempt 2 STDERR:\n" + proc2.stderr)
           except Exception as e:
               log(f"Attempt 2 failed: {e}")
 
-          # RUN ATTEMPT 3: Direct console execution (stdio inherited, visible in WT)
-          log("\n=== RUN ATTEMPT 3: Direct console execution in WT ===")
-          try:
-              sys.stdout.write("\r\n\033[1;33m--- Starting interactive terminfo probe run ---\033[0m\r\n\r\n")
-              sys.stdout.flush()
-              p3 = subprocess.Popen(["npx.cmd", "--yes", "terminfo.dev@4.0.0", "test"])
-              p3.wait(timeout=60)
-              log(f"Attempt 3 exit code: {p3.returncode}")
-          except Exception as e:
-              log(f"Attempt 3 failed: {e}")
-
+          # Dump console screen buffer text
+          dump_screen(screen_dump)
           log("\n=== PROBE SUITE FINISHED ===")
 
           with open(r"C:\artifacts\wt_finished.txt", "w") as f:
@@ -293,7 +277,7 @@ jobs:
           if ($wtBin -and (Test-Path $wtBin)) {
             Write-Output "Launching Windows Terminal via: $wtBin"
             $proc = Start-Process -FilePath $wtBin -ArgumentList "new-tab", "--title", "WTCLIProbe", "-d", "C:\", "cmd.exe", "/c", "python -u C:\run_wt_cli.py" -PassThru
-            for ($i = 0; $i -lt 120; $i++) {
+            for ($i = 0; $i -lt 180; $i++) {
               if (Test-Path "C:\artifacts\wt_finished.txt") {
                 Write-Output "WT probe run finished after $i seconds."
                 break
@@ -331,6 +315,11 @@ jobs:
           if (Test-Path "C:\artifacts\terminal-output.txt") {
             Write-Output "`n=== TERMINAL OUTPUT LOG ==="
             Get-Content "C:\artifacts\terminal-output.txt"
+          }
+
+          if (Test-Path "C:\artifacts\terminal-full-screen.txt") {
+            Write-Output "`n=== CONSOLE SCREEN BUFFER DUMP ==="
+            Get-Content "C:\artifacts\terminal-full-screen.txt"
           }
 
       - name: Upload Artifacts
