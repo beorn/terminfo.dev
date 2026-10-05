@@ -106,6 +106,38 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** The exact callback bytes stay evidence on every path, coverage or refusal; nothing is synthesized here. */
+function retainCallbackResponse(batch: Batch, id: string, result: ProbeResult): void {
+  if (result.response !== undefined) batch.rawReplies[id] = result.response
+}
+
+/** A refused claim keeps its own observation detail and assertion contents in the error text, never as a claim. */
+function refusedClaimEvidence(result: ProbeResult): string {
+  const parts: string[] = []
+  const observation = result.observation
+  if (observation) {
+    parts.push(
+      `observation(${[
+        `outcome=${observation.outcome}`,
+        ...(observation.reason ? [`reason=${observation.reason}`] : []),
+        `evidence=${observation.evidence}`,
+        ...(observation.note ? [`note=${JSON.stringify(observation.note)}`] : []),
+      ].join(", ")})`,
+    )
+  }
+  for (const assertion of result.assertions ?? []) {
+    parts.push(
+      `assertion(${[
+        `kind=${assertion.kind}`,
+        `expected=${JSON.stringify(assertion.expected)}`,
+        `observed=${JSON.stringify(assertion.observed)}`,
+        ...(assertion.note ? [`note=${JSON.stringify(assertion.note)}`] : []),
+      ].join(", ")})`,
+    )
+  }
+  return parts.join(" and ")
+}
+
 /** A callback conclusion without its raw state cannot become a support claim. */
 function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult): void {
   const id = probe.id
@@ -180,15 +212,10 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeResu
   const id = probe.id
   const notTested = result.notTested
   if (!notTested) return
+  retainCallbackResponse(batch, id, result)
   const assertions = result.assertions ?? []
   if (result.observation !== undefined || assertions.length > 0) {
-    const parts: string[] = []
-    if (result.observation) {
-      const observedReason = result.observation.reason ? `, reason=${result.observation.reason}` : ""
-      parts.push(`observation(outcome=${result.observation.outcome}${observedReason})`)
-    }
-    if (assertions.length > 0) parts.push(`${assertions.length} assertion(s)`)
-    const mixedMessage = `Not-tested coverage for ${id} arrived beside ${parts.join(" and ")}; a probe that claims no semantic observable cannot also carry a measurement, so the coverage claim is refused and its evidence stays a collector error`
+    const mixedMessage = `Not-tested coverage for ${id} arrived beside ${refusedClaimEvidence(result)}; a probe that claims no semantic observable cannot also carry a measurement, so the coverage claim is refused and its evidence stays a collector error`
     if (probe.termlessObservationEvidence) {
       batch.observations.push({
         featureId: id,
@@ -196,6 +223,7 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeResu
         reason: "collector-error",
         evidence: probe.termlessObservationEvidence,
         note: mixedMessage,
+        ...(result.response !== undefined ? { rawReplyRef: id } : {}),
       })
     } else {
       batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message: mixedMessage }
@@ -213,6 +241,7 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeResu
         reason: "collector-error",
         evidence: probe.termlessObservationEvidence,
         note: message,
+        ...(result.response !== undefined ? { rawReplyRef: id } : {}),
       })
     } else {
       batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message }

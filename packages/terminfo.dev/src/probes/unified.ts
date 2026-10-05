@@ -151,6 +151,33 @@ function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selecte
   }
 }
 
+/** A refused claim keeps its own observation detail and assertion contents in the error text, never as a claim. */
+function refusedClaimEvidence(result: ProbeResult): string {
+  const parts: string[] = []
+  const observation = result.observation
+  if (observation) {
+    parts.push(
+      `observation(${[
+        `outcome=${observation.outcome}`,
+        ...(observation.reason ? [`reason=${observation.reason}`] : []),
+        `evidence=${observation.evidence}`,
+        ...(observation.note ? [`note=${JSON.stringify(observation.note)}`] : []),
+      ].join(", ")})`,
+    )
+  }
+  for (const assertion of result.assertions ?? []) {
+    parts.push(
+      `assertion(${[
+        `kind=${assertion.kind}`,
+        `expected=${JSON.stringify(assertion.expected)}`,
+        `observed=${JSON.stringify(assertion.observed)}`,
+        ...(assertion.note ? [`note=${JSON.stringify(assertion.note)}`] : []),
+      ].join(", ")})`,
+    )
+  }
+  return parts.join(" and ")
+}
+
 /** Collect the real callback result, without treating its legacy boolean as an observation. */
 export async function runProbeBatch(
   options: {
@@ -292,18 +319,14 @@ export async function runProbeBatch(
       if (result.notTested) {
         const reason = result.notTested.reason
         const noObservable = result.notTested.noObservable
-        const assertions = result.assertions ?? []
-        const parts: string[] = []
-        if (result.observation) {
-          const observedReason = result.observation.reason ? `, reason=${result.observation.reason}` : ""
-          parts.push(`observation(outcome=${result.observation.outcome}${observedReason})`)
+        if (result.response !== undefined) {
+          batch.rawReplies[`${probe.id}.callbackResponse`] = result.response
         }
-        if (assertions.length > 0) parts.push(`${assertions.length} assertion(s)`)
-        if (result.observation !== undefined || assertions.length > 0) {
+        if (result.observation !== undefined || (result.assertions?.length ?? 0) > 0) {
           batch.ungradedDiagnostics[probe.id] = {
             kind: "collector-error",
             name: "Error",
-            message: `Not-tested coverage for ${probe.id} arrived beside ${parts.join(" and ")}; a probe that claims no semantic observable cannot also carry a measurement, so the coverage claim is refused and its evidence stays a collector error`,
+            message: `Not-tested coverage for ${probe.id} arrived beside ${refusedClaimEvidence(result)}; a probe that claims no semantic observable cannot also carry a measurement, so the coverage claim is refused and its evidence stays a collector error`,
           }
         } else if (reason !== "no-semantic-observable" || noObservable.trim().length === 0) {
           batch.ungradedDiagnostics[probe.id] = {
@@ -375,7 +398,9 @@ export async function runProbeBatch(
         ...(captureAttempted ? { captures } : {}),
       })
       if (probe.id === "device.primary-da" || probe.id === "device.secondary-da" || probe.id === "device.xtversion") {
-        batch.rawReplies[probe.id] = queries.map((item) => item.raw).join("")
+        const queriedRaw = queries.map((item) => item.raw).join("")
+        const emittedNotTested = batch.notTested.some((entry) => entry.featureId === probe.id)
+        batch.rawReplies[probe.id] = emittedNotTested && queriedRaw.length === 0 ? trace : queriedRaw
         batch.rawReplies[`${probe.id}.trace`] = trace
       } else {
         batch.rawReplies[probe.id] = trace

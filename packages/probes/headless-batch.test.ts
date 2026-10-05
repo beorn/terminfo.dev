@@ -541,7 +541,12 @@ test("refuses named coverage that arrives beside its returned error observation"
   expect(batch.observations).toMatchObject([
     { featureId: "modes.bracketed-paste", outcome: "error", reason: "collector-error", evidence: "parser-state" },
   ])
-  expect(batch.observations[0]?.note).toContain("beside observation(outcome=error, reason=collector-error)")
+  expect(batch.observations[0]?.note).toContain(
+    "beside observation(outcome=error, reason=collector-error, evidence=parser-state",
+  )
+  expect(batch.rawReplies["modes.bracketed-paste"]).toBe(JSON.stringify({ mode: false }))
+  expect(batch.observations[0]?.rawReplyRef).toBe("modes.bracketed-paste")
+  expect(batch.observations[0]?.note).toContain('note="backend read failed"')
 })
 
 test("refuses named coverage that arrives beside supported observation and assertions", async () => {
@@ -563,7 +568,10 @@ test("refuses named coverage that arrives beside supported observation and asser
   expect(batch.observations).toMatchObject([
     { featureId: "modes.bracketed-paste", outcome: "error", reason: "collector-error", evidence: "parser-state" },
   ])
-  expect(batch.observations[0]?.note).toContain("1 assertion(s)")
+  expect(batch.rawReplies["modes.bracketed-paste"]).toBe(JSON.stringify({ mode: true }))
+  expect(batch.observations[0]?.note).toContain("assertion(kind=positive")
+  expect(batch.observations[0]?.note).toContain("expected=")
+  expect(batch.observations[0]?.note).toContain("observed=")
 })
 
 // AC3: feature support cannot authorize metadata readback. Existing tests grade
