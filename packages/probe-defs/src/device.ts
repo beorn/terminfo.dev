@@ -21,6 +21,9 @@ function deviceReplyResult(
   matchedFrame: string | null,
   reason: TerminalQueryOutcome["reason"],
 ): ProbeResult {
+  // A frame that appears after a DA1 response is late sentinel output, not this query's answer.
+  const da1At = raw.search(/\x1b\[\?[0-9;]*c/)
+  if (matchedFrame && da1At !== -1 && raw.indexOf(matchedFrame) > da1At) matchedFrame = null
   const valid = matchedFrame ? spec.valid.exec(matchedFrame) : null
   if (valid?.[0]) {
     const note = spec.note?.(valid[0])
@@ -45,8 +48,9 @@ function deviceReplyResult(
       },
     }
   }
-  // A complete answer whose payload contradicts the expectation is a measured negative, not an invalid reply.
-  const contradiction = spec.contradicts?.exec(matchedFrame ?? raw) ?? null
+  // A complete, surfaced answer whose payload contradicts the expectation is a measured negative.
+  // matchedFrame is never a frame that arrived after the DA1 sentinel, so late output cannot be graded.
+  const contradiction = matchedFrame ? (spec.contradicts?.exec(matchedFrame) ?? null) : null
   if (contradiction?.[0]) {
     return {
       pass: false,
@@ -56,7 +60,8 @@ function deviceReplyResult(
     }
   }
   // Raw bytes remain available for diagnostics, but a frame after DA1 cannot establish a result.
-  const hasCompleteUnmatchedFrame = spec.valid.test(raw) || spec.refusal?.test(raw) === true
+  const hasCompleteUnmatchedFrame =
+    spec.valid.test(raw) || spec.refusal?.test(raw) === true || spec.contradicts?.test(raw) === true
   const missingReason =
     !hasCompleteUnmatchedFrame && spec.malformed.test(raw)
       ? "invalid-reply"
@@ -70,10 +75,16 @@ function deviceReplyResult(
   }
 }
 
+/** Every complete answer shape this query accepts: the expected frame, a refusal, or a contradiction. */
+function answerPattern(spec: DeviceReply): RegExp {
+  const sources = [spec.valid.source, spec.refusal?.source, spec.contradicts?.source].filter(
+    (source): source is string => source !== undefined,
+  )
+  return new RegExp(sources.join("|"), spec.valid.flags)
+}
+
 function deviceQuery(spec: DeviceReply): ProbeDefinition {
-  const responsePattern = spec.refusal
-    ? new RegExp(`${spec.valid.source}|${spec.refusal.source}`, spec.valid.flags)
-    : spec.valid
+  const responsePattern = answerPattern(spec)
   const definition = probe(
     spec.id,
     (ctx) => {
@@ -98,9 +109,10 @@ const iconLabelReply: DeviceReply = {
   query: "\x1b[20t",
   valid: /\x1b\]Ltest-icon(?:\x07|\x1b\\)/,
   malformed: /\x1b\]L/,
-  // A complete, terminated OSC L frame whose payload is not the exact label is a measured negative.
-  contradicts: /\x1b\]L(?!test-icon(?:\x07|\x1b\\))[\s\S]*?(?:\x07|\x1b\\)/,
-  expected: "CSI 20 t returns the exact icon label set by OSC 1",
+  // A complete, terminated OSC L frame is a measured negative when its whole payload is not the
+  // exact label; the payload class keeps the match on one frame so it cannot span a truncated starter.
+  contradicts: /\x1b\]L[^\x07\x1b]*(?:\x07|\x1b\\)/,
+  expected: "OSC 1 + CSI 20 t round trip returns the exact icon label",
 }
 
 const windowTitleReply: DeviceReply = {
@@ -297,11 +309,11 @@ export const deviceProbes: ProbeDefinition[] = [
       (ctx) => {
         ctx.feed("\x1b]1;test-icon\x07")
         const raw = ctx.feedCapture(iconLabelReply.query)
-        return deviceReplyResult(iconLabelReply, raw, iconLabelReply.valid.exec(raw)?.[0] ?? null, "sentinel")
+        return deviceReplyResult(iconLabelReply, raw, answerPattern(iconLabelReply).exec(raw)?.[0] ?? null, "sentinel")
       },
       async (ctx) => {
         ctx.write("\x1b]1;test-icon\x07")
-        const reply = await ctx.queryWithSentinelOutcome(iconLabelReply.query, iconLabelReply.valid)
+        const reply = await ctx.queryWithSentinelOutcome(iconLabelReply.query, answerPattern(iconLabelReply))
         return deviceReplyResult(
           iconLabelReply,
           reply.raw,

@@ -277,7 +277,7 @@ describe("window-operation qualification", () => {
             rawBase64: Buffer.from(frame).toString("base64"),
           }),
       }) as unknown as TermContext
-    for (const frame of ["\x1b]L\x1b\\", "\x1b]Lother-icon\x07"]) {
+    for (const frame of ["\x1b]L\x1b\\", "\x1b]Lother-icon\x07", "\x1b]Ltest-icon-plus\x1b\\"]) {
       const head = icon.headless(headlessIcon(frame))
       expect(head.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
       expect(head.assertions).toMatchObject([{ kind: "negative", observed: frame }])
@@ -295,6 +295,27 @@ describe("window-operation qualification", () => {
       outcome: "supported",
       evidence: "query",
     })
+    // A complete OSC L frame after the DA1 sentinel is late output, not an answer.
+    const late = "\x1b[?62;52;c\x1b]Lwrong\x1b\\"
+    expect(icon.headless(headlessIcon(late)).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+    })
+    expect((await icon.terminal(app(late, "sentinel"))).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+    })
+    // Unrelated OSC answers (colour, clipboard) never satisfy the icon-label query.
+    for (const frame of ["\x1b]4;1;rgb:00/00/00\x07", "\x1b]52;c;Zm9v\x07"]) {
+      expect(icon.headless(headlessIcon(frame)).observation).toMatchObject({
+        outcome: "inconclusive",
+        reason: "no-response",
+      })
+      expect((await icon.terminal(app(frame))).observation).toMatchObject({
+        outcome: "inconclusive",
+        reason: "no-response",
+      })
+    }
   })
 
   test("a different icon label and DA1 fallback cannot prove XTWINOPS", () => {
