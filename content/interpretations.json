@@ -349096,5 +349096,808 @@
     "supersedes": [],
     "reviewed": true,
     "verifiesIdentity": true
+  },
+  {
+    "id": "turn383-query-clipboard-default-cursor.position-report-sol-draft",
+    "runId": "82a13acd890dbe6aa802cc72112cac95",
+    "runSha256": "a973e5361fcdbd087dc2be1d3ff7dc23a53da1919940ec72dc7a8d901264b857",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Supported only for this owned 24x61 fixture: CSI6n returns exact 1;4 after ABC and 3;6 after ABCDE on distinct rows. Differential text-induced advances rule out a constant report; other positions/origin modes are unmeasured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-default-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.position-report",
+    "observation": {
+      "featureId": "cursor.position-report",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "cursor.position-report",
+      "note": "Supported only for this owned 24x61 fixture: CSI6n returns exact 1;4 after ABC and 3;6 after ABCDE on distinct rows. Differential text-induced advances rule out a constant report; other positions/origin modes are unmeasured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-default-device.tertiary-da-sol-draft",
+    "runId": "82a13acd890dbe6aa802cc72112cac95",
+    "runSha256": "a973e5361fcdbd087dc2be1d3ff7dc23a53da1919940ec72dc7a8d901264b857",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-default-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.tertiary-da",
+    "observation": {
+      "featureId": "device.tertiary-da",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.tertiary-da",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-default-device.xtgetxres-sol-draft",
+    "runId": "82a13acd890dbe6aa802cc72112cac95",
+    "runSha256": "a973e5361fcdbd087dc2be1d3ff7dc23a53da1919940ec72dc7a8d901264b857",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. Only termName resource was requested; other resource names are unmeasured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-default-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.xtgetxres",
+    "observation": {
+      "featureId": "device.xtgetxres",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.xtgetxres",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. Only termName resource was requested; other resource names are unmeasured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-default-device.xtwinops-20-sol-draft",
+    "runId": "82a13acd890dbe6aa802cc72112cac95",
+    "runSha256": "a973e5361fcdbd087dc2be1d3ff7dc23a53da1919940ec72dc7a8d901264b857",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC1 test-icon setter was sent; no exact icon-label round-trip answer was observed. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-default-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.xtwinops-20",
+    "observation": {
+      "featureId": "device.xtwinops-20",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.xtwinops-20",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC1 test-icon setter was sent; no exact icon-label round-trip answer was observed."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-default-device.xtwinops-21-sol-draft",
+    "runId": "82a13acd890dbe6aa802cc72112cac95",
+    "runSha256": "a973e5361fcdbd087dc2be1d3ff7dc23a53da1919940ec72dc7a8d901264b857",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC2 test-title setter was sent; no exact title round-trip answer was observed. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-default-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.xtwinops-21",
+    "observation": {
+      "featureId": "device.xtwinops-21",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.xtwinops-21",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC2 test-title setter was sent; no exact title round-trip answer was observed."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-default-editing.decrqcra-sol-draft",
+    "runId": "82a13acd890dbe6aa802cc72112cac95",
+    "runSha256": "a973e5361fcdbd087dc2be1d3ff7dc23a53da1919940ec72dc7a8d901264b857",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: one-cell app request CSI1;1;1;1;1;1*y timed out empty. Current registration is explicitly partial reply capability only; neither checksum arithmetic nor a known ABCDE fixture was measured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-default-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "editing.decrqcra",
+    "observation": {
+      "featureId": "editing.decrqcra",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "rawReplyRef": "editing.decrqcra",
+      "note": "Inconclusive: one-cell app request CSI1;1;1;1;1;1*y timed out empty. Current registration is explicitly partial reply capability only; neither checksum arithmetic nor a known ABCDE fixture was measured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-default-extensions.osc52-clipboard-sol-draft",
+    "runId": "82a13acd890dbe6aa802cc72112cac95",
+    "runSha256": "a973e5361fcdbd087dc2be1d3ff7dc23a53da1919940ec72dc7a8d901264b857",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive policy-refused: default read=ask intentionally withheld the owned clipboard callback; no OSC52 writes or queries were sent. This does not characterize actual clipboard read/write behavior. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-default-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-clipboard",
+    "observation": {
+      "featureId": "extensions.osc52-clipboard",
+      "outcome": "inconclusive",
+      "reason": "policy-refused",
+      "evidence": "none",
+      "note": "Inconclusive policy-refused: default read=ask intentionally withheld the owned clipboard callback; no OSC52 writes or queries were sent. This does not characterize actual clipboard read/write behavior.",
+      "rawReplyRef": "extensions.osc52-clipboard"
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-default-extensions.osc52-read-sol-draft",
+    "runId": "82a13acd890dbe6aa802cc72112cac95",
+    "runSha256": "a973e5361fcdbd087dc2be1d3ff7dc23a53da1919940ec72dc7a8d901264b857",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive policy-refused: default read=ask intentionally withheld the owned clipboard callback; no OSC52 writes or queries were sent. This does not characterize actual clipboard read/write behavior. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-default-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-read",
+    "observation": {
+      "featureId": "extensions.osc52-read",
+      "outcome": "inconclusive",
+      "reason": "policy-refused",
+      "evidence": "none",
+      "note": "Inconclusive policy-refused: default read=ask intentionally withheld the owned clipboard callback; no OSC52 writes or queries were sent. This does not characterize actual clipboard read/write behavior.",
+      "rawReplyRef": "extensions.osc52-read"
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-default-extensions.osc52-write-sol-draft",
+    "runId": "82a13acd890dbe6aa802cc72112cac95",
+    "runSha256": "a973e5361fcdbd087dc2be1d3ff7dc23a53da1919940ec72dc7a8d901264b857",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive policy-refused: default read=ask intentionally withheld the owned clipboard callback; no OSC52 writes or queries were sent. This does not characterize actual clipboard read/write behavior. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-default-82a13acd890dbe6aa802cc72112cac95.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-write",
+    "observation": {
+      "featureId": "extensions.osc52-write",
+      "outcome": "inconclusive",
+      "reason": "policy-refused",
+      "evidence": "none",
+      "note": "Inconclusive policy-refused: default read=ask intentionally withheld the owned clipboard callback; no OSC52 writes or queries were sent. This does not characterize actual clipboard read/write behavior.",
+      "rawReplyRef": "extensions.osc52-write"
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-allow-cursor.position-report-sol-draft",
+    "runId": "81d680642294af862d5fd3283cf4172d",
+    "runSha256": "b1a5e0bd0a98efa3fbeb0d61336dc4907cd244c3129cb2de055b90d7333c0908",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Supported only for this owned 24x61 fixture: CSI6n returns exact 1;4 after ABC and 3;6 after ABCDE on distinct rows. Differential text-induced advances rule out a constant report; other positions/origin modes are unmeasured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-allow-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.position-report",
+    "observation": {
+      "featureId": "cursor.position-report",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "cursor.position-report",
+      "note": "Supported only for this owned 24x61 fixture: CSI6n returns exact 1;4 after ABC and 3;6 after ABCDE on distinct rows. Differential text-induced advances rule out a constant report; other positions/origin modes are unmeasured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-allow-device.tertiary-da-sol-draft",
+    "runId": "81d680642294af862d5fd3283cf4172d",
+    "runSha256": "b1a5e0bd0a98efa3fbeb0d61336dc4907cd244c3129cb2de055b90d7333c0908",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-allow-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.tertiary-da",
+    "observation": {
+      "featureId": "device.tertiary-da",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.tertiary-da",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-allow-device.xtgetxres-sol-draft",
+    "runId": "81d680642294af862d5fd3283cf4172d",
+    "runSha256": "b1a5e0bd0a98efa3fbeb0d61336dc4907cd244c3129cb2de055b90d7333c0908",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. Only termName resource was requested; other resource names are unmeasured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-allow-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.xtgetxres",
+    "observation": {
+      "featureId": "device.xtgetxres",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.xtgetxres",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. Only termName resource was requested; other resource names are unmeasured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-allow-device.xtwinops-20-sol-draft",
+    "runId": "81d680642294af862d5fd3283cf4172d",
+    "runSha256": "b1a5e0bd0a98efa3fbeb0d61336dc4907cd244c3129cb2de055b90d7333c0908",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC1 test-icon setter was sent; no exact icon-label round-trip answer was observed. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-allow-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.xtwinops-20",
+    "observation": {
+      "featureId": "device.xtwinops-20",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.xtwinops-20",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC1 test-icon setter was sent; no exact icon-label round-trip answer was observed."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-allow-device.xtwinops-21-sol-draft",
+    "runId": "81d680642294af862d5fd3283cf4172d",
+    "runSha256": "b1a5e0bd0a98efa3fbeb0d61336dc4907cd244c3129cb2de055b90d7333c0908",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC2 test-title setter was sent; no exact title round-trip answer was observed. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-allow-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.xtwinops-21",
+    "observation": {
+      "featureId": "device.xtwinops-21",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.xtwinops-21",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC2 test-title setter was sent; no exact title round-trip answer was observed."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-allow-editing.decrqcra-sol-draft",
+    "runId": "81d680642294af862d5fd3283cf4172d",
+    "runSha256": "b1a5e0bd0a98efa3fbeb0d61336dc4907cd244c3129cb2de055b90d7333c0908",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: one-cell app request CSI1;1;1;1;1;1*y timed out empty. Current registration is explicitly partial reply capability only; neither checksum arithmetic nor a known ABCDE fixture was measured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-allow-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "editing.decrqcra",
+    "observation": {
+      "featureId": "editing.decrqcra",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "rawReplyRef": "editing.decrqcra",
+      "note": "Inconclusive: one-cell app request CSI1;1;1;1;1;1*y timed out empty. Current registration is explicitly partial reply capability only; neither checksum arithmetic nor a known ABCDE fixture was measured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-allow-extensions.osc52-clipboard-sol-draft",
+    "runId": "81d680642294af862d5fd3283cf4172d",
+    "runSha256": "b1a5e0bd0a98efa3fbeb0d61336dc4907cd244c3129cb2de055b90d7333c0908",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Supported only for both OSC52 c directions in ALLOW owned disposable X11 selection: independent X11 read matches OSC write nonce, then a different independently seeded nonce matches complete canonical OSC read reply; original clipboard restored and independently verified. Other selections/hosts/policies are unmeasured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-allow-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-clipboard",
+    "observation": {
+      "featureId": "extensions.osc52-clipboard",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "extensions.osc52-clipboard",
+      "note": "Supported only for both OSC52 c directions in ALLOW owned disposable X11 selection: independent X11 read matches OSC write nonce, then a different independently seeded nonce matches complete canonical OSC read reply; original clipboard restored and independently verified. Other selections/hosts/policies are unmeasured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-allow-extensions.osc52-read-sol-draft",
+    "runId": "81d680642294af862d5fd3283cf4172d",
+    "runSha256": "b1a5e0bd0a98efa3fbeb0d61336dc4907cd244c3129cb2de055b90d7333c0908",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Supported only for OSC52 c read in ALLOW owned disposable X11 selection: independently seeded nonempty nonce matches complete canonical base64 reply; original clipboard restored and independently verified. Other selections/hosts/policy profiles are unmeasured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-allow-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-read",
+    "observation": {
+      "featureId": "extensions.osc52-read",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "extensions.osc52-read",
+      "note": "Supported only for OSC52 c read in ALLOW owned disposable X11 selection: independently seeded nonempty nonce matches complete canonical base64 reply; original clipboard restored and independently verified. Other selections/hosts/policy profiles are unmeasured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-allow-extensions.osc52-write-sol-draft",
+    "runId": "81d680642294af862d5fd3283cf4172d",
+    "runSha256": "b1a5e0bd0a98efa3fbeb0d61336dc4907cd244c3129cb2de055b90d7333c0908",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Supported only for OSC52 c nonce write in this owned disposable X11 selection under allow: independent X11 read hash equals the written nonce after CPR responsiveness barrier; original clipboard restored and independently verified. Other selections/remote hosts/configurations are unmeasured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-allow-81d680642294af862d5fd3283cf4172d.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-write",
+    "observation": {
+      "featureId": "extensions.osc52-write",
+      "outcome": "supported",
+      "evidence": "behavior",
+      "rawReplyRef": "extensions.osc52-write",
+      "note": "Supported only for OSC52 c nonce write in this owned disposable X11 selection under allow: independent X11 read hash equals the written nonce after CPR responsiveness barrier; original clipboard restored and independently verified. Other selections/remote hosts/configurations are unmeasured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-deny-read-cursor.position-report-sol-draft",
+    "runId": "7d8f750440216379fa4da73a91e22b6c",
+    "runSha256": "ea66b5aeec76a5a2a648f3a713d3e34686bc05a53fbf7a7730753ea672f4ec1d",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Supported only for this owned 24x61 fixture: CSI6n returns exact 1;4 after ABC and 3;6 after ABCDE on distinct rows. Differential text-induced advances rule out a constant report; other positions/origin modes are unmeasured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-deny-read-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.position-report",
+    "observation": {
+      "featureId": "cursor.position-report",
+      "outcome": "supported",
+      "evidence": "query",
+      "rawReplyRef": "cursor.position-report",
+      "note": "Supported only for this owned 24x61 fixture: CSI6n returns exact 1;4 after ABC and 3;6 after ABCDE on distinct rows. Differential text-induced advances rule out a constant report; other positions/origin modes are unmeasured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-deny-read-device.tertiary-da-sol-draft",
+    "runId": "7d8f750440216379fa4da73a91e22b6c",
+    "runSha256": "ea66b5aeec76a5a2a648f3a713d3e34686bc05a53fbf7a7730753ea672f4ec1d",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-deny-read-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.tertiary-da",
+    "observation": {
+      "featureId": "device.tertiary-da",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.tertiary-da",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-deny-read-device.xtgetxres-sol-draft",
+    "runId": "7d8f750440216379fa4da73a91e22b6c",
+    "runSha256": "ea66b5aeec76a5a2a648f3a713d3e34686bc05a53fbf7a7730753ea672f4ec1d",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. Only termName resource was requested; other resource names are unmeasured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-deny-read-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.xtgetxres",
+    "observation": {
+      "featureId": "device.xtgetxres",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.xtgetxres",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. Only termName resource was requested; other resource names are unmeasured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-deny-read-device.xtwinops-20-sol-draft",
+    "runId": "7d8f750440216379fa4da73a91e22b6c",
+    "runSha256": "ea66b5aeec76a5a2a648f3a713d3e34686bc05a53fbf7a7730753ea672f4ec1d",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC1 test-icon setter was sent; no exact icon-label round-trip answer was observed. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-deny-read-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.xtwinops-20",
+    "observation": {
+      "featureId": "device.xtwinops-20",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.xtwinops-20",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC1 test-icon setter was sent; no exact icon-label round-trip answer was observed."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-deny-read-device.xtwinops-21-sol-draft",
+    "runId": "7d8f750440216379fa4da73a91e22b6c",
+    "runSha256": "ea66b5aeec76a5a2a648f3a713d3e34686bc05a53fbf7a7730753ea672f4ec1d",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC2 test-title setter was sent; no exact title round-trip answer was observed. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-deny-read-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.xtwinops-21",
+    "observation": {
+      "featureId": "device.xtwinops-21",
+      "outcome": "inconclusive",
+      "reason": "no-response",
+      "evidence": "query",
+      "rawReplyRef": "device.xtwinops-21",
+      "note": "Inconclusive: only complete DA1 sentinel ESC[?62;52;c followed this requested query; no matching requested answer surfaced before it. Sentinel responsiveness does not prove this query unsupported or establish policy refusal. OSC2 test-title setter was sent; no exact title round-trip answer was observed."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-deny-read-editing.decrqcra-sol-draft",
+    "runId": "7d8f750440216379fa4da73a91e22b6c",
+    "runSha256": "ea66b5aeec76a5a2a648f3a713d3e34686bc05a53fbf7a7730753ea672f4ec1d",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive: one-cell app request CSI1;1;1;1;1;1*y timed out empty. Current registration is explicitly partial reply capability only; neither checksum arithmetic nor a known ABCDE fixture was measured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-deny-read-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "editing.decrqcra",
+    "observation": {
+      "featureId": "editing.decrqcra",
+      "outcome": "inconclusive",
+      "evidence": "query",
+      "reason": "no-response",
+      "rawReplyRef": "editing.decrqcra",
+      "note": "Inconclusive: one-cell app request CSI1;1;1;1;1;1*y timed out empty. Current registration is explicitly partial reply capability only; neither checksum arithmetic nor a known ABCDE fixture was measured."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-deny-read-extensions.osc52-clipboard-sol-draft",
+    "runId": "7d8f750440216379fa4da73a91e22b6c",
+    "runSha256": "ea66b5aeec76a5a2a648f3a713d3e34686bc05a53fbf7a7730753ea672f4ec1d",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive insufficient-evidence: DENY-READ returned complete OSC52 c empty payload instead of the independently seeded nonempty nonce. Policy-bound nonmatching reply is observed, not universal unsupported. Original clipboard restored and independently verified. Independent read separately matched the preceding OSC write nonce. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-deny-read-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-clipboard",
+    "observation": {
+      "featureId": "extensions.osc52-clipboard",
+      "outcome": "inconclusive",
+      "reason": "insufficient-evidence",
+      "evidence": "query",
+      "rawReplyRef": "extensions.osc52-clipboard",
+      "note": "Inconclusive insufficient-evidence: DENY-READ returned complete OSC52 c empty payload instead of the independently seeded nonempty nonce. Policy-bound nonmatching reply is observed, not universal unsupported. Original clipboard restored and independently verified. Independent read separately matched the preceding OSC write nonce."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-deny-read-extensions.osc52-read-sol-draft",
+    "runId": "7d8f750440216379fa4da73a91e22b6c",
+    "runSha256": "ea66b5aeec76a5a2a648f3a713d3e34686bc05a53fbf7a7730753ea672f4ec1d",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Inconclusive insufficient-evidence: DENY-READ returned complete OSC52 c empty payload instead of the independently seeded nonempty nonce. Policy-bound nonmatching reply is observed, not universal unsupported. Original clipboard restored and independently verified. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-deny-read-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-read",
+    "observation": {
+      "featureId": "extensions.osc52-read",
+      "outcome": "inconclusive",
+      "reason": "insufficient-evidence",
+      "evidence": "query",
+      "rawReplyRef": "extensions.osc52-read",
+      "note": "Inconclusive insufficient-evidence: DENY-READ returned complete OSC52 c empty payload instead of the independently seeded nonempty nonce. Policy-bound nonmatching reply is observed, not universal unsupported. Original clipboard restored and independently verified."
+    }
+  },
+  {
+    "id": "turn383-query-clipboard-deny-read-extensions.osc52-write-sol-draft",
+    "runId": "7d8f750440216379fa4da73a91e22b6c",
+    "runSha256": "ea66b5aeec76a5a2a648f3a713d3e34686bc05a53fbf7a7730753ea672f4ec1d",
+    "reviewer": "@adhoc/1; Independent Sol source/transport review; @cto, ruling 9754c5d7 (private feature-scoped admission only)",
+    "reason": "Supported only for OSC52 c nonce write in this owned disposable X11 selection under deny-read: independent X11 read hash equals the written nonce after CPR responsiveness barrier; original clipboard restored and independently verified. Other selections/remote hosts/configurations are unmeasured. Exact frozen source e445db7f974c75b22cb1d21f8fa8af0c0dd2ccda; suite a00b545425a9.",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-deny-read-7d8f750440216379fa4da73a91e22b6c.json",
+      "/hh/hub/terminfo-review/2026-10-05/query-clipboard-qualification.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-write",
+    "observation": {
+      "featureId": "extensions.osc52-write",
+      "outcome": "supported",
+      "evidence": "behavior",
+      "rawReplyRef": "extensions.osc52-write",
+      "note": "Supported only for OSC52 c nonce write in this owned disposable X11 selection under deny-read: independent X11 read hash equals the written nonce after CPR responsiveness barrier; original clipboard restored and independently verified. Other selections/remote hosts/configurations are unmeasured."
+    }
   }
 ]
