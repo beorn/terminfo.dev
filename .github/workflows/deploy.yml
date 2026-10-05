@@ -28,7 +28,7 @@ jobs:
         run: bun run validate
 
       - name: Run unit tests
-        run: bun vitest run
+        run: bun --bun vitest run
 
       - name: Build site
         run: bun run build

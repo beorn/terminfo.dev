@@ -47,7 +47,7 @@ jobs:
         continue-on-error: true
 
       - name: Run unit tests
-        run: bun vitest run
+        run: bun --bun vitest run
 
       - name: Build site
         run: bun run build
