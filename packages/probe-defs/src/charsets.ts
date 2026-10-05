@@ -189,6 +189,64 @@ export const charsetsProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        const capture = ctx.capture
+        if (capture) {
+          const rows = ctx.rows
+          const cols = ctx.cols
+          if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 4 || cols < 6) {
+            return {
+              pass: false,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "none",
+                note: `Charset capture fixture needs at least 4x6, measured ${rows}x${cols}`,
+              },
+            }
+          }
+          try {
+            ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
+            ctx.write("\x1b[1;1H     \x1b[1;1HA?Z")
+            ctx.write("\x1b[2;1H     \x1b[2;1HA?Z")
+            ctx.write("\x1b[3;1H     \x1b[3;1HA?Z")
+            ctx.write("\x1b[4;1H     \x1b[4;1HA?Z")
+            ctx.write("\x1b[4;4H")
+            const control = await capture({
+              role: "control",
+              label:
+                "ASCII placeholder controls on rows 1 and 2 beside the Unicode sample cells; rows 3 and 4 are reference rows",
+            })
+            ctx.write("\x1b[1;2H\u00e9\x1b[2;2H\u4e16\x1b[4;4H")
+            const target = await capture({
+              role: "target",
+              label: "UTF-8 samples: U+00E9 at row 1 col 2 and U+4E16 at row 2 col 2, ASCII A/Z flanks intact",
+            })
+            return {
+              pass: false,
+              response: JSON.stringify({
+                rows,
+                cols,
+                sampleCells: [
+                  { row: 1, col: 2 },
+                  { row: 2, col: 2 },
+                ],
+                control: control.label,
+                target: target.label,
+              }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "Sampled U+00E9 and U+4E16 glyphs relative to the ASCII A/Z flanks require independent pixel review; pixels do not measure a codepoint or the whole charset",
+              },
+            }
+          } finally {
+            // Normalize the owned disposable fixture, not arbitrary prior terminal state.
+            ctx.write("\x1b[0m\x0f\x1b(B\x1b)B")
+          }
+        }
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
           return {
             pass: false,
@@ -273,6 +331,62 @@ export const charsetsProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        const capture = ctx.capture
+        if (capture) {
+          const rows = ctx.rows
+          const cols = ctx.cols
+          if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 4 || cols < 6) {
+            return {
+              pass: false,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "none",
+                note: `Charset capture fixture needs at least 4x6, measured ${rows}x${cols}`,
+              },
+            }
+          }
+          try {
+            ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
+            ctx.write("\x1b[1;1H     \x1b[1;1HAlllZ")
+            ctx.write("\x1b[2;1H     \x1b[2;1HAlllZ")
+            ctx.write("\x1b[3;1H     \x1b[3;1HAlllZ")
+            ctx.write("\x1b[4;1H     \x1b[4;1HAlllZ")
+            ctx.write("\x1b[4;6H")
+            const control = await capture({
+              role: "control",
+              label: "ASCII lll controls on rows 1 through 3; row 4 is the restored-ASCII reference row",
+            })
+            ctx.write("\x1b[1;2H\x1b(B\x1b)0l\x0el\x0fl")
+            ctx.write("\x0f\x1b(B\x1b)B\x1b[4;1HAlllZ\x1b[4;6H")
+            const target = await capture({
+              role: "target",
+              label:
+                "G1 DEC Special Graphics l maps to U+250C on row 1 col 3 after SO, restored by SI; row 4 shows restored ASCII lll",
+            })
+            return {
+              pass: false,
+              response: JSON.stringify({
+                rows,
+                cols,
+                sampleCell: { row: 1, col: 3 },
+                control: control.label,
+                target: target.label,
+              }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "Sampled G1 DEC Special Graphics U+250C relative to ASCII l controls requires independent pixel review; pixels do not measure a codepoint or the whole charset",
+              },
+            }
+          } finally {
+            // Normalize the owned disposable fixture, not arbitrary prior terminal state.
+            ctx.write("\x1b[0m\x0f\x1b(B\x1b)B")
+          }
+        }
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
           return {
             pass: false,
@@ -359,6 +473,68 @@ export const charsetsProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        const capture = ctx.capture
+        if (capture) {
+          const rows = ctx.rows
+          const cols = ctx.cols
+          if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 4 || cols < 7) {
+            return {
+              pass: false,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "none",
+                note: `Charset capture fixture needs at least 4x7, measured ${rows}x${cols}`,
+              },
+            }
+          }
+          try {
+            ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
+            ctx.write("\x1b[1;1H       \x1b[1;1Hjklmqxj")
+            ctx.write("\x1b[2;1H       \x1b[2;1Hjklmqxj")
+            ctx.write("\x1b[3;1H       \x1b[3;1Hjklmqxj")
+            ctx.write("\x1b[4;1H       \x1b[4;1Hjklmqxj")
+            ctx.write("\x1b[4;8H")
+            const control = await capture({
+              role: "control",
+              label: "ASCII jklmqxj controls on rows 1 through 3; row 4 is the restored-ASCII reference row",
+            })
+            ctx.write("\x1b[1;1H\x1b(0jklmqx\x1b(B")
+            ctx.write("\x0f\x1b(B\x1b)B\x1b[4;1Hjklmqxj\x1b[4;8H")
+            const target = await capture({
+              role: "target",
+              label: "DEC Special Graphics jklmqx on row 1 mapping to ┘┐┌└─│; row 4 shows restored ASCII jklmqxj",
+            })
+            return {
+              pass: false,
+              response: JSON.stringify({
+                rows,
+                cols,
+                sampleCells: [
+                  { row: 1, col: 1 },
+                  { row: 1, col: 2 },
+                  { row: 1, col: 3 },
+                  { row: 1, col: 4 },
+                  { row: 1, col: 5 },
+                  { row: 1, col: 6 },
+                ],
+                control: control.label,
+                target: target.label,
+              }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "Sampled six DEC Special Graphics box-drawing cells relative to ASCII jklmqxj controls requires independent pixel review; pixels do not measure codepoints or the whole charset",
+              },
+            }
+          } finally {
+            // Normalize the owned disposable fixture, not arbitrary prior terminal state.
+            ctx.write("\x1b[0m\x0f\x1b(B\x1b)B")
+          }
+        }
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 7) {
           return {
             pass: false,
