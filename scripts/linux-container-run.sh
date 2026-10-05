@@ -58,6 +58,41 @@ compose_receipt() {
   mv "$output.partial" "$output"
 }
 
+# Query callbacks can finish without frames. When callbacks do declare frames,
+# require every original PNG/XWD pair before sealing the container receipt.
+measure_capture() {
+  local out=$1 png_sha xwd_sha frames
+  if [[ "$(jq -er '[.observations[].frames[]?] | length' "$out/v2-run.json")" == 0 ]]; then
+    printf 'null\n'
+    return 0
+  fi
+  jq -e '[.observations[].frames[]?] | all(.[];
+    (.ref | type == "string" and test("^sha256:[a-f0-9]{64}$")) and
+    (.sourceRef | type == "string" and test("^sha256:[a-f0-9]{64}$")))' "$out/v2-run.json" >/dev/null || {
+    echo "Callback capture references are invalid" >&2; return 2;
+  }
+  frames=$(jq -r '.observations[].frames[]? | [.ref[7:], .sourceRef[7:]] | @tsv' "$out/v2-run.json") || return 2
+  while read -r png_sha xwd_sha; do
+    [[ -r "$out/artifacts/$png_sha.png" && -r "$out/artifacts/$xwd_sha.xwd" ]] || {
+      echo "Callback capture artifacts are missing" >&2; return 2;
+    }
+    [[ "$(sha256sum "$out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
+       "$(sha256sum "$out/artifacts/$xwd_sha.xwd" | cut -d ' ' -f 1)" == "$xwd_sha" ]] || {
+      echo "Callback capture digest mismatch" >&2; return 2;
+    }
+  done <<< "$frames"
+  png_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].ref | strings | sub("^sha256:"; "")' "$out/v2-run.json") || {
+    echo "Callback captures have no target frame" >&2; return 2;
+  }
+  xwd_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].sourceRef | strings | sub("^sha256:"; "")' "$out/v2-run.json") || return 2
+  magick identify "$out/artifacts/$png_sha.png" > "$out/image-info.txt" || {
+    echo "Callback capture image inspection failed" >&2; return 2;
+  }
+  sha256sum "$out"/artifacts/* > "$out/capture-hashes.txt" || return 2
+  jq -cn --arg png "artifacts/$png_sha.png" --arg pngSha "$png_sha" --arg xwdSha "$xwd_sha" \
+    '{xwd:("artifacts/"+$xwdSha+".xwd"),xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}'
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -355,18 +390,9 @@ if [[ "${1:-}" == "--inside" ]]; then
   # The shared callbacks captured this daemon's own window before sealing the
   # run. Keep the original owned geometry in its receipt; a later window search
   # or geometry sample cannot replace the measurement recorded in provenance.
-  png_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' /out/v2-run.json)
-  xwd_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' /out/v2-run.json)
-  [[ -r "/out/artifacts/$png_sha.png" && -r "/out/artifacts/$xwd_sha.xwd" ]] || {
-    echo "Callback capture artifacts are missing" >&2; exit 2;
-  }
-  [[ "$(sha256sum "/out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
-     "$(sha256sum "/out/artifacts/$xwd_sha.xwd" | cut -d ' ' -f 1)" == "$xwd_sha" ]] || {
-    echo "Callback capture digest mismatch" >&2; exit 2;
-  }
-  magick identify "/out/artifacts/$png_sha.png" > /out/image-info.txt
-  sha256sum /out/artifacts/* > /out/capture-hashes.txt
-  jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --arg png "artifacts/$png_sha.png" \
+  capture=$(measure_capture /out)
+  png=$(jq -c '.png' <<< "$capture")
+  jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --argjson png "$png" \
     '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,png:$png,context:"linux-x86_64-xvfb-llvmpipe"}' \
     > /out/observed.json
   read -r invocation_sha invocation_path < /out/invocation.sha256
@@ -378,7 +404,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg sourcePath "$source_path" --arg sourceSha "$source_sha" \
     --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
     --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" \
-    --arg png "artifacts/$png_sha.png" --arg pngSha "$png_sha" --arg xwdSha "$xwd_sha" \
+    --argjson capture "$capture" \
     --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg clipboardSha "$clipboard_fixture_sha" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
@@ -390,7 +416,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       probeRun:{path:"v2-run.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
       clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
-      capture:{xwd:("artifacts/"+$xwdSha+".xwd"),xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
+      capture:$capture} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
     > /out/container-receipt.json
   exit 0
 fi

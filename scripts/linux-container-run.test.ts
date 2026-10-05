@@ -7,6 +7,7 @@
  */
 
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   chmodSync,
   copyFileSync,
@@ -329,5 +330,75 @@ describe("requested measured and named not-tested coverage", () => {
     const result = coverage(observations as object[], notTested as object[], diagnostics)
     expect(result.status).toBe(1)
     expect(result.stdout.trim()).toBe("false")
+  })
+})
+
+/**
+ * @failure Query-only collections fail on absent screenshots, or declared captures are silently lost.
+ * @level l1 — runs the launcher's actual artifact measurement against owned output files.
+ * @consumer scripts/linux-container-run.sh container completion.
+ * @testonly none
+ */
+describe("Linux callback capture completion", () => {
+  function measure(frames: unknown[], bins?: string) {
+    writeFileSync(join(dir, "v2-run.json"), JSON.stringify({ observations: [{ frames }] }))
+    return spawnSync(
+      "bash",
+      ["-c", 'source "$1"; capture=$(measure_capture "$2"); printf \'%s\\n\' "$capture"', "_", launcher, dir],
+      {
+        encoding: "utf8",
+        env: bins ? { ...process.env, PATH: `${bins}:${process.env.PATH ?? ""}` } : process.env,
+      },
+    )
+  }
+
+  function declaredPair(role: string) {
+    mkdirSync(join(dir, "artifacts"))
+    const png = Buffer.from("owned capture bytes")
+    const xwd = Buffer.from("owned source bytes")
+    const pngHash = createHash("sha256").update(png).digest("hex")
+    const xwdHash = createHash("sha256").update(xwd).digest("hex")
+    writeFileSync(join(dir, "artifacts", `${pngHash}.png`), png)
+    writeFileSync(join(dir, "artifacts", `${xwdHash}.xwd`), xwd)
+    return { role, ref: `sha256:${pngHash}`, sourceRef: `sha256:${xwdHash}` }
+  }
+
+  it("refuses frames that omit the target instead of sealing an empty capture", () => {
+    const result = measure([declaredPair("control")])
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Callback captures have no target frame")
+  })
+
+  it("retains an image inspection failure through the production command substitution", () => {
+    const frame = declaredPair("target")
+    const bins = join(dir, "bin")
+    mkdirSync(bins)
+    writeFileSync(join(bins, "magick"), "#!/usr/bin/env bash\nexit 41\n")
+    chmodSync(join(bins, "magick"), 0o755)
+    const result = measure([frame], bins)
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Callback capture image inspection failed")
+  })
+
+  it("completes query-only output without requiring screenshots", () => {
+    const result = measure([])
+    expect(result.status).toBe(0)
+    expect(JSON.parse(result.stdout)).toBeNull()
+    expect(existsSync(join(dir, "image-info.txt"))).toBe(false)
+  })
+
+  it("refuses a declared capture whose original files are missing", () => {
+    const result = measure([{ role: "target", ref: `sha256:${"a".repeat(64)}`, sourceRef: `sha256:${"b".repeat(64)}` }])
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Callback capture artifacts are missing")
+  })
+
+  it("refuses declared capture bytes that differ from their hashes", () => {
+    mkdirSync(join(dir, "artifacts"))
+    writeFileSync(join(dir, "artifacts", `${"a".repeat(64)}.png`), "wrong PNG bytes")
+    writeFileSync(join(dir, "artifacts", `${"b".repeat(64)}.xwd`), "wrong XWD bytes")
+    const result = measure([{ role: "target", ref: `sha256:${"a".repeat(64)}`, sourceRef: `sha256:${"b".repeat(64)}` }])
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Callback capture digest mismatch")
   })
 })
