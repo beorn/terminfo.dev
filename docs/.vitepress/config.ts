@@ -330,6 +330,15 @@ function buildSidebar() {
         { text: "Terminal Security", link: "/fundamentals/security" },
       ],
     },
+    {
+      text: "How it works",
+      link: "/how-it-works/",
+      items: [
+        { text: "How we measure", link: "/how-it-works/how-we-measure" },
+        { text: "How to read a result", link: "/how-it-works/how-to-read-a-result" },
+        { text: "Contribute a run", link: "/how-it-works/contribute-a-run" },
+      ],
+    },
     { text: "API", link: "/api" },
     { text: "Glossary", link: "/glossary" },
     { text: "Test Your Terminal", link: "/contribute" },
@@ -679,6 +688,7 @@ export default defineConfig({
     },
     logo: "/logo.svg",
     nav: [
+      { text: "How it works", link: "/how-it-works/" },
       { text: "Matrix", link: "/" },
       {
         text: "Features",
