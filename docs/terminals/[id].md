@@ -22,7 +22,13 @@ const inconclusive = computed(() => Object.values(selectedRun.value?.cells || {}
 const errors = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'error').length)
 const namedNotTested = computed(() => selectedRun.value?.notTestedCoverage?.namedCount ?? 0)
 function runLabel(run) {
-  return `${run.target.version} · ${run.target.os || 'OS not recorded'} · ${run.target.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
+  const os = { linux: 'Linux', macos: 'macOS', windows: 'Windows' }[run.target.os] || run.target.os || 'OS not recorded'
+  const permissions = {
+    'clipboard: read=allow,write=allow': 'Clipboard read allowed',
+    'clipboard: read=deny,write=allow': 'Clipboard read denied',
+  }[run.target.permissions] || run.target.permissions || 'No permission override recorded'
+  const date = new Date(run.measuredAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+  return `${run.target.version} · ${os} · ${permissions} · ${date}`
 }
 
 function featureTooltip(f) {

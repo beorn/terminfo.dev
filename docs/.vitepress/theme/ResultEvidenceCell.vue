@@ -36,6 +36,7 @@ const isDecSampleResult = computed(
 
 const trigger = ref<HTMLButtonElement | null>(null)
 const dialog = ref<HTMLDialogElement | null>(null)
+const screenshotsHeading = ref<HTMLElement | null>(null)
 const previewVisible = ref(false)
 const dialogVisible = ref(false)
 const previewPosition = ref<Record<string, string>>({})
@@ -104,6 +105,16 @@ const evidenceScreenshot = computed(() => evidenceRecord.value?.screenshot)
 const evidenceScreenshotUrl = computed(() =>
   evidenceScreenshot.value ? withBase(evidenceScreenshot.value.url) : undefined,
 )
+const screenshotCount = computed(
+  () =>
+    evidenceFrames.value.length ||
+    previewFrames.value.length ||
+    (evidenceScreenshot.value || previewScreenshot.value ? 1 : 0),
+)
+function viewScreenshots() {
+  screenshotsHeading.value?.focus({ preventScroll: true })
+  screenshotsHeading.value?.scrollIntoView({ block: "start" })
+}
 const rawReply = computed(() => evidenceRecord.value?.rawReply)
 const assertions = computed(() => evidenceRecord.value?.assertions ?? [])
 const hasRecordedDetail = computed(
@@ -361,10 +372,15 @@ onBeforeUnmount(() => {
         </p>
 
         <p class="result-evidence__outcome" :class="`result-evidence__outcome--${status.tone}`">
-          <template v-if="isDecSampleResult">Supported: verified in screenshot</template>
+          <template v-if="isDecSampleResult">Supported · image review</template>
           <template v-else
             >{{ status.text }}<template v-if="cell"> · {{ methodLabel }}</template></template
           >
+        </p>
+        <p v-if="screenshotCount">
+          <button type="button" class="result-evidence__close" :disabled="!evidenceDocument" @click="viewScreenshots">
+            View {{ screenshotCount }} screenshot{{ screenshotCount === 1 ? "" : "s" }} ↓
+          </button>
         </p>
         <template v-if="isDecSampleResult">
           <p>
@@ -372,8 +388,8 @@ onBeforeUnmount(() => {
             <a :href="withBase('/how-it-works/how-to-read-a-result')">How does this work?</a>
           </p>
           <p>
-            Tested in Kitty 0.49.2 on Linux, using Xvfb and the llvmpipe renderer, an 800×600 window, and the default
-            profile with DejaVu Sans Mono at size 16. Other versions and configurations need their own results.
+            Tested in Kitty 0.49.2 on Linux, using Xvfb, the llvmpipe renderer and an 800×600 window. Other versions and
+            configurations need their own results.
           </p>
           <details class="result-evidence__details">
             <summary>How to read the status</summary>
@@ -475,17 +491,7 @@ onBeforeUnmount(() => {
             Evidence could not be verified: {{ evidenceError }}
           </p>
           <template v-else-if="evidenceDocument">
-            <p v-if="correction && isDecSampleResult">
-              The collector captured the images but did not automatically judge their content. It left the result
-              inconclusive until image review. Sol, an AI reviewer, then compared the unchanged frames against two
-              criteria: the middle <code>q</code> on row 3 must look like the horizontal line in row 2, and row 4 must
-              remain ordinary ASCII text. That review established support for this sample. It used no numeric confidence
-              score, new frames or updated terminal. “Corrected after review” means the assessment changed; Kitty was
-              not fixed and this was not a rerun. The same AI reviewer made the support assessment and the separate
-              decision to display the evidence, not two independent tests or human approvals. The original result and
-              both decisions are preserved in Review history.
-            </p>
-            <p v-else-if="correction">
+            <p v-if="correction && !isDecSampleResult">
               This result was corrected after review. See Review history for the original result and reason.
             </p>
             <template v-if="assertions.length">
@@ -502,7 +508,7 @@ onBeforeUnmount(() => {
               </ul>
             </template>
             <template v-if="evidenceFrames.length">
-              <h4>Screenshots</h4>
+              <h4 ref="screenshotsHeading" tabindex="-1">Screenshots</h4>
               <div class="result-evidence__frames">
                 <figure v-for="(frame, index) in evidenceFrames" :key="index" class="result-evidence__image">
                   <img :src="withBase(frame.url)" :alt="`${frame.role} frame: ${frame.label}`" />
@@ -520,6 +526,7 @@ onBeforeUnmount(() => {
               </div>
             </template>
             <template v-else-if="evidenceScreenshotUrl">
+              <h4 ref="screenshotsHeading" tabindex="-1">Screenshot</h4>
               <figure class="result-evidence__image">
                 <img
                   :src="evidenceScreenshotUrl"
@@ -652,6 +659,10 @@ onBeforeUnmount(() => {
             <dd>{{ version?.target.mux ?? "Not recorded" }}</dd>
             <dt>Configuration</dt>
             <dd>{{ version?.target.config ?? "Not recorded" }}</dd>
+            <template v-if="isDecSampleResult">
+              <dt>Font configuration</dt>
+              <dd>DejaVu Sans Mono; font_size=16. Rendered pixel size was not measured.</dd>
+            </template>
             <dt>Permissions</dt>
             <dd>{{ version?.target.permissions ?? "Not recorded" }}</dd>
             <dt>Measured at</dt>
