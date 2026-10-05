@@ -347,7 +347,12 @@ function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum: number
     return {
       pass: false,
       note: "No DECRPM response",
-      observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+      observation: {
+        outcome: "inconclusive",
+        reason: "no-response",
+        evidence: "query",
+        note: "No DECRPM response",
+      },
     }
   }
   if (state === "unknown") {
@@ -355,7 +360,12 @@ function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum: number
       pass: false,
       note: `DECRPM mode ${modeNum}: not recognized; mode behavior unmeasured`,
       response: state,
-      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query" },
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+        note: `DECRPM mode ${modeNum}: not recognized; mode behavior unmeasured`,
+      },
     }
   }
   return {

@@ -72,6 +72,12 @@ function byId(id: string) {
   return { term: probe.term, termless: probe.termless }
 }
 
+/** Sequential CPR fixture: each call returns the next scripted reply, null once exhausted. */
+function cursorQueue(...positions: Array<{ row: number; col: number } | null>) {
+  let index = 0
+  return async () => (index < positions.length ? positions[index++] : null)
+}
+
 test("text width claims require an ASCII control and the named sample", async () => {
   for (const id of [
     "text.wide.emoji",
@@ -402,12 +408,20 @@ test("direct text and Unicode size readers declare geometry, including tab final
   for (const probe of unicodeProbes) expect(probe.termNeedsGeometry, probe.id).toBe(true)
 })
 
-test("text.wrap writes the measured 61 columns and declines one row before writing", async () => {
+test("text.wrap qualifies DECAWM then writes control then target before grading", async () => {
   const writes: string[] = []
-  await byId("text.wrap").term(
-    app({ cols: 61, rows: 24, write: (s) => writes.push(s), queryCursorPosition: async () => ({ row: 2, col: 2 }) }),
+  const supported = await byId("text.wrap").term(
+    app({
+      cols: 61,
+      rows: 24,
+      write: (s) => writes.push(s),
+      queryMode: async () => "set",
+      queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 61 }, { row: 2, col: 2 }),
+    }),
   )
-  expect(writes).toEqual(["\x1b[1;1H\x1b[2K", "W".repeat(61) + "X"])
+  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(supported.assertions).toMatchObject([{ kind: "positive" }])
+  expect(writes).toEqual(["\x1b[1;1H", "\x1b[1;1H\x1b[2K", "W".repeat(60), "\x1b[1;1H\x1b[2K", "W".repeat(61) + "X"])
   const narrowWrites: string[] = []
   const result = await byId("text.wrap").term(app({ cols: 61, rows: 1, write: (s) => narrowWrites.push(s) }))
   expect(result.observation).toMatchObject({
@@ -416,6 +430,151 @@ test("text.wrap writes the measured 61 columns and declines one row before writi
     evidence: "none",
   })
   expect(narrowWrites).toEqual([])
+})
+
+test("text.wrap negative controls: unqualified control, spoofing, wrong target, missing replies, DECAWM", async () => {
+  const cases = [
+    cursorQueue({ row: 1, col: 60 }, { row: 2, col: 2 }),
+    cursorQueue({ row: 1, col: 1 }, { row: 1, col: 60 }, { row: 2, col: 2 }),
+    async () => ({ row: 2, col: 2 }),
+    // A constant right-margin provider must not qualify as a measured wrap negative.
+    async () => ({ row: 1, col: 61 }),
+  ]
+  for (const queryCursorPosition of cases) {
+    const result = await byId("text.wrap").term(app({ cols: 61, queryMode: async () => "set", queryCursorPosition }))
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(result.assertions).toBeUndefined()
+  }
+
+  const wrongTarget = await byId("text.wrap").term(
+    app({
+      cols: 61,
+      queryMode: async () => "set",
+      queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 61 }, { row: 1, col: 61 }),
+    }),
+  )
+  expect(wrongTarget.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(wrongTarget.assertions).toMatchObject([{ kind: "negative" }])
+
+  const missingHome = await byId("text.wrap").term(
+    app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue(null) }),
+  )
+  expect(missingHome.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+
+  const missingControl = await byId("text.wrap").term(
+    app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue({ row: 1, col: 1 }, null) }),
+  )
+  expect(missingControl.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "no-response",
+    evidence: "query",
+  })
+
+  const missingTarget = await byId("text.wrap").term(
+    app({
+      cols: 61,
+      queryMode: async () => "set",
+      queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 61 }),
+    }),
+  )
+  expect(missingTarget.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+
+  for (const [mode, reason] of [
+    ["reset", "insufficient-evidence"],
+    ["unknown", "insufficient-evidence"],
+    [null, "no-response"],
+  ] as const) {
+    const writes: string[] = []
+    const result = await byId("text.wrap").term(
+      app({
+        cols: 61,
+        write: (s) => writes.push(s),
+        queryMode: async () => mode,
+        queryCursorPosition: async () => {
+          throw new Error("queried before DECAWM setup was qualified")
+        },
+      }),
+    )
+    expect(result.observation, String(mode)).toMatchObject({ outcome: "inconclusive", reason, evidence: "query" })
+    expect(writes, String(mode)).toEqual([])
+  }
+})
+
+test("text.tab and text.hts grade the combined HT/HTS fixture from qualified sequential CPRs", async () => {
+  for (const id of ["text.tab", "text.hts"]) {
+    const writes: string[] = []
+    const supported = await byId(id).term(
+      app({
+        cols: 80,
+        rows: 24,
+        write: (s) => writes.push(s),
+        queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 9 }, { row: 1, col: 6 }),
+      }),
+    )
+    expect(supported.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(supported.assertions?.[0], id).toMatchObject({ kind: "positive" })
+    expect(supported.assertions?.[0]?.expected, id).toContain("combined HT/HTS fixture")
+    expect(writes[0], id).toBe("\x1b[3g\x1b[1;1H")
+    expect(writes[1], id).toBe("\x1b[1;9H\x1bH\x1b[1;1H")
+    expect(writes[2], id).toBe("\t")
+    expect(writes[3], id).toBe("\x1b[1;6H\x1bH\x1b[1;1H")
+    expect(writes[4], id).toBe("\t")
+    expect(writes.at(-1), id).toContain("\x1b[1;73H\x1bH")
+
+    // A constant column-9 provider is indistinguishable from an unmeasured baseline.
+    const spoofed = await byId(id).term(app({ cols: 80, queryCursorPosition: async () => ({ row: 1, col: 9 }) }))
+    expect(spoofed.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(spoofed.assertions, id).toBeUndefined()
+
+    // A genuine ignored owned stop remains a negative once home and comparison are both qualified.
+    const ignored = await byId(id).term(
+      app({ cols: 80, queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 9 }, { row: 1, col: 9 }) }),
+    )
+    expect(ignored.observation, id).toMatchObject({ outcome: "unsupported", evidence: "query" })
+    expect(ignored.assertions, id).toMatchObject([{ kind: "negative" }])
+
+    const unqualified = await byId(id).term(app({ cols: 80, queryCursorPosition: async () => ({ row: 1, col: 6 }) }))
+    expect(unqualified.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+
+    const missing = await byId(id).term(app({ cols: 80, queryCursorPosition: cursorQueue(null) }))
+    expect(missing.observation, id).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+  }
+})
+
+test("tab combined fixture declines too-small geometry before any write or query", async () => {
+  for (const id of ["text.tab", "text.hts"]) {
+    for (const cols of [5, 8]) {
+      const writes: string[] = []
+      const result = await byId(id).term(
+        app({
+          rows: 24,
+          cols,
+          write: (s) => writes.push(s),
+          queryCursorPosition: async () => {
+            throw new Error(`${id} queried before the size guard`)
+          },
+        }),
+      )
+      expect(result.observation, `${id} cols=${cols}`).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+      })
+      expect(writes, `${id} cols=${cols}`).toEqual([])
+    }
+  }
 })
 
 test("HTS restores stops only inside the measured 61-column fixture", async () => {
@@ -557,7 +716,7 @@ test("headless wrap uses initialized 61 columns and declines a one-row grid", ()
 })
 
 test("tab fixtures and reverse-index region restore after a failed cursor query", async () => {
-  for (const id of ["text.tab", "unicode.tab-stops", "text.reverse-index-scroll"]) {
+  for (const id of ["text.tab", "text.hts", "unicode.tab-stops", "text.reverse-index-scroll"]) {
     const writes: string[] = []
     await expect(
       byId(id).term(
@@ -576,6 +735,23 @@ test("tab fixtures and reverse-index region restore after a failed cursor query"
       expect(writes.join("")).toContain("\x1b[3g")
       expect(writes.at(-1)).toContain("\x1b[1;57H\x1bH")
     }
+  }
+})
+
+test("tab combined fixture propagates a cleanup failure instead of swallowing it", async () => {
+  for (const id of ["text.tab", "text.hts"]) {
+    await expect(
+      byId(id).term(
+        app({
+          rows: 24,
+          cols: 61,
+          write: (sequence) => {
+            if (sequence.includes("\x1b[1;57H\x1bH")) throw new Error("restore failed")
+          },
+          queryCursorPosition: cursorQueue({ row: 1, col: 9 }, { row: 1, col: 6 }),
+        }),
+      ),
+    ).rejects.toThrow("restore failed")
   }
 })
 

@@ -570,11 +570,16 @@ it("uses the injected TTY for callback writes, columns, and nested cursor querie
   const original = definition.termNeedsGeometry
   definition.termNeedsGeometry = true
   const writes: string[] = []
+  const cursorReplies = ["\x1b[1;1R", "\x1b[1;12R", "\x1b[2;2R"]
   const out = {
     columns: 12,
     write(chunk: string) {
       writes.push(chunk)
-      if (chunk === "\x1b[6n") process.stdin.emit("data", Buffer.from("\x1b[2;2R"))
+      if (chunk === "\x1b[?7$p\x1b[c") process.stdin.emit("data", Buffer.from("\x1b[?7;1$y\x1b[?62c"))
+      if (chunk === "\x1b[6n") {
+        const reply = cursorReplies.shift()
+        if (reply) process.stdin.emit("data", Buffer.from(reply))
+      }
       return true
     },
   } as unknown as NodeJS.WriteStream
@@ -602,17 +607,37 @@ it("uses the injected TTY for callback writes, columns, and nested cursor querie
   } finally {
     definition.termNeedsGeometry = original
   }
-  expect(writes).toEqual(["\x1b[1;1H\x1b[2K", `${"W".repeat(12)}X`, "\x1b[6n"])
+  expect(writes).toEqual([
+    "\x1b[?7$p\x1b[c",
+    "\x1b[1;1H",
+    "\x1b[6n",
+    "\x1b[1;1H\x1b[2K",
+    "W".repeat(11),
+    "\x1b[6n",
+    "\x1b[1;1H\x1b[2K",
+    `${"W".repeat(12)}X`,
+    "\x1b[6n",
+  ])
   expect(batch.observations.find((item) => item.featureId === "text.wrap")).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
+    outcome: "supported",
     evidence: "query",
   })
   expect(batch.ungradedDiagnostics["text.wrap"]).toBeUndefined()
   expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({ corroboration: { status: "silent" } })
   const trace = JSON.parse(batch.rawReplies["text.wrap"]!) as { writes: string[]; queries: Array<{ sequence: string }> }
-  expect(trace.writes).toEqual(writes.slice(0, 2))
-  expect(trace.queries).toMatchObject([{ sequence: "\x1b[6n" }])
+  expect(trace.writes).toEqual([
+    "\x1b[1;1H",
+    "\x1b[1;1H\x1b[2K",
+    "W".repeat(11),
+    "\x1b[1;1H\x1b[2K",
+    `${"W".repeat(12)}X`,
+  ])
+  expect(trace.queries).toMatchObject([
+    { sequence: "\x1b[?7$p\x1b[c" },
+    { sequence: "\x1b[6n" },
+    { sequence: "\x1b[6n" },
+    { sequence: "\x1b[6n" },
+  ])
 })
 
 it("binds an explicit DA1 observation to exact outbound and reply bytes", async () => {

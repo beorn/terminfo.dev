@@ -334,20 +334,49 @@ export const cursorProbes: ProbeDefinition[] = [
             },
           }
         }
-        ctx.write("\x1b[3;5H") // Move to row 3, col 5
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        // Establish the position with text writes (a real cursor advance) rather than the CUP
+        // argument, so the report cannot pass by echoing the command it was just given.
+        const steps = [
+          { row: 1, col: 4, writes: ["\x1b[1;1H", "\x1b[2K", "ABC"] },
+          { row: 3, col: 6, writes: ["\x1b[3;1H", "\x1b[2K", "ABCDE"] },
+        ]
+        const measured: Array<{ expected: string; report: { row: number; col: number } }> = []
+        for (const step of steps) {
+          for (const sequence of step.writes) ctx.write(sequence)
+          const pos = await ctx.queryCursorPosition()
+          if (!pos) {
+            return {
+              pass: false,
+              response: JSON.stringify({ measured }),
+              observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            }
+          }
+          measured.push({ expected: step.row + ";" + step.col, report: pos })
+          if (pos.row !== step.row || pos.col !== step.col) {
+            return {
+              pass: false,
+              response: JSON.stringify({ measured }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "query",
+                note: "Text-induced cursor advance was not reported at " + step.row + ";" + step.col,
+              },
+            }
+          }
         }
+        const response = JSON.stringify({ measured })
         return {
-          pass: false,
-          response: JSON.stringify({ report: pos }),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "query",
-            note: "CPR alone cannot independently qualify its own CUP setup",
-          },
+          pass: true,
+          response,
+          observation: { outcome: "supported", evidence: "query" },
+          assertions: [
+            {
+              kind: "positive",
+              expected: "CPR tracks text-induced cursor advances at two distinct rows",
+              observed: response,
+            },
+          ],
         }
       },
     ),
@@ -468,18 +497,68 @@ export const cursorProbes: ProbeDefinition[] = [
       }
     },
     async (ctx) => {
-      ctx.write("\x1b[?45h") // enable reverse wrap
-      try {
-        const pos = await ctx.queryCursorPosition()
+      const expected = "Backspace from column 1 of row 2 reverses the wrap to the last column of row 1"
+      if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 2) {
         return {
           pass: false,
-          ...(pos && { response: JSON.stringify(pos) }),
           observation: {
             outcome: "inconclusive",
-            reason: pos ? "insufficient-evidence" : "no-response",
-            evidence: "query",
-            note: "Cursor reply after enabling reverse wrap does not measure backward-wrap movement",
+            reason: "insufficient-evidence",
+            evidence: "none",
+            note: "reverse-wrap fixture needs two measured rows and at least two columns",
           },
+        }
+      }
+      const cols = ctx.cols
+      const measured: Array<{ step: string; report: { row: number; col: number } | null }> = []
+      const ask = async (step: string) => {
+        const pos = await ctx.queryCursorPosition()
+        measured.push({ step, report: pos })
+        return pos
+      }
+      const inconclusive = (note?: string) => ({
+        pass: false,
+        response: JSON.stringify({ measured }),
+        observation: {
+          outcome: "inconclusive" as const,
+          ...(note ? { reason: "insufficient-evidence" as const, note } : { reason: "no-response" as const }),
+          evidence: "query" as const,
+        },
+      })
+      ctx.write("\x1b[?45h") // enable reverse wrap
+      try {
+        ctx.write("\x1b[?7h") // reverse wrap is only observable with auto-wrap on
+        ctx.write("\x1b[H")
+        const home = await ask("home")
+        if (!home) return inconclusive()
+        if (home.row !== 1 || home.col !== 1) return inconclusive("Home position was not reported at 1;1")
+        ctx.write("A".repeat(cols) + "B") // the deferred wrap parks the cursor on row 2
+        const wrapped = await ask("wrapped")
+        if (!wrapped) return inconclusive()
+        if (wrapped.row !== 2 || wrapped.col !== 2) {
+          return inconclusive("Deferred wrap was not reported at 2;2")
+        }
+        ctx.write("\x08\x08") // first backspace to column 1; second must reverse-wrap
+        const reverted = await ask("reverted")
+        if (!reverted) return inconclusive()
+        const response = JSON.stringify({ measured })
+        if (reverted.row === 1 && reverted.col === cols) {
+          return {
+            pass: true,
+            response,
+            observation: { outcome: "supported", evidence: "query" },
+            assertions: [{ kind: "positive", expected, observed: response }],
+          }
+        }
+        return {
+          pass: false,
+          response,
+          observation: {
+            outcome: "unsupported",
+            evidence: "query",
+            note: "Measured wrap was not reversed to row 1 column " + cols,
+          },
+          assertions: [{ kind: "negative", expected, observed: response }],
         }
       } finally {
         ctx.write("\x1b[?45l") // disable reverse wrap after the query, including errors
@@ -742,38 +821,57 @@ export const cursorProbes: ProbeDefinition[] = [
             },
           }
         }
+        const rows = ctx.rows
+        const expected = "CUD past the newline-measured bottom clamps at the last row"
+        const measured: Array<{ step: string; report: { row: number; col: number } | null }> = []
+        const ask = async (step: string) => {
+          const pos = await ctx.queryCursorPosition()
+          measured.push({ step, report: pos })
+          return pos
+        }
+        const inconclusive = (note?: string) => ({
+          pass: false,
+          response: JSON.stringify({ rows, measured }),
+          observation: {
+            outcome: "inconclusive" as const,
+            ...(note ? { reason: "insufficient-evidence" as const, note } : { reason: "no-response" as const }),
+            evidence: "query" as const,
+          },
+        })
         ctx.write("\x1b[1;1H") // position at row 1
-        const origin = await ctx.queryCursorPosition()
-        if (!origin) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        const origin = await ask("origin")
+        if (!origin) return inconclusive()
+        if (origin.row !== 1 || origin.col !== 1) return inconclusive("CUD home control did not reach 1;1")
+        // Independent setup: reach the bottom with newlines, not with CUD, so the reported bottom
+        // cannot be an echo of the CUD argument. Scrolling at the last row keeps the cursor there.
+        ctx.write("\r\n".repeat(rows - 1))
+        const bottom = await ask("bottom")
+        if (!bottom) return inconclusive()
+        if (bottom.row !== rows || bottom.col !== 1) {
+          return inconclusive("Newline-induced bottom was not reported at " + rows + ";1")
         }
-        if (origin.row !== 1 || origin.col !== 1) {
+        const target = Math.max(999, rows + 1)
+        ctx.write("\x1b[" + target + "B") // move past the measured bottom
+        const final = await ask("clamped")
+        if (!final) return inconclusive()
+        const response = JSON.stringify({ rows, measured })
+        if (final.row === rows && final.col === 1) {
           return {
-            pass: false,
-            response: JSON.stringify({ origin }),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "CUD home control did not reach 1;1",
-            },
+            pass: true,
+            response,
+            observation: { outcome: "supported", evidence: "query" },
+            assertions: [{ kind: "positive", expected, observed: response }],
           }
-        }
-        const target = Math.max(999, ctx.rows + 1)
-        ctx.write(`\x1b[${target}B`) // move past the measured bottom
-        const final = await ctx.queryCursorPosition()
-        if (!final) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
         }
         return {
           pass: false,
-          response: JSON.stringify({ rows: ctx.rows, origin, final, target }),
+          response,
           observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
+            outcome: "unsupported",
             evidence: "query",
-            note: "CUD home and final CPR were recorded; this callback does not independently qualify bottom behavior",
+            note: "CUD " + target + " did not clamp at row " + rows,
           },
+          assertions: [{ kind: "negative", expected, observed: response }],
         }
       },
     ),
@@ -822,22 +920,42 @@ export const cursorProbes: ProbeDefinition[] = [
             },
           }
         }
+        const rows = ctx.rows
+        const measured: Array<{ step: string; report: { row: number; col: number } | null }> = []
+        const ask = async (step: string) => {
+          const pos = await ctx.queryCursorPosition()
+          measured.push({ step, report: pos })
+          return pos
+        }
         try {
           ctx.write("\x1b[5;15r") // set scroll region rows 5-15
           ctx.write("\x1b[?6h") // enable DECOM
-          ctx.write("\x1b[1;1H") // CUP 1;1 — relative to scroll region
-          const pos = await ctx.queryCursorPosition()
-          if (!pos) {
-            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          ctx.write("\x1b[1;1H") // CUP 1;1 — DECOM numbers the region top as 1
+          const top = await ask("region-top")
+          ctx.write("\x1b[2;1H")
+          const second = await ask("region-row-2")
+          const target = Math.max(999, rows + 1)
+          ctx.write("\x1b[" + target + "B") // CUD past the region bottom
+          const bottom = await ask("region-bottom")
+          if (!top || !second || !bottom) {
+            return {
+              pass: false,
+              response: JSON.stringify({ rows, measured }),
+              observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            }
           }
+          const relative = [top, second, bottom].map((sample) => sample.row + ";" + sample.col).join(", ")
           return {
             pass: false,
-            response: JSON.stringify({ report: pos }),
+            response: JSON.stringify({ rows, measured }),
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "query",
-              note: "Relative CPR does not prove the physical row or independently qualify DECOM and margins",
+              note:
+                "DECOM makes CPR region-relative (VT100: region top is 1, bottom is 11); measured " +
+                relative +
+                " — the physical row 5 and the margins still need an independent observable",
             },
           }
         } finally {

@@ -30,6 +30,86 @@ function validSize(value: number, minimum: number): boolean {
   return Number.isSafeInteger(value) && value >= minimum
 }
 
+type CursorPosition = { row: number; col: number }
+
+/** DECAWM (mode 7) governs right-margin wrapping; without it a wrap probe cannot conclude. */
+const DECAWM_MODE = 7
+
+/**
+ * Combined HT/HTS fixture: the home position, a comparison stop at column 9 and the owned stop
+ * at column 6 must each be qualified by their own measured CPR, so a constant, spoofed or
+ * unqualified reply provider stays inconclusive and only a genuinely ignored owned stop is
+ * unsupported. Isolation of either primitive is out of scope, so the assertion names the
+ * combined fixture rather than attributing a primitive failure.
+ */
+function tabCombinedResult(
+  home: CursorPosition | null,
+  comparison: CursorPosition | null,
+  owned: CursorPosition | null,
+  cols: number,
+): ProbeResult {
+  const response = JSON.stringify({ cols, home, comparison, owned })
+  if (!home) {
+    return { pass: false, response, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+  }
+  if (home.row !== 1 || home.col !== 1) {
+    return {
+      pass: false,
+      response,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+        note: "Measured home position was not row 1, column 1; the cursor-query provider is not position-sensitive",
+      },
+    }
+  }
+  if (!comparison) {
+    return { pass: false, response, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+  }
+  if (comparison.row !== 1 || comparison.col !== 9) {
+    return {
+      pass: false,
+      response,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+        note: "Comparison stop at column 9 was not established; fixture setup not qualified",
+      },
+    }
+  }
+  if (!owned) {
+    return { pass: false, response, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+  }
+  const expected = "combined HT/HTS fixture advances to the nearest owned stop at row 1, column 6"
+  if (owned.row === 1 && owned.col === 6) {
+    return {
+      pass: true,
+      response,
+      observation: { outcome: "supported", evidence: "query" },
+      assertions: [{ kind: "positive", expected, observed: JSON.stringify({ home, comparison, owned }) }],
+    }
+  }
+  if (owned.row === 1 && owned.col === 9) {
+    return {
+      pass: false,
+      response,
+      observation: {
+        outcome: "unsupported",
+        evidence: "query",
+        note: "Owned stop at column 6 was ignored; tab fell through to the measured comparison stop (home 1;1 and comparison 1;9 were both qualified)",
+      },
+      assertions: [{ kind: "negative", expected, observed: JSON.stringify({ home, comparison, owned }) }],
+    }
+  }
+  return {
+    pass: false,
+    response,
+    observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query" },
+  }
+}
+
 function tabClearResult(
   positions: {
     oldFirst: { row: number; col: number } | null
@@ -243,11 +323,88 @@ export const textProbes: ProbeDefinition[] = [
             },
           }
         }
+        const decawm = await ctx.queryMode(DECAWM_MODE)
+        if (decawm !== "set") {
+          return {
+            pass: false,
+            response: JSON.stringify({ cols, decawm }),
+            observation: {
+              outcome: "inconclusive",
+              reason: decawm === null ? "no-response" : "insufficient-evidence",
+              evidence: "query",
+              note:
+                decawm === null
+                  ? "DECAWM setup did not reply"
+                  : `DECAWM measured ${decawm}; right-margin wrap not qualified`,
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H")
+        const home = await ctx.queryCursorPosition()
+        if (!home) {
+          return {
+            pass: false,
+            response: JSON.stringify({ cols, decawm }),
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        }
+        if (home.row !== 1 || home.col !== 1) {
+          return {
+            pass: false,
+            response: JSON.stringify({ cols, decawm, home }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "Measured home position was not row 1, column 1; the cursor-query provider is not position-sensitive",
+            },
+          }
+        }
         ctx.write("\x1b[1;1H\x1b[2K")
-        const line = "W".repeat(cols) + "X"
-        ctx.write(line)
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "wrapped text cells")
+        ctx.write("W".repeat(cols - 1))
+        const control = await ctx.queryCursorPosition()
+        if (!control) {
+          return {
+            pass: false,
+            response: JSON.stringify({ cols, decawm, home }),
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        }
+        if (control.row !== 1 || control.col !== cols) {
+          return {
+            pass: false,
+            response: JSON.stringify({ cols, decawm, home, control }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: "Control did not leave the cursor at the right margin; wrap not qualified",
+            },
+          }
+        }
+        ctx.write("\x1b[1;1H\x1b[2K")
+        ctx.write("W".repeat(cols) + "X")
+        const target = await ctx.queryCursorPosition()
+        if (!target) {
+          return {
+            pass: false,
+            response: JSON.stringify({ cols, decawm, home, control }),
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          }
+        }
+        const pass = target.row === 2 && target.col === 2
+        return {
+          pass,
+          response: JSON.stringify({ cols, decawm, home, control, target }),
+          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: pass ? "positive" : "negative",
+              expected: `wrap after ${cols} columns lands the cursor at row 2, column 2`,
+              observed: JSON.stringify({ home, control, target }),
+            },
+          ],
+        }
       },
     ),
     termNeedsGeometry: true,
@@ -275,10 +432,15 @@ export const textProbes: ProbeDefinition[] = [
         const refusal = tooSmall(ctx, 1, 9)
         if (refusal) return refusal
         try {
-          ctx.write("\x1b[3g\x1b[1;9H\x1bH\x1b[1;1H")
+          ctx.write("\x1b[3g\x1b[1;1H")
+          const home = await ctx.queryCursorPosition()
+          ctx.write("\x1b[1;9H\x1bH\x1b[1;1H")
           ctx.write("\t")
-          const pos = await ctx.queryCursorPosition()
-          return unmeasuredCellResult(pos, "tab-stop placement of X")
+          const comparison = await ctx.queryCursorPosition()
+          ctx.write("\x1b[1;6H\x1bH\x1b[1;1H")
+          ctx.write("\t")
+          const owned = await ctx.queryCursorPosition()
+          return tabCombinedResult(home, comparison, owned, ctx.cols)
         } finally {
           restoreDefaultTabs(ctx.write, ctx.cols)
         }
@@ -764,21 +926,18 @@ export const textProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
-        if (!validSize(ctx.cols, 6)) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "HTS fixture needs at least 6 columns",
-            },
-          }
-        }
+        const refusal = tooSmall(ctx, 1, 9)
+        if (refusal) return refusal
         try {
-          ctx.write("\x1b[3g\x1b[1;6H\x1bH\x1b[1;1H\t")
-          const pos = await ctx.queryCursorPosition()
-          return unmeasuredCellResult(pos, "new tab-stop behavior without a calibrated prior stop")
+          ctx.write("\x1b[3g\x1b[1;1H")
+          const home = await ctx.queryCursorPosition()
+          ctx.write("\x1b[1;9H\x1bH\x1b[1;1H")
+          ctx.write("\t")
+          const comparison = await ctx.queryCursorPosition()
+          ctx.write("\x1b[1;6H\x1bH\x1b[1;1H")
+          ctx.write("\t")
+          const owned = await ctx.queryCursorPosition()
+          return tabCombinedResult(home, comparison, owned, ctx.cols)
         } finally {
           restoreDefaultTabs(ctx.write, ctx.cols)
         }

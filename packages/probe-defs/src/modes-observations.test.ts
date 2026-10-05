@@ -210,6 +210,7 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
     if (state === null) {
       expect(result.pass).toBe(false)
       expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+      expect(result.observation?.note, `${id}: note must survive projection`).toBe("No DECRPM response")
       expect(result.assertions ?? []).toEqual([])
     } else if (state === "unknown") {
       expect(result.pass).toBe(false)
@@ -219,6 +220,7 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
         reason: "insufficient-evidence",
         evidence: "query",
       })
+      expect(result.observation?.note, `${id}: note must survive projection`).toMatch(/not recognized/)
       expect(result.assertions ?? []).toEqual([])
     } else {
       expect(result.pass).toBe(true)
