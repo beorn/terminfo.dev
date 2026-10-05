@@ -1,5 +1,166 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank } from "./helpers.ts"
+
+/** Refuse a modes capture fixture before any bytes when the measured geometry is too small. */
+function captureRefusal(ctx: TermContext, minRows: number, minCols: number, feature: string): ProbeResult | undefined {
+  if (!ctx.capture) return undefined
+  if (Number.isSafeInteger(ctx.rows) && Number.isSafeInteger(ctx.cols) && ctx.rows >= minRows && ctx.cols >= minCols) {
+    return undefined
+  }
+  return {
+    pass: false,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: `${feature} capture needs at least ${minRows}x${minCols}, measured ${ctx.rows}x${ctx.cols}`,
+    },
+  }
+}
+
+/**
+ * SGR-stack capture: the target pushes bold, RESETS the live attributes, applies italic to X, and
+ * pops before Y. A working roundtrip leaves Y bold-only (bold restored, no italic); an ignored
+ * push/pop leaves Y italic-only (bold never restored, italic never cleared). Comparing both
+ * attributes in one frame — bold present AND italic absent — is the discriminator. A pending push
+ * is popped on capture failure so the fixture never leaves the stack unbalanced.
+ */
+async function xtSgrStackCapture(ctx: TermContext, id: string, label: string): Promise<ProbeResult> {
+  if (!ctx.capture) throw new Error(`Mode capture ${id} requires a capture callback`)
+  const refusal = captureRefusal(ctx, 3, 6, id)
+  if (refusal) return refusal
+  let pushed = false
+  try {
+    ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[1m\x1b[3mX\x1b[0mY")
+    const control = await ctx.capture({
+      role: "control",
+      label: `${id}: X bold+italic, Y plain after SGR 0 (no stack)`,
+    })
+    ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[1m")
+    ctx.write("\x1b[#{")
+    pushed = true
+    ctx.write("\x1b[0m\x1b[3mX\x1b[#}Y")
+    pushed = false
+    const target = await ctx.capture({
+      role: "target",
+      label: `${id}: ${label} — Y should be bold-only (bold restored by the pop, italic cleared)`,
+    })
+    const observed = JSON.stringify({ control: control.label, target: target.label })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [control, target],
+        note: "Control shows Y plain; the target pushes bold, resets attributes, styles X italic, then pops, so Y must be bold and NOT italic if the SGR stack round-tripped. An ignored push/pop leaves Y italic-only and not bold. Requires independent pixel review of both attributes",
+      },
+    }
+  } finally {
+    if (pushed) ctx.write("\x1b[#}")
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
+/**
+ * Mode save/restore capture: the fixture reaches the true measured wrap boundary. Both frames
+ * write exactly `ctx.cols` Xs so the cursor is on the last column, then one `!`. With wrap off the
+ * `!` overwrites the last column and stays on row 1; with wrap saved-then-restored it wraps to
+ * row 2. Both frames therefore differ only by the restored wrap state.
+ */
+async function xtModeSaveCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
+  if (!ctx.capture) throw new Error(`Mode capture ${id} requires a capture callback`)
+  const refusal = captureRefusal(ctx, 2, 2, id)
+  if (refusal) return refusal
+  const xs = "X".repeat(ctx.cols)
+  try {
+    ctx.write(`\x1b[?7l\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
+    const control = await ctx.capture({
+      role: "control",
+      label: `${id}: auto-wrap off, so the overflow ! overwrites the last column and stays on row 1`,
+    })
+    ctx.write(`\x1b[?7h\x1b[?7s\x1b[?7l\x1b[?7r\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
+    const target = await ctx.capture({
+      role: "target",
+      label: `${id}: wrap saved on, disabled and restored; the ${ctx.cols}-column overflow ! should wrap to row 2`,
+    })
+    const observed = JSON.stringify({ control: control.label, target: target.label })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [control, target],
+        note: "Control keeps the overflow on row 1 with wrap off; the target saves wrap on, disables it, then restores it, so the overflow should wrap to row 2. Whether the restore re-enabled wrap requires independent pixel review",
+      },
+    }
+  } finally {
+    ctx.write("\x1b[?7h\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
+/**
+ * Color-stack capture: index 1 is first set to a KNOWN baseline (blue) so a pop is measurably
+ * distinct. The target pushes the palette, redefines index 1 green, prints X while still pushed
+ * (the mutation control), pops, then prints Y. The discriminator is Y against the measured blue
+ * control: a working push/pop restores blue, and an ignored pop leaves the mutated green. X is
+ * printed before the pop only to prove the redefinition took effect; a terminal may recolor X once
+ * the palette is popped, so X is never the discriminator. A pending push is popped on failure so the
+ * fixture never leaves the stack unbalanced.
+ */
+async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
+  if (!ctx.capture) throw new Error(`Mode capture ${id} requires a capture callback`)
+  const refusal = captureRefusal(ctx, 3, 8, id)
+  if (refusal) return refusal
+  let pushed = false
+  try {
+    ctx.write("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07\x1b[38;5;1mXY")
+    const control = await ctx.capture({
+      role: "control",
+      label: `${id}: palette index 1 at the blue baseline; X and Y both use it`,
+    })
+    ctx.write("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07")
+    ctx.write("\x1b[#P")
+    pushed = true
+    ctx.write("\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mX")
+    const pushedMutation = await ctx.capture({
+      role: "control",
+      label: `${id}: X under the pushed palette; index 1 must read green here for the redefinition to count as measured`,
+    })
+    ctx.write("\x1b[#Q")
+    pushed = false
+    ctx.write("\x1b[38;5;1mY")
+    const target = await ctx.capture({
+      role: "target",
+      label: `${id}: Y after the pop; Y must match the blue baseline control if the pop restored index 1`,
+    })
+    const observed = JSON.stringify({
+      control: control.label,
+      pushedMutation: pushedMutation.label,
+      target: target.label,
+    })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [control, pushedMutation, target],
+        note: "Control sets index 1 to the blue baseline and prints X and Y in it. The pushed frame redefines index 1 green and prints X while the palette change is still on the stack: X must read green there, or the mutation did not take effect and the row stays inconclusive. The target pops, then prints Y: a working push/pop restores the blue baseline, so Y must match the control, while an ignored pop leaves index 1 green and Y green. X may recolor to blue once the palette is popped on terminals that re-resolve indices, so judge Y against the blue control, never X. Requires independent pixel review",
+      },
+    }
+  } finally {
+    if (pushed) ctx.write("\x1b[#Q")
+    ctx.write("\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
+  }
+}
 
 const ALT_1049_SEED_A = "PRIMARY-A"
 const ALT_1049_SEED_B = "PRIMARY-B"
@@ -169,6 +330,50 @@ export const modesProbes: ProbeDefinition[] = [
             },
           }
         }
+        const refusal = captureRefusal(ctx, 3, 8, "Alt-screen exit")
+        if (refusal) return refusal
+        if (ctx.capture) {
+          try {
+            ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
+            ctx.write("\x1b[1;1HPRIMARY")
+            const control = await ctx.capture({
+              role: "control",
+              label: "Primary-screen marker PRIMARY before entering the alternate screen",
+            })
+            ctx.write("\x1b[?1049h")
+            ctx.write("\x1b[1;1HALTONLY")
+            const alternate = await ctx.capture({
+              role: "target",
+              label: "Alternate-screen marker ALTONLY while ?1049 is set",
+            })
+            ctx.write("\x1b[?1049l")
+            const restored = await ctx.capture({
+              role: "target",
+              label: "Primary-screen marker after ?1049l: PRIMARY restored and ALTONLY absent",
+            })
+            const observed = JSON.stringify({
+              rows: ctx.rows,
+              cols: ctx.cols,
+              control: control.label,
+              alternate: alternate.label,
+              restored: restored.label,
+            })
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: restored.ref,
+                frames: [control, alternate, restored],
+                note: "Control shows PRIMARY; the alternate frame shows ALTONLY; the restored frame must show PRIMARY again with ALTONLY gone. Whether the primary buffer came back requires independent pixel review, because CPR after exit proves nothing about buffer contents",
+              },
+            }
+          } finally {
+            ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
         ctx.write("\x1b[?1049h") // enter
         try {
           ctx.write("\x1b[3;3H") // move somewhere in alt
@@ -327,6 +532,44 @@ export const modesProbes: ProbeDefinition[] = [
             },
           }
         }
+        const refusal = captureRefusal(ctx, 1, 6, "Insert/replace")
+        if (refusal) return refusal
+        if (ctx.capture) {
+          try {
+            ctx.write("\x1b[4l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCD\x1b[1;1HX")
+            const control = await ctx.capture({
+              role: "control",
+              label: "Seed ABCD with X typed at column 1 in replace mode: expect XBCD",
+            })
+            ctx.write("\x1b[4l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCD\x1b[1;1H\x1b[4hX")
+            const target = await ctx.capture({
+              role: "target",
+              label: "Seed ABCD with X typed at column 1 under IRM (ANSI 4h): expect XABCD",
+            })
+            const observed = JSON.stringify({
+              rows: ctx.rows,
+              cols: ctx.cols,
+              seed: "ABCD",
+              typed: { row: 1, col: 1, char: "X" },
+              control: control.label,
+              target: target.label,
+            })
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "Control replaces A with X (XBCD); the IRM target inserts X and shifts the run (XABCD). Whether the shift actually happened requires independent pixel review",
+              },
+            }
+          } finally {
+            ctx.write("\x1b[4l\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("ABCD")
         ctx.write("\x1b[1;2H") // move to col 2
@@ -394,91 +637,223 @@ export const modesProbes: ProbeDefinition[] = [
   ),
 
   // Left/right margin mode
-  probe(
-    "modes.left-right-margin",
-    (ctx) => {
-      ctx.feed("\x1b[?69h")
-      const pass = ctx.getMode("leftRightMargin") === true
-      ctx.feed("\x1b[?69l")
-      return parserStateResult(
-        null,
-        "Left-right margin mode constrains horizontal operations",
-        { mode: pass },
-        "Mode metadata does not measure margins",
-      )
-    },
-    () =>
-      Promise.resolve({
-        pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note: "Margin mode left unchanged; this probe does not measure left/right margin behavior",
-        },
-      }),
-  ),
+  {
+    ...probe(
+      "modes.left-right-margin",
+      (ctx) => {
+        ctx.feed("\x1b[?69h")
+        const pass = ctx.getMode("leftRightMargin") === true
+        ctx.feed("\x1b[?69l")
+        return parserStateResult(
+          null,
+          "Left-right margin mode constrains horizontal operations",
+          { mode: pass },
+          "Mode metadata does not measure margins",
+        )
+      },
+      async (ctx) => {
+        const refusal = captureRefusal(ctx, 2, 8, "Left/right margin")
+        if (refusal) return refusal
+        if (ctx.capture) {
+          try {
+            ctx.write("\x1b[?69l\x1b[?7h\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDE")
+            const control = await ctx.capture({
+              role: "control",
+              label: "Five glyphs ABCDE written from row 1 column 1 with margins reset: all stay on row 1",
+            })
+            ctx.write("\x1b[2J\x1b[H\x1b[?69h\x1b[3;6s\x1b[1;3HABCDE")
+            const target = await ctx.capture({
+              role: "target",
+              label: "DECLRMM margins 3-6: ABCDE written from column 3 wraps at column 6 onto row 2",
+            })
+            const observed = JSON.stringify({
+              rows: ctx.rows,
+              cols: ctx.cols,
+              margins: "3-6",
+              control: control.label,
+              target: target.label,
+            })
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "Control keeps ABCDE on row 1; with DECLRMM margins 3-6 the fifth glyph wraps at column 6 onto row 2. Whether the wrap respected the margin requires independent pixel review",
+              },
+            }
+          } finally {
+            ctx.write("\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "none",
+            note: "Margin mode left unchanged; this probe does not measure left/right margin behavior",
+          },
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // ?47 — legacy alt screen (no cursor save)
-  probe(
-    "modes.altscreen-47",
-    (ctx) => {
-      ctx.feed("\x1b[?47h")
-      const entered = ctx.getMode("altScreen") === true
-      ctx.feed("\x1b[?47l")
-      const exited = ctx.getMode("altScreen") === false
-      return parserStateResult(
-        null,
-        "?47 swaps the visible screen buffer",
-        { entered, exited },
-        "Mode metadata does not measure the buffer",
-      )
-    },
-    () =>
-      Promise.resolve({
-        pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note: "Alternate buffer left unchanged; this probe does not measure its visible contents",
-        },
-      }),
-  ),
+  {
+    ...probe(
+      "modes.altscreen-47",
+      (ctx) => {
+        ctx.feed("\x1b[?47h")
+        const entered = ctx.getMode("altScreen") === true
+        ctx.feed("\x1b[?47l")
+        const exited = ctx.getMode("altScreen") === false
+        return parserStateResult(
+          null,
+          "?47 swaps the visible screen buffer",
+          { entered, exited },
+          "Mode metadata does not measure the buffer",
+        )
+      },
+      async (ctx) => {
+        const refusal = captureRefusal(ctx, 1, 8, "?47 alternate screen")
+        if (refusal) return refusal
+        if (ctx.capture) {
+          try {
+            ctx.write("\x1b[?47l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HMAIN47")
+            const control = await ctx.capture({
+              role: "control",
+              label: "Primary-screen marker MAIN47 before ?47 is set",
+            })
+            ctx.write("\x1b[?47h\x1b[1;1HALT47")
+            const alternate = await ctx.capture({
+              role: "target",
+              label: "Alternate-screen marker ALT47 while ?47 is set",
+            })
+            ctx.write("\x1b[?47l")
+            const restored = await ctx.capture({
+              role: "target",
+              label: "Primary-screen marker after ?47 is reset: MAIN47 restored and ALT47 absent",
+            })
+            const observed = JSON.stringify({
+              rows: ctx.rows,
+              cols: ctx.cols,
+              control: control.label,
+              alternate: alternate.label,
+              restored: restored.label,
+            })
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: restored.ref,
+                frames: [control, alternate, restored],
+                note: "Control shows MAIN47; the alternate frame shows ALT47; the restored frame must show MAIN47 again with ALT47 gone. Whether ?47 actually swapped buffers requires independent pixel review",
+              },
+            }
+          } finally {
+            ctx.write("\x1b[?47l\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "none",
+            note: "Alternate buffer left unchanged; this probe does not measure its visible contents",
+          },
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // ?1047 — alt screen, clear on enter
-  probe(
-    "modes.altscreen-1047",
-    (ctx) => {
-      ctx.feed("\x1b[?1047h")
-      const entered = ctx.getMode("altScreen") === true
-      ctx.feed("\x1b[?1047l")
-      const exited = ctx.getMode("altScreen") === false
-      return parserStateResult(
-        null,
-        "?1047 swaps and clears the visible alternate buffer",
-        { entered, exited },
-        "Mode metadata does not measure the buffer",
-      )
-    },
-    async (ctx) => {
-      const decrpmResult = await ctx.queryMode(1047)
-      return {
-        pass: false,
-        ...(decrpmResult !== null && { response: decrpmResult }),
-        observation: {
-          outcome: "inconclusive",
-          reason: decrpmResult === null ? "no-response" : "insufficient-evidence",
-          evidence: "query",
-          note:
-            decrpmResult === null
-              ? "No DECRPM reply; alternate-buffer clearing was not measured"
-              : "DECRPM status does not measure alternate-buffer clearing",
-        },
-      }
-    },
-    "query",
-  ),
+  {
+    ...probe(
+      "modes.altscreen-1047",
+      (ctx) => {
+        ctx.feed("\x1b[?1047h")
+        const entered = ctx.getMode("altScreen") === true
+        ctx.feed("\x1b[?1047l")
+        const exited = ctx.getMode("altScreen") === false
+        return parserStateResult(
+          null,
+          "?1047 swaps and clears the visible alternate buffer",
+          { entered, exited },
+          "Mode metadata does not measure the buffer",
+        )
+      },
+      async (ctx) => {
+        const refusal = captureRefusal(ctx, 1, 8, "?1047 alternate screen")
+        if (refusal) return refusal
+        if (ctx.capture) {
+          try {
+            ctx.write("\x1b[?1047l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HMAIN47")
+            const control = await ctx.capture({
+              role: "control",
+              label: "Primary-screen marker MAIN47 before ?1047 is set",
+            })
+            ctx.write("\x1b[?1047h\x1b[1;1HALT1047")
+            const alternate = await ctx.capture({
+              role: "target",
+              label: "Alternate-screen marker ALT1047 while ?1047 is set (enter clears the alt buffer)",
+            })
+            ctx.write("\x1b[?1047l")
+            const restored = await ctx.capture({
+              role: "target",
+              label: "Primary-screen marker after ?1047 is reset: MAIN47 restored and ALT1047 absent",
+            })
+            const observed = JSON.stringify({
+              rows: ctx.rows,
+              cols: ctx.cols,
+              control: control.label,
+              alternate: alternate.label,
+              restored: restored.label,
+            })
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: restored.ref,
+                frames: [control, alternate, restored],
+                note: "Control shows MAIN47; the alternate frame shows ALT1047; the restored frame must show MAIN47 again with ALT1047 gone. Whether ?1047 actually swapped and cleared buffers requires independent pixel review",
+              },
+            }
+          } finally {
+            ctx.write("\x1b[?1047l\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
+        const decrpmResult = await ctx.queryMode(1047)
+        return {
+          pass: false,
+          ...(decrpmResult !== null && { response: decrpmResult }),
+          observation: {
+            outcome: "inconclusive",
+            reason: decrpmResult === null ? "no-response" : "insufficient-evidence",
+            evidence: "query",
+            note:
+              decrpmResult === null
+                ? "No DECRPM reply; alternate-buffer clearing was not measured"
+                : "DECRPM status does not measure alternate-buffer clearing",
+          },
+        }
+      },
+      "query",
+    ),
+    termNeedsGeometry: true,
+  },
 
   // ?1048 — save/restore cursor only (no alt screen)
   {
@@ -726,250 +1101,213 @@ export const modesProbes: ProbeDefinition[] = [
 
   // XTPUSHSGR — push SGR stack (CSI # {)
   // Sequence consumed without producing output. Verify terminal stays responsive afterward.
-  probe(
-    "modes.xtpushsgr",
-    (ctx) => {
-      // Capture any output during the push — should be empty.
-      const pushOut = ctx.feedCapture("\x1b[#{")
-      if (pushOut.length > 0) {
+  {
+    ...probe(
+      "modes.xtpushsgr",
+      (ctx) => {
+        // Capture any output during the push — should be empty.
+        const pushOut = ctx.feedCapture("\x1b[#{")
+        if (pushOut.length > 0) {
+          return {
+            pass: false,
+            response: pushOut,
+            observation: {
+              outcome: "inconclusive",
+              reason: "invalid-reply",
+              evidence: "query",
+              note: "Unexpected output during stack operation",
+            },
+          }
+        }
+        // Verify the terminal is still responsive by issuing a DA1 query.
+        const probeResponse = ctx.feedCapture("\x1b[c")
+        // Pop to leave clean state.
+        ctx.feed("\x1b[#}")
         return {
           pass: false,
-          response: pushOut,
-          observation: {
-            outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
-          },
-        }
-      }
-      // Verify the terminal is still responsive by issuing a DA1 query.
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      // Pop to leave clean state.
-      ctx.feed("\x1b[#}")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[#{")
-      try {
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
+          response: probeResponse,
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
             evidence: "consumed",
-            note: "Cursor responsiveness does not measure saved/restored state",
+            note: "DA1 responsiveness does not measure saved/restored stack state",
           },
         }
-      } finally {
-        ctx.write("\x1b[#}") // pop to clean up
-      }
-    },
-  ),
+      },
+      async (ctx) => {
+        if (ctx.capture) return xtSgrStackCapture(ctx, "modes.xtpushsgr", "XTPUSHSGR (CSI # {) then XTPOPSGR")
+        ctx.write("\x1b[#{")
+        try {
+          const pos = await ctx.queryCursorPosition()
+          if (!pos) {
+            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          }
+          return {
+            pass: false,
+            response: JSON.stringify(pos),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "consumed",
+              note: "Cursor responsiveness does not measure saved/restored state",
+            },
+          }
+        } finally {
+          ctx.write("\x1b[#}") // pop to clean up
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // XTPOPSGR — pop SGR stack (CSI # })
   // Push first so the pop is meaningful, then verify responsiveness.
-  probe(
-    "modes.xtpopsgr",
-    (ctx) => {
-      ctx.feed("\x1b[#{")
-      const popOut = ctx.feedCapture("\x1b[#}")
-      if (popOut.length > 0) {
+  {
+    ...probe(
+      "modes.xtpopsgr",
+      (ctx) => {
+        ctx.feed("\x1b[#{")
+        const popOut = ctx.feedCapture("\x1b[#}")
+        if (popOut.length > 0) {
+          return {
+            pass: false,
+            response: popOut,
+            observation: {
+              outcome: "inconclusive",
+              reason: "invalid-reply",
+              evidence: "query",
+              note: "Unexpected output during stack operation",
+            },
+          }
+        }
+        const probeResponse = ctx.feedCapture("\x1b[c")
         return {
           pass: false,
-          response: popOut,
+          response: probeResponse,
           observation: {
             outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "DA1 responsiveness does not measure saved/restored stack state",
           },
         }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[#{")
-      ctx.write("\x1b[#}")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) {
-        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-      }
-      return {
-        pass: false,
-        response: JSON.stringify(pos),
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "Cursor responsiveness does not measure saved/restored state",
-        },
-      }
-    },
-  ),
+      },
+      async (ctx) => {
+        if (ctx.capture) return xtSgrStackCapture(ctx, "modes.xtpopsgr", "XTPOPSGR (CSI # }) after a push")
+        ctx.write("\x1b[#{")
+        ctx.write("\x1b[#}")
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        return {
+          pass: false,
+          response: JSON.stringify(pos),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "Cursor responsiveness does not measure saved/restored state",
+          },
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // XTSAVE — save DEC private modes (CSI ? Pm s). Use DECAWM (mode 7) — universally supported.
-  probe(
-    "modes.xtsave",
-    (ctx) => {
-      const saveOut = ctx.feedCapture("\x1b[?7s")
-      if (saveOut.length > 0) {
+  {
+    ...probe(
+      "modes.xtsave",
+      (ctx) => {
+        const saveOut = ctx.feedCapture("\x1b[?7s")
+        if (saveOut.length > 0) {
+          return {
+            pass: false,
+            response: saveOut,
+            observation: {
+              outcome: "inconclusive",
+              reason: "invalid-reply",
+              evidence: "query",
+              note: "Unexpected output during stack operation",
+            },
+          }
+        }
+        const probeResponse = ctx.feedCapture("\x1b[c")
+        // Restore to leave clean state.
+        ctx.feed("\x1b[?7r")
         return {
           pass: false,
-          response: saveOut,
-          observation: {
-            outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
-          },
-        }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      // Restore to leave clean state.
-      ctx.feed("\x1b[?7r")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?7s")
-      try {
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
+          response: probeResponse,
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
             evidence: "consumed",
-            note: "Cursor responsiveness does not measure saved/restored state",
+            note: "DA1 responsiveness does not measure saved/restored stack state",
           },
         }
-      } finally {
-        ctx.write("\x1b[?7r") // restore to clean up
-      }
-    },
-  ),
+      },
+      async (ctx) => {
+        if (ctx.capture) return xtModeSaveCapture(ctx, "modes.xtsave")
+        ctx.write("\x1b[?7s")
+        try {
+          const pos = await ctx.queryCursorPosition()
+          if (!pos) {
+            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          }
+          return {
+            pass: false,
+            response: JSON.stringify(pos),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "consumed",
+              note: "Cursor responsiveness does not measure saved/restored state",
+            },
+          }
+        } finally {
+          ctx.write("\x1b[?7r") // restore to clean up
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // XTRESTORE — restore DEC private modes (CSI ? Pm r). Pair with a save first.
-  probe(
-    "modes.xtrestore",
-    (ctx) => {
-      ctx.feed("\x1b[?7s")
-      const restoreOut = ctx.feedCapture("\x1b[?7r")
-      if (restoreOut.length > 0) {
+  {
+    ...probe(
+      "modes.xtrestore",
+      (ctx) => {
+        ctx.feed("\x1b[?7s")
+        const restoreOut = ctx.feedCapture("\x1b[?7r")
+        if (restoreOut.length > 0) {
+          return {
+            pass: false,
+            response: restoreOut,
+            observation: {
+              outcome: "inconclusive",
+              reason: "invalid-reply",
+              evidence: "query",
+              note: "Unexpected output during stack operation",
+            },
+          }
+        }
+        const probeResponse = ctx.feedCapture("\x1b[c")
         return {
           pass: false,
-          response: restoreOut,
+          response: probeResponse,
           observation: {
             outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "DA1 responsiveness does not measure saved/restored stack state",
           },
         }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?7s")
-      ctx.write("\x1b[?7r")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) {
-        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-      }
-      return {
-        pass: false,
-        response: JSON.stringify(pos),
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "Cursor responsiveness does not measure saved/restored state",
-        },
-      }
-    },
-  ),
-
-  // XTPUSHCOLORS — push color palette (CSI # P)
-  probe(
-    "modes.xtpushcolors",
-    (ctx) => {
-      const pushOut = ctx.feedCapture("\x1b[#P")
-      if (pushOut.length > 0) {
-        return {
-          pass: false,
-          response: pushOut,
-          observation: {
-            outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
-          },
-        }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      // Pop to leave clean state.
-      ctx.feed("\x1b[#Q")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[#P")
-      try {
+      },
+      async (ctx) => {
+        if (ctx.capture) return xtModeSaveCapture(ctx, "modes.xtrestore")
+        ctx.write("\x1b[?7s")
+        ctx.write("\x1b[?7r")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
           return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
@@ -984,59 +1322,120 @@ export const modesProbes: ProbeDefinition[] = [
             note: "Cursor responsiveness does not measure saved/restored state",
           },
         }
-      } finally {
-        ctx.write("\x1b[#Q") // pop to clean up
-      }
-    },
-  ),
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
-  // XTPOPCOLORS — pop color palette (CSI # Q). Push first so the pop is meaningful.
-  probe(
-    "modes.xtpopcolors",
-    (ctx) => {
-      ctx.feed("\x1b[#P")
-      const popOut = ctx.feedCapture("\x1b[#Q")
-      if (popOut.length > 0) {
+  // XTPUSHCOLORS — push color palette (CSI # P)
+  {
+    ...probe(
+      "modes.xtpushcolors",
+      (ctx) => {
+        const pushOut = ctx.feedCapture("\x1b[#P")
+        if (pushOut.length > 0) {
+          return {
+            pass: false,
+            response: pushOut,
+            observation: {
+              outcome: "inconclusive",
+              reason: "invalid-reply",
+              evidence: "query",
+              note: "Unexpected output during stack operation",
+            },
+          }
+        }
+        const probeResponse = ctx.feedCapture("\x1b[c")
+        // Pop to leave clean state.
+        ctx.feed("\x1b[#Q")
         return {
           pass: false,
-          response: popOut,
+          response: probeResponse,
           observation: {
             outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "DA1 responsiveness does not measure saved/restored stack state",
           },
         }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[#P")
-      ctx.write("\x1b[#Q")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) {
-        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-      }
-      return {
-        pass: false,
-        response: JSON.stringify(pos),
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "Cursor responsiveness does not measure saved/restored state",
-        },
-      }
-    },
-  ),
+      },
+      async (ctx) => {
+        if (ctx.capture) return xtColorStackCapture(ctx, "modes.xtpushcolors")
+        ctx.write("\x1b[#P")
+        try {
+          const pos = await ctx.queryCursorPosition()
+          if (!pos) {
+            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          }
+          return {
+            pass: false,
+            response: JSON.stringify(pos),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "consumed",
+              note: "Cursor responsiveness does not measure saved/restored state",
+            },
+          }
+        } finally {
+          ctx.write("\x1b[#Q") // pop to clean up
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
+
+  // XTPOPCOLORS — pop color palette (CSI # Q). Push first so the pop is meaningful.
+  {
+    ...probe(
+      "modes.xtpopcolors",
+      (ctx) => {
+        ctx.feed("\x1b[#P")
+        const popOut = ctx.feedCapture("\x1b[#Q")
+        if (popOut.length > 0) {
+          return {
+            pass: false,
+            response: popOut,
+            observation: {
+              outcome: "inconclusive",
+              reason: "invalid-reply",
+              evidence: "query",
+              note: "Unexpected output during stack operation",
+            },
+          }
+        }
+        const probeResponse = ctx.feedCapture("\x1b[c")
+        return {
+          pass: false,
+          response: probeResponse,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "DA1 responsiveness does not measure saved/restored stack state",
+          },
+        }
+      },
+      async (ctx) => {
+        if (ctx.capture) return xtColorStackCapture(ctx, "modes.xtpopcolors")
+        ctx.write("\x1b[#P")
+        ctx.write("\x1b[#Q")
+        const pos = await ctx.queryCursorPosition()
+        if (!pos) {
+          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        }
+        return {
+          pass: false,
+          response: JSON.stringify(pos),
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "consumed",
+            note: "Cursor responsiveness does not measure saved/restored state",
+          },
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 ]

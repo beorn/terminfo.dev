@@ -563,6 +563,55 @@ it("reports undeclared geometry reads as collector errors without invented evide
   }
 })
 
+it.each([
+  "modes.left-right-margin",
+  "modes.altscreen-47",
+  "modes.altscreen-1047",
+  "modes.xtpushsgr",
+  "modes.xtpopsgr",
+  "modes.xtsave",
+  "modes.xtrestore",
+  "modes.xtpushcolors",
+  "modes.xtpopcolors",
+  "extensions.truecolor",
+  "extensions.sixel",
+  "extensions.iterm2-images",
+])("the real collector enforces the geometry declaration for %s", async (id) => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === id)!
+  expect(definition.termNeedsGeometry, id).toBe(true)
+  const original = definition.termNeedsGeometry
+  const originalEvidence = definition.termObservationEvidence
+  // Clearing the declaration must make the real collector seam refuse the callback's rows/cols read,
+  // proving the declaration is load-bearing rather than only satisfied by a fake plain-number context.
+  definition.termNeedsGeometry = undefined
+  definition.termObservationEvidence = "pixels"
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  try {
+    const batch = await runProbeBatch({
+      ids: [id],
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      capture: async () => {
+        throw new Error("capture checkpoint must not be reached without a geometry declaration")
+      },
+    })
+    expect(batch.ungradedDiagnostics[id], id).toMatchObject({
+      kind: "collector-error",
+      name: "UndeclaredTerminalGeometry",
+      message: expect.stringContaining(id),
+    })
+    expect(batch.observations, id).toEqual([])
+    expect(writes, id).toEqual([])
+  } finally {
+    definition.termNeedsGeometry = original
+    definition.termObservationEvidence = originalEvidence
+  }
+})
+
 // The public inline runner must put both callback writes and nested CPR queries on its selected TTY.
 it("uses the injected TTY for callback writes, columns, and nested cursor queries", async () => {
   verifiedBatchFixture()
