@@ -351122,5 +351122,65 @@
       "note": "Parser visibility state only; display pixels were not captured",
       "rawReplyRef": "cursor.hide"
     }
+  },
+  {
+    "id": "identity-headless-03a7af37-2ebf-4393-b2f4-cb2389181605",
+    "runId": "03a7af37-2ebf-4393-b2f4-cb2389181605",
+    "runSha256": "6275755662a45de39891d5766c7a1f198cd76f2ef8c4c33217fdc68e15621aee",
+    "reviewer": "Independent Sol review; @cto ruling 0094e38e (3c856632-89df-4643-bcad-dafcd8690843); CTO binding approval 8239bab4 (@cto)",
+    "reason": "CTO binding approval 8239bab4 (@cto), under ruling 0094e38e (event 3c856632-89df-4643-bcad-dafcd8690843). Fresh run 03a7af37-2ebf-4393-b2f4-cb2389181605, raw SHA256 6275755662a45de39891d5766c7a1f198cd76f2ef8c4c33217fdc68e15621aee, suite 2add2ef8d344; collector source 624bc644f1460f4a629fafe5da1b12f0c11f52ae; root 4d7489193d18bd36f8abed593f533f8a4f9dfd45; private Termless source adapters at eecb4ca22c7986683b613aa3fe694bb770a937ff, manifest adapter version 0.10.2 recorded, not a released adapter artifact. Before 2026-10-05T13:26:55.899578+00:00; after 2026-10-05T13:27:38.396363+00:00. @xterm/headless@6.0.0: tarball SRI sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw==; before inventory SHA256 202e4e642d9362f57a19a52df5bf85d2c5059cdf7aed38a3cc93d0058dccb16d; after inventory SHA256 202e4e642d9362f57a19a52df5bf85d2c5059cdf7aed38a3cc93d0058dccb16d; all 7 package files; resolved loader /hh/var/yrd-workdir/github.com/beorn/hh-dev%23main/environments/adhoc1-kitty-batch1-private/node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js. @xterm/addon-unicode11@0.9.0: tarball SRI sha512-FxDnYcyuXhNl+XSqGZL/t0U9eiNb/q3EWT5rYkQT/zuig8Gz/VagnQANKHdDWFM2lTMk9ly0EFQxxxtZUoRetw==; before inventory SHA256 e45a0cd88b850e842a2d1586b8df51e85b416f23c1cd9eb3f737caf1e6abfd99; after inventory SHA256 e45a0cd88b850e842a2d1586b8df51e85b416f23c1cd9eb3f737caf1e6abfd99; all 10 package files; resolved loader /hh/var/yrd-workdir/github.com/beorn/hh-dev%23main/environments/adhoc1-kitty-batch1-private/node_modules/.bun/@xterm+addon-unicode11@0.9.0/node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js. installed bytes unchanged and equal to the published tarball across the run; not a module-graph attestation; not resistant to transient mutation. Raw producer identity flag remains verified; it is not the independent review. This candidate only addresses bounded private run-level identity and does not regrade feature observations or transfer historical evidence.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "xtermjs"
+      },
+      "versions": [
+        "6.0.0",
+        "6.0.0"
+      ],
+      "suites": [
+        "2add2ef8d344",
+        "2add2ef8d344"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/xtermjs-6.0.0-linux-03a7af37-2ebf-4393-b2f4-cb2389181605.json",
+      "/hh/hub/terminfo-review/2026-10-05/current-headless-collection.json",
+      "/hh/hub/terminfo-review/2026-10-05/current-headless-rulings.json",
+      "/hh/hub/terminfo-review/2026-10-05/current-js-identity-review.md"
+    ],
+    "supersedes": [],
+    "verifiesIdentity": true,
+    "reviewed": true
+  },
+  {
+    "id": "identity-headless-ba68cbf6-9b24-40ec-aa9c-53e9ee20e90b",
+    "runId": "ba68cbf6-9b24-40ec-aa9c-53e9ee20e90b",
+    "runSha256": "2959086f93fd0285b944235eb945a7f876516e6b1c0b7b440c7b78797ab08c29",
+    "reviewer": "Independent Sol review; @cto ruling 0094e38e (3c856632-89df-4643-bcad-dafcd8690843); CTO binding approval 8239bab4 (@cto)",
+    "reason": "CTO binding approval 8239bab4 (@cto), under ruling 0094e38e (event 3c856632-89df-4643-bcad-dafcd8690843). Fresh run ba68cbf6-9b24-40ec-aa9c-53e9ee20e90b, raw SHA256 2959086f93fd0285b944235eb945a7f876516e6b1c0b7b440c7b78797ab08c29, suite 2add2ef8d344; collector source 624bc644f1460f4a629fafe5da1b12f0c11f52ae; root 4d7489193d18bd36f8abed593f533f8a4f9dfd45; private Termless source adapters at eecb4ca22c7986683b613aa3fe694bb770a937ff, manifest adapter version 0.10.2 recorded, not a released adapter artifact. Before 2026-10-05T13:26:55.899578+00:00; after 2026-10-05T13:27:38.396363+00:00. ghostty-web@0.4.0: tarball SRI sha512-0puDBik2qapbD/QQBW9o5ZHfXnZBqZWx/ctBiVtKZ6ZLds4NYb+wZuw1cRLXZk9zYovIQ908z3rvFhexAvc5Hg==; before inventory SHA256 86d4526278faf913d9166ff45e17dc63cd390c51b2c45fc5ea29c5ba6ee4f2e7; after inventory SHA256 86d4526278faf913d9166ff45e17dc63cd390c51b2c45fc5ea29c5ba6ee4f2e7; all 9 package files; resolved loader /hh/var/yrd-workdir/github.com/beorn/hh-dev%23main/environments/adhoc1-kitty-batch1-private/node_modules/.bun/ghostty-web@0.4.0/node_modules/ghostty-web/dist/ghostty-web.js. Loaded WASM /hh/var/yrd-workdir/github.com/beorn/hh-dev%23main/environments/adhoc1-kitty-batch1-private/node_modules/.bun/ghostty-web@0.4.0/node_modules/ghostty-web/ghostty-vt.wasm, SHA256 d6f0326f1874ad2ce9f289e3a4a0c5f3507d4cb38d8747e4b287def470a0c60a; included in full package inventory. installed bytes unchanged and equal to the published tarball across the run; not a module-graph attestation; not resistant to transient mutation. Raw producer identity flag remains verified; it is not the independent review. This candidate only addresses bounded private run-level identity and does not regrade feature observations or transfer historical evidence.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "ghostty"
+      },
+      "versions": [
+        "0.4.0",
+        "0.4.0"
+      ],
+      "suites": [
+        "2add2ef8d344",
+        "2add2ef8d344"
+      ]
+    },
+    "sources": [
+      "content/probes-libs/ghostty-0.4.0-linux-ba68cbf6-9b24-40ec-aa9c-53e9ee20e90b.json",
+      "/hh/hub/terminfo-review/2026-10-05/current-headless-collection.json",
+      "/hh/hub/terminfo-review/2026-10-05/current-headless-rulings.json",
+      "/hh/hub/terminfo-review/2026-10-05/current-js-identity-review.md"
+    ],
+    "supersedes": [],
+    "verifiesIdentity": true,
+    "reviewed": true
   }
 ]
