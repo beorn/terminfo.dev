@@ -356,15 +356,38 @@ function promptMarkResult(ctx: TermlessContext, sequence: string, noObservable: 
   const control = ctx.getCursor()
   const consumed = cell.char === "X"
   const qualified =
-    consumed &&
-    home.x === 0 &&
-    home.y === 0 &&
-    target.x === 1 &&
-    target.y === 0 &&
-    control.x === 0 &&
-    control.y === 0
+    consumed && home.x === 0 && home.y === 0 && target.x === 1 && target.y === 0 && control.x === 0 && control.y === 0
   if (!qualified) return promptConsumptionResult(consumed)
   return notTestedResult(noObservable, { home, target, control, cell: cell.char })
+}
+
+/**
+ * C154 app arm (§3.1/§3.2) — the callback's CPR JSON is recorded only when a measured home / target /
+ * control sequence read from the real terminal qualifies it; a provider answering one constant position
+ * cannot satisfy all three. `notTestedResult` carries the CPR JSON as the callback response, which the
+ * collector keeps in `<probe>.callbackResponse`, apart from the serialized transport trace it binds
+ * `rawReplyRef` to — no not-tested coverage is claimed from CPR alone. A null read, or a mark that never
+ * advanced, stays a real consumption observation, never not-tested.
+ */
+async function promptMarkAppResult(ctx: TermContext, sequence: string, noObservable: string): Promise<ProbeResult> {
+  ctx.write("\x1b[1;1H\x1b[2K")
+  const home = await ctx.queryCursorPosition()
+  ctx.write(sequence + "X")
+  const target = await ctx.queryCursorPosition()
+  ctx.write("\x1b[1;1H")
+  const control = await ctx.queryCursorPosition()
+  if (home === null || target === null || control === null) return promptConsumptionResult(null)
+  const consumed = target.row === home.row && target.col === home.col + 1
+  const qualified =
+    consumed &&
+    home.row === 1 &&
+    home.col === 1 &&
+    target.row === 1 &&
+    target.col === 2 &&
+    control.row === 1 &&
+    control.col === 1
+  if (!qualified) return promptConsumptionResult(consumed)
+  return notTestedResult(noObservable, { home, target, control })
 }
 
 function colorStackError(evidence: "query" | "behavior", action: string, error: unknown): ProbeResult {
@@ -1504,12 +1527,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc133-a",
       (ctx) => promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]133;A\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
     ),
     termlessObservationEvidence: "consumed",
   },
@@ -1519,12 +1537,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc133-b",
       (ctx) => promptMarkResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]133;B\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
     ),
     termlessObservationEvidence: "consumed",
   },
@@ -1534,12 +1547,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc133-c",
       (ctx) => promptMarkResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]133;C\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
     ),
     termlessObservationEvidence: "consumed",
   },
@@ -1549,12 +1557,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc133-d",
       (ctx) => promptMarkResult(ctx, "\x1b]133;D;0\x07", "OSC 133;D command-finished mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]133;D;0\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]133;D;0\x07", "OSC 133;D command-finished mark registration"),
     ),
     termlessObservationEvidence: "consumed",
   },
@@ -1564,12 +1567,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc133-p",
       (ctx) => promptMarkResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]133;P;Cwd=/tmp\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
     ),
     termlessObservationEvidence: "consumed",
   },
@@ -1582,12 +1580,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc633-a",
       (ctx) => promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]633;A\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
     ),
     termlessObservationEvidence: "consumed",
   },
@@ -1597,12 +1590,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc633-b",
       (ctx) => promptMarkResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]633;B\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"),
     ),
     termlessObservationEvidence: "consumed",
   },
@@ -1612,12 +1600,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc633-c",
       (ctx) => promptMarkResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]633;C\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"),
     ),
     termlessObservationEvidence: "consumed",
   },
@@ -1627,12 +1610,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc633-d",
       (ctx) => promptMarkResult(ctx, "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]633;D;0\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration"),
     ),
     termlessObservationEvidence: "consumed",
   },
@@ -1643,12 +1621,12 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc633-e",
       (ctx) =>
         promptMarkResult(ctx, "\x1b]633;E;ls -la;nonce123\x07", "OSC 633;E commandline-with-nonce mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]633;E;ls -la;nonce123\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) =>
+        promptMarkAppResult(
+          ctx,
+          "\x1b]633;E;ls -la;nonce123\x07",
+          "OSC 633;E commandline-with-nonce mark registration",
+        ),
     ),
     termlessObservationEvidence: "consumed",
   },
@@ -1658,12 +1636,7 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc633-p",
       (ctx) => promptMarkResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]633;P;Cwd=/tmp\x07X")
-        const pos = await ctx.queryCursorPosition()
-        return promptConsumptionResult(pos === null ? null : pos.col === 2)
-      },
+      (ctx) => promptMarkAppResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
     ),
     termlessObservationEvidence: "consumed",
   },
