@@ -151,7 +151,6 @@ test.each([
   ["erase.screen.below", 3, 6],
   ["erase.screen.above", 3, 6],
   ["erase.screen.all", 3, 6],
-  ["erase.screen.scrollback", 5, 5],
   ["erase.character", 1, 6],
   ["erase.selective", 1, 6],
   ["erase.el-with-attrs", 1, 6],
@@ -492,6 +491,8 @@ test.each([
 test("uncaptured app erases keep cursor-only evidence inconclusive", async () => {
   for (const definition of eraseProbes) {
     if ((capturedIds as readonly string[]).includes(definition.id)) continue
+    // cto ruling 19685f18: recorded Not tested by this run, not an inconclusive measurement.
+    if (definition.id === "erase.screen.scrollback") continue
     const probe = byId(definition.id)
     for (const position of [{ row: 5, col: 5 }, null]) {
       const result = await probe.term(app(position))
@@ -562,6 +563,17 @@ test("scrollback erase requires existing history and measured removal", () => {
     })
     expect(result.observation).toMatchObject({ outcome: expected, evidence: "parser-state" })
   }
+})
+
+// cto ruling 19685f18: only the app context lacks scrollback readback, so its absence is named here
+// while the headless measurement above stays a graded result. Both arms of the callback are exercised.
+test("scrollback erase app arm records Not tested by this run with its named missing capability", async () => {
+  const appResult = await byId("erase.screen.scrollback").term(app({ row: 5, col: 5 }))
+  expect(appResult.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "No scrollback-readback capability in this run",
+  })
+  expect(appResult.observation).toBeUndefined()
 })
 
 test("background erase measures a blank target with its calibrated background", () => {

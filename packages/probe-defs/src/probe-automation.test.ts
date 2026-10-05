@@ -1360,34 +1360,6 @@ describe("headless charset cell evidence", () => {
 })
 
 describe("partial probe automation candidates", () => {
-  test("modes.decsclm keeps DECRPM recognition distinct from measured scroll timing", () => {
-    const p = probe("modes.decsclm")
-    expect(p.termless).toBeTypeOf("function")
-
-    const seen: string[] = []
-    const result = p.termless!(
-      context({
-        feed(text) {
-          seen.push(text)
-        },
-        feedCapture(text) {
-          seen.push(text)
-          return "\x1b[?4;1$y"
-        },
-      }),
-    )
-
-    expect(result.pass).toBe(false)
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "parser-state",
-    })
-    expect(JSON.parse(result.response ?? "null")).toEqual({ response: "\x1b[?4;1$y" })
-    expect(result.assertions).toBeUndefined()
-    expect(seen).toEqual(["\x1b[?4h", "\x1b[?4$p", "\x1b[?4l"])
-  })
-
   test("device.dsr-996-color-scheme verifies the color-scheme response", () => {
     const p = probe("device.dsr-996-color-scheme")
     expect(p.termless).toBeTypeOf("function")

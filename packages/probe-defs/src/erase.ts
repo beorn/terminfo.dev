@@ -1,5 +1,12 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
-import { probe, isBlank, parserStateResult, unmeasuredCellResult, selectiveEraseResult } from "./helpers.ts"
+import {
+  probe,
+  isBlank,
+  parserStateResult,
+  unmeasuredCellResult,
+  selectiveEraseResult,
+  notTestedResult,
+} from "./helpers.ts"
 
 type ErasedCell = string | null
 
@@ -359,6 +366,9 @@ export const eraseProbes: ProbeDefinition[] = [
     termlessObservationEvidence: "parser-state",
   },
 
+  // ED3's scrollback effect: the headless parser can measure it, so the measured before/ED3/after
+  // path and its controls are retained. Only the app context, which has no scrollback readback,
+  // records a named absence (cto ruling 19685f18), never a blanket inconclusive.
   {
     ...probe(
       "erase.screen.scrollback",
@@ -385,25 +395,8 @@ export const eraseProbes: ProbeDefinition[] = [
           measured ? undefined : "Scrollback readback or geometry changed unexpectedly",
         )
       },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[5;5H") // Move to known position
-        ctx.write("\x1b[3J") // ED 3 — erase scrollback
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
+      () => Promise.resolve(notTestedResult("No scrollback-readback capability in this run", { sequence: "ED3" })),
     ),
-    termNeedsGeometry: true,
   },
 
   {

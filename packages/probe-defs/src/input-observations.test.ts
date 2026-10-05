@@ -68,32 +68,24 @@ function app(events: string[]): TermContext {
   }
 }
 
-test.each(eventInputIds)("%s declines a support claim without generated events and encoded reports", async (id) => {
+// cto ruling 19685f18: no applicable observable in this run -> Not tested, never inconclusive.
+test.each(eventInputIds)("%s records Not tested by this run without generated events", async (id) => {
   const definition = inputProbes.find((candidate) => candidate.id === id)
   if (!definition?.term || !definition.termless) throw new Error(`Missing input callbacks for ${id}`)
   for (const declared of [false, true]) {
+    const noObservable = /injection capability in this run/
     const fed: string[] = []
     const headlessResult = definition.termless(headless(declared, fed))
     expect(fed).toEqual([])
-    expect(headlessResult.pass).toBe(false)
-    expect(headlessResult.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "legacy",
-    })
-    expect(headlessResult.response).toContain(String(declared))
+    expect(headlessResult.notTested).toMatchObject({ reason: "no-semantic-observable", noObservable })
+    expect(headlessResult.observation).toBeUndefined()
     expect(headlessResult.assertions ?? []).toEqual([])
 
     const writes: string[] = []
     const appResult = await definition.term(app(writes))
     expect(writes).toEqual([])
-    expect(appResult.pass).toBe(false)
-    expect(appResult.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-    })
-    expect(appResult.note).toMatch(/event.*report/i)
+    expect(appResult.notTested).toMatchObject({ reason: "no-semantic-observable", noObservable })
+    expect(appResult.observation).toBeUndefined()
     expect(appResult.assertions ?? []).toEqual([])
   }
 })

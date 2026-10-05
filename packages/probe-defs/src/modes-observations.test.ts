@@ -34,11 +34,70 @@ function captureContext(rows: number, cols: number, writes: string[], frames: Ob
 }
 
 const modes = [
-  { id: "modes.alt-scroll-1007", number: 1007 },
   { id: "modes.utf8-mouse-1005", number: 1005 },
   { id: "modes.deccolm", number: 3 },
-  { id: "modes.decsclm", number: 4 },
 ] as const
+
+// cto ruling 19685f18: no applicable observable in this run -> Not tested, never inconclusive.
+const notTestedByRun = [
+  { id: "modes.alt-scroll-1007", noObservable: "No mouse or wheel-injection capability in this run" },
+  { id: "modes.decsclm", noObservable: "No frame-timing instrument in this run" },
+] as const
+
+test.each(notTestedByRun)(
+  "$id records Not tested by this run with its named missing capability",
+  async ({ id, noObservable }) => {
+    const definition = modesProbes.find((probe) => probe.id === id)
+    if (!definition?.term || !definition.termless) throw new Error(`Missing callbacks for ${id}`)
+    const writes: string[] = []
+    const context: TermContext = {
+      cols: 80,
+      rows: 24,
+      write: (bytes) => writes.push(bytes),
+      queryCursorPosition: async () => null,
+      measureRenderedWidth: async () => null,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryMode: async () => null,
+    }
+    const appResult = await definition.term(context)
+    expect(writes, id).toEqual([])
+    expect(appResult.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable })
+    expect(appResult.observation, id).toBeUndefined()
+    expect(appResult.assertions, id).toBeUndefined()
+
+    const headlessResult = definition.termless({} as never)
+    expect(headlessResult.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable })
+    expect(headlessResult.observation, id).toBeUndefined()
+  },
+)
+
+// cto ruling 19685f18: the application-keypad app arm has no keypad injector, so its absence is
+// named; the headless declared-mode arm keeps its existing Not-tested disposition. Both are exercised.
+test("application-keypad names the app absence and preserves the headless disposition", async () => {
+  const definition = modesProbes.find((item) => item.id === "modes.application-keypad")
+  if (!definition?.term || !definition?.termless) throw new Error("Missing callbacks for modes.application-keypad")
+  const appWrites: string[] = []
+  const appResult = await definition.term(captureContext(24, 80, appWrites, []))
+  expect(appWrites).toEqual([])
+  expect(appResult.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "No keypad-injection capability in this run",
+  })
+  expect(appResult.observation).toBeUndefined()
+
+  const feeds: string[] = []
+  const headlessResult = definition.termless({
+    cols: 4,
+    feed: (bytes: string) => feeds.push(bytes),
+    getMode: () => false,
+  } as unknown as TermlessContext)
+  expect(feeds).toEqual(["\x1b=", "\x1b>"])
+  expect(headlessResult.notTested).toEqual({ reason: "no-semantic-observable", noObservable: "keypad input" })
+  expect(headlessResult.observation).toBeUndefined()
+})
 
 test.each(["bad-start", "ignored-move", "ignored-restore", "restored"] as const)(
   "1048 qualifies cursor setup before grading %s",
@@ -146,12 +205,9 @@ test("IRM does not grade output when the seed was not measured", () => {
 })
 
 test("unmeasured app modes leave prior state untouched instead of toggling it for CPR", async () => {
-  for (const id of [
-    "modes.application-keypad",
-    "modes.left-right-margin",
-    "modes.altscreen-47",
-    "modes.altscreen-1047",
-  ]) {
+  // modes.application-keypad is no longer an inconclusive measurement: its app arm names the
+  // missing keypad injector (cto ruling 19685f18) and is covered by the dedicated test above.
+  for (const id of ["modes.left-right-margin", "modes.altscreen-47", "modes.altscreen-1047"]) {
     const definition = modesProbes.find((item) => item.id === id)
     if (!definition?.term) throw new Error(`Missing ${id} app callback`)
     if (id === "modes.altscreen-1047") expect(definition.termObservationEvidence).toBe("query")
