@@ -350142,5 +350142,985 @@
     "supersedes": ["identity-headless-30c64c12-6c6f-4636-ab7a-f476643aa032"],
     "reviewed": true,
     "verifiesIdentity": true
+  },
+  {
+    "id": "scope-headless-0effa144-9995-4e8c-8bbf-6d19a183df2f-cursor.hide",
+    "runId": "0effa144-9995-4e8c-8bbf-6d19a183df2f",
+    "runSha256": "ab385cfab63015c6a5d6958b4cab13dc649c2d7b9acf1c093c70e7149c15907a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Parser visibility state only; display pixels were not captured. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "alacritty"
+      },
+      "versions": ["0.26.0", "0.26.0"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/alacritty-0effa144-9995-4e8c-8bbf-6d19a183df2f.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "note": "Parser visibility state only; display pixels were not captured",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "id": "scope-headless-d77f30e8-7b80-47ea-a621-2ffe73967852-cursor.hide",
+    "runId": "d77f30e8-7b80-47ea-a621-2ffe73967852",
+    "runSha256": "ce7007344b7abadae0a6bf25a4f9dc879e886f388d1e359ac7c930818d64e5f9",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Parser visibility state only; display pixels were not captured. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "ghostty-native"
+      },
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/ghostty-native-d77f30e8-7b80-47ea-a621-2ffe73967852.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "note": "Parser visibility state only; display pixels were not captured",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.kitty-keyboard",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=1; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=1; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.kitty-keyboard.disambiguate",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=1; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard.disambiguate",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard.disambiguate",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=1; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard.disambiguate"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.kitty-keyboard.report-events",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=3; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard.report-events",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard.report-events",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=3; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard.report-events"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.kitty-keyboard.report-alternate",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=5; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard.report-alternate",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard.report-alternate",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=5; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard.report-alternate"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.kitty-keyboard.report-all-keys",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=9; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard.report-all-keys",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard.report-all-keys",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=9; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard.report-all-keys"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.kitty-keyboard.report-text",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=25; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard.report-text",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard.report-text",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=25; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard.report-text"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.kitty-graphics",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Graphics query accepted RGB pixel data; visible rendering was not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-graphics",
+    "observation": {
+      "featureId": "extensions.kitty-graphics",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Graphics query accepted RGB pixel data; visible rendering was not tested",
+      "rawReplyRef": "extensions.kitty-graphics"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.kitty-graphics.transmit",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: RGB image transmission acknowledged; display was not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-graphics.transmit",
+    "observation": {
+      "featureId": "extensions.kitty-graphics.transmit",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "RGB image transmission acknowledged; display was not tested",
+      "rawReplyRef": "extensions.kitty-graphics.transmit"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.kitty-graphics.display",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Image placement acknowledged; visible pixels were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-graphics.display",
+    "observation": {
+      "featureId": "extensions.kitty-graphics.display",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Image placement acknowledged; visible pixels were not tested",
+      "rawReplyRef": "extensions.kitty-graphics.display"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.osc66-text-sizing",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Cursor advance: width verified; scale verified. Glyph appearance needs a visual check.. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc66-text-sizing",
+    "observation": {
+      "featureId": "extensions.osc66-text-sizing",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "note": "Cursor advance: width verified; scale verified. Glyph appearance needs a visual check.",
+      "rawReplyRef": "extensions.osc66-text-sizing"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-extensions.osc5522-clipboard",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Protocol recognized; clipboard access permissions not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc5522-clipboard",
+    "observation": {
+      "featureId": "extensions.osc5522-clipboard",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Protocol recognized; clipboard access permissions not tested",
+      "rawReplyRef": "extensions.osc5522-clipboard"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-cursor.hide",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Parser visibility state only; display pixels were not captured. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "note": "Parser visibility state only; display pixels were not captured",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "id": "scope-headless-423a9f5a-5202-45de-9fc6-86e5d7f82f31-input.csi-u",
+    "runId": "423a9f5a-5202-45de-9fc6-86e5d7f82f31",
+    "runSha256": "ec6be55b0f2ae1a5e834d2068e7eb738b38527f4c81a2473499baf75e49ced3a",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=1; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "kitty"
+      },
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/kitty-423a9f5a-5202-45de-9fc6-86e5d7f82f31.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "input.csi-u",
+    "observation": {
+      "featureId": "input.csi-u",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=1; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "input.csi-u"
+    }
+  },
+  {
+    "id": "scope-headless-5ca9b13c-c177-4627-b586-dae15d2aa8fe-cursor.hide",
+    "runId": "5ca9b13c-c177-4627-b586-dae15d2aa8fe",
+    "runSha256": "3df1acb9208d2184384df772d7cde1a2c4a3b994eb7bf7f89815cd53114cd5b6",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Parser visibility state only; display pixels were not captured. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vt100"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vt100-5ca9b13c-c177-4627-b586-dae15d2aa8fe.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "note": "Parser visibility state only; display pixels were not captured",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "id": "scope-headless-a5f18ac8-66b6-4e2b-a91a-928aabaeb255-cursor.hide",
+    "runId": "a5f18ac8-66b6-4e2b-a91a-928aabaeb255",
+    "runSha256": "8e4ab4735d0ae9a2fcfdccdc5b69adad955516e9f2e317f539737418a9ea1bf3",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Parser visibility state only; display pixels were not captured. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vt100-rust"
+      },
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vt100-rust-a5f18ac8-66b6-4e2b-a91a-928aabaeb255.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "note": "Parser visibility state only; display pixels were not captured",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "id": "scope-headless-080bf878-b91f-4c98-8cfe-a3b0de0b3fbd-cursor.hide",
+    "runId": "080bf878-b91f-4c98-8cfe-a3b0de0b3fbd",
+    "runSha256": "eaa7f460009843c3c7eb05de51240685a99e57ea26165ea803d772f8bc38e620",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Parser visibility state only; display pixels were not captured. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vt220"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vt220-080bf878-b91f-4c98-8cfe-a3b0de0b3fbd.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "note": "Parser visibility state only; display pixels were not captured",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.kitty-keyboard",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=1; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=1; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.kitty-keyboard.disambiguate",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=1; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard.disambiguate",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard.disambiguate",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=1; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard.disambiguate"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.kitty-keyboard.report-events",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=3; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard.report-events",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard.report-events",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=3; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard.report-events"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.kitty-keyboard.report-alternate",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=5; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard.report-alternate",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard.report-alternate",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=5; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard.report-alternate"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.kitty-keyboard.report-all-keys",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=9; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard.report-all-keys",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard.report-all-keys",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=9; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard.report-all-keys"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.kitty-keyboard.report-text",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=25; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-keyboard.report-text",
+    "observation": {
+      "featureId": "extensions.kitty-keyboard.report-text",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=25; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "extensions.kitty-keyboard.report-text"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.kitty-graphics",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Graphics query accepted RGB pixel data; visible rendering was not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.kitty-graphics",
+    "observation": {
+      "featureId": "extensions.kitty-graphics",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Graphics query accepted RGB pixel data; visible rendering was not tested",
+      "rawReplyRef": "extensions.kitty-graphics"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.osc21-kitty-color",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Foreground query recognized; setting colors and visible rendering were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc21-kitty-color",
+    "observation": {
+      "featureId": "extensions.osc21-kitty-color",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Foreground query recognized; setting colors and visible rendering were not tested",
+      "rawReplyRef": "extensions.osc21-kitty-color"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.osc30001-color-stack-push",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Foreground changed and color-stack pop restored its original value. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc30001-color-stack-push",
+    "observation": {
+      "featureId": "extensions.osc30001-color-stack-push",
+      "outcome": "supported",
+      "evidence": "behavior",
+      "note": "Foreground changed and color-stack pop restored its original value",
+      "rawReplyRef": "extensions.osc30001-color-stack-push"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.osc30101-color-stack-pop",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Foreground changed and color-stack pop restored its original value. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc30101-color-stack-pop",
+    "observation": {
+      "featureId": "extensions.osc30101-color-stack-pop",
+      "outcome": "supported",
+      "evidence": "behavior",
+      "note": "Foreground changed and color-stack pop restored its original value",
+      "rawReplyRef": "extensions.osc30101-color-stack-pop"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-cursor.hide",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Parser visibility state only; display pixels were not captured. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "note": "Parser visibility state only; display pixels were not captured",
+      "rawReplyRef": "cursor.hide"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-device.dsr-996-color-scheme",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Current scheme queried; unsolicited change events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "device.dsr-996-color-scheme",
+    "observation": {
+      "featureId": "device.dsr-996-color-scheme",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Current scheme queried; unsolicited change events were not tested",
+      "rawReplyRef": "device.dsr-996-color-scheme"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-input.csi-u",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Queried enhancement flags=1; actual key press, repeat and release events were not tested. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "input.csi-u",
+    "observation": {
+      "featureId": "input.csi-u",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Queried enhancement flags=1; actual key press, repeat and release events were not tested",
+      "rawReplyRef": "input.csi-u"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.osc52-clipboard",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Isolated backend returned the exact OSC 52 clipboard nonce. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-clipboard",
+    "observation": {
+      "featureId": "extensions.osc52-clipboard",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Isolated backend returned the exact OSC 52 clipboard nonce",
+      "rawReplyRef": "extensions.osc52-clipboard"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.osc52-write",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Isolated backend returned the exact OSC 52 clipboard nonce. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-write",
+    "observation": {
+      "featureId": "extensions.osc52-write",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Isolated backend returned the exact OSC 52 clipboard nonce",
+      "rawReplyRef": "extensions.osc52-write"
+    }
+  },
+  {
+    "id": "scope-headless-85abedc8-aa6d-40c4-81bf-fd9104325e73-extensions.osc52-read",
+    "runId": "85abedc8-aa6d-40c4-81bf-fd9104325e73",
+    "runSha256": "76b83977aabb089901a83f509a3bfe00a9430e8020d948636cc09fe9152ce151",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Isolated backend returned the exact OSC 52 clipboard nonce. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "vterm"
+      },
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/vterm-85abedc8-aa6d-40c4-81bf-fd9104325e73.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "extensions.osc52-read",
+    "observation": {
+      "featureId": "extensions.osc52-read",
+      "outcome": "supported",
+      "evidence": "query",
+      "note": "Isolated backend returned the exact OSC 52 clipboard nonce",
+      "rawReplyRef": "extensions.osc52-read"
+    }
+  },
+  {
+    "id": "scope-headless-2e798d97-c259-420a-8633-4728dc3a3def-cursor.hide",
+    "runId": "2e798d97-c259-420a-8633-4728dc3a3def",
+    "runSha256": "d79f2621a71bcd7e23b3b9fa3beef4f81e7da9eec4e5f793f36126c7bf6427d0",
+    "reviewer": "@adhoc/1; Independent Sol scope-note review; @cto, ruling cf253fa0",
+    "reason": "Expose the original scope note: Parser visibility state only; display pixels were not captured. Outcome and evidence remain unchanged. Exact suite a00b545425a9; collector source 6c24ef1058ef981e800e0122ef65b8f47699ef28.",
+    "scope": {
+      "target": {
+        "kind": "headless",
+        "id": "wezterm"
+      },
+      "versions": ["0.1.0-fork.5", "0.1.0-fork.5"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
+    },
+    "sources": [
+      "content/probes-libs/wezterm-2e798d97-c259-420a-8633-4728dc3a3def.json",
+      "/hh/hub/terminfo-review/2026-10-05/scope-note-audit.json"
+    ],
+    "supersedes": [],
+    "featureId": "cursor.hide",
+    "observation": {
+      "featureId": "cursor.hide",
+      "outcome": "supported",
+      "evidence": "parser-state",
+      "note": "Parser visibility state only; display pixels were not captured",
+      "rawReplyRef": "cursor.hide"
+    }
   }
 ]

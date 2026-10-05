@@ -200,7 +200,7 @@ const breadcrumbParent = (() => {
     <dt>Outer terminal / multiplexer</dt><dd>{{ selectedRun.target.outerTerminal || 'None recorded' }} / {{ selectedRun.target.mux || 'None recorded' }}</dd>
     <template v-if="selectedRun.target.kind === 'headless'">
       <template v-for="review in selectedRun.reviews" :key="review.id">
-        <dt>Source qualification</dt><dd>{{ review.reason }}</dd>
+        <dt>Review qualification</dt><dd>{{ review.reason }}</dd>
         <dt>Reviewed by</dt><dd>{{ review.reviewer }}</dd>
       </template>
     </template>

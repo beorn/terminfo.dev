@@ -689,7 +689,7 @@ onBeforeUnmount(() => {
             <dd>{{ version?.sourceRevision ?? "Not recorded" }}</dd>
             <template v-if="version?.target.kind === 'headless'">
               <template v-for="review in version.reviews" :key="review.id">
-                <dt>Source qualification</dt>
+                <dt>Review qualification</dt>
                 <dd>{{ review.reason }}</dd>
                 <dt>Reviewed by</dt>
                 <dd>{{ review.reviewer }}</dd>

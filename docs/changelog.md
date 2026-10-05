@@ -10,8 +10,8 @@ Private preparation; final corrected-suite data and publication checks remain pe
 - **Inspectable evidence and explanations.** Result details expose available raw traces, assertions and original frames. The explanation guide connects how we measure, how to read a result and how to contribute a run.
 - **Coverage, support and build freshness.** Coverage and support have separate denominators. Not-tested coverage is not a fifth outcome. Source and build metadata identify the site build; rebuilding is not a new terminal measurement.
 
-The retained selected snapshot covers three Kitty 0.49.2 Linux permission/configuration contexts and eleven headless targets. Its reviewed frames support colored-underline appearance; exact 24-bit RGB remains inconclusive. This adds no macOS or Windows app measurements; earlier excluded runs remain history.
+The current private snapshot covers three Kitty 0.49.2 Linux permission/configuration contexts and nine reviewed headless targets. Two further JavaScript backends remain raw-only because their loaded source identity was not recorded. Its reviewed frames support colored-underline appearance; exact 24-bit RGB remains inconclusive. This adds no macOS or Windows app measurements; earlier excluded runs remain history.
 
 Three gaps remain open: public standalone controlled-capture reproduction, result-local visual expectations for historical reviews, and undated manual pointer confirmations. See the [roadmap](/roadmap).
 
-Website deployment and CLI publication use separate manual workflows. CLI publication requires an exact source commit and package-version plan. These changes await publication.
+The CLI was released separately as terminfo.dev 4.0.0. The website changes in this draft remain unpublished.

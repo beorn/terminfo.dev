@@ -15,13 +15,13 @@ We run the probes ourselves on everything our lab can hold ([How we measure](/ho
 
 ## Run the probes
 
-You need Node.js. `[confirm: these commands need the next CLI release; check what npx terminfo.dev --version prints before this page goes live]`
+You need Node.js 24 or newer. These commands use the released CLI 4.0.0; record its version with the run.
 
 ```bash
-npx terminfo.dev --version                              # record the CLI version
-npx terminfo.dev detect                                 # check which terminal it sees
-npx terminfo.dev test --output /tmp/terminfo-run.json   # one raw run, saved to a new file
-npx terminfo.dev submit /tmp/terminfo-run.json --draft /tmp/terminfo-draft.md
+npx terminfo.dev@4.0.0 --version                         # record the CLI version
+npx terminfo.dev@4.0.0 detect                            # check which terminal it sees
+npx terminfo.dev@4.0.0 test --output /tmp/terminfo-run.json # save one raw run to a new file
+npx terminfo.dev@4.0.0 submit /tmp/terminfo-run.json --draft /tmp/terminfo-draft.md
 ```
 
 `test` sends the probes to your terminal and records the replies. It never sends a probe that would change your terminal's state; each such probe is recorded as "Inconclusive: we did not send it", so the run stays complete. Leave your terminal's permissions as they are; clipboard access stays off.
@@ -46,6 +46,6 @@ We publish a contributed run only with that line. Add to the issue:
 1. **Identity.** The terminal's own reply inside the run, and its version, must match the terminal you name.
 2. **Scope.** A partial run is kept as history, not shown as current support. Missing probes are not failures.
 3. **Evidence.** Each result is graded by its evidence, with the same rules as a lab run. A screenshot claim needs the original image.
-4. **Review.** A reviewer writes a named, reasoned interpretation. Your raw file stays unchanged; the result page links to it.
+4. **Review.** A reviewer writes a named, reasoned interpretation. Your raw file stays unchanged and is retained with the review.
 
-The run then becomes that setup's current result, with its run ID and measurement time; older runs stay in the API as history. You are credited on the terminal's page. `[confirm: the form of the credit — name, handle or issue link — and the review time we promise, including how a declined run is answered]`
+An accepted, complete run can become the current result for its recorded setup, with its run ID and measurement time. Older runs stay in the API as history. Review and requests for missing evidence belong in your submission issue, which retains your contribution and discussion.
