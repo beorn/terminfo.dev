@@ -11,13 +11,14 @@ permissions:
 
 jobs:
   spike:
-    name: macos-kitty-spike-job
+    name: macos-terminal-matrix-spike-job
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
       - name: Gather system and display context
         continue-on-error: true
         run: |
+          caffeinate -u -t 600 &
           mkdir -p /tmp/spike-artifacts
           {
             echo "=== SYSTEM VERSION ==="
@@ -36,72 +37,177 @@ jobs:
             osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null || true
           } > /tmp/spike-artifacts/context.txt
 
-      - name: Install Kitty
+      - name: Install terminal matrix (iTerm2, WezTerm, Alacritty, Ghostty)
         continue-on-error: true
         run: |
-          HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask kitty
-          KITTY_APP="/Applications/Kitty.app"
-          if [ -d "$KITTY_APP" ]; then
-            sudo xattr -cr "$KITTY_APP" || true
-            "$KITTY_APP/Contents/MacOS/kitty" --version | tee -a /tmp/spike-artifacts/context.txt
+          for app in iterm2 wezterm alacritty ghostty; do
+            echo "=== Installing $app ==="
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask "$app" || echo "WARNING: Failed to install $app via brew cask"
+          done
+          sudo xattr -cr /Applications/*.app 2>/dev/null || true
+
+      - name: "Test 1 - Terminal.app (Control: DEC Special Graphics + DA1)"
+        continue-on-error: true
+        run: |
+          echo "=== Testing Terminal.app ==="
+
+          # Write fixture python script
+          echo "aW1wb3J0IHN5cywgb3MsIHRlcm1pb3MsIHR0eSwgc2VsZWN0LCB0aW1lCgp0cnk6CiAgICBmZCA9IG9zLm9wZW4oIi9kZXYvdHR5Iiwgb3MuT19SRFdSKQpleGNlcHQgRXhjZXB0aW9uOgogICAgZmQgPSBzeXMuc3RkaW4uZmlsZW5vKCkKCm9sZF9zZXR0aW5ncyA9IHRlcm1pb3MudGNnZXRhdHRyKGZkKQpyZXBseSA9IGJ5dGVhcnJheSgpCnRyeToKICAgIHR0eS5zZXRyYXcoZmQpCiAgICBsaW5lID0gYiJcMDMzWzJKXDAzM1tIXHJcblxyXG4gIFwwMzNbMTszNm1cMDMzKDBxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxXDAzMyhCXDAzM1swbVxyXG5cclxuICBUZXJtaW5hbC5hcHAgQ29udHJvbCBUZXN0OiBERUMgU3BlY2lhbCBHcmFwaGljcyArIERBMVxyXG5cclxuIgogICAgb3Mud3JpdGUoZmQsIGxpbmUpCiAgICB0aW1lLnNsZWVwKDAuMykKICAgIG9zLndyaXRlKGZkLCBiIlwwMzNbYyIpCiAgICBkZWFkbGluZSA9IHRpbWUudGltZSgpICsgMy4wCiAgICB3aGlsZSB0aW1lLnRpbWUoKSA8IGRlYWRsaW5lOgogICAgICAgIHIsIF8sIF8gPSBzZWxlY3Quc2VsZWN0KFtmZF0sIFtdLCBbXSwgMC4yKQogICAgICAgIGlmIHI6CiAgICAgICAgICAgIGNodW5rID0gb3MucmVhZChmZCwgMTAyNCkKICAgICAgICAgICAgaWYgY2h1bms6CiAgICAgICAgICAgICAgICByZXBseS5leHRlbmQoY2h1bmspCiAgICAgICAgICAgICAgICBpZiBiImMiIGluIGNodW5rOgogICAgICAgICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgZWxpZiBsZW4ocmVwbHkpID4gMDoKICAgICAgICAgICAgYnJlYWsKZmluYWxseToKICAgIHRyeToKICAgICAgICB0ZXJtaW9zLnRjc2V0YXR0cihmZCwgdGVybWlvcy5UQ1NBRFJBSU4sIG9sZF9zZXR0aW5ncykKICAgICAgICBpZiBmZCAhPSBzeXMuc3RkaW4uZmlsZW5vKCk6CiAgICAgICAgICAgIG9zLmNsb3NlKGZkKQogICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICBwYXNzCgpvcy5tYWtlZGlycygiL3RtcC9zcGlrZS1hcnRpZmFjdHMiLCBleGlzdF9vaz1UcnVlKQp3aXRoIG9wZW4oIi90bXAvc3Bpa2UtYXJ0aWZhY3RzL2RhMV9yZXBseV90ZXJtaW5hbC5iaW4iLCAid2IiKSBhcyBmOgogICAgZi53cml0ZShyZXBseSkKCndpdGggb3BlbigiL3RtcC9zcGlrZS1hcnRpZmFjdHMvZGExX3JlcGx5X3Rlcm1pbmFsLnR4dCIsICJ3IikgYXMgZjoKICAgIGYud3JpdGUoZiJCeXRlcyByZWNlaXZlZDoge2xlbihyZXBseSl9XG4iKQogICAgZi53cml0ZShmIlJhdyByZXByOiB7cmVwcihieXRlcyhyZXBseSkpfVxuIikKICAgIGYud3JpdGUoZiJEZWNvZGVkOiB7Ynl0ZXMocmVwbHkpLmRlY29kZSgibGF0aW4xIiwgZXJyb3JzPSJyZXBsYWNlIil9XG4iKQoKd2l0aCBvcGVuKCIvdG1wL2ZpeHR1cmVfcmVhZHlfdGVybWluYWwudHh0IiwgInciKSBhcyBmOgogICAgZi53cml0ZSgicmVhZHlcbiIpCgp0aW1lLnNsZWVwKDMwKQo=" | base64 -d > /tmp/fixture_terminal.py
+
+          # Write AppleScript to launch and set window bounds {50, 50, 850, 650}
+          echo "dGVsbCBhcHBsaWNhdGlvbiAiVGVybWluYWwiCiAgYWN0aXZhdGUKICBkZWxheSAxCiAgdHJ5CiAgICBpZiAoY291bnQgb2Ygd2luZG93cykgPSAwIHRoZW4KICAgICAgZG8gc2NyaXB0ICJweXRob24zIC11IC90bXAvZml4dHVyZV90ZXJtaW5hbC5weSIKICAgIGVsc2UKICAgICAgZG8gc2NyaXB0ICJweXRob24zIC11IC90bXAvZml4dHVyZV90ZXJtaW5hbC5weSIgaW4gZnJvbnQgd2luZG93CiAgICBlbmQgaWYKICBvbiBlcnJvciBlcnJNc2cKICAgIGRvIHNjcmlwdCAicHl0aG9uMyAtdSAvdG1wL2ZpeHR1cmVfdGVybWluYWwucHkiCiAgZW5kIHRyeQogIGRlbGF5IDEKICB0cnkKICAgIHNldCBib3VuZHMgb2YgZnJvbnQgd2luZG93IHRvIHs1MCwgNTAsIDg1MCwgNjUwfQogIGVuZCB0cnkKZW5kIHRlbGwK" | base64 -d > /tmp/run_terminal.applescript
+
+          osascript /tmp/run_terminal.applescript > /tmp/spike-artifacts/terminal_applescript.log 2>&1 || true
+
+          for i in {1..20}; do
+            if [ -f /tmp/fixture_ready_terminal.txt ]; then
+              echo "Terminal fixture ready after $i seconds."
+              break
+            fi
+            sleep 1
+          done
+
+          sleep 2
+
+          screencapture -x /tmp/spike-artifacts/screenshot_terminal_app.png > /tmp/spike-artifacts/screencapture_terminal.log 2>&1 || true
+
+          python3 -c "
+          import Quartz
+          for w in Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID):
+              if 'terminal' in w.get('kCGWindowOwnerName', '').lower():
+                  print(f\"{w.get('kCGWindowOwnerName')}: {w.get('kCGWindowName')} bounds={w.get('kCGWindowBounds')}\")
+          " > /tmp/spike-artifacts/terminal_app.log 2>&1 || true
+
+          osascript -e 'tell application "Terminal" to quit saving no' 2>/dev/null || killall Terminal 2>/dev/null || true
+          sleep 1
+
+      - name: Test 2 - iTerm2
+        continue-on-error: true
+        run: |
+          echo "=== Testing iTerm2 ==="
+          if [ -d "/Applications/iTerm.app" ]; then
+            defaults write com.googlecode.iterm2 DisableGPUWhenUnplugged -bool true
+            defaults write com.googlecode.iterm2 UseMetal -bool false
+            defaults write com.googlecode.iterm2 MetalAllowed -bool false
+
+            /Applications/iTerm.app/Contents/MacOS/iTerm2 > /tmp/spike-artifacts/iterm2.log 2>&1 &
+            ITERM_PID=$!
+            sleep 4
+
+            python3 -c "
+            import Quartz
+            found = False
+            for w in Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID):
+                if 'iterm' in w.get('kCGWindowOwnerName', '').lower():
+                    print(f\"{w.get('kCGWindowOwnerName')}: {w.get('kCGWindowName')} bounds={w.get('kCGWindowBounds')}\")
+                    found = True
+            if not found:
+                print('No on-screen window found for iTerm2')
+            " >> /tmp/spike-artifacts/iterm2.log 2>&1 || true
+
+            screencapture -x /tmp/spike-artifacts/screenshot_iterm2.png > /tmp/spike-artifacts/screencapture_iterm2.log 2>&1 || true
+
+            killall iTerm2 2>/dev/null || kill -TERM "$ITERM_PID" 2>/dev/null || true
           else
-            echo "Kitty.app not found in /Applications" | tee -a /tmp/spike-artifacts/context.txt
+            echo "iTerm.app not found in /Applications" > /tmp/spike-artifacts/iterm2.log
           fi
+          sleep 1
 
-      - name: Configure Kitty and Fixture Script
+      - name: Test 3 - WezTerm (Software front_end)
         continue-on-error: true
         run: |
-          echo "aW5pdGlhbF93aW5kb3dfd2lkdGggODAwCmluaXRpYWxfd2luZG93X2hlaWdodCA2MDAKcmVtZW1iZXJfd2luZG93X3NpemUgbm8KZW5hYmxlX3JlbW90ZV9jb250cm9sIHllcwpsaXN0ZW5fb24gdW5peDovdG1wL2tpdHR5X3NvY2tldApmb250X3NpemUgMTQuMApjdXJzb3JfYmxpbmtfaW50ZXJ2YWwgMApjb25maXJtX29zX3dpbmRvd19jbG9zZSAwCg==" | base64 -d > /tmp/kitty.conf
-          echo "aW1wb3J0IHN5cywgb3MsIHRlcm1pb3MsIHR0eSwgc2VsZWN0LCB0aW1lCgp0cnk6CiAgICBmZCA9IG9zLm9wZW4oIi9kZXYvdHR5Iiwgb3MuT19SRFdSKQpleGNlcHQgRXhjZXB0aW9uOgogICAgZmQgPSBzeXMuc3RkaW4uZmlsZW5vKCkKCm9sZF9zZXR0aW5ncyA9IHRlcm1pb3MudGNnZXRhdHRyKGZkKQpyZXBseSA9IGJ5dGVhcnJheSgpCnRyeToKICAgIHR0eS5zZXRyYXcoZmQpCiAgICBsaW5lID0gYiJcclxuXHJcbiAgXDAzM1sxOzM2bVwwMzMoMHFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFcMDMzKEJcMDMzWzBtXHJcblxyXG4iCiAgICBvcy53cml0ZShmZCwgbGluZSkKICAgIHRpbWUuc2xlZXAoMC4zKQogICAgb3Mud3JpdGUoZmQsIGIiXDAzM1tjIikKICAgIGRlYWRsaW5lID0gdGltZS50aW1lKCkgKyAzLjAKICAgIHdoaWxlIHRpbWUudGltZSgpIDwgZGVhZGxpbmU6CiAgICAgICAgciwgXywgXyA9IHNlbGVjdC5zZWxlY3QoW2ZkXSwgW10sIFtdLCAwLjIpCiAgICAgICAgaWYgcjoKICAgICAgICAgICAgY2h1bmsgPSBvcy5yZWFkKGZkLCAxMDI0KQogICAgICAgICAgICBpZiBjaHVuazoKICAgICAgICAgICAgICAgIHJlcGx5LmV4dGVuZChjaHVuaykKICAgICAgICAgICAgICAgIGlmIGIiYyIgaW4gY2h1bms6CiAgICAgICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICBlbGlmIGxlbihyZXBseSkgPiAwOgogICAgICAgICAgICBicmVhawpmaW5hbGx5OgogICAgdHJ5OgogICAgICAgIHRlcm1pb3MudGNzZXRhdHRyKGZkLCB0ZXJtaW9zLlRDU0FEUkFJTiwgb2xkX3NldHRpbmdzKQogICAgICAgIGlmIGZkICE9IHN5cy5zdGRpbi5maWxlbm8oKToKICAgICAgICAgICAgb3MuY2xvc2UoZmQpCiAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgIHBhc3MKCm9zLm1ha2VkaXJzKCIvdG1wL3NwaWtlLWFydGlmYWN0cyIsIGV4aXN0X29rPVRydWUpCndpdGggb3BlbigiL3RtcC9zcGlrZS1hcnRpZmFjdHMvZGExX3JlcGx5LmJpbiIsICJ3YiIpIGFzIGY6CiAgICBmLndyaXRlKHJlcGx5KQoKd2l0aCBvcGVuKCIvdG1wL3NwaWtlLWFydGlmYWN0cy9kYTFfcmVwbHkudHh0IiwgInciKSBhcyBmOgogICAgZi53cml0ZShmIkJ5dGVzIHJlY2VpdmVkOiB7bGVuKHJlcGx5KX1cbiIpCiAgICBmLndyaXRlKGYiUmF3IHJlcHI6IHtyZXByKGJ5dGVzKHJlcGx5KSl9XG4iKQogICAgZi53cml0ZShmIkRlY29kZWQ6IHtieXRlcyhyZXBseSkuZGVjb2RlKCJsYXRpbjEiLCBlcnJvcnM9InJlcGxhY2UiKX1cbiIpCgp3aXRoIG9wZW4oIi90bXAvZml4dHVyZV9yZWFkeS50eHQiLCAidyIpIGFzIGY6CiAgICBmLndyaXRlKCJyZWFkeVxuIikKCnRpbWUuc2xlZXAoMzApCg==" | base64 -d > /tmp/fixture.py
+          echo "=== Testing WezTerm ==="
+          if [ -d "/Applications/WezTerm.app" ]; then
+            echo "bG9jYWwgd2V6dGVybSA9IHJlcXVpcmUgIndlenRlcm0iCmxvY2FsIGNvbmZpZyA9IHt9CmNvbmZpZy5mcm9udF9lbmQgPSAiU29mdHdhcmUiCmNvbmZpZy5pbml0aWFsX2NvbHMgPSA4MApjb25maWcuaW5pdGlhbF9yb3dzID0gMjQKcmV0dXJuIGNvbmZpZwo=" | base64 -d > /tmp/wezterm.lua
 
-      - name: Launch Kitty and capture screenshot
-        continue-on-error: true
-        run: |
-          caffeinate -u -t 60 &
+            WEZTERM_BIN="/Applications/WezTerm.app/Contents/MacOS/wezterm-gui"
+            "$WEZTERM_BIN" --config-file /tmp/wezterm.lua start -- python3 -c "import time; print('WezTerm Software running'); time.sleep(15)" > /tmp/spike-artifacts/wezterm.log 2>&1 &
+            WEZ_PID=$!
+            sleep 4
 
-          KITTY_BIN="/Applications/Kitty.app/Contents/MacOS/kitty"
-          if [ ! -f "$KITTY_BIN" ]; then
-            KITTY_BIN=$(command -v kitty || echo "")
-          fi
+            python3 -c "
+            import Quartz
+            found = False
+            for w in Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID):
+                if 'wezterm' in w.get('kCGWindowOwnerName', '').lower():
+                    print(f\"{w.get('kCGWindowOwnerName')}: {w.get('kCGWindowName')} bounds={w.get('kCGWindowBounds')}\")
+                    found = True
+            if not found:
+                print('No on-screen window found for WezTerm')
+            " >> /tmp/spike-artifacts/wezterm.log 2>&1 || true
 
-          if [ -n "$KITTY_BIN" ]; then
-            echo "Starting Kitty via $KITTY_BIN"
-            "$KITTY_BIN" --config /tmp/kitty.conf python3 /tmp/fixture.py > /tmp/spike-artifacts/kitty.log 2>&1 &
-            KITTY_PID=$!
-            echo "Kitty started with PID $KITTY_PID"
+            screencapture -x /tmp/spike-artifacts/screenshot_wezterm.png > /tmp/spike-artifacts/screencapture_wezterm.log 2>&1 || true
 
-            osascript -e 'tell application "kitty" to activate' > /tmp/spike-artifacts/osascript.log 2>&1 || true
-
-            for i in {1..15}; do
-              if [ -f /tmp/fixture_ready.txt ]; then
-                echo "Fixture ready after $i seconds."
-                break
-              fi
-              sleep 1
-            done
-
-            sleep 2
-
-            screencapture -x /tmp/spike-artifacts/screenshot_kitty_screen.png > /tmp/spike-artifacts/screencapture_kitty.log 2>&1 || true
-
-            echo "=== Diagnostic GL probes ===" >> /tmp/spike-artifacts/kitty.log
-            "$KITTY_BIN" --debug-gl >> /tmp/spike-artifacts/kitty_debug_gl.log 2>&1 || true
-            "$KITTY_BIN" --config NONE >> /tmp/spike-artifacts/kitty_config_none.log 2>&1 || true
-            LIBGL_ALWAYS_SOFTWARE=1 "$KITTY_BIN" >> /tmp/spike-artifacts/kitty_software_gl.log 2>&1 || true
-
-            "$KITTY_BIN" @ --to unix:/tmp/kitty_socket get-text > /tmp/spike-artifacts/kitty_get_text.txt 2>&1 || true
-
-            kill -TERM "$KITTY_PID" 2>/dev/null || true
+            kill -TERM "$WEZ_PID" 2>/dev/null || killall wezterm-gui 2>/dev/null || true
           else
-            echo "ERROR: Kitty binary not found" | tee -a /tmp/spike-artifacts/kitty.log
+            echo "WezTerm.app not found in /Applications" > /tmp/spike-artifacts/wezterm.log
           fi
+          sleep 1
 
-          echo "=== PERMISSIONS & LOGS ===" > /tmp/spike-artifacts/permissions.log
-          log show --predicate 'subsystem == "com.apple.TCC"' --last 5m 2>/dev/null | tail -n 50 >> /tmp/spike-artifacts/permissions.log || true
-
-      - name: Report file inventory
+      - name: Test 4 - Alacritty
         continue-on-error: true
         run: |
+          echo "=== Testing Alacritty ==="
+          if [ -d "/Applications/Alacritty.app" ]; then
+            ALACRITTY_BIN="/Applications/Alacritty.app/Contents/MacOS/alacritty"
+            "$ALACRITTY_BIN" -e python3 -c "import time; print('Alacritty running'); time.sleep(15)" > /tmp/spike-artifacts/alacritty.log 2>&1 &
+            ALAC_PID=$!
+            sleep 4
+
+            python3 -c "
+            import Quartz
+            found = False
+            for w in Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID):
+                if 'alacritty' in w.get('kCGWindowOwnerName', '').lower():
+                    print(f\"{w.get('kCGWindowOwnerName')}: {w.get('kCGWindowName')} bounds={w.get('kCGWindowBounds')}\")
+                    found = True
+            if not found:
+                print('No on-screen window found for Alacritty')
+            " >> /tmp/spike-artifacts/alacritty.log 2>&1 || true
+
+            screencapture -x /tmp/spike-artifacts/screenshot_alacritty.png > /tmp/spike-artifacts/screencapture_alacritty.log 2>&1 || true
+
+            kill -TERM "$ALAC_PID" 2>/dev/null || killall alacritty 2>/dev/null || true
+          else
+            echo "Alacritty.app not found in /Applications" > /tmp/spike-artifacts/alacritty.log
+          fi
+          sleep 1
+
+      - name: Test 5 - Ghostty
+        continue-on-error: true
+        run: |
+          echo "=== Testing Ghostty ==="
+          if [ -d "/Applications/Ghostty.app" ]; then
+            GHOSTTY_BIN="/Applications/Ghostty.app/Contents/MacOS/ghostty"
+            "$GHOSTTY_BIN" -e python3 -c "import time; print('Ghostty running'); time.sleep(15)" > /tmp/spike-artifacts/ghostty.log 2>&1 &
+            GHOST_PID=$!
+            sleep 4
+
+            python3 -c "
+            import Quartz
+            found = False
+            for w in Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID):
+                if 'ghostty' in w.get('kCGWindowOwnerName', '').lower():
+                    print(f\"{w.get('kCGWindowOwnerName')}: {w.get('kCGWindowName')} bounds={w.get('kCGWindowBounds')}\")
+                    found = True
+            if not found:
+                print('No on-screen window found for Ghostty')
+            " >> /tmp/spike-artifacts/ghostty.log 2>&1 || true
+
+            screencapture -x /tmp/spike-artifacts/screenshot_ghostty.png > /tmp/spike-artifacts/screencapture_ghostty.log 2>&1 || true
+
+            kill -TERM "$GHOST_PID" 2>/dev/null || killall ghostty 2>/dev/null || true
+          else
+            echo "Ghostty.app not found in /Applications" > /tmp/spike-artifacts/ghostty.log
+          fi
+          sleep 1
+
+      - name: Report file inventory and summary
+        continue-on-error: true
+        run: |
+          echo "=== Permissions log ==="
+          log show --predicate 'subsystem == "com.apple.TCC"' --last 10m 2>/dev/null | tail -n 50 > /tmp/spike-artifacts/permissions.log || true
+
           echo "=== Artifacts Directory ==="
           ls -lah /tmp/spike-artifacts
 
@@ -109,7 +215,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: macos-kitty-spike-artifacts
+          name: macos-terminal-spike-artifacts
           path: /tmp/spike-artifacts
 
       - name: Conclude successfully
