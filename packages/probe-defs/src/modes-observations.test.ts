@@ -6,7 +6,32 @@
  */
 import { expect, test } from "vitest"
 import { modesProbes } from "./modes.ts"
-import type { TermContext, TermlessContext } from "./types.ts"
+import type { ObservationFrame, TermContext, TermlessContext } from "./types.ts"
+
+function captureContext(rows: number, cols: number, writes: string[], frames: ObservationFrame[]): TermContext {
+  return {
+    rows,
+    cols,
+    write: (bytes: string) => writes.push(bytes),
+    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryMode: async () => null,
+    capture: async ({ role, label }) => {
+      const frame = {
+        role,
+        label,
+        capturedAt: frames.length + 1,
+        ref: `sha256:${String(frames.length + 1).repeat(64)}`,
+      }
+      frames.push(frame)
+      return frame
+    },
+  }
+}
 
 const modes = [
   { id: "modes.alt-scroll-1007", number: 1007 },
@@ -407,4 +432,163 @@ test("1049 readback failure is inconclusive while a cleanup failure stays loud",
   expect(writes.at(-1)).toBe("\x1b[?1049l\x1b[0m")
   const cleanup = alt1049Context("cleanup-failure")
   expect(() => definition.termless!(cleanup.context)).toThrow("cleanup failed")
+})
+
+test("alt-screen exit capture frames the primary, alternate and restored buffers", async () => {
+  const definition = modesProbes.find((item) => item.id === "modes.alt-screen.exit")
+  if (!definition?.term) throw new Error("Missing app alt-screen exit callback")
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const result = await definition.term(captureContext(24, 80, writes, frames))
+  expect(writes).toContain("\x1b[?1049h")
+  expect(writes).toContain("\x1b[?1049l")
+  expect(frames.map(({ role }) => role)).toEqual(["control", "target", "target"])
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+    frames,
+    screenshotRef: frames[2]?.ref,
+    note: expect.stringContaining("independent pixel review"),
+  })
+  expect(result.assertions).toBeUndefined()
+})
+
+test.each(["modes.altscreen-47", "modes.altscreen-1047"] as const)(
+  "%s capture frames the swapped and restored buffers without grading",
+  async (id) => {
+    const definition = modesProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+    const writes: string[] = []
+    const frames: ObservationFrame[] = []
+    const result = await definition.term(captureContext(24, 80, writes, frames))
+    expect(
+      frames.map(({ role }) => role),
+      id,
+    ).toEqual(["control", "target", "target"])
+    expect(result.pass, id).toBe(false)
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "pixels",
+      note: expect.stringContaining("independent pixel review"),
+    })
+    expect(result.observation?.frames, id).toHaveLength(3)
+    expect(result.assertions, id).toBeUndefined()
+  },
+)
+
+test("insert-replace capture contrasts replacement with IRM insertion", async () => {
+  const definition = modesProbes.find((item) => item.id === "modes.insert-replace")
+  if (!definition?.term) throw new Error("Missing app IRM callback")
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const result = await definition.term(captureContext(24, 80, writes, frames))
+  expect(writes.some((entry) => entry.includes("\x1b[4h"))).toBe(true)
+  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+    frames,
+    note: expect.stringContaining("independent pixel review"),
+  })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("left/right margin capture contrasts an unconstrained write with a margin-confined wrap", async () => {
+  const definition = modesProbes.find((item) => item.id === "modes.left-right-margin")
+  if (!definition?.term) throw new Error("Missing app margin callback")
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const result = await definition.term(captureContext(24, 80, writes, frames))
+  expect(writes.some((entry) => entry.includes("\x1b[?69h"))).toBe(true)
+  expect(writes.some((entry) => entry.includes("\x1b[3;6s"))).toBe(true)
+  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+    frames,
+  })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("modes capture refuses undersized geometry before any bytes or frames", async () => {
+  for (const [id, rows, cols, need] of [
+    ["modes.left-right-margin", 1, 7, "2x8"],
+    ["modes.alt-screen.exit", 3, 5, "3x8"],
+    ["modes.insert-replace", 1, 5, "1x6"],
+  ] as const) {
+    const definition = modesProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+    const writes: string[] = []
+    const frames: ObservationFrame[] = []
+    const result = await definition.term(captureContext(rows, cols, writes, frames))
+    expect(writes, id).toEqual([])
+    expect(frames, id).toEqual([])
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(result.observation?.note, id).toContain(need)
+  }
+})
+
+test.each([
+  ["modes.xtpushsgr", "\x1b[#{"],
+  ["modes.xtpopsgr", "\x1b[#}"],
+  ["modes.xtsave", "\x1b[?7s"],
+  ["modes.xtrestore", "\x1b[?7r"],
+  ["modes.xtpushcolors", "\x1b[#P"],
+  ["modes.xtpopcolors", "\x1b[#Q"],
+] as const)("%s capture records control and target pixels for its stack sequence", async (id, marker) => {
+  const definition = modesProbes.find((item) => item.id === id)
+  if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const result = await definition.term(captureContext(24, 80, writes, frames))
+  expect(
+    writes.some((entry) => entry.includes(marker)),
+    id,
+  ).toBe(true)
+  expect(
+    frames.map(({ role }) => role),
+    id,
+  ).toEqual(["control", "target"])
+  expect(result.pass, id).toBe(false)
+  expect(result.observation, id).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+    frames,
+    note: expect.stringContaining("independent pixel review"),
+  })
+  expect(result.assertions, id).toBeUndefined()
+})
+
+test("xt stack capture refuses undersized geometry before any bytes or frames", async () => {
+  for (const [id, need] of [
+    ["modes.xtpushsgr", "3x6"],
+    ["modes.xtsave", "3x12"],
+    ["modes.xtpushcolors", "3x8"],
+  ] as const) {
+    const definition = modesProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+    const writes: string[] = []
+    const frames: ObservationFrame[] = []
+    const result = await definition.term(captureContext(2, 80, writes, frames))
+    expect(writes, id).toEqual([])
+    expect(frames, id).toEqual([])
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(result.observation?.note, id).toContain(need)
+  }
 })

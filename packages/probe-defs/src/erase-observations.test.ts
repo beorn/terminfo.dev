@@ -635,3 +635,50 @@ test("headless erase fixtures require measured rows and columns before writes", 
     }
   }
 })
+
+test.each([
+  ["erase.character", "\x1b[2X", "A__DE"],
+  ["erase.selective", "\x1b[?2J", "P survives"],
+  ["erase.el-with-attrs", "\x1b[K", "green background"],
+  ["erase.ed-scroll-region", "\x1b[J", "KEEP!"],
+] as const)("%s records its seeded control and post-erase target pixels", async (id, sequence, expectation) => {
+  const definition = byId(id)
+  if (!definition.term) throw new Error(`Missing app callback for ${id}`)
+  const region = id === "erase.ed-scroll-region"
+  const writes: string[] = []
+  const frames: Array<{ role: string; label: string; capturedAt: number; ref: string }> = []
+  const result = await definition.term({
+    ...app({ row: 1, col: 1 }),
+    rows: region ? 24 : 6,
+    cols: region ? 80 : 20,
+    write: (bytes) => writes.push(bytes),
+    capture: async ({ role, label }) => {
+      const frame = {
+        role,
+        label,
+        capturedAt: frames.length + 1,
+        ref: `sha256:${String(frames.length + 1).repeat(64)}`,
+      }
+      frames.push(frame)
+      return frame
+    },
+  })
+  expect(
+    writes.some((entry) => entry.includes(sequence)),
+    id,
+  ).toBe(true)
+  expect(
+    frames.map(({ role }) => role),
+    id,
+  ).toEqual(["control", "target"])
+  expect(result.pass, id).toBe(false)
+  expect(result.observation, id).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+    frames,
+    note: expect.stringContaining("independent review"),
+  })
+  expect(result.assertions, id).toBeUndefined()
+  expect(result.observation?.note, id).toContain(expectation)
+})

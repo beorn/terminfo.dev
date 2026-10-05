@@ -928,6 +928,66 @@ export const cursorProbes: ProbeDefinition[] = [
             },
           }
         }
+        if (ctx.capture && (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6)) {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: `cursor.cup-scroll-region capture needs at least 15x6, measured ${ctx.rows}x${ctx.cols}`,
+            },
+          }
+        }
+        if (ctx.capture) {
+          try {
+            // Control: label physical rows 1, 5 and 15 with no scroll region or origin mode.
+            ctx.write("\x1b[0m\x1b[2J\x1b[H")
+            ctx.write("\x1b[1;1HR01")
+            ctx.write("\x1b[5;1HR05")
+            ctx.write("\x1b[15;1HR15")
+            const control = await ctx.capture!({
+              role: "control",
+              label: "Physical row markers R01/R05/R15 with no DECOM or scroll region",
+            })
+            // Target: region rows 5-15 with DECOM; CUP 1;1 and CUP 11;1 are region-relative.
+            ctx.write("\x1b[2J")
+            ctx.write("\x1b[5;15r")
+            ctx.write("\x1b[?6h")
+            ctx.write("\x1b[1;1H<")
+            ctx.write("\x1b[11;1H>")
+            const relativeCpr = await ctx.queryCursorPosition()
+            const target = await ctx.capture!({
+              role: "target",
+              label: "DECOM region rows 5-15: marker < at CUP 1;1 and > at CUP 11;1",
+            })
+            const observed = JSON.stringify({
+              rows: ctx.rows,
+              cols: ctx.cols,
+              region: "5-15",
+              cursorMarkers: ["1;1", "11;1"],
+              relativeCpr,
+              control: control.label,
+              target: target.label,
+            })
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "Control marks physical rows 1, 5 and 15; the target places a marker at DECOM region-relative rows 1 and 11. Whether those markers land on physical rows 5 and 15 requires independent pixel review, and CPR stays region-relative so it cannot prove the physical row",
+              },
+            }
+          } finally {
+            ctx.write("\x1b[?6l")
+            ctx.write("\x1b[r")
+            ctx.write("\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
         const rows = ctx.rows
         const measured: Array<{ step: string; report: { row: number; col: number } | null }> = []
         const ask = async (step: string) => {

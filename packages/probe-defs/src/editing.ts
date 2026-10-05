@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
 import { parserStateResult, probe, isBlank, unmeasuredCellResult, selectiveEraseResult } from "./helpers.ts"
 
 // DECRQCRA is a reply capability probe, not a checksum-correctness oracle.
@@ -21,7 +21,183 @@ function checksumResult(response: string): ProbeResult {
   }
 }
 
-export const editingProbes: ProbeDefinition[] = [
+/**
+ * Editing capture fixtures. An editing probe's application callback can only prove the
+ * sequence was consumed (cursor advance); that collector has no cell readback. The capture
+ * path records a pre-edit control and a post-edit target so a reviewer can judge the claimed
+ * effect on pixels. Each seed mirrors the termless fixture so both paths assert the same claim.
+ */
+interface EditingCaptureSpec {
+  /** Rows the seed draws on. */
+  minRows: number
+  /** Widest seed line. Capture adds a one-row/two-column margin so the seed cannot wrap or scroll. */
+  minCols: number
+  seed: string
+  edit: string
+  region: { row: number; col: number; rows: number; cols: number }
+  note: string
+}
+
+const EDITING_CAPTURE_SPECS: Record<string, EditingCaptureSpec> = {
+  "editing.insert-chars": {
+    minRows: 1,
+    minCols: 8,
+    seed: "\x1b[1;1HABCDEZQH",
+    edit: "\x1b[1;3H\x1b[1@",
+    region: { row: 1, col: 1, rows: 1, cols: 8 },
+    note: "ICH at column 3 should blank column 3 and shift the measured text right; compare the pre-edit control",
+  },
+  "editing.delete-chars": {
+    minRows: 1,
+    minCols: 8,
+    seed: "\x1b[1;1HABCDEZQH",
+    edit: "\x1b[1;3H\x1b[1P",
+    region: { row: 1, col: 1, rows: 1, cols: 8 },
+    note: "DCH at column 3 should delete column 3 and shift the measured text left; compare the pre-edit control",
+  },
+  "editing.insert-lines": {
+    minRows: 4,
+    minCols: 5,
+    seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD",
+    edit: "\x1b[2;1H\x1b[1L",
+    region: { row: 1, col: 1, rows: 4, cols: 5 },
+    note: "IL at row 2 should insert a blank row and shift measured rows down; row 1 is the intact control",
+  },
+  "editing.delete-lines": {
+    minRows: 4,
+    minCols: 5,
+    seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD",
+    edit: "\x1b[2;1H\x1b[1M",
+    region: { row: 1, col: 1, rows: 4, cols: 5 },
+    note: "DL at row 2 should remove row 2 and shift measured rows up; row 1 is the intact control",
+  },
+  "editing.repeat-char": {
+    minRows: 1,
+    minCols: 6,
+    seed: "\x1b[1;1HAX   Z",
+    edit: "\x1b[1;2HX\x1b[3b",
+    region: { row: 1, col: 1, rows: 1, cols: 6 },
+    note: "REP should repeat X into three cells between the intact A and Z flanks",
+  },
+  "editing.decfra": {
+    minRows: 3,
+    minCols: 6,
+    seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW",
+    edit: "\x1b[1;1H\x1b[88;1;1;3;5$x",
+    region: { row: 1, col: 1, rows: 3, cols: 6 },
+    note: "DECFRA should fill the measured 3x5 area with X and preserve the sampled right flank",
+  },
+  "editing.decera": {
+    minRows: 3,
+    minCols: 6,
+    seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW",
+    edit: "\x1b[1;1H\x1b[1;1;3;5$z",
+    region: { row: 1, col: 1, rows: 3, cols: 6 },
+    note: "DECERA should blank the measured 3x5 area and preserve the sampled right flank",
+  },
+  "editing.decsera": {
+    minRows: 1,
+    minCols: 6,
+    seed: '\x1b[1;1H\x1b[1"qP\x1b[0"qABCDZ',
+    edit: "\x1b[1;1;1;5${",
+    region: { row: 1, col: 1, rows: 1, cols: 6 },
+    note: "DECSERA should clear ABCD while the DECSCA-protected P and the Z flank survive",
+  },
+  "editing.deccra": {
+    minRows: 6,
+    minCols: 14,
+    seed: "\x1b[1;1HABCDE.........\x1b[2;1HFGHIJ.........\x1b[5;1H.........12345\x1b[6;1H.........67890",
+    edit: "\x1b[1;1H\x1b[1;1;2;5;1;5;10$v",
+    region: { row: 5, col: 10, rows: 2, cols: 5 },
+    note: "DECCRA should copy ABCDE/FGHIJ to row 5 column 10 and leave the source rows intact",
+  },
+  "editing.deccara": {
+    minRows: 3,
+    minCols: 6,
+    seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW",
+    edit: "\x1b[1;1H\x1b[1;1;3;5;7$r",
+    region: { row: 1, col: 1, rows: 3, cols: 5 },
+    note: "DECCARA should set inverse on the measured 3x5 area, preserving text and the right flank",
+  },
+  "editing.decrara": {
+    minRows: 3,
+    minCols: 6,
+    seed: "\x1b[1;1H\x1b[7maaaaa\x1b[0mZ\x1b[2;1H\x1b[7mbbbbb\x1b[0mY\x1b[3;1H\x1b[7mccccc\x1b[0mX",
+    edit: "\x1b[1;1H\x1b[1;1;3;5;7$t",
+    region: { row: 1, col: 1, rows: 3, cols: 5 },
+    note: "DECRARA should clear inverse on the measured 3x5 area, preserving text and the right flank",
+  },
+  "editing.sl": {
+    minRows: 2,
+    minCols: 9,
+    seed: "\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR",
+    edit: "\x1b[1;1H\x1b[2 @",
+    region: { row: 1, col: 1, rows: 2, cols: 9 },
+    note: "SL should shift the first nine measured cells of two rows left by two columns",
+  },
+  "editing.sr": {
+    minRows: 2,
+    minCols: 9,
+    seed: "\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR",
+    edit: "\x1b[1;1H\x1b[2 A",
+    region: { row: 1, col: 1, rows: 2, cols: 9 },
+    note: "SR should shift the first nine measured cells of two rows right by two columns",
+  },
+  "editing.decic": {
+    minRows: 3,
+    minCols: 8,
+    seed: "\x1b[1;1HABCDEFGH\x1b[2;1HIJKLMNOP\x1b[3;1HQRSTUVWX",
+    edit: "\x1b[2;3H\x1b[2'}",
+    region: { row: 1, col: 1, rows: 3, cols: 8 },
+    note: "DECIC should insert two blank columns at column 3 on three measured rows",
+  },
+  "editing.decdc": {
+    minRows: 3,
+    minCols: 10,
+    seed: "\x1b[1;1HABCDEFGHIJ\x1b[2;1HIJKLMNOPQR\x1b[3;1HQRSTUVWXab",
+    edit: "\x1b[2;3H\x1b[2'~",
+    region: { row: 1, col: 1, rows: 3, cols: 8 },
+    note: "DECDC should delete two columns at column 3 on three measured rows",
+  },
+}
+
+async function editCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
+  const spec = EDITING_CAPTURE_SPECS[id]
+  if (!spec) throw new Error(`no editing capture spec for ${id}`)
+  const needRows = spec.minRows + 1
+  const needCols = spec.minCols + 2
+  const { rows, cols } = ctx
+  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < needRows || cols < needCols) {
+    return {
+      pass: false,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+        note: `Editing capture needs at least ${needRows}x${needCols}, measured ${rows}x${cols}`,
+      },
+    }
+  }
+  ctx.write("\x1b[0m\x1b[2J")
+  ctx.write(spec.seed)
+  const control = await ctx.capture!({ role: "control", label: `${id}: pre-edit seed` })
+  ctx.write(spec.edit)
+  const target = await ctx.capture!({ role: "target", label: id })
+  return {
+    pass: false,
+    response: JSON.stringify({ region: spec.region, control: control.label, target: target.label }),
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "pixels",
+      screenshotRef: target.ref,
+      frames: [control, target],
+      note: spec.note,
+    },
+  }
+}
+
+const editingProbeDefinitions: ProbeDefinition[] = [
   {
     ...probe(
       "editing.insert-chars",
@@ -956,3 +1132,9 @@ export const editingProbes: ProbeDefinition[] = [
     termlessObservationEvidence: "parser-state",
   },
 ]
+
+export const editingProbes: ProbeDefinition[] = editingProbeDefinitions.map((definition) => {
+  const original = definition.term
+  if (!original || !(definition.id in EDITING_CAPTURE_SPECS)) return definition
+  return { ...definition, term: async (ctx) => (ctx.capture ? editCapture(ctx, definition.id) : original(ctx)) }
+})

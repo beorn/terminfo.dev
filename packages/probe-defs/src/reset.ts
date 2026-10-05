@@ -1,5 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { parserStateResult, probe } from "./helpers.ts"
+import { parserStateResult, probe, sgrCaptureFrames, sgrCaptureTooSmall } from "./helpers.ts"
 
 export const resetProbes: ProbeDefinition[] = [
   {
@@ -17,6 +17,22 @@ export const resetProbes: ProbeDefinition[] = [
         return parserStateResult(!after.bold && !after.italic && !after.inverse, expected, state)
       },
       async (ctx) => {
+        if (ctx.capture) {
+          const refusal = sgrCaptureTooSmall(ctx, "reset.sgr")
+          if (refusal) return refusal
+          try {
+            return await sgrCaptureFrames(
+              ctx,
+              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;7mX",
+              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;7mX\x1b[0mY",
+              "reset.sgr",
+              { setup: "\x1b[1;3;7m", reset: "\x1b[0m" },
+              "The control shows a bold+italic+inverse X; the target adds reset Y, so review can check Y is unstyled",
+            )
+          } finally {
+            ctx.write("\x1b[0m")
+          }
+        }
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
           return {
             pass: false,

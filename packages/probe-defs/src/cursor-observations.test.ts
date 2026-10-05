@@ -981,3 +981,69 @@ test("app cursor hide refuses invalid geometry or absent capture before fixture 
   }
   expect((await byId("cursor.hide").term!(context)).observation?.evidence).toBe("none")
 })
+
+test("cup-scroll-region capture marks physical rows while the relative CPR stays ungraded", async () => {
+  const probe = byId("cursor.cup-scroll-region")
+  const writes: string[] = []
+  const frames: Array<{ role: string; label: string; capturedAt: number; ref: string }> = []
+  const context = {
+    ...app({ row: 5, col: 1 }),
+    rows: 15,
+    cols: 6,
+    write: (sequence: string) => writes.push(sequence),
+    capture: async ({ role, label }: { role: "control" | "target"; label: string }) => {
+      const frame = {
+        role,
+        label,
+        capturedAt: frames.length + 1,
+        ref: `sha256:${String(frames.length + 1).repeat(64)}`,
+      }
+      frames.push(frame)
+      return frame
+    },
+  } as TermContext
+  const result = await probe.term!(context)
+  expect(writes).toContain("\x1b[5;15r")
+  expect(writes).toContain("\x1b[?6h")
+  expect(writes.slice(-3)).toEqual(["\x1b[?6l", "\x1b[r", "\x1b[0m\x1b[2J\x1b[H"])
+  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
+  expect(JSON.parse(result.response ?? "")).toMatchObject({
+    region: "5-15",
+    cursorMarkers: ["1;1", "11;1"],
+    relativeCpr: { row: 5, col: 1 },
+    control: "Physical row markers R01/R05/R15 with no DECOM or scroll region",
+    target: "DECOM region rows 5-15: marker < at CUP 1;1 and > at CUP 11;1",
+  })
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+    frames,
+    screenshotRef: frames[1]?.ref,
+  })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("cup-scroll-region capture refuses a narrow terminal before any bytes", async () => {
+  const probe = byId("cursor.cup-scroll-region")
+  const writes: string[] = []
+  const context = {
+    ...app({ row: 1, col: 1 }),
+    rows: 15,
+    cols: 5,
+    write: (sequence: string) => writes.push(sequence),
+    capture: async ({ role, label }: { role: "control" | "target"; label: string }) => ({
+      role,
+      label,
+      capturedAt: 1,
+      ref: "never",
+    }),
+  } as TermContext
+  expect((await probe.term!(context)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(writes).toEqual([])
+})

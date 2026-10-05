@@ -266,6 +266,68 @@ function decaln() {
   return definition
 }
 
+test("reset.sgr capture renders a styled control and a reset target instead of consumed evidence", async () => {
+  const definition = resetProbes.find((probe) => probe.id === "reset.sgr")
+  if (!definition?.term) throw new Error("missing app reset.sgr callback")
+  const events: string[] = []
+  const context = app(3, 34, events)
+  const frames: ObservationFrame[] = []
+  context.capture = async ({ role, label }) => {
+    const frame = {
+      role,
+      label,
+      capturedAt: frames.length + 1,
+      ref: `sha256:${String(frames.length + 1).repeat(64)}`,
+    }
+    frames.push(frame)
+    return frame
+  }
+  const result = await definition.term(context)
+  expect(events[0]).toContain("\x1b[1;3;7mX")
+  expect(events[0]).not.toContain("Y")
+  expect(events[1]).toContain("\x1b[1;3;7mX\x1b[0mY")
+  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+    frames,
+    screenshotRef: frames[1]?.ref,
+    note: expect.stringContaining("unstyled"),
+  })
+})
+
+test("reset.sgr capture refuses an undersized terminal before any bytes or frames", async () => {
+  const definition = resetProbes.find((probe) => probe.id === "reset.sgr")
+  if (!definition?.term) throw new Error("missing app reset.sgr callback")
+  for (const [rows, cols] of [
+    [2, 33],
+    [3, 33],
+    [2, 34],
+    [NaN, 34],
+  ] as const) {
+    const events: string[] = []
+    const context = app(rows, cols, events)
+    const capture = vi.fn(async ({ role, label }: { role: ObservationFrame["role"]; label: string }) => ({
+      role,
+      label,
+      capturedAt: 1,
+      ref: "never",
+    }))
+    context.capture = capture
+    const result = await definition.term(context)
+    expect(events, `${rows}x${cols}`).toEqual([])
+    expect(capture, `${rows}x${cols}`).not.toHaveBeenCalled()
+    expect(result.observation, `${rows}x${cols}`).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(result.observation?.note, `${rows}x${cols}`).toContain("3x34")
+  }
+})
+
 test.each([{ row: 1, col: 1 }, null])(
   "DECALN retains CPR %j and separates five-second, cursor-only and ordinary-glyph checkpoints without grading pixels",
   async (cursor) => {

@@ -1,6 +1,18 @@
 import { randomUUID } from "node:crypto"
 import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
-import { parserStateResult, probe, readHyperlinkMetadata, notTestedResult, unmeasuredCellResult } from "./helpers.ts"
+import {
+  parserStateResult,
+  probe,
+  readHyperlinkMetadata,
+  sgrCaptureFrames,
+  sgrCaptureTooSmall,
+  notTestedResult,
+  unmeasuredCellResult,
+} from "./helpers.ts"
+
+/** A minimal solid-red 8x8 PNG; the OSC 1337 inline image target renders it as reviewable pixels. */
+const ITERM2_RED_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mP4z8CAFTEMLQkAKP8/wc53yE8AAAAASUVORK5CYII="
 
 function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }
@@ -1098,6 +1110,26 @@ export const extensionsProbes: ProbeDefinition[] = [
         return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
       },
       async (ctx) => {
+        if (ctx.capture) {
+          const refusal = sgrCaptureTooSmall(ctx, "extensions.truecolor")
+          if (refusal) return refusal
+          const sample = "AaBb 0123456789 - terminal text"
+          try {
+            return await sgrCaptureFrames(
+              ctx,
+              "\x1b[0m\x1b[2J\x1b[3;3H" + sample,
+              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[38;2;255;128;0m" +
+                sample.slice(0, 12) +
+                "\x1b[38;2;17;97;201m" +
+                sample.slice(12),
+              "extensions.truecolor",
+              { sample, startRow: 3, startCol: 3, firstRgb: "255;128;0", secondRgb: "17;97;201" },
+              "Two direct-RGB foreground samples; compare each against the unstyled control run before grading",
+            )
+          } finally {
+            ctx.write("\x1b[0m")
+          }
+        }
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b[38;2;255;0;128mX\x1b[0m")
         const pos = await ctx.queryCursorPosition()
@@ -1205,13 +1237,29 @@ export const extensionsProbes: ProbeDefinition[] = [
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
       }
     },
-    () => {
+    async (ctx) => {
+      if (ctx.capture) {
+        const refusal = sgrCaptureTooSmall(ctx, "extensions.sixel")
+        if (refusal) return refusal
+        try {
+          return await sgrCaptureFrames(
+            ctx,
+            "\x1b[0m\x1b[2J\x1b[H",
+            '\x1b[0m\x1b[2J\x1b[3;3H\x1bP0;1;0q"1;1;6;6#0;2;100;0;0#0~~~~~~\x1b\\',
+            "extensions.sixel",
+            { startRow: 3, startCol: 3, sixel: "6x6 solid #0 red block" },
+            "A rendered sixel block appears only if the payload was decoded; compare against the blank control",
+          )
+        } finally {
+          ctx.write("\x1b[0m")
+        }
+      }
       const note = "No pixel readback for Sixel rendering"
-      return Promise.resolve<ProbeResult>({
+      return {
         pass: false,
         note,
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
-      })
+      }
     },
   ),
 
@@ -1718,13 +1766,29 @@ export const extensionsProbes: ProbeDefinition[] = [
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy", note },
       }
     },
-    () => {
+    async (ctx) => {
+      if (ctx.capture) {
+        const refusal = sgrCaptureTooSmall(ctx, "extensions.iterm2-images")
+        if (refusal) return refusal
+        try {
+          return await sgrCaptureFrames(
+            ctx,
+            "\x1b[0m\x1b[2J\x1b[H",
+            "\x1b[0m\x1b[2J\x1b[3;3H\x1b]1337;File=inline=1;width=8px;height=8px:" + ITERM2_RED_PNG + "\x07",
+            "extensions.iterm2-images",
+            { startRow: 3, startCol: 3, image: "8x8 solid red PNG" },
+            "A red inline image appears only if the OSC 1337 payload was decoded; compare against the blank control",
+          )
+        } finally {
+          ctx.write("\x1b[0m")
+        }
+      }
       const note = "No pixel readback for iTerm2 inline image rendering"
-      return Promise.resolve<ProbeResult>({
+      return {
         pass: false,
         note,
         observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
-      })
+      }
     },
   ),
 

@@ -1,5 +1,121 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank } from "./helpers.ts"
+
+/** Refuse a modes capture fixture before any bytes when the measured geometry is too small. */
+function captureRefusal(ctx: TermContext, minRows: number, minCols: number, feature: string): ProbeResult | undefined {
+  if (!ctx.capture) return undefined
+  if (Number.isSafeInteger(ctx.rows) && Number.isSafeInteger(ctx.cols) && ctx.rows >= minRows && ctx.cols >= minCols) {
+    return undefined
+  }
+  return {
+    pass: false,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: `${feature} capture needs at least ${minRows}x${minCols}, measured ${ctx.rows}x${ctx.cols}`,
+    },
+  }
+}
+
+/** SGR-stack capture: the control leaves Y plain; the target pushes bold, styles X, pops, so Y must be bold. */
+async function xtSgrStackCapture(ctx: TermContext, id: string, label: string): Promise<ProbeResult> {
+  const refusal = captureRefusal(ctx, 3, 6, id)
+  if (refusal) return refusal
+  try {
+    ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[1m\x1b[3mX\x1b[0mY")
+    const control = await ctx.capture!({
+      role: "control",
+      label: `${id}: X bold+italic, Y plain after SGR 0 (no stack)`,
+    })
+    ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[1m\x1b[#{\x1b[3mX\x1b[#}Y")
+    const target = await ctx.capture!({
+      role: "target",
+      label: `${id}: ${label} — Y should carry the bold saved before X`,
+    })
+    const observed = JSON.stringify({ control: control.label, target: target.label })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [control, target],
+        note: "Control shows Y plain; the target pushes the bold, styles X italic, then pops, so Y must be bold again if the SGR stack round-tripped. Requires independent pixel review",
+      },
+    }
+  } finally {
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
+/** Mode save/restore capture: wrap is off in the control; the target saves wrap on, disables then restores it. */
+async function xtModeSaveCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
+  const refusal = captureRefusal(ctx, 3, 12, id)
+  if (refusal) return refusal
+  try {
+    ctx.write("\x1b[?7l\x1b[0m\x1b[2J\x1b[1;1HXXXXXXXXXX!")
+    const control = await ctx.capture!({
+      role: "control",
+      label: `${id}: auto-wrap off, so the overflow ! stays on row 1`,
+    })
+    ctx.write("\x1b[?7h\x1b[?7s\x1b[?7l\x1b[?7r\x1b[0m\x1b[2J\x1b[1;1HXXXXXXXXXX!")
+    const target = await ctx.capture!({
+      role: "target",
+      label: `${id}: wrap saved on, disabled and restored; the overflow ! should wrap to row 2`,
+    })
+    const observed = JSON.stringify({ control: control.label, target: target.label })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [control, target],
+        note: "Control keeps the overflow on row 1 with wrap off; the target saves wrap on, disables it, then restores it, so the overflow should wrap to row 2. Whether the restore re-enabled wrap requires independent pixel review",
+      },
+    }
+  } finally {
+    ctx.write("\x1b[?7h\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
+/** Color-stack capture: palette index 1 is green in both frames; only the popped target restores it for Y. */
+async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
+  const refusal = captureRefusal(ctx, 3, 8, id)
+  if (refusal) return refusal
+  try {
+    ctx.write("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mXY")
+    const control = await ctx.capture!({
+      role: "control",
+      label: `${id}: palette index 1 redefined to green; X and Y both use it`,
+    })
+    ctx.write("\x1b[0m\x1b[2J\x1b[1;1H\x1b[#P\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mX\x1b[#Q\x1b[38;5;1mY")
+    const target = await ctx.capture!({
+      role: "target",
+      label: `${id}: X uses the pushed green index 1; Y uses the index 1 restored by the pop`,
+    })
+    const observed = JSON.stringify({ control: control.label, target: target.label })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [control, target],
+        note: "Control shows X and Y in the redefined green index 1; the target pushes the palette, redefines index 1, prints X, then pops before Y, so Y should return to the original index 1. Requires independent pixel review",
+      },
+    }
+  } finally {
+    ctx.write("\x1b[#Q\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
+  }
+}
 
 const ALT_1049_SEED_A = "PRIMARY-A"
 const ALT_1049_SEED_B = "PRIMARY-B"
@@ -169,6 +285,50 @@ export const modesProbes: ProbeDefinition[] = [
             },
           }
         }
+        const refusal = captureRefusal(ctx, 3, 8, "Alt-screen exit")
+        if (refusal) return refusal
+        if (ctx.capture) {
+          try {
+            ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
+            ctx.write("\x1b[1;1HPRIMARY")
+            const control = await ctx.capture!({
+              role: "control",
+              label: "Primary-screen marker PRIMARY before entering the alternate screen",
+            })
+            ctx.write("\x1b[?1049h")
+            ctx.write("\x1b[1;1HALTONLY")
+            const alternate = await ctx.capture!({
+              role: "target",
+              label: "Alternate-screen marker ALTONLY while ?1049 is set",
+            })
+            ctx.write("\x1b[?1049l")
+            const restored = await ctx.capture!({
+              role: "target",
+              label: "Primary-screen marker after ?1049l: PRIMARY restored and ALTONLY absent",
+            })
+            const observed = JSON.stringify({
+              rows: ctx.rows,
+              cols: ctx.cols,
+              control: control.label,
+              alternate: alternate.label,
+              restored: restored.label,
+            })
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: restored.ref,
+                frames: [control, alternate, restored],
+                note: "Control shows PRIMARY; the alternate frame shows ALTONLY; the restored frame must show PRIMARY again with ALTONLY gone. Whether the primary buffer came back requires independent pixel review, because CPR after exit proves nothing about buffer contents",
+              },
+            }
+          } finally {
+            ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
         ctx.write("\x1b[?1049h") // enter
         try {
           ctx.write("\x1b[3;3H") // move somewhere in alt
@@ -327,6 +487,44 @@ export const modesProbes: ProbeDefinition[] = [
             },
           }
         }
+        const refusal = captureRefusal(ctx, 1, 6, "Insert/replace")
+        if (refusal) return refusal
+        if (ctx.capture) {
+          try {
+            ctx.write("\x1b[?4l\x1b[0m\x1b[2J\x1b[1;1HABCD\x1b[1;2HX")
+            const control = await ctx.capture!({
+              role: "control",
+              label: "Seed ABCD with X typed at column 2 in replace mode: expect XBCD",
+            })
+            ctx.write("\x1b[1;1HABCD\x1b[1;2H\x1b[4hX")
+            const target = await ctx.capture!({
+              role: "target",
+              label: "Seed ABCD with X typed at column 2 under IRM (?4h): expect XABCD",
+            })
+            const observed = JSON.stringify({
+              rows: ctx.rows,
+              cols: ctx.cols,
+              seed: "ABCD",
+              typed: { row: 1, col: 2, char: "X" },
+              control: control.label,
+              target: target.label,
+            })
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "Control replaces A with X (XBCD); the IRM target inserts X and shifts the run (XABCD). Whether the shift actually happened requires independent pixel review",
+              },
+            }
+          } finally {
+            ctx.write("\x1b[4l\x1b[0m\x1b[2J\x1b[H")
+          }
+        }
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("ABCD")
         ctx.write("\x1b[1;2H") // move to col 2
@@ -407,8 +605,45 @@ export const modesProbes: ProbeDefinition[] = [
         "Mode metadata does not measure margins",
       )
     },
-    () =>
-      Promise.resolve({
+    async (ctx) => {
+      const refusal = captureRefusal(ctx, 2, 8, "Left/right margin")
+      if (refusal) return refusal
+      if (ctx.capture) {
+        try {
+          ctx.write("\x1b[?69l\x1b[?7h\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDE")
+          const control = await ctx.capture!({
+            role: "control",
+            label: "Five glyphs ABCDE written from row 1 column 1 with margins reset: all stay on row 1",
+          })
+          ctx.write("\x1b[2J\x1b[H\x1b[?69h\x1b[3;6s\x1b[1;3HABCDE")
+          const target = await ctx.capture!({
+            role: "target",
+            label: "DECLRMM margins 3-6: ABCDE written from column 3 wraps at column 6 onto row 2",
+          })
+          const observed = JSON.stringify({
+            rows: ctx.rows,
+            cols: ctx.cols,
+            margins: "3-6",
+            control: control.label,
+            target: target.label,
+          })
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: target.ref,
+              frames: [control, target],
+              note: "Control keeps ABCDE on row 1; with DECLRMM margins 3-6 the fifth glyph wraps at column 6 onto row 2. Whether the wrap respected the margin requires independent pixel review",
+            },
+          }
+        } finally {
+          ctx.write("\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
+        }
+      }
+      return {
         pass: false,
         observation: {
           outcome: "inconclusive",
@@ -416,7 +651,8 @@ export const modesProbes: ProbeDefinition[] = [
           evidence: "none",
           note: "Margin mode left unchanged; this probe does not measure left/right margin behavior",
         },
-      }),
+      }
+    },
   ),
 
   // ?47 — legacy alt screen (no cursor save)
@@ -434,8 +670,50 @@ export const modesProbes: ProbeDefinition[] = [
         "Mode metadata does not measure the buffer",
       )
     },
-    () =>
-      Promise.resolve({
+    async (ctx) => {
+      const refusal = captureRefusal(ctx, 1, 8, "?47 alternate screen")
+      if (refusal) return refusal
+      if (ctx.capture) {
+        try {
+          ctx.write("\x1b[?47l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HMAIN47")
+          const control = await ctx.capture!({
+            role: "control",
+            label: "Primary-screen marker MAIN47 before ?47 is set",
+          })
+          ctx.write("\x1b[?47h\x1b[1;1HALT47")
+          const alternate = await ctx.capture!({
+            role: "target",
+            label: "Alternate-screen marker ALT47 while ?47 is set",
+          })
+          ctx.write("\x1b[?47l")
+          const restored = await ctx.capture!({
+            role: "target",
+            label: "Primary-screen marker after ?47 is reset: MAIN47 restored and ALT47 absent",
+          })
+          const observed = JSON.stringify({
+            rows: ctx.rows,
+            cols: ctx.cols,
+            control: control.label,
+            alternate: alternate.label,
+            restored: restored.label,
+          })
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: restored.ref,
+              frames: [control, alternate, restored],
+              note: "Control shows MAIN47; the alternate frame shows ALT47; the restored frame must show MAIN47 again with ALT47 gone. Whether ?47 actually swapped buffers requires independent pixel review",
+            },
+          }
+        } finally {
+          ctx.write("\x1b[?47l\x1b[0m\x1b[2J\x1b[H")
+        }
+      }
+      return {
         pass: false,
         observation: {
           outcome: "inconclusive",
@@ -443,7 +721,8 @@ export const modesProbes: ProbeDefinition[] = [
           evidence: "none",
           note: "Alternate buffer left unchanged; this probe does not measure its visible contents",
         },
-      }),
+      }
+    },
   ),
 
   // ?1047 — alt screen, clear on enter
@@ -462,6 +741,48 @@ export const modesProbes: ProbeDefinition[] = [
       )
     },
     async (ctx) => {
+      const refusal = captureRefusal(ctx, 1, 8, "?1047 alternate screen")
+      if (refusal) return refusal
+      if (ctx.capture) {
+        try {
+          ctx.write("\x1b[?1047l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HMAIN47")
+          const control = await ctx.capture!({
+            role: "control",
+            label: "Primary-screen marker MAIN47 before ?1047 is set",
+          })
+          ctx.write("\x1b[?1047h\x1b[1;1HALT1047")
+          const alternate = await ctx.capture!({
+            role: "target",
+            label: "Alternate-screen marker ALT1047 while ?1047 is set (enter clears the alt buffer)",
+          })
+          ctx.write("\x1b[?1047l")
+          const restored = await ctx.capture!({
+            role: "target",
+            label: "Primary-screen marker after ?1047 is reset: MAIN47 restored and ALT1047 absent",
+          })
+          const observed = JSON.stringify({
+            rows: ctx.rows,
+            cols: ctx.cols,
+            control: control.label,
+            alternate: alternate.label,
+            restored: restored.label,
+          })
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: restored.ref,
+              frames: [control, alternate, restored],
+              note: "Control shows MAIN47; the alternate frame shows ALT1047; the restored frame must show MAIN47 again with ALT1047 gone. Whether ?1047 actually swapped and cleared buffers requires independent pixel review",
+            },
+          }
+        } finally {
+          ctx.write("\x1b[?1047l\x1b[0m\x1b[2J\x1b[H")
+        }
+      }
       const decrpmResult = await ctx.queryMode(1047)
       return {
         pass: false,
@@ -759,6 +1080,7 @@ export const modesProbes: ProbeDefinition[] = [
       }
     },
     async (ctx) => {
+      if (ctx.capture) return xtSgrStackCapture(ctx, "modes.xtpushsgr", "XTPUSHSGR (CSI # {) then XTPOPSGR")
       ctx.write("\x1b[#{")
       try {
         const pos = await ctx.queryCursorPosition()
@@ -813,6 +1135,7 @@ export const modesProbes: ProbeDefinition[] = [
       }
     },
     async (ctx) => {
+      if (ctx.capture) return xtSgrStackCapture(ctx, "modes.xtpopsgr", "XTPOPSGR (CSI # }) after a push")
       ctx.write("\x1b[#{")
       ctx.write("\x1b[#}")
       const pos = await ctx.queryCursorPosition()
@@ -864,6 +1187,7 @@ export const modesProbes: ProbeDefinition[] = [
       }
     },
     async (ctx) => {
+      if (ctx.capture) return xtModeSaveCapture(ctx, "modes.xtsave")
       ctx.write("\x1b[?7s")
       try {
         const pos = await ctx.queryCursorPosition()
@@ -917,6 +1241,7 @@ export const modesProbes: ProbeDefinition[] = [
       }
     },
     async (ctx) => {
+      if (ctx.capture) return xtModeSaveCapture(ctx, "modes.xtrestore")
       ctx.write("\x1b[?7s")
       ctx.write("\x1b[?7r")
       const pos = await ctx.queryCursorPosition()
@@ -968,6 +1293,7 @@ export const modesProbes: ProbeDefinition[] = [
       }
     },
     async (ctx) => {
+      if (ctx.capture) return xtColorStackCapture(ctx, "modes.xtpushcolors")
       ctx.write("\x1b[#P")
       try {
         const pos = await ctx.queryCursorPosition()
@@ -1021,6 +1347,7 @@ export const modesProbes: ProbeDefinition[] = [
       }
     },
     async (ctx) => {
+      if (ctx.capture) return xtColorStackCapture(ctx, "modes.xtpopcolors")
       ctx.write("\x1b[#P")
       ctx.write("\x1b[#Q")
       const pos = await ctx.queryCursorPosition()

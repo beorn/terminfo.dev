@@ -152,6 +152,74 @@ function eraseScreenResult(
   }
 }
 
+/**
+ * Capture a seeded erase fixture without interpreting pixels. Returns null when no capture
+ * adapter is installed so the caller can keep its legacy query path.
+ */
+async function eraseSequenceCapture(
+  ctx: TermContext,
+  minRows: number,
+  minCols: number,
+  feature: string,
+  seed: readonly string[],
+  eraseAt: string,
+  sequence: string,
+  expected: string,
+  cleanup = "",
+): Promise<ProbeResult | null> {
+  if (!ctx.capture) return null
+  const { rows, cols } = ctx
+  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < minCols) {
+    return {
+      pass: false,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+        note: `${feature} capture needs at least ${minRows}x${minCols}, measured ${rows}x${cols}`,
+      },
+    }
+  }
+  try {
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+    for (const step of seed) ctx.write(step)
+    ctx.write("\x1b[0m")
+    const before = await ctx.capture!({
+      role: "control",
+      label: `${feature}: seeded cells before ${JSON.stringify(sequence)}`,
+    })
+    ctx.write(eraseAt)
+    ctx.write(sequence)
+    const target = await ctx.capture!({
+      role: "target",
+      label: `${feature}: after ${JSON.stringify(sequence)}`,
+    })
+    const observed = JSON.stringify({
+      rows,
+      cols,
+      eraseAt: JSON.stringify(eraseAt),
+      sequence: JSON.stringify(sequence),
+      before: before.label,
+      target: target.label,
+    })
+    return {
+      pass: false,
+      response: observed,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: target.ref,
+        frames: [before, target],
+        note: `${feature} control and target pixels captured; the erase effect requires independent review. Visual expectation: ${expected}`,
+      },
+    }
+  } finally {
+    ctx.write(cleanup)
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
 /** Capture an owned app's erase effect without interpreting its pixels. */
 async function captureEraseFixture(
   ctx: TermContext,
@@ -343,6 +411,17 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.character",
       (ctx) => eraseRowResult(ctx, "ABCDE\x1b[1G", "\x1b[3X", ["blank", "blank", "blank", "D", "E"], false, 0),
       async (ctx) => {
+        const viaCapture = await eraseSequenceCapture(
+          ctx,
+          1,
+          6,
+          "Erase character",
+          ["\x1b[1;1HABCDE"],
+          "\x1b[1;2H",
+          "\x1b[2X",
+          "row 1 A__DE with columns 2-3 blank",
+        )
+        if (viaCapture) return viaCapture
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
           return {
             pass: false,
@@ -372,6 +451,17 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.selective",
       (ctx) => selectiveEraseResult(ctx, "\x1b[?2J", false),
       async (ctx) => {
+        const viaCapture = await eraseSequenceCapture(
+          ctx,
+          1,
+          6,
+          "Selective erase",
+          ['\x1b[1;1H\x1b[1"qP\x1b[0"qABCDE'],
+          "\x1b[1;1H",
+          "\x1b[?2J",
+          "the DECSCA-protected P survives while ABCDE is erased",
+        )
+        if (viaCapture) return viaCapture
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
           return {
             pass: false,
@@ -424,6 +514,18 @@ export const eraseProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        const viaCapture = await eraseSequenceCapture(
+          ctx,
+          1,
+          6,
+          "EL with background",
+          ["\x1b[1;1H\x1b[42mXXXXX"],
+          "\x1b[1;1H",
+          "\x1b[K",
+          "row 1 erased to the end with the green background retained",
+          "\x1b[0m",
+        )
+        if (viaCapture) return viaCapture
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
           return {
             pass: false,
@@ -486,6 +588,18 @@ export const eraseProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        const viaCapture = await eraseSequenceCapture(
+          ctx,
+          10,
+          10,
+          "ED at scroll region",
+          ["\x1b[1;1HKEEP!", "\x1b[3;1HERASE", "\x1b[3;10r"],
+          "\x1b[3;1H",
+          "\x1b[J",
+          "row 1 KEEP! is preserved while the region cells at and below the cursor are erased",
+          "\x1b[r",
+        )
+        if (viaCapture) return viaCapture
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 10 || ctx.cols < 10) {
           return {
             pass: false,
