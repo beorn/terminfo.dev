@@ -339,6 +339,34 @@ function promptConsumptionResult(consumed: boolean | null): ProbeResult {
   }
 }
 
+/**
+ * C154 — a consumed semantic prompt mark proves consumption, not that the mark registered.
+ * Read the measured home / target / control sequence from the real cursor and cell state so a
+ * provider that answers a constant cursor position cannot satisfy all three positions; only a
+ * qualified sequence records the named no-semantic-observable coverage. A consumed-but-unqualified
+ * read, and a missing cell, stay a real consumption observation — never not-tested.
+ */
+function promptMarkResult(ctx: TermlessContext, sequence: string, noObservable: string): ProbeResult {
+  ctx.feed("\x1b[1;1H")
+  const home = ctx.getCursor()
+  ctx.feed(sequence + "X")
+  const cell = ctx.getCell(0, 0)
+  const target = ctx.getCursor()
+  ctx.feed("\x1b[1;1H")
+  const control = ctx.getCursor()
+  const consumed = cell.char === "X"
+  const qualified =
+    consumed &&
+    home.x === 0 &&
+    home.y === 0 &&
+    target.x === 1 &&
+    target.y === 0 &&
+    control.x === 0 &&
+    control.y === 0
+  if (!qualified) return promptConsumptionResult(consumed)
+  return notTestedResult(noObservable, { home, target, control, cell: cell.char })
+}
+
 function colorStackError(evidence: "query" | "behavior", action: string, error: unknown): ProbeResult {
   if (!(error instanceof Error)) throw error
   const note = `${action} (${evidence}) failed: ${error.name}: ${error.message}`
@@ -1475,12 +1503,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-a",
-      (ctx) => {
-        ctx.feed("\x1b]133;A\x07X")
-        // Verify the OSC sequence was consumed and "X" landed at column 0.
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) => promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]133;A\x07X")
@@ -1495,11 +1518,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-b",
-      (ctx) => {
-        ctx.feed("\x1b]133;B\x07X")
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) => promptMarkResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]133;B\x07X")
@@ -1514,11 +1533,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-c",
-      (ctx) => {
-        ctx.feed("\x1b]133;C\x07X")
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) => promptMarkResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]133;C\x07X")
@@ -1533,11 +1548,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-d",
-      (ctx) => {
-        ctx.feed("\x1b]133;D;0\x07X")
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) => promptMarkResult(ctx, "\x1b]133;D;0\x07", "OSC 133;D command-finished mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]133;D;0\x07X")
@@ -1552,11 +1563,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc133-p",
-      (ctx) => {
-        ctx.feed("\x1b]133;P;Cwd=/tmp\x07X")
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) => promptMarkResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]133;P;Cwd=/tmp\x07X")
@@ -1574,11 +1581,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc633-a",
-      (ctx) => {
-        ctx.feed("\x1b]633;A\x07X")
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) => promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]633;A\x07X")
@@ -1593,11 +1596,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc633-b",
-      (ctx) => {
-        ctx.feed("\x1b]633;B\x07X")
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) => promptMarkResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]633;B\x07X")
@@ -1612,11 +1611,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc633-c",
-      (ctx) => {
-        ctx.feed("\x1b]633;C\x07X")
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) => promptMarkResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]633;C\x07X")
@@ -1631,11 +1626,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc633-d",
-      (ctx) => {
-        ctx.feed("\x1b]633;D;0\x07X")
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) => promptMarkResult(ctx, "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]633;D;0\x07X")
@@ -1650,11 +1641,8 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc633-e",
-      (ctx) => {
-        ctx.feed("\x1b]633;E;ls -la;nonce123\x07X")
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) =>
+        promptMarkResult(ctx, "\x1b]633;E;ls -la;nonce123\x07", "OSC 633;E commandline-with-nonce mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]633;E;ls -la;nonce123\x07X")
@@ -1669,11 +1657,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   {
     ...probe(
       "extensions.osc633-p",
-      (ctx) => {
-        ctx.feed("\x1b]633;P;Cwd=/tmp\x07X")
-        const cell = ctx.getCell(0, 0)
-        return promptConsumptionResult(cell.char === "X")
-      },
+      (ctx) => promptMarkResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
         ctx.write("\x1b]633;P;Cwd=/tmp\x07X")
