@@ -230,10 +230,16 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeResu
     }
     return
   }
-  const bound = result.response !== undefined && result.response.length > 0
+  const response = result.response
+  const bound = response !== undefined && response.length > 0
   const message =
     "Not-tested coverage for " + id + " requires a closed reason, a specific noObservable, and its retained raw capture"
-  if (notTested.reason !== "no-semantic-observable" || notTested.noObservable.trim().length === 0 || !bound) {
+  if (
+    notTested.reason !== "no-semantic-observable" ||
+    notTested.noObservable.trim().length === 0 ||
+    response === undefined ||
+    !bound
+  ) {
     if (probe.termlessObservationEvidence) {
       batch.observations.push({
         featureId: id,
@@ -248,7 +254,7 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeResu
     }
     return
   }
-  batch.rawReplies[id] = result.response
+  batch.rawReplies[id] = response
   batch.notTested.push({
     featureId: id,
     reason: notTested.reason,

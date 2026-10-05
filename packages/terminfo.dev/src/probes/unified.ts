@@ -13,6 +13,7 @@ import {
   type ObservationFrame,
   type ProbeAssertion,
   type ProbeDefinition,
+  type ProbeResult,
   type TermContext,
   type UngradedDiagnostic,
 } from "@terminfo/probe-defs"

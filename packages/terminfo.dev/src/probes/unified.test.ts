@@ -467,7 +467,7 @@ it("refuses app named coverage that arrives beside its returned error observatio
   const originalTerm = definition.term
   const originalEvidence = definition.termObservationEvidence
   definition.termObservationEvidence = "query"
-  definition.term = () => ({
+  definition.term = async () => ({
     pass: false,
     response: "\x1b[?62;4c",
     notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
@@ -491,7 +491,7 @@ it("refuses app named coverage that arrives beside its returned error observatio
       manifest,
       sourceRevision,
     ).run
-    expect(JSON.stringify(decoded.ungradedDiagnostics[definition.id] ?? null)).toContain("TTY write failed")
+    expect(JSON.stringify(decoded.ungradedDiagnostics?.[definition.id] ?? null)).toContain("TTY write failed")
     expect(batch.suiteComplete).toBe(false)
   } finally {
     definition.term = originalTerm
@@ -503,7 +503,7 @@ it("refuses app named coverage that arrives beside supported observation and ass
   verifiedBatchFixture()
   const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
   const originalTerm = definition.term
-  definition.term = () => ({
+  definition.term = async () => ({
     pass: true,
     response: "\x1b[?62;4c",
     notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
@@ -529,7 +529,7 @@ it("refuses app named coverage that arrives beside supported observation and ass
       manifest,
       sourceRevision,
     ).run
-    expect(JSON.stringify(decoded.ungradedDiagnostics[definition.id] ?? null)).toContain("assertion(kind=positive")
+    expect(JSON.stringify(decoded.ungradedDiagnostics?.[definition.id] ?? null)).toContain("assertion(kind=positive")
     expect(batch.suiteComplete).toBe(false)
   } finally {
     definition.term = originalTerm
