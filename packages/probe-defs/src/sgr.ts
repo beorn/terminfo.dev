@@ -8,8 +8,34 @@ function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: numb
 }
 
 /** A cursor reply proves consumption of the SGR sequence, never the visual attribute. */
-async function consumedSgr(ctx: TermContext, sequence: string): Promise<ProbeResult> {
+async function consumedSgr(ctx: TermContext, id: string, sequence: string): Promise<ProbeResult> {
   try {
+    if (ctx.capture) {
+      const sample = "AaBb 0123456789 - terminal text"
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sample)
+      const control = await ctx.capture({ role: "control", label: "Unstyled text sample" })
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sequence + sample)
+      const target = await ctx.capture({ role: "target", label: id })
+      return {
+        pass: false,
+        response: JSON.stringify({
+          sample,
+          startRow: 3,
+          startCol: 3,
+          sampleCells: sample.length,
+          control: control.label,
+          target: target.label,
+        }),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.ref,
+          frames: [control, target],
+          note: "Control and target pixels captured; visual interpretation requires review",
+        },
+      }
+    }
     ctx.write("\x1b[1;1H\x1b[2K")
     ctx.write(sequence + "X")
     const pos = await ctx.queryCursorPosition()
@@ -127,8 +153,26 @@ function measuredReset(
   return parserStateResult(cleared && retained, expected, state)
 }
 
-async function consumedResetSgr(ctx: TermContext, setup: string, reset: string): Promise<ProbeResult> {
+async function consumedResetSgr(ctx: TermContext, id: string, setup: string, reset: string): Promise<ProbeResult> {
   try {
+    if (ctx.capture) {
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + setup + "X")
+      const control = await ctx.capture({ role: "control", label: `${id} styled setup` })
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + setup + "X" + reset + "Y")
+      const target = await ctx.capture({ role: "target", label: id })
+      return {
+        pass: false,
+        response: JSON.stringify({ setup, reset, control: control.label, target: target.label }),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.ref,
+          frames: [control, target],
+          note: "Control and target pixels captured; visual interpretation requires review",
+        },
+      }
+    }
     ctx.write("\x1b[1;1H\x1b[2K")
     ctx.write(`${setup}X${reset}Y`)
     const pos = await ctx.queryCursorPosition()
@@ -165,9 +209,10 @@ function resetProbe(
     ...probe(
       id,
       (ctx) => measuredReset(ctx, id, setup, reset, set, preserve),
-      (ctx) => consumedResetSgr(ctx, setup, reset),
+      (ctx) => consumedResetSgr(ctx, id, setup, reset),
       "consumed",
     ),
+    termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
   }
 }
@@ -210,9 +255,10 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
           "Baseline, theme colors, or color readback were indistinguishable",
         )
       },
-      (ctx) => consumedSgr(ctx, first),
+      (ctx) => consumedSgr(ctx, id, first),
       "consumed",
     ),
+    termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
   }
 }
@@ -256,9 +302,10 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
           "RGB reference was not calibrated, or the backend may use a custom indexed palette",
         )
       },
-      (ctx) => consumedSgr(ctx, `\x1b[${sgr};5;67m`),
+      (ctx) => consumedSgr(ctx, id, `\x1b[${sgr};5;67m`),
       "consumed",
     ),
+    termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
   }
 }
@@ -309,9 +356,10 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         if (a && b && !sameRgb(a, b)) return parserStateResult(false, expected, state)
         return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
       },
-      (ctx) => consumedSgr(ctx, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`),
+      (ctx) => consumedSgr(ctx, id, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`),
       "consumed",
     ),
+    termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
   }
 }
@@ -340,9 +388,10 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
-      (ctx) => consumedSgr(ctx, `\x1b[${reset}m`),
+      (ctx) => consumedSgr(ctx, id, `\x1b[${reset}m`),
       "consumed",
     ),
+    termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
   }
 }
@@ -438,9 +487,10 @@ export const sgrProbes: ProbeDefinition[] = [
         }
         return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
       },
-      (ctx) => consumedSgr(ctx, "\x1b[4m\x1b[58;5;5m"),
+      (ctx) => consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m"),
       "consumed",
     ),
+    termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
   },
 
@@ -487,9 +537,10 @@ export const sgrProbes: ProbeDefinition[] = [
         }
         return parserStateResult(sameRgb(baseline.underlineColor, after.underlineColor), expected, state)
       },
-      (ctx) => consumedSgr(ctx, "\x1b[4m\x1b[58;2;255;0;128m\x1b[59m"),
+      (ctx) => consumedSgr(ctx, "sgr.underline-color-reset", "\x1b[4m\x1b[58;2;255;0;128m\x1b[59m"),
       "consumed",
     ),
+    termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
   },
 
