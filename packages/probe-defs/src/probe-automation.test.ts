@@ -1718,6 +1718,37 @@ describe("partial probe automation candidates", () => {
         .observation,
     ).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })
     for (const id of ["extensions.osc133-a", "extensions.osc633-a"]) {
+      // C154 discriminator (@cto 66246ac3): the home / target / control positions ARE qualified here, but the
+      // target cell never shows the X, so the mark was not consumed. `consumed &&` is what keeps this a real
+      // consumption observation; dropping it would wrongly record named not-tested coverage, so these controls
+      // are what pin it.
+      for (const char of ["", "-"]) {
+        let cursorX = 0
+        const base = context({})
+        const result = probe(id).termless!(
+          context({
+            feed(bytes) {
+              const cup = /^\x1b\[1;(\d+)H$/.exec(bytes)
+              if (cup) cursorX = Number(cup[1]) - 1
+              else if (bytes.endsWith("X")) cursorX = 1
+            },
+            getCursor() {
+              return { x: cursorX, y: 0, visible: true, style: "block" }
+            },
+            getCell(row, col) {
+              return { ...base.getCell(row, col), char }
+            },
+          }),
+        )
+        expect(result.notTested, `${id} char=${JSON.stringify(char)}`).toBeUndefined()
+        expect(result.observation, `${id} char=${JSON.stringify(char)}`).toMatchObject({
+          outcome: "inconclusive",
+          evidence: "consumed",
+          reason: "insufficient-evidence",
+        })
+      }
+    }
+    for (const id of ["extensions.osc133-a", "extensions.osc633-a"]) {
       const result = probe(id).termless!(context({ getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }))
       expect(result.observation).toMatchObject({
         outcome: "inconclusive",
