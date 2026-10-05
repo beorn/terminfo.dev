@@ -534,3 +534,56 @@ test("modes capture refuses undersized geometry before any bytes or frames", asy
     expect(result.observation?.note, id).toContain(need)
   }
 })
+
+test.each([
+  ["modes.xtpushsgr", "\x1b[#{"],
+  ["modes.xtpopsgr", "\x1b[#}"],
+  ["modes.xtsave", "\x1b[?7s"],
+  ["modes.xtrestore", "\x1b[?7r"],
+  ["modes.xtpushcolors", "\x1b[#P"],
+  ["modes.xtpopcolors", "\x1b[#Q"],
+] as const)("%s capture records control and target pixels for its stack sequence", async (id, marker) => {
+  const definition = modesProbes.find((item) => item.id === id)
+  if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const result = await definition.term(captureContext(24, 80, writes, frames))
+  expect(
+    writes.some((entry) => entry.includes(marker)),
+    id,
+  ).toBe(true)
+  expect(
+    frames.map(({ role }) => role),
+    id,
+  ).toEqual(["control", "target"])
+  expect(result.pass, id).toBe(false)
+  expect(result.observation, id).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+    frames,
+    note: expect.stringContaining("independent pixel review"),
+  })
+})
+
+test("xt stack capture refuses undersized geometry before any bytes or frames", async () => {
+  for (const [id, need] of [
+    ["modes.xtpushsgr", "3x6"],
+    ["modes.xtsave", "3x12"],
+    ["modes.xtpushcolors", "3x8"],
+  ] as const) {
+    const definition = modesProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+    const writes: string[] = []
+    const frames: ObservationFrame[] = []
+    const result = await definition.term(captureContext(2, 80, writes, frames))
+    expect(writes, id).toEqual([])
+    expect(frames, id).toEqual([])
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(result.observation?.note, id).toContain(need)
+  }
+})
