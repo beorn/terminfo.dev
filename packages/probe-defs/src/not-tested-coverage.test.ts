@@ -40,20 +40,30 @@ const notTestedFeatures = [
   "sgr.overline",
 ]
 
-const context = (): TermlessContext =>
-  ({
+const context = (): TermlessContext => {
+  // Model the measured home / mark / control sequence against the real headless read shape:
+  // CUP sets the position and a printable character written after the marker advances it.
+  let cursor = { x: 0, y: 0, visible: true, style: null }
+  return {
     cols: 80,
     rows: 24,
     capabilities: {},
-    feed: () => {},
+    feed: (text: string) => {
+      for (const match of text.matchAll(/\x1b\[(\d+);(\d+)H/g)) {
+        cursor = { ...cursor, x: Number(match[2]) - 1, y: Number(match[1]) - 1 }
+      }
+      const printable = text.replace(/\x1b\][^\x07]*\x07/g, "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")
+      if (printable.length > 0) cursor = { ...cursor, x: cursor.x + printable.length }
+    },
     feedCapture: () => "$y",
     getMode: () => false,
     getText: () => "",
     getTitle: () => "original",
     getCell: () => ({ char: "X" }),
-    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+    getCursor: () => cursor,
     reset: () => {},
-  }) as unknown as TermlessContext
+  } as unknown as TermlessContext
+}
 
 test("the 26 headless not-tested features emit named coverage from measured state", () => {
   expect(notTestedFeatures).toHaveLength(26)
