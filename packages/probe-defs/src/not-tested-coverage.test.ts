@@ -9,10 +9,22 @@ import { expect, test } from "vitest"
 import { ALL_PROBES } from "./index.ts"
 import type { TermlessContext } from "./types.ts"
 
-// The 15 scheduled headless features whose raw state is measurable but whose claim is not.
+// The 15 scheduled headless features whose raw state is measurable but whose claim is not,
+// plus the 11 OSC 133/633 semantic-mark features (C154, 26 total).
 const notTestedFeatures = [
   "extensions.osc0-icon-title",
   "extensions.osc1-icon",
+  "extensions.osc133-a",
+  "extensions.osc133-b",
+  "extensions.osc133-c",
+  "extensions.osc133-d",
+  "extensions.osc133-p",
+  "extensions.osc633-a",
+  "extensions.osc633-b",
+  "extensions.osc633-c",
+  "extensions.osc633-d",
+  "extensions.osc633-e",
+  "extensions.osc633-p",
   "extensions.osc117-reset-highlight-bg",
   "extensions.osc119-reset-highlight-fg",
   "modes.application-cursor",
@@ -28,23 +40,33 @@ const notTestedFeatures = [
   "sgr.overline",
 ]
 
-const context = (): TermlessContext =>
-  ({
+const context = (): TermlessContext => {
+  // Model the measured home / mark / control sequence against the real headless read shape:
+  // CUP sets the position and a printable character written after the marker advances it.
+  let cursor = { x: 0, y: 0, visible: true, style: null }
+  return {
     cols: 80,
     rows: 24,
     capabilities: {},
-    feed: () => {},
+    feed: (text: string) => {
+      for (const match of text.matchAll(/\x1b\[(\d+);(\d+)H/g)) {
+        cursor = { ...cursor, x: Number(match[2]) - 1, y: Number(match[1]) - 1 }
+      }
+      const printable = text.replace(/\x1b\][^\x07]*\x07/g, "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")
+      if (printable.length > 0) cursor = { ...cursor, x: cursor.x + printable.length }
+    },
     feedCapture: () => "$y",
     getMode: () => false,
     getText: () => "",
     getTitle: () => "original",
     getCell: () => ({ char: "X" }),
-    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+    getCursor: () => cursor,
     reset: () => {},
-  }) as unknown as TermlessContext
+  } as unknown as TermlessContext
+}
 
-test("the 15 headless not-tested features emit named coverage from measured state", () => {
-  expect(notTestedFeatures).toHaveLength(15)
+test("the 26 headless not-tested features emit named coverage from measured state", () => {
+  expect(notTestedFeatures).toHaveLength(26)
   for (const id of notTestedFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.termless) throw new Error(`missing headless ${id}`)

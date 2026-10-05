@@ -1,6 +1,21 @@
 import { describe, expect, test } from "vitest"
 import { ALL_PROBES, type TermlessContext, type TermContext } from "./index.ts"
 
+/** C154 (§1): the 11 OSC 133/633 semantic-mark probes whose app arm gets named not-tested coverage. */
+const OSC_SEMANTIC_MARK_IDS = [
+  "extensions.osc133-a",
+  "extensions.osc133-b",
+  "extensions.osc133-c",
+  "extensions.osc133-d",
+  "extensions.osc133-p",
+  "extensions.osc633-a",
+  "extensions.osc633-b",
+  "extensions.osc633-c",
+  "extensions.osc633-d",
+  "extensions.osc633-e",
+  "extensions.osc633-p",
+] as const
+
 function probe(id: string) {
   const found = ALL_PROBES.find((p) => p.id === id)
   if (!found) throw new Error(`missing probe ${id}`)
@@ -1672,18 +1687,67 @@ describe("partial probe automation candidates", () => {
   })
 
   test("semantic prompt OSC consumption and CPR do not claim prompt integration", async () => {
-    for (const id of ["extensions.osc133-a", "extensions.osc133-d", "extensions.osc633-a"]) {
+    // A provider answering one constant cursor position is the failure this control exists for: 1;2 for
+    // every read must never qualify as a measured home / target / control sequence.
+    for (const id of OSC_SEMANTIC_MARK_IDS) {
       const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
+      expect(result.notTested).toBeUndefined()
       expect(result.observation).toMatchObject({
         outcome: "inconclusive",
         evidence: "consumed",
         reason: "insufficient-evidence",
       })
     }
+    for (const id of OSC_SEMANTIC_MARK_IDS) {
+      const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => null }))
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation).toMatchObject({
+        outcome: "inconclusive",
+        evidence: "query",
+        reason: "no-response",
+      })
+    }
+    for (const id of OSC_SEMANTIC_MARK_IDS) {
+      // Consumed but unqualified: home never returns, so the target has no measured change to qualify.
+      const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 1 }) }))
+      expect(result.notTested).toBeUndefined()
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed" })
+    }
     expect(
       (await probe("extensions.semantic-prompts").term!(terminalContext({ queryCursorPosition: async () => null })))
         .observation,
     ).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })
+    for (const id of ["extensions.osc133-a", "extensions.osc633-a"]) {
+      // C154 discriminator (@cto 66246ac3): the home / target / control positions ARE qualified here, but the
+      // target cell never shows the X, so the mark was not consumed. `consumed &&` is what keeps this a real
+      // consumption observation; dropping it would wrongly record named not-tested coverage, so these controls
+      // are what pin it.
+      for (const char of ["", "-"]) {
+        let cursorX = 0
+        const base = context({})
+        const result = probe(id).termless!(
+          context({
+            feed(bytes) {
+              const cup = /^\x1b\[1;(\d+)H$/.exec(bytes)
+              if (cup) cursorX = Number(cup[1]) - 1
+              else if (bytes.endsWith("X")) cursorX = 1
+            },
+            getCursor() {
+              return { x: cursorX, y: 0, visible: true, style: "block" }
+            },
+            getCell(row, col) {
+              return { ...base.getCell(row, col), char }
+            },
+          }),
+        )
+        expect(result.notTested, `${id} char=${JSON.stringify(char)}`).toBeUndefined()
+        expect(result.observation, `${id} char=${JSON.stringify(char)}`).toMatchObject({
+          outcome: "inconclusive",
+          evidence: "consumed",
+          reason: "insufficient-evidence",
+        })
+      }
+    }
     for (const id of ["extensions.osc133-a", "extensions.osc633-a"]) {
       const result = probe(id).termless!(context({ getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }))
       expect(result.observation).toMatchObject({
@@ -1692,6 +1756,27 @@ describe("partial probe automation candidates", () => {
         reason: "insufficient-evidence",
       })
     }
+  })
+
+  test("semantic prompt app callbacks record named not-tested coverage for a measured home/target/control sequence", async () => {
+    const marks = new Set<string>()
+    for (const id of OSC_SEMANTIC_MARK_IDS) {
+      const reads = [
+        { row: 1, col: 1 },
+        { row: 1, col: 2 },
+        { row: 1, col: 1 },
+      ]
+      let read = 0
+      const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => reads[read++] ?? null }))
+      expect(read).toBe(3)
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions ?? []).toHaveLength(0)
+      expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+      expect((result.notTested?.noObservable ?? "").trim().length).toBeGreaterThan(0)
+      expect((result.response ?? "").length).toBeGreaterThan(0)
+      marks.add(result.notTested!.noObservable)
+    }
+    expect(marks.size).toBe(OSC_SEMANTIC_MARK_IDS.length)
   })
 
   test("mintty and rxvt query probes verify typed OSC responses", () => {
