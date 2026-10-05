@@ -788,3 +788,179 @@ test("invalid headless geometry never feeds wrap or tab fixtures", () => {
     }
   }
 })
+
+// --- Emoji width: headless fixture that models the actual differentiated writes -----------------
+const EMOJI_WIDTH_SAMPLES = {
+  "text.wide.emoji-flags": "\u{1F1FA}\u{1F1F8}",
+  "text.wide.emoji-vs16": "\u263A\uFE0F",
+  "text.wide.emoji-zwj": "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}",
+} as const
+type EmojiWidthId = keyof typeof EMOJI_WIDTH_SAMPLES
+const EMOJI_HOME = "\x1b[1;1H\x1b[2K"
+const EMOJI_SUPPLEMENTARY = "\u{1F30D}"
+
+/**
+ * Minimal grid emulator: cursor moves, line erase and literal writes are applied to cells with
+ * declared glyph widths, so the control cases exercise observed writes rather than returning an
+ * oracle value for the expected target position.
+ */
+function emojiTerminal(
+  id: EmojiWidthId,
+  targetWidth: number,
+  opts: {
+    cols?: number
+    controlSurrogate?: boolean
+    targetSurrogate?: boolean
+    markerMode?: "normal" | "drop" | "double"
+    ignoreErase?: boolean
+    staleCells?: boolean
+    staleCursor?: { x: number; y: number }
+    cursorSkew?: number
+    feeds?: string[]
+  } = {},
+): TermlessContext {
+  const cols = opts.cols ?? 80
+  const sample: string = EMOJI_WIDTH_SAMPLES[id]
+  const blank = { ...headless().getCell(0, 0), char: "", wide: false }
+  const cells = new Map<string, ReturnType<TermlessContext["getCell"]>>()
+  let cursor = { x: 0, y: 0 }
+  const put = (row: number, col: number, over: Partial<ReturnType<TermlessContext["getCell"]>>) =>
+    cells.set(`${row},${col}`, { ...blank, ...over })
+  const glyph = (cluster: string, width: number) => {
+    put(cursor.y, cursor.x, { char: cluster, wide: width === 2 })
+    for (let i = 1; i < width; i += 1) put(cursor.y, cursor.x + i, { char: "", wide: false })
+    cursor = { x: cursor.x + width, y: cursor.y }
+  }
+  const literal = (text: string) => {
+    const isTarget = text.startsWith(sample)
+    const scalars = Array.from(text)
+    let index = 0
+    while (index < scalars.length) {
+      const rest = scalars.slice(index).join("")
+      if (rest.startsWith(EMOJI_SUPPLEMENTARY)) {
+        glyph(opts.controlSurrogate ? "\ud83c" : EMOJI_SUPPLEMENTARY, opts.controlSurrogate ? 1 : 2)
+        index += Array.from(EMOJI_SUPPLEMENTARY).length
+        continue
+      }
+      if (rest.startsWith(sample)) {
+        glyph(opts.targetSurrogate ? "\ud83d" : sample, opts.targetSurrogate ? 1 : targetWidth)
+        index += Array.from(sample).length
+        continue
+      }
+      const scalar = scalars[index]
+      const isSentinel = scalar === "X" && index === scalars.length - 1 && isTarget
+      if (isSentinel && opts.markerMode === "drop") {
+        index += 1
+        continue
+      }
+      glyph(scalar, scalar === "\u200D" ? 0 : 1)
+      if (isSentinel && opts.markerMode === "double") glyph("X", 1)
+      index += 1
+    }
+  }
+  const feed = (sequence: string) => {
+    opts.feeds?.push(sequence)
+    for (const token of sequence.split(/(\x1b\[[0-9;]*[A-Za-z])/)) {
+      if (!token) continue
+      const move = /^\x1b\[(\d+);(\d+)H$/.exec(token)
+      if (move) {
+        cursor = { x: Number(move[2]) - 1, y: Number(move[1]) - 1 }
+        continue
+      }
+      if (token === "\x1b[2K") {
+        if (!opts.ignoreErase) for (let col = 0; col < cols; col += 1) cells.delete(`${cursor.y},${col}`)
+        continue
+      }
+      if (token.startsWith("\x1b")) continue
+      literal(token)
+    }
+  }
+  return headless({
+    cols,
+    feed,
+    getCell: opts.staleCells ? () => blank : (row, col) => cells.get(`${row},${col}`) ?? blank,
+    getCursor: opts.staleCursor
+      ? () => ({ ...opts.staleCursor!, visible: true, style: null })
+      : () => ({ x: cursor.x + (opts.cursorSkew ?? 0), y: cursor.y, visible: true, style: null }),
+  })
+}
+
+test("headless emoji width measures the declared sample at two columns from real writes", () => {
+  for (const id of Object.keys(EMOJI_WIDTH_SAMPLES) as EmojiWidthId[]) {
+    const result = byId(id).termless(emojiTerminal(id, 2))
+    expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
+    expect(JSON.parse(result.response ?? ""), id).toMatchObject({ width: 2, markerColumns: [2] })
+  }
+})
+
+test("headless emoji width concludes unsupported for a genuinely different measured width", () => {
+  for (const width of [1, 4]) {
+    const result = byId("text.wide.emoji-flags").termless(emojiTerminal("text.wide.emoji-flags", width))
+    expect(result.observation, `flags width ${width}`).toMatchObject({
+      outcome: "unsupported",
+      evidence: "parser-state",
+    })
+    expect(result.assertions, `flags width ${width}`).toMatchObject([{ kind: "negative" }])
+    expect(JSON.parse(result.response ?? ""), `flags width ${width}`).toMatchObject({ width })
+  }
+  const six = byId("text.wide.emoji-zwj").termless(emojiTerminal("text.wide.emoji-zwj", 6))
+  expect(six.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(JSON.parse(six.response ?? "")).toMatchObject({ width: 6, markerColumns: [6] })
+})
+
+test("headless emoji width keeps unqualified or ambiguous readbacks inconclusive", () => {
+  const id: EmojiWidthId = "text.wide.emoji-flags"
+  const inconclusive = (ctx: TermlessContext, why: string) => {
+    const result = byId(id).termless(ctx)
+    expect(result.observation, why).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.assertions, why).toBeUndefined()
+    return result
+  }
+
+  inconclusive(emojiTerminal(id, 2, { staleCells: true }), "stale or missing cells")
+  inconclusive(emojiTerminal(id, 2, { staleCursor: { x: 2, y: 0 } }), "stale cursor")
+  inconclusive(emojiTerminal(id, 2, { ignoreErase: true }), "ignored erase")
+  inconclusive(emojiTerminal(id, 2, { cursorSkew: 1 }), "cursor/marker disagreement")
+  expect(inconclusive(emojiTerminal(id, 2, { markerMode: "drop" }), "missing marker").note).toMatch(/not exposed/)
+  expect(inconclusive(emojiTerminal(id, 2, { markerMode: "double" }), "duplicate marker").note).toMatch(/duplicated/)
+  expect(inconclusive(emojiTerminal(id, 2, { controlSurrogate: true }), "supplementary surrogate").note).toMatch(
+    /surrogate/i,
+  )
+  expect(inconclusive(emojiTerminal(id, 2, { targetSurrogate: true }), "target surrogate").note).toMatch(/surrogate/i)
+})
+
+test("headless emoji width refuses narrow geometry before any write", () => {
+  for (const [id, cols] of [
+    ["text.wide.emoji-flags", 5],
+    ["text.wide.emoji-vs16", 3],
+    ["text.wide.emoji-zwj", 7],
+  ] as const) {
+    const feeds: string[] = []
+    const result = byId(id).termless(headless({ cols, feed: (sequence) => feeds.push(sequence) }))
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(feeds, id).toEqual([])
+  }
+})
+
+test("headless emoji width restores the owned row and propagates unexpected failures", () => {
+  const feeds: string[] = []
+  byId("text.wide.emoji-flags").termless(emojiTerminal("text.wide.emoji-flags", 2, { feeds }))
+  expect(feeds.at(-1)).toBe(EMOJI_HOME)
+  expect(feeds.length).toBeGreaterThan(1)
+
+  expect(() =>
+    byId("text.wide.emoji-flags").termless(
+      headless({
+        cols: 80,
+        getCell: () => {
+          throw new Error("grid read failed")
+        },
+      }),
+    ),
+  ).toThrow("grid read failed")
+})
