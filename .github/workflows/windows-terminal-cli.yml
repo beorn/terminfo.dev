@@ -1,0 +1,340 @@
+name: windows-terminal-cli-27494
+
+on:
+  push:
+    branches:
+      - task/windows-terminal-cli-27494
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-cli-run:
+    name: windows-terminal-cli-run
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Gather system, display, and session context
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force -Path C:\artifacts | Out-Null
+          $logPath = "C:\artifacts\context.txt"
+
+          function Log($msg) {
+            Write-Output $msg
+            $msg | Out-File -Append -FilePath $logPath -Encoding utf8
+          }
+
+          Log "=== WINDOWS OS / BUILD ==="
+          $os = Get-CimInstance Win32_OperatingSystem
+          Log "Caption: $($os.Caption)"
+          Log "Version: $($os.Version)"
+          Log "BuildNumber: $($os.BuildNumber)"
+          Log "OSArchitecture: $($os.OSArchitecture)"
+
+          Log "`n=== RUNNER ENVIRONMENT ==="
+          Log "ImageOS: $env:ImageOS"
+          Log "ImageVersion: $env:ImageVersion"
+          Log "RUNNER_ARCH: $env:RUNNER_ARCH"
+          Log "RUNNER_OS: $env:RUNNER_OS"
+          Log "User: $env:USERNAME"
+          Log "UserDomain: $env:USERDOMAIN"
+
+          Log "`n=== TOOLCHAIN VERSIONS ==="
+          Log "Node: $(node -v)"
+          Log "NPM: $(npm -v)"
+          Log "NPX: $(npx -v)"
+          try { Log "Bun: $(bun -v)" } catch { Log "Bun not found" }
+
+          Log "`n=== SESSION & INTERACTIVE STATUS ==="
+          Log "Process SessionId: $((Get-Process -Id $PID).SessionId)"
+          Log "Environment.UserInteractive: $([System.Environment]::UserInteractive)"
+          try {
+            $sessions = qwinsta 2>&1
+            Log "qwinsta output:`n$($sessions -join "`n")"
+          } catch {
+            Log "qwinsta failed: $_"
+          }
+
+          Log "`n=== DISPLAY & GRAPHICS ==="
+          try {
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $screens = [System.Windows.Forms.Screen]::AllScreens
+            Log "Screen count: $($screens.Count)"
+            foreach ($s in $screens) {
+              Log "Screen: DeviceName=$($s.DeviceName), Bounds=$($s.Bounds.Width)x$($s.Bounds.Height), Primary=$($s.Primary), BitsPerPixel=$($s.BitsPerPixel)"
+            }
+          } catch {
+            Log "System.Windows.Forms Screen query failed: $_"
+          }
+
+      - name: Locate or Install Windows Terminal
+        continue-on-error: true
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $logPath = "C:\artifacts\context.txt"
+          function Log($msg) {
+            Write-Output $msg
+            $msg | Out-File -Append -FilePath $logPath -Encoding utf8
+          }
+
+          Log "`n=== LOCATING WINDOWS TERMINAL ==="
+
+          $cmd = Get-Command wt.exe -ErrorAction SilentlyContinue
+          $wtPath = if ($cmd) { $cmd.Source } else { $null }
+
+          if (-not $wtPath) {
+            $localAppWt = "$env:LOCALAPPDATA\Microsoft\WindowsApps\wt.exe"
+            if (Test-Path $localAppWt) { $wtPath = $localAppWt }
+          }
+
+          if (-not $wtPath) {
+            $sysWt = "C:\Users\runneradmin\AppData\Local\Microsoft\WindowsApps\wt.exe"
+            if (Test-Path $sysWt) { $wtPath = $sysWt }
+          }
+
+          if (-not $wtPath) {
+            $appDir = Get-ChildItem "C:\Program Files\WindowsApps" -Filter "wt.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($appDir) { $wtPath = $appDir.FullName }
+          }
+
+          if (-not $wtPath) {
+            Log "Attempting standalone zip download for Windows Terminal..."
+            try {
+              $wtZip = "C:\wt.zip"
+              $wtDir = "C:\WindowsTerminal"
+              [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+              Invoke-WebRequest -Uri "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -OutFile $wtZip -UseBasicParsing
+              Expand-Archive -Path $wtZip -DestinationPath $wtDir -Force
+              if (Test-Path "$wtDir\wt.exe") {
+                $wtPath = "$wtDir\wt.exe"
+              }
+            } catch {
+              Log "Download standalone Windows Terminal failed: $_"
+            }
+          }
+
+          if (-not $wtPath) {
+            Log "Attempting choco install for Windows Terminal..."
+            try {
+              choco install microsoft-windows-terminal -y --no-progress
+              $cmd = Get-Command wt.exe -ErrorAction SilentlyContinue
+              $wtPath = if ($cmd) { $cmd.Source } else { $null }
+            } catch {
+              Log "Choco install failed: $_"
+            }
+          }
+
+          if ($wtPath) {
+            Log "Windows Terminal resolved at: $wtPath"
+            try {
+              $wtVer = (Get-Item $wtPath).VersionInfo.ProductVersion
+              Log "Windows Terminal ProductVersion: $wtVer"
+            } catch {}
+            [Environment]::SetEnvironmentVariable("WT_BIN", $wtPath, "Machine")
+            $env:WT_BIN = $wtPath
+          } else {
+            Log "ERROR: Windows Terminal could not be installed or resolved."
+          }
+
+      - name: Run terminfo.dev@4.0.0 CLI inside Windows Terminal
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Write-Output "=== Starting Windows Terminal Probe Run ==="
+
+          # Write runner Python script
+          @'
+          import ctypes
+          import os
+          import subprocess
+          import sys
+          import time
+
+          # Enable Virtual Terminal sequences on Windows console
+          kernel32 = ctypes.windll.kernel32
+          try:
+              hOut = kernel32.GetStdHandle(-11)
+              mode = ctypes.c_ulong()
+              kernel32.GetConsoleMode(hOut, ctypes.byref(mode))
+              kernel32.SetConsoleMode(hOut, mode.value | 0x0004) # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+          except Exception as e:
+              pass
+
+          try:
+              hIn = kernel32.GetStdHandle(-10)
+              in_mode = ctypes.c_ulong()
+              kernel32.GetConsoleMode(hIn, ctypes.byref(in_mode))
+              kernel32.SetConsoleMode(hIn, in_mode.value | 0x0200) # ENABLE_VIRTUAL_TERMINAL_INPUT
+          except Exception as e:
+              pass
+
+          artifacts_dir = r"C:\artifacts"
+          os.makedirs(artifacts_dir, exist_ok=True)
+          log_file = os.path.join(artifacts_dir, "terminal-output.txt")
+          raw_json = os.path.join(artifacts_dir, "terminfo-run.json")
+
+          def log(msg):
+              sys.stdout.write(msg + "\r\n")
+              sys.stdout.flush()
+              with open(log_file, "a", encoding="utf-8") as f:
+                  f.write(msg + "\n")
+
+          sys.stdout.write("\033[2J\033[H\r\n")
+          sys.stdout.write("  \033[1;36m====================================================\033[0m\r\n")
+          sys.stdout.write("  \033[1;36m  terminfo.dev@4.0.0 Windows Terminal Probe Run     \033[0m\r\n")
+          sys.stdout.write("  \033[1;36m====================================================\033[0m\r\n\r\n")
+          sys.stdout.flush()
+
+          log("=== RUN ENVIRONMENT ===")
+          log(f"Time: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}")
+          log(f"Platform: {sys.platform}")
+          log(f"Python: {sys.version.split()[0]}")
+          for v in ["WT_SESSION", "TERM", "COLORTERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION"]:
+              log(f"env:{v} = {os.environ.get(v, '<unset>')}")
+
+          # Check npx help and version
+          log("\n=== NPX VERSION CHECK ===")
+          try:
+              ver_res = subprocess.run(["npx.cmd", "--yes", "terminfo.dev@4.0.0", "--version"], capture_output=True, text=True, timeout=30)
+              log(f"terminfo.dev --version exit: {ver_res.returncode}, output: {ver_res.stdout.strip()}")
+          except Exception as e:
+              log(f"terminfo.dev --version failed: {e}")
+
+          log("\n=== NPX HELP CHECK ===")
+          try:
+              help_res = subprocess.run(["npx.cmd", "--yes", "terminfo.dev@4.0.0", "test", "--help"], capture_output=True, text=True, timeout=30)
+              log(f"terminfo.dev test --help exit: {help_res.returncode}")
+              log(help_res.stdout)
+          except Exception as e:
+              log(f"terminfo.dev test --help failed: {e}")
+
+          # RUN ATTEMPT 1: test with --output (offline result file)
+          log("\n=== RUN ATTEMPT 1: npx terminfo.dev test --output ===")
+          log(f"Command: npx.cmd --yes terminfo.dev@4.0.0 test --output {raw_json}")
+          t0 = time.time()
+          try:
+              # Run with inherited console I/O to test controlling TTY behavior
+              proc1 = subprocess.run(
+                  ["npx.cmd", "--yes", "terminfo.dev@4.0.0", "test", "--output", raw_json],
+                  capture_output=True,
+                  text=True,
+                  timeout=60
+              )
+              dur1 = time.time() - t0
+              log(f"Attempt 1 exit code: {proc1.returncode} in {dur1:.2f}s")
+              log("Attempt 1 STDOUT:\n" + proc1.stdout)
+              log("Attempt 1 STDERR:\n" + proc1.stderr)
+          except Exception as e:
+              log(f"Attempt 1 failed: {e}")
+
+          if os.path.exists(raw_json) and os.path.getsize(raw_json) > 0:
+              log(f"SUCCESS: Raw result file generated ({os.path.getsize(raw_json)} bytes)")
+          else:
+              log(f"NOTE: Result file {raw_json} was not generated by --output.")
+
+          # RUN ATTEMPT 2: Interactive test (no --output, direct TTY probes)
+          log("\n=== RUN ATTEMPT 2: npx terminfo.dev test (interactive) ===")
+          t0 = time.time()
+          try:
+              # Run with inherited console I/O so isTTY is True
+              proc2 = subprocess.run(
+                  ["npx.cmd", "--yes", "terminfo.dev@4.0.0", "test"],
+                  capture_output=True,
+                  text=True,
+                  timeout=90
+              )
+              dur2 = time.time() - t0
+              log(f"Attempt 2 exit code: {proc2.returncode} in {dur2:.2f}s")
+              log("Attempt 2 STDOUT:\n" + proc2.stdout)
+              log("Attempt 2 STDERR:\n" + proc2.stderr)
+          except Exception as e:
+              log(f"Attempt 2 failed: {e}")
+
+          # RUN ATTEMPT 3: Direct console execution (stdio inherited, visible in WT)
+          log("\n=== RUN ATTEMPT 3: Direct console execution in WT ===")
+          try:
+              sys.stdout.write("\r\n\033[1;33m--- Starting interactive terminfo probe run ---\033[0m\r\n\r\n")
+              sys.stdout.flush()
+              p3 = subprocess.Popen(["npx.cmd", "--yes", "terminfo.dev@4.0.0", "test"])
+              p3.wait(timeout=60)
+              log(f"Attempt 3 exit code: {p3.returncode}")
+          except Exception as e:
+              log(f"Attempt 3 failed: {e}")
+
+          log("\n=== PROBE SUITE FINISHED ===")
+
+          with open(r"C:\artifacts\wt_finished.txt", "w") as f:
+              f.write("finished\n")
+
+          # Sleep so screenshot captures the final terminal state
+          time.sleep(15)
+          '@ | Out-File -FilePath "C:\run_wt_cli.py" -Encoding utf8
+
+          $wtBin = [Environment]::GetEnvironmentVariable("WT_BIN", "Machine")
+          if (-not $wtBin) { $wtBin = "C:\WindowsTerminal\wt.exe" }
+
+          if ($wtBin -and (Test-Path $wtBin)) {
+            Write-Output "Launching Windows Terminal via: $wtBin"
+            $proc = Start-Process -FilePath $wtBin -ArgumentList "new-tab", "--title", "WTCLIProbe", "-d", "C:\", "cmd.exe", "/c", "python -u C:\run_wt_cli.py" -PassThru
+            for ($i = 0; $i -lt 120; $i++) {
+              if (Test-Path "C:\artifacts\wt_finished.txt") {
+                Write-Output "WT probe run finished after $i seconds."
+                break
+              }
+              Start-Sleep -Seconds 1
+            }
+            Start-Sleep -Seconds 3
+
+            # Capture desktop screenshot
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+            $bmp.Save("C:\artifacts\screenshot_wt_desktop.png", [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose()
+            $bmp.Dispose()
+            Write-Output "Saved screenshot_wt_desktop.png"
+
+            if ($proc -and -not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            }
+          } else {
+            Write-Output "WT binary not available. Running probe script directly in runner console..."
+            python -u C:\run_wt_cli.py
+          }
+
+      - name: Inspect generated artifacts
+        shell: powershell
+        run: |
+          Write-Output "=== ARTIFACTS INVENTORY ==="
+          Get-ChildItem -Path C:\artifacts | Format-Table Name, Length, LastWriteTime
+
+          if (Test-Path "C:\artifacts\terminal-output.txt") {
+            Write-Output "`n=== TERMINAL OUTPUT LOG ==="
+            Get-Content "C:\artifacts\terminal-output.txt"
+          }
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-terminal-cli-artifacts
+          path: C:\artifacts
