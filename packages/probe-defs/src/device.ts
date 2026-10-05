@@ -9,6 +9,8 @@ interface DeviceReply {
   malformed: RegExp
   expected: string
   refusal?: RegExp
+  /** A complete, well-formed answer to this query whose payload is not the expected one. */
+  contradicts?: RegExp
   note?: (frame: string) => string | undefined
   direct?: boolean
 }
@@ -41,6 +43,16 @@ function deviceReplyResult(
         evidence: "query",
         note: "Requested setting or name refused; other settings or names unmeasured",
       },
+    }
+  }
+  // A complete answer whose payload contradicts the expectation is a measured negative, not an invalid reply.
+  const contradiction = spec.contradicts?.exec(matchedFrame ?? raw) ?? null
+  if (contradiction?.[0]) {
+    return {
+      pass: false,
+      response: raw,
+      observation: { outcome: "unsupported", evidence: "query" },
+      assertions: [{ kind: "negative", expected: spec.expected, observed: contradiction[0] }],
     }
   }
   // Raw bytes remain available for diagnostics, but a frame after DA1 cannot establish a result.
@@ -86,6 +98,8 @@ const iconLabelReply: DeviceReply = {
   query: "\x1b[20t",
   valid: /\x1b\]Ltest-icon(?:\x07|\x1b\\)/,
   malformed: /\x1b\]L/,
+  // A complete, terminated OSC L frame whose payload is not the exact label is a measured negative.
+  contradicts: /\x1b\]L(?!test-icon(?:\x07|\x1b\\))[\s\S]*?(?:\x07|\x1b\\)/,
   expected: "CSI 20 t returns the exact icon label set by OSC 1",
 }
 
