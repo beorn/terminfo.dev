@@ -336715,5 +336715,329 @@
     ],
     "featureId": "charsets.dec-special",
     "presentsEvidence": true
+  },
+  {
+    "runId": "6cc76d5f7a0388a3eb1b0f77c9d7fe08",
+    "runSha256": "d983c149a201f5b0abb88c2f48492881ee5db92c71a8398b21c8d82ca673db35",
+    "reviewer": "@dev/luna4 (author), @dev/luna2 (independent source/pixel review), @adhoc/1 (parent admission; original images viewed)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": [
+        "0.49.2",
+        "0.49.2"
+      ],
+      "suites": [
+        "014b255c9130",
+        "014b255c9130"
+      ]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
+      "content/artifacts/495d9d79c93ded6a759572504ca8d64e6d9b3e757f0a5066da3ebc8def7920f3.png",
+      "content/artifacts/58d77bc3b4388dca5bed7376940fbc8ce9e316b1bff052777e1f00f7b8bf7e1b.xwd",
+      "content/artifacts/7700a2aa406554fd229d7e5e6b96e23257c0eda3c826251732bbb2699afccc9a.png",
+      "content/artifacts/02a7d1f14ef72ee639f4984230207b4c29daef9556d0ec89fe9c4394e3a2568e.xwd"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.reset",
+    "reason": "The own target shows underlined X followed by Y without an underline after SGR 0 in the same write stream. This measures clearing the visible underline; different X/Y glyphs do not independently establish bold or italic reset, and no claim covers every SGR attribute. Kitty 0.49.2 Linux, default clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 6cc76d5f7a0388a3eb1b0f77c9d7fe08 / suite014b255c9130.",
+    "id": "pixels-6cc76d5f7a0388a3eb1b0f77c9d7fe08-sgr.reset",
+    "observation": {
+      "featureId": "sgr.reset",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:7700a2aa406554fd229d7e5e6b96e23257c0eda3c826251732bbb2699afccc9a",
+      "frames": [
+        {
+          "role": "control",
+          "label": "sgr.reset control",
+          "capturedAt": 1791179908858,
+          "ref": "sha256:495d9d79c93ded6a759572504ca8d64e6d9b3e757f0a5066da3ebc8def7920f3",
+          "sourceRef": "sha256:58d77bc3b4388dca5bed7376940fbc8ce9e316b1bff052777e1f00f7b8bf7e1b"
+        },
+        {
+          "role": "target",
+          "label": "sgr.reset",
+          "capturedAt": 1791179909063,
+          "ref": "sha256:7700a2aa406554fd229d7e5e6b96e23257c0eda3c826251732bbb2699afccc9a",
+          "sourceRef": "sha256:02a7d1f14ef72ee639f4984230207b4c29daef9556d0ec89fe9c4394e3a2568e"
+        }
+      ],
+      "note": "The own target shows underlined X followed by Y without an underline after SGR 0 in the same write stream. This measures clearing the visible underline; different X/Y glyphs do not independently establish bold or italic reset, and no claim covers every SGR attribute. Kitty 0.49.2 Linux, default clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 6cc76d5f7a0388a3eb1b0f77c9d7fe08 / suite014b255c9130.",
+      "rawReplyRef": "sgr.reset"
+    }
+  },
+  {
+    "runId": "6cc76d5f7a0388a3eb1b0f77c9d7fe08",
+    "runSha256": "d983c149a201f5b0abb88c2f48492881ee5db92c71a8398b21c8d82ca673db35",
+    "reviewer": "@dev/luna4 (author), @dev/luna2 (independent source/pixel review), @adhoc/1 (parent admission; original images viewed)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": [
+        "0.49.2",
+        "0.49.2"
+      ],
+      "suites": [
+        "014b255c9130",
+        "014b255c9130"
+      ]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-6cc76d5f7a0388a3eb1b0f77c9d7fe08.json",
+      "content/artifacts/521836ec4cf3b4e8d5a27bf947c85f0a07047b7d743a9c828a44c344ef89edb4.png",
+      "content/artifacts/49170c57cc673cb6ceb850d60116fa6d9931e99315b31a014334c52791e3d584.xwd",
+      "content/artifacts/8dcf76a55a1ad9b4d1b5df0376f540ed3fc007f322d3d8370b8dfa9fba5dab36.png",
+      "content/artifacts/7726c741546a89e6918429703e2aeaee7b4a915b0f171bdd20b2a9677f52aa74.xwd"
+    ],
+    "supersedes": [],
+    "featureId": "scrollback.scroll-up",
+    "reason": "The own control shows A,B,C,D,E on rows 1–5; after SU inside DECSTBM rows2–4, the target shows A,C,D,blank,E. The preserved A/E are outside-region controls. This measures one region scroll-up, not scrollback history depth. Callback begins at scrollback.ts:246 at da5ce335. Kitty 0.49.2 Linux, default clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 6cc76d5f7a0388a3eb1b0f77c9d7fe08 / suite014b255c9130.",
+    "id": "pixels-6cc76d5f7a0388a3eb1b0f77c9d7fe08-scrollback.scroll-up",
+    "observation": {
+      "featureId": "scrollback.scroll-up",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:8dcf76a55a1ad9b4d1b5df0376f540ed3fc007f322d3d8370b8dfa9fba5dab36",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Seed markers A-E on rows 1-5 with scroll region rows 2-4 set",
+          "capturedAt": 1791179911342,
+          "ref": "sha256:521836ec4cf3b4e8d5a27bf947c85f0a07047b7d743a9c828a44c344ef89edb4",
+          "sourceRef": "sha256:49170c57cc673cb6ceb850d60116fa6d9931e99315b31a014334c52791e3d584"
+        },
+        {
+          "role": "target",
+          "label": "After SU in region rows 2-4: A and E stay, B-D shift up, and the region bottom row is cleared",
+          "capturedAt": 1791179911541,
+          "ref": "sha256:8dcf76a55a1ad9b4d1b5df0376f540ed3fc007f322d3d8370b8dfa9fba5dab36",
+          "sourceRef": "sha256:7726c741546a89e6918429703e2aeaee7b4a915b0f171bdd20b2a9677f52aa74"
+        }
+      ],
+      "note": "The own control shows A,B,C,D,E on rows 1–5; after SU inside DECSTBM rows2–4, the target shows A,C,D,blank,E. The preserved A/E are outside-region controls. This measures one region scroll-up, not scrollback history depth. Callback begins at scrollback.ts:246 at da5ce335. Kitty 0.49.2 Linux, default clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 6cc76d5f7a0388a3eb1b0f77c9d7fe08 / suite014b255c9130.",
+      "rawReplyRef": "scrollback.scroll-up"
+    }
+  },
+  {
+    "runId": "533040cff581361d90eb99888a6c0454",
+    "runSha256": "394cbfa2cbb189b9c2d16729ca6fa939271cc32a04eed27e9ffe475c92eec94c",
+    "reviewer": "@dev/luna4 (author), @dev/luna2 (independent source/pixel review), @adhoc/1 (parent admission; original images viewed)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": [
+        "0.49.2",
+        "0.49.2"
+      ],
+      "suites": [
+        "014b255c9130",
+        "014b255c9130"
+      ]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
+      "content/artifacts/268fd5492ac1c904b2c4de580ee3574fd02742ea02ffffa2d880c189830b597c.png",
+      "content/artifacts/58d77bc3b4388dca5bed7376940fbc8ce9e316b1bff052777e1f00f7b8bf7e1b.xwd",
+      "content/artifacts/51a936dd5916bc5a3f577ae645822f81d01188b59eae5cca96afa1ecfd2d24da.png",
+      "content/artifacts/02a7d1f14ef72ee639f4984230207b4c29daef9556d0ec89fe9c4394e3a2568e.xwd"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.reset",
+    "reason": "The own target shows underlined X followed by Y without an underline after SGR 0 in the same write stream. This measures clearing the visible underline; different X/Y glyphs do not independently establish bold or italic reset, and no claim covers every SGR attribute. Kitty 0.49.2 Linux, allow clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 533040cff581361d90eb99888a6c0454 / suite014b255c9130.",
+    "id": "pixels-533040cff581361d90eb99888a6c0454-sgr.reset",
+    "observation": {
+      "featureId": "sgr.reset",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:51a936dd5916bc5a3f577ae645822f81d01188b59eae5cca96afa1ecfd2d24da",
+      "frames": [
+        {
+          "role": "control",
+          "label": "sgr.reset control",
+          "capturedAt": 1791179973969,
+          "ref": "sha256:268fd5492ac1c904b2c4de580ee3574fd02742ea02ffffa2d880c189830b597c",
+          "sourceRef": "sha256:58d77bc3b4388dca5bed7376940fbc8ce9e316b1bff052777e1f00f7b8bf7e1b"
+        },
+        {
+          "role": "target",
+          "label": "sgr.reset",
+          "capturedAt": 1791179974181,
+          "ref": "sha256:51a936dd5916bc5a3f577ae645822f81d01188b59eae5cca96afa1ecfd2d24da",
+          "sourceRef": "sha256:02a7d1f14ef72ee639f4984230207b4c29daef9556d0ec89fe9c4394e3a2568e"
+        }
+      ],
+      "note": "The own target shows underlined X followed by Y without an underline after SGR 0 in the same write stream. This measures clearing the visible underline; different X/Y glyphs do not independently establish bold or italic reset, and no claim covers every SGR attribute. Kitty 0.49.2 Linux, allow clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 533040cff581361d90eb99888a6c0454 / suite014b255c9130.",
+      "rawReplyRef": "sgr.reset"
+    }
+  },
+  {
+    "runId": "533040cff581361d90eb99888a6c0454",
+    "runSha256": "394cbfa2cbb189b9c2d16729ca6fa939271cc32a04eed27e9ffe475c92eec94c",
+    "reviewer": "@dev/luna4 (author), @dev/luna2 (independent source/pixel review), @adhoc/1 (parent admission; original images viewed)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": [
+        "0.49.2",
+        "0.49.2"
+      ],
+      "suites": [
+        "014b255c9130",
+        "014b255c9130"
+      ]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-533040cff581361d90eb99888a6c0454.json",
+      "content/artifacts/66e7f0681dffa1c756bbe5cde22c4781d7f4c8a4f3ee0b266711d376aafba098.png",
+      "content/artifacts/49170c57cc673cb6ceb850d60116fa6d9931e99315b31a014334c52791e3d584.xwd",
+      "content/artifacts/4b67807f96101a249321f270738f679140b549e482ebabe7e55e36b2cad3b7ce.png",
+      "content/artifacts/7726c741546a89e6918429703e2aeaee7b4a915b0f171bdd20b2a9677f52aa74.xwd"
+    ],
+    "supersedes": [],
+    "featureId": "scrollback.scroll-up",
+    "reason": "The own control shows A,B,C,D,E on rows 1–5; after SU inside DECSTBM rows2–4, the target shows A,C,D,blank,E. The preserved A/E are outside-region controls. This measures one region scroll-up, not scrollback history depth. Callback begins at scrollback.ts:246 at da5ce335. Kitty 0.49.2 Linux, allow clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 533040cff581361d90eb99888a6c0454 / suite014b255c9130.",
+    "id": "pixels-533040cff581361d90eb99888a6c0454-scrollback.scroll-up",
+    "observation": {
+      "featureId": "scrollback.scroll-up",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:4b67807f96101a249321f270738f679140b549e482ebabe7e55e36b2cad3b7ce",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Seed markers A-E on rows 1-5 with scroll region rows 2-4 set",
+          "capturedAt": 1791179976523,
+          "ref": "sha256:66e7f0681dffa1c756bbe5cde22c4781d7f4c8a4f3ee0b266711d376aafba098",
+          "sourceRef": "sha256:49170c57cc673cb6ceb850d60116fa6d9931e99315b31a014334c52791e3d584"
+        },
+        {
+          "role": "target",
+          "label": "After SU in region rows 2-4: A and E stay, B-D shift up, and the region bottom row is cleared",
+          "capturedAt": 1791179976729,
+          "ref": "sha256:4b67807f96101a249321f270738f679140b549e482ebabe7e55e36b2cad3b7ce",
+          "sourceRef": "sha256:7726c741546a89e6918429703e2aeaee7b4a915b0f171bdd20b2a9677f52aa74"
+        }
+      ],
+      "note": "The own control shows A,B,C,D,E on rows 1–5; after SU inside DECSTBM rows2–4, the target shows A,C,D,blank,E. The preserved A/E are outside-region controls. This measures one region scroll-up, not scrollback history depth. Callback begins at scrollback.ts:246 at da5ce335. Kitty 0.49.2 Linux, allow clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 533040cff581361d90eb99888a6c0454 / suite014b255c9130.",
+      "rawReplyRef": "scrollback.scroll-up"
+    }
+  },
+  {
+    "runId": "66caf2e251268e3152e1e6221922f5ff",
+    "runSha256": "249a46219a8ebd0d980e65bc710997d4c28a9b33baf54a2ccf39821e49392191",
+    "reviewer": "@dev/luna4 (author), @dev/luna2 (independent source/pixel review), @adhoc/1 (parent admission; original images viewed)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": [
+        "0.49.2",
+        "0.49.2"
+      ],
+      "suites": [
+        "014b255c9130",
+        "014b255c9130"
+      ]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
+      "content/artifacts/1e402c086e7a42257a5669297bf786599198a8c6e3490029594c59808fd94c29.png",
+      "content/artifacts/35740d77c06b6408a5a5f250ed4b49ace2a9722e71de2b96d26bd8ddeea3e801.xwd",
+      "content/artifacts/9fb8c8470123a08f2414818c0a18aebcdcb54acf199c3b2b48ac93b5be673ff7.png",
+      "content/artifacts/ad808b2bd8b75e640553e0a6e95b5ca4656852119179bfb68337912d0187faac.xwd"
+    ],
+    "supersedes": [],
+    "featureId": "sgr.reset",
+    "reason": "The own target shows underlined X followed by Y without an underline after SGR 0 in the same write stream. This measures clearing the visible underline; different X/Y glyphs do not independently establish bold or italic reset, and no claim covers every SGR attribute. Kitty 0.49.2 Linux, deny-read clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 66caf2e251268e3152e1e6221922f5ff / suite014b255c9130.",
+    "id": "pixels-66caf2e251268e3152e1e6221922f5ff-sgr.reset",
+    "observation": {
+      "featureId": "sgr.reset",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:9fb8c8470123a08f2414818c0a18aebcdcb54acf199c3b2b48ac93b5be673ff7",
+      "frames": [
+        {
+          "role": "control",
+          "label": "sgr.reset control",
+          "capturedAt": 1791180031454,
+          "ref": "sha256:1e402c086e7a42257a5669297bf786599198a8c6e3490029594c59808fd94c29",
+          "sourceRef": "sha256:35740d77c06b6408a5a5f250ed4b49ace2a9722e71de2b96d26bd8ddeea3e801"
+        },
+        {
+          "role": "target",
+          "label": "sgr.reset",
+          "capturedAt": 1791180031675,
+          "ref": "sha256:9fb8c8470123a08f2414818c0a18aebcdcb54acf199c3b2b48ac93b5be673ff7",
+          "sourceRef": "sha256:ad808b2bd8b75e640553e0a6e95b5ca4656852119179bfb68337912d0187faac"
+        }
+      ],
+      "note": "The own target shows underlined X followed by Y without an underline after SGR 0 in the same write stream. This measures clearing the visible underline; different X/Y glyphs do not independently establish bold or italic reset, and no claim covers every SGR attribute. Kitty 0.49.2 Linux, deny-read clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 66caf2e251268e3152e1e6221922f5ff / suite014b255c9130.",
+      "rawReplyRef": "sgr.reset"
+    }
+  },
+  {
+    "runId": "66caf2e251268e3152e1e6221922f5ff",
+    "runSha256": "249a46219a8ebd0d980e65bc710997d4c28a9b33baf54a2ccf39821e49392191",
+    "reviewer": "@dev/luna4 (author), @dev/luna2 (independent source/pixel review), @adhoc/1 (parent admission; original images viewed)",
+    "scope": {
+      "target": {
+        "kind": "app",
+        "id": "kitty"
+      },
+      "versions": [
+        "0.49.2",
+        "0.49.2"
+      ],
+      "suites": [
+        "014b255c9130",
+        "014b255c9130"
+      ]
+    },
+    "sources": [
+      "content/probes-apps/kitty-0.49.2-linux-66caf2e251268e3152e1e6221922f5ff.json",
+      "content/artifacts/c1db3bf539e3ae7322ba37449334c52605b2c133bf991e74a2b716c3ad91e3f7.png",
+      "content/artifacts/dafa6a39c5fce88824df7f8a253b1763a3004f0de5ae76d50b8fc0eb0bec7107.xwd",
+      "content/artifacts/b9048b04e46c1c34ccbf67bd33024e6e64b606bb93ba6dd1a44272f63f6e5658.png",
+      "content/artifacts/76f17aa181d4f982f2f6dd95b870410ecdd2fd64956ae71444674178f7c411ee.xwd"
+    ],
+    "supersedes": [],
+    "featureId": "scrollback.scroll-up",
+    "reason": "The own control shows A,B,C,D,E on rows 1–5; after SU inside DECSTBM rows2–4, the target shows A,C,D,blank,E. The preserved A/E are outside-region controls. This measures one region scroll-up, not scrollback history depth. Callback begins at scrollback.ts:246 at da5ce335. Kitty 0.49.2 Linux, deny-read clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 66caf2e251268e3152e1e6221922f5ff / suite014b255c9130.",
+    "id": "pixels-66caf2e251268e3152e1e6221922f5ff-scrollback.scroll-up",
+    "observation": {
+      "featureId": "scrollback.scroll-up",
+      "outcome": "supported",
+      "evidence": "pixels",
+      "screenshotRef": "sha256:b9048b04e46c1c34ccbf67bd33024e6e64b606bb93ba6dd1a44272f63f6e5658",
+      "frames": [
+        {
+          "role": "control",
+          "label": "Seed markers A-E on rows 1-5 with scroll region rows 2-4 set",
+          "capturedAt": 1791180034057,
+          "ref": "sha256:c1db3bf539e3ae7322ba37449334c52605b2c133bf991e74a2b716c3ad91e3f7",
+          "sourceRef": "sha256:dafa6a39c5fce88824df7f8a253b1763a3004f0de5ae76d50b8fc0eb0bec7107"
+        },
+        {
+          "role": "target",
+          "label": "After SU in region rows 2-4: A and E stay, B-D shift up, and the region bottom row is cleared",
+          "capturedAt": 1791180034269,
+          "ref": "sha256:b9048b04e46c1c34ccbf67bd33024e6e64b606bb93ba6dd1a44272f63f6e5658",
+          "sourceRef": "sha256:76f17aa181d4f982f2f6dd95b870410ecdd2fd64956ae71444674178f7c411ee"
+        }
+      ],
+      "note": "The own control shows A,B,C,D,E on rows 1–5; after SU inside DECSTBM rows2–4, the target shows A,C,D,blank,E. The preserved A/E are outside-region controls. This measures one region scroll-up, not scrollback history depth. Callback begins at scrollback.ts:246 at da5ce335. Kitty 0.49.2 Linux, deny-read clipboard profile, measured 24x61 cells / 800x600 pixels, DejaVu Sans Mono (configured font_size=16), llvmpipe, exact partial run 66caf2e251268e3152e1e6221922f5ff / suite014b255c9130.",
+      "rawReplyRef": "scrollback.scroll-up"
+    }
   }
 ]
