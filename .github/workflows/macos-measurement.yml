@@ -78,7 +78,7 @@ jobs:
           done
 
           echo "=== Installing Alacritty from GitHub Releases v0.17.0 ==="
-          curl -sL https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg -o /tmp/Alacritty.dmg
+          curl -sL https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-dmg -o /tmp/Alacritty.dmg 2>/dev/null || curl -sL https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg -o /tmp/Alacritty.dmg
           if [ -f /tmp/Alacritty.dmg ]; then
             hdiutil attach /tmp/Alacritty.dmg -mountpoint /Volumes/Alacritty
             cp -R /Volumes/Alacritty/Alacritty.app /Applications/
@@ -140,32 +140,27 @@ jobs:
 
             NODE_DIR="$(dirname $(which node))"
 
-            cat << 'SHEOF' > /tmp/run_iterm2.sh
-            #!/bin/bash
-            export PATH="__NODE_DIR__:/usr/local/bin:/opt/homebrew/bin:$PATH"
-            echo "=== iTerm2 test starting at $(date) ===" > /tmp/spike-artifacts/output_iterm2.txt
-            echo "TTY: $(tty 2>/dev/null || echo 'not a tty')" >> /tmp/spike-artifacts/output_iterm2.txt
-            echo "TERM: $TERM, TERM_PROGRAM: $TERM_PROGRAM" >> /tmp/spike-artifacts/output_iterm2.txt
-            echo "Node: $(which node) ($(node -v 2>/dev/null))" >> /tmp/spike-artifacts/output_iterm2.txt
-            echo "Running CLI test..." >> /tmp/spike-artifacts/output_iterm2.txt
+            cat << SHEOF > /tmp/run_iterm2.sh
+          #!/bin/bash
+          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
+          echo "=== iTerm2 test starting at \$(date) ===" > /tmp/spike-artifacts/output_iterm2.txt
+          echo "TTY: \$(tty 2>/dev/null || echo 'not a tty')" >> /tmp/spike-artifacts/output_iterm2.txt
+          echo "TERM: \$TERM, TERM_PROGRAM: \$TERM_PROGRAM" >> /tmp/spike-artifacts/output_iterm2.txt
+          echo "Node: \$(which node) (\$(node -v 2>/dev/null))" >> /tmp/spike-artifacts/output_iterm2.txt
+          echo "Running CLI test..." >> /tmp/spike-artifacts/output_iterm2.txt
 
-            npx terminfo.dev@4.0.0 test --output /tmp/spike-artifacts/results_iterm2.json 2>&1 | tee -a /tmp/spike-artifacts/output_iterm2.txt
-            EXIT_CODE=${PIPESTATUS[0]}
-            echo "EXIT_CODE=$EXIT_CODE" >> /tmp/spike-artifacts/output_iterm2.txt
-            echo "$EXIT_CODE" > /tmp/iterm2_exit.txt
-            touch /tmp/iterm2_done.txt
-            sleep 30
+          npx terminfo.dev@4.0.0 test --output /tmp/spike-artifacts/results_iterm2.json 2>&1 | tee -a /tmp/spike-artifacts/output_iterm2.txt
+          EXIT_CODE=\${PIPESTATUS[0]}
+          echo "EXIT_CODE=\$EXIT_CODE" >> /tmp/spike-artifacts/output_iterm2.txt
+          echo "\$EXIT_CODE" > /tmp/iterm2_exit.txt
+          touch /tmp/iterm2_done.txt
+          sleep 30
           SHEOF
-            sed -i '' "s|__NODE_DIR__|$NODE_DIR|g" /tmp/run_iterm2.sh
             chmod +x /tmp/run_iterm2.sh
 
-            # Hook into bash startup files (runner default login shell is /bin/bash)
             for profile_file in ~/.bash_profile ~/.bashrc ~/.profile ~/.zprofile ~/.zshrc; do
-              cat << 'HOOKEOF' >> "$profile_file"
-if [ -n "$ITERM_SESSION_ID" ] && [ -f /tmp/run_iterm2.sh ] && [ ! -f /tmp/iterm2_done.txt ]; then
-  /bin/bash /tmp/run_iterm2.sh
-fi
-HOOKEOF
+              touch "$profile_file"
+              echo 'if [ -n "$ITERM_SESSION_ID" ] && [ -f /tmp/run_iterm2.sh ] && [ ! -f /tmp/iterm2_done.txt ]; then /bin/bash /tmp/run_iterm2.sh; fi' >> "$profile_file"
             done
 
             /Applications/iTerm.app/Contents/MacOS/iTerm2 > /tmp/spike-artifacts/iterm2.log 2>&1 &
@@ -195,38 +190,30 @@ HOOKEOF
           if [ -d "/Applications/Ghostty.app" ]; then
             NODE_DIR="$(dirname $(which node))"
 
-            cat << 'SHEOF' > /tmp/run_ghostty.sh
-            #!/bin/bash
-            export PATH="__NODE_DIR__:/usr/local/bin:/opt/homebrew/bin:$PATH"
-            echo "=== Ghostty test starting at $(date) ===" > /tmp/spike-artifacts/output_ghostty.txt
-            echo "TTY: $(tty 2>/dev/null || echo 'not a tty')" >> /tmp/spike-artifacts/output_ghostty.txt
-            echo "TERM: $TERM, TERM_PROGRAM: $TERM_PROGRAM" >> /tmp/spike-artifacts/output_ghostty.txt
-            echo "Node: $(which node) ($(node -v 2>/dev/null))" >> /tmp/spike-artifacts/output_ghostty.txt
-            echo "Running CLI test..." >> /tmp/spike-artifacts/output_ghostty.txt
+            cat << SHEOF > /tmp/run_ghostty.sh
+          #!/bin/bash
+          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
+          echo "=== Ghostty test starting at \$(date) ===" > /tmp/spike-artifacts/output_ghostty.txt
+          echo "TTY: \$(tty 2>/dev/null || echo 'not a tty')" >> /tmp/spike-artifacts/output_ghostty.txt
+          echo "TERM: \$TERM, TERM_PROGRAM: \$TERM_PROGRAM" >> /tmp/spike-artifacts/output_ghostty.txt
+          echo "Node: \$(which node) (\$(node -v 2>/dev/null))" >> /tmp/spike-artifacts/output_ghostty.txt
+          echo "Running CLI test..." >> /tmp/spike-artifacts/output_ghostty.txt
 
-            npx terminfo.dev@4.0.0 test --output /tmp/spike-artifacts/results_ghostty.json 2>&1 | tee -a /tmp/spike-artifacts/output_ghostty.txt
-            EXIT_CODE=${PIPESTATUS[0]}
-            echo "EXIT_CODE=$EXIT_CODE" >> /tmp/spike-artifacts/output_ghostty.txt
-            echo "$EXIT_CODE" > /tmp/ghostty_exit.txt
-            touch /tmp/ghostty_done.txt
-            sleep 30
+          npx terminfo.dev@4.0.0 test --output /tmp/spike-artifacts/results_ghostty.json 2>&1 | tee -a /tmp/spike-artifacts/output_ghostty.txt
+          EXIT_CODE=\${PIPESTATUS[0]}
+          echo "EXIT_CODE=\$EXIT_CODE" >> /tmp/spike-artifacts/output_ghostty.txt
+          echo "\$EXIT_CODE" > /tmp/ghostty_exit.txt
+          touch /tmp/ghostty_done.txt
+          sleep 30
           SHEOF
-            sed -i '' "s|__NODE_DIR__|$NODE_DIR|g" /tmp/run_ghostty.sh
             chmod +x /tmp/run_ghostty.sh
 
-            # Ghostty config: specify command to run on startup without -e flag (avoids macOS Gatekeeper modal)
             mkdir -p ~/.config/ghostty
-            cat << GCONF > ~/.config/ghostty/config
-command = /bin/bash /tmp/run_ghostty.sh
-GCONF
+            echo "command = /bin/bash /tmp/run_ghostty.sh" > ~/.config/ghostty/config
 
-            # Also add fallback hook in shell startup files
             for profile_file in ~/.bash_profile ~/.bashrc ~/.profile ~/.zprofile ~/.zshrc; do
-              cat << 'HOOKEOF' >> "$profile_file"
-if [ -n "$GHOSTTY_RESOURCES_DIR" ] && [ -f /tmp/run_ghostty.sh ] && [ ! -f /tmp/ghostty_done.txt ]; then
-  /bin/bash /tmp/run_ghostty.sh
-fi
-HOOKEOF
+              touch "$profile_file"
+              echo 'if [ -n "$GHOSTTY_RESOURCES_DIR" ] && [ -f /tmp/run_ghostty.sh ] && [ ! -f /tmp/ghostty_done.txt ]; then /bin/bash /tmp/run_ghostty.sh; fi' >> "$profile_file"
             done
 
             GHOSTTY_BIN="/Applications/Ghostty.app/Contents/MacOS/ghostty"
@@ -257,23 +244,22 @@ HOOKEOF
           if [ -d "/Applications/Alacritty.app" ]; then
             NODE_DIR="$(dirname $(which node))"
 
-            cat << 'SHEOF' > /tmp/run_alacritty.sh
-            #!/bin/bash
-            export PATH="__NODE_DIR__:/usr/local/bin:/opt/homebrew/bin:$PATH"
-            echo "=== Alacritty test starting at $(date) ===" > /tmp/spike-artifacts/output_alacritty.txt
-            echo "TTY: $(tty 2>/dev/null || echo 'not a tty')" >> /tmp/spike-artifacts/output_alacritty.txt
-            echo "TERM: $TERM, TERM_PROGRAM: $TERM_PROGRAM" >> /tmp/spike-artifacts/output_alacritty.txt
-            echo "Node: $(which node) ($(node -v 2>/dev/null))" >> /tmp/spike-artifacts/output_alacritty.txt
-            echo "Running CLI test..." >> /tmp/spike-artifacts/output_alacritty.txt
+            cat << SHEOF > /tmp/run_alacritty.sh
+          #!/bin/bash
+          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
+          echo "=== Alacritty test starting at \$(date) ===" > /tmp/spike-artifacts/output_alacritty.txt
+          echo "TTY: \$(tty 2>/dev/null || echo 'not a tty')" >> /tmp/spike-artifacts/output_alacritty.txt
+          echo "TERM: \$TERM, TERM_PROGRAM: \$TERM_PROGRAM" >> /tmp/spike-artifacts/output_alacritty.txt
+          echo "Node: \$(which node) (\$(node -v 2>/dev/null))" >> /tmp/spike-artifacts/output_alacritty.txt
+          echo "Running CLI test..." >> /tmp/spike-artifacts/output_alacritty.txt
 
-            npx terminfo.dev@4.0.0 test --output /tmp/spike-artifacts/results_alacritty.json 2>&1 | tee -a /tmp/spike-artifacts/output_alacritty.txt
-            EXIT_CODE=${PIPESTATUS[0]}
-            echo "EXIT_CODE=$EXIT_CODE" >> /tmp/spike-artifacts/output_alacritty.txt
-            echo "$EXIT_CODE" > /tmp/alacritty_exit.txt
-            touch /tmp/alacritty_done.txt
-            sleep 30
+          npx terminfo.dev@4.0.0 test --output /tmp/spike-artifacts/results_alacritty.json 2>&1 | tee -a /tmp/spike-artifacts/output_alacritty.txt
+          EXIT_CODE=\${PIPESTATUS[0]}
+          echo "EXIT_CODE=\$EXIT_CODE" >> /tmp/spike-artifacts/output_alacritty.txt
+          echo "\$EXIT_CODE" > /tmp/alacritty_exit.txt
+          touch /tmp/alacritty_done.txt
+          sleep 30
           SHEOF
-            sed -i '' "s|__NODE_DIR__|$NODE_DIR|g" /tmp/run_alacritty.sh
             chmod +x /tmp/run_alacritty.sh
 
             ALACRITTY_BIN="/Applications/Alacritty.app/Contents/MacOS/alacritty"
