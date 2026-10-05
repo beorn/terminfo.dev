@@ -10,13 +10,13 @@
     ".": "./entry.ts"
   },
   "publishConfig": {
+    "access": "public",
     "exports": {
       ".": {
         "types": "./dist/entry.d.mts",
         "import": "./dist/entry.mjs"
       }
-    },
-    "access": "public"
+    }
   },
   "scripts": {
     "build": "tsdown"
