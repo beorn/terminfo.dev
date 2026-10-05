@@ -57,6 +57,66 @@ function appReporter(): TermContext {
   }
 }
 
+function appWrapper(cols: number): TermContext {
+  const base = app({ row: 1, col: 1 })
+  let row = 1
+  let col = 1
+  let pendingWrap = false
+  let reverseWrap = false
+  let autoWrap = true
+  return {
+    ...base,
+    cols,
+    write(sequence: string) {
+      if (sequence === "\x1b[?45h") {
+        reverseWrap = true
+        return
+      }
+      if (sequence === "\x1b[?45l") {
+        reverseWrap = false
+        return
+      }
+      if (sequence === "\x1b[?7h") {
+        autoWrap = true
+        return
+      }
+      if (sequence === "\x1b[?7l") {
+        autoWrap = false
+        return
+      }
+      if (sequence === "\x1b[H" || sequence === "\x1b[1;1H") {
+        row = 1
+        col = 1
+        pendingWrap = false
+        return
+      }
+      for (const ch of sequence) {
+        if (ch === "\x08") {
+          if (col > 1) col -= 1
+          else if (reverseWrap && row > 1) {
+            row -= 1
+            col = cols
+          }
+          pendingWrap = false
+        } else if (ch === "\n") {
+          row += 1
+          col = 1
+          pendingWrap = false
+        } else if (ch >= " ") {
+          if (pendingWrap && autoWrap) {
+            row += 1
+            col = 1
+            pendingWrap = false
+          }
+          if (col === cols) pendingWrap = true
+          else col += 1
+        }
+      }
+    },
+    queryCursorPosition: async () => ({ row, col }),
+  }
+}
+
 function headless(x: number, y: number, rows = 24, reply = ""): TermlessContext {
   return {
     cols: 80,
@@ -113,6 +173,16 @@ test("cursor shape without style readback and reverse-wrap CPR remain ungraded",
   const reverse = await byId("cursor.reverse-wrap").term!(app({ row: 1, col: 80 }))
   expect(reverse.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
   expect(reverse.assertions).toBeUndefined()
+})
+
+test("reverse-wrap grades a measured backward wrap, not a bare CPR", async () => {
+  const probe = byId("cursor.reverse-wrap")
+  const ok = await probe.term!(appWrapper(4))
+  expect(ok.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(ok.assertions).toMatchObject([{ kind: "positive" }])
+  // A constant or stale reply cannot establish the backward wrap.
+  const constant = await probe.term!(app({ row: 2, col: 2 }))
+  expect(constant.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
 })
 
 test("reverse-wrap needs two rows and a measured wrap before backspace", () => {
@@ -339,7 +409,7 @@ test("DECOM reports relative CPR but only absolute headless state proves the phy
     throw new Error("query failed")
   }
   await expect(reverseWrap.term!(reverseFailing)).rejects.toThrow("query failed")
-  expect(reverseCleanup).toEqual(["\x1b[?45h", "\x1b[?45l"])
+  expect(reverseCleanup).toEqual(["\x1b[?45h", "\x1b[?7h", "\x1b[H", "\x1b[?45l"])
 })
 
 test("relative cursor probes establish their own origin after earlier moves", async () => {

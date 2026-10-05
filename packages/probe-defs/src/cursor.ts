@@ -497,18 +497,68 @@ export const cursorProbes: ProbeDefinition[] = [
       }
     },
     async (ctx) => {
-      ctx.write("\x1b[?45h") // enable reverse wrap
-      try {
-        const pos = await ctx.queryCursorPosition()
+      const expected = "Backspace from column 1 of row 2 reverses the wrap to the last column of row 1"
+      if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 2) {
         return {
           pass: false,
-          ...(pos && { response: JSON.stringify(pos) }),
           observation: {
             outcome: "inconclusive",
-            reason: pos ? "insufficient-evidence" : "no-response",
-            evidence: "query",
-            note: "Cursor reply after enabling reverse wrap does not measure backward-wrap movement",
+            reason: "insufficient-evidence",
+            evidence: "none",
+            note: "reverse-wrap fixture needs two measured rows and at least two columns",
           },
+        }
+      }
+      const cols = ctx.cols
+      const measured: Array<{ step: string; report: { row: number; col: number } | null }> = []
+      const ask = async (step: string) => {
+        const pos = await ctx.queryCursorPosition()
+        measured.push({ step, report: pos })
+        return pos
+      }
+      const inconclusive = (note?: string) => ({
+        pass: false,
+        response: JSON.stringify({ measured }),
+        observation: {
+          outcome: "inconclusive" as const,
+          ...(note ? { reason: "insufficient-evidence" as const, note } : { reason: "no-response" as const }),
+          evidence: "query" as const,
+        },
+      })
+      ctx.write("\x1b[?45h") // enable reverse wrap
+      try {
+        ctx.write("\x1b[?7h") // reverse wrap is only observable with auto-wrap on
+        ctx.write("\x1b[H")
+        const home = await ask("home")
+        if (!home) return inconclusive()
+        if (home.row !== 1 || home.col !== 1) return inconclusive("Home position was not reported at 1;1")
+        ctx.write("A".repeat(cols) + "B") // the deferred wrap parks the cursor on row 2
+        const wrapped = await ask("wrapped")
+        if (!wrapped) return inconclusive()
+        if (wrapped.row !== 2 || wrapped.col !== 2) {
+          return inconclusive("Deferred wrap was not reported at 2;2")
+        }
+        ctx.write("\x08\x08") // first backspace to column 1; second must reverse-wrap
+        const reverted = await ask("reverted")
+        if (!reverted) return inconclusive()
+        const response = JSON.stringify({ measured })
+        if (reverted.row === 1 && reverted.col === cols) {
+          return {
+            pass: true,
+            response,
+            observation: { outcome: "supported", evidence: "query" },
+            assertions: [{ kind: "positive", expected, observed: response }],
+          }
+        }
+        return {
+          pass: false,
+          response,
+          observation: {
+            outcome: "unsupported",
+            evidence: "query",
+            note: "Measured wrap was not reversed to row 1 column " + cols,
+          },
+          assertions: [{ kind: "negative", expected, observed: response }],
         }
       } finally {
         ctx.write("\x1b[?45l") // disable reverse wrap after the query, including errors
