@@ -206,20 +206,23 @@ export const charsetsProbes: ProbeDefinition[] = [
           }
           try {
             ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
-            ctx.write("\x1b[1;1H     \x1b[1;1HA?Z")
-            ctx.write("\x1b[2;1H     \x1b[2;1HA?Z")
-            ctx.write("\x1b[3;1H     \x1b[3;1HA?Z")
-            ctx.write("\x1b[4;1H     \x1b[4;1HA?Z")
+            // A??Z puts the right flank on col 4, outside the two-cell U+4E16 sample at cols 2-3,
+            // so a correctly rendered wide glyph cannot destroy the advertised Z flank.
+            ctx.write("\x1b[1;1H     \x1b[1;1HA??Z")
+            ctx.write("\x1b[2;1H     \x1b[2;1HA??Z")
+            ctx.write("\x1b[3;1H     \x1b[3;1HA??Z")
+            ctx.write("\x1b[4;1H     \x1b[4;1HA??Z")
             ctx.write("\x1b[4;4H")
             const control = await capture({
               role: "control",
               label:
-                "ASCII placeholder controls on rows 1 and 2 beside the Unicode sample cells; rows 3 and 4 are reference rows",
+                "ASCII placeholder controls A??Z on rows 1-4; cols 1 and 4 are the A/Z flanks, cols 2-3 are the sample cells",
             })
             ctx.write("\x1b[1;2H\u00e9\x1b[2;2H\u4e16\x1b[4;4H")
             const target = await capture({
               role: "target",
-              label: "UTF-8 samples: U+00E9 at row 1 col 2 and U+4E16 at row 2 col 2, ASCII A/Z flanks intact",
+              label:
+                "UTF-8 samples: U+00E9 at row 1 col 2 and U+4E16 occupying row 2 cols 2-3; ASCII A/Z flanks on cols 1 and 4 intact",
             })
             return {
               pass: false,
@@ -229,6 +232,7 @@ export const charsetsProbes: ProbeDefinition[] = [
                 sampleCells: [
                   { row: 1, col: 2 },
                   { row: 2, col: 2 },
+                  { row: 2, col: 3 },
                 ],
                 control: control.label,
                 target: target.label,

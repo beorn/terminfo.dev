@@ -6,7 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { scrollbackProbes } from "./scrollback.ts"
-import type { TermContext, TermlessContext } from "./types.ts"
+import type { ObservationFrame, TermContext, TermlessContext } from "./types.ts"
 
 function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
   return {
@@ -439,4 +439,83 @@ test("DECSTBM reset retries cleanup after a partial reset write failure", async 
   await expect(probe.term(context)).rejects.toThrow("partial reset failed")
   expect(writes.at(-1)).toBe("\x1b[r")
   expect(resetWrites).toBe(2)
+})
+
+function captureApp(rows: number, cols: number) {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const context: TermContext = {
+    rows,
+    cols,
+    write: (bytes) => writes.push(bytes),
+    queryCursorPosition: async () => null,
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryMode: async () => null,
+    capture: async ({ role, label }) => {
+      const frame = {
+        role,
+        label,
+        capturedAt: frames.length + 1,
+        ref: `sha256:${String(frames.length + 1).repeat(64)}`,
+      }
+      frames.push(frame)
+      return frame
+    },
+  }
+  return { context, writes, frames }
+}
+
+const findScrollback = (id: string) => {
+  const definition = scrollbackProbes.find((probe) => probe.id === id)
+  if (!definition?.term) throw new Error(`missing app scrollback callback for ${id}`)
+  return definition
+}
+
+test("scrollback capture fixtures record control and target frames with honest, bounded claims", async () => {
+  const accumulate = findScrollback("scrollback.accumulate")
+  const small = captureApp(2, 61)
+  expect((await accumulate.term!(small.context)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(small.writes).toEqual([])
+  const accumulated = captureApp(3, 61)
+  const accumulateResult = await accumulate.term!(accumulated.context)
+  expect(accumulated.frames.map(({ role }) => role)).toEqual(["control", "target"])
+  expect(accumulated.writes.some((write) => write === "\x1b[2;1H")).toBe(true)
+  expect(accumulated.writes.includes("\x1b[H")).toBe(false)
+  expect(JSON.stringify(accumulateResult.observation?.note)).not.toContain("entered scrollback")
+
+  const total = findScrollback("scrollback.total-lines")
+  const totals = captureApp(5, 61)
+  const totalResult = await total.term!(totals.context)
+  expect(totals.frames).toHaveLength(2)
+  expect(String(totalResult.observation?.note)).not.toContain("grew")
+
+  const alt = findScrollback("scrollback.alt-screen")
+  const alts = captureApp(4, 61)
+  const altResult = await alt.term!(alts.context)
+  expect(alts.frames.map(({ role }) => role)).toEqual(["control", "control", "target"])
+  expect(alts.writes).toContain("\x1b[?1049h")
+  expect(altResult.observation?.frames).toHaveLength(3)
+
+  const reset = findScrollback("scrollback.decstbm-reset")
+  const narrow = captureApp(12, 8)
+  expect((await reset.term!(narrow.context)).observation).toMatchObject({ evidence: "none" })
+  expect(narrow.writes).toEqual([])
+  const resets = captureApp(12, 61)
+  const resetResult = await reset.term!(resets.context)
+  expect(resets.frames).toHaveLength(3)
+  expect(resets.writes).toContain("\x1b[5;10r")
+  expect(String(resetResult.observation?.note)).toContain("confinement")
+
+  const setRegion = findScrollback("scrollback.set-region")
+  const setSmall = captureApp(12, 5)
+  expect((await setRegion.term!(setSmall.context)).observation).toMatchObject({ evidence: "none" })
+  expect(setSmall.writes).toEqual([])
 })

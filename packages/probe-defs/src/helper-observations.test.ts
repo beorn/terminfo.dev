@@ -238,6 +238,69 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
   expect(captureWrites.length).toBeGreaterThan(0)
 })
 
+// Every SGR capture fixture shares one guard, so a measured small terminal refuses before
+// writes; the underlined SGR 59 control must itself carry an underline, not just SGR 0.
+test("SGR reset capture fixtures share the 3x34 guard and render an underlined default reference", async () => {
+  const ids = [
+    "sgr.fg.default",
+    "sgr.bg.default",
+    "sgr.underline-color-reset",
+    "sgr.selective-reset.bold",
+    "sgr.selective-reset.underline",
+    "sgr.selective-reset.italic",
+    "sgr.selective-reset.inverse",
+    "sgr.reset",
+  ]
+  for (const id of ids) {
+    const definition = sgrProbes.find((probe) => probe.id === id)
+    if (!definition?.term) throw new Error(`missing app callback for ${id}`)
+
+    const smallWrites: string[] = []
+    let smallCaptures = 0
+    const small = await definition.term(
+      terminal({
+        rows: 2,
+        cols: 33,
+        write: (bytes) => smallWrites.push(bytes),
+        capture: async ({ role, label }) => {
+          smallCaptures++
+          return { role, label, capturedAt: 1, ref: "never" }
+        },
+      }),
+    )
+    expect(small.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(smallWrites, id).toEqual([])
+    expect(smallCaptures, id).toBe(0)
+
+    const writes: string[] = []
+    const roles: string[] = []
+    const ok = await definition.term(
+      terminal({
+        rows: 3,
+        cols: 34,
+        write: (bytes) => writes.push(bytes),
+        capture: async ({ role, label }) => {
+          roles.push(role)
+          return { role, label, capturedAt: roles.length, ref: `sha256:${"d".repeat(64)}` }
+        },
+      }),
+    )
+    expect(ok.observation, id).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+    expect(ok.assertions, id).toBeUndefined()
+    expect(roles, id).toEqual(["control", "target"])
+    expect(ok.observation?.frames, id).toHaveLength(2)
+    expect(writes.length, id).toBeGreaterThanOrEqual(2)
+    if (id === "sgr.underline-color-reset") {
+      expect(writes[0], id).toBe("\x1b[0m\x1b[2J\x1b[3;3H\x1b[4mXXYY")
+      expect(writes[1], id).toContain("\x1b[58;2;255;0;128m")
+    }
+  }
+})
+
 test("unexposed overline and default conceal flags cannot establish negative support", () => {
   for (const id of ["sgr.overline", "sgr.hidden"]) {
     const probe = sgrProbes.find((item) => item.id === id)

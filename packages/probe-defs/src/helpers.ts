@@ -75,10 +75,68 @@ export function unmeasuredCellResult(position: { row: number; col: number } | nu
 /**
  * SGR probe — feed SGR sequence + "X", verify cell attribute (termless) or cursor position (term).
  *
+ * A capture fixture renders at row 3 column 3; a smaller measured terminal clamps CUP or
+ * wraps/scrolls the sample, so the shared guard refuses before any bytes.
+ *
  * Termless: positive cell state establishes parser support. Adapters may omit
  * attributes or collapse styles, so a mismatch cannot establish non-support.
  * Term: cursor advance only proves the sequence was consumed, not that its style rendered.
  */
+export const SGR_CAPTURE_MIN_ROWS = 3
+export const SGR_CAPTURE_MIN_COLS = 34
+
+/** Refuse an SGR capture fixture before any bytes when the measured geometry is too small. */
+export function sgrCaptureTooSmall(ctx: TermContext, feature = "SGR capture"): ProbeResult | undefined {
+  if (!ctx.capture) return undefined
+  const { rows, cols } = ctx
+  if (
+    Number.isSafeInteger(rows) &&
+    Number.isSafeInteger(cols) &&
+    rows >= SGR_CAPTURE_MIN_ROWS &&
+    cols >= SGR_CAPTURE_MIN_COLS
+  ) {
+    return undefined
+  }
+  return {
+    pass: false,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: `${feature} needs at least ${SGR_CAPTURE_MIN_ROWS}x${SGR_CAPTURE_MIN_COLS}, measured ${rows}x${cols}`,
+    },
+  }
+}
+
+/** Render a control screen and a target screen and return both frames as inconclusive pixel evidence. */
+export async function sgrCaptureFrames(
+  ctx: TermContext,
+  control: string,
+  target: string,
+  targetLabel: string,
+  meta: Record<string, unknown> = {},
+  note = "Control and target pixels captured; visual interpretation requires review",
+  controlLabel = `${targetLabel} control`,
+): Promise<ProbeResult> {
+  if (!ctx.capture) throw new Error(`${targetLabel}: SGR pixel capture requires a capture callback`)
+  ctx.write(control)
+  const controlFrame = await ctx.capture({ role: "control", label: controlLabel })
+  ctx.write(target)
+  const targetFrame = await ctx.capture({ role: "target", label: targetLabel })
+  return {
+    pass: false,
+    response: JSON.stringify({ ...meta, control: controlFrame.label, target: targetFrame.label }),
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "pixels",
+      screenshotRef: targetFrame.ref,
+      frames: [controlFrame, targetFrame],
+      note,
+    },
+  }
+}
+
 export function sgrProbe(
   id: string,
   sequence: string,
@@ -109,49 +167,35 @@ export function sgrProbe(
       )
     },
     async term(ctx) {
-      const minRows = ctx.capture ? 3 : 1
-      const minCols = ctx.capture ? 34 : 2
+      if (ctx.capture) {
+        const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
+        if (refusal) return refusal
+        const sample = "AaBb 0123456789 - terminal text"
+        try {
+          return await sgrCaptureFrames(
+            ctx,
+            "\x1b[0m\x1b[2J\x1b[3;3H" + sample,
+            "\x1b[0m\x1b[2J\x1b[3;3H" + sequence + sample,
+            id,
+            { sample, startRow: 3, startCol: 3, sampleCells: sample.length },
+            undefined,
+            "Unstyled text sample",
+          )
+        } finally {
+          ctx.write("\x1b[0m")
+        }
+      }
       const rows = ctx.rows
       const cols = ctx.cols
-      if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < minCols) {
+      if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 1 || cols < 2) {
         return {
           pass: false,
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
             evidence: "none",
-            note: `SGR fixture needs at least ${minRows}x${minCols}, measured ${rows}x${cols}`,
+            note: `SGR fixture needs at least 1x2, measured ${rows}x${cols}`,
           },
-        }
-      }
-      if (ctx.capture) {
-        try {
-          const sample = "AaBb 0123456789 - terminal text"
-          ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sample)
-          const control = await ctx.capture({ role: "control", label: "Unstyled text sample" })
-          ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sequence + sample)
-          const target = await ctx.capture({ role: "target", label: id })
-          return {
-            pass: false,
-            response: JSON.stringify({
-              sample,
-              startRow: 3,
-              startCol: 3,
-              sampleCells: sample.length,
-              control: control.label,
-              target: target.label,
-            }),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "pixels",
-              screenshotRef: target.ref,
-              frames: [control, target],
-              note: "Control and target pixels captured; visual interpretation requires review",
-            },
-          }
-        } finally {
-          ctx.write("\x1b[0m")
         }
       }
       ctx.write("\x1b[1;1H\x1b[2K") // clear line
