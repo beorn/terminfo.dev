@@ -951,30 +951,13 @@ export const modesProbes: ProbeDefinition[] = [
     termNeedsGeometry: true,
   },
 
-  // ?1007 — alt-scroll mouse wheel
-  decrpmModeProbe("modes.alt-scroll-1007", 1007, (ctx) => {
-    ctx.feed("\x1b[?1007h")
-    // Verify via DECRPM query — response CSI ? 1007 ; Ps $ y where Ps=1 means set
-    const response = ctx.feedCapture("\x1b[?1007$p")
-    ctx.feed("\x1b[?1007l")
-    if (response.includes("$y")) {
-      return parserStateResult(
-        null,
-        "Alt-scroll changes wheel behavior",
-        { response },
-        "DECRPM reports a mode state, not a wheel event",
-      )
-    }
-    // Fallback: verify sequence didn't break the terminal
-    ctx.feed("X")
-    const ok = ctx.getCell(0, 0).char === "X"
-    return parserStateResult(
-      null,
-      "Alt-scroll changes wheel behavior",
-      { responsive: ok },
-      "Parser responsiveness does not measure wheel behavior",
-    )
-  }),
+  // ?1007 — alt-scroll mouse wheel. Trackpad/wheel events cannot be delivered in this run, so
+  // the row is recorded Not tested by this run (cto ruling 19685f18), never inconclusive.
+  probe(
+    "modes.alt-scroll-1007",
+    () => notTestedResult("No mouse or wheel-injection capability in this run", { mode: 1007 }),
+    () => Promise.resolve(notTestedResult("No mouse or wheel-injection capability in this run", { mode: 1007 })),
+  ),
 
   // ?1005 — UTF-8 mouse encoding (legacy)
   decrpmModeProbe("modes.utf8-mouse-1005", 1005, (ctx) => {
@@ -1016,19 +999,13 @@ export const modesProbes: ProbeDefinition[] = [
     )
   }),
 
-  // ?4 — DECSCLM smooth scroll mode. This is observable through DECRPM even
-  // though modern emulators often render both smooth and jump scrolling instantly.
-  decrpmModeProbe("modes.decsclm", 4, (ctx) => {
-    ctx.feed("\x1b[?4h")
-    const response = ctx.feedCapture("\x1b[?4$p")
-    ctx.feed("\x1b[?4l")
-    return parserStateResult(
-      null,
-      "DECSCLM changes scroll timing",
-      { response },
-      "DECRPM state does not measure scroll timing",
-    )
-  }),
+  // ?4 — DECSCLM smooth scroll mode. Deciding it needs a frame-timing instrument this run does
+  // not have, so the row is recorded Not tested by this run (cto ruling 19685f18).
+  probe(
+    "modes.decsclm",
+    () => notTestedResult("No frame-timing instrument in this run", { mode: 4 }),
+    () => Promise.resolve(notTestedResult("No frame-timing instrument in this run", { mode: 4 })),
+  ),
 
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
   // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty

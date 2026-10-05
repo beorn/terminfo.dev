@@ -1,5 +1,12 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
-import { probe, isBlank, parserStateResult, unmeasuredCellResult, selectiveEraseResult } from "./helpers.ts"
+import {
+  probe,
+  isBlank,
+  parserStateResult,
+  unmeasuredCellResult,
+  selectiveEraseResult,
+  notTestedResult,
+} from "./helpers.ts"
 
 type ErasedCell = string | null
 
@@ -359,52 +366,13 @@ export const eraseProbes: ProbeDefinition[] = [
     termlessObservationEvidence: "parser-state",
   },
 
-  {
-    ...probe(
-      "erase.screen.scrollback",
-      (ctx) => {
-        const expected = "ED3 removes measured scrollback while keeping screen geometry"
-        const initial = ctx.getScrollback()
-        const rows = initial.screenLines
-        if (!Number.isSafeInteger(rows) || rows < 1 || rows > 1000) {
-          return parserStateResult(null, expected, { initial }, "Need a measured screen size for history setup")
-        }
-        ctx.feed("\r\n".repeat(rows + 2))
-        const before = ctx.getScrollback()
-        if (!Number.isSafeInteger(before.totalLines) || before.totalLines <= rows || before.screenLines !== rows) {
-          return parserStateResult(null, expected, { initial, before }, "No measured scrollback to erase")
-        }
-        ctx.feed("\x1b[3J")
-        const after = ctx.getScrollback()
-        const measured =
-          Number.isSafeInteger(after.totalLines) && after.totalLines >= rows && after.screenLines === rows
-        return parserStateResult(
-          measured ? after.totalLines === rows : null,
-          expected,
-          { before, after },
-          measured ? undefined : "Scrollback readback or geometry changed unexpectedly",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[5;5H") // Move to known position
-        ctx.write("\x1b[3J") // ED 3 — erase scrollback
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
-    ),
-    termNeedsGeometry: true,
-  },
+  // ED3's scrollback effect needs a scrollback-readback capability the run does not have, so the
+  // row is recorded Not tested by this run (cto ruling 19685f18), never inconclusive.
+  probe(
+    "erase.screen.scrollback",
+    () => notTestedResult("No scrollback-readback capability in this run", { sequence: "ED3" }),
+    () => Promise.resolve(notTestedResult("No scrollback-readback capability in this run", { sequence: "ED3" })),
+  ),
 
   {
     ...probe(

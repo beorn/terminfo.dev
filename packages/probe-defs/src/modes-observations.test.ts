@@ -34,11 +34,45 @@ function captureContext(rows: number, cols: number, writes: string[], frames: Ob
 }
 
 const modes = [
-  { id: "modes.alt-scroll-1007", number: 1007 },
   { id: "modes.utf8-mouse-1005", number: 1005 },
   { id: "modes.deccolm", number: 3 },
-  { id: "modes.decsclm", number: 4 },
 ] as const
+
+// cto ruling 19685f18: no applicable observable in this run -> Not tested, never inconclusive.
+const notTestedByRun = [
+  { id: "modes.alt-scroll-1007", noObservable: "No mouse or wheel-injection capability in this run" },
+  { id: "modes.decsclm", noObservable: "No frame-timing instrument in this run" },
+] as const
+
+test.each(notTestedByRun)(
+  "$id records Not tested by this run with its named missing capability",
+  async ({ id, noObservable }) => {
+    const definition = modesProbes.find((probe) => probe.id === id)
+    if (!definition?.term || !definition.termless) throw new Error(`Missing callbacks for ${id}`)
+    const writes: string[] = []
+    const context: TermContext = {
+      cols: 80,
+      rows: 24,
+      write: (bytes) => writes.push(bytes),
+      queryCursorPosition: async () => null,
+      measureRenderedWidth: async () => null,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryMode: async () => null,
+    }
+    const appResult = await definition.term(context)
+    expect(writes, id).toEqual([])
+    expect(appResult.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable })
+    expect(appResult.observation, id).toBeUndefined()
+    expect(appResult.assertions, id).toBeUndefined()
+
+    const headlessResult = definition.termless({} as never)
+    expect(headlessResult.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable })
+    expect(headlessResult.observation, id).toBeUndefined()
+  },
+)
 
 test.each(["bad-start", "ignored-move", "ignored-restore", "restored"] as const)(
   "1048 qualifies cursor setup before grading %s",
