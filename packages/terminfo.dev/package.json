@@ -1,6 +1,6 @@
 {
   "name": "terminfo.dev",
-  "version": "4.0.0-rc.1",
+  "version": "4.0.0",
   "description": "Test your terminal's feature support and contribute to terminfo.dev",
   "keywords": [
     "ansi",
@@ -31,7 +31,7 @@
   "type": "module",
   "publishConfig": {
     "access": "public",
-    "tag": "next"
+    "tag": "latest"
   },
   "scripts": {
     "build": "bun ../../scripts/build-cli.ts",
