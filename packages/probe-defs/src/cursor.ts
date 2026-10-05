@@ -920,22 +920,42 @@ export const cursorProbes: ProbeDefinition[] = [
             },
           }
         }
+        const rows = ctx.rows
+        const measured: Array<{ step: string; report: { row: number; col: number } | null }> = []
+        const ask = async (step: string) => {
+          const pos = await ctx.queryCursorPosition()
+          measured.push({ step, report: pos })
+          return pos
+        }
         try {
           ctx.write("\x1b[5;15r") // set scroll region rows 5-15
           ctx.write("\x1b[?6h") // enable DECOM
-          ctx.write("\x1b[1;1H") // CUP 1;1 — relative to scroll region
-          const pos = await ctx.queryCursorPosition()
-          if (!pos) {
-            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          ctx.write("\x1b[1;1H") // CUP 1;1 — DECOM numbers the region top as 1
+          const top = await ask("region-top")
+          ctx.write("\x1b[2;1H")
+          const second = await ask("region-row-2")
+          const target = Math.max(999, rows + 1)
+          ctx.write("\x1b[" + target + "B") // CUD past the region bottom
+          const bottom = await ask("region-bottom")
+          if (!top || !second || !bottom) {
+            return {
+              pass: false,
+              response: JSON.stringify({ rows, measured }),
+              observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            }
           }
+          const relative = [top, second, bottom].map((sample) => sample.row + ";" + sample.col).join(", ")
           return {
             pass: false,
-            response: JSON.stringify({ report: pos }),
+            response: JSON.stringify({ rows, measured }),
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "query",
-              note: "Relative CPR does not prove the physical row or independently qualify DECOM and margins",
+              note:
+                "DECOM makes CPR region-relative (VT100: region top is 1, bottom is 11); measured " +
+                relative +
+                " — the physical row 5 and the margins still need an independent observable",
             },
           }
         } finally {
