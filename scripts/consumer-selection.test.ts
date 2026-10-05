@@ -2,7 +2,7 @@
  * @failure Unreviewed runs become current scores, or refresh skips its release assessment and errors.
  * @level l2
  * @consumer Site data and JSON API use the canonical reviewed-run selector.
- * @reach fs-walk vendor/terminfo.dev/content/probes-{apps,libs,mux}/*.json
+ * @reach fs-walk vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-libs/*.json vendor/terminfo.dev/content/probes-mux/*.json
  * @testonly none
  */
 import { describe, expect, it, vi } from "vitest"
