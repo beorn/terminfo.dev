@@ -794,6 +794,48 @@ test("all ten SGR color TTY replies remain inconclusive and restore style", asyn
   expect(failedWrites.at(-1)).toBe("\x1b[0m")
 })
 
+// Reset pixels need the same glyph under setup, neutral and retained-only styles;
+// a styled X versus reset Y cannot independently qualify font weight or slant.
+test.each([
+  ["sgr.selective-reset.bold", "\x1b[1;2;3m", "\x1b[22m", "\x1b[3m"],
+  ["sgr.selective-reset.underline", "\x1b[1;4m", "\x1b[24m", "\x1b[1m"],
+  ["sgr.selective-reset.italic", "\x1b[1;3m", "\x1b[23m", "\x1b[1m"],
+  ["sgr.selective-reset.inverse", "\x1b[1;7m", "\x1b[27m", "\x1b[1m"],
+  ["sgr.reset", "\x1b[1;3;4m", "\x1b[0m", ""],
+])("%s capture calibrates the reset Y and preserves inconclusive grading", async (id, setup, reset, retained) => {
+  const definition = sgrProbes.find((item) => item.id === id)
+  if (!definition?.term) throw new Error(`missing ${id} terminal callback`)
+  const writes: string[] = []
+  const capturedWrites: string[] = []
+  const frames: import("./types.ts").ObservationFrame[] = []
+  const result = await definition.term(
+    terminal({
+      rows: 3,
+      cols: 34,
+      write: (text) => writes.push(text),
+      capture: async ({ role, label }) => {
+        capturedWrites.push(writes.at(-1) ?? "")
+        const frame = { role, label, capturedAt: frames.length + 1, ref: `frame-${frames.length}` }
+        frames.push(frame)
+        return frame
+      },
+    }),
+  )
+  expect(capturedWrites).toHaveLength(2)
+  expect(capturedWrites[0]).toContain(setup + "XY")
+  expect(capturedWrites[1]).toContain(setup + "X" + reset + "Y")
+  for (const frameWrite of capturedWrites) {
+    expect(frameWrite).toContain("\x1b[0m\x1b[3;8HY")
+    if (retained) expect(frameWrite).toContain("\x1b[0m\x1b[3;12H" + retained + "Y")
+    expect(frameWrite).toMatch(/\x1b\[1;1H$/)
+  }
+  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels", frames })
+  expect(result.assertions).toBeUndefined()
+  expect(writes.at(-1)).toBe("\x1b[0m")
+})
+
 test("SGR reset cursor replies remain inconclusive and style cleanup runs on query failure", async () => {
   for (const id of [
     "sgr.selective-reset.bold",

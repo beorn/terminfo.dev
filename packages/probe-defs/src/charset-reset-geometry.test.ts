@@ -284,7 +284,11 @@ test("reset.sgr capture renders a styled control and a reset target instead of c
   }
   const result = await definition.term(context)
   expect(events[0]).toContain("\x1b[1;3;7mX")
-  expect(events[0]).not.toContain("Y")
+  expect(events[0]).toContain("\x1b[1;3;7mXY")
+  for (const frameWrite of events.slice(0, 2)) {
+    expect(frameWrite).toContain("\x1b[0m\x1b[3;8HY")
+    expect(frameWrite).toMatch(/\x1b\[1;1H$/)
+  }
   expect(events[1]).toContain("\x1b[1;3;7mX\x1b[0mY")
   expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
   expect(result.pass).toBe(false)

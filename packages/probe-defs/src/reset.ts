@@ -23,11 +23,11 @@ export const resetProbes: ProbeDefinition[] = [
           try {
             return await sgrCaptureFrames(
               ctx,
-              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;7mX",
-              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;7mX\x1b[0mY",
+              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;7mXY\x1b[0m\x1b[3;8HY\x1b[1;1H",
+              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[1;3;7mX\x1b[0mY\x1b[0m\x1b[3;8HY\x1b[1;1H",
               "reset.sgr",
               { setup: "\x1b[1;3;7m", reset: "\x1b[0m" },
-              "The control shows a bold+italic+inverse X; the target adds reset Y, so review can check Y is unstyled",
+              "Compare the same Y at row3/column4 before and after reset against unstyled Y at column8; the control must establish bold, italic and inverse styling",
             )
           } finally {
             ctx.write("\x1b[0m")

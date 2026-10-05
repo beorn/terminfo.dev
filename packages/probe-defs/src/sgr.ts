@@ -199,18 +199,29 @@ function measuredReset(
   return parserStateResult(cleared && retained, expected, state)
 }
 
-async function consumedResetSgr(ctx: TermContext, id: string, setup: string, reset: string): Promise<ProbeResult> {
+async function consumedResetSgr(
+  ctx: TermContext,
+  id: string,
+  setup: string,
+  reset: string,
+  preserve: readonly ResetAttribute[],
+): Promise<ProbeResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
+    const styleCodes: Record<ResetAttribute, number> = { bold: 1, dim: 2, italic: 3, underline: 4, inverse: 7 }
+    const comparators =
+      "\x1b[0m\x1b[3;8HY" +
+      (preserve.length ? "\x1b[0m\x1b[3;12H\x1b[" + preserve.map((style) => styleCodes[style]).join(";") + "mY" : "") +
+      "\x1b[1;1H"
     try {
       return await sgrCaptureFrames(
         ctx,
-        "\x1b[0m\x1b[2J\x1b[3;3H" + setup + "X",
-        "\x1b[0m\x1b[2J\x1b[3;3H" + setup + "X" + reset + "Y",
+        "\x1b[0m\x1b[2J\x1b[3;3H" + setup + "XY" + comparators,
+        "\x1b[0m\x1b[2J\x1b[3;3H" + setup + "X" + reset + "Y" + comparators,
         id,
         { setup, reset },
-        "The control shows the styled X without the reset; the target adds the reset Y, so review can compare the reset effect",
+        "Compare the same Y at row3/column4 before and after reset, with neutral Y at column8 and retained-only styling at column12 for selective resets",
       )
     } finally {
       ctx.write("\x1b[0m")
@@ -253,7 +264,7 @@ function resetProbe(
     ...probe(
       id,
       (ctx) => measuredReset(ctx, id, setup, reset, set, preserve),
-      (ctx) => consumedResetSgr(ctx, id, setup, reset),
+      (ctx) => consumedResetSgr(ctx, id, setup, reset, preserve),
       "consumed",
     ),
     termNeedsGeometry: true,
