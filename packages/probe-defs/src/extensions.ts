@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
 import { parserStateResult, probe, readHyperlinkMetadata, unmeasuredCellResult } from "./helpers.ts"
+import { measuredSgrTerm } from "./sgr.ts"
 
 function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }
@@ -1097,17 +1098,11 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
         return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
       },
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b[38;2;255;0;128mX\x1b[0m")
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) return unverifiedEffect("No cursor response; RGB color was not measured")
-        return unverifiedEffect(
-          pos.col === 2
-            ? "SGR was consumed; RGB cell color was not measured"
-            : `Cursor at col ${pos.col}; RGB color was not measured`,
-        )
-      },
+      (ctx) =>
+        measuredSgrTerm(ctx, "extensions.truecolor", "\x1b[38;2;255;0;128m", {
+          expectedParam: /38[;: ]2[;: ]255[;: ]0[;: ]128/,
+          description: "direct RGB 255;0;128",
+        }),
     ),
     termlessObservationEvidence: "parser-state",
   },

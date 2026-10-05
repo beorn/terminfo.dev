@@ -7,11 +7,94 @@ function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: numb
   return a.r === b.r && a.g === b.g && a.b === b.b
 }
 
-/** A cursor reply proves consumption of the SGR sequence, never the visual attribute. */
-async function consumedSgr(ctx: TermContext, sequence: string): Promise<ProbeResult> {
+export interface DecrqssSgrCheck {
+  expectedParam: string | RegExp | ((codes: string[]) => boolean)
+  description: string
+}
+
+export async function measuredSgrTerm(
+  ctx: TermContext,
+  id: string,
+  sequence: string,
+  check?: DecrqssSgrCheck,
+): Promise<ProbeResult> {
+  const minRows = ctx.capture ? 3 : 1
+  const minCols = ctx.capture ? 34 : 2
+  const rows = ctx.rows
+  const cols = ctx.cols
+  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < minCols) {
+    return {
+      pass: false,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+        note: `SGR fixture needs at least ${minRows}x${minCols}, measured ${rows}x${cols}`,
+      },
+    }
+  }
+
   try {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write(sequence + "X")
+    ctx.write(sequence)
+
+    // 1. Try DECRQSS query if available
+    if (check && typeof ctx.queryWithSentinelOutcome === "function") {
+      try {
+        const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/)
+        if (outcome?.match) {
+          const status = outcome.match[1]
+          const params = outcome.match[2] ?? ""
+          if (status === "1") {
+            const codes = params.split(/[;: ]/).filter(Boolean)
+            let matches = false
+            if (typeof check.expectedParam === "function") {
+              matches = check.expectedParam(codes)
+            } else if (typeof check.expectedParam === "string") {
+              matches = codes.includes(check.expectedParam) || params.includes(check.expectedParam)
+            } else if (check.expectedParam instanceof RegExp) {
+              matches = check.expectedParam.test(params)
+            }
+            return {
+              pass: matches,
+              response: outcome.raw,
+              observation: { outcome: matches ? "supported" : "unsupported", evidence: "query" },
+              assertions: [
+                {
+                  kind: matches ? "positive" : "negative",
+                  expected: `${id}: DECRQSS SGR report matches ${check.description}`,
+                  observed: outcome.raw,
+                },
+              ],
+            }
+          }
+        }
+      } catch {
+        // Query not supported or rejected by fixture
+      }
+    }
+
+    // 2. Try pixel capture if available
+    if (ctx.capture) {
+      const sample = "AaBb 0123456789 - terminal text"
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sample)
+      const control = await ctx.capture({ role: "control", label: "Unstyled text sample" })
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sequence + sample)
+      const target = await ctx.capture({ role: "target", label: id })
+      return {
+        pass: false,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.ref,
+          frames: [control, target],
+          note: "Control and target pixels captured; visual interpretation requires review",
+        },
+      }
+    }
+
+    // 3. Fallback to CPR cursor advance
+    ctx.write("\x1b[1;1H\x1b[2K" + sequence + "X")
     const pos = await ctx.queryCursorPosition()
     if (!pos) {
       return {
@@ -20,6 +103,7 @@ async function consumedSgr(ctx: TermContext, sequence: string): Promise<ProbeRes
         observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
       }
     }
+    const advanced = pos.row === 1 && pos.col >= 2
     return {
       pass: false,
       note: "Cursor advance does not verify SGR styling",
@@ -27,7 +111,7 @@ async function consumedSgr(ctx: TermContext, sequence: string): Promise<ProbeRes
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: pos.row === 1 && pos.col === 2 ? "consumed" : "query",
+        evidence: advanced ? "consumed" : "query",
         note: "Cursor advance does not verify SGR styling",
       },
     }
@@ -77,7 +161,12 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
       }
       return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
     },
-
+    async term(ctx) {
+      return measuredSgrTerm(ctx, id, sequence, {
+        expectedParam: /58[;: ]2[;: ]255[;: ]0[;: ]128/,
+        description: "SGR 58;2;255;0;128",
+      })
+    },
     termlessObservationEvidence: "parser-state",
   }
 }
@@ -127,10 +216,97 @@ function measuredReset(
   return parserStateResult(cleared && retained, expected, state)
 }
 
-async function consumedResetSgr(ctx: TermContext, setup: string, reset: string): Promise<ProbeResult> {
+export async function measuredResetSgrTerm(
+  ctx: TermContext,
+  id: string,
+  setup: string,
+  reset: string,
+  set: readonly ResetAttribute[],
+  preserve: readonly ResetAttribute[] = [],
+  cleanInFinally = true,
+): Promise<ProbeResult> {
+  const minRows = ctx.capture ? 3 : 1
+  const minCols = ctx.capture ? 34 : 2
+  const rows = ctx.rows
+  const cols = ctx.cols
+  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < minCols) {
+    return {
+      pass: false,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+        note: `SGR fixture needs at least ${minRows}x${minCols}, measured ${rows}x${cols}`,
+      },
+    }
+  }
+
   try {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write(`${setup}X${reset}Y`)
+    ctx.write(setup + reset)
+
+    if (typeof ctx.queryWithSentinelOutcome === "function") {
+      try {
+        const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/)
+        if (outcome?.match) {
+          const status = outcome.match[1]
+          const params = outcome.match[2] ?? ""
+          if (status === "1") {
+            const codes = params.split(/[;: ]/).filter(Boolean)
+            const attrToCodes: Record<ResetAttribute, string[]> = {
+              bold: ["1"],
+              dim: ["2"],
+              italic: ["3"],
+              underline: ["4", "21"],
+              inverse: ["7"],
+            }
+            const cleared = set.every((attr) => {
+              const forbidden = attrToCodes[attr] ?? []
+              return !forbidden.some((c) => codes.includes(c))
+            })
+            const retained = preserve.every((attr) => {
+              const required = attrToCodes[attr] ?? []
+              return required.some((c) => codes.includes(c))
+            })
+            const matches = cleared && retained
+            return {
+              pass: matches,
+              response: outcome.raw,
+              observation: { outcome: matches ? "supported" : "unsupported", evidence: "query" },
+              assertions: [
+                {
+                  kind: matches ? "positive" : "negative",
+                  expected: `${id}: DECRQSS SGR report clears ${set.join(",")} and preserves ${preserve.join(",")}`,
+                  observed: outcome.raw,
+                },
+              ],
+            }
+          }
+        }
+      } catch {
+        // Query not supported or rejected by fixture
+      }
+    }
+
+    if (ctx.capture) {
+      const sample = "AaBb 0123456789 - terminal text"
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sample)
+      const control = await ctx.capture({ role: "control", label: "Unstyled text sample" })
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + setup + reset + sample)
+      const target = await ctx.capture({ role: "target", label: id })
+      return {
+        pass: false,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.ref,
+          frames: [control, target],
+          note: "Control and target pixels captured; visual interpretation requires review",
+        },
+      }
+    }
+
+    ctx.write("\x1b[1;1H\x1b[2K" + setup + "X" + reset + "Y")
     const pos = await ctx.queryCursorPosition()
     if (!pos) {
       return {
@@ -138,7 +314,7 @@ async function consumedResetSgr(ctx: TermContext, setup: string, reset: string):
         observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
       }
     }
-    const advanced = pos.row === 1 && pos.col === 3
+    const advanced = pos.row === 1 && pos.col >= 2
     return {
       pass: false,
       response: `${pos.row};${pos.col}`,
@@ -150,7 +326,9 @@ async function consumedResetSgr(ctx: TermContext, setup: string, reset: string):
       },
     }
   } finally {
-    ctx.write("\x1b[0m")
+    if (cleanInFinally) {
+      ctx.write("\x1b[0m")
+    }
   }
 }
 
@@ -165,7 +343,7 @@ function resetProbe(
     ...probe(
       id,
       (ctx) => measuredReset(ctx, id, setup, reset, set, preserve),
-      (ctx) => consumedResetSgr(ctx, setup, reset),
+      (ctx) => measuredResetSgrTerm(ctx, id, setup, reset, set, preserve),
       "consumed",
     ),
     termlessObservationEvidence: "parser-state",
@@ -210,7 +388,11 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
           "Baseline, theme colors, or color readback were indistinguishable",
         )
       },
-      (ctx) => consumedSgr(ctx, first),
+      (ctx) =>
+        measuredSgrTerm(ctx, id, first, {
+          expectedParam: String(firstCode),
+          description: `SGR param ${firstCode}`,
+        }),
       "consumed",
     ),
     termlessObservationEvidence: "parser-state",
@@ -256,7 +438,11 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
           "RGB reference was not calibrated, or the backend may use a custom indexed palette",
         )
       },
-      (ctx) => consumedSgr(ctx, `\x1b[${sgr};5;67m`),
+      (ctx) =>
+        measuredSgrTerm(ctx, id, `\x1b[${sgr};5;67m`, {
+          expectedParam: new RegExp(`${sgr}[;: ]5[;: ]67`),
+          description: `SGR ${sgr};5;67`,
+        }),
       "consumed",
     ),
     termlessObservationEvidence: "parser-state",
@@ -309,7 +495,11 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         if (a && b && !sameRgb(a, b)) return parserStateResult(false, expected, state)
         return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
       },
-      (ctx) => consumedSgr(ctx, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`),
+      (ctx) =>
+        measuredSgrTerm(ctx, id, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`, {
+          expectedParam: new RegExp(`${sgr}[;: ]2[;: ]${first.r}[;: ]${first.g}[;: ]${first.b}`),
+          description: `SGR ${sgr};2;${first.r};${first.g};${first.b}`,
+        }),
       "consumed",
     ),
     termlessObservationEvidence: "parser-state",
@@ -340,7 +530,11 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
-      (ctx) => consumedSgr(ctx, `\x1b[${reset}m`),
+      (ctx) =>
+        measuredSgrTerm(ctx, id, `\x1b[${setup}m\x1b[${reset}m`, {
+          expectedParam: (codes) => !codes.includes(String(setup)) || codes.includes(String(reset)),
+          description: `clearing SGR ${setup} or selecting ${reset}`,
+        }),
       "consumed",
     ),
     termlessObservationEvidence: "parser-state",
@@ -433,7 +627,11 @@ export const sgrProbes: ProbeDefinition[] = [
         }
         return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
       },
-      (ctx) => consumedSgr(ctx, "\x1b[4m\x1b[58;5;5m"),
+      (ctx) =>
+        measuredSgrTerm(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m", {
+          expectedParam: /58[;: ]5[;: ]5/,
+          description: "SGR 58;5;5",
+        }),
       "consumed",
     ),
     termlessObservationEvidence: "parser-state",
@@ -482,7 +680,11 @@ export const sgrProbes: ProbeDefinition[] = [
         }
         return parserStateResult(sameRgb(baseline.underlineColor, after.underlineColor), expected, state)
       },
-      (ctx) => consumedSgr(ctx, "\x1b[4m\x1b[58;2;255;0;128m\x1b[59m"),
+      (ctx) =>
+        measuredSgrTerm(ctx, "sgr.underline-color-reset", "\x1b[4m\x1b[58;2;255;0;128m\x1b[59m", {
+          expectedParam: (codes) => !codes.includes("58") || codes.includes("59"),
+          description: "clearing SGR 58 or selecting 59",
+        }),
       "consumed",
     ),
     termlessObservationEvidence: "parser-state",

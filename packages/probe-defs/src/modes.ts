@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { probe, decrpmModeProbe, parserStateResult, isBlank } from "./helpers.ts"
 
 const ALT_1049_SEED_A = "PRIMARY-A"
@@ -146,6 +146,325 @@ function altScreen1049Roundtrip(ctx: TermlessContext, phase: "enter" | "exit"): 
 function alt1049ReadbackInconclusive(expected: string, note: string, error: unknown): ProbeResult {
   const message = error instanceof Error ? error.message : String(error)
   return parserStateResult(null, expected, { readbackError: message }, note)
+}
+
+function xtsaveRestoreTermless(id: string, ctx: TermlessContext): ProbeResult {
+  const expected = `${id}: mode 7 is saved with ?7s, inverted with ?7l, and restored with ?7r`
+  const originallyEnabled = ctx.getMode("autoWrap")
+  try {
+    ctx.feed("\x1b[?7h")
+    ctx.feed("\x1b[?7s")
+    ctx.feed("\x1b[?7l")
+    ctx.feed("\x1b[?7r")
+    const restored = ctx.getMode("autoWrap")
+    if (restored) {
+      return parserStateResult(true, expected, { restored })
+    }
+    ctx.feed("\x1b[1;1H\x1b[2J")
+    ctx.feed("X".repeat(ctx.cols) + "Y")
+    const next = ctx.getCell(1, 0)
+    return parserStateResult(next.char === "Y", expected, { char: next.char })
+  } finally {
+    ctx.feed(originallyEnabled ? "\x1b[?7h" : "\x1b[?7l")
+  }
+}
+
+async function xtsaveRestoreTerm(id: string, ctx: TermContext): Promise<ProbeResult> {
+  if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 2) {
+    ctx.write("\x1b[?7s")
+    try {
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) {
+        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+      }
+      return {
+        pass: false,
+        response: JSON.stringify(pos),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "Cursor responsiveness does not measure saved/restored state",
+        },
+      }
+    } finally {
+      ctx.write("\x1b[?7r")
+    }
+  }
+
+  try {
+    ctx.write("\x1b[?7h")
+    ctx.write("\x1b[?7s")
+    ctx.write("\x1b[?7l")
+    ctx.write("\x1b[?7r")
+    const mode7 = typeof ctx.queryMode === "function" ? await ctx.queryMode(7) : null
+    const expected = `${id}: mode 7 restored to set via ?7r after ?7s and ?7l`
+    if (mode7 === "set") {
+      return {
+        pass: true,
+        response: mode7,
+        observation: { outcome: "supported", evidence: "query" },
+        assertions: [{ kind: "positive", expected, observed: mode7 }],
+      }
+    }
+    if (mode7 === "reset") {
+      return {
+        pass: false,
+        response: mode7,
+        observation: { outcome: "unsupported", evidence: "query" },
+        assertions: [{ kind: "negative", expected, observed: mode7 }],
+      }
+    }
+    ctx.write(`\x1b[1;${ctx.cols}HX`)
+    const pos = await ctx.queryCursorPosition()
+    if (pos) {
+      const wrapped = pos.row === 2 && pos.col === 1
+      return {
+        pass: wrapped,
+        response: `${pos.row};${pos.col}`,
+        observation: { outcome: wrapped ? "supported" : "unsupported", evidence: "behavior" },
+        assertions: [
+          {
+            kind: wrapped ? "positive" : "negative",
+            expected: `${id}: cursor wraps to next line when mode 7 is restored`,
+            observed: `${pos.row};${pos.col}`,
+          },
+        ],
+      }
+    }
+    return {
+      pass: false,
+      response: mode7 ?? undefined,
+      observation: {
+        outcome: "inconclusive",
+        reason: mode7 === null ? "no-response" : "insufficient-evidence",
+        evidence: "query",
+        note: "Mode 7 query and behavior could not be determined",
+      },
+    }
+  } finally {
+    ctx.write("\x1b[?7h\x1b[?7r")
+  }
+}
+
+function xtpushpopsgrTermless(id: string, ctx: TermlessContext): ProbeResult {
+  const expected = `${id}: SGR stack push and pop restores bold attribute on cell`
+  ctx.feed("\x1b[1m")
+  ctx.feed("\x1b[#{")
+  ctx.feed("\x1b[0m")
+  ctx.feed("\x1b[#}")
+  ctx.feed("X")
+  const cell = ctx.getCell(0, 0)
+  ctx.feed("\x1b[0m")
+  if (cell.char !== "X") {
+    return parserStateResult(null, expected, cell, "Rendered cell was not exposed")
+  }
+  return parserStateResult(cell.bold === true, expected, cell)
+}
+
+async function xtpushpopsgrTerm(id: string, ctx: TermContext): Promise<ProbeResult> {
+  if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 2) {
+    ctx.write("\x1b[#{")
+    try {
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) {
+        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+      }
+      return {
+        pass: false,
+        response: JSON.stringify(pos),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "Cursor responsiveness does not measure saved/restored state",
+        },
+      }
+    } finally {
+      ctx.write("\x1b[#}")
+    }
+  }
+
+  try {
+    ctx.write("\x1b[1m")
+    ctx.write("\x1b[#{")
+    ctx.write("\x1b[0m")
+    ctx.write("\x1b[#}")
+    if (typeof ctx.queryWithSentinelOutcome === "function") {
+      const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/)
+      if (outcome.match) {
+        const status = outcome.match[1]
+        const params = outcome.match[2] ?? ""
+        if (status === "1") {
+          const codes = params.split(/[;: ]/).filter(Boolean)
+          const matches = codes.includes("1")
+          return {
+            pass: matches,
+            response: outcome.raw,
+            observation: { outcome: matches ? "supported" : "unsupported", evidence: "query" },
+            assertions: [
+              {
+                kind: matches ? "positive" : "negative",
+                expected: `${id}: DECRQSS SGR report contains bold param 1 after stack pop`,
+                observed: outcome.raw,
+              },
+            ],
+          }
+        }
+      }
+    }
+
+    if (ctx.capture) {
+      const sample = "AaBb 0123456789 - terminal text"
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sample)
+      const control = await ctx.capture({ role: "control", label: "Unstyled text sample" })
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[1m\x1b[#{\x1b[0m\x1b[#}" + sample)
+      const target = await ctx.capture({ role: "target", label: id })
+      return {
+        pass: false,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.ref,
+          frames: [control, target],
+          note: "Control and target pixels captured; visual interpretation requires review",
+        },
+      }
+    }
+
+    const pos = await ctx.queryCursorPosition()
+    if (!pos) {
+      return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+    }
+    return {
+      pass: false,
+      response: JSON.stringify(pos),
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "consumed",
+        note: "Cursor responsiveness does not measure saved/restored state",
+      },
+    }
+  } finally {
+    ctx.write("\x1b[0m\x1b[#}")
+  }
+}
+
+function xtpushpopcolorsTermless(id: string, ctx: TermlessContext): ProbeResult {
+  const expected = `${id}: color palette push and pop restores slot 1 palette color`
+  ctx.feed("\x1b[#P")
+  ctx.feed("\x1b]4;1;rgb:0000/ffff/0000\x07")
+  ctx.feed("\x1b[#Q")
+  ctx.feed("\x1b[38;5;1mX\x1b[0m")
+  const cell = ctx.getCell(0, 0)
+  if (cell.char !== "X" || !cell.fg) {
+    return parserStateResult(null, expected, cell, "Indexed palette cell was not exposed")
+  }
+  const isGreen = cell.fg.r === 0 && cell.fg.g === 255 && cell.fg.b === 0
+  if (isGreen) {
+    return parserStateResult(false, expected, cell)
+  }
+  return parserStateResult(true, expected, cell)
+}
+
+async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeResult> {
+  if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 2) {
+    ctx.write("\x1b[#P")
+    try {
+      const pos = await ctx.queryCursorPosition()
+      if (!pos) {
+        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+      }
+      return {
+        pass: false,
+        response: JSON.stringify(pos),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "consumed",
+          note: "Cursor responsiveness does not measure saved/restored state",
+        },
+      }
+    } finally {
+      ctx.write("\x1b[#Q")
+    }
+  }
+
+  try {
+    let initialColor: string | null = null
+    if (typeof ctx.queryWithSentinelOutcome === "function") {
+      const outcome = await ctx.queryWithSentinelOutcome(
+        "\x1b]4;1;?\x07",
+        /\x1b\]4;1;rgb:([0-9a-fA-F/]+)(?:\x07|\x1b\\)/,
+      )
+      if (outcome.match) {
+        initialColor = outcome.match[1] ?? null
+      }
+    }
+
+    if (initialColor && typeof ctx.queryWithSentinelOutcome === "function") {
+      ctx.write("\x1b[#P")
+      ctx.write("\x1b]4;1;rgb:0000/ffff/0000\x07")
+      ctx.write("\x1b[#Q")
+      const checkOutcome = await ctx.queryWithSentinelOutcome(
+        "\x1b]4;1;?\x07",
+        /\x1b\]4;1;rgb:([0-9a-fA-F/]+)(?:\x07|\x1b\\)/,
+      )
+      if (checkOutcome.match) {
+        const restoredColor = checkOutcome.match[1]
+        const matches = restoredColor === initialColor
+        return {
+          pass: matches,
+          response: checkOutcome.raw,
+          observation: { outcome: matches ? "supported" : "unsupported", evidence: "query" },
+          assertions: [
+            {
+              kind: matches ? "positive" : "negative",
+              expected: `${id}: OSC 4 palette slot 1 restored to ${initialColor} after push/change/pop`,
+              observed: checkOutcome.raw,
+            },
+          ],
+        }
+      }
+    }
+
+    if (ctx.capture) {
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[38;5;1mSample Text")
+      const control = await ctx.capture({ role: "control", label: "Initial palette sample" })
+      ctx.write("\x1b[#P\x1b]4;1;rgb:0000/ffff/0000\x07\x1b[#Q\x1b[0m\x1b[2J\x1b[3;3H\x1b[38;5;1mSample Text")
+      const target = await ctx.capture({ role: "target", label: id })
+      return {
+        pass: false,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.ref,
+          frames: [control, target],
+          note: "Palette push/pop captured; visual interpretation requires review",
+        },
+      }
+    }
+
+    const pos = await ctx.queryCursorPosition()
+    if (!pos) {
+      return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+    }
+    return {
+      pass: false,
+      response: JSON.stringify(pos),
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "consumed",
+        note: "Cursor responsiveness does not measure saved/restored state",
+      },
+    }
+  } finally {
+    ctx.write("\x1b[#Q")
+  }
 }
 
 export const modesProbes: ProbeDefinition[] = [
@@ -780,318 +1099,44 @@ export const modesProbes: ProbeDefinition[] = [
   },
 
   // XTPUSHSGR — push SGR stack (CSI # {)
-  // Sequence consumed without producing output. Verify terminal stays responsive afterward.
   probe(
     "modes.xtpushsgr",
-    (ctx) => {
-      // Capture any output during the push — should be empty.
-      const pushOut = ctx.feedCapture("\x1b[#{")
-      if (pushOut.length > 0) {
-        return {
-          pass: false,
-          response: pushOut,
-          observation: {
-            outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
-          },
-        }
-      }
-      // Verify the terminal is still responsive by issuing a DA1 query.
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      // Pop to leave clean state.
-      ctx.feed("\x1b[#}")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[#{")
-      try {
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor responsiveness does not measure saved/restored state",
-          },
-        }
-      } finally {
-        ctx.write("\x1b[#}") // pop to clean up
-      }
-    },
+    (ctx) => xtpushpopsgrTermless("modes.xtpushsgr", ctx),
+    (ctx) => xtpushpopsgrTerm("modes.xtpushsgr", ctx),
   ),
 
   // XTPOPSGR — pop SGR stack (CSI # })
-  // Push first so the pop is meaningful, then verify responsiveness.
   probe(
     "modes.xtpopsgr",
-    (ctx) => {
-      ctx.feed("\x1b[#{")
-      const popOut = ctx.feedCapture("\x1b[#}")
-      if (popOut.length > 0) {
-        return {
-          pass: false,
-          response: popOut,
-          observation: {
-            outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
-          },
-        }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[#{")
-      ctx.write("\x1b[#}")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) {
-        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-      }
-      return {
-        pass: false,
-        response: JSON.stringify(pos),
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "Cursor responsiveness does not measure saved/restored state",
-        },
-      }
-    },
+    (ctx) => xtpushpopsgrTermless("modes.xtpopsgr", ctx),
+    (ctx) => xtpushpopsgrTerm("modes.xtpopsgr", ctx),
   ),
 
   // XTSAVE — save DEC private modes (CSI ? Pm s). Use DECAWM (mode 7) — universally supported.
   probe(
     "modes.xtsave",
-    (ctx) => {
-      const saveOut = ctx.feedCapture("\x1b[?7s")
-      if (saveOut.length > 0) {
-        return {
-          pass: false,
-          response: saveOut,
-          observation: {
-            outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
-          },
-        }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      // Restore to leave clean state.
-      ctx.feed("\x1b[?7r")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?7s")
-      try {
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor responsiveness does not measure saved/restored state",
-          },
-        }
-      } finally {
-        ctx.write("\x1b[?7r") // restore to clean up
-      }
-    },
+    (ctx) => xtsaveRestoreTermless("modes.xtsave", ctx),
+    (ctx) => xtsaveRestoreTerm("modes.xtsave", ctx),
   ),
 
   // XTRESTORE — restore DEC private modes (CSI ? Pm r). Pair with a save first.
   probe(
     "modes.xtrestore",
-    (ctx) => {
-      ctx.feed("\x1b[?7s")
-      const restoreOut = ctx.feedCapture("\x1b[?7r")
-      if (restoreOut.length > 0) {
-        return {
-          pass: false,
-          response: restoreOut,
-          observation: {
-            outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
-          },
-        }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[?7s")
-      ctx.write("\x1b[?7r")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) {
-        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-      }
-      return {
-        pass: false,
-        response: JSON.stringify(pos),
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "Cursor responsiveness does not measure saved/restored state",
-        },
-      }
-    },
+    (ctx) => xtsaveRestoreTermless("modes.xtrestore", ctx),
+    (ctx) => xtsaveRestoreTerm("modes.xtrestore", ctx),
   ),
 
   // XTPUSHCOLORS — push color palette (CSI # P)
   probe(
     "modes.xtpushcolors",
-    (ctx) => {
-      const pushOut = ctx.feedCapture("\x1b[#P")
-      if (pushOut.length > 0) {
-        return {
-          pass: false,
-          response: pushOut,
-          observation: {
-            outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
-          },
-        }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      // Pop to leave clean state.
-      ctx.feed("\x1b[#Q")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[#P")
-      try {
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor responsiveness does not measure saved/restored state",
-          },
-        }
-      } finally {
-        ctx.write("\x1b[#Q") // pop to clean up
-      }
-    },
+    (ctx) => xtpushpopcolorsTermless("modes.xtpushcolors", ctx),
+    (ctx) => xtpushpopcolorsTerm("modes.xtpushcolors", ctx),
   ),
 
   // XTPOPCOLORS — pop color palette (CSI # Q). Push first so the pop is meaningful.
   probe(
     "modes.xtpopcolors",
-    (ctx) => {
-      ctx.feed("\x1b[#P")
-      const popOut = ctx.feedCapture("\x1b[#Q")
-      if (popOut.length > 0) {
-        return {
-          pass: false,
-          response: popOut,
-          observation: {
-            outcome: "inconclusive",
-            reason: "invalid-reply",
-            evidence: "query",
-            note: "Unexpected output during stack operation",
-          },
-        }
-      }
-      const probeResponse = ctx.feedCapture("\x1b[c")
-      return {
-        pass: false,
-        response: probeResponse,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "DA1 responsiveness does not measure saved/restored stack state",
-        },
-      }
-    },
-    async (ctx) => {
-      ctx.write("\x1b[#P")
-      ctx.write("\x1b[#Q")
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) {
-        return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-      }
-      return {
-        pass: false,
-        response: JSON.stringify(pos),
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "Cursor responsiveness does not measure saved/restored state",
-        },
-      }
-    },
+    (ctx) => xtpushpopcolorsTermless("modes.xtpopcolors", ctx),
+    (ctx) => xtpushpopcolorsTerm("modes.xtpopcolors", ctx),
   ),
 ]

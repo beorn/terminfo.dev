@@ -818,3 +818,37 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
   })
   expect(written).toEqual([])
 })
+
+test("SGR color callbacks grade supported with query evidence when DECRQSS confirms styling", async () => {
+  const color = sgrProbes.find((item) => item.id === "sgr.fg.standard")
+  if (!color?.term) throw new Error("missing standard foreground TTY callback")
+  const result = await color.term(
+    terminal({
+      queryWithSentinelOutcome: async () => ({
+        match: ["\x1bP1$r31m\x1b\\", "1", "31"],
+        reason: "reply",
+        raw: "\x1bP1$r31m\x1b\\",
+        rawBase64: "",
+      }),
+    }),
+  )
+  expect(result.pass).toBe(true)
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.assertions).toMatchObject([{ kind: "positive" }])
+})
+
+test("SGR color callbacks capture pixel evidence when DECRQSS is unavailable but capture is present", async () => {
+  const color = sgrProbes.find((item) => item.id === "sgr.fg.standard")
+  if (!color?.term) throw new Error("missing standard foreground TTY callback")
+  const roles: string[] = []
+  const result = await color.term(
+    terminal({
+      capture: async ({ role, label }) => {
+        roles.push(role)
+        return { role, label, capturedAt: 1, ref: "sha256:abcd" }
+      },
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(roles).toEqual(["control", "target"])
+})

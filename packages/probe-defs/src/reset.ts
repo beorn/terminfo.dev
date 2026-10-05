@@ -1,5 +1,6 @@
 import type { ProbeDefinition } from "./types.ts"
 import { parserStateResult, probe } from "./helpers.ts"
+import { measuredResetSgrTerm } from "./sgr.ts"
 
 export const resetProbes: ProbeDefinition[] = [
   {
@@ -16,37 +17,7 @@ export const resetProbes: ProbeDefinition[] = [
         }
         return parserStateResult(!after.bold && !after.italic && !after.inverse, expected, state)
       },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Reset fixture needs at least 1x2, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b[1m") // bold
-        ctx.write("\x1b[0m") // reset
-        ctx.write("X")
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor advance does not measure SGR styling after reset",
-          },
-        }
-      },
+      (ctx) => measuredResetSgrTerm(ctx, "reset.sgr", "\x1b[1m", "\x1b[0m", ["bold"], [], false),
     ),
     termNeedsGeometry: true,
   },

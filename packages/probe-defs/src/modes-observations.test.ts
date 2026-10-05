@@ -406,3 +406,104 @@ test("1049 readback failure is inconclusive while a cleanup failure stays loud",
   const cleanup = alt1049Context("cleanup-failure")
   expect(() => definition.termless!(cleanup.context)).toThrow("cleanup failed")
 })
+
+test("XTSAVE and XTRESTORE measure mode 7 restoration via DECRPM queryMode", async () => {
+  for (const id of ["modes.xtsave", "modes.xtrestore"] as const) {
+    const probe = modesProbes.find((p) => p.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} app callback`)
+
+    let mode7State: "set" | "reset" = "set"
+    const writes: string[] = []
+    const context: TermContext = {
+      cols: 80,
+      rows: 24,
+      write(text) {
+        writes.push(text)
+        if (text === "\x1b[?7h") mode7State = "set"
+        else if (text === "\x1b[?7l") mode7State = "reset"
+        else if (text === "\x1b[?7r") mode7State = "set"
+      },
+      queryCursorPosition: async () => ({ row: 1, col: 1 }),
+      measureRenderedWidth: async () => null,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryMode: async (mode) => (mode === 7 ? mode7State : null),
+    }
+
+    const result = await probe.term(context)
+    expect(result.pass, id).toBe(true)
+    expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
+  }
+})
+
+test("XTPUSHSGR and XTPOPSGR measure SGR restoration via DECRQSS", async () => {
+  for (const id of ["modes.xtpushsgr", "modes.xtpopsgr"] as const) {
+    const probe = modesProbes.find((p) => p.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} app callback`)
+
+    let bold = false
+    const context: TermContext = {
+      cols: 80,
+      rows: 24,
+      write(text) {
+        if (text === "\x1b[1m") bold = true
+        else if (text === "\x1b[0m") bold = false
+        else if (text === "\x1b[#}") bold = true // pop restores bold
+      },
+      queryCursorPosition: async () => ({ row: 1, col: 1 }),
+      measureRenderedWidth: async () => null,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({
+        match: ["\x1bP1$r" + (bold ? "1" : "0") + "m\x1b\\", "1", bold ? "1" : "0"],
+        reason: "reply",
+        raw: "\x1bP1$r" + (bold ? "1" : "0") + "m\x1b\\",
+        rawBase64: "",
+      }),
+      queryMode: async () => null,
+    }
+
+    const result = await probe.term(context)
+    expect(result.pass, id).toBe(true)
+    expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
+  }
+})
+
+test("XTPUSHCOLORS and XTPOPCOLORS measure palette restoration via OSC 4", async () => {
+  for (const id of ["modes.xtpushcolors", "modes.xtpopcolors"] as const) {
+    const probe = modesProbes.find((p) => p.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} app callback`)
+
+    let slot1 = "0000/0000/ffff"
+    const context: TermContext = {
+      cols: 80,
+      rows: 24,
+      write(text) {
+        if (text === "\x1b]4;1;rgb:0000/ffff/0000\x07") slot1 = "0000/ffff/0000"
+        else if (text === "\x1b[#Q") slot1 = "0000/0000/ffff" // pop restores slot 1
+      },
+      queryCursorPosition: async () => ({ row: 1, col: 1 }),
+      measureRenderedWidth: async () => null,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({
+        match: ["\x1b]4;1;rgb:" + slot1 + "\x07", slot1],
+        reason: "reply",
+        raw: "\x1b]4;1;rgb:" + slot1 + "\x07",
+        rawBase64: "",
+      }),
+      queryMode: async () => null,
+    }
+
+    const result = await probe.term(context)
+    expect(result.pass, id).toBe(true)
+    expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
+  }
+})
