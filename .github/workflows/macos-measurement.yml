@@ -68,6 +68,7 @@ jobs:
           terminfo --version || true
 
       - name: Install terminal matrix (iTerm2, Ghostty via Brew; Alacritty via GitHub release)
+        continue-on-error: true
         run: |
           export HOMEBREW_NO_AUTO_UPDATE=1
           export HOMEBREW_NO_INSTALL_CLEANUP=1
@@ -78,11 +79,11 @@ jobs:
           done
 
           echo "=== Installing Alacritty from GitHub Releases v0.17.0 ==="
-          curl -sL https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-dmg -o /tmp/Alacritty.dmg 2>/dev/null || curl -sL https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg -o /tmp/Alacritty.dmg
+          curl -sLf https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg -o /tmp/Alacritty.dmg || true
           if [ -f /tmp/Alacritty.dmg ]; then
-            hdiutil attach /tmp/Alacritty.dmg -mountpoint /Volumes/Alacritty
-            cp -R /Volumes/Alacritty/Alacritty.app /Applications/
-            hdiutil detach /Volumes/Alacritty
+            hdiutil attach /tmp/Alacritty.dmg -mountpoint /Volumes/Alacritty || true
+            cp -R /Volumes/Alacritty/Alacritty.app /Applications/ 2>/dev/null || true
+            hdiutil detach /Volumes/Alacritty 2>/dev/null || true
           fi
 
           sudo xattr -cr /Applications/*.app 2>/dev/null || true
