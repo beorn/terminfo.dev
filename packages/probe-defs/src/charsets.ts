@@ -75,6 +75,13 @@ export const charsetsProbes: ProbeDefinition[] = [
             })
             return {
               pass: false,
+              response: JSON.stringify({
+                rows,
+                cols,
+                sampleCell: { row: 3, col: 2 },
+                control: control.label,
+                target: target.label,
+              }),
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",

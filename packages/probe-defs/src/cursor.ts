@@ -253,6 +253,14 @@ export const cursorProbes: ProbeDefinition[] = [
         const target = await ctx.capture({ role: "target", label: "Bar cursor shape" })
         return {
           pass: false,
+          response: JSON.stringify({
+            rows: ctx.rows,
+            cols: ctx.cols,
+            cursorCell: null,
+            detail: "DECSCUSR shape fixture does not establish the cursor cell; only measured geometry and roles",
+            control: control.label,
+            target: target.label,
+          }),
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
