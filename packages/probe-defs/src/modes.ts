@@ -192,14 +192,6 @@ async function xtSgrStackCapture(ctx: TermContext, id: string, label: string): P
         frames: [control, target],
         note: "Control shows Y plain; the target pushes the bold, styles X italic, then pops, so Y must be bold again if the SGR stack round-tripped. Requires independent pixel review",
       },
-      assertions: [
-        {
-          kind: "positive",
-          expected: `${id}: control shows Y unstyled; the target shows Y carrying the saved bold`,
-          observed,
-          note: "capture-only assertion; the restored SGR must be independently reviewed",
-        },
-      ],
     }
   } finally {
     ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -233,14 +225,6 @@ async function xtModeSaveCapture(ctx: TermContext, id: string): Promise<ProbeRes
         frames: [control, target],
         note: "Control keeps the overflow on row 1 with wrap off; the target saves wrap on, disables it, then restores it, so the overflow should wrap to row 2. Whether the restore re-enabled wrap requires independent pixel review",
       },
-      assertions: [
-        {
-          kind: "positive",
-          expected: `${id}: control keeps ! on row 1; the target wraps ! to row 2 column 1`,
-          observed,
-          note: "capture-only assertion; the restored mode must be independently reviewed",
-        },
-      ],
     }
   } finally {
     ctx.write("\x1b[?7h\x1b[0m\x1b[2J\x1b[H")
@@ -274,14 +258,6 @@ async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeR
         frames: [control, target],
         note: "Control shows X and Y in the redefined green index 1; the target pushes the palette, redefines index 1, prints X, then pops before Y, so Y should return to the original index 1. Requires independent pixel review",
       },
-      assertions: [
-        {
-          kind: "positive",
-          expected: `${id}: control shows X and Y both green; the target shows X green and Y in the restored index 1`,
-          observed,
-          note: "capture-only assertion; the restored palette entry must be independently reviewed",
-        },
-      ],
     }
   } finally {
     ctx.write("\x1b[#Q\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
