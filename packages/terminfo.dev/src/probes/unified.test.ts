@@ -421,6 +421,62 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
   }
 })
 
+// A mixed app result - named coverage beside its own returned failure - is a loud collector error,
+// never coverage, and it cannot complete the suite.
+it("refuses app named coverage that arrives beside its returned error observation", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const originalTerm = definition.term
+  const originalEvidence = definition.termObservationEvidence
+  definition.termObservationEvidence = "query"
+  definition.term = () => ({
+    pass: false,
+    response: "\x1b[?62;4c",
+    notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
+    observation: { outcome: "error", reason: "collector-error", evidence: "query", note: "TTY write failed" },
+  })
+  try {
+    const batch = await runProbeBatch({ ids: [definition.id] })
+    expect(batch.notTested).toEqual([])
+    expect(batch.observations.filter((item) => item.featureId === definition.id)).toEqual([])
+    expect(batch.ungradedDiagnostics[definition.id]).toMatchObject({
+      kind: "collector-error",
+      name: "Error",
+      message: expect.stringContaining("beside observation(outcome=error, reason=collector-error)"),
+    })
+    expect(batch.suiteComplete).toBe(false)
+  } finally {
+    definition.term = originalTerm
+    definition.termObservationEvidence = originalEvidence
+  }
+})
+
+it("refuses app named coverage that arrives beside supported observation and assertions", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const originalTerm = definition.term
+  definition.term = () => ({
+    pass: true,
+    response: "\x1b[?62;4c",
+    notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
+    observation: { outcome: "supported", evidence: "query" },
+    assertions: [{ kind: "positive", expected: "\x1b[?62;4c", observed: "\x1b[?62;4c" }],
+  })
+  try {
+    const batch = await runProbeBatch({ ids: [definition.id] })
+    expect(batch.notTested).toEqual([])
+    expect(batch.assertions).toEqual([])
+    expect(batch.observations.filter((item) => item.featureId === definition.id)).toEqual([])
+    expect(batch.ungradedDiagnostics[definition.id]).toMatchObject({
+      kind: "collector-error",
+      message: expect.stringContaining("1 assertion(s)"),
+    })
+    expect(batch.suiteComplete).toBe(false)
+  } finally {
+    definition.term = originalTerm
+  }
+})
+
 it("reports undeclared geometry reads as collector errors without invented evidence", async () => {
   verifiedBatchFixture()
   const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!

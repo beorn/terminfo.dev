@@ -173,12 +173,35 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
 
 /**
  * A named coverage record is admitted only after the probe ran and retained raw state. A missing raw
- * capture or an unclosed reason stays a loud collector error, never a not-tested claim.
+ * capture or an unclosed reason stays a loud collector error, never a not-tested claim, and a result
+ * that also carries its own observation or assertions is contradictory and is refused the same way.
  */
 function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeResult): void {
   const id = probe.id
   const notTested = result.notTested
   if (!notTested) return
+  const assertions = result.assertions ?? []
+  if (result.observation !== undefined || assertions.length > 0) {
+    const parts: string[] = []
+    if (result.observation) {
+      const observedReason = result.observation.reason ? `, reason=${result.observation.reason}` : ""
+      parts.push(`observation(outcome=${result.observation.outcome}${observedReason})`)
+    }
+    if (assertions.length > 0) parts.push(`${assertions.length} assertion(s)`)
+    const mixedMessage = `Not-tested coverage for ${id} arrived beside ${parts.join(" and ")}; a probe that claims no semantic observable cannot also carry a measurement, so the coverage claim is refused and its evidence stays a collector error`
+    if (probe.termlessObservationEvidence) {
+      batch.observations.push({
+        featureId: id,
+        outcome: "error",
+        reason: "collector-error",
+        evidence: probe.termlessObservationEvidence,
+        note: mixedMessage,
+      })
+    } else {
+      batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message: mixedMessage }
+    }
+    return
+  }
   const bound = result.response !== undefined && result.response.length > 0
   const message =
     "Not-tested coverage for " + id + " requires a closed reason, a specific noObservable, and its retained raw capture"

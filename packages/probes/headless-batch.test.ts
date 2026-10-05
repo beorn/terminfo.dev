@@ -501,6 +501,71 @@ test("a failed probe never becomes named coverage", async () => {
   ])
 })
 
+// A mixed result - named coverage beside its own failed measurement - is a loud collector error, never
+// coverage, and the healthy part of the batch keeps collecting.
+test("refuses named coverage that arrives beside its returned error observation", async () => {
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition(
+      "modes.bracketed-paste",
+      () => ({
+        pass: false,
+        response: JSON.stringify({ mode: false }),
+        notTested: { reason: "no-semantic-observable", noObservable: "input events" },
+        observation: {
+          outcome: "error",
+          reason: "collector-error",
+          evidence: "parser-state",
+          note: "backend read failed",
+        },
+      }),
+      { termlessObservationEvidence: "parser-state" },
+    ),
+    definition(
+      "modes.focus-events",
+      () => ({
+        pass: false,
+        response: JSON.stringify({ mode: false }),
+        notTested: { reason: "no-semantic-observable", noObservable: "input events" },
+      }),
+      { termlessObservationEvidence: "parser-state" },
+    ),
+  ])
+  expect(batch.notTested).toEqual([
+    {
+      featureId: "modes.focus-events",
+      reason: "no-semantic-observable",
+      noObservable: "input events",
+      rawReplyRef: "modes.focus-events",
+    },
+  ])
+  expect(batch.observations).toMatchObject([
+    { featureId: "modes.bracketed-paste", outcome: "error", reason: "collector-error", evidence: "parser-state" },
+  ])
+  expect(batch.observations[0]?.note).toContain("beside observation(outcome=error, reason=collector-error)")
+})
+
+test("refuses named coverage that arrives beside supported observation and assertions", async () => {
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition(
+      "modes.bracketed-paste",
+      () => ({
+        pass: true,
+        response: JSON.stringify({ mode: true }),
+        notTested: { reason: "no-semantic-observable", noObservable: "input events" },
+        observation: { outcome: "supported", evidence: "parser-state" },
+        assertions: [{ kind: "positive", expected: "mode=true", observed: JSON.stringify({ mode: true }) }],
+      }),
+      { termlessObservationEvidence: "parser-state" },
+    ),
+  ])
+  expect(batch.notTested).toEqual([])
+  expect(batch.assertions).toEqual([])
+  expect(batch.observations).toMatchObject([
+    { featureId: "modes.bracketed-paste", outcome: "error", reason: "collector-error", evidence: "parser-state" },
+  ])
+  expect(batch.observations[0]?.note).toContain("1 assertion(s)")
+})
+
 // AC3: feature support cannot authorize metadata readback. Existing tests grade
 // outcomes but do not catch a placeholder hyperlink=null presented as reported.
 test("OSC 8 feature without metadata extension omits the cell field", () => {

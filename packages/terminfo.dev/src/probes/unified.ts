@@ -292,7 +292,20 @@ export async function runProbeBatch(
       if (result.notTested) {
         const reason = result.notTested.reason
         const noObservable = result.notTested.noObservable
-        if (reason !== "no-semantic-observable" || noObservable.trim().length === 0) {
+        const assertions = result.assertions ?? []
+        const parts: string[] = []
+        if (result.observation) {
+          const observedReason = result.observation.reason ? `, reason=${result.observation.reason}` : ""
+          parts.push(`observation(outcome=${result.observation.outcome}${observedReason})`)
+        }
+        if (assertions.length > 0) parts.push(`${assertions.length} assertion(s)`)
+        if (result.observation !== undefined || assertions.length > 0) {
+          batch.ungradedDiagnostics[probe.id] = {
+            kind: "collector-error",
+            name: "Error",
+            message: `Not-tested coverage for ${probe.id} arrived beside ${parts.join(" and ")}; a probe that claims no semantic observable cannot also carry a measurement, so the coverage claim is refused and its evidence stays a collector error`,
+          }
+        } else if (reason !== "no-semantic-observable" || noObservable.trim().length === 0) {
           batch.ungradedDiagnostics[probe.id] = {
             kind: "collector-error",
             name: "Error",
