@@ -159,32 +159,14 @@ jobs:
             sed -i '' "s|__NODE_DIR__|$NODE_DIR|g" /tmp/run_iterm2.sh
             chmod +x /tmp/run_iterm2.sh
 
-            mkdir -p ~/Library/Application\ Support/iTerm2/DynamicProfiles
-            cat << DPEOF > ~/Library/Application\ Support/iTerm2/DynamicProfiles/measurement.json
-            {
-              "Profiles": [
-                {
-                  "Name": "Default",
-                  "Guid": "00000000-0000-0000-0000-000000000001",
-                  "Custom Command": "Yes",
-                  "Command": "/bin/bash /tmp/run_iterm2.sh",
-                  "Working Directory": "/tmp"
-                }
-              ]
-            }
-          DPEOF
-
-            cat << 'ZEOF' >> ~/.zshrc
-            if [ -n "$ITERM_SESSION_ID" ] && [ -f /tmp/run_iterm2.sh ] && [ ! -f /tmp/iterm2_done.txt ]; then
-              /bin/bash /tmp/run_iterm2.sh
-            fi
-          ZEOF
-
-            cat << 'ZEOF' >> ~/.zprofile
-            if [ -n "$ITERM_SESSION_ID" ] && [ -f /tmp/run_iterm2.sh ] && [ ! -f /tmp/iterm2_done.txt ]; then
-              /bin/bash /tmp/run_iterm2.sh
-            fi
-          ZEOF
+            # Hook into bash startup files (runner default login shell is /bin/bash)
+            for profile_file in ~/.bash_profile ~/.bashrc ~/.profile ~/.zprofile ~/.zshrc; do
+              cat << 'HOOKEOF' >> "$profile_file"
+if [ -n "$ITERM_SESSION_ID" ] && [ -f /tmp/run_iterm2.sh ] && [ ! -f /tmp/iterm2_done.txt ]; then
+  /bin/bash /tmp/run_iterm2.sh
+fi
+HOOKEOF
+            done
 
             /Applications/iTerm.app/Contents/MacOS/iTerm2 > /tmp/spike-artifacts/iterm2.log 2>&1 &
             ITERM_PID=$!
@@ -232,8 +214,23 @@ jobs:
             sed -i '' "s|__NODE_DIR__|$NODE_DIR|g" /tmp/run_ghostty.sh
             chmod +x /tmp/run_ghostty.sh
 
+            # Ghostty config: specify command to run on startup without -e flag (avoids macOS Gatekeeper modal)
+            mkdir -p ~/.config/ghostty
+            cat << GCONF > ~/.config/ghostty/config
+command = /bin/bash /tmp/run_ghostty.sh
+GCONF
+
+            # Also add fallback hook in shell startup files
+            for profile_file in ~/.bash_profile ~/.bashrc ~/.profile ~/.zprofile ~/.zshrc; do
+              cat << 'HOOKEOF' >> "$profile_file"
+if [ -n "$GHOSTTY_RESOURCES_DIR" ] && [ -f /tmp/run_ghostty.sh ] && [ ! -f /tmp/ghostty_done.txt ]; then
+  /bin/bash /tmp/run_ghostty.sh
+fi
+HOOKEOF
+            done
+
             GHOSTTY_BIN="/Applications/Ghostty.app/Contents/MacOS/ghostty"
-            "$GHOSTTY_BIN" -e /bin/bash /tmp/run_ghostty.sh > /tmp/spike-artifacts/ghostty.log 2>&1 &
+            "$GHOSTTY_BIN" > /tmp/spike-artifacts/ghostty.log 2>&1 &
             GHOST_PID=$!
 
             for i in {1..90}; do
