@@ -62,6 +62,32 @@ test("provenance without owned capture or clipboard refuses before selecting any
   await expect(collectProbeRun({ ids: [] })).rejects.toThrow("requires owned capture or clipboard")
 })
 
+test.each(["C:\\artifacts\\terminfo-run.exe", "C:/artifacts/terminfo-run.exe", "D:\\Program Files\\app.exe"])(
+  "provenance accepts valid Windows drive-letter path %s as absolute",
+  async (windowsPath) => {
+    writeFileSync(receipt, JSON.stringify({ executable: { path: windowsPath, sha256: "0".repeat(64) } }))
+    process.env.TERMINFO_CAPTURE_DIRECTORY = join(directory, "frames")
+    try {
+      // Passes measuredExecutable check; fails later on executable digest or existence check
+      await expect(collectProbeRun({ ids: [] })).rejects.not.toThrow(
+        "Runtime provenance has invalid measured executable",
+      )
+    } finally {
+      delete process.env.TERMINFO_CAPTURE_DIRECTORY
+    }
+  },
+)
+
+test("provenance rejects relative path", async () => {
+  writeFileSync(receipt, JSON.stringify({ executable: { path: "relative/path/app.exe", sha256: "0".repeat(64) } }))
+  process.env.TERMINFO_CAPTURE_DIRECTORY = join(directory, "frames")
+  try {
+    await expect(collectProbeRun({ ids: [] })).rejects.toThrow("Runtime provenance has invalid measured executable")
+  } finally {
+    delete process.env.TERMINFO_CAPTURE_DIRECTORY
+  }
+})
+
 test.runIf(process.platform === "linux")(
   "a nonvisual capture selection still verifies the owned executable before callbacks",
   async () => {

@@ -16,11 +16,10 @@
 import { createStyle } from "@silvery/ansi"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, isAbsolute, join, win32 } from "node:path"
 import { homedir } from "node:os"
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import { execFileSync } from "node:child_process"
-import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
@@ -50,12 +49,8 @@ function measuredExecutable(value: unknown): LiveExecutable {
   const executable = (value as { executable?: unknown }).executable
   if (!executable || typeof executable !== "object") throw new Error("Runtime provenance has no executable")
   const { path, sha256 } = executable as { path?: unknown; sha256?: unknown }
-  if (
-    typeof path !== "string" ||
-    !path.startsWith("/") ||
-    typeof sha256 !== "string" ||
-    !/^[0-9a-f]{64}$/.test(sha256)
-  ) {
+  const isAbs = typeof path === "string" && (isAbsolute(path) || win32.isAbsolute(path))
+  if (typeof path !== "string" || !isAbs || typeof sha256 !== "string" || !/^[0-9a-f]{64}$/.test(sha256)) {
     throw new Error("Runtime provenance has invalid measured executable")
   }
   return { path, sha256 }

@@ -20,14 +20,14 @@ const collectorOpenedControllingOutputs = new WeakSet<NodeJS.WriteStream>()
 
 /** Open the controlling terminal for CLI runs whose stdout carries JSON. */
 export function openControllingTTY(): WriteStream {
-  if (process.platform === "win32") throw new Error("JSON/file collection requires a proved Windows controlling TTY")
   if (!process.stdin.isTTY) throw new Error("JSON/file collection requires interactive TTY stdin for probe replies")
+  const ttyPath = process.platform === "win32" ? "CONOUT$" : "/dev/tty"
   let fd: number
   try {
-    fd = openSync("/dev/tty", "w")
+    fd = openSync(ttyPath, "w")
   } catch (error) {
     throw new Error(
-      `Cannot open controlling /dev/tty before probing: ${error instanceof Error ? error.message : String(error)}`,
+      `Cannot open controlling ${ttyPath} before probing: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
   const out = new WriteStream(fd)
