@@ -610,16 +610,9 @@ export const modesProbes: ProbeDefinition[] = [
       const off = ctx.getMode("applicationKeypad") === false
       return notTestedResult("keypad input", { on, off })
     },
-    () =>
-      Promise.resolve({
-        pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note: "Keypad mode left unchanged; this probe does not measure keypad input encoding",
-        },
-      }),
+    // cto ruling 19685f18: the app context cannot inject keypad input, so its absence is named;
+    // the headless declared-mode disposition above is preserved.
+    () => Promise.resolve(notTestedResult("No keypad-injection capability in this run", { mode: "applicationKeypad" })),
   ),
 
   // Left/right margin mode

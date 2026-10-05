@@ -366,13 +366,38 @@ export const eraseProbes: ProbeDefinition[] = [
     termlessObservationEvidence: "parser-state",
   },
 
-  // ED3's scrollback effect needs a scrollback-readback capability the run does not have, so the
-  // row is recorded Not tested by this run (cto ruling 19685f18), never inconclusive.
-  probe(
-    "erase.screen.scrollback",
-    () => notTestedResult("No scrollback-readback capability in this run", { sequence: "ED3" }),
-    () => Promise.resolve(notTestedResult("No scrollback-readback capability in this run", { sequence: "ED3" })),
-  ),
+  // ED3's scrollback effect: the headless parser can measure it, so the measured before/ED3/after
+  // path and its controls are retained. Only the app context, which has no scrollback readback,
+  // records a named absence (cto ruling 19685f18), never a blanket inconclusive.
+  {
+    ...probe(
+      "erase.screen.scrollback",
+      (ctx) => {
+        const expected = "ED3 removes measured scrollback while keeping screen geometry"
+        const initial = ctx.getScrollback()
+        const rows = initial.screenLines
+        if (!Number.isSafeInteger(rows) || rows < 1 || rows > 1000) {
+          return parserStateResult(null, expected, { initial }, "Need a measured screen size for history setup")
+        }
+        ctx.feed("\r\n".repeat(rows + 2))
+        const before = ctx.getScrollback()
+        if (!Number.isSafeInteger(before.totalLines) || before.totalLines <= rows || before.screenLines !== rows) {
+          return parserStateResult(null, expected, { initial, before }, "No measured scrollback to erase")
+        }
+        ctx.feed("\x1b[3J")
+        const after = ctx.getScrollback()
+        const measured =
+          Number.isSafeInteger(after.totalLines) && after.totalLines >= rows && after.screenLines === rows
+        return parserStateResult(
+          measured ? after.totalLines === rows : null,
+          expected,
+          { before, after },
+          measured ? undefined : "Scrollback readback or geometry changed unexpectedly",
+        )
+      },
+      () => Promise.resolve(notTestedResult("No scrollback-readback capability in this run", { sequence: "ED3" })),
+    ),
+  },
 
   {
     ...probe(

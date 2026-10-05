@@ -538,15 +538,41 @@ test("selective erasure observes protected cells and the unprotected target", ()
   }
 })
 
-// cto ruling 19685f18: ED3's scrollback effect needs a scrollback-readback capability the run
-// does not have, so the row is recorded Not tested by this run, never inconclusive.
-test("scrollback erase is recorded Not tested by this run with its named missing capability", async () => {
-  const noObservable = "No scrollback-readback capability in this run"
-  const headlessResult = byId("erase.screen.scrollback").termless(headless("ABCDE"))
-  expect(headlessResult.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
-  expect(headlessResult.observation).toBeUndefined()
+// These old probes could pass on an empty history, an unerased colored X, or
+// an unchanged region. Keep each target and its prerequisite independently visible.
+test("scrollback erase requires existing history and measured removal", () => {
+  for (const [history, clears, expected] of [
+    [true, true, "supported"],
+    [true, false, "unsupported"],
+    [false, true, "inconclusive"],
+  ] as const) {
+    const base = headless("ABCDE")
+    let seeded = false
+    let erased = false
+    const result = byId("erase.screen.scrollback").termless({
+      ...base,
+      feed(bytes) {
+        if (bytes.includes("\r\n")) seeded = true
+        if (bytes === "\x1b[3J") erased = true
+      },
+      getScrollback: () => ({
+        viewportOffset: 0,
+        screenLines: 24,
+        totalLines: seeded && history && !(erased && clears) ? 26 : 24,
+      }),
+    })
+    expect(result.observation).toMatchObject({ outcome: expected, evidence: "parser-state" })
+  }
+})
+
+// cto ruling 19685f18: only the app context lacks scrollback readback, so its absence is named here
+// while the headless measurement above stays a graded result. Both arms of the callback are exercised.
+test("scrollback erase app arm records Not tested by this run with its named missing capability", async () => {
   const appResult = await byId("erase.screen.scrollback").term(app({ row: 5, col: 5 }))
-  expect(appResult.notTested).toEqual({ reason: "no-semantic-observable", noObservable })
+  expect(appResult.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "No scrollback-readback capability in this run",
+  })
   expect(appResult.observation).toBeUndefined()
 })
 
