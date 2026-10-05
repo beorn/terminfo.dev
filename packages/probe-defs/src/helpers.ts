@@ -19,6 +19,19 @@ export function parserStateResult(pass: boolean | null, expected: string, state:
   }
 }
 
+/**
+ * The probe ran and retained raw state, but this environment exposes no applicable observable for
+ * the claim. This is a coverage/applicability record, never a fifth measurement outcome.
+ */
+export function notTestedResult(noObservable: string, state: object): ProbeResult {
+  return {
+    pass: false,
+    response: JSON.stringify(state),
+    note: noObservable,
+    notTested: { reason: "no-semantic-observable", noObservable },
+  }
+}
+
 /** Selective erase must remove unprotected cells and retain a protected control. */
 export function selectiveEraseResult(ctx: TermlessContext, sequence: string, rectangular: boolean): ProbeResult {
   const expected = "DECSCA-protected P survives while selective erase clears ABCD"
@@ -70,6 +83,7 @@ export function sgrProbe(
   id: string,
   sequence: string,
   check: (cell: ReturnType<TermlessContext["getCell"]>) => boolean | null,
+  noObservableWhen?: (cell: ReturnType<TermlessContext["getCell"]>) => string | null,
 ): ProbeDefinition {
   return {
     id,
@@ -78,6 +92,10 @@ export function sgrProbe(
     termless(ctx) {
       ctx.feed(sequence + "X")
       const cell = ctx.getCell(0, 0)
+      if (cell.char === "X") {
+        const noObservable = noObservableWhen?.(cell)
+        if (noObservable) return notTestedResult(noObservable, cell)
+      }
       const measured = cell.char === "X" && check(cell) === true
       return parserStateResult(
         measured ? true : null,

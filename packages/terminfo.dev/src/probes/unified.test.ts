@@ -58,6 +58,7 @@ function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>): ProbeRun {
     screenshotRefs: [],
     observations: batch.observations,
     ungradedDiagnostics: batch.ungradedDiagnostics,
+    ...(batch.notTested.length ? { notTested: batch.notTested } : {}),
   }
 }
 
@@ -418,6 +419,120 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
     })
   } finally {
     definition.termNeedsGeometry = original
+  }
+})
+
+// A dormant boundary the audit family exposed: an app coverage claim must be bound to a NONEMPTY raw
+// trace, and the shared parser must accept the record rather than reject the whole run.
+it("binds an app named coverage record to its own retained raw trace", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const originalTerm = definition.term
+  definition.term = async () => ({
+    pass: false,
+    response: "\x1b[?62;4c",
+    notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
+  })
+  try {
+    const batch = await runProbeBatch({ ids: [definition.id] })
+    expect(batch.notTested).toEqual([
+      {
+        featureId: definition.id,
+        reason: "no-semantic-observable",
+        noObservable: "device attributes",
+        rawReplyRef: definition.id,
+      },
+    ])
+    expect(batch.rawReplies[`${definition.id}.callbackResponse`]).toBe("\x1b[?62;4c")
+    expect(JSON.parse(batch.rawReplies[definition.id]!)).toEqual({ writes: [], queries: [], events: [] })
+    const decoded = decodeCollectorRun(
+      "app-named-coverage.json",
+      JSON.stringify(asRun(batch)),
+      manifest,
+      sourceRevision,
+    ).run
+    expect(decoded.notTested).toMatchObject([
+      { featureId: definition.id, reason: "no-semantic-observable", rawReplyRef: definition.id },
+    ])
+  } finally {
+    definition.term = originalTerm
+  }
+})
+
+// A mixed app result - named coverage beside its own returned failure - is a loud collector error,
+// never coverage, and it cannot complete the suite.
+it("refuses app named coverage that arrives beside its returned error observation", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const originalTerm = definition.term
+  const originalEvidence = definition.termObservationEvidence
+  definition.termObservationEvidence = "query"
+  definition.term = () => ({
+    pass: false,
+    response: "\x1b[?62;4c",
+    notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
+    observation: { outcome: "error", reason: "collector-error", evidence: "query", note: "TTY write failed" },
+  })
+  try {
+    const batch = await runProbeBatch({ ids: [definition.id] })
+    expect(batch.notTested).toEqual([])
+    expect(batch.observations.filter((item) => item.featureId === definition.id)).toEqual([])
+    expect(batch.ungradedDiagnostics[definition.id]).toMatchObject({
+      kind: "collector-error",
+      name: "Error",
+      message: expect.stringContaining("beside observation(outcome=error, reason=collector-error"),
+    })
+    expect(batch.rawReplies[`${definition.id}.callbackResponse`]).toBe("\x1b[?62;4c")
+    const diagnostic = JSON.stringify(batch.ungradedDiagnostics[definition.id] ?? null)
+    expect(diagnostic).toContain("TTY write failed")
+    const decoded = decodeCollectorRun(
+      "app-mixed-coverage.json",
+      JSON.stringify(asRun(batch)),
+      manifest,
+      sourceRevision,
+    ).run
+    expect(JSON.stringify(decoded.ungradedDiagnostics[definition.id] ?? null)).toContain("TTY write failed")
+    expect(batch.suiteComplete).toBe(false)
+  } finally {
+    definition.term = originalTerm
+    definition.termObservationEvidence = originalEvidence
+  }
+})
+
+it("refuses app named coverage that arrives beside supported observation and assertions", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const originalTerm = definition.term
+  definition.term = () => ({
+    pass: true,
+    response: "\x1b[?62;4c",
+    notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
+    observation: { outcome: "supported", evidence: "query" },
+    assertions: [{ kind: "positive", expected: "\x1b[?62;4c", observed: "\x1b[?62;4c" }],
+  })
+  try {
+    const batch = await runProbeBatch({ ids: [definition.id] })
+    expect(batch.notTested).toEqual([])
+    expect(batch.assertions).toEqual([])
+    expect(batch.observations.filter((item) => item.featureId === definition.id)).toEqual([])
+    expect(batch.ungradedDiagnostics[definition.id]).toMatchObject({
+      kind: "collector-error",
+      message: expect.stringContaining("assertion(kind=positive"),
+    })
+    expect(batch.rawReplies[`${definition.id}.callbackResponse`]).toBe("\x1b[?62;4c")
+    const diagnostic = JSON.stringify(batch.ungradedDiagnostics[definition.id] ?? null)
+    expect(diagnostic).toContain("expected=")
+    expect(diagnostic).toContain("observed=")
+    const decoded = decodeCollectorRun(
+      "app-mixed-assertions.json",
+      JSON.stringify(asRun(batch)),
+      manifest,
+      sourceRevision,
+    ).run
+    expect(JSON.stringify(decoded.ungradedDiagnostics[definition.id] ?? null)).toContain("assertion(kind=positive")
+    expect(batch.suiteComplete).toBe(false)
+  } finally {
+    definition.term = originalTerm
   }
 })
 

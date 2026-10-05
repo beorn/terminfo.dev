@@ -5,6 +5,7 @@ import {
   OBSERVATION_OUTCOMES,
   OBSERVATION_REASONS,
   isNonMeasuringEvidence,
+  type NotTestedCoverage,
   type Observation,
   type ObservationFrame,
   type ProbeAssertion,
@@ -38,6 +39,7 @@ export interface LoadedRun {
   assertions: ProbeAssertion[]
   screenshotRefs: string[]
   observations: Observation[]
+  notTested: NotTestedCoverage[]
   ungradedDiagnostics: Record<string, UngradedDiagnostic>
   legacy: boolean
 }
@@ -649,6 +651,52 @@ export function parseRunProvenance(
   }
 }
 
+function parseNotTested(
+  value: unknown,
+  path: string,
+  catalog: Set<string>,
+  expected: ReadonlySet<string>,
+  rawReplies: Record<string, string>,
+  observations: readonly Observation[],
+  assertions: readonly ProbeAssertion[],
+): NotTestedCoverage[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) fail(path, "invalid notTested")
+  const records: NotTestedCoverage[] = []
+  const seen = new Set<string>()
+  for (const entry of value) {
+    if (!object(entry)) fail(path, "invalid notTested record")
+    const featureId = asString(entry.featureId, path, "notTested.featureId")
+    if (!catalog.has(featureId)) fail(path, `unknown notTested feature ${featureId}`)
+    if (!expected.has(featureId)) fail(path, `notTested ${featureId} is outside the trusted suite`)
+    if (seen.has(featureId)) fail(path, `duplicate notTested feature ${featureId}`)
+    seen.add(featureId)
+    if (entry.reason !== "no-semantic-observable") fail(path, `invalid notTested reason for ${featureId}`)
+    const noObservable = asString(entry.noObservable, path, `notTested.noObservable for ${featureId}`)
+    if (noObservable.trim().length === 0) fail(path, `notTested ${featureId} requires a specific noObservable`)
+    const rawReplyRef = asString(entry.rawReplyRef, path, `notTested.rawReplyRef for ${featureId}`)
+    if (rawReplyRef !== featureId) {
+      fail(path, `notTested ${featureId} requires its own rawReplyRef`)
+    }
+    const rawTrace = rawReplies[rawReplyRef]
+    if (typeof rawTrace !== "string" || rawTrace.length === 0) {
+      fail(path, `notTested ${featureId} requires a retained nonempty raw trace`)
+    }
+    if (entry.probeId !== undefined) {
+      const probeId = asString(entry.probeId, path, `notTested.probeId for ${featureId}`)
+      if (probeId !== featureId) fail(path, `notTested probeId ${probeId} does not identify ${featureId}`)
+    }
+    if (observations.some((item) => item.featureId === featureId)) {
+      fail(path, `notTested ${featureId} also occurs in observations`)
+    }
+    if (assertions.some((item) => item.featureId === featureId)) {
+      fail(path, `notTested ${featureId} also occurs in assertions`)
+    }
+    records.push({ featureId, reason: "no-semantic-observable", noObservable, rawReplyRef })
+  }
+  return records
+}
+
 export function parseRun(
   path: string,
   source: string,
@@ -733,13 +781,28 @@ export function parseRun(
         fail(path, `${observation.featureId} is outside suite ${probeHash} for ${target.kind}`)
       }
     }
-    const suiteComplete = observations.length === expected.size
+    const notTested = parseNotTested(
+      raw.notTested,
+      path,
+      catalog,
+      expected,
+      raw.rawReplies as Record<string, string>,
+      observations,
+      assertions,
+    )
+    const suiteComplete = observations.length + notTested.length === expected.size
     if (raw.suiteComplete !== suiteComplete) {
-      fail(path, `suiteComplete disagrees with observed membership (${observations.length} of ${expected.size} probes)`)
+      fail(
+        path,
+        `suiteComplete disagrees with observed and not-tested membership (${observations.length} measured + ${notTested.length} not tested of ${expected.size} probes)`,
+      )
     }
     const ungradedDiagnostics = parseDiagnostics(raw.ungradedDiagnostics, path, catalog, observations)
     for (const id of Object.keys(ungradedDiagnostics)) {
       if (!expected.has(id)) fail(path, `diagnostic ${id} is outside suite ${probeHash} for ${target.kind}`)
+      if (notTested.some((item) => item.featureId === id)) {
+        fail(path, `diagnostic ${id} also occurs in notTested`)
+      }
     }
     if (!date(raw.measuredAt)) fail(path, "invalid measuredAt")
     return {
@@ -766,6 +829,7 @@ export function parseRun(
       assertions,
       screenshotRefs: raw.screenshotRefs as string[],
       observations,
+      notTested,
       ungradedDiagnostics,
       legacy: false,
     }
@@ -815,6 +879,7 @@ export function parseRun(
     assertions: [],
     screenshotRefs: [],
     observations,
+    notTested: [],
     ungradedDiagnostics: {},
     legacy: true,
   }
@@ -870,6 +935,7 @@ export function decodeCollectorRun(
     assertions: measured.assertions,
     screenshotRefs: measured.screenshotRefs,
     observations: measured.observations,
+    ...(measured.notTested.length > 0 && { notTested: measured.notTested }),
     ungradedDiagnostics: measured.ungradedDiagnostics,
   }
   return { run, raw, sha256: measured.sha256 }

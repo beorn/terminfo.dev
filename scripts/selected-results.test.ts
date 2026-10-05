@@ -1720,3 +1720,57 @@ describe("selected results", () => {
     ).toThrow(/bad-flag\.json.*reviewed/)
   })
 })
+
+describe("named not-tested coverage partition", () => {
+  it("partitions measured plus named coverage against the catalog without double counting", () => {
+    const source = run("nt", {
+      probeHash: "with-diagnostic",
+      rawReplies: {
+        ...identityReplies,
+        "extensions.graphics": "NO",
+        "extensions.query": "ACK",
+        "cursor.position": "P",
+      },
+      notTested: [
+        {
+          featureId: "cursor.position",
+          reason: "no-semantic-observable",
+          noObservable: "rendered colors (pixels)",
+          rawReplyRef: "cursor.position",
+        },
+      ],
+    })
+    const measured = parseRun("nt.json", JSON.stringify(source), catalog)
+    const selected = projectResults([measured], [reviewFor(measured)], catalog, {
+      currentProbeHash: "with-diagnostic",
+    }).current["app:kitty"]
+    expect(selected?.counts).toMatchObject({ catalog: 3, tested: 2, notTested: 1 })
+    expect(selected?.cells["cursor.position"]).toBeUndefined()
+    expect(selected?.notTestedCoverage).toEqual({
+      named: [
+        {
+          featureId: "cursor.position",
+          reason: "no-semantic-observable",
+          noObservable: "rendered colors (pixels)",
+          rawReplyRef: "cursor.position",
+        },
+      ],
+      measured: 2,
+      namedCount: 1,
+      remainder: 0,
+    })
+    expect(selected?.suite).toMatchObject({ observed: 3, expected: 3, complete: true, namedNotTested: 1 })
+    expect(selected?.suiteFreshness).toBe("current suite")
+  })
+
+  it("keeps an unrecorded remainder unnamed and reports the suite as partial", () => {
+    const source = run("partial", { observations: [], suiteComplete: false })
+    const measured = parseRun("partial.json", JSON.stringify(source), catalog)
+    const selected = projectResults([measured], [reviewFor(measured)], catalog, {
+      currentProbeHash: "current",
+    }).history["app:kitty"]?.[0]
+    expect(selected?.counts).toMatchObject({ catalog: 3, tested: 0, notTested: 3 })
+    expect(selected?.notTestedCoverage).toEqual({ named: [], measured: 0, namedCount: 0, remainder: 3 })
+    expect(selected?.suiteFreshness).toBe("partial (0 of 2 probes)")
+  })
+})

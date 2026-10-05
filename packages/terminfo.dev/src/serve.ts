@@ -273,6 +273,7 @@ export async function collectProbeRun(
     assertions: batch.assertions,
     screenshotRefs: batch.screenshotRefs,
     observations: batch.observations,
+    ...(batch.notTested?.length ? { notTested: batch.notTested } : {}),
     ungradedDiagnostics: batch.ungradedDiagnostics,
   }
 }

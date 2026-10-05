@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
-import { probe, decrpmModeProbe, parserStateResult, isBlank } from "./helpers.ts"
+import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank } from "./helpers.ts"
 
 const ALT_1049_SEED_A = "PRIMARY-A"
 const ALT_1049_SEED_B = "PRIMARY-B"
@@ -197,23 +197,13 @@ export const modesProbes: ProbeDefinition[] = [
   // Bracketed paste
   decrpmModeProbe("modes.bracketed-paste", 2004, (ctx) => {
     ctx.feed("\x1b[?2004h")
-    return parserStateResult(
-      null,
-      "Bracketed paste emits delimited paste events",
-      { mode: ctx.getMode("bracketedPaste") },
-      "Mode metadata does not measure input events",
-    )
+    return notTestedResult("input events", { mode: ctx.getMode("bracketedPaste") })
   }),
 
   // Application cursor keys
   decrpmModeProbe("modes.application-cursor", 1, (ctx) => {
     ctx.feed("\x1b[?1h")
-    return parserStateResult(
-      null,
-      "Application cursor mode changes generated key events",
-      { mode: ctx.getMode("applicationCursor") },
-      "Mode metadata does not measure key events",
-    )
+    return notTestedResult("key events", { mode: ctx.getMode("applicationCursor") })
   }),
 
   // Auto wrap
@@ -249,34 +239,19 @@ export const modesProbes: ProbeDefinition[] = [
   // Mouse tracking
   decrpmModeProbe("modes.mouse-tracking", 1000, (ctx) => {
     ctx.feed("\x1b[?1000h")
-    return parserStateResult(
-      null,
-      "Mouse tracking emits encoded mouse events",
-      { mode: ctx.getMode("mouseTracking") },
-      "Mode metadata does not measure mouse events",
-    )
+    return notTestedResult("mouse events", { mode: ctx.getMode("mouseTracking") })
   }),
 
   // Focus tracking
   decrpmModeProbe("modes.focus-tracking", 1004, (ctx) => {
     ctx.feed("\x1b[?1004h")
-    return parserStateResult(
-      null,
-      "Focus tracking emits focus events",
-      { mode: ctx.getMode("focusTracking") },
-      "Mode metadata does not measure focus events",
-    )
+    return notTestedResult("focus events", { mode: ctx.getMode("focusTracking") })
   }),
 
   // Reverse video
   decrpmModeProbe("modes.reverse-video", 5, (ctx) => {
     ctx.feed("\x1b[?5h")
-    return parserStateResult(
-      null,
-      "Reverse video changes rendered colors",
-      { mode: ctx.getMode("reverseVideo") },
-      "Mode metadata does not measure pixels",
-    )
+    return notTestedResult("rendered colors (pixels)", { mode: ctx.getMode("reverseVideo") })
   }),
 
   // Synchronized output
@@ -284,12 +259,7 @@ export const modesProbes: ProbeDefinition[] = [
     ctx.feed("\x1b[?2026h")
     ctx.feed("Hello")
     ctx.feed("\x1b[?2026l")
-    return parserStateResult(
-      null,
-      "Synchronized output holds and releases complete frames",
-      { text: ctx.getText() },
-      "Final text does not measure frame timing",
-    )
+    return notTestedResult("frame timing", { text: ctx.getText() })
   }),
 
   // Origin mode
@@ -390,12 +360,7 @@ export const modesProbes: ProbeDefinition[] = [
     ctx.feed("\x1b[?1006h")
     const pass = ctx.getMode("sgrMouse") === true
     ctx.feed("\x1b[?1006l")
-    return parserStateResult(
-      null,
-      "SGR mouse mode changes encoded mouse events",
-      { mode: pass },
-      "Mode metadata does not measure mouse events",
-    )
+    return notTestedResult("encoded mouse events", { mode: pass })
   }),
 
   // All-motion mouse tracking
@@ -403,12 +368,7 @@ export const modesProbes: ProbeDefinition[] = [
     ctx.feed("\x1b[?1003h")
     const pass = ctx.getMode("mouseTracking") === true
     ctx.feed("\x1b[?1003l")
-    return parserStateResult(
-      null,
-      "All-motion mouse mode emits movement events",
-      { mode: pass },
-      "Mode metadata does not measure mouse events",
-    )
+    return notTestedResult("mouse movement", { mode: pass })
   }),
 
   // Application keypad
@@ -419,12 +379,7 @@ export const modesProbes: ProbeDefinition[] = [
       const on = ctx.getMode("applicationKeypad") === true
       ctx.feed("\x1b>")
       const off = ctx.getMode("applicationKeypad") === false
-      return parserStateResult(
-        null,
-        "Application keypad mode changes keypad input",
-        { on, off },
-        "Mode metadata does not measure keypad events",
-      )
+      return notTestedResult("keypad input", { on, off })
     },
     () =>
       Promise.resolve({
@@ -667,22 +622,12 @@ export const modesProbes: ProbeDefinition[] = [
     const response = ctx.feedCapture("\x1b[?1005$p")
     ctx.feed("\x1b[?1005l")
     if (response.includes("$y")) {
-      return parserStateResult(
-        null,
-        "UTF-8 mouse mode encodes input events",
-        { response },
-        "DECRPM reports a mode state, not an encoded mouse event",
-      )
+      return notTestedResult("encoded UTF-8 mouse events", { response })
     }
     // Fallback: verify sequence didn't break the terminal
     ctx.feed("X")
     const ok = ctx.getCell(0, 0).char === "X"
-    return parserStateResult(
-      null,
-      "UTF-8 mouse mode encodes input events",
-      { responsive: ok },
-      "Parser responsiveness does not measure mouse input",
-    )
+    return notTestedResult("encoded UTF-8 mouse events", { responsive: ok })
   }),
 
   // ?3 — DECCOLM 80/132 column switch

@@ -135,7 +135,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
       runtimeIdentity,
       suiteId: suite.probeHash,
       probeHash: suite.probeHash,
-      suiteComplete: batch.observations.length === suite.probes.headless.length,
+      suiteComplete: batch.observations.length + batch.notTested.length === suite.probes.headless.length,
       sourceRevision: sourceDirty ? `${sourceRevision}+dirty` : sourceRevision,
       measuredAt: new Date().toISOString(),
       origin: { kind: "collector" },

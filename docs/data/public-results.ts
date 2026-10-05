@@ -160,7 +160,12 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     suiteId: version.suiteId,
     probeHash: version.probeHash,
     suiteFreshness: version.suiteFreshness,
-    suite: { observed: version.suite.observed, expected: version.suite.expected, complete: version.suite.complete },
+    suite: {
+      observed: version.suite.observed,
+      expected: version.suite.expected,
+      complete: version.suite.complete,
+      namedNotTested: version.suite.namedNotTested,
+    },
     sourceRevision: version.sourceRevision,
     sha256: version.sha256,
     cells: Object.fromEntries(Object.entries(version.cells).map(([id, cell]) => [id, mapCell(cell, version)])),
@@ -174,6 +179,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
       supported: version.counts.supported,
       unsupported: version.counts.unsupported,
     },
+    notTestedCoverage: version.notTestedCoverage,
   })
   const mapGroups = (groups: Record<string, SelectedVersion[]>) =>
     Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(mapVersion)]))

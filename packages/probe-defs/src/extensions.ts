@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
-import { parserStateResult, probe, readHyperlinkMetadata, unmeasuredCellResult } from "./helpers.ts"
+import { parserStateResult, probe, readHyperlinkMetadata, notTestedResult, unmeasuredCellResult } from "./helpers.ts"
 
 function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }
@@ -1375,13 +1375,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         const before = ctx.getTitle()
         ctx.feed("\x1b]0;My Title\x07")
         const after = ctx.getTitle()
-        const note = "Title readback does not establish OSC 0 icon-name behavior"
-        return {
-          pass: false,
-          response: JSON.stringify({ before, after }),
-          note,
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state", note },
-        }
+        return notTestedResult("icon-name state", { before, after })
       },
       () => {
         const note = "No icon-name and window-title readback for OSC 0"
@@ -1871,13 +1865,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         const before = ctx.getTitle()
         ctx.feed("\x1b]1;test-icon\x07")
         const after = ctx.getTitle()
-        const note = "Title readback does not establish OSC 1 icon-name behavior"
-        return {
-          pass: false,
-          response: JSON.stringify({ before, after }),
-          note,
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state", note },
-        }
+        return notTestedResult("icon-name state", { before, after })
       },
       () => {
         const note = "No icon-name readback for OSC 1"
@@ -1940,12 +1928,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         // Verify the reset sequence is consumed without producing visible output
         ctx.feed("\x1b]117\x07X")
         const cell = ctx.getCell(0, 0)
-        return parserStateResult(
-          null,
-          "OSC 117 restores the highlight background color",
-          { cell },
-          "Printed X does not expose highlight background",
-        )
+        return notTestedResult("highlight background color", { cell })
       },
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
@@ -1967,12 +1950,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         // Verify the reset sequence is consumed without producing visible output
         ctx.feed("\x1b]119\x07X")
         const cell = ctx.getCell(0, 0)
-        return parserStateResult(
-          null,
-          "OSC 119 restores the highlight foreground color",
-          { cell },
-          "Printed X does not expose highlight foreground",
-        )
+        return notTestedResult("highlight foreground color", { cell })
       },
       async (ctx) => {
         ctx.write("\x1b[1;1H\x1b[2K")
