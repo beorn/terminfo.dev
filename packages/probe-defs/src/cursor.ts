@@ -334,20 +334,49 @@ export const cursorProbes: ProbeDefinition[] = [
             },
           }
         }
-        ctx.write("\x1b[3;5H") // Move to row 3, col 5
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+        // Establish the position with text writes (a real cursor advance) rather than the CUP
+        // argument, so the report cannot pass by echoing the command it was just given.
+        const steps = [
+          { row: 1, col: 4, writes: ["\x1b[1;1H", "\x1b[2K", "ABC"] },
+          { row: 3, col: 6, writes: ["\x1b[3;1H", "\x1b[2K", "ABCDE"] },
+        ]
+        const measured: Array<{ expected: string; report: { row: number; col: number } }> = []
+        for (const step of steps) {
+          for (const sequence of step.writes) ctx.write(sequence)
+          const pos = await ctx.queryCursorPosition()
+          if (!pos) {
+            return {
+              pass: false,
+              response: JSON.stringify({ measured }),
+              observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            }
+          }
+          measured.push({ expected: step.row + ";" + step.col, report: pos })
+          if (pos.row !== step.row || pos.col !== step.col) {
+            return {
+              pass: false,
+              response: JSON.stringify({ measured }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "query",
+                note: "Text-induced cursor advance was not reported at " + step.row + ";" + step.col,
+              },
+            }
+          }
         }
+        const response = JSON.stringify({ measured })
         return {
-          pass: false,
-          response: JSON.stringify({ report: pos }),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "query",
-            note: "CPR alone cannot independently qualify its own CUP setup",
-          },
+          pass: true,
+          response,
+          observation: { outcome: "supported", evidence: "query" },
+          assertions: [
+            {
+              kind: "positive",
+              expected: "CPR tracks text-induced cursor advances at two distinct rows",
+              observed: response,
+            },
+          ],
         }
       },
     ),

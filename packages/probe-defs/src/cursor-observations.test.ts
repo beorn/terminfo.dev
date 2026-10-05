@@ -30,6 +30,33 @@ function app(position: { row: number; col: number } | null): TermContext {
   }
 }
 
+function appReporter(): TermContext {
+  const base = app({ row: 1, col: 1 })
+  let row = 1
+  let col = 1
+  return {
+    ...base,
+    write(sequence: string) {
+      const cup = /^\u001b\[(\d+);(\d+)H$/.exec(sequence)
+      if (cup) {
+        row = Number(cup[1])
+        col = Number(cup[2])
+        return
+      }
+      if (sequence === "\u001b[2K") return
+      for (const ch of sequence) {
+        if (ch === "\n") {
+          row += 1
+          col = 1
+        } else if (ch >= " ") {
+          col += 1
+        }
+      }
+    },
+    queryCursorPosition: async () => ({ row, col }),
+  }
+}
+
 function headless(x: number, y: number, rows = 24, reply = ""): TermlessContext {
   return {
     cols: 80,
@@ -594,6 +621,14 @@ test("headless CUP does not grade missing geometry or an ignored edge control", 
     reason: "insufficient-evidence",
   })
   expect(feeds).toEqual(["\x1b[1;1H", "\x1b[37;61H"])
+})
+
+test("position report grades a text-induced cursor advance, not just a CUP echo", async () => {
+  const result = await byId("cursor.position-report").term!(appReporter())
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.assertions).toMatchObject([{ kind: "positive" }])
+  const constant = await byId("cursor.position-report").term!(app({ row: 3, col: 6 }))
+  expect(constant.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
 })
 
 test("remaining app cursor fixtures refuse undersized geometry without writing", async () => {
