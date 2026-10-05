@@ -439,7 +439,7 @@ test("XTSAVE and XTRESTORE measure mode 7 restoration via DECRPM queryMode", asy
   }
 })
 
-test("XTPUSHSGR and XTPOPSGR measure SGR restoration via DECRQSS", async () => {
+test("XTPUSHSGR and XTPOPSGR measure SGR restoration via DECRQSS without rendering promotion", async () => {
   for (const id of ["modes.xtpushsgr", "modes.xtpopsgr"] as const) {
     const probe = modesProbes.find((p) => p.id === id)
     if (!probe?.term) throw new Error(`Missing ${id} app callback`)
@@ -468,9 +468,13 @@ test("XTPUSHSGR and XTPOPSGR measure SGR restoration via DECRQSS", async () => {
     }
 
     const result = await probe.term(context)
-    expect(result.pass, id).toBe(true)
-    expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
-    expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
+    expect(result.pass, id).toBe(false)
+    expect(result.response, id).toBe("\x1bP1$r1m\x1b\\")
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
   }
 })
 
@@ -506,4 +510,59 @@ test("XTPUSHCOLORS and XTPOPCOLORS measure palette restoration via OSC 4", async
     expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
     expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
   }
+})
+
+test("stack push/pop and mode save/restore qualify intermediate states", async () => {
+  // Ignored OSC 4 green mutation leaves palette push/pop inconclusive
+  const colorProbe = modesProbes.find((p) => p.id === "modes.xtpushcolors")
+  if (!colorProbe?.term) throw new Error("Missing modes.xtpushcolors callback")
+
+  const ignoredMutationCtx: TermContext = {
+    cols: 80,
+    rows: 24,
+    write() {},
+    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({
+      match: ["\x1b]4;1;rgb:0000/0000/ffff\x07", "0000/0000/ffff"], // mutation ignored!
+      reason: "reply",
+      raw: "\x1b]4;1;rgb:0000/0000/ffff\x07",
+      rawBase64: "",
+    }),
+    queryMode: async () => null,
+  }
+  const ignoredMutationResult = await colorProbe.term(ignoredMutationCtx)
+  expect(ignoredMutationResult.pass).toBe(false)
+  expect(ignoredMutationResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+
+  // Ignored mode 7 inversion leaves mode save/restore inconclusive
+  const modeProbe = modesProbes.find((p) => p.id === "modes.xtsave")
+  if (!modeProbe?.term) throw new Error("Missing modes.xtsave callback")
+
+  const ignoredInversionCtx: TermContext = {
+    cols: 80,
+    rows: 24,
+    write() {},
+    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryMode: async () => "set", // inversion to reset ignored!
+  }
+  const ignoredInversionResult = await modeProbe.term(ignoredInversionCtx)
+  expect(ignoredInversionResult.pass).toBe(false)
+  expect(ignoredInversionResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
 })

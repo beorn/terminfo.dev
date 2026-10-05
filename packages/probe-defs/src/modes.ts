@@ -1,5 +1,10 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { probe, decrpmModeProbe, parserStateResult, isBlank } from "./helpers.ts"
+import { parseSgrReport } from "./sgr.ts"
+
+function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): boolean {
+  return a.r === b.r && a.g === b.g && a.b === b.b
+}
 
 const ALT_1049_SEED_A = "PRIMARY-A"
 const ALT_1049_SEED_B = "PRIMARY-B"
@@ -153,17 +158,32 @@ function xtsaveRestoreTermless(id: string, ctx: TermlessContext): ProbeResult {
   const originallyEnabled = ctx.getMode("autoWrap")
   try {
     ctx.feed("\x1b[?7h")
+    const setupEnabled = ctx.getMode("autoWrap")
+    if (setupEnabled !== true) {
+      return parserStateResult(null, expected, { setupEnabled }, "Mode 7 enable (?7h) not reflected by terminal")
+    }
     ctx.feed("\x1b[?7s")
     ctx.feed("\x1b[?7l")
+    const inverted = ctx.getMode("autoWrap")
+    if (inverted !== false) {
+      return parserStateResult(
+        null,
+        expected,
+        { inverted },
+        "Mode 7 inversion (?7l) not reflected by terminal; cannot qualify save/restore",
+      )
+    }
     ctx.feed("\x1b[?7r")
     const restored = ctx.getMode("autoWrap")
-    if (restored) {
+    if (restored === true) {
       return parserStateResult(true, expected, { restored })
     }
-    ctx.feed("\x1b[1;1H\x1b[2J")
-    ctx.feed("X".repeat(ctx.cols) + "Y")
-    const next = ctx.getCell(1, 0)
-    return parserStateResult(next.char === "Y", expected, { char: next.char })
+    return parserStateResult(
+      null,
+      expected,
+      { restored },
+      "Mode 7 save/restore roundtrip failed; cannot attribute failure to save vs restore",
+    )
   } finally {
     ctx.feed(originallyEnabled ? "\x1b[?7h" : "\x1b[?7l")
   }
@@ -192,29 +212,62 @@ async function xtsaveRestoreTerm(id: string, ctx: TermContext): Promise<ProbeRes
     }
   }
 
+  const initialMode = typeof ctx.queryMode === "function" ? await ctx.queryMode(7) : null
   try {
-    ctx.write("\x1b[?7h")
-    ctx.write("\x1b[?7s")
-    ctx.write("\x1b[?7l")
-    ctx.write("\x1b[?7r")
-    const mode7 = typeof ctx.queryMode === "function" ? await ctx.queryMode(7) : null
-    const expected = `${id}: mode 7 restored to set via ?7r after ?7s and ?7l`
-    if (mode7 === "set") {
-      return {
-        pass: true,
-        response: mode7,
-        observation: { outcome: "supported", evidence: "query" },
-        assertions: [{ kind: "positive", expected, observed: mode7 }],
+    if (typeof ctx.queryMode === "function") {
+      ctx.write("\x1b[?7h")
+      const setupMode = await ctx.queryMode(7)
+      if (setupMode !== "set") {
+        return {
+          pass: false,
+          response: setupMode ?? undefined,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Mode 7 enable (?7h) not reflected by terminal`,
+          },
+        }
       }
-    }
-    if (mode7 === "reset") {
+      ctx.write("\x1b[?7s")
+      ctx.write("\x1b[?7l")
+      const intermediateMode = await ctx.queryMode(7)
+      if (intermediateMode !== "reset") {
+        return {
+          pass: false,
+          response: intermediateMode ?? undefined,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Mode 7 inversion (?7l) not reflected by terminal; cannot qualify save/restore`,
+          },
+        }
+      }
+      ctx.write("\x1b[?7r")
+      const restoredMode = await ctx.queryMode(7)
+      const expected = `${id}: mode 7 restored to set via ?7r after ?7s and ?7l`
+      if (restoredMode === "set") {
+        return {
+          pass: true,
+          response: restoredMode,
+          observation: { outcome: "supported", evidence: "query" },
+          assertions: [{ kind: "positive", expected, observed: restoredMode }],
+        }
+      }
       return {
         pass: false,
-        response: mode7,
-        observation: { outcome: "unsupported", evidence: "query" },
-        assertions: [{ kind: "negative", expected, observed: mode7 }],
+        response: restoredMode ?? undefined,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "query",
+          note: `${id}: Mode 7 save/restore roundtrip failed; cannot attribute failure to save vs restore`,
+        },
       }
     }
+
+    ctx.write("\x1b[?7h\x1b[?7s\x1b[?7l\x1b[?7r")
     ctx.write(`\x1b[1;${ctx.cols}HX`)
     const pos = await ctx.queryCursorPosition()
     if (pos) {
@@ -234,32 +287,66 @@ async function xtsaveRestoreTerm(id: string, ctx: TermContext): Promise<ProbeRes
     }
     return {
       pass: false,
-      response: mode7 ?? undefined,
       observation: {
         outcome: "inconclusive",
-        reason: mode7 === null ? "no-response" : "insufficient-evidence",
+        reason: "no-response",
         evidence: "query",
         note: "Mode 7 query and behavior could not be determined",
       },
     }
   } finally {
-    ctx.write("\x1b[?7h\x1b[?7r")
+    if (initialMode === "reset") {
+      ctx.write("\x1b[?7l")
+    } else {
+      ctx.write("\x1b[?7h")
+    }
   }
 }
 
 function xtpushpopsgrTermless(id: string, ctx: TermlessContext): ProbeResult {
   const expected = `${id}: SGR stack push and pop restores bold attribute on cell`
-  ctx.feed("\x1b[1m")
-  ctx.feed("\x1b[#{")
-  ctx.feed("\x1b[0m")
-  ctx.feed("\x1b[#}")
-  ctx.feed("X")
-  const cell = ctx.getCell(0, 0)
-  ctx.feed("\x1b[0m")
-  if (cell.char !== "X") {
-    return parserStateResult(null, expected, cell, "Rendered cell was not exposed")
+  let pushed = false
+  try {
+    ctx.feed("C")
+    const baseline = ctx.getCell(0, 0)
+    if (baseline.char !== "C" || baseline.bold) {
+      return parserStateResult(null, expected, { baseline }, "Neutral baseline cell not measured")
+    }
+    ctx.feed("\x1b[1mA")
+    const setupCell = ctx.getCell(0, 1)
+    if (setupCell.char !== "A" || setupCell.bold !== true) {
+      return parserStateResult(null, expected, { setupCell }, "Bold setup not reflected by terminal")
+    }
+    ctx.feed("\x1b[#{")
+    pushed = true
+    ctx.feed("\x1b[0mB")
+    const intermediateCell = ctx.getCell(0, 2)
+    if (intermediateCell.char !== "B" || intermediateCell.bold === true) {
+      return parserStateResult(null, expected, { intermediateCell }, "Intermediate cleared styling not measured")
+    }
+    ctx.feed("\x1b[#}")
+    pushed = false
+    ctx.feed("X")
+    const finalCell = ctx.getCell(0, 3)
+    if (finalCell.char !== "X") {
+      return parserStateResult(null, expected, { finalCell }, "Rendered final cell was not exposed")
+    }
+    if (finalCell.bold === true) {
+      return parserStateResult(true, expected, { baseline, setupCell, intermediateCell, finalCell })
+    }
+    return parserStateResult(
+      null,
+      expected,
+      { baseline, setupCell, intermediateCell, finalCell },
+      "SGR stack roundtrip failed; cannot attribute failure to push vs pop",
+    )
+  } finally {
+    if (pushed) {
+      ctx.feed("\x1b[#}")
+      pushed = false
+    }
+    ctx.feed("\x1b[0m")
   }
-  return parserStateResult(cell.bold === true, expected, cell)
 }
 
 async function xtpushpopsgrTerm(id: string, ctx: TermContext): Promise<ProbeResult> {
@@ -285,30 +372,68 @@ async function xtpushpopsgrTerm(id: string, ctx: TermContext): Promise<ProbeResu
     }
   }
 
+  let pushed = false
   try {
     ctx.write("\x1b[1m")
     ctx.write("\x1b[#{")
+    pushed = true
     ctx.write("\x1b[0m")
-    ctx.write("\x1b[#}")
+
     if (typeof ctx.queryWithSentinelOutcome === "function") {
-      const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/)
-      if (outcome.match) {
-        const status = outcome.match[1]
-        const params = outcome.match[2] ?? ""
-        if (status === "1") {
-          const codes = params.split(/[;: ]/).filter(Boolean)
-          const matches = codes.includes("1")
+      const intermediateOutcome = await ctx.queryWithSentinelOutcome(
+        "\x1bP$qm\x1b\\",
+        /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
+      )
+      if (intermediateOutcome?.match && intermediateOutcome.match[1] === "1") {
+        const intermediateParsed = parseSgrReport(intermediateOutcome.match[2] ?? "")
+        const intermediateCleared =
+          !intermediateParsed?.attributes.has("bold") && !intermediateParsed?.rawCodes.includes("1")
+        if (!intermediateCleared) {
           return {
-            pass: matches,
-            response: outcome.raw,
-            observation: { outcome: matches ? "supported" : "unsupported", evidence: "query" },
-            assertions: [
-              {
-                kind: matches ? "positive" : "negative",
-                expected: `${id}: DECRQSS SGR report contains bold param 1 after stack pop`,
-                observed: outcome.raw,
+            pass: false,
+            response: intermediateOutcome.raw,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: `${id}: Intermediate cleared styling not reflected in DECRQSS; cannot qualify restore`,
+            },
+          }
+        }
+        ctx.write("\x1b[#}")
+        pushed = false
+        const finalOutcome = await ctx.queryWithSentinelOutcome(
+          "\x1bP$qm\x1b\\",
+          /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
+        )
+        if (finalOutcome?.match && finalOutcome.match[1] === "1") {
+          const finalParsed = parseSgrReport(finalOutcome.match[2] ?? "")
+          const restored = finalParsed?.attributes.has("bold") || finalParsed?.rawCodes.includes("1")
+          if (restored) {
+            // Parameter reporting acknowledged. Do not promote to rendering support without capture.
+            if (!ctx.capture) {
+              return {
+                pass: false,
+                response: finalOutcome.raw,
+                observation: {
+                  outcome: "inconclusive",
+                  reason: "insufficient-evidence",
+                  evidence: "query",
+                  note: "DECRQSS confirmed SGR stack parameter restoration; visual rendering not measured",
+                },
+              }
+            }
+          } else {
+            return {
+              pass: false,
+              response: finalOutcome.raw,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "query",
+                note: `${id}: SGR stack roundtrip failed to restore bold; cannot attribute failure to push vs pop`,
               },
-            ],
+            }
           }
         }
       }
@@ -318,7 +443,13 @@ async function xtpushpopsgrTerm(id: string, ctx: TermContext): Promise<ProbeResu
       const sample = "AaBb 0123456789 - terminal text"
       ctx.write("\x1b[0m\x1b[2J\x1b[3;3H" + sample)
       const control = await ctx.capture({ role: "control", label: "Unstyled text sample" })
-      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[1m\x1b[#{\x1b[0m\x1b[#}" + sample)
+      if (!pushed) {
+        ctx.write("\x1b[1m\x1b[#{")
+        pushed = true
+      }
+      ctx.write("\x1b[0m\x1b[#}")
+      pushed = false
+      ctx.write(sample)
       const target = await ctx.capture({ role: "target", label: id })
       return {
         pass: false,
@@ -348,25 +479,66 @@ async function xtpushpopsgrTerm(id: string, ctx: TermContext): Promise<ProbeResu
       },
     }
   } finally {
-    ctx.write("\x1b[0m\x1b[#}")
+    if (pushed) {
+      ctx.write("\x1b[#}")
+      pushed = false
+    }
+    ctx.write("\x1b[0m")
   }
 }
 
 function xtpushpopcolorsTermless(id: string, ctx: TermlessContext): ProbeResult {
   const expected = `${id}: color palette push and pop restores slot 1 palette color`
-  ctx.feed("\x1b[#P")
-  ctx.feed("\x1b]4;1;rgb:0000/ffff/0000\x07")
-  ctx.feed("\x1b[#Q")
-  ctx.feed("\x1b[38;5;1mX\x1b[0m")
-  const cell = ctx.getCell(0, 0)
-  if (cell.char !== "X" || !cell.fg) {
-    return parserStateResult(null, expected, cell, "Indexed palette cell was not exposed")
+  let pushed = false
+  try {
+    ctx.feed("\x1b[38;5;1mC\x1b[0m")
+    const baseline = ctx.getCell(0, 0)
+    if (baseline.char !== "C" || !baseline.fg) {
+      return parserStateResult(null, expected, { baseline }, "Baseline palette slot 1 cell not exposed")
+    }
+    const initialFg = { ...baseline.fg }
+    const green = { r: 0, g: 255, b: 0 }
+    if (sameRgb(initialFg, green)) {
+      return parserStateResult(null, expected, { baseline }, "Initial palette already matches green test color")
+    }
+
+    ctx.feed("\x1b[#P")
+    pushed = true
+    ctx.feed("\x1b]4;1;rgb:0000/ffff/0000\x07")
+    ctx.feed("\x1b[38;5;1mG\x1b[0m")
+    const mutated = ctx.getCell(0, 1)
+    if (mutated.char !== "G" || !mutated.fg || !sameRgb(mutated.fg, green)) {
+      return parserStateResult(
+        null,
+        expected,
+        { baseline, mutated },
+        "Palette mutation to green was not reflected; cannot qualify restore",
+      )
+    }
+
+    ctx.feed("\x1b[#Q")
+    pushed = false
+    ctx.feed("\x1b[38;5;1mX\x1b[0m")
+    const restored = ctx.getCell(0, 2)
+    if (restored.char !== "X" || !restored.fg) {
+      return parserStateResult(null, expected, { restored }, "Restored palette cell not exposed")
+    }
+    if (sameRgb(restored.fg, initialFg)) {
+      return parserStateResult(true, expected, { baseline, mutated, restored })
+    }
+    return parserStateResult(
+      null,
+      expected,
+      { baseline, mutated, restored },
+      "Palette push/pop roundtrip failed to restore slot 1; cannot attribute failure to push vs pop",
+    )
+  } finally {
+    if (pushed) {
+      ctx.feed("\x1b[#Q")
+      pushed = false
+    }
+    ctx.feed("\x1b[0m")
   }
-  const isGreen = cell.fg.r === 0 && cell.fg.g === 255 && cell.fg.b === 0
-  if (isGreen) {
-    return parserStateResult(false, expected, cell)
-  }
-  return parserStateResult(true, expected, cell)
 }
 
 async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeResult> {
@@ -392,40 +564,78 @@ async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeR
     }
   }
 
+  let initialColor: string | null = null
+  let pushed = false
   try {
-    let initialColor: string | null = null
     if (typeof ctx.queryWithSentinelOutcome === "function") {
       const outcome = await ctx.queryWithSentinelOutcome(
         "\x1b]4;1;?\x07",
         /\x1b\]4;1;rgb:([0-9a-fA-F/]+)(?:\x07|\x1b\\)/,
       )
-      if (outcome.match) {
+      if (outcome?.match) {
         initialColor = outcome.match[1] ?? null
       }
     }
 
     if (initialColor && typeof ctx.queryWithSentinelOutcome === "function") {
       ctx.write("\x1b[#P")
+      pushed = true
       ctx.write("\x1b]4;1;rgb:0000/ffff/0000\x07")
+      const intermediateOutcome = await ctx.queryWithSentinelOutcome(
+        "\x1b]4;1;?\x07",
+        /\x1b\]4;1;rgb:([0-9a-fA-F/]+)(?:\x07|\x1b\\)/,
+      )
+      const intermediateColor = intermediateOutcome?.match ? intermediateOutcome.match[1] : null
+      const isGreen =
+        intermediateColor &&
+        (intermediateColor.toLowerCase().startsWith("0000/ffff/0000") ||
+          intermediateColor.toLowerCase().startsWith("00/ff/00") ||
+          intermediateColor.toLowerCase().startsWith("0/f/0"))
+      if (!isGreen) {
+        return {
+          pass: false,
+          response: intermediateOutcome?.raw,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: OSC 4 palette mutation to green not reflected; cannot qualify restore`,
+          },
+        }
+      }
+
       ctx.write("\x1b[#Q")
+      pushed = false
       const checkOutcome = await ctx.queryWithSentinelOutcome(
         "\x1b]4;1;?\x07",
         /\x1b\]4;1;rgb:([0-9a-fA-F/]+)(?:\x07|\x1b\\)/,
       )
-      if (checkOutcome.match) {
+      if (checkOutcome?.match) {
         const restoredColor = checkOutcome.match[1]
-        const matches = restoredColor === initialColor
+        const matches = restoredColor.toLowerCase() === initialColor.toLowerCase()
+        if (matches) {
+          return {
+            pass: true,
+            response: checkOutcome.raw,
+            observation: { outcome: "supported", evidence: "query" },
+            assertions: [
+              {
+                kind: "positive",
+                expected: `${id}: OSC 4 palette slot 1 restored to ${initialColor} after push/change/pop`,
+                observed: checkOutcome.raw,
+              },
+            ],
+          }
+        }
         return {
-          pass: matches,
+          pass: false,
           response: checkOutcome.raw,
-          observation: { outcome: matches ? "supported" : "unsupported", evidence: "query" },
-          assertions: [
-            {
-              kind: matches ? "positive" : "negative",
-              expected: `${id}: OSC 4 palette slot 1 restored to ${initialColor} after push/change/pop`,
-              observed: checkOutcome.raw,
-            },
-          ],
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Palette push/pop roundtrip failed to restore slot 1; cannot attribute failure to push vs pop`,
+          },
         }
       }
     }
@@ -433,7 +643,13 @@ async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeR
     if (ctx.capture) {
       ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[38;5;1mSample Text")
       const control = await ctx.capture({ role: "control", label: "Initial palette sample" })
-      ctx.write("\x1b[#P\x1b]4;1;rgb:0000/ffff/0000\x07\x1b[#Q\x1b[0m\x1b[2J\x1b[3;3H\x1b[38;5;1mSample Text")
+      if (!pushed) {
+        ctx.write("\x1b[#P")
+        pushed = true
+      }
+      ctx.write("\x1b]4;1;rgb:0000/ffff/0000\x07\x1b[#Q")
+      pushed = false
+      ctx.write("\x1b[0m\x1b[2J\x1b[3;3H\x1b[38;5;1mSample Text")
       const target = await ctx.capture({ role: "target", label: id })
       return {
         pass: false,
@@ -463,7 +679,13 @@ async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeR
       },
     }
   } finally {
-    ctx.write("\x1b[#Q")
+    if (pushed) {
+      ctx.write("\x1b[#Q")
+      pushed = false
+    }
+    if (initialColor) {
+      ctx.write(`\x1b]4;1;rgb:${initialColor}\x07`)
+    }
   }
 }
 

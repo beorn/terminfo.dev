@@ -819,7 +819,7 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
   expect(written).toEqual([])
 })
 
-test("SGR color callbacks grade supported with query evidence when DECRQSS confirms styling", async () => {
+test("SGR color callbacks confirm reported parameter without grading rendering support when DECRQSS replies", async () => {
   const color = sgrProbes.find((item) => item.id === "sgr.fg.standard")
   if (!color?.term) throw new Error("missing standard foreground TTY callback")
   const result = await color.term(
@@ -832,9 +832,13 @@ test("SGR color callbacks grade supported with query evidence when DECRQSS confi
       }),
     }),
   )
-  expect(result.pass).toBe(true)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
-  expect(result.assertions).toMatchObject([{ kind: "positive" }])
+  expect(result.pass).toBe(false)
+  expect(result.response).toBe("\x1bP1$r31m\x1b\\")
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
 })
 
 test("SGR color callbacks capture pixel evidence when DECRQSS is unavailable but capture is present", async () => {
@@ -851,4 +855,57 @@ test("SGR color callbacks capture pixel evidence when DECRQSS is unavailable but
   )
   expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
   expect(roles).toEqual(["control", "target"])
+})
+
+test("parseSgrReport isolates color subparameters and rejects truncated structures", async () => {
+  const { parseSgrReport } = await import("./sgr.ts")
+
+  // Counterexample 1A: 38;5;131 does not match standalone 31
+  const indexed = parseSgrReport("38;5;131")
+  expect(indexed).not.toBeNull()
+  expect(indexed!.rawCodes).toEqual(["38;5;131"])
+  expect(indexed!.rawCodes.includes("31")).toBe(false)
+  expect(indexed!.attributes.size).toBe(0)
+
+  // Counterexample 1B: truecolor operands (3, 4, 7) are not treated as attributes
+  const truecolor = parseSgrReport("1;38;2;3;4;7")
+  expect(truecolor).not.toBeNull()
+  expect(truecolor!.attributes.has("bold")).toBe(true)
+  expect(truecolor!.attributes.has("italic")).toBe(false)
+  expect(truecolor!.attributes.has("underline")).toBe(false)
+  expect(truecolor!.attributes.has("inverse")).toBe(false)
+  expect(truecolor!.rawCodes).toEqual(["1", "38;2;3;4;7"])
+
+  // Counterexample 1C: truncated color structures are rejected
+  expect(parseSgrReport("38;5")).toBeNull()
+  expect(parseSgrReport("38;2;255;0")).toBeNull()
+  expect(parseSgrReport("48:5")).toBeNull()
+
+  // Counterexample 1D: colon truecolor with omitted color space
+  const colonTruecolor = parseSgrReport("38:2::255:0:128")
+  expect(colonTruecolor).not.toBeNull()
+  expect(colonTruecolor!.colors).toEqual([{ kind: "rgb", target: "38", r: 255, g: 0, b: 128 }])
+})
+
+test("selective reset qualifies setup before grading reset support", async () => {
+  const italicReset = sgrProbes.find((p) => p.id === "sgr.selective-reset.italic")
+  if (!italicReset?.term) throw new Error("missing selective-reset.italic term callback")
+
+  // Terminal that ignores SGR 3 (italic setup not reflected)
+  const ignoredSetupResult = await italicReset.term(
+    terminal({
+      queryWithSentinelOutcome: async () => ({
+        match: ["\x1bP1$r1m\x1b\\", "1", "1"], // reports bold 1, but italic 3 is missing!
+        reason: "reply",
+        raw: "\x1bP1$r1m\x1b\\",
+        rawBase64: "",
+      }),
+    }),
+  )
+  expect(ignoredSetupResult.pass).toBe(false)
+  expect(ignoredSetupResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
 })

@@ -45,7 +45,7 @@ function app(
     query: async () => unexpected("query"),
     queryWithSentinel: async () => unexpected("queryWithSentinel"),
     queryOutcome: async () => unexpected("queryOutcome"),
-    queryWithSentinelOutcome: async () => unexpected("queryWithSentinelOutcome"),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => {
       events.push("mode")
       return null
