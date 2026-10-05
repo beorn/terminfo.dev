@@ -297,7 +297,7 @@ async function xtsaveRestoreTerm(id: string, ctx: TermContext): Promise<ProbeRes
   } finally {
     if (initialMode === "reset") {
       ctx.write("\x1b[?7l")
-    } else {
+    } else if (initialMode === "set") {
       ctx.write("\x1b[?7h")
     }
   }
@@ -374,20 +374,84 @@ async function xtpushpopsgrTerm(id: string, ctx: TermContext): Promise<ProbeResu
 
   let pushed = false
   try {
-    ctx.write("\x1b[1m")
-    ctx.write("\x1b[#{")
-    pushed = true
-    ctx.write("\x1b[0m")
-
     if (typeof ctx.queryWithSentinelOutcome === "function") {
+      // Step 1: Baseline query (verify bold not set)
+      const baselineOutcome = await ctx.queryWithSentinelOutcome(
+        "\x1bP$qm\x1b\\",
+        /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
+      )
+      if (baselineOutcome?.match && baselineOutcome.match[1] === "1") {
+        let baselineParsed = parseSgrReport(baselineOutcome.match[2] ?? "")
+        if (baselineParsed && (baselineParsed.attributes.has("bold") || baselineParsed.rawCodes.includes("1"))) {
+          ctx.write("\x1b[0m")
+          const reread = await ctx.queryWithSentinelOutcome(
+            "\x1bP$qm\x1b\\",
+            /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
+          )
+          baselineParsed = reread?.match ? parseSgrReport(reread.match[2] ?? "") : null
+          if (!baselineParsed || baselineParsed.attributes.has("bold") || baselineParsed.rawCodes.includes("1")) {
+            return {
+              pass: false,
+              response: reread?.raw,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "query",
+                note: `${id}: Baseline bold styling active and could not be neutralized; cannot qualify push/pop`,
+              },
+            }
+          }
+        }
+      }
+
+      // Step 2: Setup styled state (bold) and qualify it
+      ctx.write("\x1b[1m")
+      const setupOutcome = await ctx.queryWithSentinelOutcome(
+        "\x1bP$qm\x1b\\",
+        /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
+      )
+      if (setupOutcome?.match && setupOutcome.match[1] === "1") {
+        const setupParsed = parseSgrReport(setupOutcome.match[2] ?? "")
+        if (!setupParsed || (!setupParsed.attributes.has("bold") && !setupParsed.rawCodes.includes("1"))) {
+          return {
+            pass: false,
+            response: setupOutcome.raw,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: `${id}: Setup bold styling not reflected in DECRQSS; cannot qualify push/pop`,
+            },
+          }
+        }
+      }
+
+      // Step 3: Push styled state to stack
+      ctx.write("\x1b[#{")
+      pushed = true
+
+      // Step 4: Clear styling (intermediate state)
+      ctx.write("\x1b[0m")
       const intermediateOutcome = await ctx.queryWithSentinelOutcome(
         "\x1bP$qm\x1b\\",
         /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
       )
       if (intermediateOutcome?.match && intermediateOutcome.match[1] === "1") {
         const intermediateParsed = parseSgrReport(intermediateOutcome.match[2] ?? "")
+        if (!intermediateParsed) {
+          return {
+            pass: false,
+            response: intermediateOutcome.raw,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: `${id}: Intermediate SGR report contains invalid parameters; cannot qualify restore`,
+            },
+          }
+        }
         const intermediateCleared =
-          !intermediateParsed?.attributes.has("bold") && !intermediateParsed?.rawCodes.includes("1")
+          !intermediateParsed.attributes.has("bold") && !intermediateParsed.rawCodes.includes("1")
         if (!intermediateCleared) {
           return {
             pass: false,
@@ -400,15 +464,31 @@ async function xtpushpopsgrTerm(id: string, ctx: TermContext): Promise<ProbeResu
             },
           }
         }
+
+        // Step 5: Pop stack
         ctx.write("\x1b[#}")
         pushed = false
+
+        // Step 6: Verify restored bold state
         const finalOutcome = await ctx.queryWithSentinelOutcome(
           "\x1bP$qm\x1b\\",
           /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
         )
         if (finalOutcome?.match && finalOutcome.match[1] === "1") {
           const finalParsed = parseSgrReport(finalOutcome.match[2] ?? "")
-          const restored = finalParsed?.attributes.has("bold") || finalParsed?.rawCodes.includes("1")
+          if (!finalParsed) {
+            return {
+              pass: false,
+              response: finalOutcome.raw,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "query",
+                note: `${id}: Restored SGR report contains invalid parameters; cannot qualify restore`,
+              },
+            }
+          }
+          const restored = finalParsed.attributes.has("bold") || finalParsed.rawCodes.includes("1")
           if (restored) {
             // Parameter reporting acknowledged. Do not promote to rendering support without capture.
             if (!ctx.capture) {
@@ -537,8 +617,35 @@ function xtpushpopcolorsTermless(id: string, ctx: TermlessContext): ProbeResult 
       ctx.feed("\x1b[#Q")
       pushed = false
     }
+    if (initialFg) {
+      const hexR = initialFg.r.toString(16).padStart(2, "0")
+      const hexG = initialFg.g.toString(16).padStart(2, "0")
+      const hexB = initialFg.b.toString(16).padStart(2, "0")
+      ctx.feed(`\x1b]4;1;rgb:${hexR}${hexR}/${hexG}${hexG}/${hexB}${hexB}\x07`)
+    }
     ctx.feed("\x1b[0m")
   }
+}
+
+function parseOsc4Rgb(spec: string): { r: number; g: number; b: number } | null {
+  const parts = spec.split("/")
+  if (parts.length !== 3) return null
+  const [rs, gs, bs] = parts
+  if (!/^[0-9a-fA-F]+$/.test(rs) || !/^[0-9a-fA-F]+$/.test(gs) || !/^[0-9a-fA-F]+$/.test(bs)) {
+    return null
+  }
+  const parseChan = (hex: string) => {
+    if (hex.length === 1) return parseInt(hex, 16) * 17
+    if (hex.length === 2) return parseInt(hex, 16)
+    if (hex.length === 3) return Math.round((parseInt(hex, 16) / 0xfff) * 255)
+    if (hex.length === 4) return Math.round((parseInt(hex, 16) / 0xffff) * 255)
+    return null
+  }
+  const r = parseChan(rs)
+  const g = parseChan(gs)
+  const b = parseChan(bs)
+  if (r === null || g === null || b === null) return null
+  return { r, g, b }
 }
 
 async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeResult> {
@@ -565,7 +672,9 @@ async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeR
   }
 
   let initialColor: string | null = null
+  let initialParsed: { r: number; g: number; b: number } | null = null
   let pushed = false
+  const green = { r: 0, g: 255, b: 0 }
   try {
     if (typeof ctx.queryWithSentinelOutcome === "function") {
       const outcome = await ctx.queryWithSentinelOutcome(
@@ -574,10 +683,23 @@ async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeR
       )
       if (outcome?.match) {
         initialColor = outcome.match[1] ?? null
+        initialParsed = initialColor ? parseOsc4Rgb(initialColor) : null
       }
     }
 
-    if (initialColor && typeof ctx.queryWithSentinelOutcome === "function") {
+    if (initialParsed && typeof ctx.queryWithSentinelOutcome === "function") {
+      if (sameRgb(initialParsed, green)) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "query",
+            note: `${id}: Initial palette slot 1 already matches green test color; cannot qualify mutation`,
+          },
+        }
+      }
+
       ctx.write("\x1b[#P")
       pushed = true
       ctx.write("\x1b]4;1;rgb:0000/ffff/0000\x07")
@@ -586,11 +708,8 @@ async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeR
         /\x1b\]4;1;rgb:([0-9a-fA-F/]+)(?:\x07|\x1b\\)/,
       )
       const intermediateColor = intermediateOutcome?.match ? intermediateOutcome.match[1] : null
-      const isGreen =
-        intermediateColor &&
-        (intermediateColor.toLowerCase().startsWith("0000/ffff/0000") ||
-          intermediateColor.toLowerCase().startsWith("00/ff/00") ||
-          intermediateColor.toLowerCase().startsWith("0/f/0"))
+      const intermediateParsed = intermediateColor ? parseOsc4Rgb(intermediateColor) : null
+      const isGreen = intermediateParsed ? sameRgb(intermediateParsed, green) : false
       if (!isGreen) {
         return {
           pass: false,
@@ -612,30 +731,40 @@ async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeR
       )
       if (checkOutcome?.match) {
         const restoredColor = checkOutcome.match[1]
-        const matches = restoredColor.toLowerCase() === initialColor.toLowerCase()
+        const restoredParsed = restoredColor ? parseOsc4Rgb(restoredColor) : null
+        const matches = restoredParsed ? sameRgb(restoredParsed, initialParsed) : false
         if (matches) {
-          return {
-            pass: true,
-            response: checkOutcome.raw,
-            observation: { outcome: "supported", evidence: "query" },
-            assertions: [
-              {
-                kind: "positive",
-                expected: `${id}: OSC 4 palette slot 1 restored to ${initialColor} after push/change/pop`,
-                observed: checkOutcome.raw,
+          // Parameter reporting acknowledged. Do not promote to rendering support without capture.
+          if (!ctx.capture) {
+            return {
+              pass: false,
+              response: checkOutcome.raw,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "query",
+                note: `${id}: OSC 4 confirmed palette stack parameter restoration; visual rendering not measured`,
               },
-            ],
+              assertions: [
+                {
+                  kind: "positive",
+                  expected: `${id}: OSC 4 palette slot 1 restored to ${initialColor} after push/change/pop`,
+                  observed: checkOutcome.raw,
+                },
+              ],
+            }
           }
-        }
-        return {
-          pass: false,
-          response: checkOutcome.raw,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "query",
-            note: `${id}: Palette push/pop roundtrip failed to restore slot 1; cannot attribute failure to push vs pop`,
-          },
+        } else {
+          return {
+            pass: false,
+            response: checkOutcome.raw,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "query",
+              note: `${id}: Palette push/pop roundtrip failed to restore slot 1; cannot attribute failure to push vs pop`,
+            },
+          }
         }
       }
     }
@@ -686,6 +815,7 @@ async function xtpushpopcolorsTerm(id: string, ctx: TermContext): Promise<ProbeR
     if (initialColor) {
       ctx.write(`\x1b]4;1;rgb:${initialColor}\x07`)
     }
+    ctx.write("\x1b[0m")
   }
 }
 

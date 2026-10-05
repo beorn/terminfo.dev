@@ -885,6 +885,21 @@ test("parseSgrReport isolates color subparameters and rejects truncated structur
   const colonTruecolor = parseSgrReport("38:2::255:0:128")
   expect(colonTruecolor).not.toBeNull()
   expect(colonTruecolor!.colors).toEqual([{ kind: "rgb", target: "38", r: 255, g: 0, b: 128 }])
+
+  // Counterexample 1E: empty semicolon fields are rejected, not erased
+  expect(parseSgrReport("38;5;;1")).toBeNull()
+  expect(parseSgrReport("38;2;;255;0;128")).toBeNull()
+
+  // Counterexample 1F: colon indexed extra arity is rejected
+  expect(parseSgrReport("38:5:1:3")).toBeNull()
+
+  // Counterexample 1G: colon 6-field invalid colorspace is rejected
+  expect(parseSgrReport("38:2:999:255:0:128")).toBeNull()
+  expect(parseSgrReport("38:2:0:255:0:128")).not.toBeNull()
+
+  // Counterexample 1H: semicolon 6-field invalid colorspace is rejected, not reinterpreted
+  expect(parseSgrReport("38;2;999;3;4;7")).toBeNull()
+  expect(parseSgrReport("38;2;0;255;0;128")).not.toBeNull()
 })
 
 test("selective reset qualifies setup before grading reset support", async () => {
@@ -904,6 +919,37 @@ test("selective reset qualifies setup before grading reset support", async () =>
   )
   expect(ignoredSetupResult.pass).toBe(false)
   expect(ignoredSetupResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+
+  // DECRQSS matching reset parameter report alone (without pixel capture) remains inconclusive
+  let callIndex = 0
+  const matchedResetResult = await italicReset.term(
+    terminal({
+      queryWithSentinelOutcome: async () => {
+        callIndex++
+        if (callIndex === 1) {
+          // baseline neutral
+          return { match: ["\x1bP1$r0m\x1b\\", "1", "0"], reason: "reply", raw: "\x1bP1$r0m\x1b\\", rawBase64: "" }
+        }
+        if (callIndex === 2) {
+          // setup reflects bold 1 and italic 3
+          return {
+            match: ["\x1bP1$r1;3m\x1b\\", "1", "1;3"],
+            reason: "reply",
+            raw: "\x1bP1$r1;3m\x1b\\",
+            rawBase64: "",
+          }
+        }
+        // reset reflects italic cleared, bold preserved
+        return { match: ["\x1bP1$r1m\x1b\\", "1", "1"], reason: "reply", raw: "\x1bP1$r1m\x1b\\", rawBase64: "" }
+      },
+    }),
+  )
+  expect(matchedResetResult.pass).toBe(false)
+  expect(matchedResetResult.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
     evidence: "query",

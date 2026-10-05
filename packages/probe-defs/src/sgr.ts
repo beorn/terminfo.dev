@@ -30,21 +30,28 @@ export function parseSgrReport(params: string): ParsedSgrReport | null {
   const colors: ParsedSgrColor[] = []
   const rawCodes: string[] = []
 
-  const elements = params
-    .split(/[; ]/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-  if (elements.length === 0) {
+  const rawTrimmed = params.trim()
+  if (rawTrimmed === "" || rawTrimmed === "0") {
     return {
       attributes,
       colors,
-      rawCodes,
+      rawCodes: rawTrimmed === "0" ? ["0"] : [],
       normalizedString: "",
     }
   }
 
+  // Reject empty semicolon parameters (e.g. "38;5;;1" or leading/trailing semicolons)
+  if (rawTrimmed.includes(";;") || rawTrimmed.startsWith(";") || rawTrimmed.endsWith(";")) {
+    return null
+  }
+
+  const elements = rawTrimmed.split(";")
+  for (const el of elements) {
+    if (el.trim() === "") return null
+  }
+
   for (let i = 0; i < elements.length; i++) {
-    const elem = elements[i]
+    const elem = elements[i].trim()
 
     // Colon-separated subparameters, e.g. "38:5:1", "38:2::255:0:128", "4:3"
     if (elem.includes(":")) {
@@ -53,7 +60,7 @@ export function parseSgrReport(params: string): ParsedSgrReport | null {
       if (leader === "38" || leader === "48" || leader === "58") {
         const target = leader as "38" | "48" | "58"
         if (sub[1] === "5") {
-          if (sub.length < 3 || sub[2] === "" || isNaN(Number(sub[2]))) return null
+          if (sub.length !== 3 || sub[2] === "" || isNaN(Number(sub[2]))) return null
           const idx = Number(sub[2])
           if (!Number.isInteger(idx) || idx < 0 || idx > 255) return null
           colors.push({ kind: "indexed", target, index: idx })
@@ -67,6 +74,8 @@ export function parseSgrReport(params: string): ParsedSgrReport | null {
             g = Number(sub[3])
             b = Number(sub[4])
           } else if (sub.length === 6) {
+            // Colorspace slot: sub[2] must be empty "" or "0" (sRGB)
+            if (sub[2] !== "" && sub[2] !== "0") return null
             if (sub[3] === "" || sub[4] === "" || sub[5] === "") return null
             r = Number(sub[3])
             g = Number(sub[4])
@@ -143,24 +152,27 @@ export function parseSgrReport(params: string): ParsedSgrReport | null {
           }
         }
         if (i + 5 < elements.length) {
-          const r = Number(elements[i + 3])
-          const g = Number(elements[i + 4])
-          const b = Number(elements[i + 5])
-          if (
-            Number.isInteger(r) &&
-            Number.isInteger(g) &&
-            Number.isInteger(b) &&
-            r >= 0 &&
-            r <= 255 &&
-            g >= 0 &&
-            g <= 255 &&
-            b >= 0 &&
-            b <= 255
-          ) {
-            colors.push({ kind: "rgb", target, r, g, b })
-            rawCodes.push(`${target};2;${elements[i + 2]};${r};${g};${b}`)
-            i += 5
-            continue
+          const cs = elements[i + 2]
+          if (cs === "" || cs === "0") {
+            const r = Number(elements[i + 3])
+            const g = Number(elements[i + 4])
+            const b = Number(elements[i + 5])
+            if (
+              Number.isInteger(r) &&
+              Number.isInteger(g) &&
+              Number.isInteger(b) &&
+              r >= 0 &&
+              r <= 255 &&
+              g >= 0 &&
+              g <= 255 &&
+              b >= 0 &&
+              b <= 255
+            ) {
+              colors.push({ kind: "rgb", target, r, g, b })
+              rawCodes.push(`${target};2;${cs};${r};${g};${b}`)
+              i += 5
+              continue
+            }
           }
         }
         return null
@@ -468,91 +480,143 @@ export async function measuredResetSgrTerm(
     }
   }
 
+  let setupApplied = false
   try {
     if (typeof ctx.queryWithSentinelOutcome === "function") {
-      // Phase 1: Measure baseline
+      // Phase 1: Measure baseline and ensure neutral control state
       const baselineOutcome = await ctx.queryWithSentinelOutcome(
         "\x1bP$qm\x1b\\",
         /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
       )
       if (baselineOutcome?.match && baselineOutcome.match[1] === "1") {
-        const baselineParsed = parseSgrReport(baselineOutcome.match[2] ?? "")
-        if (baselineParsed) {
-          if (set.some((attr) => baselineParsed.attributes.has(attr))) {
-            ctx.write("\x1b[0m")
-          }
-        }
-      }
-
-      // Phase 2: Apply setup and qualify intermediate state
-      ctx.write(setup)
-      const setupOutcome = await ctx.queryWithSentinelOutcome(
-        "\x1bP$qm\x1b\\",
-        /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
-      )
-      if (setupOutcome?.match && setupOutcome.match[1] === "1") {
-        const setupParsed = parseSgrReport(setupOutcome.match[2] ?? "")
-        if (!setupParsed) {
+        let baselineParsed = parseSgrReport(baselineOutcome.match[2] ?? "")
+        if (!baselineParsed) {
           return {
             pass: false,
-            response: setupOutcome.raw,
+            response: baselineOutcome.raw,
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "query",
-              note: `${id}: Setup SGR report contains truncated or invalid parameters`,
+              note: `${id}: Baseline SGR report contains invalid parameters; cannot qualify reset`,
             },
           }
         }
-        const requiredAttrs = [...new Set([...set, ...preserve])]
-        const setupApplied = requiredAttrs.every((attr) => setupParsed.attributes.has(attr))
-        if (!setupApplied) {
-          return {
-            pass: false,
-            response: setupOutcome.raw,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: `${id}: Setup attributes (${requiredAttrs.join(",")}) not reflected by terminal; cannot qualify reset`,
-            },
-          }
-        }
-
-        // Phase 3: Apply reset and verify clearing of target attributes and preservation of others
-        ctx.write(reset)
-        const resetOutcome = await ctx.queryWithSentinelOutcome(
-          "\x1bP$qm\x1b\\",
-          /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
-        )
-        if (resetOutcome?.match && resetOutcome.match[1] === "1") {
-          const resetParsed = parseSgrReport(resetOutcome.match[2] ?? "")
-          if (!resetParsed) {
+        if (set.some((attr) => baselineParsed!.attributes.has(attr))) {
+          ctx.write("\x1b[0m")
+          const rereadOutcome = await ctx.queryWithSentinelOutcome(
+            "\x1bP$qm\x1b\\",
+            /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
+          )
+          baselineParsed = rereadOutcome?.match ? parseSgrReport(rereadOutcome.match[2] ?? "") : null
+          if (!baselineParsed || set.some((attr) => baselineParsed!.attributes.has(attr))) {
             return {
               pass: false,
-              response: resetOutcome.raw,
+              response: rereadOutcome?.raw,
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
                 evidence: "query",
-                note: `${id}: Reset SGR report contains truncated or invalid parameters`,
+                note: `${id}: Baseline styling active and could not be neutralized with SGR 0`,
               },
             }
           }
-          const cleared = set.every((attr) => !resetParsed.attributes.has(attr))
-          const retained = preserve.every((attr) => resetParsed.attributes.has(attr))
-          const matches = cleared && retained
-          return {
-            pass: matches,
-            response: resetOutcome.raw,
-            observation: { outcome: matches ? "supported" : "unsupported", evidence: "query" },
-            assertions: [
-              {
-                kind: matches ? "positive" : "negative",
-                expected: `${id}: DECRQSS SGR report clears ${set.join(",")} and preserves ${preserve.join(",")}`,
-                observed: resetOutcome.raw,
+        }
+
+        // Phase 2: Apply setup and qualify intermediate state
+        ctx.write(setup)
+        setupApplied = true
+        const setupOutcome = await ctx.queryWithSentinelOutcome(
+          "\x1bP$qm\x1b\\",
+          /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
+        )
+        if (setupOutcome?.match && setupOutcome.match[1] === "1") {
+          const setupParsed = parseSgrReport(setupOutcome.match[2] ?? "")
+          if (!setupParsed) {
+            return {
+              pass: false,
+              response: setupOutcome.raw,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "query",
+                note: `${id}: Setup SGR report contains truncated or invalid parameters`,
               },
-            ],
+            }
+          }
+          const requiredAttrs = [...new Set([...set, ...preserve])]
+          const setupAppliedAttrs = requiredAttrs.every((attr) => setupParsed.attributes.has(attr))
+          if (!setupAppliedAttrs) {
+            return {
+              pass: false,
+              response: setupOutcome.raw,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "query",
+                note: `${id}: Setup attributes (${requiredAttrs.join(",")}) not reflected by terminal; cannot qualify reset`,
+              },
+            }
+          }
+
+          // Phase 3: Apply reset and verify clearing of target attributes and preservation of others
+          ctx.write(reset)
+          const resetOutcome = await ctx.queryWithSentinelOutcome(
+            "\x1bP$qm\x1b\\",
+            /\x1bP([01])\$r([0-9:;]*)m(?:\x1b\\|\x07)/,
+          )
+          if (resetOutcome?.match && resetOutcome.match[1] === "1") {
+            const resetParsed = parseSgrReport(resetOutcome.match[2] ?? "")
+            if (!resetParsed) {
+              return {
+                pass: false,
+                response: resetOutcome.raw,
+                observation: {
+                  outcome: "inconclusive",
+                  reason: "insufficient-evidence",
+                  evidence: "query",
+                  note: `${id}: Reset SGR report contains truncated or invalid parameters`,
+                },
+              }
+            }
+            const cleared = set.every((attr) => !resetParsed.attributes.has(attr))
+            const retained = preserve.every((attr) => resetParsed.attributes.has(attr))
+            const matches = cleared && retained
+            if (matches) {
+              // DECRQSS confirmed reported parameters; visual rendering is not measured by query alone.
+              if (!ctx.capture) {
+                return {
+                  pass: false,
+                  response: resetOutcome.raw,
+                  observation: {
+                    outcome: "inconclusive",
+                    reason: "insufficient-evidence",
+                    evidence: "query",
+                    note: `${id}: DECRQSS confirmed reported reset parameters; rendering observable not measured`,
+                  },
+                  assertions: [
+                    {
+                      kind: "positive",
+                      expected: `${id}: DECRQSS SGR report clears ${set.join(",")} and preserves ${preserve.join(",")}`,
+                      observed: resetOutcome.raw,
+                    },
+                  ],
+                }
+              }
+            } else {
+              return {
+                pass: false,
+                response: resetOutcome.raw,
+                observation: { outcome: "unsupported", evidence: "query" },
+                assertions: [
+                  {
+                    kind: "negative",
+                    expected: `${id}: DECRQSS SGR report clears ${set.join(",")} and preserves ${preserve.join(",")}`,
+                    observed: resetOutcome.raw,
+                  },
+                ],
+              }
+            }
           }
         }
       }

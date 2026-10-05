@@ -506,17 +506,47 @@ test("XTPUSHCOLORS and XTPOPCOLORS measure palette restoration via OSC 4", async
     }
 
     const result = await probe.term(context)
-    expect(result.pass, id).toBe(true)
-    expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.pass, id).toBe(false)
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
     expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
   }
 })
 
 test("stack push/pop and mode save/restore qualify intermediate states", async () => {
-  // Ignored OSC 4 green mutation leaves palette push/pop inconclusive
+  // Constant green baseline returns inconclusive (cannot qualify mutation against identical baseline)
   const colorProbe = modesProbes.find((p) => p.id === "modes.xtpushcolors")
   if (!colorProbe?.term) throw new Error("Missing modes.xtpushcolors callback")
 
+  const constantGreenCtx: TermContext = {
+    cols: 80,
+    rows: 24,
+    write() {},
+    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({
+      match: ["\x1b]4;1;rgb:0000/ffff/0000\x07", "0000/ffff/0000"],
+      reason: "reply",
+      raw: "\x1b]4;1;rgb:0000/ffff/0000\x07",
+      rawBase64: "",
+    }),
+    queryMode: async () => null,
+  }
+  const constantGreenResult = await colorProbe.term(constantGreenCtx)
+  expect(constantGreenResult.pass).toBe(false)
+  expect(constantGreenResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+
+  // Ignored OSC 4 green mutation leaves palette push/pop inconclusive
   const ignoredMutationCtx: TermContext = {
     cols: 80,
     rows: 24,
@@ -537,6 +567,48 @@ test("stack push/pop and mode save/restore qualify intermediate states", async (
   const ignoredMutationResult = await colorProbe.term(ignoredMutationCtx)
   expect(ignoredMutationResult.pass).toBe(false)
   expect(ignoredMutationResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+
+  // Null parsed intermediate SGR report (e.g. 1;38;5) cannot qualify cleared state
+  const sgrProbe = modesProbes.find((p) => p.id === "modes.xtpushsgr")
+  if (!sgrProbe?.term) throw new Error("Missing modes.xtpushsgr callback")
+
+  let queryCount = 0
+  const malformedIntermediateCtx: TermContext = {
+    cols: 80,
+    rows: 24,
+    write() {},
+    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => {
+      queryCount++
+      if (queryCount === 1) {
+        // baseline
+        return { match: ["\x1bP1$r0m\x1b\\", "1", "0"], reason: "reply", raw: "\x1bP1$r0m\x1b\\", rawBase64: "" }
+      }
+      if (queryCount === 2) {
+        // setup bold
+        return { match: ["\x1bP1$r1m\x1b\\", "1", "1"], reason: "reply", raw: "\x1bP1$r1m\x1b\\", rawBase64: "" }
+      }
+      // intermediate: malformed SGR report
+      return {
+        match: ["\x1bP1$r1;38;5m\x1b\\", "1", "1;38;5"],
+        reason: "reply",
+        raw: "\x1bP1$r1;38;5m\x1b\\",
+        rawBase64: "",
+      }
+    },
+    queryMode: async () => null,
+  }
+  const malformedIntermediateResult = await sgrProbe.term(malformedIntermediateCtx)
+  expect(malformedIntermediateResult.pass).toBe(false)
+  expect(malformedIntermediateResult.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
     evidence: "query",
