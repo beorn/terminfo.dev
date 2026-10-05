@@ -25,7 +25,7 @@ jobs:
 
           function Log($msg) {
             Write-Output $msg
-            $msg | Out-File -Append -FilePath $logPath
+            $msg | Out-File -Append -FilePath $logPath -Encoding utf8
           }
 
           Log "=== WINDOWS OS / BUILD ==="
@@ -83,16 +83,29 @@ jobs:
           $logPath = "C:\spike-artifacts\context.txt"
           function Log($msg) {
             Write-Output $msg
-            $msg | Out-File -Append -FilePath $logPath
+            $msg | Out-File -Append -FilePath $logPath -Encoding utf8
           }
 
           Log "`n=== TERMINAL INVENTORY ==="
 
           # Check for pre-existing wt.exe
-          $wtPath = (Get-Command wt.exe -ErrorAction SilentlyContinue)?.Source
+          $cmd = Get-Command wt.exe -ErrorAction SilentlyContinue
+          $wtPath = if ($cmd) { $cmd.Source } else { $null }
+
           if (-not $wtPath) {
             $localAppWt = "$env:LOCALAPPDATA\Microsoft\WindowsApps\wt.exe"
             if (Test-Path $localAppWt) { $wtPath = $localAppWt }
+          }
+
+          if (-not $wtPath) {
+            $sysWt = "C:\Users\runneradmin\AppData\Local\Microsoft\WindowsApps\wt.exe"
+            if (Test-Path $sysWt) { $wtPath = $sysWt }
+          }
+
+          # Check WindowsApps directory
+          if (-not $wtPath) {
+            $appDir = Get-ChildItem "C:\Program Files\WindowsApps" -Filter "wt.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($appDir) { $wtPath = $appDir.FullName }
           }
 
           # Try chocolatey
@@ -100,11 +113,8 @@ jobs:
             Log "Windows Terminal not found on PATH. Attempting install via choco..."
             try {
               choco install microsoft-windows-terminal -y --no-progress
-              $wtPath = (Get-Command wt.exe -ErrorAction SilentlyContinue)?.Source
-              if (-not $wtPath) {
-                $localAppWt = "$env:LOCALAPPDATA\Microsoft\WindowsApps\wt.exe"
-                if (Test-Path $localAppWt) { $wtPath = $localAppWt }
-              }
+              $cmd = Get-Command wt.exe -ErrorAction SilentlyContinue
+              $wtPath = if ($cmd) { $cmd.Source } else { $null }
             } catch {
               Log "Choco install failed: $_"
             }
@@ -146,7 +156,8 @@ jobs:
             $wezDir = "C:\WezTerm"
             Invoke-WebRequest -Uri "https://github.com/wez/wezterm/releases/download/20240203-110809-5046fc22/WezTerm-windows-20240203-110809-5046fc22.zip" -OutFile $wezZip -UseBasicParsing
             Expand-Archive -Path $wezZip -DestinationPath $wezDir -Force
-            $wezPath = (Get-ChildItem -Path $wezDir -Filter "wezterm.exe" -Recurse | Select-Object -First 1)?.FullName
+            $item = Get-ChildItem -Path $wezDir -Filter "wezterm.exe" -Recurse | Select-Object -First 1
+            $wezPath = if ($item) { $item.FullName } else { $null }
             Log "WezTerm resolved at: $wezPath"
             if ($wezPath) {
               $wezVer = & $wezPath --version
@@ -228,10 +239,17 @@ jobs:
           '@ | Out-File -FilePath "C:\fixture_wt.py" -Encoding utf8
 
           $wtBin = [Environment]::GetEnvironmentVariable("WT_BIN", "Machine")
-          if (-not $wtBin) { $wtBin = (Get-Command wt.exe -ErrorAction SilentlyContinue)?.Source }
+          if (-not $wtBin) {
+            $cmd = Get-Command wt.exe -ErrorAction SilentlyContinue
+            $wtBin = if ($cmd) { $cmd.Source } else { $null }
+          }
+          if (-not $wtBin) {
+            $localAppWt = "$env:LOCALAPPDATA\Microsoft\WindowsApps\wt.exe"
+            if (Test-Path $localAppWt) { $wtBin = $localAppWt }
+          }
           if (-not $wtBin) { $wtBin = "C:\WindowsTerminal\wt.exe" }
 
-          if (Test-Path $wtBin) {
+          if ($wtBin -and (Test-Path $wtBin)) {
             Write-Output "Launching Windows Terminal via: $wtBin"
             $proc = Start-Process -FilePath $wtBin -ArgumentList "new-tab", "--title", "WTSpike", "-d", "C:\", "cmd.exe", "/c", "python -u C:\fixture_wt.py" -PassThru
             for ($i = 0; $i -lt 25; $i++) {
@@ -257,7 +275,32 @@ jobs:
 
             Stop-Process -Name "WindowsTerminal" -Force -ErrorAction SilentlyContinue
           } else {
-            Write-Output "WT binary not available, skipping launch."
+            Write-Output "WT binary not available ($wtBin), falling back to wt command..."
+            try {
+              $proc = Start-Process wt -ArgumentList "new-tab", "--title", "WTSpike", "-d", "C:\", "cmd.exe", "/c", "python -u C:\fixture_wt.py" -PassThru
+              for ($i = 0; $i -lt 25; $i++) {
+                if (Test-Path "C:\spike-artifacts\wt_ready.txt") {
+                  Write-Output "WT fixture ready after $i seconds."
+                  break
+                }
+                Start-Sleep -Seconds 1
+              }
+              Start-Sleep -Seconds 2
+
+              Add-Type -AssemblyName System.Windows.Forms
+              Add-Type -AssemblyName System.Drawing
+              $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+              $g = [System.Drawing.Graphics]::FromImage($bmp)
+              $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+              $bmp.Save("C:\spike-artifacts\screenshot_wt_desktop.png", [System.Drawing.Imaging.ImageFormat]::Png)
+              $g.Dispose()
+              $bmp.Dispose()
+              Write-Output "Saved screenshot_wt_desktop.png via fallback wt"
+              Stop-Process -Name "WindowsTerminal" -Force -ErrorAction SilentlyContinue
+            } catch {
+              Write-Output "Fallback wt failed: $_"
+            }
           }
 
       - name: "Test 2: WezTerm (DEC Special Graphics + DA1)"
@@ -331,10 +374,14 @@ jobs:
 
           $wezBin = [Environment]::GetEnvironmentVariable("WEZTERM_BIN", "Machine")
           if (-not $wezBin) {
-            $wezBin = (Get-ChildItem -Path "C:\WezTerm" -Filter "wezterm.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1)?.FullName
+            $item = Get-ChildItem -Path "C:\WezTerm" -Filter "wezterm-gui.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $item) {
+              $item = Get-ChildItem -Path "C:\WezTerm" -Filter "wezterm.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+            $wezBin = if ($item) { $item.FullName } else { $null }
           }
 
-          if (Test-Path $wezBin) {
+          if ($wezBin -and (Test-Path $wezBin)) {
             Write-Output "Launching WezTerm via: $wezBin"
             $proc = Start-Process -FilePath $wezBin -ArgumentList "start", "--", "cmd.exe", "/c", "python -u C:\fixture_wezterm.py" -PassThru
             for ($i = 0; $i -lt 25; $i++) {
@@ -361,7 +408,7 @@ jobs:
             Stop-Process -Name "wezterm-gui" -Force -ErrorAction SilentlyContinue
             Stop-Process -Name "wezterm" -Force -ErrorAction SilentlyContinue
           } else {
-            Write-Output "WezTerm binary not found, skipping launch."
+            Write-Output "WezTerm binary not found ($wezBin), skipping launch."
           }
 
       - name: "Test 3: Windows Console / conhost (Control: DEC Special Graphics + DA1)"
