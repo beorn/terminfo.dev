@@ -2,6 +2,7 @@
  * @failure Unreviewed runs become current scores, or refresh skips its release assessment and errors.
  * @level l2
  * @consumer Site data and JSON API use the canonical reviewed-run selector.
+ * @reach fs-walk vendor/terminfo.dev/content/probes-{apps,libs,mux}/*.json
  * @testonly none
  */
 import { describe, expect, it, vi } from "vitest"
@@ -12,6 +13,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -229,7 +231,16 @@ describe("consumer selection", () => {
         ...Object.values(expected.history).flat(),
       ]
       for (const version of allExpectedVersions) expectedRuns.set(version.sha256, version)
-      expect(expectedRuns.size).toBe(166)
+      const retainedHashes = ["probes-apps", "probes-libs", "probes-mux"].flatMap((directory) =>
+        readdirSync(join(contentDir, directory))
+          .filter((name) => name.endsWith(".json") && name !== "unified.json")
+          .map((name) =>
+            createHash("sha256")
+              .update(readFileSync(join(contentDir, directory, name)))
+              .digest("hex"),
+          ),
+      )
+      expect([...expectedRuns.keys()].sort()).toEqual([...new Set(retainedHashes)].sort())
 
       const assertGroup = (
         actual: Record<string, RunReference> | Record<string, RunReference[]>,
