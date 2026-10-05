@@ -1,0 +1,116 @@
+name: macos-kitty-spike
+
+on:
+  push:
+    branches:
+      - spike/hosted-macos-27479
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spike:
+    name: macos-kitty-spike-job
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Gather system and display context
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/spike-artifacts
+          {
+            echo "=== SYSTEM VERSION ==="
+            sw_vers
+            echo ""
+            echo "=== RUNNER INFO ==="
+            echo "ImageOS: ${ImageOS:-unknown}"
+            echo "ImageVersion: ${ImageVersion:-unknown}"
+            echo "RUNNER_ARCH: ${RUNNER_ARCH:-unknown}"
+            echo "RUNNER_OS: ${RUNNER_OS:-unknown}"
+            echo ""
+            echo "=== DISPLAY / GRAPHICS ==="
+            system_profiler SPDisplaysDataType 2>/dev/null || true
+            echo ""
+            echo "=== DESKTOP BOUNDS ==="
+            osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null || true
+          } > /tmp/spike-artifacts/context.txt
+
+      - name: Install Kitty
+        continue-on-error: true
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask kitty
+          KITTY_APP="/Applications/Kitty.app"
+          if [ -d "$KITTY_APP" ]; then
+            sudo xattr -cr "$KITTY_APP" || true
+            "$KITTY_APP/Contents/MacOS/kitty" --version | tee -a /tmp/spike-artifacts/context.txt
+          else
+            echo "Kitty.app not found in /Applications" | tee -a /tmp/spike-artifacts/context.txt
+          fi
+
+      - name: Configure Kitty and Fixture Script
+        continue-on-error: true
+        run: |
+          echo "aW5pdGlhbF93aW5kb3dfd2lkdGggODAwCmluaXRpYWxfd2luZG93X2hlaWdodCA2MDAKcmVtZW1iZXJfd2luZG93X3NpemUgbm8KZW5hYmxlX3JlbW90ZV9jb250cm9sIHllcwpsaXN0ZW5fb24gdW5peDovdG1wL2tpdHR5X3NvY2tldApmb250X3NpemUgMTQuMApjdXJzb3JfYmxpbmtfaW50ZXJ2YWwgMApjb25maXJtX29zX3dpbmRvd19jbG9zZSAwCg==" | base64 -d > /tmp/kitty.conf
+          echo "aW1wb3J0IHN5cywgb3MsIHRlcm1pb3MsIHR0eSwgc2VsZWN0LCB0aW1lCgp0cnk6CiAgICBmZCA9IG9zLm9wZW4oIi9kZXYvdHR5Iiwgb3MuT19SRFdSKQpleGNlcHQgRXhjZXB0aW9uOgogICAgZmQgPSBzeXMuc3RkaW4uZmlsZW5vKCkKCm9sZF9zZXR0aW5ncyA9IHRlcm1pb3MudGNnZXRhdHRyKGZkKQpyZXBseSA9IGJ5dGVhcnJheSgpCnRyeToKICAgIHR0eS5zZXRyYXcoZmQpCiAgICBsaW5lID0gYiJcclxuXHJcbiAgXDAzM1sxOzM2bVwwMzMoMHFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFcMDMzKEJcMDMzWzBtXHJcblxyXG4iCiAgICBvcy53cml0ZShmZCwgbGluZSkKICAgIHRpbWUuc2xlZXAoMC4zKQogICAgb3Mud3JpdGUoZmQsIGIiXDAzM1tjIikKICAgIGRlYWRsaW5lID0gdGltZS50aW1lKCkgKyAzLjAKICAgIHdoaWxlIHRpbWUudGltZSgpIDwgZGVhZGxpbmU6CiAgICAgICAgciwgXywgXyA9IHNlbGVjdC5zZWxlY3QoW2ZkXSwgW10sIFtdLCAwLjIpCiAgICAgICAgaWYgcjoKICAgICAgICAgICAgY2h1bmsgPSBvcy5yZWFkKGZkLCAxMDI0KQogICAgICAgICAgICBpZiBjaHVuazoKICAgICAgICAgICAgICAgIHJlcGx5LmV4dGVuZChjaHVuaykKICAgICAgICAgICAgICAgIGlmIGIiYyIgaW4gY2h1bms6CiAgICAgICAgICAgICAgICAgICAgYnJlYWsKICAgICAgICBlbGlmIGxlbihyZXBseSkgPiAwOgogICAgICAgICAgICBicmVhawpmaW5hbGx5OgogICAgdHJ5OgogICAgICAgIHRlcm1pb3MudGNzZXRhdHRyKGZkLCB0ZXJtaW9zLlRDU0FEUkFJTiwgb2xkX3NldHRpbmdzKQogICAgICAgIGlmIGZkICE9IHN5cy5zdGRpbi5maWxlbm8oKToKICAgICAgICAgICAgb3MuY2xvc2UoZmQpCiAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgIHBhc3MKCm9zLm1ha2VkaXJzKCIvdG1wL3NwaWtlLWFydGlmYWN0cyIsIGV4aXN0X29rPVRydWUpCndpdGggb3BlbigiL3RtcC9zcGlrZS1hcnRpZmFjdHMvZGExX3JlcGx5LmJpbiIsICJ3YiIpIGFzIGY6CiAgICBmLndyaXRlKHJlcGx5KQoKd2l0aCBvcGVuKCIvdG1wL3NwaWtlLWFydGlmYWN0cy9kYTFfcmVwbHkudHh0IiwgInciKSBhcyBmOgogICAgZi53cml0ZShmIkJ5dGVzIHJlY2VpdmVkOiB7bGVuKHJlcGx5KX1cbiIpCiAgICBmLndyaXRlKGYiUmF3IHJlcHI6IHtyZXByKGJ5dGVzKHJlcGx5KSl9XG4iKQogICAgZi53cml0ZShmIkRlY29kZWQ6IHtieXRlcyhyZXBseSkuZGVjb2RlKCJsYXRpbjEiLCBlcnJvcnM9InJlcGxhY2UiKX1cbiIpCgp3aXRoIG9wZW4oIi90bXAvZml4dHVyZV9yZWFkeS50eHQiLCAidyIpIGFzIGY6CiAgICBmLndyaXRlKCJyZWFkeVxuIikKCnRpbWUuc2xlZXAoMzApCg==" | base64 -d > /tmp/fixture.py
+
+      - name: Launch Kitty and capture screenshot
+        continue-on-error: true
+        run: |
+          caffeinate -u -t 60 &
+
+          KITTY_BIN="/Applications/Kitty.app/Contents/MacOS/kitty"
+          if [ ! -f "$KITTY_BIN" ]; then
+            KITTY_BIN=$(command -v kitty || echo "")
+          fi
+
+          if [ -n "$KITTY_BIN" ]; then
+            echo "Starting Kitty via $KITTY_BIN"
+            "$KITTY_BIN" --config /tmp/kitty.conf python3 /tmp/fixture.py > /tmp/spike-artifacts/kitty.log 2>&1 &
+            KITTY_PID=$!
+            echo "Kitty started with PID $KITTY_PID"
+
+            osascript -e 'tell application "kitty" to activate' > /tmp/spike-artifacts/osascript.log 2>&1 || true
+
+            for i in {1..15}; do
+              if [ -f /tmp/fixture_ready.txt ]; then
+                echo "Fixture ready after $i seconds."
+                break
+              fi
+              sleep 1
+            done
+
+            sleep 2
+
+            screencapture -x /tmp/spike-artifacts/screenshot_kitty_screen.png > /tmp/spike-artifacts/screencapture_kitty.log 2>&1 || true
+
+            echo "=== Diagnostic GL probes ===" >> /tmp/spike-artifacts/kitty.log
+            "$KITTY_BIN" --debug-gl >> /tmp/spike-artifacts/kitty_debug_gl.log 2>&1 || true
+            "$KITTY_BIN" --config NONE >> /tmp/spike-artifacts/kitty_config_none.log 2>&1 || true
+            LIBGL_ALWAYS_SOFTWARE=1 "$KITTY_BIN" >> /tmp/spike-artifacts/kitty_software_gl.log 2>&1 || true
+
+            "$KITTY_BIN" @ --to unix:/tmp/kitty_socket get-text > /tmp/spike-artifacts/kitty_get_text.txt 2>&1 || true
+
+            kill -TERM "$KITTY_PID" 2>/dev/null || true
+          else
+            echo "ERROR: Kitty binary not found" | tee -a /tmp/spike-artifacts/kitty.log
+          fi
+
+          echo "=== PERMISSIONS & LOGS ===" > /tmp/spike-artifacts/permissions.log
+          log show --predicate 'subsystem == "com.apple.TCC"' --last 5m 2>/dev/null | tail -n 50 >> /tmp/spike-artifacts/permissions.log || true
+
+      - name: Report file inventory
+        continue-on-error: true
+        run: |
+          echo "=== Artifacts Directory ==="
+          ls -lah /tmp/spike-artifacts
+
+      - name: Upload spike artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-kitty-spike-artifacts
+          path: /tmp/spike-artifacts
+
+      - name: Conclude successfully
+        run: echo "Spike workflow completed."
