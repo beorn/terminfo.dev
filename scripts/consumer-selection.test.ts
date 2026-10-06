@@ -11,6 +11,7 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -229,7 +230,10 @@ describe("consumer selection", () => {
         ...Object.values(expected.history).flat(),
       ]
       for (const version of allExpectedVersions) expectedRuns.set(version.sha256, version)
-      expect(expectedRuns.size).toBe(166)
+      const retainedFiles = ["probes-apps", "probes-mux", "probes-libs"].flatMap((dir) =>
+        readdirSync(join(contentDir, dir)).filter((name) => name.endsWith(".json") && name !== "unified.json"),
+      )
+      expect(expectedRuns.size).toBe(retainedFiles.length)
 
       const assertGroup = (
         actual: Record<string, RunReference> | Record<string, RunReference[]>,
