@@ -70,7 +70,7 @@ jobs:
           if [ "$CLI_VER" = "local" ]; then
             echo "=== Building and linking local terminfo.dev package ==="
             bun install
-            bun run build
+            bun scripts/build-cli.ts
             npm install -g ./packages/terminfo.dev
           else
             echo "=== Installing terminfo.dev@$CLI_VER ==="
@@ -83,7 +83,7 @@ jobs:
           fi
 
           echo "=== Warmup check ==="
-          terminfo --version || npx terminfo.dev --version || true
+          terminfo --version
 
       - name: Install terminal matrix (iTerm2, Ghostty via Brew; Alacritty via GitHub release)
         continue-on-error: true
@@ -104,7 +104,7 @@ jobs:
             hdiutil detach /Volumes/Alacritty 2>/dev/null || true
           fi
 
-          sudo xattr -cr /Applications/*.app 2>/dev/null || true
+          sudo xattr -cr /Applications/iTerm.app /Applications/Ghostty.app /Applications/Alacritty.app 2>/dev/null || true
 
       - name: Record macOS bundle version receipts
         continue-on-error: true
@@ -364,6 +364,19 @@ jobs:
           lines.append("# Hosted macOS 4-Terminal Measurement Summary\n")
           lines.append("| Terminal | Target ID | Detected Version | Execution Mode | Total Executed | Supported | Unsupported | Inconclusive | Error | Decisive Share (Query) |")
           lines.append("|---|---|---|---|---|---|---|---|---|---|")
+
+          expected_terms = ["terminal_app", "iterm2", "ghostty", "alacritty"]
+          missing_terms = [t for t in expected_terms if not os.path.exists(f"/tmp/measurement-artifacts/results_{t}.json")]
+          if missing_terms:
+              print(f"WARNING: Missing results files for terminals: {missing_terms}")
+              for t in missing_terms:
+                  out_file = f"/tmp/measurement-artifacts/output_{t}.txt"
+                  err_hint = "No output file"
+                  if os.path.exists(out_file):
+                      with open(out_file, "r") as f:
+                          err_lines = [l.strip() for l in f if l.strip()]
+                          err_hint = err_lines[-1] if err_lines else "Empty output"
+                  lines.append(f"| {t} | MISSING | {err_hint} | hosted VM | 0 | 0 | 0 | 0 | 1 | 0.0% |")
 
           receipts_list = []
 
