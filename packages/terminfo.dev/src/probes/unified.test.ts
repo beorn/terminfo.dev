@@ -67,84 +67,87 @@ it.each([
   { label: "sentinel", response: "nonsecret-callback-response" },
   { label: "empty", response: "" },
   { label: "absent", response: undefined },
-])("retains the $label explicit callback response and refuses an untyped legacy-shaped result", async ({ response }) => {
-  const id = "modes.bracketed-paste"
-  const definition = ALL_PROBES.find((probe) => probe.id === id)!
-  expect(definition.termWrites).toBe("query")
-  expect(definition.termNeedsGeometry).toBeUndefined()
-  const original = definition.term
-  const responseFields = response === undefined ? {} : { response }
-  const note = "Deterministic callback response retention fixture"
-  const observation = {
-    outcome: "inconclusive" as const,
-    reason: "insufficient-evidence" as const,
-    evidence: "none" as const,
-    note,
-  }
-  const trace = JSON.stringify({ writes: [], queries: [], events: [] })
-  try {
-    definition.term = async () => ({ pass: false, ...responseFields, observation })
-    const explicit = await runProbeBatch({ ids: [id] })
-    definition.term = (async () => ({ pass: false, ...responseFields, note })) as unknown as typeof definition.term
-    const legacy = await runProbeBatch({ ids: [id] })
-    const decodedExplicit = decodeCollectorRun(
-      "explicit-callback-response.json",
-      JSON.stringify(asRun(explicit)),
-      manifest,
-      sourceRevision,
-    ).run
-    const decodedLegacy = decodeCollectorRun(
-      "legacy-callback-response.json",
-      JSON.stringify(asRun(legacy)),
-      manifest,
-      sourceRevision,
-    ).run
-    const expectedObservation = { featureId: id, ...observation, rawReplyRef: id }
-    expect(explicit.observations).toEqual([expectedObservation])
-    expect(decodedExplicit.observations).toEqual([expectedObservation])
-    expect(explicit.ungradedDiagnostics).toEqual({})
-    expect(decodedExplicit.ungradedDiagnostics).toEqual({})
-    expect(explicit.assertions).toEqual([])
-    expect(decodedExplicit.assertions).toEqual([])
-    expect(explicit.screenshotRefs).toEqual([])
-    expect(decodedExplicit.screenshotRefs).toEqual([])
-    expect(explicit.suiteComplete).toBe(false)
-    expect(decodedExplicit.suiteComplete).toBe(false)
-    expect(decodedExplicit.identity).toBe("unverified")
-    expect(explicit.rawReplies[id]).toBe(trace)
-    expect(decodedExplicit.rawReplies[id]).toBe(trace)
-
-    // The one-path refactor deleted the legacy-callback record. A result that is neither a
-    // measurement nor a coverage record is refused loudly instead of silently ungraded.
-    const refusal = {
-      kind: "collector-error",
-      name: "Error",
-      message: `Callback for ${id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
+])(
+  "retains the $label explicit callback response and refuses an untyped legacy-shaped result",
+  async ({ response }) => {
+    const id = "modes.bracketed-paste"
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    expect(definition.termWrites).toBe("query")
+    expect(definition.termNeedsGeometry).toBeUndefined()
+    const original = definition.term
+    const responseFields = response === undefined ? {} : { response }
+    const note = "Deterministic callback response retention fixture"
+    const observation = {
+      outcome: "inconclusive" as const,
+      reason: "insufficient-evidence" as const,
+      evidence: "none" as const,
+      note,
     }
-    expect(legacy.observations).toEqual([])
-    expect(decodedLegacy.observations).toEqual([])
-    expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
-    expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: refusal })
-    expect(legacy.rawReplies).toEqual({ [id]: trace })
-    expect(decodedLegacy.rawReplies).toEqual({ [id]: trace })
-    expect(legacy.assertions).toEqual([])
-    expect(decodedLegacy.assertions).toEqual([])
-    expect(legacy.screenshotRefs).toEqual([])
-    expect(decodedLegacy.screenshotRefs).toEqual([])
-    expect(legacy.suiteComplete).toBe(false)
-    expect(decodedLegacy.suiteComplete).toBe(false)
-    expect(decodedLegacy.identity).toBe("unverified")
+    const trace = JSON.stringify({ writes: [], queries: [], events: [] })
+    try {
+      definition.term = async () => ({ pass: false, ...responseFields, observation })
+      const explicit = await runProbeBatch({ ids: [id] })
+      definition.term = (async () => ({ pass: false, ...responseFields, note })) as unknown as typeof definition.term
+      const legacy = await runProbeBatch({ ids: [id] })
+      const decodedExplicit = decodeCollectorRun(
+        "explicit-callback-response.json",
+        JSON.stringify(asRun(explicit)),
+        manifest,
+        sourceRevision,
+      ).run
+      const decodedLegacy = decodeCollectorRun(
+        "legacy-callback-response.json",
+        JSON.stringify(asRun(legacy)),
+        manifest,
+        sourceRevision,
+      ).run
+      const expectedObservation = { featureId: id, ...observation, rawReplyRef: id }
+      expect(explicit.observations).toEqual([expectedObservation])
+      expect(decodedExplicit.observations).toEqual([expectedObservation])
+      expect(explicit.ungradedDiagnostics).toEqual({})
+      expect(decodedExplicit.ungradedDiagnostics).toEqual({})
+      expect(explicit.assertions).toEqual([])
+      expect(decodedExplicit.assertions).toEqual([])
+      expect(explicit.screenshotRefs).toEqual([])
+      expect(decodedExplicit.screenshotRefs).toEqual([])
+      expect(explicit.suiteComplete).toBe(false)
+      expect(decodedExplicit.suiteComplete).toBe(false)
+      expect(decodedExplicit.identity).toBe("unverified")
+      expect(explicit.rawReplies[id]).toBe(trace)
+      expect(decodedExplicit.rawReplies[id]).toBe(trace)
 
-    const expectedReplies = {
-      [id]: trace,
-      ...(response === undefined ? {} : { [`${id}.callbackResponse`]: response }),
+      // The one-path refactor deleted the legacy-callback record. A result that is neither a
+      // measurement nor a coverage record is refused loudly instead of silently ungraded.
+      const refusal = {
+        kind: "collector-error",
+        name: "Error",
+        message: `Callback for ${id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
+      }
+      expect(legacy.observations).toEqual([])
+      expect(decodedLegacy.observations).toEqual([])
+      expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
+      expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: refusal })
+      expect(legacy.rawReplies).toEqual({ [id]: trace })
+      expect(decodedLegacy.rawReplies).toEqual({ [id]: trace })
+      expect(legacy.assertions).toEqual([])
+      expect(decodedLegacy.assertions).toEqual([])
+      expect(legacy.screenshotRefs).toEqual([])
+      expect(decodedLegacy.screenshotRefs).toEqual([])
+      expect(legacy.suiteComplete).toBe(false)
+      expect(decodedLegacy.suiteComplete).toBe(false)
+      expect(decodedLegacy.identity).toBe("unverified")
+
+      const expectedReplies = {
+        [id]: trace,
+        ...(response === undefined ? {} : { [`${id}.callbackResponse`]: response }),
+      }
+      expect(explicit.rawReplies).toEqual(expectedReplies)
+      expect(decodedExplicit.rawReplies).toEqual(expectedReplies)
+    } finally {
+      definition.term = original
     }
-    expect(explicit.rawReplies).toEqual(expectedReplies)
-    expect(decodedExplicit.rawReplies).toEqual(expectedReplies)
-  } finally {
-    definition.term = original
-  }
-})
+  },
+)
 
 // A result-level note beside an explicit observation must reach the run document, and an
 // observation's own note is never replaced by it; the legacy control keeps the result note.

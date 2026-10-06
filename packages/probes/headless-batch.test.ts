@@ -272,10 +272,7 @@ test("aborts the batch on failed cleanup before invoking another probe", async (
   const next = vi.fn(() => stubResult())
   try {
     await expect(
-      collectBatch(async () => value, "xtermjs", [
-        definition("first", () => stubResult()),
-        definition("next", next),
-      ]),
+      collectBatch(async () => value, "xtermjs", [definition("first", () => stubResult()), definition("next", next)]),
     ).rejects.toThrow("headless xtermjs probe first: backend cleanup failed")
     expect(next).not.toHaveBeenCalled()
   } finally {
