@@ -165,34 +165,86 @@ test.each([
   expect(noControl.result.assertions, id).toBeUndefined()
 })
 
-test.each([
-  "extensions.osc104-reset-palette",
-  "extensions.osc110-reset-fg",
-  "extensions.osc111-reset-bg",
-  "extensions.osc112-reset-cursor",
-  "extensions.osc710-font-normal",
-  "extensions.osc2-title",
-  "extensions.osc9-progress",
-] as const)("app %s leaves state untouched when no effect readback exists", async (id) => {
-  const definition = extensionsProbes.find((item) => item.id === id)
-  if (!definition?.term) throw new Error(`missing app extension callback ${id}`)
-  const writes: string[] = []
-  const result = await definition.term({
-    write: (bytes: string) => {
-      writes.push(bytes)
-    },
-    queryCursorPosition: async () => {
-      throw new Error("unmeasured CPR must not run")
-    },
-  } as unknown as TermContext)
-  expect(writes, id).toEqual([])
-  expect(result.observation, id).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
-  })
-  expect(result.assertions, id).toBeUndefined()
-})
+test.each(["extensions.osc710-font-normal", "extensions.osc2-title", "extensions.osc9-progress"] as const)(
+  "app %s leaves state untouched when no effect readback exists",
+  async (id) => {
+    const definition = extensionsProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`missing app extension callback ${id}`)
+    const writes: string[] = []
+    const result = await definition.term({
+      write: (bytes: string) => {
+        writes.push(bytes)
+      },
+      queryCursorPosition: async () => {
+        throw new Error("unmeasured CPR must not run")
+      },
+    } as unknown as TermContext)
+    expect(writes, id).toEqual([])
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(result.assertions, id).toBeUndefined()
+  },
+)
+
+// 27832: the reset features mutate and read back. The collector runs this exchange only with a
+// verified disposable-ownership receipt; the callback itself grades the measured four legs.
+const appResetProbes = [
+  ["extensions.osc104-reset-palette", 4, 104, 0],
+  ["extensions.osc110-reset-fg", 10, 110, undefined],
+  ["extensions.osc111-reset-bg", 11, 111, undefined],
+  ["extensions.osc112-reset-cursor", 12, 112, undefined],
+  ["extensions.osc113-reset-pointer-fg", 13, 113, undefined],
+  ["extensions.osc114-reset-pointer-bg", 14, 114, undefined],
+] as const
+
+test.each(appResetProbes)(
+  "app %s reads the colour, sets it, reads the change, resets, and reads the restoration",
+  async (id, setCode, resetCode, index) => {
+    const definition = callback(id)
+    // The collector's gate is the disposable receipt; the declaration is what makes it apply.
+    expect(definition.termNeedsDisposable, id).toBe(true)
+    const indexPart = index === undefined ? "" : `${index};`
+    const rgb = (hex: string) => `\x1b]${setCode};${indexPart}rgb:${hex}\x07`
+    const run = async (replies: string[]) => {
+      const writes: string[] = []
+      const queue = [...replies]
+      const exchange = async (_sequence: string, pattern: RegExp) => {
+        const raw = queue.shift() ?? ""
+        return {
+          match: pattern.exec(raw),
+          reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
+          raw,
+          rawBase64: Buffer.from(raw).toString("base64"),
+        }
+      }
+      const result = await definition.term!({
+        write: (bytes: string) => {
+          writes.push(bytes)
+        },
+        queryWithSentinelOutcome: exchange,
+      } as unknown as TermContext)
+      return { result, writes }
+    }
+    const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
+    const restored = await run([rgb("0000/0000/0000"), rgb("aa/bb/cc"), rgb("0000/0000/0000")])
+    expect(restored.result.observation, id).toMatchObject({ outcome: "supported", evidence: "behavior" })
+    expect(restored.result.assertions, id).toMatchObject([{ kind: "positive" }])
+    expect(restored.writes, id).toEqual([`\x1b]${setCode};${indexPart}rgb:aa/bb/cc\x07`, reset])
+    const notRestored = await run([rgb("0000/0000/0000"), rgb("aa/bb/cc"), rgb("12/34/56")])
+    expect(notRestored.result.observation, id).toMatchObject({ outcome: "unsupported", evidence: "behavior" })
+    expect(notRestored.result.assertions, id).toMatchObject([{ kind: "negative" }])
+    const noControl = await run([rgb("0000/0000/0000"), ""])
+    expect(noControl.result.observation?.outcome, id).toBe("inconclusive")
+    expect(noControl.result.assertions, id).toBeUndefined()
+    const noReply = await run([])
+    expect(noReply.writes, id).toEqual([])
+    expect(noReply.result.observation, id).toMatchObject({ evidence: "query" })
+    expect(noReply.result.observation?.outcome, id).toBe("inconclusive")
+  },
+)
 
 const appOnlyEffects = [
   "extensions.osc22-pointer",

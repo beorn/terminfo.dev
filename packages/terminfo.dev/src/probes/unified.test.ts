@@ -3,7 +3,12 @@
  * @level l1
  * @consumer Real-terminal app, daemon, and inline probe batch
  * @testonly none
+ * @reach fs-walk /tmp/terminfo-disposable-receipts
  */
+import { createHash } from "node:crypto"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import { ALL_PROBES, type ProbeRun, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { decodeCollectorRun } from "@terminfo/run-parser"
@@ -84,6 +89,8 @@ it.each([
       note,
     }
     const trace = JSON.stringify({ writes: [], queries: [], events: [] })
+    // The collector records its own disposable-ownership verdict beside the replies.
+    const sharedOwnership = { "collector.disposableOwnership": JSON.stringify({ kind: "shared" }) }
     try {
       definition.term = async () => ({ pass: false, ...responseFields, observation })
       const explicit = await runProbeBatch({ ids: [id] })
@@ -127,8 +134,8 @@ it.each([
       expect(decodedLegacy.observations).toEqual([])
       expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
       expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: refusal })
-      expect(legacy.rawReplies).toEqual({ [id]: trace })
-      expect(decodedLegacy.rawReplies).toEqual({ [id]: trace })
+      expect(legacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(decodedLegacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacy.assertions).toEqual([])
       expect(decodedLegacy.assertions).toEqual([])
       expect(legacy.screenshotRefs).toEqual([])
@@ -139,6 +146,7 @@ it.each([
 
       const expectedReplies = {
         [id]: trace,
+        ...sharedOwnership,
         ...(response === undefined ? {} : { [`${id}.callbackResponse`]: response }),
       }
       expect(explicit.rawReplies).toEqual(expectedReplies)
@@ -184,6 +192,8 @@ it.each([
     }
     const expectedNote = observationNote ?? resultNote
     const trace = JSON.stringify({ writes: [], queries: [], events: [] })
+    // The collector records its own disposable-ownership verdict beside the replies.
+    const sharedOwnership = { "collector.disposableOwnership": JSON.stringify({ kind: "shared" }) }
     try {
       definition.term = async () => ({ pass: false, ...resultNoteFields, observation })
       const explicit = await runProbeBatch({ ids: [id] })
@@ -208,8 +218,8 @@ it.each([
       expect(decodedExplicit.ungradedDiagnostics).toEqual({})
       expect(explicit.assertions).toEqual([])
       expect(decodedExplicit.assertions).toEqual([])
-      expect(explicit.rawReplies).toEqual({ [id]: trace })
-      expect(decodedExplicit.rawReplies).toEqual({ [id]: trace })
+      expect(explicit.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(decodedExplicit.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
       expect(explicit.suiteComplete).toBe(false)
       expect(decodedExplicit.suiteComplete).toBe(false)
       expect(decodedExplicit.identity).toBe("unverified")
@@ -224,8 +234,8 @@ it.each([
       expect(decodedLegacy.observations).toEqual([])
       expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
       expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: refusal })
-      expect(legacy.rawReplies).toEqual({ [id]: trace })
-      expect(decodedLegacy.rawReplies).toEqual({ [id]: trace })
+      expect(legacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(decodedLegacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
       expect(legacy.assertions).toEqual([])
       expect(decodedLegacy.assertions).toEqual([])
       expect(decodedLegacy.suiteComplete).toBe(false)
@@ -382,6 +392,9 @@ afterEach(() => {
   vi.restoreAllMocks()
   process.stdout.write = originalWrite
   process.stdin.removeAllListeners("data")
+  for (const path of receiptDirectories.splice(0)) rmSync(path, { recursive: true, force: true })
+  if (originalDisposableReceipt === undefined) delete process.env.TERMINFO_DISPOSABLE_RECEIPT
+  else process.env.TERMINFO_DISPOSABLE_RECEIPT = originalDisposableReceipt
 })
 
 // These callback/capture contract tests exercise the post-authorization batch path;
@@ -389,6 +402,110 @@ afterEach(() => {
 function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
+
+const receiptDirectories: string[] = []
+const originalDisposableReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
+
+/** The host-authored half the collector can read: /out/host-measured.json plus the envelope. */
+function validContainerReceipt() {
+  return {
+    schemaVersion: 1,
+    kind: "linux-xvfb-container",
+    runId: "b".repeat(32),
+    collectedAt: "2026-10-06T22:00:00Z",
+    runtime: {
+      imageId: "sha256:" + "a".repeat(64),
+      imageTarSha256: "a".repeat(64),
+      arch: "x86_64",
+      nixLockRevision: "c".repeat(40),
+      sourceRevision: "d".repeat(40),
+      sourceTreeStatus: "clean",
+      rootRevision: "e".repeat(40),
+      suiteHash: "f".repeat(12),
+    },
+    runnerArtifact: { frozenRunnerSha256: "1".repeat(64), buildReceiptSha256: "2".repeat(64) },
+    declaredTarget: { kind: "app", id: "kitty", version: "0.49.2", os: "linux" },
+    preset: "current",
+    clipboardProfile: "default",
+  }
+}
+
+// 27832 amendment 1: a mutating probe needs a verified disposable-ownership receipt, the collector
+// checks it once before the first write, and the run records the kind and the digest.
+it("refuses a mutating reset probe with no disposable receipt and writes nothing", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })
+  expect(writes).toEqual([])
+  expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: "extensions.osc110-reset-fg",
+      outcome: "inconclusive",
+      reason: "policy-refused",
+      evidence: "none",
+      note: "Collector refused before sending bytes because no verified disposable-ownership receipt was presented",
+    },
+  ])
+  expect(batch.assertions).toEqual([])
+  expect(JSON.parse(batch.rawReplies["extensions.osc110-reset-fg"]!)).toEqual({ writes: [], queries: [], events: [] })
+})
+
+it("a declared receipt that cannot be verified is loud before any byte, never a silent shared default", async () => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, JSON.stringify({ ...validContainerReceipt(), kind: "a-person-s-laptop" }))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  await expect(runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })).rejects.toThrow(/unknown kind/)
+  expect(writes).toEqual([])
+})
+
+it("a verified disposable receipt runs the reset exchange and records its kind and digest", async () => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const bytes = JSON.stringify(validContainerReceipt())
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, bytes)
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  const replies = ["\x1b]10;rgb:0000/0000/0000\x07", "\x1b]10;rgb:aa/bb/cc\x07", "\x1b]10;rgb:0000/0000/0000\x07"]
+  let read = 0
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    if (text === "\x1b]10;?\x07\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })
+  expect(batch.observations).toMatchObject([
+    { featureId: "extensions.osc110-reset-fg", outcome: "supported", evidence: "behavior" },
+  ])
+  expect(writes).toEqual([
+    "\x1b]10;?\x07\x1b[c",
+    "\x1b]10;rgb:aa/bb/cc\x07",
+    "\x1b]10;?\x07\x1b[c",
+    "\x1b]110\x07",
+    "\x1b]10;?\x07\x1b[c",
+  ])
+  const recorded = JSON.parse(batch.rawReplies["collector.disposableOwnership"]!) as {
+    kind: string
+    runId: string
+    receiptSha256: string
+  }
+  expect(recorded).toMatchObject({ kind: "linux-xvfb-container", runId: "b".repeat(32) })
+  expect(recorded.receiptSha256).toBe(createHash("sha256").update(bytes).digest("hex"))
+})
 
 const measured = (
   rows: number,

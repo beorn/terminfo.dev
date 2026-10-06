@@ -375,6 +375,12 @@ export interface ProbeDefinition {
   term: ((ctx: TermContext) => Promise<ProbeResult>) | null
   /** Only an explicitly reviewed report request may run without a disposable terminal. */
   termWrites?: "query"
+  /**
+   * This callback may MUTATE the terminal and read the state back, so it needs a verified
+   * disposable-ownership receipt as well as an owned terminal. A person's terminal is never
+   * authorized: absent, forged or foreign receipt leaves the untouched default path.
+   */
+  termNeedsDisposable?: true
   /** App callback requires measured geometry from its owned output stream. */
   termNeedsGeometry?: true
   /** Explicit opt-in for recording callback exceptions as observations. */

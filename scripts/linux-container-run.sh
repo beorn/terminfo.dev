@@ -429,7 +429,7 @@ output_parent=$(cd "$output_parent" && pwd -P)
 run_id=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
 run_dir="$output_parent/$run_id"
 mkdir "$run_dir"
-mkdir "$run_dir/prep" "$run_dir/raw"
+mkdir -p "$run_dir/prep/receipt" "$run_dir/raw"
 prep="$run_dir/prep"
 raw="$run_dir/raw"
 
@@ -526,10 +526,11 @@ jq -n \
   --arg bundleNar "$bundle_sha" --arg lock "$root_lock_sha" \
   --arg runnerSha "$frozen_runner_sha" --arg receiptSha "$build_receipt_sha" \
   --arg sourceStatus "$source_status" --slurpfile build "$cli_receipt" \
+  --arg collectedAt "$(date -u +%FT%TZ)" \
   --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$kitty_version" \
   --arg url "$source_url" --arg sri "$source_sri" \
   --arg runnerUrl "file://$prep/runner-bundle.tar" \
-  '{runId:$run,preset:$preset,clipboardProfile:$profile,
+  '{schemaVersion:1,kind:"linux-xvfb-container",collectedAt:$collectedAt,runId:$run,preset:$preset,clipboardProfile:$profile,
     declaredTarget:{kind:"app",id:"kitty",version:$version,os:"linux"},
     sourceArtifact:{url:$url,sri:$sri},
     runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
@@ -539,6 +540,10 @@ jq -n \
       sourceRevision:$source,sourceTreeStatus:$sourceStatus,rootRevision:$root,suiteHash:$suite},
     status:"raw-unreviewed-history"} + (if $ids == null then {} else {selectedIDs:$ids} end)' > "$raw/host-measured.json"
 
+# The collector reads its ownership receipt from a read-only copy: the container being measured
+# must not be able to rewrite the receipt that authorizes writing to the terminal it drives.
+cp "$raw/host-measured.json" "$prep/receipt/host-measured.json"
+
 selection_env=()
 [[ "$probe_ids" == null ]] || selection_env=(--env "TERMINFO_PROBE_IDS=$probe_ids")
 container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-only \
@@ -546,8 +551,10 @@ container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-on
   --tmpfs "/tmp:rw,nosuid,nodev,mode=1777" \
   --tmpfs "/home/runner:rw,nosuid,nodev,uid=$(id -u),gid=$(id -g),mode=0700" \
   --mount "type=bind,src=$raw,dst=/out" \
+  --mount "type=bind,src=$prep/receipt,dst=/receipt,readonly" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
+  --env "TERMINFO_DISPOSABLE_RECEIPT=/receipt/host-measured.json" \
   "$image_id")
 echo "$container_id" > "$prep/container-id.txt"
 if ! timeout 180 docker start --attach "$container_id" > "$prep/container-stdout.log" 2>"$prep/container-stderr.log"; then
@@ -565,6 +572,11 @@ docker rm "$container_id" > "$prep/docker-rm.txt"
 [[ "$logs_status" == 0 ]] || {
   echo "Could not preserve Docker logs for $container_id (status $logs_status)" >&2
   exit 2
+}
+# The collector was judged by the read-only copy; if the container rewrote the writable one the
+# run's authorization is not the host's, so the receipt and the run are both refused.
+cmp -s "$raw/host-measured.json" "$prep/receipt/host-measured.json" || {
+  echo "Container rewrote the host-measured receipt; run invalid" >&2; exit 2;
 }
 if [[ "$exit_code" != 0 || ! -f "$raw/observed.json" ]]; then
   echo "Container failed (exit $exit_code); raw artifacts preserved at $run_dir" >&2
