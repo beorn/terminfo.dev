@@ -77,6 +77,22 @@ test("validation inventories v2 targets and refuses malformed probe data with it
     expect(unverified.stdout).toMatch(/unverified|unchecked/i)
     expect(unverified.stdout).not.toContain("DA1 mismatch")
 
+    const noProfilePath = join(root, "content", "probes-apps", "wezterm-noprofile.json")
+    writeFileSync(
+      noProfilePath,
+      JSON.stringify({
+        terminal: "wezterm",
+        responses: { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "WezTerm 20240203" },
+        results: { "sgr.bold": true },
+      }),
+    )
+    const noProfile = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
+    expect(noProfile.error).toBeUndefined()
+    expect(noProfile.status, noProfile.stdout + noProfile.stderr).toBe(0)
+    expect(noProfile.stdout).toMatch(/unchecked|no identity profile/i)
+    expect(noProfile.stdout).not.toContain("failed terminal identity check")
+    rmSync(noProfilePath)
+
     writeFileSync(
       legacyAppPath,
       JSON.stringify({

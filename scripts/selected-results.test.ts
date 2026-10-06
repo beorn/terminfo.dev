@@ -883,6 +883,66 @@ describe("selected results", () => {
     ).toBe(candidate.runId)
   })
 
+  it("excludes a pinned app without an identity profile as identity-no-profile, before provenance", () => {
+    const replies = {
+      "device.primary-da": "\u001b[?62;52;c",
+      "device.xtversion": "WezTerm 20240203-nightly",
+      "extensions.query": "ACK",
+      "extensions.graphics": "NO",
+      "cursor.position": "",
+    }
+    const macos = parseRun(
+      "wezterm-macos.json",
+      JSON.stringify(
+        run("wezterm-macos", {
+          target: { ...target, id: "wezterm" },
+          rawReplies: replies,
+        }),
+      ),
+      catalog,
+    )
+    const linux = parseRun(
+      "wezterm-linux.json",
+      JSON.stringify(
+        run("wezterm-linux", {
+          target: { ...target, id: "wezterm", os: "linux" },
+          rawReplies: replies,
+        }),
+      ),
+      catalog,
+    )
+    const mismatch = parseRun(
+      "kitty-mismatch.json",
+      JSON.stringify(
+        run("kitty-mismatch", {
+          rawReplies: {
+            ...identityReplies,
+            "device.primary-da": "\u001b[?1;2c",
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+            "cursor.position": "",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const projection = projectResults([macos, linux, mismatch], [macos, linux, mismatch].map(reviewFor), catalog, {
+      currentProbeHash: "current",
+    })
+    expect(projection.current["app:wezterm"]).toBeUndefined()
+    expect(projection.current["app:kitty"]).toBeUndefined()
+    expect(projection.exclusions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ runId: "wezterm-macos", reason: "identity-no-profile" }),
+        expect.objectContaining({ runId: "wezterm-linux", reason: "identity-no-profile" }),
+        expect.objectContaining({ runId: "kitty-mismatch", reason: "identity-replies-mismatch" }),
+      ]),
+    )
+    expect(projection.exclusions.find((row) => row.runId === "wezterm-linux")?.reason).not.toBe(
+      "native-provenance-missing",
+    )
+  })
+
   it("keeps retained HTTP bodies outside selection and binds review to the enriched run", async () => {
     const content = temporaryContent()
     const directory = `${content}-http-responses`

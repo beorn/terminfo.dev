@@ -454,14 +454,15 @@ for (const { backendName } of probeFiles) {
       continue
     }
     const check = verifyTerminalIdentity(term, data.responses, data.results)
-    if (!check.ok) {
+    if (!check.checked) {
+      info(`Probe file "${dir}/${file}" has no identity profile for "${term}"`)
+      uncheckedCount++
+    } else if (!check.ok) {
       error(`Probe file "${dir}/${file}" failed terminal identity check: ${check.reason}`)
       errors++
       found = true
-    } else if (check.checked) {
-      verifiedCount++
     } else {
-      uncheckedCount++
+      verifiedCount++
     }
   }
   if (!found) {

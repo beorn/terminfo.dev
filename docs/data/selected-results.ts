@@ -295,6 +295,44 @@ function identityRepliesMatch(run: LoadedRun): boolean {
   return new RegExp(`(^|[^a-zA-Z0-9])${escapedVersion}($|[^a-zA-Z0-9])`).test(versionReply)
 }
 
+function pinnedIdentity(run: LoadedRun, active: readonly Interpretation[]): boolean {
+  return active.some(
+    (entry) =>
+      entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.verifiesIdentity,
+  )
+}
+
+/** Identity, then provenance, then source/community/suite. Pin is one identity input. */
+function identityDecision(run: LoadedRun, active: readonly Interpretation[]): string | null {
+  if (run.identity === "disputed") return "identity-disputed"
+  if (!pinnedIdentity(run, active)) {
+    return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
+  }
+  if (run.target.kind === "headless") {
+    return identityRepliesMatch(run) ? null : "runtime-identity-unverified"
+  }
+  if (!TERMINAL_IDENTITY_RULES[run.target.id]) return "identity-no-profile"
+  return identityRepliesMatch(run) ? null : "identity-replies-mismatch"
+}
+
+function provenanceDecision(run: LoadedRun): string | null {
+  if (run.target.kind === "app" && run.target.os?.toLowerCase().startsWith("linux") && !run.provenance) {
+    return "native-provenance-missing"
+  }
+  if (run.provenance && !run.provenance.runtime.cleanTree) return "native-provenance-dirty"
+  return null
+}
+
+function admitRun(run: LoadedRun, active: readonly Interpretation[], reviewed: boolean): string | null {
+  return (
+    identityDecision(run, active) ??
+    provenanceDecision(run) ??
+    (!/^[0-9a-f]{40}$/.test(run.sourceRevision ?? "") ? "source-uncommitted" : null) ??
+    (run.origin.kind === "community-issue" && !reviewed ? "community-unreviewed" : null) ??
+    (!run.suiteComplete ? "suite-incomplete" : null)
+  )
+}
+
 function activeInterpretations(entries: readonly Interpretation[]): Interpretation[] {
   const byId = new Map(entries.map((entry) => [entry.id, entry]))
   if (byId.size !== entries.length) throw new Error("duplicate interpretation ID")
@@ -618,32 +656,7 @@ export function projectResults(
     const reviewed = active.some(
       (entry) => entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.reviewed,
     )
-    const identityReview = active.some(
-      (entry) =>
-        entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.verifiesIdentity,
-    )
-    const reason =
-      run.identity === "disputed"
-        ? "identity-disputed"
-        : !identityReview
-          ? run.identity === "unverified"
-            ? "identity-unverified"
-            : "identity-unreviewed"
-          : run.target.kind === "app" && run.target.os?.toLowerCase().startsWith("linux") && !run.provenance
-            ? "native-provenance-missing"
-            : run.provenance && !run.provenance.runtime.cleanTree
-              ? "native-provenance-dirty"
-              : !identityRepliesMatch(run)
-                ? run.target.kind === "headless"
-                  ? "runtime-identity-unverified"
-                  : "identity-replies-mismatch"
-                : !/^[0-9a-f]{40}$/.test(run.sourceRevision ?? "")
-                  ? "source-uncommitted"
-                  : run.origin.kind === "community-issue" && !reviewed
-                    ? "community-unreviewed"
-                    : !run.suiteComplete
-                      ? "suite-incomplete"
-                      : null
+    const reason = admitRun(run, active, reviewed)
     if (reason) {
       exclusions.push({ runId: run.runId, path: run.path, reason })
       continue
