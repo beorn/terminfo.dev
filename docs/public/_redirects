@@ -1,3 +1,8 @@
 # Redirect old /terminal/ URLs to /terminals/ (renamed 2026-03-26)
 /terminal     /terminals     301
 /terminal/*   /terminals/:splat   301
+
+# 2026-10-06 hotfix: the canonical /how-it-works/ guides are newer than this build; temporary until the next full deploy
+/how-it-works/contribute-a-run      /contribute   302
+/how-it-works/how-we-measure        /about        302
+/how-it-works/how-to-read-a-result  /features     302
