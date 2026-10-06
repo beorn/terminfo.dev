@@ -101,7 +101,7 @@ function matchResponse(
   write?: () => void,
   sentinel = false,
   sequence = "",
-  graceMs: number = SENTINEL_GRACE_MS,
+  graceMs: number = sentinelGraceMs(),
 ): Promise<QueryOutcome> {
   const trace = queryTraceContext.getStore()
   return new Promise((resolve) => {
@@ -199,6 +199,26 @@ export async function query(sequence: string, responsePattern: RegExp, timeoutMs
 export const SENTINEL_GRACE_MS = 250
 
 /**
+ * The window is a measured value, so the one-time sizing pass may widen it without a code change:
+ * TERMINFO_SENTINEL_GRACE_MS sets the post-DA1 read for that pass only. An unset or empty value is
+ * the floor; anything that is not a whole number of milliseconds is loud, never a silent default —
+ * a typo here would silently publish sentinel-negatives inside a too-short window.
+ */
+export function sentinelGraceMs(raw: string | undefined = process.env.TERMINFO_SENTINEL_GRACE_MS): number {
+  if (raw === undefined || raw === "") return SENTINEL_GRACE_MS
+  if (!/^[0-9]+$/.test(raw)) {
+    throw new Error(
+      `TERMINFO_SENTINEL_GRACE_MS must be a whole number of milliseconds; received ${JSON.stringify(raw)}`,
+    )
+  }
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`TERMINFO_SENTINEL_GRACE_MS must be a positive whole number of milliseconds; received ${raw}`)
+  }
+  return value
+}
+
+/**
  * DA1 response pattern — universally supported by all modern terminals.
  * Used as a sentinel: if DA1 arrives without the expected response, the
  * terminal has not answered before the end marker. This alone does not prove
@@ -218,7 +238,7 @@ export async function queryWithSentinelOutcome(
   sequence: string,
   responsePattern: RegExp,
   timeoutMs = 2000,
-  graceMs: number = SENTINEL_GRACE_MS,
+  graceMs: number = sentinelGraceMs(),
 ): Promise<QueryOutcome> {
   // DA1 is the requested answer here; a second DA1 cannot distinguish it from a sentinel.
   if (sequence === "\x1b[c") {
