@@ -55,6 +55,13 @@ export interface SelectedCell extends Observation {
   }
 }
 
+export interface IdentityAdmission {
+  rule: string
+  da1?: string
+  xtversion?: string
+  receipt?: { cfBundleShortVersionString: string }
+}
+
 export interface SelectedVersion {
   runId: string
   target: ProbeTarget
@@ -65,6 +72,7 @@ export interface SelectedVersion {
   suite: { observed: number; expected: number | null; complete: boolean; namedNotTested: number }
   sourceRevision: string | null
   sha256: string
+  identityAdmission?: IdentityAdmission
   cells: Record<string, SelectedCell>
   v1: Record<string, boolean>
   ungradedDiagnostics: {
@@ -272,27 +280,42 @@ function applies(entry: Interpretation, run: LoadedRun): boolean {
   )
 }
 
-function identityRepliesMatch(run: LoadedRun): boolean {
+function xtversionVersionEquals(payload: string, declared: string): boolean {
+  const paren = /^(?:[A-Za-z][\w.+-]*)\(([^)]+)\)$/.exec(payload)
+  if (paren) return paren[1] === declared
+  return payload === declared || payload.endsWith(` ${declared}`) || payload.endsWith(`/${declared}`)
+}
+
+function identityMatch(run: LoadedRun): IdentityAdmission | null {
   if (run.target.kind === "headless") {
     const receipt = run.runtimeIdentity
-    if (!receipt || receipt.engineVersion !== run.target.version) return false
-    return receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree
+    if (!receipt || receipt.engineVersion !== run.target.version) return null
+    if (!(receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree)) {
+      return null
+    }
+    return { rule: "runtime-identity" }
   }
   const rule = TERMINAL_IDENTITY_RULES[run.target.id]
-  if (!rule) return false
+  if (!rule) return null
   const results = Object.fromEntries(run.observations.map((o) => [o.featureId, o.outcome === "supported"]))
   const verification = verifyTerminalIdentity(run.target.id, run.rawReplies, results)
-  if (!verification.checked || !verification.ok) return false
+  if (!verification.checked || !verification.ok) return null
   const identity = deriveIdentity(run.rawReplies)
-  if (!nonempty(identity.da1)) return false
+  if (!nonempty(identity.da1)) return null
   if (rule.forbidXtversion) {
     const receipt = run.origin.appLaunch
-    return !!receipt && run.target.version !== "unknown" && receipt.cfBundleShortVersionString === run.target.version
+    if (!receipt || run.target.version === "unknown" || receipt.cfBundleShortVersionString !== run.target.version) {
+      return null
+    }
+    return {
+      rule: run.target.id,
+      da1: identity.da1,
+      receipt: { cfBundleShortVersionString: receipt.cfBundleShortVersionString },
+    }
   }
   const versionReply = identity.xtversionPayload
-  if (!versionReply) return false
-  const escapedVersion = run.target.version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  return new RegExp(`(^|[^a-zA-Z0-9])${escapedVersion}($|[^a-zA-Z0-9])`).test(versionReply)
+  if (!versionReply || !xtversionVersionEquals(versionReply, run.target.version)) return null
+  return { rule: run.target.id, da1: identity.da1, xtversion: versionReply }
 }
 
 function pinnedIdentity(run: LoadedRun, active: readonly Interpretation[]): boolean {
@@ -305,14 +328,19 @@ function pinnedIdentity(run: LoadedRun, active: readonly Interpretation[]): bool
 /** Identity, then provenance, then source/community/suite. Pin is one identity input. */
 function identityDecision(run: LoadedRun, active: readonly Interpretation[]): string | null {
   if (run.identity === "disputed") return "identity-disputed"
-  if (!pinnedIdentity(run, active)) {
-    return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
-  }
+  const pin = pinnedIdentity(run, active)
   if (run.target.kind === "headless") {
-    return identityRepliesMatch(run) ? null : "runtime-identity-unverified"
+    if (run.schemaVersion !== 2 && !pin) {
+      return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
+    }
+    return identityMatch(run) ? null : "runtime-identity-unverified"
   }
   if (!TERMINAL_IDENTITY_RULES[run.target.id]) return "identity-no-profile"
-  return identityRepliesMatch(run) ? null : "identity-replies-mismatch"
+  if (run.schemaVersion !== 2) {
+    if (!pin) return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
+    return identityMatch(run) ? null : "identity-replies-mismatch"
+  }
+  return identityMatch(run) ? null : "identity-replies-mismatch"
 }
 
 function provenanceDecision(run: LoadedRun): string | null {
@@ -543,6 +571,7 @@ function projectRun(
       : run.probeHash === currentProbeHash && run.suiteComplete
         ? "current suite"
         : `older suite (${suiteObserved} probes)${run.probeHash ? "" : "; missing probeHash"}`
+  const identityAdmission = identityMatch(run)
   return {
     runId: run.runId,
     target: run.target,
@@ -558,6 +587,7 @@ function projectRun(
     },
     sourceRevision: run.sourceRevision,
     sha256: run.sha256,
+    ...(identityAdmission && { identityAdmission }),
     cells,
     v1,
     ungradedDiagnostics: {
