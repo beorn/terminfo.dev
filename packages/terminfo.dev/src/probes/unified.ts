@@ -32,6 +32,18 @@ import {
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
 import { ownedTerminalVerifiedFor, type GeometryMeasurement, type OwnedTerminal } from "../owned-terminal.ts"
+import { readDisposableReceipt, type DisposableReceipt } from "../disposable-receipt.ts"
+
+/**
+ * Resolve the disposable-ownership receipt once per batch (27832 amendment 1). No receipt is
+ * normal and means the untouched default path; a receipt that was declared but cannot be verified
+ * is loud, before any byte is written, because a silent fall back to "shared" would look like a
+ * gate while grading nothing.
+ */
+function resolveDisposableReceipt(): DisposableReceipt | undefined {
+  const path = process.env.TERMINFO_DISPOSABLE_RECEIPT
+  return path ? readDisposableReceipt(path) : undefined
+}
 
 export interface Probe {
   id: string
@@ -233,6 +245,21 @@ export async function runProbeBatch(
       return unavailable(error)
     }
   }
+  // Ownership is checked ONCE, before the first write, never per probe (27832 amendment 1). A
+  // mutation-and-readback probe additionally needs a verified disposable-ownership receipt; an
+  // absent or unparsable receipt is loud, and no env flag or caller option stands in for it.
+  const ownsTerminal = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
+  const disposable = resolveDisposableReceipt()
+  batch.rawReplies["collector.disposableOwnership"] = JSON.stringify(
+    disposable
+      ? {
+          kind: disposable.kind,
+          runId: disposable.runId,
+          collectedAt: disposable.collectedAt,
+          receiptSha256: disposable.sha256,
+        }
+      : { kind: "shared" },
+  )
   for (const probe of selected) {
     const writes: string[] = []
     const queries: TTYQueryTrace[] = []
@@ -240,16 +267,21 @@ export async function runProbeBatch(
     const clipboardEvents: ClipboardTraceEvent[] = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
-    if (
-      probe.termWrites !== "query" &&
-      !ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
-    ) {
+    const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
+    const refusedBecause = !needsOwnership
+      ? undefined
+      : !ownsTerminal
+        ? "disposable terminal ownership was not verified"
+        : probe.termNeedsDisposable === true && !disposable
+          ? "no verified disposable-ownership receipt was presented"
+          : undefined
+    if (refusedBecause) {
       batch.observations.push({
         featureId: probe.id,
         outcome: "inconclusive",
         reason: "policy-refused",
         evidence: "none",
-        note: "Collector refused before sending bytes because disposable terminal ownership was not verified",
+        note: `Collector refused before sending bytes because ${refusedBecause}`,
         rawReplyRef: probe.id,
       })
       batch.rawReplies[probe.id] = JSON.stringify({ writes, queries, events })
@@ -260,14 +292,13 @@ export async function runProbeBatch(
     if (probe.termNeedsGeometry) {
       geometryCheck = { featureId: probe.id }
       geometryChecks.push(geometryCheck)
-      const geometryOwner = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
-      const grant = geometryOwner ? options.ownedTerminal?.geometryAtGrant : undefined
+      const grant = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       if (grant?.status === "measured") {
         preGeometry = await readGeometry()
         geometryCheck.pre = preGeometry
       }
       const corroboration = options.geometryCorroboration
-      const diagnostic = !geometryOwner
+      const diagnostic = !ownsTerminal
         ? "No verified owned terminal for geometry read"
         : grant?.status !== "measured"
           ? `Grant geometry unavailable: ${grant?.status === "unavailable" ? grant.diagnostic : "no owned measurement"}`
@@ -420,7 +451,7 @@ export async function runProbeBatch(
       }
     }
   }
-  if (options.ownedTerminal && ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)) {
+  if (ownsTerminal && options.ownedTerminal) {
     batch.rawReplies["collector.geometry"] = JSON.stringify({
       source: options.ownedTerminal?.geometrySource ?? "unavailable: no verified output device",
       bindingReceiptRef: "collector.terminalOwnership",

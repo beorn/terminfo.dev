@@ -331,6 +331,88 @@ function probeForeground(before: string): string {
   return sameRgb(before, "rgb:aa/bb/cc") ? "rgb:12/34/56" : "rgb:aa/bb/cc"
 }
 
+/**
+ * App-side reset exchange (27832): read the colour, set it, read the change back, reset it, read
+ * the restoration back — the termless restore discipline against a real terminal. The collector
+ * runs this only with a verified disposable-ownership receipt, so the mutation is confined to a
+ * machine nobody uses; a failed restore is graded, never retried into a pass.
+ */
+async function colorResetAppProbe(
+  ctx: TermContext,
+  spec: { setCode: number; resetCode: number; index?: number },
+): Promise<ProbeResult> {
+  const indexPart = spec.index === undefined ? "" : `${spec.index};`
+  const query = `\x1b]${spec.setCode};${indexPart}?\x07`
+  const reply = new RegExp(
+    `\\x1b\\]${spec.setCode};${indexPart}(rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
+    "i",
+  )
+  const prefix = new RegExp(`\\x1b\\]${spec.setCode};`)
+  const read = async () => {
+    const outcome = await ctx.queryWithSentinelOutcome(query, reply)
+    return { outcome, rgb: outcome.match?.[1] ?? null }
+  }
+  const before = await read()
+  if (!before.rgb) {
+    return oscReplyResult(
+      before.outcome.raw,
+      null,
+      `Complete OSC ${spec.setCode} color reply`,
+      prefix,
+      before.outcome.sentinel,
+    )
+  }
+  const requested = probeForeground(before.rgb)
+  const reset = `\x1b]${spec.resetCode}${spec.index === undefined ? "" : `;${spec.index}`}\x07`
+  ctx.write(`\x1b]${spec.setCode};${indexPart}${requested}\x07`)
+  const changed = await read()
+  ctx.write(reset)
+  const restored = await read()
+  const response = JSON.stringify({
+    originalRaw: before.outcome.raw,
+    changedRaw: changed.outcome.raw,
+    restoredRaw: restored.outcome.raw,
+  })
+  if (!changed.rgb || !restored.rgb || !sameRgb(changed.rgb, requested)) {
+    return {
+      pass: false,
+      response,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+        note: "Color mutation or readback control was not established",
+      },
+    }
+  }
+  const pass = sameRgb(restored.rgb, before.rgb)
+  return {
+    pass,
+    response,
+    observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
+    assertions: [
+      {
+        kind: pass ? "positive" : "negative",
+        expected: `OSC ${spec.resetCode} restores the prior OSC ${spec.setCode} color after a verified change`,
+        observed: response,
+      },
+    ],
+  }
+}
+
+/** The reset features mutate and read back, so they are the probes a disposable receipt gates. */
+function resetProbe(id: string, setCode: number, resetCode: number, index?: number): ProbeDefinition {
+  return {
+    ...probe(
+      id,
+      colorResetProbe(setCode, resetCode, index),
+      (ctx) => colorResetAppProbe(ctx, { setCode, resetCode, index }),
+      "behavior",
+    ),
+    termNeedsDisposable: true,
+  }
+}
+
 function colorStackResult(before: string, requested: string, changed: string, restored: string): ProbeResult {
   const changedAsRequested = sameRgb(changed, requested)
   const restoredOriginal = sameRgb(restored, before)
@@ -1939,24 +2021,16 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscColorQueryProbe("extensions.osc12-cursor-color", 12),
 
   // OSC 104 — reset color palette
-  probe("extensions.osc104-reset-palette", colorResetProbe(4, 104, 0), () =>
-    Promise.resolve(unmeasuredStateEffect("OSC 104 palette reset")),
-  ),
+  resetProbe("extensions.osc104-reset-palette", 4, 104, 0),
 
   // OSC 110 — reset foreground color
-  probe("extensions.osc110-reset-fg", colorResetProbe(10, 110), () =>
-    Promise.resolve(unmeasuredStateEffect("OSC 110 foreground reset")),
-  ),
+  resetProbe("extensions.osc110-reset-fg", 10, 110),
 
   // OSC 111 — reset background color
-  probe("extensions.osc111-reset-bg", colorResetProbe(11, 111), () =>
-    Promise.resolve(unmeasuredStateEffect("OSC 111 background reset")),
-  ),
+  resetProbe("extensions.osc111-reset-bg", 11, 111),
 
   // OSC 112 — reset cursor color
-  probe("extensions.osc112-reset-cursor", colorResetProbe(12, 112), () =>
-    Promise.resolve(unmeasuredStateEffect("OSC 112 cursor-color reset")),
-  ),
+  resetProbe("extensions.osc112-reset-cursor", 12, 112),
 
   // OSC 117 — reset highlight background
   {
@@ -2103,24 +2177,10 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 113 — reset pointer fg color
-  probe("extensions.osc113-reset-pointer-fg", colorResetProbe(13, 113), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]113\x07")
-    const pos = await ctx.queryCursorPosition()
-    return unverifiedEffect(
-      pos ? "Cursor answered; pointer foreground restoration was not measured" : "No cursor response after OSC 113",
-    )
-  }),
+  resetProbe("extensions.osc113-reset-pointer-fg", 13, 113),
 
   // OSC 114 — reset pointer bg color
-  probe("extensions.osc114-reset-pointer-bg", colorResetProbe(14, 114), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]114\x07")
-    const pos = await ctx.queryCursorPosition()
-    return unverifiedEffect(
-      pos ? "Cursor answered; pointer background restoration was not measured" : "No cursor response after OSC 114",
-    )
-  }),
+  resetProbe("extensions.osc114-reset-pointer-bg", 14, 114),
 
   // OSC 21 — require the actual foreground reply, never a subsequent CPR.
   {

@@ -3,6 +3,7 @@
  * @level l1 — invokes the real shell receipt composer on owned temporary files.
  * @consumer scripts/linux-container-run.sh host-side run receipt and prerequisite handling.
  * @reach fs-walk <fixture-only: readdir enumerates the owned temporary run output only>
+ * @reach fs-walk vendor/terminfo.dev/scripts/
  * @testonly none
  */
 
@@ -161,6 +162,17 @@ describe("container run receipt composition", () => {
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain("container clipboard fixture disagrees")
     expect(existsSync(output)).toBe(false)
+  })
+})
+
+/** The receipt authorizes writing to a terminal, so the container judged by it must not be able
+ * to rewrite the copy it is judged against, and the host must be able to prove that afterwards. */
+describe("disposable ownership receipt mount", () => {
+  it("hands the collector a read-only copy outside the writable output mount and re-checks it after removal", () => {
+    const source = readFileSync(launcher, "utf8")
+    expect(source).toMatch(/--mount "type=bind,src=\$prep\/receipt,dst=\/receipt,readonly"/)
+    expect(source).toMatch(/--env "TERMINFO_DISPOSABLE_RECEIPT=\/receipt\/host-measured\.json"/)
+    expect(source).toMatch(/cmp -s "\$raw\/host-measured\.json" "\$prep\/receipt\/host-measured\.json" \|\|/)
   })
 })
 
