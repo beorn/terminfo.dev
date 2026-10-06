@@ -479,7 +479,11 @@ it("a verified disposable receipt runs the reset exchange and records its kind a
   const path = join(directory, "host-measured.json")
   writeFileSync(path, bytes)
   process.env.TERMINFO_DISPOSABLE_RECEIPT = path
-  const replies = ["\x1b]10;rgb:0000/0000/0000\x07", "\x1b]10;rgb:aa/bb/cc\x07", "\x1b]10;rgb:0000/0000/0000\x07"]
+  const replies = [
+    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+    "\x1b]10;rgb:aa/bb/cc\x07\x1b[?62;c",
+    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+  ]
   let read = 0
   const writes: string[] = []
   process.stdout.write = ((text: string) => {
