@@ -15,6 +15,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
+      - name: Configure Git line endings
+        run: git config --global core.autocrlf false
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -318,13 +321,17 @@ jobs:
           }
 
       - name: Parse and summarize Windows Terminal probe results
-        shell: powershell
+        shell: bash
         run: |
           python - << 'PYEOF'
           import json
           import os
 
-          path = r"C:\artifacts\results_windows_terminal.json"
+          path = "/c/artifacts/results_windows_terminal.json"
+          if not os.path.exists(path):
+              path = "/c/artifacts/terminfo-run.json"
+          if not os.path.exists(path):
+              path = r"C:\artifacts\results_windows_terminal.json"
           if not os.path.exists(path):
               path = r"C:\artifacts\terminfo-run.json"
 
