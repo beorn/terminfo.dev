@@ -336725,18 +336725,10 @@
         "kind": "headless",
         "id": "alacritty"
       },
-      "versions": [
-        "0.26.0",
-        "0.26.0"
-      ],
-      "suites": [
-        "2add2ef8d344",
-        "2add2ef8d344"
-      ]
+      "versions": ["0.26.0", "0.26.0"],
+      "suites": ["2add2ef8d344", "2add2ef8d344"]
     },
-    "sources": [
-      "content/probes-libs/alacritty-0.26.0-linux-953e32ed-c557-472c-8397-b76b3bdf766c.json"
-    ],
+    "sources": ["content/probes-libs/alacritty-0.26.0-linux-953e32ed-c557-472c-8397-b76b3bdf766c.json"],
     "supersedes": [],
     "id": "identity-headless-alacritty-953e32ed-c557-472c-8397-b76b3bdf766c",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
@@ -336752,18 +336744,10 @@
         "kind": "headless",
         "id": "ghostty"
       },
-      "versions": [
-        "0.4.0",
-        "0.4.0"
-      ],
-      "suites": [
-        "a00b545425a9",
-        "a00b545425a9"
-      ]
+      "versions": ["0.4.0", "0.4.0"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
     },
-    "sources": [
-      "content/probes-libs/ghostty-b5ce9a17-bb51-4f6c-b7f6-46f5bd1a2b20.json"
-    ],
+    "sources": ["content/probes-libs/ghostty-b5ce9a17-bb51-4f6c-b7f6-46f5bd1a2b20.json"],
     "supersedes": [],
     "id": "identity-headless-ghostty-b5ce9a17-bb51-4f6c-b7f6-46f5bd1a2b20",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
@@ -336779,18 +336763,10 @@
         "kind": "headless",
         "id": "ghostty-native"
       },
-      "versions": [
-        "1.3.1",
-        "1.3.1"
-      ],
-      "suites": [
-        "2add2ef8d344",
-        "2add2ef8d344"
-      ]
+      "versions": ["1.3.1", "1.3.1"],
+      "suites": ["2add2ef8d344", "2add2ef8d344"]
     },
-    "sources": [
-      "content/probes-libs/ghostty-native-1.3.1-linux-7b568616-104d-4117-9fe2-f88c739161aa.json"
-    ],
+    "sources": ["content/probes-libs/ghostty-native-1.3.1-linux-7b568616-104d-4117-9fe2-f88c739161aa.json"],
     "supersedes": [],
     "id": "identity-headless-ghostty-native-7b568616-104d-4117-9fe2-f88c739161aa",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
@@ -336806,18 +336782,10 @@
         "kind": "headless",
         "id": "kitty"
       },
-      "versions": [
-        "0.49.2",
-        "0.49.2"
-      ],
-      "suites": [
-        "2add2ef8d344",
-        "2add2ef8d344"
-      ]
+      "versions": ["0.49.2", "0.49.2"],
+      "suites": ["2add2ef8d344", "2add2ef8d344"]
     },
-    "sources": [
-      "content/probes-libs/kitty-0.49.2-linux-1b551c66-5cc6-44ad-ba08-23ea017a5adf.json"
-    ],
+    "sources": ["content/probes-libs/kitty-0.49.2-linux-1b551c66-5cc6-44ad-ba08-23ea017a5adf.json"],
     "supersedes": [],
     "id": "identity-headless-kitty-1b551c66-5cc6-44ad-ba08-23ea017a5adf",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
@@ -336833,18 +336801,10 @@
         "kind": "headless",
         "id": "libvterm"
       },
-      "versions": [
-        "0.3.3",
-        "0.3.3"
-      ],
-      "suites": [
-        "2add2ef8d344",
-        "2add2ef8d344"
-      ]
+      "versions": ["0.3.3", "0.3.3"],
+      "suites": ["2add2ef8d344", "2add2ef8d344"]
     },
-    "sources": [
-      "content/probes-libs/libvterm-0.3.3-linux-1cab5cc5-7f1b-47ca-912b-1a008feeab49.json"
-    ],
+    "sources": ["content/probes-libs/libvterm-0.3.3-linux-1cab5cc5-7f1b-47ca-912b-1a008feeab49.json"],
     "supersedes": [],
     "id": "identity-headless-libvterm-1cab5cc5-7f1b-47ca-912b-1a008feeab49",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
@@ -336860,18 +336820,10 @@
         "kind": "headless",
         "id": "vt100"
       },
-      "versions": [
-        "0.7.1",
-        "0.7.1"
-      ],
-      "suites": [
-        "2add2ef8d344",
-        "2add2ef8d344"
-      ]
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["2add2ef8d344", "2add2ef8d344"]
     },
-    "sources": [
-      "content/probes-libs/vt100-0.7.1-linux-42bbb500-55f9-4a2f-b47f-7ea2080c9a4e.json"
-    ],
+    "sources": ["content/probes-libs/vt100-0.7.1-linux-42bbb500-55f9-4a2f-b47f-7ea2080c9a4e.json"],
     "supersedes": [],
     "id": "identity-headless-vt100-42bbb500-55f9-4a2f-b47f-7ea2080c9a4e",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
@@ -336887,18 +336839,10 @@
         "kind": "headless",
         "id": "vt100-rust"
       },
-      "versions": [
-        "0.16.2",
-        "0.16.2"
-      ],
-      "suites": [
-        "2add2ef8d344",
-        "2add2ef8d344"
-      ]
+      "versions": ["0.16.2", "0.16.2"],
+      "suites": ["2add2ef8d344", "2add2ef8d344"]
     },
-    "sources": [
-      "content/probes-libs/vt100-rust-0.16.2-linux-393c7850-2dcd-4cb0-8982-f914b7096ccd.json"
-    ],
+    "sources": ["content/probes-libs/vt100-rust-0.16.2-linux-393c7850-2dcd-4cb0-8982-f914b7096ccd.json"],
     "supersedes": [],
     "id": "identity-headless-vt100-rust-393c7850-2dcd-4cb0-8982-f914b7096ccd",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
@@ -336914,18 +336858,10 @@
         "kind": "headless",
         "id": "vt220"
       },
-      "versions": [
-        "0.7.1",
-        "0.7.1"
-      ],
-      "suites": [
-        "2add2ef8d344",
-        "2add2ef8d344"
-      ]
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["2add2ef8d344", "2add2ef8d344"]
     },
-    "sources": [
-      "content/probes-libs/vt220-0.7.1-linux-e5f708a5-a517-419a-9bcf-15b8806b5e33.json"
-    ],
+    "sources": ["content/probes-libs/vt220-0.7.1-linux-e5f708a5-a517-419a-9bcf-15b8806b5e33.json"],
     "supersedes": [],
     "id": "identity-headless-vt220-e5f708a5-a517-419a-9bcf-15b8806b5e33",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
@@ -336941,18 +336877,10 @@
         "kind": "headless",
         "id": "vterm"
       },
-      "versions": [
-        "0.7.1",
-        "0.7.1"
-      ],
-      "suites": [
-        "2add2ef8d344",
-        "2add2ef8d344"
-      ]
+      "versions": ["0.7.1", "0.7.1"],
+      "suites": ["2add2ef8d344", "2add2ef8d344"]
     },
-    "sources": [
-      "content/probes-libs/vterm-0.7.1-linux-7963eb23-1a7f-4253-ad2c-1b4d231639ca.json"
-    ],
+    "sources": ["content/probes-libs/vterm-0.7.1-linux-7963eb23-1a7f-4253-ad2c-1b4d231639ca.json"],
     "supersedes": [],
     "id": "identity-headless-vterm-7963eb23-1a7f-4253-ad2c-1b4d231639ca",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
@@ -336968,18 +336896,10 @@
         "kind": "headless",
         "id": "wezterm"
       },
-      "versions": [
-        "0.1.0-fork.5",
-        "0.1.0-fork.5"
-      ],
-      "suites": [
-        "2add2ef8d344",
-        "2add2ef8d344"
-      ]
+      "versions": ["0.1.0-fork.5", "0.1.0-fork.5"],
+      "suites": ["2add2ef8d344", "2add2ef8d344"]
     },
-    "sources": [
-      "content/probes-libs/wezterm-0.1.0-fork.5-linux-7c7b3d66-412e-47d7-ba37-f84d49457855.json"
-    ],
+    "sources": ["content/probes-libs/wezterm-0.1.0-fork.5-linux-7c7b3d66-412e-47d7-ba37-f84d49457855.json"],
     "supersedes": [],
     "id": "identity-headless-wezterm-7c7b3d66-412e-47d7-ba37-f84d49457855",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
@@ -336995,18 +336915,10 @@
         "kind": "headless",
         "id": "xtermjs"
       },
-      "versions": [
-        "6.0.0",
-        "6.0.0"
-      ],
-      "suites": [
-        "a00b545425a9",
-        "a00b545425a9"
-      ]
+      "versions": ["6.0.0", "6.0.0"],
+      "suites": ["a00b545425a9", "a00b545425a9"]
     },
-    "sources": [
-      "content/probes-libs/xtermjs-37a3b528-fb33-4e22-9647-937d9934c30a.json"
-    ],
+    "sources": ["content/probes-libs/xtermjs-37a3b528-fb33-4e22-9647-937d9934c30a.json"],
     "supersedes": [],
     "id": "identity-headless-xtermjs-37a3b528-fb33-4e22-9647-937d9934c30a",
     "reason": "Verified the loaded engine version and artifact provenance against this exact complete run; headless results do not establish app rendering.",
