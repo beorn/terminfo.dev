@@ -510,6 +510,40 @@ test("checksum observations require a complete reply for the issued request", ()
   }
 })
 
+// The app path used a bare 2000 ms timeout, so a terminal that never answers was
+// graded inconclusive after two seconds instead of disproved by the DA1 sentinel.
+test("checksum app path is bound to the issued request and ends on the DA1 sentinel", async () => {
+  const definition = editingProbes.find((probe) => probe.id === "editing.decrqcra")
+  if (!definition?.term) throw new Error("Missing checksum app callback")
+  const context = (outcome: { match: string[] | null; reason: "reply" | "sentinel" | "timeout"; raw: string }) => {
+    const queries: string[] = []
+    return {
+      queries,
+      value: {
+        write: () => undefined,
+        queryWithSentinelOutcome: async (sequence: string) => {
+          queries.push(sequence)
+          return { ...outcome, rawBase64: "" }
+        },
+        queryOutcome: async () => {
+          throw new Error("the checksum app path must use the DA1 sentinel, not a bare timeout")
+        },
+      } as unknown as TermContext,
+    }
+  }
+  const answered = context({ match: ["\x1bP1!~012F\x1b\\"], reason: "reply", raw: "\x1bP1!~012F\x1b\\\x1b[?62;c" })
+  const supported = await definition.term(answered.value)
+  expect(answered.queries).toEqual(["\x1b[1;1;1;1;1;1*y"])
+  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(supported.assertions).toMatchObject([{ kind: "positive" }])
+
+  const silent = context({ match: null, reason: "sentinel", raw: "\x1b[?62;c" })
+  const unanswered = await definition.term(silent.value)
+  expect(silent.queries).toEqual(["\x1b[1;1;1;1;1;1*y"])
+  expect(unanswered.observation).toMatchObject({ outcome: "inconclusive", evidence: "query", reason: "no-response" })
+  expect(unanswered.assertions).toBeUndefined()
+})
+
 test("DECSACE app leaves the mode unchanged when extent is not measured", async () => {
   const definition = editingProbes.find((probe) => probe.id === "editing.decsace")
   if (!definition?.term || !definition.termless) throw new Error("Missing DECSACE callbacks")
