@@ -3,6 +3,7 @@
  * @level l2
  * @consumer Site data and JSON API use the canonical reviewed-run selector.
  * @testonly none
+ * @reach fs-walk vendor/terminfo.dev/content/probes-apps/ vendor/terminfo.dev/content/probes-mux/ vendor/terminfo.dev/content/probes-libs/
  */
 import { describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
