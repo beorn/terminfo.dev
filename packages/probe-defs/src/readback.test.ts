@@ -102,3 +102,19 @@ test("an incorrect SGR readback is a negative, not a pass", async () => {
   expect(result.pass).toBe(false)
   expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
 })
+
+// Kitty 0.49.2 answers DECRQSS with the full normalized SGR list, not just the set codes:
+// after CSI 0 m CSI 1 m it reported "0;22;1" (reset, normal intensity, bold).
+test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => {
+  const ctx = kittyContext(true)
+  ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (sequence.startsWith("\x1bP$qm")) {
+      return { match: ["\x1bP1$r0;22;1m\x1b\\", "0;22;1"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return timeout()
+  }
+  const result = await termProbe("sgr.bold")(ctx)
+  expect(result.pass).toBe(true)
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.response).toContain("0;22;1")
+})
