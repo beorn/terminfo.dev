@@ -21,6 +21,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Sample VM identity at job start
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\artifacts | Out-Null
+          $hasher = [System.Security.Cryptography.SHA256]::Create()
+          function Sha256String($str) {
+            if (-not $str) { return "" }
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($str)
+            $hash = $hasher.ComputeHash($bytes)
+            return -join ($hash | ForEach-Object { "{0:x2}" -f $_ })
+          }
+          $mId = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Cryptography" -Name MachineGuid -ErrorAction SilentlyContinue).MachineGuid
+          $pUuid = (Get-CimInstance Win32_ComputerSystemProduct -ErrorAction SilentlyContinue).UUID
+          $bootTime = (Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue).LastBootUpTime.ToString("o")
+          $id = @{
+            machineIdSha256 = Sha256String $mId
+            productUuidSha256 = Sha256String $pUuid
+            bootIdSha256 = Sha256String $bootTime
+          }
+          $id | ConvertTo-Json | Out-File "C:\artifacts\identity_job_start.json" -Encoding utf8
+          Write-Output "Sampled identity at job start:"
+          $id | ConvertTo-Json
+
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
@@ -156,6 +179,67 @@ jobs:
           npm install -g $pkg
           Write-Output "Installed terminfo CLI globally from $pkg"
 
+      - name: Generate disposable ownership receipt
+        shell: powershell
+        run: |
+          $hasher = [System.Security.Cryptography.SHA256]::Create()
+          function Sha256String($str) {
+            if (-not $str) { return "" }
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($str)
+            $hash = $hasher.ComputeHash($bytes)
+            return -join ($hash | ForEach-Object { "{0:x2}" -f $_ })
+          }
+          $mId = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Cryptography" -Name MachineGuid -ErrorAction SilentlyContinue).MachineGuid
+          $pUuid = (Get-CimInstance Win32_ComputerSystemProduct -ErrorAction SilentlyContinue).UUID
+          $bootTime = (Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue).LastBootUpTime.ToString("o")
+          $idAtCollection = @{
+            machineIdSha256 = Sha256String $mId
+            productUuidSha256 = Sha256String $pUuid
+            bootIdSha256 = Sha256String $bootTime
+          }
+          $idAtStart = Get-Content "C:\artifacts\identity_job_start.json" -Raw | ConvertFrom-Json
+          $collectedAt = [DateTime]::UtcNow.ToString("o")
+          $runId = ([Guid]::NewGuid().ToString("N"))
+
+          $receipt = @{
+            schemaVersion = 1
+            kind = "github-hosted-runner"
+            runId = $runId
+            collectedAt = $collectedAt
+            job = @{
+              repository = $env:GITHUB_REPOSITORY
+              workflow = $env:GITHUB_WORKFLOW
+              workflowRef = $env:GITHUB_WORKFLOW_REF
+              githubRunId = $env:GITHUB_RUN_ID
+              githubRunAttempt = $env:GITHUB_RUN_ATTEMPT
+              job = $env:GITHUB_JOB
+              jobId = $env:GITHUB_JOB
+            }
+            runner = @{
+              environment = $env:RUNNER_ENVIRONMENT
+              name = $env:RUNNER_NAME
+              os = $env:RUNNER_OS
+              arch = $env:RUNNER_ARCH
+              imageOS = $env:ImageOS
+              imageVersion = $env:ImageVersion
+              trackingId = $env:RUNNER_TRACKING_ID
+            }
+            vm = @{
+              identityAtJobStart = @{
+                machineIdSha256 = $idAtStart.machineIdSha256
+                productUuidSha256 = $idAtStart.productUuidSha256
+                bootIdSha256 = $idAtStart.bootIdSha256
+              }
+              identityAtCollection = $idAtCollection
+            }
+          }
+          $receiptJson = $receipt | ConvertTo-Json -Depth 5
+          $receiptJson | Out-File "C:\artifacts\disposable-receipt.json" -Encoding utf8
+          Write-Output "Generated disposable-ownership receipt at C:\artifacts\disposable-receipt.json:"
+          Write-Output $receiptJson
+          [Environment]::SetEnvironmentVariable("TERMINFO_DISPOSABLE_RECEIPT", "C:\artifacts\disposable-receipt.json", "Machine")
+          [Environment]::SetEnvironmentVariable("TERMINFO_RECEIPT_PATH", "C:\artifacts\disposable-receipt.json", "Machine")
+
       - name: Run terminfo.dev CLI inside Windows Terminal
         shell: powershell
         run: |
@@ -242,9 +326,15 @@ jobs:
           # RUN: test with --output (direct console execution in Windows Terminal, no pipes)
           log("\n=== RUN: terminfo test --output in Windows Terminal ===")
           log(f"Command: cmd.exe /c terminfo test --output {raw_json}")
+          receipt_file = os.path.join(artifacts_dir, "disposable-receipt.json")
+          sub_env = dict(os.environ)
+          if os.path.exists(receipt_file):
+              sub_env["TERMINFO_DISPOSABLE_RECEIPT"] = receipt_file
+              sub_env["TERMINFO_RECEIPT_PATH"] = receipt_file
+              log(f"Receipt present: {receipt_file} ({os.path.getsize(receipt_file)} bytes)")
           t0 = time.time()
           try:
-              proc1 = subprocess.run(["cmd.exe", "/c", "terminfo", "test", "--output", raw_json], timeout=120)
+              proc1 = subprocess.run(["cmd.exe", "/c", "terminfo", "test", "--output", raw_json], timeout=120, env=sub_env)
               dur1 = time.time() - t0
               log(f"Run exit code: {proc1.returncode} in {dur1:.2f}s")
           except Exception as e:
