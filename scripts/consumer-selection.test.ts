@@ -2,6 +2,7 @@
  * @failure Unreviewed runs become current scores, or refresh skips its release assessment and errors.
  * @level l2
  * @consumer Site data and JSON API use the canonical reviewed-run selector.
+ * @reach fs-walk <fixture-only: walks temporary scratch fixtures for run selection>
  * @testonly none
  */
 import { describe, expect, it, vi } from "vitest"
