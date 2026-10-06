@@ -337,6 +337,13 @@ export interface TerminalQueryOutcome {
   reason: "reply" | "sentinel" | "timeout"
   raw: string
   rawBase64: string
+  /**
+   * The DA1 sentinel's arrival, in ms measured from the query write, with the grace window that
+   * followed it. Present exactly when DA1 was answered before this query's reply: a later reply is
+   * a late reply graded by the reply, and a silent grace window is the measured negative that the
+   * grader records as "negative by sentinel". Absent when nothing answered DA1.
+   */
+  sentinel?: { atMs: number; graceMs: number }
 }
 
 /** Independently observed text selection in an owned disposable display. */

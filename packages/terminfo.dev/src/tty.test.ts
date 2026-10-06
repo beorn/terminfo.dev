@@ -127,12 +127,15 @@ describe("TTY transaction replies", () => {
       process.stdin.emit("data", sentinelBytes)
       return true
     }) as typeof process.stdout.write
-    expect(await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).toEqual({
+    const sentinel = await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)
+    expect(sentinel).toMatchObject({
       match: null,
       reason: "sentinel",
       raw: "\uFFFD\x1b[?1;2c",
       rawBase64: sentinelBytes.toString("base64"),
     })
+    expect(sentinel.sentinel?.graceMs).toBe(250)
+    expect(sentinel.sentinel?.atMs).toBeGreaterThanOrEqual(0)
 
     const timeoutBytes = Buffer.from("\x1b]unrelated")
     process.stdout.write = (() => {
@@ -169,12 +172,51 @@ describe("TTY transaction replies", () => {
     expect(await queryMode(2026)).toBe("set")
   })
 
-  it("does not count DA1 before the expected reply as support", async () => {
+  it("grades a reply that arrives after the DA1 sentinel by the reply, and marks it late", async () => {
+    const bytes = "\x1b[?1;2c\x1b[12;34R"
     process.stdout.write = (() => {
-      reply("\x1b[?1;2c\x1b[12;34R")
+      reply(bytes)
       return true
     }) as typeof process.stdout.write
-    expect(await queryWithSentinel("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).toBeNull()
+    const outcome = await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)
+    expect(outcome).toMatchObject({
+      match: ["\x1b[12;34R", "12", "34"],
+      reason: "reply",
+      raw: bytes,
+      rawBase64: Buffer.from(bytes).toString("base64"),
+    })
+    expect(outcome.sentinel?.graceMs).toBe(250)
+    expect(await queryWithSentinel("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).toMatchObject(["\x1b[12;34R", "12", "34"])
+  })
+
+  it("keeps reading through the grace window after the sentinel and grades a reply that lands in it", async () => {
+    process.stdout.write = (() => {
+      reply("\x1b[?1;2c")
+      setTimeout(() => reply("\x1b[12;34R"), 30)
+      return true
+    }) as typeof process.stdout.write
+    expect(await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 1000, 200)).toMatchObject({
+      match: ["\x1b[12;34R", "12", "34"],
+      reason: "reply",
+      sentinel: { graceMs: 200 },
+    })
+  })
+
+  it("calls a sentinel-only read silent only after the grace window, and stops reading there", async () => {
+    const listenersBefore = process.stdin.listenerCount("data")
+    process.stdout.write = (() => {
+      reply("\x1b[?1;2c")
+      return true
+    }) as typeof process.stdout.write
+    const started = Date.now()
+    expect(await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 1000, 60)).toMatchObject({
+      match: null,
+      reason: "sentinel",
+      raw: "\x1b[?1;2c",
+      sentinel: { graceMs: 60 },
+    })
+    expect(Date.now() - started).toBeGreaterThanOrEqual(50)
+    expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
   })
 
   it("can query DA1 itself without mistaking its answer for the sentinel", async () => {

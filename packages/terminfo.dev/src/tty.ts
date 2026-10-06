@@ -45,6 +45,8 @@ export interface TTYQueryTrace {
   raw: string
   rawBase64: string
   match: string[] | null
+  /** The DA1 sentinel arrived before this query's reply, with the measured ordering facts. */
+  sentinel?: { atMs: number; graceMs: number }
 }
 export type TTYTraceEvent = { kind: "write"; sequence: string } | ({ kind: "query" } & TTYQueryTrace)
 const queryTraceContext = new AsyncLocalStorage<{ queries: TTYQueryTrace[]; events: TTYTraceEvent[] }>()
@@ -99,44 +101,74 @@ function matchResponse(
   write?: () => void,
   sentinel = false,
   sequence = "",
+  graceMs: number = SENTINEL_GRACE_MS,
 ): Promise<QueryOutcome> {
   const trace = queryTraceContext.getStore()
   return new Promise((resolve) => {
     const chunks: Buffer[] = []
     let buf = ""
+    let settled = false
+    let timer: ReturnType<typeof setTimeout>
+    let writeAt = 0
+    let sentinelFacts: { atMs: number; graceMs: number } | null = null
 
     const cleanup = () => {
       clearTimeout(timer)
       process.stdin.off("data", onData)
     }
 
-    const finish = (match: string[] | null, reason: QueryOutcome["reason"]) => {
+    const finish = (
+      match: string[] | null,
+      reason: QueryOutcome["reason"],
+      facts: { atMs: number; graceMs: number } | null = null,
+    ) => {
+      if (settled) return
+      settled = true
       cleanup()
-      const outcome = { match, reason, raw: buf, rawBase64: Buffer.concat(chunks).toString("base64") }
+      const outcome = {
+        match,
+        reason,
+        raw: buf,
+        rawBase64: Buffer.concat(chunks).toString("base64"),
+        ...(facts ? { sentinel: facts } : {}),
+      }
       trace?.queries.push({ sequence, ...outcome })
       trace?.events.push({ kind: "query", sequence, ...outcome })
       resolve(outcome)
     }
 
     const onData = (chunk: Buffer) => {
+      if (settled) return
       chunks.push(Buffer.from(chunk))
       buf = Buffer.concat(chunks).toString()
       const match = buf.match(pattern)
-      const end = sentinel ? buf.search(/\x1b\[\?[0-9;]+c/) : -1
-      if (end >= 0) {
-        if (match && (match.index ?? 0) < end) finish([...match], "reply")
-        else finish(null, "sentinel")
-      } else if (match && !sentinel) {
-        finish([...match], "reply")
+      if (!sentinel) {
+        if (match) finish([...match], "reply")
+        return
       }
+      const end = buf.search(/\x1b\[\?[0-9;]+c/)
+      if (end < 0) return
+      if (match && (match.index ?? 0) < end) {
+        finish([...match], "reply")
+        return
+      }
+      // DA1 answered and no reply preceded it. Keep reading for the grace window: a reply inside it
+      // still grades by the reply, carrying the ordering note; only silence through the window is the
+      // measured negative the grader records as "negative by sentinel", citing these numbers. The
+      // window bounds the wait, so the DA1 deadline replaces the outer one.
+      sentinelFacts ??= { atMs: Date.now() - writeAt, graceMs }
+      clearTimeout(timer)
+      timer = setTimeout(() => finish(null, "sentinel", sentinelFacts), graceMs)
+      if (match) finish([...match], "reply", sentinelFacts)
     }
 
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       const match = buf.match(pattern)
       finish(match ? [...match] : null, match ? "reply" : "timeout")
     }, timeoutMs)
 
     process.stdin.on("data", onData)
+    writeAt = Date.now()
     try {
       write?.()
     } catch (error) {
@@ -158,6 +190,15 @@ export async function query(sequence: string, responsePattern: RegExp, timeoutMs
 }
 
 /**
+ * F1 (27832): how long the collector keeps reading after a DA1 sentinel before it calls a missing
+ * reply a measured negative. Sized by measurement, once: re-run the sentinel-fired features on every
+ * Release 1 terminal with a 1 s post-DA1 read and record any late reply and its delay, then
+ * grace = max(250 ms, 2 x the largest observed delay). 250 ms is the floor until that measurement
+ * lands; the issue names any terminal that answers late and the features it answers late for.
+ */
+export const SENTINEL_GRACE_MS = 250
+
+/**
  * DA1 response pattern — universally supported by all modern terminals.
  * Used as a sentinel: if DA1 arrives without the expected response, the
  * terminal has not answered before the end marker. This alone does not prove
@@ -177,6 +218,7 @@ export async function queryWithSentinelOutcome(
   sequence: string,
   responsePattern: RegExp,
   timeoutMs = 2000,
+  graceMs: number = SENTINEL_GRACE_MS,
 ): Promise<QueryOutcome> {
   // DA1 is the requested answer here; a second DA1 cannot distinguish it from a sentinel.
   if (sequence === "\x1b[c") {
@@ -189,6 +231,7 @@ export async function queryWithSentinelOutcome(
       () => currentTTYOutput().write(sequence + "\x1b[c"),
       true,
       sequence + "\x1b[c",
+      graceMs,
     ),
   )
 }
