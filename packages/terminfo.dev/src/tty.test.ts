@@ -13,6 +13,7 @@ import {
   queryOutcome,
   queryWithSentinel,
   queryWithSentinelOutcome,
+  sentinelGraceMs,
   withRawMode,
   withTTYOperation,
 } from "./tty.ts"
@@ -411,5 +412,19 @@ describe("TTY transaction replies", () => {
     expect(await query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).toMatchObject(["\x1b[2;4R", "2", "4"])
     expect(injectedWrites).toEqual([])
     expect(defaultWrites).toEqual(["\x1b[6n"])
+  })
+})
+
+/** The window is a measured value, so widening it is explicit and a typo must never be silent. */
+describe("sentinel grace override", () => {
+  it("keeps the floor when unset or empty, honours a whole count, and refuses anything else", () => {
+    expect(sentinelGraceMs(undefined)).toBe(250)
+    expect(sentinelGraceMs("")).toBe(250)
+    expect(sentinelGraceMs("1000")).toBe(1000)
+    expect(() => sentinelGraceMs("1s")).toThrow(/whole number of milliseconds/)
+    expect(() => sentinelGraceMs("-5")).toThrow(/whole number of milliseconds/)
+    expect(() => sentinelGraceMs("0")).toThrow(/positive whole number/)
+    expect(() => sentinelGraceMs("1.5")).toThrow(/whole number of milliseconds/)
+    expect(() => sentinelGraceMs("9007199254740993")).toThrow(/positive whole number/)
   })
 })
