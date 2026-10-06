@@ -527,10 +527,11 @@ jq -n \
   --arg runnerSha "$frozen_runner_sha" --arg receiptSha "$build_receipt_sha" \
   --arg sourceStatus "$source_status" --slurpfile build "$cli_receipt" \
   --arg collectedAt "$(date -u +%FT%TZ)" \
+  --arg grace "${TERMINFO_SENTINEL_GRACE_MS:-250}" \
   --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$kitty_version" \
   --arg url "$source_url" --arg sri "$source_sri" \
   --arg runnerUrl "file://$prep/runner-bundle.tar" \
-  '{schemaVersion:1,kind:"linux-xvfb-container",collectedAt:$collectedAt,runId:$run,preset:$preset,clipboardProfile:$profile,
+  '{schemaVersion:1,kind:"linux-xvfb-container",collectedAt:$collectedAt,runId:$run,preset:$preset,clipboardProfile:$profile,sentinelGraceMs:($grace|tonumber),
     declaredTarget:{kind:"app",id:"kitty",version:$version,os:"linux"},
     sourceArtifact:{url:$url,sri:$sri},
     runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
@@ -546,6 +547,10 @@ cp "$raw/host-measured.json" "$prep/receipt/host-measured.json"
 
 selection_env=()
 [[ "$probe_ids" == null ]] || selection_env=(--env "TERMINFO_PROBE_IDS=$probe_ids")
+# The one-time sentinel-grace sizing pass widens the post-DA1 read; forward it only when the host
+# asked for it, so an ordinary collection keeps the measured floor.
+grace_env=()
+[[ -z "${TERMINFO_SENTINEL_GRACE_MS:-}" ]] || grace_env=(--env "TERMINFO_SENTINEL_GRACE_MS=$TERMINFO_SENTINEL_GRACE_MS")
 container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-only \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 2g --cpus 2 \
   --tmpfs "/tmp:rw,nosuid,nodev,mode=1777" \
@@ -554,6 +559,7 @@ container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-on
   --mount "type=bind,src=$prep/receipt,dst=/receipt,readonly" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
+  "${grace_env[@]}" \
   --env "TERMINFO_DISPOSABLE_RECEIPT=/receipt/host-measured.json" \
   "$image_id")
 echo "$container_id" > "$prep/container-id.txt"
