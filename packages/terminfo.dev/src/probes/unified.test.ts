@@ -140,6 +140,88 @@ it.each([
   }
 })
 
+// A result-level note beside an explicit observation must reach the run document, and an
+// observation's own note is never replaced by it; the legacy control keeps the result note.
+it.each([
+  {
+    label: "result-note-beside-observation",
+    resultNote: "Deterministic result-level note retention fixture",
+    observationNote: undefined,
+  },
+  {
+    label: "observation-own-note",
+    resultNote: undefined,
+    observationNote: "Deterministic observation-level note fixture",
+  },
+  {
+    label: "both-notes",
+    resultNote: "Deterministic legacy label",
+    observationNote: "Deterministic observation-level note fixture",
+  },
+])(
+  "retains the ProbeResult note for the $label case without disturbing legacy decoding",
+  async ({ resultNote, observationNote }) => {
+    const id = "modes.bracketed-paste"
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    expect(definition.termWrites).toBe("query")
+    expect(definition.termNeedsGeometry).toBeUndefined()
+    const original = definition.term
+    const resultNoteFields = resultNote === undefined ? {} : { note: resultNote }
+    const observation = {
+      outcome: "inconclusive" as const,
+      reason: "insufficient-evidence" as const,
+      evidence: "none" as const,
+      ...(observationNote === undefined ? {} : { note: observationNote }),
+    }
+    const expectedNote = observationNote ?? resultNote
+    const trace = JSON.stringify({ writes: [], queries: [], events: [] })
+    try {
+      definition.term = async () => ({ pass: false, ...resultNoteFields, observation })
+      const explicit = await runProbeBatch({ ids: [id] })
+      definition.term = async () => ({ pass: false, ...resultNoteFields })
+      const legacy = await runProbeBatch({ ids: [id] })
+      const decodedExplicit = decodeCollectorRun(
+        "explicit-callback-note.json",
+        JSON.stringify(asRun(explicit)),
+        manifest,
+        sourceRevision,
+      ).run
+      const decodedLegacy = decodeCollectorRun(
+        "legacy-callback-note.json",
+        JSON.stringify(asRun(legacy)),
+        manifest,
+        sourceRevision,
+      ).run
+      const expectedObservation = { featureId: id, ...observation, note: expectedNote, rawReplyRef: id }
+      expect(explicit.observations).toEqual([expectedObservation])
+      expect(decodedExplicit.observations).toEqual([expectedObservation])
+      expect(explicit.ungradedDiagnostics).toEqual({})
+      expect(decodedExplicit.ungradedDiagnostics).toEqual({})
+      expect(explicit.assertions).toEqual([])
+      expect(decodedExplicit.assertions).toEqual([])
+      expect(explicit.rawReplies).toEqual({ [id]: trace })
+      expect(decodedExplicit.rawReplies).toEqual({ [id]: trace })
+      expect(explicit.suiteComplete).toBe(false)
+      expect(decodedExplicit.suiteComplete).toBe(false)
+      expect(decodedExplicit.identity).toBe("unverified")
+
+      const diagnostic = { kind: "legacy-callback", pass: false, ...resultNoteFields }
+      expect(legacy.observations).toEqual([])
+      expect(decodedLegacy.observations).toEqual([])
+      expect(legacy.ungradedDiagnostics).toEqual({ [id]: diagnostic })
+      expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: diagnostic })
+      expect(legacy.rawReplies).toEqual({ [id]: trace })
+      expect(decodedLegacy.rawReplies).toEqual({ [id]: trace })
+      expect(legacy.assertions).toEqual([])
+      expect(decodedLegacy.assertions).toEqual([])
+      expect(decodedLegacy.suiteComplete).toBe(false)
+      expect(decodedLegacy.identity).toBe("unverified")
+    } finally {
+      definition.term = original
+    }
+  },
+)
+
 // An unowned inline batch must refuse before a callback can send RIS or paint the user's TTY.
 it("refuses an unowned mutating callback without sending terminal bytes", async () => {
   const writes: string[] = []

@@ -353,6 +353,7 @@ export async function runProbeBatch(
         batch.observations.push({
           featureId: probe.id,
           ...result.observation,
+          ...(result.note && !result.observation.note ? { note: result.note } : {}),
           ...(resized
             ? {
                 outcome: "inconclusive" as const,
