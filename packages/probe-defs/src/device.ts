@@ -447,7 +447,10 @@ export const deviceProbes: ProbeDefinition[] = [
     query: "\x1bP+Q7465726d4e616d65\x1b\\",
     valid: /\x1bP1\+R7465726d4e616d65=[0-9A-Fa-f]+\x1b\\/i,
     refusal: /\x1bP0\+R7465726d4e616d65\x1b\\/i,
-    malformed: /\x1bP[01]\+R/,
+    // The name is hex-encoded, so a terminal may echo it in either case; valid and
+    // refusal are already case-insensitive, and a case-sensitive malformed pattern
+    // graded the same frame no-response instead of invalid-reply.
+    malformed: /\x1bP[01]\+R/i,
     expected: "XTGETXRES returns a complete status-1 termName resource value",
   }),
 ]

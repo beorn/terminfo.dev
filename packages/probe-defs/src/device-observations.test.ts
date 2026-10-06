@@ -356,3 +356,124 @@ describe("window-operation qualification", () => {
     }
   })
 })
+
+/**
+ * @failure XTWINOPS 16/21, XTREPORTCOLORS and XTGETXRES had no test binding their own frame, so a wrong or absent reply could have been read as support.
+ * @level l0
+ * @consumer App and headless device-query observations for the reply-decided feature set.
+ * @testonly none
+ */
+describe("device contracts without prior coverage", () => {
+  const app = (raw: string, reason: TerminalQueryOutcome["reason"] = "reply"): TermContext =>
+    ({
+      write: () => undefined,
+      queryWithSentinelOutcome: async (_sequence: string, pattern: RegExp) =>
+        Promise.resolve({
+          match: reason === "reply" ? pattern.exec(raw) : null,
+          reason,
+          raw,
+          rawBase64: Buffer.from(raw).toString("base64"),
+        }),
+    }) as unknown as TermContext
+
+  test("XTWINOPS 16 binds a complete cell-pixel frame in both collectors", async () => {
+    const probe = callback("device.xtwinops-16")
+    const frame = "\x1b[6;16;8t"
+    for (const result of [probe.headless(headless(frame)), await probe.terminal(app(frame))]) {
+      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
+      expect(result.response).toBe(frame)
+    }
+    // A truncated frame is malformed, an unrelated window-op answer is no answer at all.
+    expect(probe.headless(headless("\x1b[6;16;8")).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "invalid-reply",
+    })
+    expect(probe.headless(headless("\x1b[4;720;1280t")).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+    })
+  })
+
+  test("XTREPORTCOLORS binds a complete CSI Pm # Q frame", async () => {
+    const probe = callback("device.xtreportcolors")
+    const frame = "\x1b[0;1#Q"
+    for (const result of [probe.headless(headless(frame)), await probe.terminal(app(frame))]) {
+      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
+    }
+    expect(probe.headless(headless("\x1b[0;1#")).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "invalid-reply",
+    })
+    expect(probe.headless(headless("\x1b[?62;52;c")).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+    })
+  })
+
+  test("XTGETXRES binds a status-1 termName value and reads status 0 as a refusal", async () => {
+    const probe = callback("device.xtgetxres")
+    const frame = "\x1bP1+r7465726d4e616d65=787465726d\x1b\\"
+    for (const result of [probe.headless(headless(frame)), await probe.terminal(app(frame))]) {
+      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
+    }
+    // Status 0 is a complete answer that refuses the name: inconclusive, never a negative claim.
+    for (const result of [
+      probe.headless(headless("\x1bP0+r7465726d4e616d65\x1b\\")),
+      await probe.terminal(app("\x1bP0+r7465726d4e616d65\x1b\\")),
+    ]) {
+      expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+      expect(result.assertions).toBeUndefined()
+    }
+    // A missing ST, or a status-1 frame with no value, is malformed rather than absent.
+    for (const raw of ["\x1bP1+r7465726d4e616d65", "\x1bP1+r7465726d4e616d65=\x1b\\"]) {
+      expect(probe.headless(headless(raw)).observation).toMatchObject({
+        outcome: "inconclusive",
+        reason: "invalid-reply",
+      })
+    }
+  })
+
+  test("XTWINOPS 21 sets its own title and binds the reported title to that exact frame", async () => {
+    const probe = callback("device.xtwinops-21")
+    const frame = "\x1b]ltest-title\x07"
+    const writes: string[] = []
+    const context = {
+      write: (sequence: string) => {
+        writes.push(sequence)
+      },
+      queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => {
+        writes.push(sequence)
+        return {
+          match: pattern.exec(frame),
+          reason: "reply" as const,
+          raw: frame,
+          rawBase64: Buffer.from(frame).toString("base64"),
+        }
+      },
+    } as unknown as TermContext
+    const result = await probe.terminal(context)
+    // The probe owns its setup: it sets the title it then requires.
+    expect(writes).toEqual(["\x1b]2;test-title\x07", "\x1b[21t"])
+    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
+    const feeds: string[] = []
+    const headlessResult = probe.headless({
+      feed: (sequence: string) => {
+        feeds.push(sequence)
+      },
+      feedCapture: () => frame,
+    } as unknown as TermlessContext)
+    expect(feeds).toEqual(["\x1b]2;test-title\x07"])
+    expect(headlessResult.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    // A different title is malformed for this query rather than a measured negative:
+    // XTWINOPS 21 has no contradiction rule, unlike XTWINOPS 20.
+    const other = probe.headless({
+      feed: () => undefined,
+      feedCapture: () => "\x1b]lother-title\x07",
+    } as unknown as TermlessContext)
+    expect(other.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+  })
+})
