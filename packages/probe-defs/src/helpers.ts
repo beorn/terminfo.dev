@@ -512,3 +512,34 @@ export function readHyperlinkMetadata(
   }
   return hyperlink
 }
+
+/** Every complete answer a terminal gives to a DA1 query. */
+const DA1_REPLY = /\x1b\[\?[0-9;]*c/gu
+
+/**
+ * F1 (27832): a DA1 sentinel answered on time with nothing else said through the grace window is a
+ * measured negative, not an unknown — the terminal was alive and did not answer the query. `sentinel`
+ * carries the measured ordering (its arrival and the window that followed), which the negative cites
+ * so a reader can tell it from an explicit negative reply without a new evidence member.
+ *
+ * Returns null when the collector measured no sentinel, or when `raw` carries anything besides the
+ * DA1 answers (a partial frame is the site's own `invalid-reply`, not a silent terminal), so the
+ * caller keeps its existing inconclusive grade.
+ */
+export function sentinelNegativeResult(
+  raw: string,
+  sentinel: { atMs: number; graceMs: number } | undefined,
+  expected: string,
+): ProbeResult | null {
+  if (!sentinel || raw.replace(DA1_REPLY, "").trim() !== "") return null
+  const observed = `DA1 answered at +${String(sentinel.atMs)}ms; no reply through the ${String(sentinel.graceMs)} ms window`
+  return {
+    pass: false,
+    response: raw,
+    observation: { outcome: "unsupported", evidence: "query", note: "negative by sentinel" },
+    assertions: [{ kind: "negative", expected, observed }],
+  }
+}
+
+/** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */
+export const REPLY_AFTER_SENTINEL_NOTE = "reply after sentinel"

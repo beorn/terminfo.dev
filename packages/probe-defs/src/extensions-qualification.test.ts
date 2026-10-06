@@ -235,3 +235,78 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
   })
   expect(silent.assertions, id).toBeUndefined()
 })
+
+test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grades by the reply", async () => {
+  const definition = callback("extensions.osc10-fg-color")
+  const da1 = "\x1b[?1;2c"
+  const frame = "\x1b]10;rgb:ffff/0000/0000\x07"
+  const app = (raw: string, sentinel?: { atMs: number; graceMs: number }) =>
+    definition.term!({
+      queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
+        match: pattern.exec(raw),
+        reason: pattern.test(raw) ? "reply" : "sentinel",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+        ...(sentinel && { sentinel }),
+      }),
+    } as unknown as TermContext)
+
+  const silent = await app(da1, { atMs: 7, graceMs: 250 })
+  expect(silent.observation).toMatchObject({
+    outcome: "unsupported",
+    evidence: "query",
+    note: "negative by sentinel",
+  })
+  expect(silent.assertions).toMatchObject([
+    { kind: "negative", observed: "DA1 answered at +7ms; no reply through the 250 ms window" },
+  ])
+
+  const late = await app(da1 + frame, { atMs: 7, graceMs: 250 })
+  expect(late.observation).toMatchObject({
+    outcome: "supported",
+    evidence: "query",
+    note: "reply after sentinel",
+  })
+  expect(late.assertions).toMatchObject([{ kind: "positive", observed: frame }])
+
+  // Without the measured ordering an engine or simulated capture carries, silence stays unknown; the
+  // ordering note is the only thing the measurement adds to a reply the site already matched.
+  const unmeasured = await app(da1)
+  expect(unmeasured.observation?.outcome).toBe("inconclusive")
+  expect(unmeasured.assertions).toBeUndefined()
+  const unmeasuredLate = await app(da1 + frame)
+  expect(unmeasuredLate.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(unmeasuredLate.observation?.note).toBeUndefined()
+
+  // A partial frame after DA1 is the terminal answering badly, not a silent terminal.
+  const partial = await app(da1 + "\x1b]10;", { atMs: 7, graceMs: 250 })
+  expect(partial.observation?.outcome).toBe("inconclusive")
+  expect(partial.assertions).toBeUndefined()
+})
+
+test("the unanswered-query choke point grades a measured sentinel and never a timeout", async () => {
+  const definition = callback("extensions.osc21-kitty-color")
+  const context = (reply: Record<string, unknown>) =>
+    definition.term!({ queryWithSentinelOutcome: async () => reply } as unknown as TermContext)
+
+  const silent = await context({
+    match: null,
+    reason: "sentinel",
+    raw: "\x1b[?1;2c",
+    rawBase64: Buffer.from("\x1b[?1;2c").toString("base64"),
+    sentinel: { atMs: 5, graceMs: 250 },
+  })
+  expect(silent.observation).toMatchObject({
+    outcome: "unsupported",
+    evidence: "query",
+    note: "negative by sentinel",
+  })
+  expect(silent.assertions).toMatchObject([
+    { kind: "negative", observed: "DA1 answered at +5ms; no reply through the 250 ms window" },
+  ])
+
+  // A timeout never answered DA1 at all, so it cannot be a sentinel negative.
+  const timedOut = await context({ match: null, reason: "timeout", raw: "", rawBase64: "" })
+  expect(timedOut.observation).toMatchObject({ outcome: "inconclusive", reason: "timeout" })
+  expect(timedOut.assertions).toBeUndefined()
+})
