@@ -150,20 +150,23 @@ function barSegmentTooltip(backendName, segment) {
 }
 
 function failBarWidth(backendName) {
-  const s = data.stats[backendName]
-  if (!s?.total) return '0%'
-  const fail = s.total - s.yes - (s.partial ?? 0)
-  return (fail / s.total * 100) + '%'
+  const bar = data.releaseBars[backendName]
+  if (!bar?.denominator) return '0%'
+  return (bar.unsupported / bar.denominator * 100) + '%'
 }
 
 function barWidth(backendName, segment) {
-  const s = data.stats[backendName]
-  return s?.total ? (s[segment] / s.total * 100) + '%' : '0%'
+  const bar = data.releaseBars[backendName]
+  if (!bar?.denominator) return '0%'
+  if (segment === 'yes') return (bar.supported / bar.denominator * 100) + '%'
+  if (segment === 'partial') return (bar.inconclusive / bar.denominator * 100) + '%'
+  return '0%'
 }
 
 function scoreLabel(backendName) {
-  const pct = data.stats[backendName]?.pct
-  return pct == null ? 'No conclusive score' : `${pct}% of conclusive`
+  const bar = data.releaseBars[backendName]
+  if (!bar?.denominator) return 'No conclusive score'
+  return `${bar.fillPct}% of ${bar.denominator} tier-1 features`
 }
 
 function coverageLabel(backendName) {
@@ -216,6 +219,13 @@ function backendTooltip(name, version) {
 
 <div class="problem-summary">
   <p>Does your terminal support truecolor, modern keyboard protocols, or image rendering? Real data from automated tests (<a href="https://termless.dev">Termless</a>) and <a href="/contribute">user contributions</a>.</p>
+  <p class="tier-line">{{ data.releaseScope.line }}</p>
+  <details class="unmeasured">
+    <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
+    <ul>
+      <li v-for="feature in data.releaseScope.unmeasured" :key="feature.id">{{ feature.name }} · {{ feature.status }}</li>
+    </ul>
+  </details>
 </div>
 
 <div v-if="data.backends.length === 0" class="no-data">
@@ -1065,5 +1075,22 @@ strips, or mishandles.
 
 .problem-summary p {
   margin: 0;
+}
+
+.problem-summary .tier-line {
+  margin-top: 0.75em;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+}
+
+.problem-summary .unmeasured {
+  margin-top: 0.5em;
+}
+
+.problem-summary .unmeasured ul {
+  margin: 0.5em 0 0;
+  padding-left: 1.2em;
+  max-height: 16em;
+  overflow: auto;
 }
 </style>

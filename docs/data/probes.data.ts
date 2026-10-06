@@ -13,6 +13,15 @@ import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
+import {
+  barOverMeasured,
+  isStaleSuite,
+  loadReleaseScope,
+  staleCaption,
+  tierLine,
+  type MeasuredBar,
+  type ReleaseScope,
+} from "./release-scope.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -80,6 +89,10 @@ export interface ProbeData {
   generated: string
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
+  releaseScope: ReleaseScope & { line: string }
+  releaseBars: Record<string, MeasuredBar>
+  /** Default-run stale caption when suiteFreshness is not current; null when current. */
+  releaseStale: Record<string, string | null>
 }
 
 interface FeatureMeta {
@@ -266,6 +279,20 @@ export function loadFullProbes(): ProbeData {
       .map((v) => v.measuredAt)
       .sort()
       .at(-1) ?? ""
+  const release = loadReleaseScope({
+    catalog: featureDescriptions,
+    declarationPath: join(contentDir, "release-scope.json"),
+  })
+  const releaseScope = {
+    ...release,
+    line: tierLine(release, generated ? { measuredAt: generated } : undefined),
+  }
+  const releaseBars: Record<string, MeasuredBar> = {}
+  const releaseStale: Record<string, string | null> = {}
+  for (const [key, { selected }] of byTarget) {
+    releaseBars[key] = barOverMeasured(selected.cells, release.measuredIds)
+    releaseStale[key] = isStaleSuite(selected.suiteFreshness) ? staleCaption(selected.measuredAt) : null
+  }
   const result: ProbeData = {
     backends,
     features,
@@ -282,6 +309,9 @@ export function loadFullProbes(): ProbeData {
     generated,
     selected: published.projection,
     selectedByBackend,
+    releaseScope,
+    releaseBars,
+    releaseStale,
   }
   computeBaselines(result)
   return result
