@@ -1,0 +1,457 @@
+name: macos-measurement
+
+on:
+  workflow_dispatch:
+    inputs:
+      cli_version:
+        description: "terminfo.dev CLI version to install/test (or 'local' to test repo build)"
+        required: true
+        default: "4.0.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure-macos:
+    name: macOS 4-Terminal Measurement
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gather system and display context
+        continue-on-error: true
+        run: |
+          caffeinate -u -t 1800 &
+          mkdir -p /tmp/measurement-artifacts
+          {
+            echo "=== SYSTEM VERSION ==="
+            sw_vers
+            echo ""
+            echo "=== RUNNER INFO ==="
+            echo "ImageOS: ${ImageOS:-unknown}"
+            echo "ImageVersion: ${ImageVersion:-unknown}"
+            echo "RUNNER_ARCH: ${RUNNER_ARCH:-unknown}"
+            echo "RUNNER_OS: ${RUNNER_OS:-unknown}"
+            echo ""
+            echo "=== DISPLAY / GRAPHICS ==="
+            system_profiler SPDisplaysDataType 2>/dev/null || true
+            echo ""
+            echo "=== DESKTOP BOUNDS ==="
+            osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null || true
+          } > /tmp/measurement-artifacts/context.txt
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Prepare Global Node & CLI Environment
+        run: |
+          echo "=== Setting up global symlinks ==="
+          NODE_BIN="$(which node)"
+          NPM_BIN="$(which npm)"
+          NPX_BIN="$(which npx)"
+
+          sudo ln -sf "$NODE_BIN" /usr/local/bin/node
+          sudo ln -sf "$NPM_BIN" /usr/local/bin/npm
+          sudo ln -sf "$NPX_BIN" /usr/local/bin/npx
+
+          CLI_VER="${{ github.event.inputs.cli_version || '4.0.0' }}"
+          if [ "$CLI_VER" = "local" ]; then
+            echo "=== Building and linking local terminfo.dev package ==="
+            bun install
+            bun run build
+            npm install -g ./packages/terminfo.dev
+          else
+            echo "=== Installing terminfo.dev@$CLI_VER ==="
+            npm install -g "terminfo.dev@$CLI_VER"
+          fi
+
+          TERMINFO_BIN="$(which terminfo 2>/dev/null || echo '')"
+          if [ -n "$TERMINFO_BIN" ]; then
+            sudo ln -sf "$TERMINFO_BIN" /usr/local/bin/terminfo
+          fi
+
+          echo "=== Warmup check ==="
+          terminfo --version || npx terminfo.dev --version || true
+
+      - name: Install terminal matrix (iTerm2, Ghostty via Brew; Alacritty via GitHub release)
+        continue-on-error: true
+        run: |
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          export HOMEBREW_NO_INSTALL_CLEANUP=1
+
+          for app in iterm2 ghostty; do
+            echo "=== Installing $app ==="
+            brew install --cask "$app" || echo "WARNING: Failed to install $app via brew cask"
+          done
+
+          echo "=== Installing Alacritty from GitHub Releases v0.17.0 ==="
+          curl -sLf https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg -o /tmp/Alacritty.dmg || true
+          if [ -f /tmp/Alacritty.dmg ]; then
+            hdiutil attach /tmp/Alacritty.dmg -mountpoint /Volumes/Alacritty || true
+            cp -R /Volumes/Alacritty/Alacritty.app /Applications/ 2>/dev/null || true
+            hdiutil detach /Volumes/Alacritty 2>/dev/null || true
+          fi
+
+          sudo xattr -cr /Applications/*.app 2>/dev/null || true
+
+      - name: Record macOS bundle version receipts
+        continue-on-error: true
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import subprocess
+          import os
+
+          apps = [
+              ("Terminal.app", "/System/Applications/Utilities/Terminal.app"),
+              ("iTerm2", "/Applications/iTerm.app"),
+              ("Ghostty", "/Applications/Ghostty.app"),
+              ("Alacritty", "/Applications/Alacritty.app")
+          ]
+
+          receipts = {}
+          for name, app_path in apps:
+              info_plist = os.path.join(app_path, "Contents/Info.plist")
+              short_ver = "unknown"
+              bundle_ver = "unknown"
+              if os.path.exists(info_plist):
+                  try:
+                      short_ver = subprocess.check_output(
+                          ["defaults", "read", info_plist, "CFBundleShortVersionString"],
+                          text=True, stderr=subprocess.DEVNULL
+                      ).strip()
+                  except Exception:
+                      pass
+                  try:
+                      bundle_ver = subprocess.check_output(
+                          ["defaults", "read", info_plist, "CFBundleVersion"],
+                          text=True, stderr=subprocess.DEVNULL
+                      ).strip()
+                  except Exception:
+                      pass
+              receipts[name] = {
+                  "bundlePath": app_path,
+                  "cfBundleShortVersionString": short_ver,
+                  "cfBundleVersion": bundle_ver,
+                  "exists": os.path.exists(app_path)
+              }
+
+          print("=== BUNDLE RECEIPTS ===")
+          print(json.dumps(receipts, indent=2))
+          with open("/tmp/measurement-artifacts/bundle-receipts.json", "w") as f:
+              json.dump(receipts, f, indent=2)
+          PYEOF
+
+      - name: "Measure 1 - Terminal.app"
+        continue-on-error: true
+        run: |
+          echo "=== Measuring Terminal.app ==="
+          NODE_DIR="$(dirname $(which node))"
+
+          cat << CMDEOF > /tmp/run_terminal.command
+          #!/bin/bash
+          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
+          echo "=== Terminal.app test starting at \$(date) ===" > /tmp/measurement-artifacts/output_terminal_app.txt
+          echo "TTY: \$(tty 2>/dev/null || echo 'not a tty')" >> /tmp/measurement-artifacts/output_terminal_app.txt
+          echo "TERM: \$TERM, TERM_PROGRAM: \$TERM_PROGRAM" >> /tmp/measurement-artifacts/output_terminal_app.txt
+          echo "Node: \$(which node) (\$(node -v 2>/dev/null))" >> /tmp/measurement-artifacts/output_terminal_app.txt
+          echo "Running CLI test..." >> /tmp/measurement-artifacts/output_terminal_app.txt
+
+          terminfo test --output /tmp/measurement-artifacts/results_terminal_app.json 2>&1 | tee -a /tmp/measurement-artifacts/output_terminal_app.txt
+          EXIT_CODE=\${PIPESTATUS[0]}
+          echo "EXIT_CODE=\$EXIT_CODE" >> /tmp/measurement-artifacts/output_terminal_app.txt
+          echo "\$EXIT_CODE" > /tmp/terminal_app_exit.txt
+          touch /tmp/terminal_app_done.txt
+          sleep 30
+          CMDEOF
+          chmod +x /tmp/run_terminal.command
+
+          open -a /System/Applications/Utilities/Terminal.app /tmp/run_terminal.command
+          sleep 2
+          osascript -e 'tell application "Terminal" to set bounds of front window to {50, 50, 850, 650}' 2>/dev/null || true
+
+          for i in {1..90}; do
+            if [ -f /tmp/terminal_app_done.txt ]; then
+              echo "Terminal.app run completed in \$i seconds."
+              break
+            fi
+            sleep 1
+          done
+
+          sleep 2
+          screencapture -x /tmp/measurement-artifacts/screenshot_terminal_app.png > /tmp/measurement-artifacts/screencapture_terminal.log 2>&1 || true
+
+          osascript -e 'tell application "Terminal" to quit saving no' 2>/dev/null || killall Terminal 2>/dev/null || true
+          sleep 2
+
+      - name: "Measure 2 - iTerm2"
+        continue-on-error: true
+        run: |
+          echo "=== Measuring iTerm2 ==="
+          if [ -d "/Applications/iTerm.app" ]; then
+            defaults write com.googlecode.iterm2 DisableGPUWhenUnplugged -bool true
+            defaults write com.googlecode.iterm2 UseMetal -bool false
+            defaults write com.googlecode.iterm2 MetalAllowed -bool false
+
+            NODE_DIR="$(dirname $(which node))"
+
+            cat << SHEOF > /tmp/run_iterm2.sh
+          #!/bin/bash
+          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
+          echo "=== iTerm2 test starting at \$(date) ===" > /tmp/measurement-artifacts/output_iterm2.txt
+          echo "TTY: \$(tty 2>/dev/null || echo 'not a tty')" >> /tmp/measurement-artifacts/output_iterm2.txt
+          echo "TERM: \$TERM, TERM_PROGRAM: \$TERM_PROGRAM" >> /tmp/measurement-artifacts/output_iterm2.txt
+          echo "Node: \$(which node) (\$(node -v 2>/dev/null))" >> /tmp/measurement-artifacts/output_iterm2.txt
+          echo "Running CLI test..." >> /tmp/measurement-artifacts/output_iterm2.txt
+
+          terminfo test --output /tmp/measurement-artifacts/results_iterm2.json 2>&1 | tee -a /tmp/measurement-artifacts/output_iterm2.txt
+          EXIT_CODE=\${PIPESTATUS[0]}
+          echo "EXIT_CODE=\$EXIT_CODE" >> /tmp/measurement-artifacts/output_iterm2.txt
+          echo "\$EXIT_CODE" > /tmp/iterm2_exit.txt
+          touch /tmp/iterm2_done.txt
+          sleep 30
+          SHEOF
+            chmod +x /tmp/run_iterm2.sh
+
+            for profile_file in ~/.bash_profile ~/.bashrc ~/.profile ~/.zprofile ~/.zshrc; do
+              touch "$profile_file"
+              echo 'if [ -n "$ITERM_SESSION_ID" ] && [ -f /tmp/run_iterm2.sh ] && [ ! -f /tmp/iterm2_done.txt ]; then /bin/bash /tmp/run_iterm2.sh; fi' >> "$profile_file"
+            done
+
+            /Applications/iTerm.app/Contents/MacOS/iTerm2 > /tmp/measurement-artifacts/iterm2.log 2>&1 &
+            ITERM_PID=$!
+
+            for i in {1..90}; do
+              if [ -f /tmp/iterm2_done.txt ]; then
+                echo "iTerm2 run completed in \$i seconds."
+                break
+              fi
+              sleep 1
+            done
+
+            sleep 2
+            screencapture -x /tmp/measurement-artifacts/screenshot_iterm2.png > /tmp/measurement-artifacts/screencapture_iterm2.log 2>&1 || true
+
+            killall iTerm2 2>/dev/null || kill -TERM "$ITERM_PID" 2>/dev/null || true
+            sleep 2
+          else
+            echo "iTerm.app not found in /Applications" > /tmp/measurement-artifacts/iterm2.log
+          fi
+
+      - name: "Measure 3 - Ghostty"
+        continue-on-error: true
+        run: |
+          echo "=== Measuring Ghostty ==="
+          if [ -d "/Applications/Ghostty.app" ]; then
+            NODE_DIR="$(dirname $(which node))"
+
+            cat << SHEOF > /tmp/run_ghostty.sh
+          #!/bin/bash
+          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
+          echo "=== Ghostty test starting at \$(date) ===" > /tmp/measurement-artifacts/output_ghostty.txt
+          echo "TTY: \$(tty 2>/dev/null || echo 'not a tty')" >> /tmp/measurement-artifacts/output_ghostty.txt
+          echo "TERM: \$TERM, TERM_PROGRAM: \$TERM_PROGRAM" >> /tmp/measurement-artifacts/output_ghostty.txt
+          echo "Node: \$(which node) (\$(node -v 2>/dev/null))" >> /tmp/measurement-artifacts/output_ghostty.txt
+          echo "Running CLI test..." >> /tmp/measurement-artifacts/output_ghostty.txt
+
+          terminfo test --output /tmp/measurement-artifacts/results_ghostty.json 2>&1 | tee -a /tmp/measurement-artifacts/output_ghostty.txt
+          EXIT_CODE=\${PIPESTATUS[0]}
+          echo "EXIT_CODE=\$EXIT_CODE" >> /tmp/measurement-artifacts/output_ghostty.txt
+          echo "\$EXIT_CODE" > /tmp/ghostty_exit.txt
+          touch /tmp/ghostty_done.txt
+          sleep 30
+          SHEOF
+            chmod +x /tmp/run_ghostty.sh
+
+            mkdir -p ~/.config/ghostty
+            echo "command = /bin/bash /tmp/run_ghostty.sh" > ~/.config/ghostty/config
+
+            for profile_file in ~/.bash_profile ~/.bashrc ~/.profile ~/.zprofile ~/.zshrc; do
+              touch "$profile_file"
+              echo 'if [ -n "$GHOSTTY_RESOURCES_DIR" ] && [ -f /tmp/run_ghostty.sh ] && [ ! -f /tmp/ghostty_done.txt ]; then /bin/bash /tmp/run_ghostty.sh; fi' >> "$profile_file"
+            done
+
+            GHOSTTY_BIN="/Applications/Ghostty.app/Contents/MacOS/ghostty"
+            "$GHOSTTY_BIN" > /tmp/measurement-artifacts/ghostty.log 2>&1 &
+            GHOST_PID=$!
+
+            for i in {1..90}; do
+              if [ -f /tmp/ghostty_done.txt ]; then
+                echo "Ghostty run completed in \$i seconds."
+                break
+              fi
+              sleep 1
+            done
+
+            sleep 2
+            screencapture -x /tmp/measurement-artifacts/screenshot_ghostty.png > /tmp/measurement-artifacts/screencapture_ghostty.log 2>&1 || true
+
+            kill -TERM "$GHOST_PID" 2>/dev/null || killall ghostty 2>/dev/null || true
+            sleep 2
+          else
+            echo "Ghostty.app not found in /Applications" > /tmp/measurement-artifacts/ghostty.log
+          fi
+
+      - name: "Measure 4 - Alacritty"
+        continue-on-error: true
+        run: |
+          echo "=== Measuring Alacritty ==="
+          if [ -d "/Applications/Alacritty.app" ]; then
+            NODE_DIR="$(dirname $(which node))"
+
+            cat << SHEOF > /tmp/run_alacritty.sh
+          #!/bin/bash
+          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
+          echo "=== Alacritty test starting at \$(date) ===" > /tmp/measurement-artifacts/output_alacritty.txt
+          echo "TTY: \$(tty 2>/dev/null || echo 'not a tty')" >> /tmp/measurement-artifacts/output_alacritty.txt
+          echo "TERM: \$TERM, TERM_PROGRAM: \$TERM_PROGRAM" >> /tmp/measurement-artifacts/output_alacritty.txt
+          echo "Node: \$(which node) (\$(node -v 2>/dev/null))" >> /tmp/measurement-artifacts/output_alacritty.txt
+          echo "Running CLI test..." >> /tmp/measurement-artifacts/output_alacritty.txt
+
+          terminfo test --output /tmp/measurement-artifacts/results_alacritty.json 2>&1 | tee -a /tmp/measurement-artifacts/output_alacritty.txt
+          EXIT_CODE=\${PIPESTATUS[0]}
+          echo "EXIT_CODE=\$EXIT_CODE" >> /tmp/measurement-artifacts/output_alacritty.txt
+          echo "\$EXIT_CODE" > /tmp/alacritty_exit.txt
+          touch /tmp/alacritty_done.txt
+          sleep 30
+          SHEOF
+            chmod +x /tmp/run_alacritty.sh
+
+            ALACRITTY_BIN="/Applications/Alacritty.app/Contents/MacOS/alacritty"
+            "$ALACRITTY_BIN" -e /bin/bash /tmp/run_alacritty.sh > /tmp/measurement-artifacts/alacritty.log 2>&1 &
+            ALAC_PID=$!
+
+            for i in {1..90}; do
+              if [ -f /tmp/alacritty_done.txt ]; then
+                echo "Alacritty run completed in \$i seconds."
+                break
+              fi
+              sleep 1
+            done
+
+            sleep 2
+            screencapture -x /tmp/measurement-artifacts/screenshot_alacritty.png > /tmp/measurement-artifacts/screencapture_alacritty.log 2>&1 || true
+
+            kill -TERM "$ALAC_PID" 2>/dev/null || killall alacritty 2>/dev/null || true
+            sleep 2
+          else
+            echo "Alacritty.app not found in /Applications" > /tmp/measurement-artifacts/alacritty.log
+          fi
+
+      - name: Parse, generate summary and receipts
+        continue-on-error: true
+        run: |
+          python3 - << 'PYEOF'
+          import json
+          import glob
+          import os
+          import hashlib
+
+          files = sorted(glob.glob("/tmp/measurement-artifacts/results_*.json"))
+          lines = []
+          lines.append("# Hosted macOS 4-Terminal Measurement Summary\n")
+          lines.append("| Terminal | Target ID | Detected Version | Execution Mode | Total Executed | Supported | Unsupported | Inconclusive | Error | Decisive Share (Query) |")
+          lines.append("|---|---|---|---|---|---|---|---|---|---|")
+
+          receipts_list = []
+
+          for p in files:
+              term_key = os.path.basename(p).replace("results_", "").replace(".json", "")
+              try:
+                  with open(p, "rb") as f:
+                      content = f.read()
+                      sha256 = hashlib.sha256(content).hexdigest()
+                      data = json.loads(content.decode("utf-8"))
+              except Exception as e:
+                  lines.append(f"| {term_key} | ERROR | {e} | hosted VM | - | - | - | - | - | - |")
+                  continue
+
+              target = data.get("target", {})
+              tid = target.get("id", term_key)
+              tver = target.get("version", "unknown")
+              obs = data.get("observations", [])
+              executed = len(obs)
+
+              counts = {"supported": 0, "unsupported": 0, "inconclusive": 0, "error": 0}
+              reasons = {}
+
+              query_obs = [o for o in obs if o.get("evidence") == "query"]
+              q_sup = sum(1 for o in query_obs if o.get("outcome") == "supported")
+              q_unsup = sum(1 for o in query_obs if o.get("outcome") == "unsupported")
+              decisive_query = q_sup + q_unsup
+              q_total = len(query_obs) if query_obs else 1
+              decisive_share = f"{(decisive_query / q_total) * 100:.1f}% ({decisive_query}/{q_total})"
+
+              for o in obs:
+                  outc = o.get("outcome", "unknown")
+                  counts[outc] = counts.get(outc, 0) + 1
+                  r = o.get("reason")
+                  if r:
+                      reasons[r] = reasons.get(r, 0) + 1
+
+              raw_replies = data.get("rawReplies", {})
+              da1_trace = None
+              if "device.primary-da.trace" in raw_replies:
+                  try:
+                      da1_trace = json.loads(raw_replies["device.primary-da.trace"])
+                  except Exception:
+                      pass
+              da1_match = da1_trace.get("queries", [{}])[0].get("match", [None])[0] if da1_trace else raw_replies.get("device.primary-da")
+
+              xt_trace = None
+              if "device.xtversion.trace" in raw_replies:
+                  try:
+                      xt_trace = json.loads(raw_replies["device.xtversion.trace"])
+                  except Exception:
+                      pass
+              xt_match = xt_trace.get("queries", [{}])[0].get("match", [None])[0] if xt_trace else None
+
+              receipts_list.append({
+                  "terminal": term_key,
+                  "targetId": tid,
+                  "detectedVersion": tver,
+                  "executionMode": "hosted VM",
+                  "runId": data.get("runId"),
+                  "sha256": sha256,
+                  "counts": counts,
+                  "decisiveShareQuery": decisive_share,
+                  "da1Reply": da1_match,
+                  "xtversionReply": xt_match,
+                  "reasons": reasons
+              })
+
+              lines.append(f"| {term_key} | {tid} | {tver} | hosted VM | {executed} | {counts.get('supported', 0)} | {counts.get('unsupported', 0)} | {counts.get('inconclusive', 0)} | {counts.get('error', 0)} | {decisive_share} |")
+
+          report = "\n".join(lines)
+          print(report)
+          with open("/tmp/measurement-artifacts/summary.md", "w") as f:
+              f.write(report)
+
+          with open("/tmp/measurement-artifacts/receipts.json", "w") as f:
+              json.dump(receipts_list, f, indent=2)
+          PYEOF
+
+      - name: Report file inventory
+        continue-on-error: true
+        run: |
+          echo "=== Artifacts Directory ==="
+          ls -lah /tmp/measurement-artifacts
+
+      - name: Upload measurement artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-terminal-measurement-artifacts
+          path: /tmp/measurement-artifacts
