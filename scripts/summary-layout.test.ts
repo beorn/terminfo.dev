@@ -3,6 +3,7 @@
  * @level l2
  * @consumer terminfo.dev front page Terminal Applications summary rows
  * @testonly none
+ * @reach fs-walk vendor/terminfo.dev/docs/
  */
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
