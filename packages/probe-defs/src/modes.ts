@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
-import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank } from "./helpers.ts"
+import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank, queryAnsiMode } from "./helpers.ts"
 
 const ALT_1049_SEED_A = "PRIMARY-A"
 const ALT_1049_SEED_B = "PRIMARY-B"
@@ -325,6 +325,31 @@ export const modesProbes: ProbeDefinition[] = [
               evidence: "none",
               note: `Insert-replace fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
             },
+          }
+        }
+        // IRM is ANSI mode 4; DECRQM (`CSI 4 $ p`) reports it without reading cells.
+        // A complete report decides the claim; no report falls through to the cell fixture below.
+        ctx.write("\x1b[4h")
+        const on = await queryAnsiMode(ctx, 4)
+        ctx.write("\x1b[4l")
+        if (on === "set" || on === "reset") {
+          const off = await queryAnsiMode(ctx, 4)
+          if (off === "set" || off === "reset") {
+            const ok = on === "set" && off === "reset"
+            return {
+              pass: ok,
+              response: JSON.stringify({ on, off }),
+              observation: ok
+                ? { outcome: "supported", evidence: "query" }
+                : { outcome: "unsupported", evidence: "query" },
+              assertions: [
+                {
+                  kind: ok ? "positive" : "negative",
+                  expected: "DECRQM mode 4 reports set after CSI 4 h and reset after CSI 4 l",
+                  observed: `${on} -> ${off}`,
+                },
+              ],
+            }
           }
         }
         ctx.write("\x1b[1;1H\x1b[2K")

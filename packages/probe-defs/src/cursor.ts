@@ -183,6 +183,36 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
           }
         }
+        // DECTCEM is DEC private mode 25; DECRQM reports shown/hidden without pixels.
+        // A complete report decides the claim; no report falls through to the pixel path below.
+        ctx.write("\x1b[?25h")
+        const shown = await ctx.queryMode(25)
+        if (shown === "set" || shown === "reset") {
+          ctx.write("\x1b[?25l")
+          let hidden: "set" | "reset" | "unknown" | null = null
+          try {
+            hidden = await ctx.queryMode(25)
+          } finally {
+            ctx.write(shown === "set" ? "\x1b[?25h" : "\x1b[?25l")
+          }
+          if (hidden === "set" || hidden === "reset") {
+            const ok = shown === "set" && hidden === "reset"
+            return {
+              pass: ok,
+              response: JSON.stringify({ shown, hidden }),
+              observation: ok
+                ? { outcome: "supported", evidence: "query" }
+                : { outcome: "unsupported", evidence: "query" },
+              assertions: [
+                {
+                  kind: ok ? "positive" : "negative",
+                  expected: "DECRQM mode 25 reports set after CSI ? 25 h and reset after CSI ? 25 l",
+                  observed: `${shown} -> ${hidden}`,
+                },
+              ],
+            }
+          }
+        }
         // Only used inside the collector's owned disposable terminal, not an arbitrary user's screen.
         try {
           ctx.write("\x1b[0m\x1b[2J\x1b[H")

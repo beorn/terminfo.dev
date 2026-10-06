@@ -10,7 +10,7 @@ import type { TermContext } from "./types.ts"
 
 const fixtures = [
   { id: "modes.alt-screen.exit", rows: 3, cols: 3, failedWrite: 2, restore: "\x1b[?1049l" },
-  { id: "modes.insert-replace", rows: 1, cols: 5, failedWrite: 5, restore: "\x1b[4l" },
+  { id: "modes.insert-replace", rows: 1, cols: 5, failedWrite: 7, restore: "\x1b[4l" },
   { id: "modes.altscreen-1048", rows: 15, cols: 20, failedWrite: 3, restore: "\x1b[?1048l" },
 ] as const
 
@@ -48,7 +48,7 @@ function app(
     query: async () => unexpected("query"),
     queryWithSentinel: async () => unexpected("queryWithSentinel"),
     queryOutcome: async () => unexpected("queryOutcome"),
-    queryWithSentinelOutcome: async () => unexpected("queryWithSentinelOutcome"),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => unexpected("queryMode"),
   }
 }

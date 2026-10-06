@@ -350,7 +350,7 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
 export const sgrProbes: ProbeDefinition[] = [
   // ── Attributes ──
 
-  sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold === true),
+  sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold === true, undefined, { require: [1] }),
 
   sgrProbe("sgr.faint", "\x1b[2m", (cell) => cell.dim === true),
 

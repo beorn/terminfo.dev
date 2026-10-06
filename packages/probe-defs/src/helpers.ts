@@ -72,6 +72,68 @@ export function unmeasuredCellResult(position: { row: number; col: number } | nu
   }
 }
 
+/** SGR parameter codes a DECRQSS reply must carry (and, for a reset, must not). */
+export interface SgrReadback {
+  require: readonly number[]
+  forbid?: readonly number[]
+}
+
+/**
+ * DECRQSS `$ q m` — the SGR parameters the terminal itself reports as active.
+ * A complete `DCS 1 $ r <Ps> m ST` reply is parsed; a timeout, a DA1 sentinel, or a
+ * `DCS 0 $ r ST` "request not recognized" reply all return null. A missing readback is
+ * never a negative.
+ */
+export async function querySgrState(ctx: TermContext): Promise<number[] | null> {
+  const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP1\$r([0-9;:]*)m\x1b\\/)
+  if (outcome.reason !== "reply") return null
+  const payload = outcome.match?.[1]
+  if (payload === undefined) return null
+  if (payload === "") return []
+  return payload
+    .split(";")
+    .filter((part) => part !== "")
+    .map((part) => Number(part.split(":")[0]))
+    .filter((code) => Number.isInteger(code))
+}
+
+/**
+ * DECRQM for an ANSI (non-private) mode: `CSI Ps $ p` -> `CSI Ps ; Pm $ y`.
+ * Status 1/3 is set, 2/4 is reset, 0 is not recognized, any other value is no readback.
+ */
+export async function queryAnsiMode(ctx: TermContext, modeNumber: number): Promise<"set" | "reset" | "unknown" | null> {
+  const outcome = await ctx.queryWithSentinelOutcome(
+    `\x1b[${modeNumber}$p`,
+    new RegExp(`\\x1b\\[${modeNumber};([0-4])\\$y`),
+  )
+  if (outcome.reason !== "reply") return null
+  const status = Number(outcome.match?.[1])
+  if (status === 1 || status === 3) return "set"
+  if (status === 2 || status === 4) return "reset"
+  if (status === 0) return "unknown"
+  return null
+}
+
+/** Decide an SGR claim from the terminal own DECRQSS report. */
+export function sgrReadbackResult(id: string, sequence: string, state: number[], readback: SgrReadback): ProbeResult {
+  const required = readback.require.every((code) => state.includes(code))
+  const forbidden = readback.forbid?.some((code) => state.includes(code)) ?? false
+  const ok = required && !forbidden
+  const observed = state.length === 0 ? "0" : state.join(";")
+  return {
+    pass: ok,
+    response: JSON.stringify({ sgr: observed }),
+    observation: ok ? { outcome: "supported", evidence: "query" } : { outcome: "unsupported", evidence: "query" },
+    assertions: [
+      {
+        kind: ok ? "positive" : "negative",
+        expected: `${id}: DECRQSS reports ${readback.require.join(";")} after ${sequence}`,
+        observed,
+      },
+    ],
+  }
+}
+
 /**
  * SGR probe — feed SGR sequence + "X", verify cell attribute (termless) or cursor position (term).
  *
@@ -84,11 +146,12 @@ export function sgrProbe(
   sequence: string,
   check: (cell: ReturnType<TermlessContext["getCell"]>) => boolean | null,
   noObservableWhen?: (cell: ReturnType<TermlessContext["getCell"]>) => string | null,
+  readback?: SgrReadback,
 ): ProbeDefinition {
   return {
     id,
     termNeedsGeometry: true,
-    termObservationEvidence: "consumed",
+    termObservationEvidence: readback ? "query" : "consumed",
     termless(ctx) {
       ctx.feed(sequence + "X")
       const cell = ctx.getCell(0, 0)
@@ -123,6 +186,29 @@ export function sgrProbe(
             note: `SGR fixture needs at least ${minRows}x${minCols}, measured ${rows}x${cols}`,
           },
         }
+      }
+      if (readback) {
+        ctx.write("\x1b[0m")
+        ctx.write(sequence)
+        let state: number[] | null
+        try {
+          state = await querySgrState(ctx)
+        } finally {
+          ctx.write("\x1b[0m")
+        }
+        if (state === null) {
+          return {
+            pass: false,
+            note: "No complete DECRQSS SGR reply",
+            observation: {
+              outcome: "inconclusive",
+              reason: "no-response",
+              evidence: "query",
+              note: "DECRQSS $ q m returned no complete SGR state; no readback decision",
+            },
+          }
+        }
+        return sgrReadbackResult(id, sequence, state, readback)
       }
       if (ctx.capture) {
         try {
