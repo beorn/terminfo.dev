@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /** Record and validate the immutable declaration of an executable probe suite. */
 
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -86,7 +86,40 @@ export function checkCurrentSuiteManifest(): ProbeSuiteManifest {
   return verifySuiteManifest(join(SUITES_DIR, `${snapshot.probeHash}.json`), snapshot)
 }
 
+/**
+ * Declaring a suite is authoring (27843 AC2), so it may only run on a checkout carrying work that
+ * is not yet on main. In a shared-main checkout HEAD is always an ancestor of origin/main and a
+ * declare there writes a manifest no commit will take — the stray that reached /hh/dev twice.
+ * `--check` still runs anywhere: validating a stored declaration is a read.
+ */
+export function assertDeclareIsAuthoring(cwd: string): void {
+  const run = (args: string[]) => {
+    const result = spawnSync("git", args, { cwd, encoding: "utf8" })
+    if (result.error) throw new Error(`Cannot declare a suite: git ${args.join(" ")} failed`, { cause: result.error })
+    return result
+  }
+  const head = run(["rev-parse", "HEAD"])
+  if (head.status !== 0) throw new Error(`Cannot declare a suite outside a Git checkout (${cwd})`)
+  const declared = run(["rev-parse", "--verify", "origin/main^{commit}"])
+  if (declared.status !== 0) {
+    throw new Error(`Cannot declare a suite: ${cwd} offers no origin/main to compare the declared revision against`)
+  }
+  const ancestor = run(["merge-base", "--is-ancestor", head.stdout.trim(), declared.stdout.trim()])
+  if (ancestor.status === 0) {
+    throw new Error(
+      `Refusing to declare a suite manifest whose HEAD is already on origin/main (${cwd}).\n` +
+        "Declaring is authoring: commit the change in your own worktree, then declare there.",
+    )
+  }
+  if (ancestor.status !== 1) {
+    throw new Error(
+      `Cannot declare a suite: git merge-base --is-ancestor failed (${ancestor.status}): ${ancestor.stderr.trim()}`,
+    )
+  }
+}
+
 export function writeCurrentSuiteManifest(): { status: "created" | "existing"; path: string } {
+  assertDeclareIsAuthoring(ROOT)
   const snapshot = probeSuiteSnapshot()
   const path = join(SUITES_DIR, `${snapshot.probeHash}.json`)
   if (existsSync(path)) {
@@ -103,20 +136,39 @@ export function writeCurrentSuiteManifest(): { status: "created" | "existing"; p
   return { status: persistSuiteManifest(path, manifest, snapshot), path }
 }
 
+export type SuiteManifestMode = "check" | "write" | "usage"
+
+/** A bare invocation is never a declare: the write needs the explicit verb (27843 AC2). */
+export function suiteManifestMode(argv: string[]): SuiteManifestMode {
+  if (argv.length !== 1) return "usage"
+  if (argv[0] === "--check") return "check"
+  if (argv[0] === "--write") return "write"
+  return "usage"
+}
+
+const USAGE = [
+  "Usage: bun scripts/suite-manifest.ts --check|--write",
+  "  --check  verify the stored declaration against the currently executable suite",
+  "  --write  declare the current suite; refused in a checkout whose HEAD is on origin/main",
+].join("\n")
+
 if (import.meta.main) {
-  try {
-    if (process.argv.length > 3 || (process.argv[2] && process.argv[2] !== "--check")) {
-      throw new Error("Usage: bun scripts/suite-manifest.ts [--check]")
+  const mode = suiteManifestMode(process.argv.slice(2))
+  if (mode === "usage") {
+    console.error(USAGE)
+    process.exitCode = 2
+  } else {
+    try {
+      if (mode === "check") {
+        const manifest = checkCurrentSuiteManifest()
+        console.log(`Suite manifest valid: ${manifest.probeHash}`)
+      } else {
+        const result = writeCurrentSuiteManifest()
+        console.log(`Suite manifest ${result.status}: ${result.path}`)
+      }
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exitCode = 1
     }
-    if (process.argv[2] === "--check") {
-      const manifest = checkCurrentSuiteManifest()
-      console.log(`Suite manifest valid: ${manifest.probeHash}`)
-    } else {
-      const result = writeCurrentSuiteManifest()
-      console.log(`Suite manifest ${result.status}: ${result.path}`)
-    }
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error))
-    process.exitCode = 1
   }
 }
