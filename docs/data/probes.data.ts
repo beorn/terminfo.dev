@@ -13,10 +13,10 @@ import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
+import { loadReleaseScope } from "./load-release-scope.ts"
 import {
   barOverMeasured,
   isStaleSuite,
-  loadReleaseScope,
   staleCaption,
   tierLine,
   type MeasuredBar,
