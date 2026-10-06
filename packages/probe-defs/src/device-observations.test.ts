@@ -23,13 +23,24 @@ function headless(raw: string): TermlessContext {
   return { feedCapture: () => raw } as unknown as TermlessContext
 }
 
-function terminal(raw: string, reason: TerminalQueryOutcome["reason"] = "reply"): TermContext {
+function terminal(
+  raw: string,
+  reason: TerminalQueryOutcome["reason"] = "reply",
+  sentinel?: { atMs: number; graceMs: number },
+): TermContext {
   const reply = (sequence: string, pattern: RegExp): Promise<TerminalQueryOutcome> => {
     const item = replies.find((candidate) => candidate.query === sequence)
     if (!item) throw new Error(`unexpected query ${JSON.stringify(sequence)}`)
-    // Live TTY matching returns null when the DA1 sentinel precedes a matching frame in the same buffer.
+    // A reply the collector matched is a reply; the reason alone decides the rest. `sentinel` is the
+    // measured ordering the live collector records when DA1 answered before this query's reply.
     const match = reason === "reply" ? pattern.exec(raw) : null
-    return Promise.resolve({ match, reason, raw, rawBase64: Buffer.from(raw).toString("base64") })
+    return Promise.resolve({
+      match,
+      reason,
+      raw,
+      rawBase64: Buffer.from(raw).toString("base64"),
+      ...(sentinel && { sentinel }),
+    })
   }
   return {
     queryOutcome: reply,
@@ -76,35 +87,82 @@ describe("device query observations", () => {
     })
   }
 
-  test("DA1 sentinel before a valid frame cannot establish any of the seven device results", async () => {
-    const sentinel = "\x1b[?62;52;c"
+  test("a reply after the DA1 sentinel grades by the reply and is marked late", async () => {
+    const da1 = "\x1b[?62;52;c"
+    const measured = { atMs: 12, graceMs: 250 }
     for (const item of replies.filter((candidate) => candidate.id !== "device.primary-da")) {
-      const lateRaw = sentinel + item.valid
-      const late = await callback(item.id).terminal(terminal(lateRaw, "sentinel"))
+      const lateRaw = da1 + item.valid
+      const late = await callback(item.id).terminal(terminal(lateRaw, "reply", measured))
       expect(late.response, item.id).toBe(lateRaw)
-      expect(late.observation, item.id).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
-      expect(late.assertions, item.id).toBeUndefined()
+      expect(late.observation, item.id).toMatchObject({
+        outcome: "supported",
+        evidence: "query",
+        note: "reply after sentinel",
+      })
+      expect(late.assertions, item.id).toMatchObject([{ kind: "positive", observed: item.valid }])
 
-      const earlyRaw = item.valid + sentinel
+      const earlyRaw = item.valid + da1
       const early = await callback(item.id).terminal(terminal(earlyRaw))
       expect(early.response, item.id).toBe(earlyRaw)
       expect(early.observation, item.id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(early.observation?.note, item.id).toBeUndefined()
       expect(early.assertions, item.id).toMatchObject([{ kind: "positive", observed: item.valid }])
     }
   })
 
-  test("DA1 sentinel and one refused setting cannot establish facility support", async () => {
+  test("DA1 answered alone through the window is a measured negative, not an unknown", async () => {
+    const da1 = "\x1b[?62;52;c"
+    for (const item of replies.filter((candidate) => candidate.id !== "device.primary-da")) {
+      const result = await callback(item.id).terminal(terminal(da1, "sentinel", { atMs: 9, graceMs: 250 }))
+      expect(result.response, item.id).toBe(da1)
+      expect(result.observation, item.id).toMatchObject({
+        outcome: "unsupported",
+        evidence: "query",
+        note: "negative by sentinel",
+      })
+      expect(result.assertions, item.id).toMatchObject([
+        { kind: "negative", observed: "DA1 answered at +9ms; no reply through the 250 ms window" },
+      ])
+      // The negative names the feature's own reply contract, not a generic silence.
+      expect(result.assertions?.[0]?.expected, item.id).toBeTruthy()
+    }
+  })
+
+  test("without the measured ordering a frame after DA1 stays unreadable and silence stays unknown", async () => {
+    const da1 = "\x1b[?62;52;c"
+    for (const item of replies.filter((candidate) => candidate.id !== "device.primary-da")) {
+      const lateRaw = da1 + item.valid
+      const late = await callback(item.id).terminal(terminal(lateRaw, "sentinel"))
+      expect(late.observation, item.id).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+      expect(late.assertions, item.id).toBeUndefined()
+
+      const silent = await callback(item.id).terminal(terminal(da1, "sentinel"))
+      expect(silent.observation, item.id).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+      expect(silent.assertions, item.id).toBeUndefined()
+    }
+  })
+
+  test("DA1 sentinel and one refused setting cannot establish facility support, late or early", async () => {
     const sentinel = "\x1b[?62;52;c"
+    const measured = { atMs: 12, graceMs: 250 }
     for (const [id, refusal] of [
       ["device.decrqss", "\x1bP0$r\x1b\\"],
       ["device.xtgettcap", "\x1bP0+r\x1b\\"],
       ["device.decrpm", "\x1b[?7;0$y"],
     ] as const) {
       const lateRaw = sentinel + refusal
-      const late = await callback(id).terminal(terminal(lateRaw, "sentinel"))
+      const late = await callback(id).terminal(terminal(lateRaw, "reply", measured))
       expect(late.response, id).toBe(lateRaw)
-      expect(late.observation, id).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+      expect(late.observation, id).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+        note: "Requested setting or name refused; other settings or names unmeasured; reply after sentinel",
+      })
       expect(late.assertions, id).toBeUndefined()
+
+      const unmeasuredLate = await callback(id).terminal(terminal(lateRaw, "sentinel"))
+      expect(unmeasuredLate.observation, id).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
 
       const earlyRaw = refusal + sentinel
       const early = await callback(id).terminal(terminal(earlyRaw))

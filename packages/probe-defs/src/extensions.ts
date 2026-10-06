@@ -1,21 +1,44 @@
 import { randomUUID } from "node:crypto"
 import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
-import { parserStateResult, probe, readHyperlinkMetadata, notTestedResult, unmeasuredCellResult } from "./helpers.ts"
+import {
+  REPLY_AFTER_SENTINEL_NOTE,
+  notTestedResult,
+  parserStateResult,
+  probe,
+  readHyperlinkMetadata,
+  sentinelNegativeResult,
+  unmeasuredCellResult,
+} from "./helpers.ts"
 
 function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }
 }
 
-/** Bind a complete reply from this query; a prefix or unrelated output is not a result. */
-function oscReplyResult(raw: string, frame: string | null, expected: string, prefix: RegExp): ProbeResult {
+/**
+ * Bind a complete reply from this query; a prefix or unrelated output is not a result. When the
+ * collector measured a DA1 sentinel before the reply, the ordering rides along as a note.
+ */
+function oscReplyResult(
+  raw: string,
+  frame: string | null,
+  expected: string,
+  prefix: RegExp,
+  sentinel?: { atMs: number; graceMs: number },
+): ProbeResult {
   if (frame) {
     return {
       pass: true,
       response: raw,
-      observation: { outcome: "supported", evidence: "query" },
+      observation: {
+        outcome: "supported",
+        evidence: "query",
+        ...(sentinel && { note: REPLY_AFTER_SENTINEL_NOTE }),
+      },
       assertions: [{ kind: "positive", expected, observed: frame }],
     }
   }
+  const silent = sentinelNegativeResult(raw, sentinel, expected)
+  if (silent) return silent
   return {
     pass: false,
     response: raw,
@@ -76,11 +99,20 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeResult {
 }
 
 /** A read of current Sixel geometry; protocol failure and silence never establish a negative. */
-function sixelGeometryResult(raw: string, frame: string | null, missingReason: "no-response" | "timeout"): ProbeResult {
+function sixelGeometryResult(
+  raw: string,
+  frame: string | null,
+  missingReason: "no-response" | "timeout",
+  sentinel?: { atMs: number; graceMs: number },
+): ProbeResult {
   const reply = frame ? /\x1b\[\?2;([0-9]+);([0-9;]*)S/.exec(frame) : null
   if (!reply) {
     const malformed = frame !== null
     const note = malformed ? "Malformed Sixel geometry response" : "No Sixel geometry response for item 2"
+    if (!malformed) {
+      const silent = sentinelNegativeResult(raw, sentinel, "Complete Sixel geometry response for item 2")
+      if (silent) return silent
+    }
     return {
       pass: false,
       response: raw,
@@ -173,6 +205,7 @@ function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
             reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
             `Complete OSC ${oscCode} color reply`,
             prefix,
+            reply.sentinel,
           )
         },
         "query",
@@ -204,6 +237,7 @@ function oscSimpleQueryProbe(
             reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
             expected,
             prefix,
+            reply.sentinel,
           )
         },
         "query",
@@ -639,6 +673,10 @@ export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: n
 }
 
 function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeResult {
+  // A measured sentinel with nothing beside it is a decisive negative, not an unknown; a timeout
+  // never answered DA1 at all, so it stays inconclusive.
+  const silent = sentinelNegativeResult(reply.raw, reply.sentinel, note)
+  if (silent) return silent
   return {
     pass: false,
     response: reply.raw,
@@ -2243,7 +2281,12 @@ export const extensionsProbes: ProbeDefinition[] = [
         async (ctx) => {
           const reply = await ctx.queryWithSentinelOutcome("\x1b[?2;1;0S", /\x1b\[\?2;[0-9;]*S/, 1000)
           const frame = reply.reason === "reply" ? (reply.match?.[0] ?? null) : null
-          return sixelGeometryResult(reply.raw, frame, reply.reason === "timeout" ? "timeout" : "no-response")
+          return sixelGeometryResult(
+            reply.raw,
+            frame,
+            reply.reason === "timeout" ? "timeout" : "no-response",
+            reply.sentinel,
+          )
         },
         "query",
       ),

@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TerminalQueryOutcome } from "./types.ts"
-import { parserStateResult, probe } from "./helpers.ts"
+import { REPLY_AFTER_SENTINEL_NOTE, parserStateResult, probe, sentinelNegativeResult } from "./helpers.ts"
 
 /** These patterns match complete answers to the specific query, not arbitrary consumed output. */
 interface DeviceReply {
@@ -20,23 +20,31 @@ function deviceReplyResult(
   raw: string,
   matchedFrame: string | null,
   reason: TerminalQueryOutcome["reason"],
+  sentinel?: { atMs: number; graceMs: number },
 ): ProbeResult {
-  // A frame that appears after a DA1 response is late sentinel output, not this query's answer.
+  // F1 (27832): a frame that lands after the DA1 answer is a late reply, graded by the frame and
+  // recorded as late. Only when `sentinel` carries the measured ordering is that certain, so a
+  // frame arriving after DA1 without the measurement keeps its null.
   const da1At = raw.search(/\x1b\[\?[0-9;]*c/)
-  if (matchedFrame && da1At !== -1 && raw.indexOf(matchedFrame) > da1At) matchedFrame = null
+  if (matchedFrame && da1At !== -1 && raw.indexOf(matchedFrame) > da1At && !sentinel) matchedFrame = null
+  const ordered = { ...(sentinel && { note: REPLY_AFTER_SENTINEL_NOTE }) }
   const valid = matchedFrame ? spec.valid.exec(matchedFrame) : null
   if (valid?.[0]) {
     const note = spec.note?.(valid[0])
+    const composed = [note, ordered.note].filter((part): part is string => part !== undefined).join("; ")
     return {
       pass: true,
       response: raw,
-      ...(note && { note }),
-      observation: { outcome: "supported", evidence: "query", ...(note && { note }) },
+      ...(composed && { note: composed }),
+      observation: { outcome: "supported", evidence: "query", ...(composed && { note: composed }) },
       assertions: [{ kind: "positive", expected: spec.expected, observed: valid[0] }],
     }
   }
   const refusal = matchedFrame ? spec.refusal?.exec(matchedFrame) : null
   if (refusal?.[0]) {
+    const refusalNote = ["Requested setting or name refused; other settings or names unmeasured", ordered.note]
+      .filter((part): part is string => part !== undefined)
+      .join("; ")
     return {
       pass: false,
       response: raw,
@@ -44,7 +52,7 @@ function deviceReplyResult(
         outcome: "inconclusive",
         reason: "insufficient-evidence",
         evidence: "query",
-        note: "Requested setting or name refused; other settings or names unmeasured",
+        note: refusalNote,
       },
     }
   }
@@ -55,11 +63,14 @@ function deviceReplyResult(
     return {
       pass: false,
       response: raw,
-      observation: { outcome: "unsupported", evidence: "query" },
+      ...(ordered.note && { note: ordered.note }),
+      observation: { outcome: "unsupported", evidence: "query", ...ordered },
       assertions: [{ kind: "negative", expected: spec.expected, observed: contradiction[0] }],
     }
   }
-  // Raw bytes remain available for diagnostics, but a frame after DA1 cannot establish a result.
+  const silent = sentinelNegativeResult(raw, sentinel, spec.expected)
+  if (silent) return silent
+  // Raw bytes remain available for diagnostics.
   const hasCompleteUnmatchedFrame =
     spec.valid.test(raw) || spec.refusal?.test(raw) === true || spec.contradicts?.test(raw) === true
   const missingReason =
@@ -97,7 +108,7 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
         ? await ctx.queryOutcome(spec.query, responsePattern)
         : await ctx.queryWithSentinelOutcome(spec.query, responsePattern)
       const matchedFrame = outcome.reason === "reply" ? (outcome.match?.[0] ?? null) : null
-      return deviceReplyResult(spec, outcome.raw, matchedFrame, outcome.reason)
+      return deviceReplyResult(spec, outcome.raw, matchedFrame, outcome.reason, outcome.sentinel)
     },
     "query",
   )
@@ -238,6 +249,12 @@ export const deviceProbes: ProbeDefinition[] = [
         const reply = await ctx.queryWithSentinelOutcome("\x1b[?996n", /\x1b\[\?997;([12])n/)
         const match = reply.match
         if (!match?.[0]) {
+          const silent = sentinelNegativeResult(
+            reply.raw,
+            reply.sentinel,
+            "DSR ?996 yields complete DSR ?997;1n or ?997;2n",
+          )
+          if (silent) return silent
           return {
             pass: false,
             note: "No valid DSR ?997 color-scheme response",
@@ -319,6 +336,7 @@ export const deviceProbes: ProbeDefinition[] = [
           reply.raw,
           reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
           reply.reason,
+          reply.sentinel,
         )
       },
     ),
@@ -343,6 +361,7 @@ export const deviceProbes: ProbeDefinition[] = [
           reply.raw,
           reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
           reply.reason,
+          reply.sentinel,
         )
       },
     ),

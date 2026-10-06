@@ -333,6 +333,8 @@ it("lets reviewed DECRPM queries run while refusing cursor and title-writing cal
 })
 
 // A real Terminal.app run returned DA1 as the XTVERSION query's sentinel; it was not an XTVERSION reply.
+// F1 (27832): that sentinel answered alone through the grace window is now a measured negative, not an
+// unknown — the terminal was alive and did not answer the query.
 it("projects Terminal.app identity replies without mistaking the DA1 sentinel for XTVERSION", async () => {
   const da1 = "\x1b[?1;2c"
   const da2 = "\x1b[>1;95;0c"
@@ -350,8 +352,20 @@ it("projects Terminal.app identity replies without mistaking the DA1 sentinel fo
   expect(batch.observations).toMatchObject([
     { featureId: "device.primary-da", outcome: "supported" },
     { featureId: "device.secondary-da", outcome: "supported" },
-    { featureId: "device.xtversion", outcome: "inconclusive", reason: "no-response" },
+    {
+      featureId: "device.xtversion",
+      outcome: "unsupported",
+      evidence: "query",
+      note: "negative by sentinel",
+    },
   ])
+  expect(batch.assertions).toContainEqual({
+    featureId: "device.xtversion",
+    kind: "negative",
+    expected: "complete XTVERSION DCS >| printable name/version ST",
+    observed: expect.stringMatching(/DA1 answered at \+\d+ms; no reply through the \d+ ms window/),
+    rawReplyRef: "device.xtversion",
+  })
   expect(verifyTerminalIdentity("terminal-app", batch.rawReplies)).toMatchObject({ ok: true, checked: true })
   expect(batch.rawReplies["device.secondary-da"]).toBe(da2 + da1)
   expect(JSON.parse(batch.rawReplies["device.secondary-da.trace"]!)).toMatchObject({
