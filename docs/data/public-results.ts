@@ -168,6 +168,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     },
     sourceRevision: version.sourceRevision,
     sha256: version.sha256,
+    ...(version.identityAdmission && { identityAdmission: version.identityAdmission }),
     cells: Object.fromEntries(Object.entries(version.cells).map(([id, cell]) => [id, mapCell(cell, version)])),
     v1: { ...version.v1 },
     reviews: version.reviews.map(publicReview),
