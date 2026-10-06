@@ -145,13 +145,16 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
     recordNotTested(batch, probe, result)
     return
   }
-  const explicit = result.observation
+  // The union makes one of the two records mandatory, so a typed callback always lands here
+  // with a measurement. An untyped caller that returns neither gets a loud collector error
+  // instead of the old ungraded legacy-callback record.
+  const widened: { observation?: ProbeResult["observation"] } = result
+  const explicit = widened.observation
   if (!explicit) {
     batch.ungradedDiagnostics[id] = {
-      kind: "legacy-callback",
-      pass: result.pass,
-      ...(result.note && { note: result.note }),
-      ...(result.response !== undefined && { response: result.response }),
+      kind: "collector-error",
+      name: "Error",
+      message: `Callback for ${id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
     }
     return
   }
