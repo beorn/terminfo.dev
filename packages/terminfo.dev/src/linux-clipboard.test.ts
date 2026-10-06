@@ -347,7 +347,10 @@ test("a nested transaction refuses and callback failure restores and verifies th
         await fixture.writeText("callback-nonce")
         await expect(
           transaction(
-            async () => ({ pass: true }),
+            async () => ({
+              pass: true,
+              observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+            }),
             (event) => events.push(event),
           ),
         ).rejects.toThrow("cannot nest")

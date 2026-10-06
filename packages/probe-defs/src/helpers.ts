@@ -3,6 +3,8 @@ import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermlessContext
 /** Keep the serialized state alongside the exact assertion that used it. */
 export function parserStateResult(pass: boolean | null, expected: string, state: object, note?: string): ProbeResult {
   const response = JSON.stringify(state)
+  const assertions: NonNullable<ProbeResult["assertions"]> | undefined =
+    pass === null ? undefined : [{ kind: pass ? "positive" : "negative", expected, observed: response }]
   return {
     pass: pass === true,
     response,
@@ -13,9 +15,7 @@ export function parserStateResult(pass: boolean | null, expected: string, state:
       evidence: "parser-state",
       ...(note && { note }),
     },
-    ...(pass !== null && {
-      assertions: [{ kind: pass ? "positive" : "negative", expected, observed: response }],
-    }),
+    ...(assertions && { assertions }),
   }
 }
 
@@ -474,71 +474,6 @@ function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum: number
         observed: state,
       },
     ],
-  }
-}
-
-/**
- * Response probe — send query, check response via feedCapture (termless) or query (term).
- */
-export function responseProbe(
-  id: string,
-  sequence: string,
-  expectedPattern: RegExp,
-  termlessCheck?: (response: string) => ProbeResult,
-  termQueryFn?: (ctx: TermContext) => Promise<ProbeResult>,
-): ProbeDefinition {
-  return {
-    id,
-    termless(ctx) {
-      const response = ctx.feedCapture(sequence)
-      if (termlessCheck) return termlessCheck(response)
-      return {
-        pass: expectedPattern.test(response),
-        note: expectedPattern.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
-        response,
-      }
-    },
-    term: termQueryFn ?? null,
-  }
-}
-
-/**
- * Capability probe — check capabilities flag (termless only, term=null).
- */
-export function capabilityProbe(id: string, capName: keyof TermlessContext["capabilities"]): ProbeDefinition {
-  return {
-    id,
-    termless(ctx) {
-      const val = ctx.capabilities[capName]
-      return { pass: val === true }
-    },
-    term: null,
-  }
-}
-
-/**
- * Width probe — check rendered width of text.
- */
-export function widthProbe(id: string, text: string, expectedWidth: number): ProbeDefinition {
-  return {
-    id,
-    termless(ctx) {
-      ctx.feed(text + "X")
-      // Find X — it should be at column expectedWidth
-      const cell = ctx.getCell(0, expectedWidth)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `char at col ${expectedWidth} is "${cell.char}", expected "X"`,
-      }
-    },
-    async term(ctx) {
-      const width = await ctx.measureRenderedWidth(text)
-      if (width === null) return { pass: false, note: "Cannot measure width" }
-      return {
-        pass: width === expectedWidth,
-        note: width === expectedWidth ? undefined : `width=${width}, expected ${expectedWidth}`,
-      }
-    },
   }
 }
 

@@ -4,6 +4,9 @@ import { parserStateResult, probe, isBlank, unmeasuredCellResult, selectiveErase
 // DECRQCRA is a reply capability probe, not a checksum-correctness oracle.
 function checksumResult(response: string): ProbeResult {
   const supported = /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/.test(response)
+  const assertions: NonNullable<ProbeResult["assertions"]> | undefined = supported
+    ? [{ kind: "positive", expected: "Complete four-digit checksum reply for request 1", observed: response }]
+    : undefined
   return {
     pass: supported,
     response,
@@ -13,11 +16,7 @@ function checksumResult(response: string): ProbeResult {
       evidence: "query",
       ...(!supported && { reason: response ? ("invalid-reply" as const) : ("no-response" as const) }),
     },
-    ...(supported && {
-      assertions: [
-        { kind: "positive", expected: "Complete four-digit checksum reply for request 1", observed: response },
-      ],
-    }),
+    ...(assertions && { assertions }),
   }
 }
 

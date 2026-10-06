@@ -152,6 +152,16 @@ function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selecte
   }
 }
 
+/**
+ * Runtime totality guard. `ProbeResult` is a union that makes a measurement or a coverage
+ * record mandatory, so a typed callback cannot reach here without one; an untyped caller
+ * can, and that is reported rather than silently ungraded.
+ */
+function claimsMeasurement(result: ProbeResult): boolean {
+  const widened: { observation?: unknown; assertions?: readonly unknown[] } = result
+  return widened.observation !== undefined || (widened.assertions?.length ?? 0) > 0
+}
+
 /** A refused claim keeps its own observation detail and assertion contents in the error text, never as a claim. */
 function refusedClaimEvidence(result: ProbeResult): string {
   const parts: string[] = []
@@ -323,7 +333,7 @@ export async function runProbeBatch(
         if (result.response !== undefined) {
           batch.rawReplies[`${probe.id}.callbackResponse`] = result.response
         }
-        if (result.observation !== undefined || (result.assertions?.length ?? 0) > 0) {
+        if (claimsMeasurement(result)) {
           batch.ungradedDiagnostics[probe.id] = {
             kind: "collector-error",
             name: "Error",
@@ -367,11 +377,12 @@ export async function runProbeBatch(
           batch.assertions.push({ featureId: probe.id, ...assertion, ...(rawReplyRef ? { rawReplyRef } : {}) })
         }
       } else {
+        // The callback returned neither a measurement nor a coverage record. The type makes
+        // that impossible for a typed callback; an untyped caller still gets a loud error.
         batch.ungradedDiagnostics[probe.id] = {
-          kind: "legacy-callback",
-          pass: result.pass,
-          ...(result.note ? { note: result.note } : {}),
-          ...(result.response ? { response: result.response } : {}),
+          kind: "collector-error",
+          name: "Error",
+          message: `Callback for ${probe.id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
         }
       }
     } catch (error) {

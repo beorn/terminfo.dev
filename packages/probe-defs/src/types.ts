@@ -6,15 +6,28 @@ export interface NoSemanticObservable {
   noObservable: string
 }
 
-export interface ProbeResult {
+/** A probe result is exactly one of two things: a measured observation, or a coverage record. */
+export type ProbeResult = MeasuredProbeResult | NotTestedCoverageResult
+
+export interface MeasuredProbeResult {
+  /** Historical raw documents carry it; the live collector reads only observation. */
   pass: boolean
   note?: string
   response?: string
-  /** Explicit measured result; the legacy pass boolean is never promoted. */
-  observation?: Omit<Observation, "featureId" | "rawReplyRef">
+  /** The explicit measured result. Never promoted from pass. */
+  observation: Omit<Observation, "featureId" | "rawReplyRef">
   assertions?: Array<Omit<ProbeAssertion, "featureId" | "rawReplyRef">>
+  notTested?: never
+}
+
+export interface NotTestedCoverageResult {
+  pass: boolean
+  note?: string
+  response?: string
+  observation?: never
+  assertions?: never
   /** Per-result coverage: the probe ran and captured raw state, but no applicable observable exists here. */
-  notTested?: NoSemanticObservable
+  notTested: NoSemanticObservable
 }
 
 /** A proposition's measured outcome. Missing catalog IDs mean not tested. */
@@ -140,6 +153,12 @@ export interface ProbeAssertion {
 }
 
 export type UngradedDiagnostic =
+  /**
+   * HISTORICAL ONLY. Raised by the collector before the one-probe-result-path refactor (27832) and
+   * still present in immutable run documents, which the parser must keep reading. No collector path
+   * produces it any more: a result that is neither a measurement nor a coverage record is refused
+   * as a `collector-error` instead.
+   */
   | { kind: "legacy-callback"; pass: boolean; note?: string; response?: string }
   | { kind: "collector-error"; name: string; message?: string }
 
