@@ -692,8 +692,21 @@ export const editingProbes: ProbeDefinition[] = [
       return checksumResult(ctx.feedCapture("\x1b[1;1;1;1;1;5*y")) // id, page, top, left, bottom, right
     },
     async (ctx) => {
-      const reply = await ctx.queryOutcome("\x1b[1;1;1;1;1;1*y", /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/, 2000)
-      return checksumResult(reply.raw)
+      // The DA1 follow-up ends the read on a channel the terminal has already
+      // answered, so a terminal that never answers is disproved instead of
+      // being waited out on a bare timeout. id, page, top, left, bottom, right.
+      const reply = await ctx.queryWithSentinelOutcome("\x1b[1;1;1;1;1;1*y", /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/)
+      if (reply.match) return checksumResult(reply.match[0] ?? "")
+      return {
+        pass: false,
+        response: reply.raw,
+        note: "No complete checksum reply before the DA1 sentinel",
+        observation: {
+          outcome: "inconclusive",
+          evidence: "query",
+          reason: reply.reason === "timeout" ? "timeout" : "no-response",
+        },
+      }
     },
   ),
 
