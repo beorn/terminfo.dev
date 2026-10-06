@@ -659,6 +659,7 @@ strips, or mishandles.
 .summary-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 8px 0;
 }
@@ -706,8 +707,9 @@ strips, or mishandles.
   transition: width 0.3s ease;
 }
 
-.summary-pct {
-  width: 16ch;
+.VPHome .summary-pct {
+  width: auto;
+  min-width: 16ch;
   white-space: nowrap;
   font-weight: 600;
   font-size: 0.9em;
@@ -715,8 +717,9 @@ strips, or mishandles.
   flex-shrink: 0;
 }
 
-.summary-counts {
-  width: 19em;
+.VPHome .summary-counts {
+  width: auto;
+  white-space: nowrap;
   font-size: 0.8em;
   color: var(--vp-c-text-3);
   text-align: right;
@@ -727,7 +730,7 @@ strips, or mishandles.
   .summary-row { flex-wrap: wrap; }
   .VPHome .summary-bar { order: 1; flex-basis: 100%; }
   .VPHome .summary-pct { order: 2; width: auto; text-align: left; }
-  .VPHome .summary-counts { order: 3; width: 100%; text-align: left; }
+  .VPHome .summary-counts { order: 3; width: 100%; white-space: normal; text-align: left; }
 }
 
 /* Filters */
