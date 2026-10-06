@@ -268,8 +268,9 @@ describe("verifyTerminalIdentity", () => {
 
   it("marks checked: false when no identity rule is registered", () => {
     const res = verifyTerminalIdentity("unknown-terminal", { "device.primary-da": "\u001b[?1;2c" })
-    expect(res.ok).toBe(true)
+    expect(res.ok).toBe(false)
     expect(res.checked).toBe(false)
+    expect(res.reason).toMatch(/no identity profile/)
   })
 
   it("resolves Kitty's version from the complete captured frame and refuses declared conflict", () => {

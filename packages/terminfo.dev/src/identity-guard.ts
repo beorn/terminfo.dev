@@ -129,8 +129,7 @@ export function verifyTerminalIdentity(
   const rule = TERMINAL_IDENTITY_RULES[normTerminal] || TERMINAL_IDENTITY_RULES[terminal.toLowerCase()]
 
   if (!rule) {
-    // No specific rule registered for this terminal
-    return { ok: true, checked: false }
+    return { ok: false, checked: false, reason: `no identity profile for "${terminal}"` }
   }
 
   let identity: ReturnType<typeof deriveIdentity>
