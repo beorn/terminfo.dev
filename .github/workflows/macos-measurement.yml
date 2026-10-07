@@ -500,10 +500,10 @@ jobs:
           import { mkdirSync, writeFileSync } from 'node:fs';
           import { join } from 'node:path';
           const env = process.env;
-          function sample(command, args, field) {
+          function sample(command, args, field, pattern) {
             const result = spawnSync(command, args, { encoding: 'utf8' });
             const output = result.stdout ?? '';
-            const value = field ? (output.match(new RegExp('"' + field + '"\\s*=\\s*"([^"\\r\\n]+)"'))?.[1] ?? '') : output.trim();
+            const value = pattern ? (output.match(new RegExp(pattern, 'i'))?.[1] ?? '') : field ? (output.match(new RegExp('"' + field + '"\\s*=\\s*"([^"\\r\\n]+)"'))?.[1] ?? '') : output.trim();
             const byteLength = Buffer.byteLength(value);
             return { command: [command, ...args].join(' ') + (field ? ' [field ' + field + ']' : ''),
               exitStatus: result.status, spawnErrorCode: result.error?.code ?? null, byteLength,
@@ -514,6 +514,8 @@ jobs:
             uuid: sample('ioreg', ['-rd1', '-c', 'IOPlatformExpertDevice'], 'IOPlatformUUID'),
             serial: sample('ioreg', ['-rd1', '-c', 'IOPlatformExpertDevice'], 'IOPlatformSerialNumber'),
             boot: sample('sysctl', ['-n', 'kern.bootsessionuuid']),
+            en0Mac: sample('ifconfig', ['en0'], 'ether', '\\bether\\s+([0-9a-f:]{17})\\b'),
+            dataVolumeUuid: sample('diskutil', ['info', '-plist', '/System/Volumes/Data'], 'VolumeUUID', '<key>VolumeUUID</key>\\s*<string>([^<\\r\\n]+)</string>'),
           };
           let job;
           try {

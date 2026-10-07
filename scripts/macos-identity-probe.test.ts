@@ -24,15 +24,23 @@ test("the actual workflow sampler records facts without retaining raw VM identif
   )
   expect(collection.run).toBe(first.run)
   const dir = await mkdtemp(join(tmpdir(), "mac-identity-probe-"))
-  const raw = { uuid: "fixture-platform-uuid", serial: "fixture-machine-serial", boot: "fixture-boot-session" }
+  const raw = {
+    uuid: "fixture-platform-uuid",
+    serial: "fixture-machine-serial",
+    boot: "fixture-boot-session",
+    en0Mac: "02:00:00:00:00:01",
+    dataVolumeUuid: "fixture-data-volume-uuid",
+  }
   const server = createServer((_req, res) => {
     res.setHeader("content-type", "application/json")
     res.end(JSON.stringify({ jobs: [{ id: 1234, runner_name: "fixture-runner", status: "in_progress" }] }))
   })
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
   try {
-    const fixture = `#!${process.execPath}\nconst name=process.argv[1]; if(name.endsWith("ioreg")) console.log('"IOPlatformUUID" = "${raw.uuid}"\\n"IOPlatformSerialNumber" = "${raw.serial}"'); else console.log("${raw.boot}");\n`
-    for (const name of ["ioreg", "sysctl"]) await writeFile(join(dir, name), fixture, { mode: 0o755 })
+    const fixture = `#!${process.execPath}\nconst name=process.argv[1]; if(name.endsWith("ioreg")) console.log('"IOPlatformUUID" = "${raw.uuid}"\\n"IOPlatformSerialNumber" = "${raw.serial}"'); else if(name.endsWith("ifconfig")) console.log("ether ${raw.en0Mac}"); else if(name.endsWith("diskutil")) console.log("<plist><dict><key>VolumeUUID</key><string>${raw.dataVolumeUuid}</string></dict></plist>"); else console.log("${raw.boot}");\n`
+    for (const name of ["ioreg", "sysctl", "ifconfig", "diskutil"]) {
+      await writeFile(join(dir, name), fixture, { mode: 0o755 })
+    }
     const address = server.address()
     if (!address || typeof address === "string") throw new Error("Expected fixture HTTP server address")
     for (const phase of ["start", "collection"]) {
