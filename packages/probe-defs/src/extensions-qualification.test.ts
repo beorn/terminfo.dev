@@ -365,6 +365,43 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
   expect(timedOut.assertions).toBeUndefined()
 })
 
+// 27914: xterm answers the item-2 read with CSI ? 2 ; 3 S — the documented failure
+// reply, which omits the value (ctlseqs: "XTSMGRAPHICS ... return failure status if
+// the terminal is not configured to support the corresponding ... SIXEL feature").
+// Demanding a third parameter graded that failure as a malformed geometry.
+test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", async () => {
+  const definition = callback("extensions.sixel-geometry-report")
+  const headless = (raw: string) => definition.termless!({ feedCapture: () => raw } as unknown as TermlessContext)
+  const app = (raw: string) =>
+    definition.term!({
+      queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
+        match: pattern.exec(raw),
+        reason: pattern.test(raw) ? "reply" : "sentinel",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      }),
+    } as unknown as TermContext)
+  const failure = "\x1b[?2;3S"
+  for (const result of [headless(failure), await app(failure)]) {
+    expect(result.response).toBe(failure)
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      note: "Sixel geometry query reported protocol status 3 (failure; no graphics geometry is configured)",
+    })
+    expect(result.assertions).toBeUndefined()
+  }
+  const success = "\x1b[?2;0;800;528S"
+  for (const result of [headless(success), await app(success)]) {
+    expect(result.observation).toMatchObject({
+      outcome: "supported",
+      note: "Current Sixel geometry reported as 800×528 pixels",
+    })
+  }
+  const malformed = headless("\x1b[?2;S")
+  expect(malformed.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+})
+
 /**
  * 27915: kitty graphics control data is an unordered comma-separated key=value list. WezTerm answers an allocation
  * with `I=<number>,i=<id>` where kitty writes `i=<id>,I=<number>`; both are the same reply.

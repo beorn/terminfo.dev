@@ -12,6 +12,12 @@
       "reason": "Keeps the default ghostty already had: until the 27892 apparatus runs, the macOS hardware run was ghostty's only current context, so the site does not move when the Linux container run becomes current alongside it. The kitty row names the macOS hardware run as the reviewed default the same way.",
       "sources": ["content/probes-apps/ghostty-1.3.1-macos.json"]
     },
+    "app:xterm": {
+      "contextKey": "app:xterm@[\"app\",\"xterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/cdi2hk128w2mpxcx7rglx65dc9jamfv4-xterm-411/bin/xterm -name terminfo-xterm-container-daemon -fa DejaVu\\\\ Sans\\\\ Mono -fs 16 -geometry 100x30 -e bun /nix/store/41by8p0m56krqjjyiws3jgmw7ldck4kk-terminfo-linux-runner/index.js test --serve \",null]",
+      "reviewer": "@dev/5 (automated review)",
+      "reason": "Pins the row to the 27914 re-collection on the merged suite 698c89366d6b (the fixed XTREPORTCOLORS and Sixel-geometry matchers, collected from a clean tree). The Linux apparatus holds several xterm runs that differ only by the frozen runner's store path; this names the one 27914 triages, so the site selects it. Same mechanism the app:ghostty and app:kitty rows use.",
+      "sources": ["content/probes-apps/xterm-411-linux-2511f4feefd4a95563bfe2d37d7f1bc9.json"]
+    },
     "app:wezterm": {
       "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/mmvpz8sgpp4gg1lwsjv68knvkzqmsdwk-wezterm-0-unstable-2026-09-17/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun /nix/store/lkir11pfhm3p0z8s1cyffx9z7pvindyd-terminfo-linux-runner/index.js test --serve \",null]",
       "reviewer": "@dev/12 (automated review)",
