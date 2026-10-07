@@ -120,7 +120,7 @@ export function admitRun(plan: AdmissionPlan): { manifest: "created" | "existing
         "Admit from a tree at the run's suite (its sourceRevision).",
     )
   }
-  assertDeclareIsAuthoring(ROOT)
+  assertDeclareIsAuthoring(ROOT, plan.probeHash)
   const declaration = declareCurrentSuiteManifest()
   const manifestPath = join(CONTENT_DIR, "suites", `${snapshot.probeHash}.json`)
   const manifest = verifySuiteManifest(manifestPath, snapshot)
