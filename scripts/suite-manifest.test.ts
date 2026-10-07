@@ -159,7 +159,11 @@ test("the check is red when a declaration is not named for the hash it declares"
   expect(() => checkCitedSuiteManifests(directory, snapshotOf(COMPOSED))).toThrow(/not its filename/)
 })
 
-/** The stray manifests in shared main came from a declare on a commit origin/main already held. */
+/**
+ * The stray manifests in shared main came from a declare on a commit origin/main already held. The
+ * refusal now names the undeclared suite and the cure (27864), so an operator sees a suite problem
+ * and its fix, not a git problem.
+ */
 test("declaring refuses a checkout whose HEAD is already on origin/main and allows one that is not", () => {
   const directory = temp("terminfo-suite-manifest-git-")
   const git = (...args: string[]): string =>
@@ -172,7 +176,12 @@ test("declaring refuses a checkout whose HEAD is already on origin/main and allo
   git("commit", "-q", "-m", "one")
   git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
 
-  expect(() => assertDeclareIsAuthoring(directory)).toThrow(/origin\/main/)
+  const undeclared = "a".repeat(12)
+  expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/origin\/main/)
+  expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(
+    new RegExp(`Suite ${undeclared} is undeclared on this checkout`),
+  )
+  expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/admit-run\.ts --for/)
 
   writeFileSync(join(directory, "b.txt"), "two\n")
   git("add", "b.txt")
