@@ -277,7 +277,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
       const restoredRaw = ctx.feedCapture(query)
       const restored = replyPattern.exec(restoredRaw)?.[1]
       const response = JSON.stringify({ originalRaw, changedRaw, restoredRaw })
-      if (!changed || !restored || !sameRgb(changed, requested)) {
+      if (!changed || !restored) {
         return {
           pass: false,
           response,
@@ -288,6 +288,9 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
             note: "Color mutation or readback control was not established",
           },
         }
+      }
+      if (!sameRgb(changed, requested)) {
+        return colorSetIgnoredResult(response, setCode)
       }
       const pass = sameRgb(restored, original)
       return {
@@ -315,6 +318,25 @@ const colorPop = "\x1b]30101\x1b\\"
 
 function foregroundValue(response: string): string | null {
   return foregroundReply.exec(response)?.[1] ?? null
+}
+
+function colorSetIgnoredResult(response: string, setCode: number): ProbeResult {
+  return {
+    pass: false,
+    response,
+    observation: {
+      outcome: "unsupported",
+      evidence: "behavior",
+      note: "OSC set did not change the queried color",
+    },
+    assertions: [
+      {
+        kind: "negative",
+        expected: `OSC ${setCode} changes the queried color`,
+        observed: response,
+      },
+    ],
+  }
 }
 
 function sameRgb(left: string, right: string): boolean {
@@ -378,7 +400,7 @@ async function colorResetAppProbe(
     changedRaw: changed.outcome.raw,
     restoredRaw: restored.outcome.raw,
   })
-  if (!changed.rgb || !restored.rgb || !sameRgb(changed.rgb, requested)) {
+  if (!changed.rgb || !restored.rgb) {
     return {
       pass: false,
       response,
@@ -389,6 +411,9 @@ async function colorResetAppProbe(
         note: "Color mutation or readback control was not established",
       },
     }
+  }
+  if (!sameRgb(changed.rgb, requested)) {
+    return colorSetIgnoredResult(response, spec.setCode)
   }
   const pass = sameRgb(restored.rgb, before.rgb)
   return {

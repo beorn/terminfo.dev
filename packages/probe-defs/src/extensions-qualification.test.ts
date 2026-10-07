@@ -162,6 +162,14 @@ test.each([
   const notRestored = run([original, changed, color("12/34/56")])
   expect(notRestored.result.observation, id).toMatchObject({ outcome: "unsupported", evidence: "behavior" })
   expect(notRestored.result.assertions, id).toMatchObject([{ kind: "negative" }])
+  // 27932 / Terminal.app 1225b26b: query replies, SET is ignored, original rgb comes back.
+  const setIgnored = run([original, original, original])
+  expect(setIgnored.result.observation, id).toMatchObject({
+    outcome: "unsupported",
+    evidence: "behavior",
+    note: "OSC set did not change the queried color",
+  })
+  expect(setIgnored.result.assertions, id).toMatchObject([{ kind: "negative" }])
   const noControl = run([original, "", original])
   expect(noControl.result.observation?.outcome, id).toBe("inconclusive")
   expect(noControl.result.assertions, id).toBeUndefined()
@@ -238,6 +246,14 @@ test.each(appResetProbes)(
     const notRestored = await run([rgb("0000/0000/0000"), rgb("aa/bb/cc"), rgb("12/34/56")])
     expect(notRestored.result.observation, id).toMatchObject({ outcome: "unsupported", evidence: "behavior" })
     expect(notRestored.result.assertions, id).toMatchObject([{ kind: "negative" }])
+    // 27932 specimen: Terminal.app answers OSC 13/14 queries and ignores SET (run 1225b26b).
+    const setIgnored = await run([rgb("0000/0000/0000"), rgb("0000/0000/0000"), rgb("0000/0000/0000")])
+    expect(setIgnored.result.observation, id).toMatchObject({
+      outcome: "unsupported",
+      evidence: "behavior",
+      note: "OSC set did not change the queried color",
+    })
+    expect(setIgnored.result.assertions, id).toMatchObject([{ kind: "negative" }])
     const noControl = await run([rgb("0000/0000/0000"), ""])
     expect(noControl.result.observation?.outcome, id).toBe("inconclusive")
     expect(noControl.result.assertions, id).toBeUndefined()
