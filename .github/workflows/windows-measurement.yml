@@ -76,7 +76,7 @@ jobs:
               WT_DIR="C:/WindowsTerminal"
               if [ ! -f "$WT_DIR/wt.exe" ]; then
                 curl -L -s -f "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -o "$RUNNER_TEMP/wt.zip"
-                powershell -NoProfile -Command "Expand-Archive -Path '$env:RUNNER_TEMP\\wt.zip' -DestinationPath '$WT_DIR' -Force"
+                powershell -NoProfile -Command "Expand-Archive -Path '$RUNNER_TEMP/wt.zip' -DestinationPath '$WT_DIR' -Force"
               fi
               test -f "$WT_DIR/wt.exe" || { echo "Windows Terminal binary missing at $WT_DIR/wt.exe" >&2; exit 1; }
               ;;
