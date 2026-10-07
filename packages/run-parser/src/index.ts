@@ -469,19 +469,42 @@ export function validateObservationOutcome(value: Record<string, unknown>, path:
 
 export function parseSuiteManifest(path: string, source: string): ProbeSuiteManifest {
   const value = parseJsonStrict(path, source)
-  if (
-    !object(value) ||
-    Object.keys(value).sort().join(",") !== "adapterVersion,generatedAt,probeHash,probes,sourceRevision"
-  ) {
-    fail(path, "invalid suite manifest shape")
+  if (!object(value)) fail(path, "invalid suite manifest shape")
+  // A manifest is legacy-complete (sourceRevision AND generatedAt) or new-minimal (neither): the
+  // derived record is a pure function of the suite sources (27832 manifest direction (2)), and the
+  // legacy provenance is optional. A half-present pair can only come from a hand edit or
+  // corruption, so it refuses by name. Unknown fields are refused rather than silently accepted.
+  const derivedKeys = ["adapterVersion", "probeHash", "probes"]
+  const legacyKeys = ["generatedAt", "sourceRevision"]
+  const known = new Set([...derivedKeys, ...legacyKeys])
+  const unknown = Object.keys(value)
+    .filter((key) => !known.has(key))
+    .sort()
+  if (unknown.length > 0) fail(path, `unknown suite manifest field ${unknown[0]}`)
+  for (const key of derivedKeys) {
+    if (!(key in value)) fail(path, `missing suite manifest field ${key}`)
+  }
+  const legacyPresent = legacyKeys.map((key) => key in value)
+  if (legacyPresent[0] !== legacyPresent[1]) {
+    fail(path, "partial suite manifest provenance: sourceRevision and generatedAt are both-or-neither")
   }
   const probeHash = asString(value.probeHash, path, "suite probeHash")
   const adapterVersion = asString(value.adapterVersion, path, "suite adapterVersion")
-  if (typeof value.sourceRevision !== "string" || !/^[0-9a-f]{40}$/.test(value.sourceRevision)) {
-    fail(path, "invalid suite sourceRevision")
-  }
-  if (!date(value.generatedAt) || new Date(value.generatedAt).toISOString() !== value.generatedAt) {
-    fail(path, "invalid suite generatedAt")
+  let sourceRevision: string | undefined
+  let generatedAt: string | undefined
+  if (legacyPresent[1]) {
+    if (typeof value.sourceRevision !== "string" || !/^[0-9a-f]{40}$/.test(value.sourceRevision)) {
+      fail(path, "invalid suite sourceRevision")
+    }
+    if (
+      typeof value.generatedAt !== "string" ||
+      !date(value.generatedAt) ||
+      new Date(value.generatedAt).toISOString() !== value.generatedAt
+    ) {
+      fail(path, "invalid suite generatedAt")
+    }
+    sourceRevision = value.sourceRevision
+    generatedAt = value.generatedAt
   }
   if (!object(value.probes) || Object.keys(value.probes).sort().join(",") !== "app,headless,mux") {
     fail(path, "invalid suite probe kinds")
@@ -494,7 +517,13 @@ export function parseSuiteManifest(path: string, source: string): ProbeSuiteMani
     }
     probes[kind] = ids
   }
-  return { probeHash, sourceRevision: value.sourceRevision, generatedAt: value.generatedAt, adapterVersion, probes }
+  return {
+    probeHash,
+    adapterVersion,
+    probes,
+    ...(sourceRevision === undefined ? {} : { sourceRevision }),
+    ...(generatedAt === undefined ? {} : { generatedAt }),
+  }
 }
 
 function parseAppLaunchReceipt(

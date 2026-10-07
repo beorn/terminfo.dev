@@ -11,7 +11,6 @@ import { manifest, type TerminalBackend } from "@termless/core"
 import { ALL_PROBES, type ProbeRun } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
-import { checkCurrentSuiteManifest } from "../../scripts/suite-manifest.ts"
 import { collectBatch, errorMessage } from "./headless-batch.ts"
 
 const ROOT = resolve(import.meta.dir, "../..")
@@ -44,13 +43,19 @@ export interface HeadlessCollection {
   failures: Array<{ backend: string; package: string; error: string }>
 }
 
+/**
+ * A headless collection records the LIVE suite snapshot, not a stored declaration: this collector
+ * legitimately runs on composed trees, and admission declares the manifest in the same commit as
+ * the run it produced (27832 manifest direction (2)). A run whose suite is never admitted cannot be
+ * cited, which is the correct outcome — not a collection-time failure.
+ */
 function trustedSuite() {
-  const suite = checkCurrentSuiteManifest()
+  const suite = probeSuiteSnapshot()
   const callbackIds = ALL_PROBES.filter((probe) => probe.termless !== null)
     .map((probe) => probe.id)
     .sort()
   if (callbackIds.join("\n") !== [...suite.probes.headless].sort().join("\n")) {
-    throw new Error(`Headless callback membership differs from trusted suite ${suite.probeHash}`)
+    throw new Error(`Headless callback membership differs from the live suite ${suite.probeHash}`)
   }
   return suite
 }
