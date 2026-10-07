@@ -10,7 +10,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { bindReceiptToRun, parseDisposableReceipt, readDisposableReceipt } from "./disposable-receipt.ts"
+import {
+  HOSTED_IDENTITY_SOURCES,
+  bindReceiptToRun,
+  parseDisposableReceipt,
+  readDisposableReceipt,
+} from "./disposable-receipt.ts"
 
 const digest = (seed: string) => createHash("sha256").update(seed).digest("hex")
 const directories: string[] = []
@@ -215,4 +220,29 @@ test("a github-hosted receipt declares no target and is not refused for the abse
   expect(receipt.declaredTarget).toBeUndefined()
   expect(receipt.identity).toBeUndefined()
   expect(() => bindReceiptToRun(receipt, { kind: "app", id: "kitty", os: "linux" }, "test")).not.toThrow()
+})
+
+test("HOSTED_IDENTITY_SOURCES Windows patterns match real-format lines and capture exact values", () => {
+  const sources = HOSTED_IDENTITY_SOURCES.Windows.sources
+
+  // NIC MAC pattern matches real format line
+  const macRegex = new RegExp(sources.machineIdSha256.pattern)
+  const macLine = "00-0D-3A-12-34-56"
+  const macMatch = macRegex.exec(macLine)
+  expect(macMatch).toBeDefined()
+  expect(macMatch?.[1]).toBe("00-0D-3A-12-34-56")
+
+  // SMBIOS UUID pattern matches uppercase UUID
+  const uuidRegex = new RegExp(sources.productUuidSha256.pattern)
+  const uuidLine = "E0CB6CD7-0A6B-B82C-6940-30E6359CD7FD"
+  const uuidMatch = uuidRegex.exec(uuidLine)
+  expect(uuidMatch).toBeDefined()
+  expect(uuidMatch?.[1]).toBe("E0CB6CD7-0A6B-B82C-6940-30E6359CD7FD")
+
+  // LastBootUpTime pattern matches ISO UTC string
+  const bootRegex = new RegExp(sources.bootIdSha256.pattern)
+  const bootLine = "2026-10-07T07:57:50.5000000Z"
+  const bootMatch = bootRegex.exec(bootLine)
+  expect(bootMatch).toBeDefined()
+  expect(bootMatch?.[1]).toBe("2026-10-07T07:57:50.5000000Z")
 })

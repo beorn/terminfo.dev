@@ -133,3 +133,91 @@ test("the actual hosted producer self-parses measured bytes and refuses incomple
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test("the hosted producer supports Windows and refuses degenerate identities by name", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-win-"))
+  let raw = {
+    mac: "00-15-5D-12-34-56",
+    uuid: "12345678-ABCD-1234-ABCD-123456789ABC",
+    boot: "2026-10-07T07:57:50.5000000Z",
+  }
+  const server = createServer((_req, res) => {
+    res.setHeader("content-type", "application/json")
+    res.end(JSON.stringify({ jobs: [{ id: 7777, runner_name: "win-runner", status: "in_progress" }] }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const fakePs = () => `#!${process.execPath}
+const cmd = process.argv.slice(2).join(' ');
+if (cmd.includes('Get-NetAdapter')) {
+  console.log('${raw.mac}');
+} else if (cmd.includes('Win32_ComputerSystemProduct')) {
+  console.log('${raw.uuid}');
+} else if (cmd.includes('Win32_OperatingSystem')) {
+  console.log('${raw.boot}');
+} else {
+  console.log('');
+}
+`
+    await writeFile(join(dir, "powershell.exe"), fakePs(), { mode: 0o755 })
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("Expected fixture server address")
+    const env = {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      RUNNER_ENVIRONMENT: "github-hosted",
+      RUNNER_NAME: "win-runner",
+      RUNNER_OS: "Windows",
+      RUNNER_ARCH: "X64",
+      RUNNER_TRACKING_ID: "win-tracking",
+      ImageOS: "win22",
+      ImageVersion: "20261001.1",
+      GITHUB_REPOSITORY: "fixture/repo",
+      GITHUB_WORKFLOW: "collect",
+      GITHUB_WORKFLOW_REF: "collect.yml@main",
+      GITHUB_RUN_ID: "88",
+      GITHUB_RUN_ATTEMPT: "1",
+      GITHUB_JOB: "collect",
+      GH_TOKEN: "fixture-token",
+      GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+    }
+    const run = (...args: string[]) =>
+      promisify(execFile)(
+        "node",
+        ["--experimental-strip-types", fileURLToPath(new URL("./hosted-runner-receipt.ts", import.meta.url)), ...args],
+        { env },
+      )
+    const start = join(dir, "start.json")
+    const receipt = join(dir, "host-measured.json")
+    await run("start", start)
+    await run("emit", start, receipt)
+    const bytes = await readFile(receipt, "utf8")
+    const parsed = parseDisposableReceipt(bytes)
+    expect(parsed.kind).toBe("github-hosted-runner")
+    const decoded = JSON.parse(bytes) as {
+      vm: { identityAtJobStart: Record<string, string> }
+    }
+    expect(decoded.vm.identityAtJobStart.machineIdSha256).toBe(createHash("sha256").update(raw.mac).digest("hex"))
+    expect(decoded.vm.identityAtJobStart.productUuidSha256).toBe(createHash("sha256").update(raw.uuid).digest("hex"))
+    expect(decoded.vm.identityAtJobStart.bootIdSha256).toBe(createHash("sha256").update(raw.boot).digest("hex"))
+
+    // Refusal test 1: All-zero UUID
+    raw.uuid = "00000000-0000-0000-0000-000000000000"
+    await writeFile(join(dir, "powershell.exe"), fakePs(), { mode: 0o755 })
+    await expect(run("start", join(dir, "degenerate-zero-uuid.json"))).rejects.toThrow(/degenerate UUID/)
+
+    // Refusal test 2: All-F UUID
+    raw.uuid = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+    await writeFile(join(dir, "powershell.exe"), fakePs(), { mode: 0o755 })
+    await expect(run("start", join(dir, "degenerate-f-uuid.json"))).rejects.toThrow(/degenerate UUID/)
+
+    // Refusal test 3: All-zero MAC
+    raw.uuid = "12345678-ABCD-1234-ABCD-123456789ABC"
+    raw.mac = "00:00:00:00:00:00"
+    await writeFile(join(dir, "powershell.exe"), fakePs(), { mode: 0o755 })
+    await expect(run("start", join(dir, "degenerate-zero-mac.json"))).rejects.toThrow(/degenerate all-zero MAC/)
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    await rm(dir, { recursive: true, force: true })
+  }
+})

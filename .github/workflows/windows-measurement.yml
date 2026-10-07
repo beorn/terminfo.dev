@@ -15,363 +15,123 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  probe-windows-identity:
-    name: Windows Identity Probe (${{ matrix.sample }})
+  measure-windows:
+    name: Windows ${{ matrix.id }}
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        sample: [1, 2]
+        include:
+          - id: windows-terminal
     defaults:
       run:
         shell: bash
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Sample identity at start
-        env:
-          IDENTITY_PHASE: start
-          IDENTITY_OUTPUT_DIR: ${{ runner.temp }}/windows-identity
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Bootstrap the pinned producer and sample at job start
         run: |
-          node -e '
-          const { spawnSync } = require("child_process");
-          const { createHash } = require("crypto");
-          const { mkdirSync, writeFileSync } = require("fs");
-          const { join } = require("path");
+          set -euo pipefail
+          APPARATUS="$RUNNER_TEMP/hosted-apparatus"
+          OUT="$RUNNER_TEMP/measurement-artifacts"
+          mkdir -p "$APPARATUS/scripts" "$APPARATUS/packages/terminfo.dev/src" "$OUT"
+          for source in scripts/hosted-runner-receipt.ts packages/terminfo.dev/src/disposable-receipt.ts; do
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github.raw+json' \
+              --output "$APPARATUS/$source" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/contents/$source?ref=$GITHUB_SHA"
+          done
+          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" start "$OUT/job-start.json"
 
-          const phase = process.env.IDENTITY_PHASE || "unknown";
-          const outDir = process.env.IDENTITY_OUTPUT_DIR || ".";
-          mkdirSync(outDir, { recursive: true });
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
 
-          async function getJob() {
-            const repo = process.env.GITHUB_REPOSITORY;
-            const runId = process.env.GITHUB_RUN_ID;
-            const attempt = process.env.GITHUB_RUN_ATTEMPT;
-            const runnerName = process.env.RUNNER_NAME;
-            const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
-            const token = process.env.GH_TOKEN;
-
-            if (!repo || !runId || !runnerName || !token) {
-              return { matchCount: null, id: null };
-            }
-
-            try {
-              const url = attempt
-                ? `${apiUrl}/repos/${repo}/actions/runs/${runId}/attempts/${attempt}/jobs`
-                : `${apiUrl}/repos/${repo}/actions/runs/${runId}/jobs`;
-              const res = await fetch(url, {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  Accept: "application/vnd.github+json",
-                },
-              });
-              if (!res.ok) {
-                return { matchCount: null, id: null };
-              }
-              const data = await res.json();
-              const jobs = Array.isArray(data.jobs) ? data.jobs : [];
-              const matched = jobs.filter((j) => j.runner_name === runnerName);
-              return {
-                matchCount: matched.length,
-                id: matched.length === 1 && typeof matched[0].id === "number" ? matched[0].id : null,
-              };
-            } catch {
-              return { matchCount: null, id: null };
-            }
-          }
-
-          function sampleMachineGuid() {
-            try {
-              const res = spawnSync("reg.exe", ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid", "/reg:64"], { encoding: "utf8" });
-              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
-              const m = res.stdout.match(/MachineGuid\s+REG_SZ\s+([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})/i);
-              if (!m) return { available: false, sha256: null, byteLength: 0 };
-              const val = m[1];
-              if (/^[0f-]+$/i.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              return {
-                available: true,
-                sha256: createHash("sha256").update(val).digest("hex"),
-                byteLength: Buffer.byteLength(val),
-              };
-            } catch {
-              return { available: false, sha256: null, byteLength: 0 };
-            }
-          }
-
-          function sampleNicMac() {
-            try {
-              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "Get-NetAdapter -Physical | Where-Object { $_.Status -eq '\''Up'\'' } | Sort-Object ifIndex | Select-Object -First 1 -ExpandProperty MacAddress"], { encoding: "utf8" });
-              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
-              const val = res.stdout.trim();
-              if (!/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              return {
-                available: true,
-                sha256: createHash("sha256").update(val).digest("hex"),
-                byteLength: Buffer.byteLength(val),
-              };
-            } catch {
-              return { available: false, sha256: null, byteLength: 0 };
-            }
-          }
-
-          function sampleProductUuid() {
-            try {
-              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct).UUID"], { encoding: "utf8" });
-              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
-              const val = res.stdout.trim();
-              if (!/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              if (/^[0f-]+$/i.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              return {
-                available: true,
-                sha256: createHash("sha256").update(val).digest("hex"),
-                byteLength: Buffer.byteLength(val),
-              };
-            } catch {
-              return { available: false, sha256: null, byteLength: 0 };
-            }
-          }
-
-          function sampleBootTime() {
-            try {
-              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('\''o'\'')"], { encoding: "utf8" });
-              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
-              const val = res.stdout.trim();
-              if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              return {
-                available: true,
-                sha256: createHash("sha256").update(val).digest("hex"),
-                byteLength: Buffer.byteLength(val),
-              };
-            } catch {
-              return { available: false, sha256: null, byteLength: 0 };
-            }
-          }
-
-          function sampleKernelEvent12() {
-            try {
-              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-WinEvent -FilterHashtable @{LogName='\''System'\''; ProviderName='\''Microsoft-Windows-Kernel-General'\''; Id=12} -MaxEvents 1).TimeCreated.ToUniversalTime().ToString('\''o'\'')"], { encoding: "utf8" });
-              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
-              const val = res.stdout.trim();
-              if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              return {
-                available: true,
-                sha256: createHash("sha256").update(val).digest("hex"),
-                byteLength: Buffer.byteLength(val),
-              };
-            } catch {
-              return { available: false, sha256: null, byteLength: 0 };
-            }
-          }
-
-          async function main() {
-            const job = await getJob();
-            const machineGuid = sampleMachineGuid();
-            const nicMac = sampleNicMac();
-            const productUuid = sampleProductUuid();
-            const bootTime = sampleBootTime();
-            const kernelEvent12 = sampleKernelEvent12();
-
-            const output = {
-              phase,
-              job,
-              identifiers: {
-                machineGuid,
-                nicMac,
-                productUuid,
-                bootTime,
-                kernelEvent12,
-              },
-            };
-
-            writeFileSync(join(outDir, `${phase}.json`), JSON.stringify(output, null, 2) + "\n");
-            process.stderr.write(`[${phase}] job: matchCount=${job.matchCount}, id=${job.id}\n`);
-            for (const [k, v] of Object.entries(output.identifiers)) {
-              process.stderr.write(`[${phase}] ${k}: available=${v.available}, sha256=${v.sha256}, bytes=${v.byteLength}\n`);
-            }
-          }
-
-          main().catch((err) => {
-            process.stderr.write(`${err && err.message ? err.message : String(err)}\n`);
-            process.exitCode = 1;
-          });
-          '
-
-      - name: Wait 60s between samples
-        run: sleep 60
-
-      - name: Sample identity at collection
-        env:
-          IDENTITY_PHASE: collection
-          IDENTITY_OUTPUT_DIR: ${{ runner.temp }}/windows-identity
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and install the current collector
         run: |
-          node -e '
-          const { spawnSync } = require("child_process");
-          const { createHash } = require("crypto");
-          const { mkdirSync, writeFileSync } = require("fs");
-          const { join } = require("path");
+          set -euo pipefail
+          bun install
+          bun scripts/build-cli.ts
+          npm install -g ./packages/terminfo.dev
+          terminfo --version
 
-          const phase = process.env.IDENTITY_PHASE || "unknown";
-          const outDir = process.env.IDENTITY_OUTPUT_DIR || ".";
-          mkdirSync(outDir, { recursive: true });
+      - name: Install this job's terminal
+        env:
+          APP_ID: ${{ matrix.id }}
+        run: |
+          set -euo pipefail
+          case "$APP_ID" in
+            windows-terminal)
+              WT_DIR="C:/WindowsTerminal"
+              if [ ! -f "$WT_DIR/wt.exe" ]; then
+                curl -L -s -f "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -o "$RUNNER_TEMP/wt.zip"
+                powershell -NoProfile -Command "Expand-Archive -Path '$env:RUNNER_TEMP\\wt.zip' -DestinationPath '$WT_DIR' -Force"
+              fi
+              test -f "$WT_DIR/wt.exe" || { echo "Windows Terminal binary missing at $WT_DIR/wt.exe" >&2; exit 1; }
+              ;;
+            *) echo "Unknown Windows measurement app: $APP_ID" >&2; exit 1 ;;
+          esac
 
-          async function getJob() {
-            const repo = process.env.GITHUB_REPOSITORY;
-            const runId = process.env.GITHUB_RUN_ID;
-            const attempt = process.env.GITHUB_RUN_ATTEMPT;
-            const runnerName = process.env.RUNNER_NAME;
-            const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
-            const token = process.env.GH_TOKEN;
+      - name: Launch, emit the receipt, and collect as the last mutating step
+        id: collect
+        env:
+          APP_ID: ${{ matrix.id }}
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/measurement-artifacts"
+          APPARATUS="$RUNNER_TEMP/hosted-apparatus"
+          COMMAND_PATH="$RUNNER_TEMP/collect.bat"
+          COLLECTOR="$(command -v terminfo)"
 
-            if (!repo || !runId || !runnerName || !token) {
-              return { matchCount: null, id: null };
-            }
+          WIN_OUT="$(powershell -NoProfile -Command "[System.IO.Path]::GetFullPath('$OUT')")"
+          WIN_COLLECTOR="$(powershell -NoProfile -Command "[System.IO.Path]::GetFullPath('$COLLECTOR')")"
 
-            try {
-              const url = attempt
-                ? `${apiUrl}/repos/${repo}/actions/runs/${runId}/attempts/${attempt}/jobs`
-                : `${apiUrl}/repos/${repo}/actions/runs/${runId}/jobs`;
-              const res = await fetch(url, {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  Accept: "application/vnd.github+json",
-                },
-              });
-              if (!res.ok) {
-                return { matchCount: null, id: null };
-              }
-              const data = await res.json();
-              const jobs = Array.isArray(data.jobs) ? data.jobs : [];
-              const matched = jobs.filter((j) => j.runner_name === runnerName);
-              return {
-                matchCount: matched.length,
-                id: matched.length === 1 && typeof matched[0].id === "number" ? matched[0].id : null,
-              };
-            } catch {
-              return { matchCount: null, id: null };
-            }
-          }
+          cat > "$COMMAND_PATH" <<BATCH
+          @echo off
+          set "TERMINFO_DISPOSABLE_RECEIPT=$WIN_OUT\\host-measured.json"
+          :wait_loop
+          if not exist "$WIN_OUT\\collector-ready" (
+            powershell -NoProfile -Command "Start-Sleep -Milliseconds 500"
+            goto wait_loop
+          )
+          call "$WIN_COLLECTOR" test --output "$WIN_OUT\\run.json" > "$WIN_OUT\\collector.log" 2>&1
+          echo %ERRORLEVEL% > "$WIN_OUT\\collector-exit"
+          exit /b %ERRORLEVEL%
+          BATCH
 
-          function sampleMachineGuid() {
-            try {
-              const res = spawnSync("reg.exe", ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid", "/reg:64"], { encoding: "utf8" });
-              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
-              const m = res.stdout.match(/MachineGuid\s+REG_SZ\s+([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})/i);
-              if (!m) return { available: false, sha256: null, byteLength: 0 };
-              const val = m[1];
-              if (/^[0f-]+$/i.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              return {
-                available: true,
-                sha256: createHash("sha256").update(val).digest("hex"),
-                byteLength: Buffer.byteLength(val),
-              };
-            } catch {
-              return { available: false, sha256: null, byteLength: 0 };
-            }
-          }
+          case "$APP_ID" in
+            windows-terminal)
+              C:/WindowsTerminal/wt.exe -d . cmd.exe /c "$COMMAND_PATH" &
+              ;;
+            *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
+          esac
 
-          function sampleNicMac() {
-            try {
-              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "Get-NetAdapter -Physical | Where-Object { $_.Status -eq '\''Up'\'' } | Sort-Object ifIndex | Select-Object -First 1 -ExpandProperty MacAddress"], { encoding: "utf8" });
-              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
-              const val = res.stdout.trim();
-              if (!/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              return {
-                available: true,
-                sha256: createHash("sha256").update(val).digest("hex"),
-                byteLength: Buffer.byteLength(val),
-              };
-            } catch {
-              return { available: false, sha256: null, byteLength: 0 };
-            }
-          }
+          sleep 3
+          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
+          touch "$OUT/collector-ready"
 
-          function sampleProductUuid() {
-            try {
-              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct).UUID"], { encoding: "utf8" });
-              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
-              const val = res.stdout.trim();
-              if (!/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              if (/^[0f-]+$/i.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              return {
-                available: true,
-                sha256: createHash("sha256").update(val).digest("hex"),
-                byteLength: Buffer.byteLength(val),
-              };
-            } catch {
-              return { available: false, sha256: null, byteLength: 0 };
-            }
-          }
+          for attempt in {1..300}; do
+            if [ -f "$OUT/collector-exit" ]; then
+              status="$(cat "$OUT/collector-exit" | tr -d '\r\n ')"
+              test "$status" = 0 || { echo "$APP_ID collector failed ($status); see collector.log artifact" >&2; exit 1; }
+              test -s "$OUT/run.json" || { echo "$APP_ID collector returned no run.json" >&2; exit 1; }
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "$APP_ID collector did not finish within 300 seconds; see launcher/collector artifacts" >&2
+          exit 1
 
-          function sampleBootTime() {
-            try {
-              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('\''o'\'')"], { encoding: "utf8" });
-              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
-              const val = res.stdout.trim();
-              if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              return {
-                available: true,
-                sha256: createHash("sha256").update(val).digest("hex"),
-                byteLength: Buffer.byteLength(val),
-              };
-            } catch {
-              return { available: false, sha256: null, byteLength: 0 };
-            }
-          }
-
-          function sampleKernelEvent12() {
-            try {
-              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-WinEvent -FilterHashtable @{LogName='\''System'\''; ProviderName='\''Microsoft-Windows-Kernel-General'\''; Id=12} -MaxEvents 1).TimeCreated.ToUniversalTime().ToString('\''o'\'')"], { encoding: "utf8" });
-              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
-              const val = res.stdout.trim();
-              if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
-              return {
-                available: true,
-                sha256: createHash("sha256").update(val).digest("hex"),
-                byteLength: Buffer.byteLength(val),
-              };
-            } catch {
-              return { available: false, sha256: null, byteLength: 0 };
-            }
-          }
-
-          async function main() {
-            const job = await getJob();
-            const machineGuid = sampleMachineGuid();
-            const nicMac = sampleNicMac();
-            const productUuid = sampleProductUuid();
-            const bootTime = sampleBootTime();
-            const kernelEvent12 = sampleKernelEvent12();
-
-            const output = {
-              phase,
-              job,
-              identifiers: {
-                machineGuid,
-                nicMac,
-                productUuid,
-                bootTime,
-                kernelEvent12,
-              },
-            };
-
-            writeFileSync(join(outDir, `${phase}.json`), JSON.stringify(output, null, 2) + "\n");
-            process.stderr.write(`[${phase}] job: matchCount=${job.matchCount}, id=${job.id}\n`);
-            for (const [k, v] of Object.entries(output.identifiers)) {
-              process.stderr.write(`[${phase}] ${k}: available=${v.available}, sha256=${v.sha256}, bytes=${v.byteLength}\n`);
-            }
-          }
-
-          main().catch((err) => {
-            process.stderr.write(`${err && err.message ? err.message : String(err)}\n`);
-            process.exitCode = 1;
-          });
-          '
-
-      - name: Upload identity samples
+      - name: Upload the receipt beside the exact collected run
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-identity-sample-${{ matrix.sample }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/windows-identity
+          name: win32-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/measurement-artifacts
           if-no-files-found: error

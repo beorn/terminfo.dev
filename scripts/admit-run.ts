@@ -237,7 +237,7 @@ export function placeOwnershipReceipt(
     }
     const current = JSON.parse(bytes.toString("utf8")) as HostedFields
     const os = current.runner.os
-    if (os !== "Linux" && os !== "macOS") {
+    if (!(os in HOSTED_IDENTITY_SOURCES)) {
       throw new Error(
         `Hosted receipt ${receiptPath}: runner.os ${JSON.stringify(os)} has no ratified identity source/scope table`,
       )
@@ -268,7 +268,7 @@ export function placeOwnershipReceipt(
       const previous = JSON.parse(priorBytes) as HostedFields
       if (previous.runner.os !== os) continue // Different OS source values are not comparable.
       if (previous.job.githubRunId === current.job.githubRunId && previous.job.jobId === current.job.jobId) continue
-      for (const field of HOSTED_IDENTITY_SOURCES[os].nonReuse) {
+      for (const field of HOSTED_IDENTITY_SOURCES[os as keyof typeof HOSTED_IDENTITY_SOURCES].nonReuse) {
         if (previous.vm.identityAtJobStart[field] === current.vm.identityAtJobStart[field]) {
           throw new Error(
             `Hosted receipt non-reuse: ${field} repeats between jobs ` +
