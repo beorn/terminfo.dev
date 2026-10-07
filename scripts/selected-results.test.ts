@@ -975,6 +975,112 @@ describe("selected results", () => {
     )
   })
 
+  it("admits a controlled-Linux alacritty run from ?6c and the apparatus-measured executable, and refuses every other half", () => {
+    const da1 = "\u001b[?6c"
+    const executable = { version: "alacritty 0.17.0", sha256: "3".repeat(64) }
+    const provenance = {
+      executable: { path: "/nix/store/alacritty-0.17.0/bin/alacritty", ...executable },
+      sourceArtifact: { url: "https://example.invalid/alacritty-0.17.0.tar.gz", sha256: "b".repeat(64) },
+      runtime: {
+        imageId: `sha256:${"c".repeat(64)}`,
+        imageTarSha256: "d".repeat(64),
+        arch: "x86_64-linux",
+        nixLockRevision: "e".repeat(40),
+        sourceRevision: "2".repeat(40),
+        cleanTree: true,
+        suiteHash: "current",
+      },
+      fixture: {
+        definition: "alacritty identity",
+        config: "NONE",
+        font: "DejaVu Sans Mono",
+        geometry: "80x24, 800x600",
+        display: "Xvfb :0",
+        gl: "Mesa llvmpipe",
+      },
+    }
+    const linuxTarget = { ...target, id: "alacritty", version: "0.17.0", os: "linux" }
+    const replies = (primaryDa: string) => ({
+      "device.primary-da": primaryDa,
+      "extensions.query": "ACK",
+      "extensions.graphics": "NO",
+      "cursor.position": "",
+    })
+    const alacritty = (runId: string, changes: Record<string, unknown> = {}) =>
+      parseRun(
+        `${runId}.json`,
+        JSON.stringify(run(runId, { target: linuxTarget, provenance, rawReplies: replies(da1), ...changes })),
+        catalog,
+      )
+    const projected = (candidates: ReturnType<typeof alacritty>[]) =>
+      projectResults(candidates, [], catalog, { currentProbeHash: "current" })
+
+    const admitted = projected([alacritty("alacritty-linux")])
+    expect(admitted.current["app:alacritty"]?.runId).toBe("alacritty-linux")
+    expect(admitted.current["app:alacritty"]?.identityAdmission).toEqual({ rule: "alacritty", da1, executable })
+
+    const refused = projected([
+      alacritty("alacritty-foreign-da1", { rawReplies: replies("\u001b[?64;1;2c") }),
+      alacritty("alacritty-unknown", { target: { ...linuxTarget, version: "unknown" }, provenance: undefined }),
+      alacritty("alacritty-no-provenance", { provenance: undefined }),
+      alacritty("alacritty-dirty", {
+        provenance: { ...provenance, runtime: { ...provenance.runtime, cleanTree: false } },
+      }),
+      alacritty("alacritty-other-os", { target: { ...linuxTarget, os: "windows" } }),
+      alacritty("alacritty-macos-no-receipt", { target: { ...linuxTarget, os: "macos" } }),
+    ])
+    expect(refused.current["app:alacritty"]).toBeUndefined()
+    expect(refused.exclusions).toEqual(
+      expect.arrayContaining(
+        [
+          "alacritty-foreign-da1",
+          "alacritty-unknown",
+          "alacritty-no-provenance",
+          "alacritty-dirty",
+          "alacritty-other-os",
+          "alacritty-macos-no-receipt",
+        ].map((runId) => expect.objectContaining({ runId, reason: "identity-replies-mismatch" })),
+      ),
+    )
+    // A version that disagrees never reaches identity: the loader refuses it by name, so a second
+    // number can never pass falsely (packages/run-parser/src/provenance-version.test.ts).
+    expect(() =>
+      alacritty("alacritty-version-mismatch", {
+        provenance: { ...provenance, executable: { ...provenance.executable, version: "alacritty 0.17.1" } },
+      }),
+    ).toThrow(/differs from target.version/)
+
+    // macOS is unchanged by the Linux branch: the same run with a matching CFBundle receipt admits.
+    const launchReceipt = {
+      bundlePath: "/Applications/Alacritty.app",
+      cfBundleShortVersionString: "0.17.0",
+      cfBundleVersion: "1",
+      executablePath: "/Applications/Alacritty.app/Contents/MacOS/alacritty",
+      executableSha256: "a".repeat(64),
+      sourceArtifact: { path: "/System/Library/Assets/com.alacritty.pkg", sha256: "b".repeat(64) },
+    }
+    const macos = projected([
+      alacritty("alacritty-macos", {
+        target: { ...linuxTarget, os: "macos" },
+        provenance: undefined,
+        origin: { kind: "collector", appLaunch: launchReceipt },
+      }),
+    ])
+    expect(macos.current["app:alacritty"]?.identityAdmission).toEqual({
+      rule: "alacritty",
+      da1,
+      receipt: { cfBundleShortVersionString: "0.17.0" },
+    })
+
+    // ?6c identifies nothing on its own: a terminal with no profile is still refused, not admitted
+    // by the alacritty rule.
+    const stranger = projected([alacritty("stranger-da1", { target: { ...linuxTarget, id: "cursor" } })])
+    expect(stranger.current["app:cursor"]).toBeUndefined()
+    expect(stranger.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "stranger-da1", reason: "identity-no-profile" }),
+    )
+  })
+
   it("excludes a pinned app without an identity profile as identity-no-profile, before provenance", () => {
     const replies = {
       "device.primary-da": "\u001b[?62;52;c",

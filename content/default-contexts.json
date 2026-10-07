@@ -17,6 +17,12 @@
       "reviewer": "@dev/5 (automated review)",
       "reason": "Pins the row to the 27914 re-collection on the merged suite 698c89366d6b (the fixed XTREPORTCOLORS and Sixel-geometry matchers, collected from a clean tree). The Linux apparatus holds several xterm runs that differ only by the frozen runner's store path; this names the one 27914 triages, so the site selects it. Same mechanism the app:ghostty and app:kitty rows use.",
       "sources": ["content/probes-apps/xterm-411-linux-2511f4feefd4a95563bfe2d37d7f1bc9.json"]
+    },
+    "app:alacritty": {
+      "contextKey": "app:alacritty@[\"app\",\"alacritty\",\"macos\",\"26.6.2\",null,null,null,null]",
+      "reviewer": "@cto (27916 AC2 ruling)",
+      "reason": "Same rule as the kitty and ghostty rows: until 27916 AC2 admitted the controlled-Linux run, the macOS hardware run was alacritty's only current context, so naming it the default leaves the site's alacritty page unmoved when the Linux container run becomes current alongside it. Both contexts stay readable as Release 1 bar rows (27917).",
+      "sources": ["content/probes-apps/alacritty-0.17.0-macos.json"]
     }
   }
 }
