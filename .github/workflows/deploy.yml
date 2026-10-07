@@ -62,6 +62,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - uses: actions/download-artifact@v5
         with:
           name: ${{ needs.validate.outputs.site-artifact-name }}
