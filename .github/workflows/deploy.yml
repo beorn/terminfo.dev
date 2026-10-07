@@ -4,12 +4,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  # 27896: production publish is operator-GO only. GitHub still lets
+  # workflow_dispatch pick any branch that contains this file; this job fails
+  # loud so a dispatch on main (or any other ref) cannot reach Cloudflare.
+  # The `production` environment on the deploy job is the second lock: it does
+  # not exist as a required-reviewer gate until the operator applies the
+  # GitHub settings on the bead checklist.
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Refuse every ref except live
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF}" != "refs/heads/live" ]; then
+            echo "::error::terminfo.dev deploy refuses ${GITHUB_REF}; only refs/heads/live may publish (27896)"
+            exit 1
+          fi
+
   # Deploy gate: content validation + build + private-leak scan + 404 sweep
   # must pass before anything reaches Cloudflare. Previously deploy ran ungated,
   # so a bad commit went live immediately and the weekly validate workflow only
   # flagged it after the fact. The private-leak scan exists because internal AI
   # reviews once shipped as live /reviews/ routes on this public site.
   validate:
+    needs: gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -59,6 +78,9 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment:
+      name: production
+      url: https://terminfo.dev
     steps:
       - uses: actions/checkout@v4
 
