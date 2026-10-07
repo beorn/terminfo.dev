@@ -453,8 +453,12 @@ export const deviceProbes: ProbeDefinition[] = [
   deviceQuery({
     id: "device.xtreportcolors",
     query: "\x1b[#R",
-    valid: /\x1b\[[0-9;]*#Q/,
-    malformed: /\x1b\[[0-9;]*#|#Q/,
+    // xterm's own reply carries a DEC-private `?` before the parameters (measured:
+    // CSI ? 0 ; 1 # Q on xterm 411); kitty answers without it (CSI 0 ; 0 # Q).
+    // The `?` is part of the reference implementation's reply, so the matcher accepts
+    // it rather than grading xterm's own extension as an invalid reply.
+    valid: /\x1b\[\??[0-9;]*#Q/,
+    malformed: /\x1b\[\??[0-9;]*#|#Q/,
     expected: "CSI # R returns a complete CSI Pm # Q frame",
   }),
 
