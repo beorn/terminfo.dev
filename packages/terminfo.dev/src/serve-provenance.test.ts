@@ -61,7 +61,7 @@ afterAll(() => {
 // name in its own result, instead of reaching an absent callback.
 test("the frame-less controlled-Linux capture fails by name", async () => {
   const { frameUnavailableCapture } = await import("./serve.ts")
-  const thrown = await frameUnavailableCapture()({ role: "target", label: "frame-less" }).catch(
+  const thrown = await frameUnavailableCapture()({ featureId: "cursor.shape", role: "target", label: "frame-less" }).catch(
     (error: unknown) => error,
   )
   expect(thrown).toBeInstanceOf(Error)
