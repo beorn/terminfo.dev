@@ -1857,7 +1857,7 @@
     "tags": ["vt510"],
     "baseline": "rich",
     "body": "DECRQSS (DCS $ q Pt ST) queries the current value of a terminal setting. For example, querying SGR returns the current rendition parameters. Useful for terminals that want to verify their configuration programmatically.\n\nDECRQSS lets software ask the terminal for the current value of a setting instead of guessing. It is framed as a DCS string rather than a simple CSI reply, which makes parser support more demanding. Applications use it sparingly, but high-fidelity emulators need it for compatibility with tools that verify DEC private state.",
-    "probe": "Query DECRQSS for SGR with DCS $ q m ST. A complete status-1 SGR reply supports this request; status-0 refuses only SGR and leaves the facility inconclusive.",
+    "probe": "Query DECRQSS for SGR with DCS $ q m ST. A complete status-1 SGR reply supports this request. Status-0 refuses SGR, so the probe then asks DECSTBM with DCS $ q r ST: a complete status-1 Pt;Pb r frame supports the facility; a second refusal or an unanswered DECSTBM stays inconclusive. A terminal that does not answer SGR at all keeps today's F1 sentinel negative.",
     "url": "https://vt100.net/docs/vt510-rm/DECRQSS.html",
     "sequence": "ESC P $ q setting ESC \\\\"
   },
