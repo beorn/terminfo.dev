@@ -1,5 +1,5 @@
 /** Release 1 measurement claim: 62 query/reply features of the 270-feature catalog. */
-import { readFileSync } from "node:fs"
+import releaseDeclarationJson from "../../content/release-scope.json"
 
 export interface ReleaseFeature {
   id: string
@@ -49,9 +49,9 @@ function utcDate(measuredAt: string): string {
 
 export function loadReleaseScope(args: {
   catalog: Record<string, CatalogEntry>
-  declarationPath: string
+  declarationPath?: string
 }): ReleaseScope {
-  const raw: unknown = JSON.parse(readFileSync(args.declarationPath, "utf8"))
+  const raw: unknown = releaseDeclarationJson
   if (
     !isRecord(raw) ||
     typeof raw.tier !== "number" ||
