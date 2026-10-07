@@ -637,6 +637,17 @@ function parseAppLaunchReceipt(
   }
 }
 
+/**
+ * The ONE measured-version extractor. An apparatus- or terminal-reported version string must carry
+ * exactly one version token equal to the run's declared target version; a second bare number (a
+ * build id) must never let a disagreement pass falsely. Shared by native-run sealing
+ * (`parseRunProvenance`) and Linux identity admission (`docs/data/selected-results.ts`) so the two
+ * cannot drift into different answers (@cto 2026-10-07, 27916 AC2).
+ */
+export function measuredVersionTokens(version: string): string[] {
+  return version.match(/(?<![A-Za-z0-9.])\d+(?:\.\d+){0,3}(?:[-+][A-Za-z0-9.-]+)?(?![A-Za-z0-9.])/g) ?? []
+}
+
 /** The collector and loader share this validation before a native run is sealed or selected. */
 export function parseRunProvenance(
   value: unknown,
@@ -663,8 +674,8 @@ export function parseRunProvenance(
   const executablePath = asString(value.executable.path, path, "provenance.executable.path")
   if (!executablePath.startsWith("/")) fail(path, "provenance.executable.path must be absolute")
   const version = asString(value.executable.version, path, "provenance.executable.version")
-  const versionTokens = version.match(/(?<![A-Za-z0-9.])\d+(?:\.\d+){0,3}(?:[-+][A-Za-z0-9.-]+)?(?![A-Za-z0-9.])/g)
-  if (versionTokens?.length !== 1 || versionTokens[0] !== target.version) {
+  const versionTokens = measuredVersionTokens(version)
+  if (versionTokens.length !== 1 || versionTokens[0] !== target.version) {
     fail(path, `provenance.executable.version differs from target.version ${target.version}`)
   }
   // An absent kind keeps today's meaning: flat bytes at `url` (xterm, kitty). A derived tree names

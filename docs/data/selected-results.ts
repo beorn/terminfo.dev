@@ -15,6 +15,7 @@ import {
 } from "@terminfo/probe-defs"
 import {
   type LoadedRun,
+  measuredVersionTokens,
   parseJsonStrict,
   parseSuiteManifest,
   parseRun,
@@ -65,6 +66,7 @@ export interface IdentityAdmission {
   da1?: string
   xtversion?: string
   receipt?: { cfBundleShortVersionString: string }
+  executable?: { version: string; sha256: string }
 }
 
 export interface SelectedVersion {
@@ -321,15 +323,35 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
   if (!nonempty(identity.da1)) return null
   if (rule.da1Pattern && !rule.da1Pattern.test(identity.da1)) return null
   if (rule.forbidXtversion) {
-    const receipt = run.origin.appLaunch
-    if (!receipt || run.target.version === "unknown" || receipt.cfBundleShortVersionString !== run.target.version) {
-      return null
+    const os = (run.target.os ?? "").toLowerCase()
+    // Linux: a terminal that answers no XTVERSION (alacritty) is attested by the APPARATUS, not by
+    // itself. The container launcher runs the launched binary's own --version and exits on a
+    // disagreement, and records the executable's path and sha256; parseRunProvenance carries that
+    // receipt here as `provenance` (@cto 2026-10-07, 31d5bdd0 option b). `?6c` alone is too weak to
+    // identify — VT102 is a whole class — so the executable version CONFIRMS what DA1 only bounds.
+    if (os.startsWith("linux")) {
+      const provenance = run.provenance
+      if (run.target.version === "unknown" || !provenance || !provenance.runtime.cleanTree) return null
+      const { version, sha256 } = provenance.executable
+      if (!/^[a-f0-9]{64}$/.test(sha256)) return null
+      const tokens = measuredVersionTokens(version)
+      if (tokens.length !== 1 || tokens[0] !== run.target.version) return null
+      return { rule: run.target.id, da1: identity.da1, executable: { version, sha256 } }
     }
-    return {
-      rule: run.target.id,
-      da1: identity.da1,
-      receipt: { cfBundleShortVersionString: receipt.cfBundleShortVersionString },
+    // macOS: unchanged. The launched bundle's CFBundleShortVersionString must equal the declared version.
+    if (os.startsWith("mac") || os.startsWith("darwin")) {
+      const receipt = run.origin.appLaunch
+      if (!receipt || run.target.version === "unknown" || receipt.cfBundleShortVersionString !== run.target.version) {
+        return null
+      }
+      return {
+        rule: run.target.id,
+        da1: identity.da1,
+        receipt: { cfBundleShortVersionString: receipt.cfBundleShortVersionString },
+      }
     }
+    // Any other OS has no apparatus we trust: refused, with no fallback to either branch.
+    return null
   }
   const versionReply = identity.xtversionPayload
   if (!versionReply || !xtversionVersionEquals(versionReply, run.target.version)) return null
