@@ -131,6 +131,14 @@ if [[ "${1:-}" == "--inside" ]]; then
       target_launch_args=(--config NONE --class "terminfo-$target_id-container-daemon"
         -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600
         -o 'font_family=DejaVu Sans Mono' -o font_size=16)
+      # kitty --version prints one line, "kitty 0.49.2 created by Kovid Goyal": the version is the
+      # SECOND word, so the default last-word parse would read "Goyal" and refuse the run (27929 D1).
+      parse_version() {
+        local line
+        IFS= read -r line
+        line=${line#kitty }
+        printf '%s\n' "${line%% *}"
+      }
       target_xtversion_mode=require
       target_xtversion_expect="kitty($target_version)"
       ;;

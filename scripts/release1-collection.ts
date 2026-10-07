@@ -172,7 +172,19 @@ export function release1DesktopContexts(ledger: LinuxLedger): readonly Collectio
     macRow("iterm2"),
     macRow("ghostty"),
     macRow("alacritty"),
-    macRow("kitty"),
+    {
+      // kitty/darwin ships AS MEASURED (27928): no hosted kitty job exists and hosted runners open no
+      // Kitty (no GPU, 27834), so it has no collection route and is named uncollectable, never a run
+      // that silently never arrives (27929 D4).
+      id: "kitty",
+      os: "macos",
+      kind: "app",
+      route: null,
+      command: null,
+      requires: null,
+      sourceRun: null,
+      uncollectable: "ships as measured (27928): no hosted kitty job, and hosted runners open no Kitty (no GPU, 27834)",
+    },
     {
       id: "windows-terminal",
       os: "windows",

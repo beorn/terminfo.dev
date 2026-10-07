@@ -122,6 +122,19 @@ describe("release 1 collection census", () => {
     }
   })
 
+  it("names kitty/macos uncollectable (ships as measured, 27928), never a workflow dispatch", () => {
+    // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty only — there is no kitty job — and
+    // hosted runners open no Kitty (no GPU, 27834). 27928 ruled it ships as measured at 31/52, so the
+    // census must NAME that, not print a command that silently produces no run.
+    const kitty = census().find((entry) => entry.id === "kitty" && entry.os === "macos")
+    expect(kitty?.route).toBeNull()
+    expect(kitty?.command).toBeNull()
+    expect(kitty?.uncollectable).toMatch(/ships as measured \(27928\)/)
+    for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty"]) {
+      expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("macos-hosted")
+    }
+  })
+
   it("names each context that produced no run, with its own reason", () => {
     const all = census()
     const uncovered = uncoveredContexts(all, ["xterm/linux"])

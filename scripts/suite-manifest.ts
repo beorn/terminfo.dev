@@ -123,7 +123,8 @@ export function assertDeclareIsAuthoring(cwd: string, suiteHash?: string): void 
     throw new Error(
       `${subject} is undeclared on this checkout (${cwd}), and its HEAD is already on origin/main, so declaring here ` +
         "writes a manifest no commit can take.\n" +
-        "Collect the run from an authoring branch at these pins, then admit it: bun scripts/admit-run.ts --for <run.json>",
+        "A collector authors nothing: wait for the freeze act that lands this suite's declaration on main, then " +
+        "admit the run from an authoring checkout (a branch ahead of origin/main): bun scripts/admit-run.ts --for <run.json>",
     )
   }
   if (ancestor.status !== 1) {
