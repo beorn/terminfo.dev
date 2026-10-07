@@ -646,4 +646,38 @@ describe("device contracts without prior coverage", () => {
     } as unknown as TermlessContext)
     expect(other.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
   })
+
+  // 27914: xterm's XTREPORTCOLORS reply carries a DEC-private `?` the documented
+  // CSI Pm # Q form does not show (measured: CSI ? 0 ; 1 # Q on xterm 411, while
+  // kitty answers CSI 0 ; 0 # Q). The reference implementation's frame is support.
+  test("XTREPORTCOLORS accepts the reference implementation's DEC-private reply", async () => {
+    const probe = callback("device.xtreportcolors")
+    const app = (frame: string) =>
+      probe.terminal({
+        queryOutcome: async (_sequence: string, pattern: RegExp) =>
+          Promise.resolve({
+            match: pattern.exec(frame),
+            reason: "reply",
+            raw: frame,
+            rawBase64: Buffer.from(frame).toString("base64"),
+          }),
+        queryWithSentinelOutcome: async (_sequence: string, pattern: RegExp) =>
+          Promise.resolve({
+            match: pattern.exec(frame),
+            reason: "reply",
+            raw: frame,
+            rawBase64: Buffer.from(frame).toString("base64"),
+          }),
+      } as unknown as TermContext)
+    for (const frame of ["\x1b[?0;1#Q", "\x1b[0;0#Q"]) {
+      for (const result of [probe.headless(headless(frame)), await app(frame)]) {
+        expect(result.response, frame).toBe(frame)
+        expect(result.observation, frame).toMatchObject({ outcome: "supported", evidence: "query" })
+        expect(result.assertions, frame).toMatchObject([{ kind: "positive", observed: frame }])
+      }
+    }
+    const truncated = probe.headless(headless("\x1b[?0;1#"))
+    expect(truncated.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+    expect(truncated.assertions).toBeUndefined()
+  })
 })
