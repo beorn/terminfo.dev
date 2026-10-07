@@ -307,11 +307,8 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
     if (!(receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree)) {
       return null
     }
-    if (run.schemaVersion === 2) {
-      const versionReply = deriveIdentity(run.rawReplies).xtversionPayload
-      return versionReply ? { rule: "runtime-identity", xtversion: versionReply } : null
-    }
-    return { rule: "runtime-identity" }
+    const versionReply = run.schemaVersion === 2 ? deriveIdentity(run.rawReplies).xtversionPayload : undefined
+    return versionReply ? { rule: "runtime-identity", xtversion: versionReply } : { rule: "runtime-identity" }
   }
   const rule = ADMISSION_IDENTITY_RULES[run.target.id]
   if (!rule) return null
