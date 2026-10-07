@@ -367,6 +367,19 @@ const contextOf = (run: ProducedRun): string =>
   `${String(run.target?.id ?? "unknown")}/${String(run.target?.os ?? "unknown")}`
 
 /**
+ * The refusal options the `--admit` call site passes. The CLI is where admission HAPPENS, so only the
+ * admission-independent gates — a dirty tree and a suite that is not the frozen one — are checked
+ * before the run is handed to `scripts/admit-run.ts`; that hand-off IS the admission, so `admitted` is
+ * `true` here. Passing `admitted: false` would make the classifier refuse EVERY clean frozen run as
+ * `unadmitted` before `admit-run` could ever run, so the collection could admit nothing at all. A
+ * caller that has not yet admitted a run passes `admitted: false` (see the classifier's own test).
+ */
+export const preAdmissionRefusalOptions = (frozenSuiteId: string): RefusalOptions => ({
+  frozenSuiteId,
+  admitted: true,
+})
+
+/**
  * The one refusal classifier. A run is refused BY NAME when it is dirty, stale or unadmitted, so a
  * row can never land on the bar from a collection that does not count. A missing clean-tree proof is
  * NOT clean: only an explicit `true` passes.
@@ -524,7 +537,7 @@ if (import.meta.main) {
     const produced: ProducedRun[] = []
     for (const path of runs) {
       const run = readRun(path)
-      const refusal = refusalForProducedRun(run, { frozenSuiteId: frozenSuite, admitted: false })
+      const refusal = refusalForProducedRun(run, preAdmissionRefusalOptions(frozenSuite))
       if (refusal !== null) {
         throw new Error(`Refusing ${refusal.context} (${refusal.kind}): ${refusal.detail}`)
       }
