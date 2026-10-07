@@ -75,7 +75,7 @@ jobs:
             iterm2) brew install --cask iterm2 ;;
             ghostty) brew install --cask ghostty ;;
             alacritty)
-              curl --fail --silent --show-error \
+              curl --location --fail --silent --show-error \
                 https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg \
                 --output "$RUNNER_TEMP/Alacritty.dmg"
               hdiutil attach "$RUNNER_TEMP/Alacritty.dmg" -mountpoint /Volumes/Alacritty
@@ -117,9 +117,16 @@ jobs:
           case "$APP_ID" in
             terminal-app) open -a "$APP_BUNDLE" "$COMMAND_PATH" ;;
             iterm2)
+              open -b com.googlecode.iterm2
+              for attempt in {1..30}; do
+                if pgrep -x iTerm2 > /dev/null; then break; fi
+                if [ "$attempt" -eq 30 ]; then echo "iTerm2 did not launch within 30 seconds (com.googlecode.iterm2)" >&2; exit 1; fi
+                sleep 1
+              done
+              osascript -e 'POSIX path of (path to application id "com.googlecode.iterm2")'
               osascript - "$COMMAND_PATH" <<'APPLESCRIPT'
           on run argv
-            tell application "iTerm"
+            tell application id "com.googlecode.iterm2"
               create window with default profile command ("/bin/bash " & quoted form of item 1 of argv)
             end tell
           end run
