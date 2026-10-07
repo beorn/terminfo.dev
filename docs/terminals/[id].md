@@ -107,6 +107,12 @@ const breadcrumbParent = (() => {
 <p v-if="p.terminalDescription" class="terminal-desc">{{ p.terminalDescription }}</p>
 
 <p class="tier-line">{{ data.releaseScope.line }}</p>
+<details class="unmeasured">
+  <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
+  <ul>
+    <li v-for="feature in data.releaseScope.unmeasured" :key="feature.id">{{ feature.name }} · {{ feature.status }}</li>
+  </ul>
+</details>
 
 <div v-if="relatedPages.length" class="see-also">
   See also: <span v-for="(r, i) in relatedPages"><a :href="r.link">{{ r.text }}</a><span v-if="i < relatedPages.length - 1"> · </span></span>
@@ -175,12 +181,6 @@ const breadcrumbParent = (() => {
     <li><strong>{{ measuredBar.errors }}</strong> errors <small>Probe error</small></li>
   </ul>
   <p class="score-detail">Inconclusive includes checks blocked by permissions or policy before execution. This distribution is not an overall compatibility score. <a href="/contribute#reading-results">How to read results</a></p>
-  <details class="unmeasured">
-    <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
-    <ul>
-      <li v-for="feature in data.releaseScope.unmeasured" :key="feature.id">{{ feature.name }} · {{ feature.status }}</li>
-    </ul>
-  </details>
   <details class="result-counting">
     <summary>How these results are counted</summary>
     <p>{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. This includes checks that could not run, such as a probe refused by a permission policy.</p>

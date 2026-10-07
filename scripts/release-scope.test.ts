@@ -113,4 +113,14 @@ describe("release 1 measurement scope", () => {
     const helper = readFileSync(join(root, "docs", "data", "release-scope.ts"), "utf8")
     expect(helper).not.toMatch(/from ["']node:fs["']/)
   })
+
+  it("names the 208 unmeasured features on every terminal page, including pages with no selected run", () => {
+    const terminal = readFileSync(join(root, "docs", "terminals", "[id].md"), "utf8")
+    const unmeasuredStart = terminal.indexOf('class="unmeasured"')
+    const scoreCardStart = terminal.indexOf('v-if="!isHistorical && selectedRun"')
+    expect(unmeasuredStart).toBeGreaterThan(-1)
+    expect(scoreCardStart).toBeGreaterThan(-1)
+    expect(unmeasuredStart).toBeLessThan(scoreCardStart)
+    expect(terminal).toContain("data.releaseScope.unmeasured")
+  })
 })
