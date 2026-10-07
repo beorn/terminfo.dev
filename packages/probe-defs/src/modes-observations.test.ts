@@ -571,6 +571,25 @@ test.each([
   expect(result.assertions, id).toBeUndefined()
 })
 
+test.each(["modes.xtpushcolors", "modes.xtpopcolors"] as const)(
+  "%s grades the color-stack roundtrip on Y and permits X to recolor (turn362)",
+  async (id) => {
+    const definition = modesProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
+    const writes: string[] = []
+    const frames: ObservationFrame[] = []
+    const result = await definition.term(captureContext(24, 80, writes, frames))
+    const note = result.observation?.note ?? ""
+    expect(note, id).toMatch(/Grade the roundtrip by Y alone/)
+    expect(note, id).toMatch(/a green Y means the pop did not restore/)
+    expect(note, id).toMatch(/Do not grade on X/)
+    expect(note, id).toMatch(/may recolor it blue/)
+    expect(note, id).toMatch(/palette-setup failure .* stays inconclusive/)
+    expect(note, id).not.toContain("blue X with blue Y")
+    expect(note, id).not.toContain("ignored push/pop")
+  },
+)
+
 test("xt stack capture refuses undersized geometry before any bytes or frames", async () => {
   for (const [id, rows, cols, need] of [
     ["modes.xtpushsgr", 2, 80, "3x6"],
