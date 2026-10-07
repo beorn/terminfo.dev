@@ -910,29 +910,94 @@ describe("selected results", () => {
     expect(published?.identityAdmission).toEqual(selected.identityAdmission)
   })
 
+  it("admits a schema-v2 wezterm run from its measured DA1 and XTVERSION, and refuses either half alone", () => {
+    const da1 = "\u001b[?65;4;6;18;22;52c"
+    const xtversion = "WezTerm 0-unstable-2026-09-17"
+    const provenance = {
+      executable: {
+        path: "/nix/store/wezterm/bin/wezterm",
+        sha256: "a".repeat(64),
+        version: "wezterm 0-unstable-2026-09-17",
+      },
+      sourceArtifact: { url: "https://example.invalid/wezterm-0-unstable-2026-09-17.tar.gz", sha256: "b".repeat(64) },
+      runtime: {
+        imageId: `sha256:${"c".repeat(64)}`,
+        imageTarSha256: "d".repeat(64),
+        arch: "x86_64-linux",
+        nixLockRevision: "e".repeat(40),
+        sourceRevision: "2".repeat(40),
+        cleanTree: true,
+        suiteHash: "current",
+      },
+      fixture: {
+        definition: "wezterm identity",
+        config: "NONE",
+        font: "DejaVu Sans Mono",
+        geometry: "80x24, 800x600",
+        display: "Xvfb :0",
+        gl: "Mesa llvmpipe",
+      },
+    }
+    const wezterm = (runId: string, replies: Record<string, string>) =>
+      parseRun(
+        `${runId}.json`,
+        JSON.stringify(
+          run(runId, {
+            target: { ...target, id: "wezterm", version: "0-unstable-2026-09-17", os: "linux" },
+            provenance,
+            rawReplies: { ...replies, "extensions.query": "ACK", "extensions.graphics": "NO", "cursor.position": "" },
+          }),
+        ),
+        catalog,
+      )
+    const candidate = wezterm("wezterm-self", { "device.primary-da": da1, "device.xtversion": xtversion })
+    const selected = projectResults([candidate], [], catalog, { currentProbeHash: "current" }).current["app:wezterm"]
+    expect(selected?.runId).toBe("wezterm-self")
+    expect(selected?.identityAdmission).toEqual({ rule: "wezterm", da1, xtversion })
+
+    const projection = projectResults(
+      [
+        wezterm("wezterm-foreign-da1", { "device.primary-da": "\u001b[?62;52;c", "device.xtversion": xtversion }),
+        wezterm("wezterm-foreign-xtversion", { "device.primary-da": da1, "device.xtversion": "kitty(0.46.2)" }),
+        wezterm("wezterm-silent", { "device.primary-da": da1 }),
+      ],
+      [],
+      catalog,
+      { currentProbeHash: "current" },
+    )
+    expect(projection.current["app:wezterm"]).toBeUndefined()
+    expect(projection.exclusions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ runId: "wezterm-foreign-da1", reason: "identity-replies-mismatch" }),
+        expect.objectContaining({ runId: "wezterm-foreign-xtversion", reason: "identity-replies-mismatch" }),
+        expect.objectContaining({ runId: "wezterm-silent", reason: "identity-replies-mismatch" }),
+      ]),
+    )
+  })
+
   it("excludes a pinned app without an identity profile as identity-no-profile, before provenance", () => {
     const replies = {
       "device.primary-da": "\u001b[?62;52;c",
-      "device.xtversion": "WezTerm 20240203-nightly",
+      "device.xtversion": "Cursor 2.6.21",
       "extensions.query": "ACK",
       "extensions.graphics": "NO",
       "cursor.position": "",
     }
     const macos = parseRun(
-      "wezterm-macos.json",
+      "cursor-macos.json",
       JSON.stringify(
-        run("wezterm-macos", {
-          target: { ...target, id: "wezterm" },
+        run("cursor-macos", {
+          target: { ...target, id: "cursor" },
           rawReplies: replies,
         }),
       ),
       catalog,
     )
     const linux = parseRun(
-      "wezterm-linux.json",
+      "cursor-linux.json",
       JSON.stringify(
-        run("wezterm-linux", {
-          target: { ...target, id: "wezterm", os: "linux" },
+        run("cursor-linux", {
+          target: { ...target, id: "cursor", os: "linux" },
           rawReplies: replies,
         }),
       ),
@@ -956,16 +1021,16 @@ describe("selected results", () => {
     const projection = projectResults([macos, linux, mismatch], [macos, linux, mismatch].map(reviewFor), catalog, {
       currentProbeHash: "current",
     })
-    expect(projection.current["app:wezterm"]).toBeUndefined()
+    expect(projection.current["app:cursor"]).toBeUndefined()
     expect(projection.current["app:kitty"]).toBeUndefined()
     expect(projection.exclusions).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ runId: "wezterm-macos", reason: "identity-no-profile" }),
-        expect.objectContaining({ runId: "wezterm-linux", reason: "identity-no-profile" }),
+        expect.objectContaining({ runId: "cursor-macos", reason: "identity-no-profile" }),
+        expect.objectContaining({ runId: "cursor-linux", reason: "identity-no-profile" }),
         expect.objectContaining({ runId: "kitty-mismatch", reason: "identity-replies-mismatch" }),
       ]),
     )
-    expect(projection.exclusions.find((row) => row.runId === "wezterm-linux")?.reason).not.toBe(
+    expect(projection.exclusions.find((row) => row.runId === "cursor-linux")?.reason).not.toBe(
       "native-provenance-missing",
     )
   })

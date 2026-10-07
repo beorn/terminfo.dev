@@ -36,6 +36,26 @@ describe("verifyTerminalIdentity", () => {
     },
   )
 
+  it("measures the WezTerm version from its release-tagged XTVERSION and refuses either half alone", () => {
+    const responses = { "collector.xtversion": "\x1bP>|WezTerm 0-unstable-2026-09-17\x1b\\\x1b[?65;4;6;18;22;52c" }
+    expect(resolveMeasuredAppVersion("wezterm", "", responses)).toBe("0-unstable-2026-09-17")
+    expect(verifyTerminalIdentity("wezterm", responses)).toEqual({ ok: true, checked: true })
+    // A date-tagged build keeps resolving rather than being refused.
+    expect(
+      resolveMeasuredAppVersion("wezterm", "", {
+        "collector.xtversion": "\x1bP>|WezTerm 20240203\x1b\\\x1b[?65;4;6;18;22;52c",
+      }),
+    ).toBe("20240203")
+    // WezTerm's DA1 without a WezTerm XTVERSION is not WezTerm.
+    expect(
+      verifyTerminalIdentity("wezterm", { "collector.xtversion": "\x1bP>|kitty(0.49.2)\x1b\\\x1b[?65;4;6;18;22;52c" }),
+    ).toMatchObject({ ok: false, checked: true })
+    // A foreign DA1 beside the WezTerm XTVERSION is refused too.
+    expect(
+      verifyTerminalIdentity("wezterm", { "collector.xtversion": "\x1bP>|WezTerm 20240203\x1b\\\x1b[?62;52;c" }).reason,
+    ).toContain("DA1 mismatch")
+  })
+
   it("requires explicit DA1 bytes to agree with the collector witness and judges suffixless frames independently", () => {
     const da1 = "\x1b[?62;52;c"
     const responses = {
