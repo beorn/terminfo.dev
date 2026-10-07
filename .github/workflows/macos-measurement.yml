@@ -99,8 +99,25 @@ jobs:
           COMMAND_PATH="$RUNNER_TEMP/collect.command"
           NODE_DIR="$(dirname "$(command -v node)")"
           COLLECTOR="$(command -v terminfo)"
+          TARGET_VERSION_EXPORT=""
+          if [ "$APP_ID" = alacritty ]; then
+            bundle_status=0
+            bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")" || bundle_status=$?
+            printf 'Alacritty bundle version (raw): %s\n' "$bundle_version"
+            test "$bundle_status" = 0 || { echo "Alacritty bundle version read failed ($bundle_status)" >&2; exit 1; }
+            test -n "$bundle_version" || { echo "Alacritty bundle version is empty" >&2; exit 1; }
+            binary_status=0
+            binary_version="$("$APP_BUNDLE/Contents/MacOS/alacritty" --version)" || binary_status=$?
+            printf 'Alacritty binary --version (raw): %s\n' "$binary_version"
+            test "$binary_status" = 0 || { echo "Alacritty binary --version failed ($binary_status)" >&2; exit 1; }
+            version_pattern='^alacritty[[:blank:]]+([^[:space:]]+)([[:blank:]]+\([^[:space:]]+\))?$'
+            [[ "$binary_version" =~ $version_pattern ]] || { echo "Alacritty binary --version has an unexpected shape" >&2; exit 1; }
+            test "${BASH_REMATCH[1]}" = "$bundle_version" || { echo "Alacritty bundle and binary versions disagree" >&2; exit 1; }
+            TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
+          fi
           cat > "$COMMAND_PATH" <<SCRIPT
           #!/bin/bash
+          $TARGET_VERSION_EXPORT
           export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
           export TERMINFO_DISPOSABLE_RECEIPT="$OUT/host-measured.json"
           attempts=0
