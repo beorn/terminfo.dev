@@ -6,12 +6,13 @@
  * @reach fs-walk <fixture-only: mkdtempSync run and destination directories>
  * @testonly none
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
-import { admitRun, placeRun, planAdmission } from "./admit-run.ts"
+import { admitRun, placeRun, placeScreenshots, planAdmission } from "./admit-run.ts"
 
 const temporaryPaths: string[] = []
 afterEach(() => {
@@ -75,4 +76,34 @@ test("placing a run is exclusive and idempotent, and never overwrites different 
   expect(readFileSync(destination, "utf8")).toBe("one\n")
   expect(placeRun(destination, "one\n")).toBe("existing")
   expect(() => placeRun(destination, "two\n")).toThrow(/Refusing to overwrite/)
+})
+
+/**
+ * 27876: admission copied the run document but silently dropped the screenshots it cites, so
+ * consumer-selection failed with "missing screenshot artifact" on main. The cited PNGs live in
+ * `artifacts/` beside the run file; admission must carry them, or refuse by name.
+ */
+test("admission carries every screenshot the run cites, and refuses a missing or mismatched one", () => {
+  const source = join(temp("terminfo-admit-shots-"), "run.json")
+  const content = temp("terminfo-admit-content-")
+  const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.from("pixels")])
+  const digest = createHash("sha256").update(png).digest("hex")
+  const ref = `sha256:${digest}`
+  mkdirSync(join(source, "..", "artifacts"), { recursive: true })
+  writeFileSync(join(source, "..", "artifacts", `${digest}.png`), png)
+
+  expect(placeScreenshots(source, [ref], content)).toEqual({ created: 1, existing: 0 })
+  expect(readFileSync(join(content, "artifacts", `${digest}.png`))).toEqual(png)
+  expect(placeScreenshots(source, [ref], content)).toEqual({ created: 0, existing: 1 })
+
+  const absent = `sha256:${"a".repeat(64)}`
+  expect(() => placeScreenshots(source, [absent], content)).toThrow(/does not exist beside the run/)
+  const wrong = digest.slice(0, 63) + (digest[63] === "a" ? "b" : "a")
+  writeFileSync(join(source, "..", "artifacts", `${wrong}.png`), png)
+  expect(() => placeScreenshots(source, [`sha256:${wrong}`], content)).toThrow(/hashes to/)
+
+  const notPng = Buffer.from("not a png at all")
+  const notPngDigest = createHash("sha256").update(notPng).digest("hex")
+  writeFileSync(join(source, "..", "artifacts", `${notPngDigest}.png`), notPng)
+  expect(() => placeScreenshots(source, [`sha256:${notPngDigest}`], content)).toThrow(/is not a PNG/)
 })
