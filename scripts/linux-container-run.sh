@@ -816,18 +816,40 @@ jq -n \
 # must not be able to rewrite the receipt that authorizes writing to the terminal it drives.
 cp "$raw/host-measured.json" "$prep/receipt/host-measured.json"
 
+# The run user is the INVOKING user, never the image's declared User: docker create overrides it with
+# --user (below) so the bind-mounted /out is writable by this process, and a program that then
+# resolves the user by uid finds no passwd entry at all - alacritty refuses `pw not found` before it
+# can open a window, and ghostty cannot detect a default shell. Generate the two files the image
+# cannot carry for a uid it does not know, and mount them read-only. ONE binding (@cto 2026-10-06,
+# 27892): this uid/gid feeds --user, the private /home/runner tmpfs and both files, and the shell is
+# the image's own entrypoint rather than a guessed path.
+run_uid=$(id -u)
+run_gid=$(id -g)
+[[ "$run_uid" != 0 ]] || { echo "Refusing root run user" >&2; exit 2; }
+container_shell=$(jq -er '.[0].Config.Entrypoint[0]' "$prep/image-inspect.json") || {
+  echo "Loaded image declares no entrypoint, so the run user has no shell" >&2; exit 2;
+}
+[[ "$container_shell" == /* ]] || {
+  echo "Loaded image entrypoint is not an absolute shell path: $container_shell" >&2; exit 2;
+}
+printf 'runner:x:%s:%s:terminfo run user:/home/runner:%s\n' "$run_uid" "$run_gid" "$container_shell" > "$prep/passwd"
+printf 'runner:x:%s:\n' "$run_gid" > "$prep/group"
+chmod 0644 "$prep/passwd" "$prep/group"
+
 selection_env=()
 [[ "$probe_ids" == null ]] || selection_env=(--env "TERMINFO_PROBE_IDS=$probe_ids")
 # The one-time sentinel-grace sizing pass widens the post-DA1 read; forward it only when the host
 # asked for it, so an ordinary collection keeps the measured floor.
 grace_env=()
 [[ -z "${TERMINFO_SENTINEL_GRACE_MS:-}" ]] || grace_env=(--env "TERMINFO_SENTINEL_GRACE_MS=$TERMINFO_SENTINEL_GRACE_MS")
-container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-only \
+container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-only \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 2g --cpus 2 \
   --tmpfs "/tmp:rw,nosuid,nodev,mode=1777" \
-  --tmpfs "/home/runner:rw,nosuid,nodev,uid=$(id -u),gid=$(id -g),mode=0700" \
+  --tmpfs "/home/runner:rw,nosuid,nodev,uid=$run_uid,gid=$run_gid,mode=0700" \
   --mount "type=bind,src=$raw,dst=/out" \
   --mount "type=bind,src=$prep/receipt,dst=/receipt,readonly" \
+  --mount "type=bind,src=$prep/passwd,dst=/etc/passwd,readonly" \
+  --mount "type=bind,src=$prep/group,dst=/etc/group,readonly" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
