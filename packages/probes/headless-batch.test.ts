@@ -10,7 +10,8 @@ import { createXtermBackend } from "@termless/xtermjs"
 import { createVtermBackend } from "@termless/vterm"
 import { resolve as resolveLibvterm } from "@termless/libvterm"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
-import { ALL_PROBES, type ProbeDefinition, type ProbeResult } from "@terminfo/probe-defs"
+import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
+import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -28,11 +29,6 @@ function definition(
   markers: Pick<ProbeDefinition, "termObservationEvidence" | "termlessObservationEvidence"> = {},
 ): ProbeDefinition {
   return { id, termless, term: null, ...markers }
-}
-
-/** A stub callback result for tests whose subject is not the graded outcome. */
-function stubResult(evidence: "parser-state" | "query" = "parser-state"): ProbeResult {
-  return { pass: false, observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence } }
 }
 
 // AC3: independent feature results cannot depend on a previous probe's state.
@@ -83,7 +79,7 @@ for (const [name, create, available] of [
           replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
           ctx.reset()
           replies.push(ctx.feedCapture("\x1b[6n"))
-          return stubResult()
+          return fakeProbeResult()
         }),
       ])
       expect(replies).toEqual(["\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R"])
@@ -235,7 +231,7 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
       throw failure
     })
   }
-  const callback = vi.fn(() => stubResult())
+  const callback = vi.fn(() => fakeProbeResult())
   const batch = await collectBatch(
     async () => {
       if (stage === "factory") throw failure
@@ -269,10 +265,13 @@ test("aborts the batch on failed cleanup before invoking another probe", async (
   vi.spyOn(value, "destroy").mockImplementationOnce(() => {
     throw new Error("Cleanup failed")
   })
-  const next = vi.fn(() => stubResult())
+  const next = vi.fn(() => fakeProbeResult())
   try {
     await expect(
-      collectBatch(async () => value, "xtermjs", [definition("first", () => stubResult()), definition("next", next)]),
+      collectBatch(async () => value, "xtermjs", [
+        definition("first", () => fakeProbeResult()),
+        definition("next", next),
+      ]),
     ).rejects.toThrow("headless xtermjs probe first: backend cleanup failed")
     expect(next).not.toHaveBeenCalled()
   } finally {
@@ -292,7 +291,7 @@ test("attributes a context operation failure and restores the backend response l
       "query",
       (ctx) => {
         ctx.feedCapture("\x1b[c")
-        return stubResult("query")
+        return fakeProbeResult("query")
       },
       { termlessObservationEvidence: "query" },
     ),
@@ -316,7 +315,7 @@ test("attributes a context operation failure and restores the backend response l
 })
 
 test("attributes unavailable fixture grids to each probe without invoking callbacks", async () => {
-  const callback = vi.fn(() => stubResult())
+  const callback = vi.fn(() => fakeProbeResult())
   const factory = async () => {
     const value = await backend()
     vi.spyOn(value, "getRow").mockImplementation(() => {

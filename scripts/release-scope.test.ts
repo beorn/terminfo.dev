@@ -2,6 +2,8 @@
  * @failure Release 1 pages would read as measuring the whole catalog, so an unmeasured feature looks like a pass.
  * @level l2
  * @consumer terminfo.dev front page and every terminal page
+ * @source-grep the VitePress pages and the probes.data.ts loader are wired by text, and the browser-bundled release-scope
+ *   helper must import no node:fs; only a full site build exercises either at runtime
  * @testonly none
  */
 import { readFileSync } from "node:fs"
