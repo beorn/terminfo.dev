@@ -54,6 +54,38 @@ function callback(id: string) {
   return { headless: definition.termless, terminal: definition.term }
 }
 
+const DECRQSS_SGR_QUERY = "\x1bP$qm\x1b\\"
+const DECRQSS_DECSTBM_QUERY = "\x1bP$qr\x1b\\"
+const DECRQSS_SGR_VALID = "\x1bP1$r0m\x1b\\"
+const DECRQSS_REFUSAL = "\x1bP0$r\x1b\\"
+const DECRQSS_DECSTBM_VALID = "\x1bP1$r1;24r\x1b\\"
+const DA1 = "\x1b[?62;52;c"
+
+function terminalScript(
+  replies: Record<
+    string,
+    { raw: string; reason: TerminalQueryOutcome["reason"]; sentinel?: { atMs: number; graceMs: number } }
+  >,
+): { ctx: TermContext; queries: string[] } {
+  const queries: string[] = []
+  const ctx = {
+    queryWithSentinelOutcome: (sequence: string, pattern: RegExp) => {
+      queries.push(sequence)
+      const item = replies[sequence]
+      if (!item) throw new Error(`unexpected query ${JSON.stringify(sequence)}`)
+      const match = item.reason === "reply" ? pattern.exec(item.raw) : null
+      return Promise.resolve({
+        match,
+        reason: item.reason,
+        raw: item.raw,
+        rawBase64: Buffer.from(item.raw).toString("base64"),
+        ...(item.sentinel && { sentinel: item.sentinel }),
+      })
+    },
+  } as unknown as TermContext
+  return { ctx, queries }
+}
+
 /**
  * @failure Arbitrary output, partial frames, and sentinel replies were promoted to supported device protocols.
  * @level l0
@@ -146,7 +178,6 @@ describe("device query observations", () => {
     const sentinel = "\x1b[?62;52;c"
     const measured = { atMs: 12, graceMs: 250 }
     for (const [id, refusal] of [
-      ["device.decrqss", "\x1bP0$r\x1b\\"],
       ["device.xtgettcap", "\x1bP0+r\x1b\\"],
       ["device.decrpm", "\x1b[?7;0$y"],
     ] as const) {
@@ -228,8 +259,14 @@ describe("device query observations", () => {
   })
 
   test("complete single-setting refusals are inconclusive; malfunction is still a DSR report", async () => {
+    const sgrRefusal = "\x1bP0$r\x1b\\"
+    expect(callback("device.decrqss").headless(headless(sgrRefusal)).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+      note: "Requested setting or name refused; other settings or names unmeasured",
+    })
     for (const [id, frame] of [
-      ["device.decrqss", "\x1bP0$r\x1b\\"],
       ["device.xtgettcap", "\x1bP0+r\x1b\\"],
       ["device.decrpm", "\x1b[?7;0$y"],
     ] as const) {
@@ -249,6 +286,81 @@ describe("device query observations", () => {
     const malfunction = status.headless(headless("\x1b[3n"))
     expect(malfunction.observation).toMatchObject({ outcome: "supported", note: "Terminal reports malfunction" })
     expect(malfunction.assertions).toMatchObject([{ kind: "positive", observed: "\x1b[3n" }])
+  })
+
+  test("SGR status-0 then a complete DECSTBM Pt;Pb r frame supports the DECRQSS facility", async () => {
+    const script = terminalScript({
+      [DECRQSS_SGR_QUERY]: { raw: DECRQSS_REFUSAL, reason: "reply" },
+      [DECRQSS_DECSTBM_QUERY]: { raw: DECRQSS_DECSTBM_VALID, reason: "reply" },
+    })
+    const result = await callback("device.decrqss").terminal(script.ctx)
+    expect(script.queries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY])
+    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.assertions).toMatchObject([{ kind: "positive", observed: DECRQSS_DECSTBM_VALID }])
+  })
+
+  test("SGR status-0 then DECSTBM status-0 is inconclusive and names both refusals", async () => {
+    const script = terminalScript({
+      [DECRQSS_SGR_QUERY]: { raw: DECRQSS_REFUSAL, reason: "reply" },
+      [DECRQSS_DECSTBM_QUERY]: { raw: DECRQSS_REFUSAL, reason: "reply" },
+    })
+    const result = await callback("device.decrqss").terminal(script.ctx)
+    expect(script.queries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY])
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(result.observation?.note).toMatch(/SGR/)
+    expect(result.observation?.note).toMatch(/DECSTBM/)
+    expect(result.assertions).toBeUndefined()
+  })
+
+  test("SGR status-0 then DECSTBM unanswered (DA1 only) stays inconclusive, not F1 negative", async () => {
+    const script = terminalScript({
+      [DECRQSS_SGR_QUERY]: { raw: DECRQSS_REFUSAL, reason: "reply" },
+      [DECRQSS_DECSTBM_QUERY]: {
+        raw: DA1,
+        reason: "sentinel",
+        sentinel: { atMs: 9, graceMs: 250 },
+      },
+    })
+    const result = await callback("device.decrqss").terminal(script.ctx)
+    expect(script.queries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY])
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(result.observation?.note).not.toBe("negative by sentinel")
+    expect(result.assertions).toBeUndefined()
+  })
+
+  test("SGR status 1 keeps today's grade and never asks DECSTBM", async () => {
+    const script = terminalScript({
+      [DECRQSS_SGR_QUERY]: { raw: DECRQSS_SGR_VALID, reason: "reply" },
+    })
+    const result = await callback("device.decrqss").terminal(script.ctx)
+    expect(script.queries).toEqual([DECRQSS_SGR_QUERY])
+    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.assertions).toMatchObject([{ kind: "positive", observed: DECRQSS_SGR_VALID }])
+  })
+
+  test("no SGR reply keeps today's F1 negative and never asks DECSTBM", async () => {
+    const script = terminalScript({
+      [DECRQSS_SGR_QUERY]: {
+        raw: DA1,
+        reason: "sentinel",
+        sentinel: { atMs: 9, graceMs: 250 },
+      },
+    })
+    const result = await callback("device.decrqss").terminal(script.ctx)
+    expect(script.queries).toEqual([DECRQSS_SGR_QUERY])
+    expect(result.observation).toMatchObject({
+      outcome: "unsupported",
+      evidence: "query",
+      note: "negative by sentinel",
+    })
   })
 
   test("the exact requested mode/name and a complete ST matter", () => {

@@ -115,6 +115,94 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
   return { ...definition, termWrites: "query", termlessObservationEvidence: "query" }
 }
 
+const DECRQSS_SGR: DeviceReply = {
+  id: "device.decrqss",
+  query: "\x1bP$qm\x1b\\",
+  valid: /\x1bP1\$r[0-9:;]*m\x1b\\/,
+  refusal: /\x1bP0\$r\x1b\\/,
+  malformed: /\x1bP[01]\$r/,
+  expected: "complete DECRQSS status 1 SGR parameters ending m and ST",
+}
+
+const DECRQSS_DECSTBM: DeviceReply = {
+  id: "device.decrqss",
+  query: "\x1bP$qr\x1b\\",
+  valid: /\x1bP1\$r[0-9]+;[0-9]+r\x1b\\/,
+  refusal: /\x1bP0\$r\x1b\\/,
+  malformed: /\x1bP[01]\$r/,
+  expected: "complete DECRQSS status 1 DECSTBM margins ending r and ST",
+}
+
+function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
+  return Boolean(matchedFrame && spec.refusal?.exec(matchedFrame)?.[0])
+}
+
+/** Status-0 to SGR already shows the terminal speaks DECRQSS, so a silent second setting is not F1. */
+function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeResult {
+  const secondFrame = second.reason === "reply" ? (second.match?.[0] ?? null) : null
+  const graded = deviceReplyResult(DECRQSS_DECSTBM, second.raw, secondFrame, second.reason, second.sentinel)
+  if (graded.observation?.outcome === "supported") return graded
+  if (refusedFrame(DECRQSS_DECSTBM, secondFrame)) {
+    const da1At = second.raw.search(/\x1b\[\?[0-9;]*c/)
+    const late =
+      Boolean(second.sentinel) && secondFrame !== null && da1At !== -1 && second.raw.indexOf(secondFrame) > da1At
+    const note = ["SGR refused; DECSTBM refused", late ? REPLY_AFTER_SENTINEL_NOTE : undefined]
+      .filter((part): part is string => part !== undefined)
+      .join("; ")
+    return {
+      pass: false,
+      response: second.raw,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+        note,
+      },
+    }
+  }
+  const hasCompleteUnmatchedFrame =
+    DECRQSS_DECSTBM.valid.test(second.raw) || DECRQSS_DECSTBM.refusal?.test(second.raw) === true
+  const reason =
+    !hasCompleteUnmatchedFrame && DECRQSS_DECSTBM.malformed.test(second.raw)
+      ? "invalid-reply"
+      : second.reason === "timeout"
+        ? "timeout"
+        : "insufficient-evidence"
+  return {
+    pass: false,
+    response: second.raw,
+    observation: {
+      outcome: "inconclusive",
+      reason,
+      evidence: "query",
+      note: "SGR refused; DECSTBM unanswered; DECRQSS facility still speaks",
+    },
+  }
+}
+
+function decrqssFacilityProbe(): ProbeDefinition {
+  const sgrPattern = answerPattern(DECRQSS_SGR)
+  const decstbmPattern = answerPattern(DECRQSS_DECSTBM)
+  const definition = probe(
+    "device.decrqss",
+    (ctx) => {
+      const raw = ctx.feedCapture(DECRQSS_SGR.query)
+      return deviceReplyResult(DECRQSS_SGR, raw, sgrPattern.exec(raw)?.[0] ?? null, "sentinel")
+    },
+    async (ctx) => {
+      const sgr = await ctx.queryWithSentinelOutcome(DECRQSS_SGR.query, sgrPattern)
+      const sgrFrame = sgr.reason === "reply" ? (sgr.match?.[0] ?? null) : null
+      if (!refusedFrame(DECRQSS_SGR, sgrFrame)) {
+        return deviceReplyResult(DECRQSS_SGR, sgr.raw, sgrFrame, sgr.reason, sgr.sentinel)
+      }
+      const second = await ctx.queryWithSentinelOutcome(DECRQSS_DECSTBM.query, decstbmPattern)
+      return decrqssAfterSgrRefusal(second)
+    },
+    "query",
+  )
+  return { ...definition, termWrites: "query", termlessObservationEvidence: "query" }
+}
+
 const iconLabelReply: DeviceReply = {
   id: "device.xtwinops-20",
   query: "\x1b[20t",
@@ -166,14 +254,7 @@ export const deviceProbes: ProbeDefinition[] = [
     malformed: /\x1bP!\|/,
     expected: "complete DECRPTUI DCS !| followed by four hexadecimal pairs and ST",
   }),
-  deviceQuery({
-    id: "device.decrqss",
-    query: "\x1bP$qm\x1b\\",
-    valid: /\x1bP1\$r[0-9:;]*m\x1b\\/,
-    refusal: /\x1bP0\$r\x1b\\/,
-    malformed: /\x1bP[01]\$r/,
-    expected: "complete DECRQSS status 1 SGR parameters ending m and ST",
-  }),
+  decrqssFacilityProbe(),
   deviceQuery({
     id: "device.xtgettcap",
     query: "\x1bP+q544e\x1b\\",
