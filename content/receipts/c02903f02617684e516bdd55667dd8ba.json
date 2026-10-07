@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-07T06:48:43Z",
+  "runId": "daf137a46820a2deb2091eae0eda5af7",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "wezterm",
+    "version": "0-unstable-2026-09-17",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/wezterm/wezterm.git",
+    "sri": "sha256-1pyff6suIIzcO6Sopf2Qz/isso4YonbZsaKUqOU8NO8=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-wVK9IcPezoEWeTlDkD/foGyRH2tnwEHX3ZgChpIX3Vw=",
+    "revision": "b09b56c29c1e367e598b60ca266e2cc9038751e0"
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev12/27915-clean/runs/daf137a46820a2deb2091eae0eda5af7/prep/runner-bundle.tar",
+    "sha256": "ef6bb94a1edb95d9becdab7ccb59d32fce29ba9f3f0ba7563adf60b5ab3a8aa6",
+    "narSha256": "sha256-t4ETvjVQrWJvV5n1l/BSBo0V+hgXu2V/Azg+BmmN3l0=",
+    "frozenRunnerSha256": "e63df300d30cd895d8b383937342b9a9a66813cecaae913a052553df1117f409",
+    "buildReceiptSha256": "7240009769f1b3be7bb4bb620e8b34552affca033adf7a11fa2dd76795fc893b",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "1ee91a75f7c9",
+      "collectorRevision": "24554a65fd978becbf32e53f4d8e9e6f427483d7",
+      "manifestSha256": "1f551f62ed294b8652396274621aa9f3eba570ab99bdb6a25bf02e0734db3165",
+      "bundleSha256": "201159fc81fde63f7472f8f281ead45ec50403a2468e36e6705f015eedd55172"
+    },
+    "rootBunLockSha256": "63f4c52c45776a2f65b5c2c7af6b055d0ef8302f886f5f9787c9b28d57e2f415"
+  },
+  "runtime": {
+    "imageId": "sha256:d10e435391a94fe975fc84da00708e7110c7e8357e395373bfe5a56dc5fd2e6d",
+    "imageTarSha256": "0ba48608dd198d3867f4ccd2df0f0c4f36ab64e2b47e143d7ee65671b3640cd2",
+    "arch": "amd64",
+    "nixLockRevision": "f2e16882cd75b5180bf14f77740fcb8643b35c10",
+    "sourceRevision": "24554a65fd978becbf32e53f4d8e9e6f427483d7",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "e67e4181a909f1f0fbecf7d3509abff653dd256d",
+    "suiteHash": "1ee91a75f7c9"
+  },
+  "status": "raw-unreviewed-history"
+}
