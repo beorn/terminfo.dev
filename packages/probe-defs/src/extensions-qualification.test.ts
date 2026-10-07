@@ -68,6 +68,8 @@ const directReplies = [
   ["extensions.osc4-palette", "\x1b]4;0;rgb:ffff/0000/0000\x07"],
   ["extensions.osc5-special-color", "\x1b]5;0;rgb:ffff/0000/0000\x07"],
   ["extensions.osc1337-cellsize", "\x1b]1337;ReportCellSize=12;8\x07"],
+  // 27915: iTerm2's newer height;width;scale form, as WezTerm 0-unstable-2026-09-17 sends it.
+  ["extensions.osc1337-cellsize", "\x1b]1337;ReportCellSize=16.5;7.5;1.3\x1b\\"],
   ["extensions.osc1337-capabilities", "\x1b]1337;Capabilities=alpha\x07"],
   ["extensions.osc7770-font-size", "\x1b]7770;14\x07"],
   ["extensions.osc7777-font-window-size", "\x1b]7777;14\x07"],
@@ -398,4 +400,63 @@ test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", as
   }
   const malformed = headless("\x1b[?2;S")
   expect(malformed.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+/**
+ * 27915: kitty graphics control data is an unordered comma-separated key=value list. WezTerm answers an allocation
+ * with `I=<number>,i=<id>` where kitty writes `i=<id>,I=<number>`; both are the same reply.
+ */
+function kittyTransfer(id: string, allocation: (imageNumber: number) => string) {
+  const definition = callback(id)
+  const answer = (sequence: string): string => {
+    const imageNumber = /I=(\d+)/.exec(sequence)?.[1]
+    if (imageNumber !== undefined) return allocation(Number(imageNumber))
+    return /a=p,i=2,/.test(sequence) ? "\x1b_Gi=2;OK\x1b\\" : ""
+  }
+  const headless = () =>
+    definition.termless!({ feed: () => undefined, feedCapture: answer } as unknown as TermlessContext)
+  const app = () =>
+    definition.term!({
+      queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => {
+        const raw = `${answer(sequence)}\x1b[?65;4;6;18;22;52c`
+        return {
+          match: pattern.exec(raw),
+          reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
+          raw,
+          rawBase64: Buffer.from(raw).toString("base64"),
+        }
+      },
+      write: () => undefined,
+    } as unknown as TermContext)
+  return { app, headless }
+}
+
+test.each([
+  ["kitty's order", (imageNumber: number) => `\x1b_Gi=2,I=${imageNumber};OK\x1b\\`],
+  ["WezTerm's order", (imageNumber: number) => `\x1b_GI=${imageNumber},i=2;OK\x1b\\`],
+] as const)(
+  "kitty transmit and display accept the allocation reply in %s, in both collectors",
+  async (_order, reply) => {
+    for (const id of ["extensions.kitty-graphics.transmit", "extensions.kitty-graphics.display"]) {
+      const { app, headless } = kittyTransfer(id, reply)
+      for (const result of [headless(), await app()]) {
+        expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+        expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
+      }
+    }
+  },
+)
+
+test("a kitty allocation reply that echoes another image number does not qualify", async () => {
+  for (const id of ["extensions.kitty-graphics.transmit", "extensions.kitty-graphics.display"]) {
+    const { app, headless } = kittyTransfer(id, (imageNumber) => `\x1b_GI=${imageNumber + 1},i=2;OK\x1b\\`)
+    for (const result of [headless(), await app()]) {
+      expect(result.observation?.outcome, id).not.toBe("supported")
+      expect(result.assertions, id).toBeUndefined()
+    }
+  }
+})
+
+test("the kitty graphics query still qualifies its i=31;OK reply (27915 kept the single-key frame)", () => {
+  const definition = callback("extensions.kitty-graphics")
+  const result = definition.termless!({ feedCapture: () => "\x1b_Gi=31;OK\x1b\\" } as unknown as TermlessContext)
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
 })
