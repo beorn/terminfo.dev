@@ -9,6 +9,12 @@ interface DeviceReply {
   malformed: RegExp
   expected: string
   refusal?: RegExp
+  /**
+   * A refusal of the single setting or name this probe's contract asks is the measured answer,
+   * not a partial one. Set only where the contract names exactly one subject (27914: XTGETXRES
+   * termName); the default leaves a refusal inconclusive.
+   */
+  refusalDecisive?: boolean
   /** A complete, well-formed answer to this query whose payload is not the expected one. */
   contradicts?: RegExp
   note?: (frame: string) => string | undefined
@@ -42,6 +48,18 @@ function deviceReplyResult(
   }
   const refusal = matchedFrame ? spec.refusal?.exec(matchedFrame) : null
   if (refusal?.[0]) {
+    if (spec.refusalDecisive) {
+      const decisiveNote = ["Requested name refused; the contract asks exactly one name", ordered.note]
+        .filter((part): part is string => part !== undefined)
+        .join("; ")
+      return {
+        pass: false,
+        response: raw,
+        note: decisiveNote,
+        observation: { outcome: "unsupported", evidence: "query", note: decisiveNote },
+        assertions: [{ kind: "negative", expected: spec.expected, observed: refusal[0] }],
+      }
+    }
     const refusalNote = ["Requested setting or name refused; other settings or names unmeasured", ordered.note]
       .filter((part): part is string => part !== undefined)
       .join("; ")
@@ -551,6 +569,8 @@ export const deviceProbes: ProbeDefinition[] = [
     query: "\x1bP+Q7465726d4e616d65\x1b\\",
     valid: /\x1bP1\+R7465726d4e616d65=[0-9A-Fa-f]+\x1b\\/i,
     refusal: /\x1bP0\+R7465726d4e616d65\x1b\\/i,
+    // The contract asks exactly one name, so a status-0 refusal is this probe's measured answer.
+    refusalDecisive: true,
     // The name is hex-encoded, so a terminal may echo it in either case; valid and
     // refusal are already case-insensitive, and a case-sensitive malformed pattern
     // graded the same frame no-response instead of invalid-reply.
