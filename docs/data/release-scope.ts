@@ -33,7 +33,7 @@ function utcDate(measuredAt: string): string {
 }
 
 export function tierLine(scope: ReleaseScope, options?: { measuredAt?: string }): string {
-  const base = `${scope.measuredCount} of ${scope.catalogCount} features (tier ${scope.tier}, ${scope.method})`
+  const base = `${scope.measuredCount} of ${scope.catalogCount} features (tier ${scope.tier}), measured per terminal; next tiers in progress`
   return options?.measuredAt ? `${base} · measured ${utcDate(options.measuredAt)}` : base
 }
 
@@ -78,4 +78,9 @@ export function barOverMeasured(
 export function coverageSentence(bar: MeasuredBar): string {
   if (!bar.denominator) return "No selected run"
   return `${bar.supported} supported · ${bar.unsupported} unsupported · ${bar.inconclusive} inconclusive · ${bar.errors} errors · ${bar.untested} untested`
+}
+
+export function decisiveShare(bar: MeasuredBar): string {
+  if (!bar.denominator) return "No conclusive score"
+  return `${bar.fillPct}% decisive of ${bar.denominator}`
 }

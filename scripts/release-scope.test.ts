@@ -10,7 +10,14 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
-import { barOverMeasured, coverageSentence, isStaleSuite, staleCaption, tierLine } from "../docs/data/release-scope.ts"
+import {
+  barOverMeasured,
+  coverageSentence,
+  decisiveShare,
+  isStaleSuite,
+  staleCaption,
+  tierLine,
+} from "../docs/data/release-scope.ts"
 
 const root = join(import.meta.dirname, "..")
 
@@ -37,7 +44,7 @@ describe("release 1 measurement scope", () => {
     expect(scope.unmeasured).toHaveLength(208)
     expect(scope.tier).toBe(1)
     expect(scope.method).toBe("query/reply")
-    expect(tierLine(scope)).toBe("62 of 270 features (tier 1, query/reply)")
+    expect(tierLine(scope)).toBe("62 of 270 features (tier 1), measured per terminal; next tiers in progress")
   })
 
   it("names every unmeasured catalog feature as not measured in this release", () => {
@@ -50,7 +57,7 @@ describe("release 1 measurement scope", () => {
 
   it("dates the tier line and records a stale measurement as not re-measured since that date", () => {
     expect(tierLine(scope, { measuredAt: "2026-10-04T17:46:58Z" })).toBe(
-      "62 of 270 features (tier 1, query/reply) · measured October 4, 2026",
+      "62 of 270 features (tier 1), measured per terminal; next tiers in progress · measured October 4, 2026",
     )
     expect(staleCaption("2026-10-04T17:46:58Z")).toBe("not re-measured since October 4, 2026")
     expect(isStaleSuite("current suite")).toBe(false)
@@ -80,6 +87,18 @@ describe("release 1 measurement scope", () => {
     expect(bar.untested).toBe(62)
   })
 
+  it("names each row's decisive share over the 62", () => {
+    const firstMeasured = scope.measuredIds[0]
+    if (!firstMeasured) throw new Error("release scope has no measured ids")
+    const oneSupported = barOverMeasured(
+      { [firstMeasured]: { outcome: "supported", conclusive: true } },
+      scope.measuredIds,
+    )
+    expect(decisiveShare(oneSupported)).toBe(`${oneSupported.fillPct}% decisive of 62`)
+    expect(decisiveShare(barOverMeasured({}, scope.measuredIds))).toBe("0% decisive of 62")
+    expect(decisiveShare({ ...oneSupported, denominator: 0 })).toBe("No conclusive score")
+  })
+
   it("names coverage over the 62 so unmeasured catalog features are not inconclusive", () => {
     const cells: Record<string, { outcome: "supported" | "inconclusive"; conclusive?: boolean }> = {}
     for (const row of scope.unmeasured) cells[row.id] = { outcome: "inconclusive" }
@@ -102,9 +121,11 @@ describe("release 1 measurement scope", () => {
     }
     expect(terminal).toContain("staleCaption")
     expect(terminal).toContain("barOverMeasured")
-    expect(home).toContain("bar.fillPct")
     expect(home).toContain("coverageSentence")
+    expect(home).toContain("decisiveShare")
     expect(home).not.toMatch(/function coverageLabel[\s\S]*selected\.counts/)
+    expect(terminal).toContain("measuredBar.fillPct")
+    expect(terminal).toContain("% decisive of")
     expect(terminal).toContain("measuredBar.supported")
     expect(terminal).toContain("measuredBar.inconclusive")
     expect(terminal).toContain("measuredBar.untested")

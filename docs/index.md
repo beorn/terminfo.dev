@@ -19,7 +19,7 @@ hero:
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-import { coverageSentence } from './data/release-scope.ts'
+import { coverageSentence, decisiveShare } from './data/release-scope.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -166,8 +166,8 @@ function barWidth(backendName, segment) {
 
 function scoreLabel(backendName) {
   const bar = data.releaseBars[backendName]
-  if (!bar?.denominator) return 'No conclusive score'
-  return `${bar.fillPct}% of ${bar.denominator} tier-1 features`
+  if (!bar) return 'No conclusive score'
+  return decisiveShare(bar)
 }
 
 function coverageLabel(backendName) {

@@ -165,7 +165,7 @@ const breadcrumbParent = (() => {
     </select>
     <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
   </div>
-  <p class="result-share-label">Results across {{ measuredBar.denominator }} of {{ data.releaseScope.catalogCount }} catalog features (tier {{ data.releaseScope.tier }}, {{ data.releaseScope.method }})</p>
+  <p class="result-share-label">{{ measuredBar.fillPct }}% decisive of {{ measuredBar.denominator }} · measured per terminal</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
     <span v-if="measuredBar.supported" class="result-share-supported" :style="{ width: `${measuredBar.supported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.unsupported / measuredBar.denominator * 100}%` }"></span>
