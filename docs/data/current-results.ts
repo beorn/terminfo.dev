@@ -2,7 +2,12 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { probeHash } from "../../packages/admin/versions.ts"
-import { loadSelectedResults, type SelectedProjection, type SelectedVersion } from "./selected-results.ts"
+import {
+  loadSelectedResults,
+  maskRunnerStorePath,
+  type SelectedProjection,
+  type SelectedVersion,
+} from "./selected-results.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
 
 export interface DefaultContextReview {
@@ -138,7 +143,13 @@ export function loadDefaultContextPolicy(contentDir: string): Record<string, Def
     ) {
       throw new Error(`${path}: ${id} requires contextKey, reviewer, reason and sources`)
     }
-    policy[id] = row as unknown as DefaultContextReview
+    // Normalize the reviewed key by the same rule the projection uses, so a row recorded before a
+    // re-collect (with the era's runner store path in its key) still chooses the context it reviewed
+    // (27929 D5). See maskRunnerStorePath.
+    policy[id] = {
+      ...(row as unknown as DefaultContextReview),
+      contextKey: maskRunnerStorePath(row.contextKey) as string,
+    }
   }
   return policy
 }

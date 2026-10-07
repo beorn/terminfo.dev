@@ -28,7 +28,7 @@ import { readFileSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
-import type { SelectedVersion } from "../docs/data/selected-results.ts"
+import { provenanceRefusal, type SelectedVersion } from "../docs/data/selected-results.ts"
 import { pickContextRun, type ContextCandidate } from "./decisive-share.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -172,7 +172,19 @@ export function release1DesktopContexts(ledger: LinuxLedger): readonly Collectio
     macRow("iterm2"),
     macRow("ghostty"),
     macRow("alacritty"),
-    macRow("kitty"),
+    {
+      // kitty/darwin ships AS MEASURED (27928): no hosted kitty job exists and hosted runners open no
+      // Kitty (no GPU, 27834), so it has no collection route and is named uncollectable, never a run
+      // that silently never arrives (27929 D4).
+      id: "kitty",
+      os: "macos",
+      kind: "app",
+      route: null,
+      command: null,
+      requires: null,
+      sourceRun: null,
+      uncollectable: "ships as measured (27928): no hosted kitty job, and hosted runners open no Kitty (no GPU, 27834)",
+    },
     {
       id: "windows-terminal",
       os: "windows",
@@ -340,7 +352,7 @@ export function linuxLedger(contentDir: string): LinuxLedger {
   return ledger
 }
 
-export type RefusalKind = "dirty-tree" | "suite-stale" | "unadmitted"
+export type RefusalKind = "dirty-tree" | "missing-provenance" | "suite-stale" | "unadmitted"
 
 export interface RunRefusal {
   readonly kind: RefusalKind
@@ -393,14 +405,17 @@ export function refusalForProducedRun(run: ProducedRun, options: RefusalOptions)
       detail: `not a schema-v2 run (schemaVersion ${String(run.schemaVersion)})`,
     }
   }
-  const cleanTree = run.provenance?.runtime?.cleanTree
-  if (cleanTree !== true) {
+  // The site's OWN provenance gate, shared rather than reimplemented: only a linux app run must carry
+  // a provenance block, so a headless (or macOS) run with none passes here exactly as the bar passes
+  // it. A gate that demanded `cleanTree === true` refused EVERY headless run as `dirty-tree` (#27929 D6).
+  const provenance = provenanceRefusal(run)
+  if (provenance !== null) {
     return {
-      kind: "dirty-tree",
+      kind: provenance === "native-provenance-missing" ? "missing-provenance" : "dirty-tree",
       context,
       detail:
-        `provenance.runtime.cleanTree is ${String(cleanTree)}, not true; a dirty-tree collection ` +
-        `is refused by the site as native-provenance-dirty and can never publish`,
+        `provenance is ${provenance}; only a linux app run must carry a provenance block, and any run ` +
+        `that carries one must prove provenance.runtime.cleanTree is true`,
     }
   }
   if (run.suiteId !== options.frozenSuiteId) {

@@ -179,7 +179,7 @@ test("declaring refuses a checkout whose HEAD is already on origin/main and allo
   const undeclared = "a".repeat(12)
   expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/origin\/main/)
   expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(
-    new RegExp(`Suite ${undeclared} is undeclared on this checkout`),
+    new RegExp(`Suite ${undeclared} cannot be declared or admitted on this checkout`),
   )
   expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/admit-run\.ts --for/)
 

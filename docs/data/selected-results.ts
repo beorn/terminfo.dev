@@ -383,12 +383,33 @@ function identityDecision(run: LoadedRun, active: readonly Interpretation[]): st
   return identityMatch(run) ? null : "identity-replies-mismatch"
 }
 
-function provenanceDecision(run: LoadedRun): string | null {
-  if (run.target.kind === "app" && run.target.os?.toLowerCase().startsWith("linux") && !run.provenance) {
-    return "native-provenance-missing"
-  }
-  if (run.provenance && !run.provenance.runtime.cleanTree) return "native-provenance-dirty"
+/**
+ * The run fields the native-provenance gate reads, written structurally so the SITE and the Release 1
+ * re-collection runner (`scripts/release1-collection.ts`) share ONE gate: the runner reads unknown
+ * documents, and a document it cannot recognise must be judged, never crash.
+ */
+export interface ProvenanceSubject {
+  readonly target?: { readonly kind?: unknown; readonly os?: unknown }
+  readonly provenance?: { readonly runtime?: { readonly cleanTree?: unknown } }
+}
+
+/**
+ * The ONE native-provenance gate (#27929 D6). Only a LINUX APP run must carry a provenance block, and
+ * any run that carries one must prove its tree was clean. `scripts/linux-container-run.sh` is the only
+ * collector that writes a provenance block, so a headless or macOS run has none BY CONSTRUCTION — a
+ * gate that demanded `cleanTree === true` would refuse every such run as `native-provenance-dirty`,
+ * and no headless row could ever be admitted.
+ */
+export function provenanceRefusal(subject: ProvenanceSubject): string | null {
+  const kind = subject.target?.kind
+  const os = typeof subject.target?.os === "string" ? subject.target.os.toLowerCase() : undefined
+  if (kind === "app" && os?.startsWith("linux") && !subject.provenance) return "native-provenance-missing"
+  if (subject.provenance && !subject.provenance.runtime?.cleanTree) return "native-provenance-dirty"
   return null
+}
+
+function provenanceDecision(run: LoadedRun): string | null {
+  return provenanceRefusal(run)
 }
 
 function admitRun(run: LoadedRun, active: readonly Interpretation[], reviewed: boolean): string | null {
@@ -660,8 +681,31 @@ function projectRun(
   }
 }
 
+/**
+ * The frozen runner's own build hash changes with every suite (its bundle embeds the suite), so the
+ * same row measured on a later suite would otherwise land in a NEW context and never supersede the run
+ * it replaces (27929 D5: three xterm/linux runs differed ONLY in this path). Mask it wherever a
+ * config string enters a context key — it is apparatus, not a difference in how the row was measured.
+ * Exported so the reviewed `default-contexts.json` rows, which record the unmasked key from the era
+ * they were reviewed in, are normalized by the SAME rule instead of needing a hand edit per collect.
+ */
+export function maskRunnerStorePath(config: unknown): unknown {
+  return typeof config === "string"
+    ? config.replace(/\/nix\/store\/[a-z0-9]+-terminfo-linux-runner\/index\.js/g, "<terminfo-linux-runner>")
+    : config
+}
+
 const contextKey = (t: ProbeTarget): string =>
-  JSON.stringify([t.kind, t.id, t.os, t.osVersion, t.outerTerminal, t.mux, t.config, t.permissions])
+  JSON.stringify([
+    t.kind,
+    t.id,
+    t.os,
+    t.osVersion,
+    t.outerTerminal,
+    t.mux,
+    maskRunnerStorePath(t.config),
+    t.permissions,
+  ])
 const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
 export function projectResults(

@@ -98,8 +98,10 @@ export function declaredSuiteManifest(snapshot: ProbeSuiteSnapshot = probeSuiteS
  * The refusal NAMES THE STATE, because it is the operator's first signal (27864). When a
  * non-fast-forward compose lands a suite nobody declared, an ordinary build on that checkout fails
  * here, and "HEAD is already on origin/main" reads like a git problem rather than an undeclared
- * suite. So when the caller knows the hash, the message carries it and the cure: collect the run
- * from an authoring branch at these pins, then admit it.
+ * suite. So when the caller knows the hash, the message carries it and the cure. It never CLAIMS
+ * the suite is undeclared: `admit-run.ts` calls this guard unconditionally, so the manifest may
+ * well exist on this checkout — the real condition is that HEAD is on origin/main, where a
+ * declaration or an admission lands on no commit (27929 D2).
  *
  * ADMISSION PASSES THIS GUARD. `scripts/admit-run.ts` declares the run's manifest and admits the
  * run in one commit on a branch ahead of origin/main, so the guard holds unchanged. Do not weaken
@@ -121,9 +123,11 @@ export function assertDeclareIsAuthoring(cwd: string, suiteHash?: string): void 
   if (ancestor.status === 0) {
     const subject = suiteHash ? `Suite ${suiteHash}` : "This tree's suite"
     throw new Error(
-      `${subject} is undeclared on this checkout (${cwd}), and its HEAD is already on origin/main, so declaring here ` +
-        "writes a manifest no commit can take.\n" +
-        "Collect the run from an authoring branch at these pins, then admit it: bun scripts/admit-run.ts --for <run.json>",
+      `${subject} cannot be declared or admitted on this checkout (${cwd}): its HEAD is already on origin/main, so a ` +
+        "declaration or an admission written here lands on no commit.\n" +
+        "A collector authors nothing: the freeze act lands this suite's declaration on main, and admission runs from " +
+        "a branch with at least one commit ahead of origin/main (a fresh branch cut at the pin is NOT enough): bun " +
+        "scripts/admit-run.ts --for <run.json>",
     )
   }
   if (ancestor.status !== 1) {
