@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
-import { barOverMeasured, isStaleSuite, staleCaption, tierLine } from "../docs/data/release-scope.ts"
+import { barOverMeasured, coverageSentence, isStaleSuite, staleCaption, tierLine } from "../docs/data/release-scope.ts"
 
 const root = join(import.meta.dirname, "..")
 
@@ -78,6 +78,19 @@ describe("release 1 measurement scope", () => {
     expect(bar.untested).toBe(62)
   })
 
+  it("names coverage over the 62 so unmeasured catalog features are not inconclusive", () => {
+    const cells: Record<string, { outcome: "supported" | "inconclusive"; conclusive?: boolean }> = {}
+    for (const row of scope.unmeasured) cells[row.id] = { outcome: "inconclusive" }
+    const firstMeasured = scope.measuredIds[0]
+    if (!firstMeasured) throw new Error("release scope has no measured ids")
+    cells[firstMeasured] = { outcome: "supported", conclusive: true }
+    const bar = barOverMeasured(cells, scope.measuredIds)
+    expect(coverageSentence(bar)).toBe("1 supported · 0 unsupported · 0 inconclusive · 0 errors · 61 untested")
+    expect(coverageSentence(barOverMeasured({}, scope.measuredIds))).toBe(
+      "0 supported · 0 unsupported · 0 inconclusive · 0 errors · 62 untested",
+    )
+  })
+
   it("puts the tier line on the front page and every terminal page", () => {
     const home = readFileSync(join(root, "docs", "index.md"), "utf8")
     const terminal = readFileSync(join(root, "docs", "terminals", "[id].md"), "utf8")
@@ -88,6 +101,11 @@ describe("release 1 measurement scope", () => {
     expect(terminal).toContain("staleCaption")
     expect(terminal).toContain("barOverMeasured")
     expect(home).toContain("bar.fillPct")
+    expect(home).toContain("coverageSentence")
+    expect(home).not.toMatch(/function coverageLabel[\s\S]*selected\.counts/)
+    expect(terminal).toContain("measuredBar.supported")
+    expect(terminal).toContain("measuredBar.inconclusive")
+    expect(terminal).toContain("measuredBar.untested")
     const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
     expect(loader).toContain("isStaleSuite")
     expect(loader).toContain("staleCaption")

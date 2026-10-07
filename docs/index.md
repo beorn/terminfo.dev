@@ -19,6 +19,7 @@ hero:
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
+import { coverageSentence } from './data/release-scope.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -170,13 +171,9 @@ function scoreLabel(backendName) {
 }
 
 function coverageLabel(backendName) {
-  const selected = data.selectedByBackend[backendName]?.selected
-  if (!selected) return 'No selected run'
-  const cells = Object.values(selected.cells)
-  const inconclusive = cells.filter(cell => cell.outcome === 'inconclusive').length
-  const errors = cells.filter(cell => cell.outcome === 'error').length
-  const counts = selected.counts
-  return `${counts.supported} supported · ${counts.unsupported} unsupported · ${inconclusive} inconclusive · ${errors} errors · ${counts.notTested} untested`
+  const bar = data.releaseBars[backendName]
+  if (!bar) return 'No selected run'
+  return coverageSentence(bar)
 }
 
 // Slug helpers for SEO page links — use slug from features.json if available
