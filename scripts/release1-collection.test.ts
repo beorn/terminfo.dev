@@ -15,6 +15,7 @@
  */
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { existsSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import { RELEASE_1_CONTEXTS } from "./decisive-share.ts"
 import {
@@ -167,14 +168,19 @@ describe("release 1 Linux launcher flags", () => {
   it("reads the five Linux invocations back from the committed runs in the corpus", () => {
     const ledger = linuxLedger(CONTENT)
     expect(Object.keys(ledger).sort()).toEqual(["alacritty", "ghostty", "kitty", "wezterm", "xterm"])
-    expect(ledger.kitty?.preset).toBe("current")
-    expect(ledger.kitty?.clipboardProfile).toBe("default")
-    expect(ledger.kitty?.selection).toBe("site-selected")
-    expect(ledger.xterm?.clipboardProfile).toBe("default")
-    for (const id of ["alacritty", "wezterm"]) {
-      const row = ledger[id]
-      expect(row?.selection).toBe("newest-admitted")
-      expect(row?.exclusion).toBeTruthy()
+    // Every assertion here is a property of the READ-BACK, not of today's corpus: which run the site
+    // selects changes as clean runs land (alacritty and wezterm linux moved from excluded to selected
+    // while this change was in flight), so a test that pinned that would fail for a non-regression.
+    for (const [id, row] of Object.entries(ledger)) {
+      expect(row.version).not.toBe("")
+      expect(row.file).toMatch(/^probes-apps\/.+-linux-.+\.json$/)
+      expect(existsSync(join(CONTENT, row.file))).toBe(true)
+      expect(["default", "allow", "deny-read"]).toContain(row.clipboardProfile)
+      expect(["default", "baseline", "current"]).toContain(row.preset)
+      // A row outside the site's selection must name why it is; a selected row carries no exclusion.
+      if (row.selection === "newest-admitted") expect(row.exclusion).toBeTruthy()
+      else expect(row.exclusion).toBeNull()
+      if (id === "kitty") expect(row.preset).not.toBe("default")
     }
   })
 
@@ -184,9 +190,9 @@ describe("release 1 Linux launcher flags", () => {
     expect(kitty?.command).toBe(
       "bash scripts/linux-container-run.sh --target kitty --preset current --clipboard-profile default <outdir>",
     )
-    expect(kitty?.sourceRun).toMatch(/site-selected/)
+    expect(kitty?.sourceRun).toMatch(/\(site-selected\)$/)
     const alacritty = all.find((entry) => entry.id === "alacritty" && entry.os === "linux")
-    expect(alacritty?.sourceRun).toMatch(/newest-admitted — the site excludes it: identity-replies-mismatch/)
+    expect(alacritty?.sourceRun).toMatch(/\((?:site-selected|newest-admitted — the site excludes it: .+)\)$/)
   })
 })
 
