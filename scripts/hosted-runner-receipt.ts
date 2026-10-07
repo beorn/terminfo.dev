@@ -21,11 +21,17 @@ function decimal(key: string): string {
 
 function sampleIdentity(): Record<string, string> {
   const os = required("RUNNER_OS")
-  if (os !== "macOS") {
-    throw new Error(`Hosted receipt has no producer for RUNNER_OS=${JSON.stringify(os)}; only macOS is ratified here`)
+  if (!Object.hasOwn(HOSTED_IDENTITY_SOURCES, os)) {
+    throw new Error(
+      `Hosted receipt has no producer for RUNNER_OS=${JSON.stringify(os)}; ratified entries are ${Object.keys(HOSTED_IDENTITY_SOURCES).join(", ")}`,
+    )
   }
+  const ratified = HOSTED_IDENTITY_SOURCES[os as keyof typeof HOSTED_IDENTITY_SOURCES]
   return Object.fromEntries(
-    Object.entries(HOSTED_IDENTITY_SOURCES.macOS.sources).map(([field, source]) => {
+    Object.entries(ratified.sources).map(([field, source]) => {
+      if (!("command" in source && "args" in source && "pattern" in source)) {
+        throw new Error(`Hosted receipt ${field}: source ${source.source} is not produced by the hosted producer`)
+      }
       const result = spawnSync(source.command, source.args, { encoding: "utf8" })
       if (result.error || result.status !== 0) {
         throw new Error(
@@ -34,13 +40,21 @@ function sampleIdentity(): Record<string, string> {
       }
       const value = new RegExp(source.pattern).exec(result.stdout)?.[1]
       if (!value) {
+        throw new Error(`Hosted receipt ${field}: ${source.source} returned no value; no identity is substituted`)
+      }
+      if (/^(0{8}-0{4}-0{4}-0{4}-0{12}|[fF]{8}-[fF]{4}-[fF]{4}-[fF]{4}-[fF]{12})$/.test(value)) {
         throw new Error(
-          `Hosted receipt ${field}: ${source.command} returned no ${source.source}; no identity is substituted`,
+          `Hosted receipt ${field}: ${source.source} returned degenerate UUID (all-zero or all-F); refusing by name`,
         )
       }
+      if (/^00[:-]00[:-]00[:-]00[:-]00[:-]00$/.test(value)) {
+        throw new Error(`Hosted receipt ${field}: ${source.source} returned degenerate all-zero MAC; refusing by name`)
+      }
       const hash = createHash("sha256").update(value).digest("hex")
+      const label =
+        "command" in source && "args" in source ? `${source.command} ${source.args.join(" ")}` : source.source
       process.stderr.write(
-        `${field}: ${source.command} ${source.args.join(" ")} · ${source.scope} · ${Buffer.byteLength(value)} bytes · sha256:${hash}\n`,
+        `${field}: ${label} · ${source.scope} · ${Buffer.byteLength(value)} bytes · sha256:${hash}\n`,
       )
       return [field, hash]
     }),

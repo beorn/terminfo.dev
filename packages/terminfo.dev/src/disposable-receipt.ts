@@ -60,6 +60,44 @@ export const HOSTED_IDENTITY_SOURCES = {
     },
     nonReuse: ["machineIdSha256", "bootIdSha256"],
   },
+  /** 27931: run 37591243907, two fresh jobs, two samples 63 s apart each. NIC MAC and SMBIOS UUID
+   * were stable within each job and different across jobs. MachineGuid was identical across jobs
+   * (image), so it is excluded. The probe did not exercise a reboot. */
+  Windows: {
+    sources: {
+      machineIdSha256: {
+        source: "primary NIC MAC",
+        scope: "vm",
+        command: "powershell.exe",
+        args: [
+          "-NoProfile",
+          "-Command",
+          "Get-NetAdapter -Physical | Where-Object { $_.Status -eq 'Up' } | Sort-Object ifIndex | Select-Object -First 1 -ExpandProperty MacAddress",
+        ],
+        pattern:
+          "^([0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2}[:-][0-9A-Fa-f]{2})\\s*$",
+      },
+      productUuidSha256: {
+        source: "SMBIOS UUID",
+        scope: "vm",
+        command: "powershell.exe",
+        args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct).UUID"],
+        pattern: "^([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})\\s*$",
+      },
+      bootIdSha256: {
+        source: "Win32_OperatingSystem.LastBootUpTime",
+        scope: "boot",
+        command: "powershell.exe",
+        args: [
+          "-NoProfile",
+          "-Command",
+          "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')",
+        ],
+        pattern: "^(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z)\\s*$",
+      },
+    },
+    nonReuse: ["machineIdSha256", "productUuidSha256"],
+  },
 } as const
 
 export interface ReceiptTarget {

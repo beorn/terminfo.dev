@@ -157,7 +157,7 @@ function ownershipBesideRun(source: string, receipt: unknown): string {
 }
 
 /** Hosted identities are measured by the apparatus; these fixture digests model independent jobs. */
-function hostedReceipt(os: "macOS" | "Linux", jobId: string) {
+function hostedReceipt(os: "macOS" | "Linux" | "Windows", jobId: string) {
   const hash = (value: string) => createHash("sha256").update(value).digest("hex")
   const sample = {
     machineIdSha256: hash(`${os}-${jobId}-machine`),
@@ -182,7 +182,7 @@ function hostedReceipt(os: "macOS" | "Linux", jobId: string) {
       environment: "github-hosted",
       name: `runner-${jobId}`,
       os,
-      arch: "ARM64",
+      arch: os === "Windows" ? "X64" : "ARM64",
       imageOS: "fixture",
       imageVersion: "1",
       trackingId: hash(jobId),
@@ -193,7 +193,7 @@ function hostedReceipt(os: "macOS" | "Linux", jobId: string) {
 
 // 27910 amendment 1: container-only admission tests cannot see hosted cross-job identity reuse.
 test("hosted admission permits same jobs and fresh jobs, including Mac image constants", () => {
-  for (const os of ["macOS", "Linux"] as const) {
+  for (const os of ["macOS", "Linux", "Windows"] as const) {
     const source = join(temp("terminfo-hosted-source-"), "run.json")
     const content = temp("terminfo-hosted-content-")
     const first = hostedReceipt(os, "1001")
@@ -203,7 +203,7 @@ test("hosted admission permits same jobs and fresh jobs, including Mac image con
     expect(placeOwnershipReceipt(source, citation, "first", target, content).placed).toBe("existing")
     expect(placeOwnershipReceipt(source, citation, "same-job", target, content).placed).toBe("created")
     const fresh = hostedReceipt(os, "1002")
-    if (os === "Linux") {
+    if (os === "Linux" || os === "Windows") {
       fresh.vm.identityAtJobStart.bootIdSha256 = first.vm.identityAtJobStart.bootIdSha256
       fresh.vm.identityAtCollection = { ...fresh.vm.identityAtJobStart }
     }
@@ -217,6 +217,7 @@ test("hosted admission refuses OS-specific non-reuse witnesses before placement,
   for (const [os, fields] of [
     ["macOS", ["machineIdSha256", "bootIdSha256"]],
     ["Linux", ["machineIdSha256", "productUuidSha256"]],
+    ["Windows", ["machineIdSha256", "productUuidSha256"]],
   ] as const) {
     for (const field of fields) {
       for (const differentRun of [false, true]) {
@@ -238,6 +239,25 @@ test("hosted admission refuses OS-specific non-reuse witnesses before placement,
         expect(existsSync(join(content, "receipts", "repeat.json"))).toBe(false)
       }
     }
+  }
+})
+
+test("hosted admission refuses untrusted runner.os prototype properties by name", () => {
+  for (const maliciousOs of ["toString", "constructor", "valueOf"]) {
+    const source = join(temp("terminfo-hosted-source-"), "run.json")
+    const content = temp("terminfo-hosted-content-")
+    const receipt = hostedReceipt("Windows", "1001")
+    receipt.runner.os = maliciousOs
+    expect(() =>
+      placeOwnershipReceipt(
+        source,
+        ownershipBesideRun(source, receipt),
+        "untrusted-os",
+        { kind: "app", id: "fixture", os: maliciousOs },
+        content,
+      ),
+    ).toThrow(new RegExp(`runner\\.os "${maliciousOs}" has no ratified identity source/scope table`))
+    expect(existsSync(join(content, "receipts", "untrusted-os.json"))).toBe(false)
   }
 })
 
