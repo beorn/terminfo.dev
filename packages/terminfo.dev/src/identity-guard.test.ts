@@ -288,4 +288,25 @@ describe("verifyTerminalIdentity", () => {
       resolveMeasuredAppVersion("kitty", "0.49.1", { ...replies, "device.xtversion": "\x1bP>|xterm(0.49.1)\x1b\\" }),
     ).toThrow(/identity mismatch/)
   })
+
+  it("resolves each measured target's version from its own identity rule", () => {
+    const xterm = {
+      "collector.xtversion": "\x1bP>|XTerm(411)\x1b\\\x1b[?64;1;2;6;9;15;16;17;18;21;22;28;29c",
+    }
+    expect(resolveMeasuredAppVersion("xterm", "", xterm)).toBe("411")
+    expect(resolveMeasuredAppVersion("xterm", "411", xterm)).toBe("411")
+    expect(() => resolveMeasuredAppVersion("xterm", "410", xterm)).toThrow(/version mismatch/)
+    expect(verifyTerminalIdentity("xterm", xterm)).toEqual({ ok: true, checked: true })
+    const ghostty = { "collector.xtversion": "\x1bP>|ghostty 1.3.1\x1b\\\x1b[?62;22;52c" }
+    expect(resolveMeasuredAppVersion("ghostty", "", ghostty)).toBe("1.3.1")
+    expect(verifyTerminalIdentity("ghostty", ghostty)).toEqual({ ok: true, checked: true })
+  })
+
+  it("keeps the detected version for an id whose rule captures none, and invents nothing", () => {
+    const iterm = { "collector.xtversion": "\x1bP>|iTerm2 3.6.11\x1b\\\x1b[?64;1;2;6;9;15;16;17;18;21;22;28;29c" }
+    expect(resolveMeasuredAppVersion("iterm2", "3.6.11", iterm)).toBe("3.6.11")
+    // wezterm and alacritty have no identity rule at all: named-unavailable, never guessed.
+    expect(resolveMeasuredAppVersion("wezterm", "", {})).toBe("unknown")
+    expect(resolveMeasuredAppVersion("alacritty", "", {})).toBe("unknown")
+  })
 })

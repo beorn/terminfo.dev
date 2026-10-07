@@ -630,7 +630,7 @@ export function parseRunProvenance(
   const executablePath = asString(value.executable.path, path, "provenance.executable.path")
   if (!executablePath.startsWith("/")) fail(path, "provenance.executable.path must be absolute")
   const version = asString(value.executable.version, path, "provenance.executable.version")
-  const versionTokens = version.match(/(?<![A-Za-z0-9.])\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9.-]+)?(?![A-Za-z0-9.])/g)
+  const versionTokens = version.match(/(?<![A-Za-z0-9.])\d+(?:\.\d+){0,3}(?:[-+][A-Za-z0-9.-]+)?(?![A-Za-z0-9.])/g)
   if (versionTokens?.length !== 1 || versionTokens[0] !== target.version) {
     fail(path, `provenance.executable.version differs from target.version ${target.version}`)
   }
