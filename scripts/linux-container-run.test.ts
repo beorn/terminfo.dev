@@ -8,6 +8,7 @@
  */
 
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   chmodSync,
   copyFileSync,
@@ -374,5 +375,37 @@ describe("private finite launch arguments", () => {
     expect(result.status).toBe(2)
     expect(result.stderr).toContain(message)
     expect(readdirSync(dir)).toEqual([])
+  })
+})
+
+describe("in-image source archive proof", () => {
+  it("refuses a wrong declared flat hash for either proof kind through one comparison", () => {
+    // A matching real run can never exercise a mismatch, so it is proven here: the derived kind and
+    // the flat kind reach this SAME comparison, and a wrong pin or a missing declared hash is refused
+    // (@cto 2026-10-06, 27892).
+    const archive = join(dir, "derived-source-tar")
+    writeFileSync(archive, "derived tar bytes\n")
+    const digest = createHash("sha256").update(readFileSync(archive)).digest()
+    const sri = (bytes: Buffer) => `sha256-${bytes.toString("base64")}`
+    const check = (measured: string, declared: string) =>
+      spawnSync(
+        "bash",
+        [
+          "-c",
+          'source "$1"; verify_source_archive_hash "$2" "$3" "Loaded ghostty source"',
+          "_",
+          launcher,
+          measured,
+          declared,
+        ],
+        { encoding: "utf8" },
+      )
+    expect(check(digest.toString("hex"), sri(digest)).status).toBe(0)
+    const mismatch = check(digest.toString("hex"), sri(createHash("sha256").update("another tar").digest()))
+    expect(mismatch.status).toBe(2)
+    expect(mismatch.stderr).toContain("Loaded ghostty source archive differs from declared fixed hash")
+    const undeclared = check(digest.toString("hex"), "")
+    expect(undeclared.status).toBe(2)
+    expect(undeclared.stderr).toContain("Loaded ghostty source has no declared flat sha256")
   })
 })
