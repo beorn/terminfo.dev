@@ -215,13 +215,36 @@ describe("release 1 Linux launcher flags", () => {
 describe("release 1 collection refusal checks", () => {
   const options = { frozenSuiteId: "frozen01", admitted: false }
 
-  it("refuses a dirty tree, and a missing clean-tree proof is not clean", () => {
+  it("refuses a dirty tree, and a linux app run with no provenance block", () => {
     const dirty = refusalForProducedRun(cleanRun({ provenance: { runtime: { cleanTree: false } } }), options)
     expect(dirty?.kind).toBe("dirty-tree")
     expect(dirty?.detail).toMatch(/native-provenance-dirty/)
 
     const unknown = refusalForProducedRun(cleanRun({ provenance: { runtime: {} } }), options)
     expect(unknown?.kind).toBe("dirty-tree")
+
+    const missing = refusalForProducedRun(cleanRun({ provenance: undefined }), options)
+    expect(missing?.kind).toBe("missing-provenance")
+    expect(missing?.detail).toMatch(/native-provenance-missing/)
+  })
+
+  it("passes a headless or macOS run, which carries no provenance block by construction", () => {
+    // `scripts/linux-container-run.sh` is the only collector that writes a provenance block, so a
+    // headless row — or a macOS app row — has none. Only a LINUX APP run must carry one; gating on
+    // `cleanTree === true` would refuse every headless run as `dirty-tree` (#27929 D6).
+    expect(
+      refusalForProducedRun(
+        cleanRun({ target: { kind: "headless", id: "xtermjs", os: "linux" }, provenance: undefined }),
+        { frozenSuiteId: "frozen01", admitted: true },
+      ),
+    ).toBeNull()
+
+    expect(
+      refusalForProducedRun(cleanRun({ target: { kind: "app", id: "kitty", os: "macos" }, provenance: undefined }), {
+        frozenSuiteId: "frozen01",
+        admitted: true,
+      }),
+    ).toBeNull()
   })
 
   it("refuses a run measured on a suite that is not the frozen one", () => {
