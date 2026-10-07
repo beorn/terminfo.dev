@@ -2059,6 +2059,36 @@ describe("identity self-admission", () => {
     expect(kittyCurrent).toEqual(["kitty-23.5.0", "kitty-24.6.0", "kitty-25.4.0"])
   })
 
+  it("admits a schema-v2 headless engine from runtimeIdentity without XTVERSION or a pin", () => {
+    const parsed = parseRun(
+      "engine-no-xtversion.json",
+      JSON.stringify(
+        run("engine-no-xtversion", {
+          target: { ...target, kind: "headless", id: "xtermjs", version: "6.0.0" },
+          runtimeIdentity: {
+            kind: "js",
+            runtimeFormat: "js",
+            engineVersion: "6.0.0",
+            resolvedPath: "/pkg/xtermjs/index.js",
+            integrity: { kind: "registry", lockIntegrity: "sha512-example" },
+            adapterVersion: "1.0.0",
+            termlessRevision: "rev123",
+          },
+          rawReplies: {
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+            "cursor.position": "",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const projection = project([parsed])
+    expect(projection.current["headless:xtermjs"]?.runId).toBe("engine-no-xtversion")
+    expect(projection.current["headless:xtermjs"]?.identityAdmission).toEqual({ rule: "runtime-identity" })
+    expect(projection.exclusions).not.toContainEqual(expect.objectContaining({ runId: "engine-no-xtversion" }))
+  })
+
   it("rejects Terminal.app XTVERSION, admits kitty on a shared DA1, and records the launch receipt", () => {
     const da1 = "\u001b[?62;52;c"
     const kitty = parseRun(
