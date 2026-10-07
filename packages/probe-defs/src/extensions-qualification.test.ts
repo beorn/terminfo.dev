@@ -369,8 +369,7 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
 // Demanding a third parameter graded that failure as a malformed geometry.
 test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", async () => {
   const definition = callback("extensions.sixel-geometry-report")
-  const headless = (raw: string) =>
-    definition.termless!({ feedCapture: () => raw } as unknown as TermlessContext)
+  const headless = (raw: string) => definition.termless!({ feedCapture: () => raw } as unknown as TermlessContext)
   const app = (raw: string) =>
     definition.term!({
       queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
