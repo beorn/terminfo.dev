@@ -75,7 +75,7 @@ jobs:
             iterm2) brew install --cask iterm2 ;;
             ghostty) brew install --cask ghostty ;;
             alacritty)
-              curl --fail --silent --show-error \
+              curl --location --fail --silent --show-error \
                 https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg \
                 --output "$RUNNER_TEMP/Alacritty.dmg"
               hdiutil attach "$RUNNER_TEMP/Alacritty.dmg" -mountpoint /Volumes/Alacritty
