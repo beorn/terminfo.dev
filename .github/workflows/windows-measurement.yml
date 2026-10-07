@@ -2,6 +2,9 @@ name: windows-measurement
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - task/27931-windows-terminal-workflow
 
 permissions:
   contents: read
