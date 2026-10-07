@@ -19,7 +19,7 @@ hero:
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-import { coverageSentence, decisiveShare } from './data/release-scope.ts'
+import { coverageSentence } from './data/release-scope.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -168,9 +168,9 @@ function scoreLabel(backendName) {
   const bar = data.releaseBars[backendName]
   if (!bar) return 'No conclusive score'
   // The D3 verdict (pass / with gaps / fail) over the included 52 leads, with its fraction; the
-  // measured-62 share follows as the secondary, differently-denominated readout.
+  // measured-62 SUPPORTED share follows as the secondary, differently-denominated readout.
   const verdict = data.releaseVerdicts[backendName]
-  const share = decisiveShare(bar)
+  const share = data.releaseShares[backendName]
   return verdict ? `${verdict.text} · ${share}` : share
 }
 

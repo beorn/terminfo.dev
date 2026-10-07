@@ -21,6 +21,7 @@ import {
   includedTierOneIds,
   isStaleSuite,
   staleCaption,
+  supportedShare,
   tierLine,
   type D3Verdict,
   type MeasuredBar,
@@ -95,6 +96,8 @@ export interface ProbeData {
   selectedByBackend: Record<string, PublicCurrentResult>
   releaseScope: ReleaseScope & { line: string }
   releaseBars: Record<string, MeasuredBar>
+  /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
+  releaseShares: Record<string, string>
   /** Backend name -> the D3 release verdict over the INCLUDED 52 (@chief 2026-10-07). */
   releaseVerdicts: Record<string, D3Verdict>
   /** Default-run stale caption when suiteFreshness is not current; null when current. */
@@ -294,6 +297,7 @@ export function loadFullProbes(): ProbeData {
     line: tierLine(release, generated ? { measuredAt: generated } : undefined),
   }
   const releaseBars: Record<string, MeasuredBar> = {}
+  const releaseShares: Record<string, string> = {}
   const releaseVerdicts: Record<string, D3Verdict> = {}
   const releaseStale: Record<string, string | null> = {}
   // The verdict is over the INCLUDED 52, not the declared 62: the ten F2 movers are excluded by
@@ -305,6 +309,7 @@ export function loadFullProbes(): ProbeData {
       throw new Error(`release bar ${key} has a denominator but no coverage sentence`)
     }
     releaseBars[key] = bar
+    releaseShares[key] = supportedShare(bar)
     const includedBar = barOverMeasured(selected.cells, includedIds)
     if (includedBar.denominator > 0) releaseVerdicts[key] = d3Verdict(includedBar.conclusive, includedBar.denominator)
     releaseStale[key] = isStaleSuite(selected.suiteFreshness) ? staleCaption(selected.measuredAt) : null
@@ -327,6 +332,7 @@ export function loadFullProbes(): ProbeData {
     selectedByBackend,
     releaseScope,
     releaseBars,
+    releaseShares,
     releaseVerdicts,
     releaseStale,
   }

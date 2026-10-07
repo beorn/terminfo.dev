@@ -80,9 +80,15 @@ export function coverageSentence(bar: MeasuredBar): string {
   return `${bar.supported} supported · ${bar.unsupported} unsupported · ${bar.inconclusive} inconclusive · ${bar.errors} errors · ${bar.untested} untested`
 }
 
-export function decisiveShare(bar: MeasuredBar): string {
-  if (!bar.denominator) return "No conclusive score"
-  return `${bar.fillPct}% decisive of ${bar.denominator}`
+/**
+ * The bar's supported share, named for what it counts. fillPct is supported/denominator — NOT the
+ * decisive share, which is conclusive/denominator (supported + unsupported) and is what the D3
+ * verdict reads. Calling this one "decisive" put two different numbers under one word on the same
+ * page (measured 2026-10-07 on the built site: "pass · 52/52 · 40% decisive of 62").
+ */
+export function supportedShare(bar: MeasuredBar): string {
+  if (!bar.denominator) return "No selected run"
+  return `${bar.fillPct}% supported of ${bar.denominator}`
 }
 
 /**

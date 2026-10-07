@@ -13,7 +13,7 @@ import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
 import {
   barOverMeasured,
   coverageSentence,
-  decisiveShare,
+  supportedShare,
   isStaleSuite,
   staleCaption,
   tierLine,
@@ -87,16 +87,16 @@ describe("release 1 measurement scope", () => {
     expect(bar.untested).toBe(62)
   })
 
-  it("names each row's decisive share over the 62", () => {
+  it("names each row's SUPPORTED share over the 62, never as the decisive share", () => {
     const firstMeasured = scope.measuredIds[0]
     if (!firstMeasured) throw new Error("release scope has no measured ids")
     const oneSupported = barOverMeasured(
       { [firstMeasured]: { outcome: "supported", conclusive: true } },
       scope.measuredIds,
     )
-    expect(decisiveShare(oneSupported)).toBe(`${oneSupported.fillPct}% decisive of 62`)
-    expect(decisiveShare(barOverMeasured({}, scope.measuredIds))).toBe("0% decisive of 62")
-    expect(decisiveShare({ ...oneSupported, denominator: 0 })).toBe("No conclusive score")
+    expect(supportedShare(oneSupported)).toBe(`${oneSupported.fillPct}% supported of 62`)
+    expect(supportedShare(barOverMeasured({}, scope.measuredIds))).toBe("0% supported of 62")
+    expect(supportedShare({ ...oneSupported, denominator: 0 })).toBe("No selected run")
   })
 
   it("names coverage over the 62 so unmeasured catalog features are not inconclusive", () => {
@@ -135,10 +135,14 @@ describe("release 1 measurement scope", () => {
     expect(terminal).toContain("staleCaption")
     expect(terminal).toContain("barOverMeasured")
     expect(home).toContain("coverageSentence")
-    expect(home).toContain("decisiveShare")
+    // The label is one owner: the loader computes it with supportedShare, the page only prints it.
+    expect(home).toContain("data.releaseShares[backendName]")
     expect(home).not.toMatch(/function coverageLabel[\s\S]*selected\.counts/)
     expect(terminal).toContain("measuredBar.fillPct")
-    expect(terminal).toContain("% decisive of")
+    expect(terminal).toContain("% supported of")
+    // One word, one number: the D3 verdict owns "decisive"; the bar's fill is "supported".
+    expect(terminal).not.toContain("% decisive of")
+    expect(home).not.toContain("decisive of ${bar.denominator}")
     expect(terminal).toContain("measuredBar.supported")
     expect(terminal).toContain("measuredBar.inconclusive")
     expect(terminal).toContain("measuredBar.untested")
@@ -146,6 +150,7 @@ describe("release 1 measurement scope", () => {
     expect(loader).toContain("isStaleSuite")
     expect(loader).toContain("staleCaption")
     expect(loader).toContain("releaseStale")
+    expect(loader).toContain("releaseShares[key] = supportedShare(")
     const helper = readFileSync(join(root, "docs", "data", "release-scope.ts"), "utf8")
     expect(helper).not.toMatch(/from ["']node:fs["']/)
   })
