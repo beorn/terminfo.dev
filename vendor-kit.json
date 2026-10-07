@@ -1,5 +1,5 @@
 {
-  "modules": ["release", "format-check", "oxfmt", "links"],
+  "modules": ["release", "format-check", "oxfmt", "links", "source-siblings"],
   "vars": {
     "bunVersion": "1.4.2",
     "testCommand": "bun run validate",
@@ -7,6 +7,7 @@
     "linksCronMinute": "40"
   },
   "overrides": {
-    "oxfmt": "extra ignorePatterns beyond canonical: .next/, .vitepress/dist/, content/probes-libs/"
+    "oxfmt": "extra ignorePatterns beyond canonical: .next/, .vitepress/dist/, content/probes-libs/",
+    "source-siblings-install-order:.github/workflows/macos-measurement.yml#measure-macos": "measure-macos measures a released CLI (npm install -g terminfo.dev@<cli_version>, default 4.0.0); its dependency graph must be the published one, and its cli_version=local path builds the workspace from the committed lock, so the registry install is the right one here"
   }
 }

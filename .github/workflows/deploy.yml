@@ -22,7 +22,7 @@ jobs:
         with:
           bun-version: latest
 
-      - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/source-siblings
 
       - name: Validate content
         run: bun run validate
