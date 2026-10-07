@@ -270,6 +270,12 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "Loaded $target_id version $actual_version is not declared $target_version" >&2
     exit 2
   }
+  # The receipts record the version the executable REPORTS, never a whole build report: ghostty
+  # answers --version with a multi-line report naming its Zig, GTK and libadwaita versions, and the
+  # run parser admits exactly ONE version token equal to target.version, so a report carrying
+  # several numbers is refused by name. The line kept is the one parse_version reads, and the full
+  # report stays in /out/executable-version.txt and in the app's own daemon log.
+  executable_version=$(head -n 1 /out/executable-version.txt)
   fc-match -f '%{family} | %{file}\n' 'DejaVu Sans Mono' > /out/font.txt
 
   xvfb_pid=
@@ -436,7 +442,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   read -r source_sha source_path < /out/source-archive.sha256
   jq -n --slurpfile host /out/host-measured.json \
     --arg path "$live_executable" --arg sha "$live_executable_sha" \
-    --arg version "$(cat /out/executable-version.txt)" --arg sourceSha "$source_sha" \
+    --arg version "$executable_version" --arg sourceSha "$source_sha" \
     --arg config "$target_config" \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
     --rawfile display /out/xdpyinfo.txt --rawfile gl /out/glxinfo.txt '
@@ -543,7 +549,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   jq -n --argjson ids "$selected_ids" --arg run "$TERMINFO_RUN_ID" \
     --arg executablePath "$live_executable" --arg executableSha "$live_executable_sha" \
     --arg invocationPath "$invocation_path" --arg invocationSha "$invocation_sha" \
-    --arg executableVersion "$(cat /out/executable-version.txt)" \
+    --arg executableVersion "$executable_version" \
     --arg sourcePath "$source_path" --arg sourceSha "$source_sha" \
     --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
     --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" --argjson capture "$capture_receipt" \
