@@ -276,12 +276,16 @@ describe("frame-less container run", () => {
 
 describe("explicit Linux image selection", () => {
   it.each([
-    ["unknown", "default", "Unknown Kitty preset"],
-    ["current", "unknown", "Unknown clipboard profile"],
-  ])("refuses invalid preset/profile %s/%s before preparing a run", (preset, profile, error) => {
-    const result = spawnSync("bash", [launcher, "--preset", preset, "--clipboard-profile", profile, dir], {
-      encoding: "utf8",
-    })
+    ["bogus", "default", "default", "Unknown target"],
+    ["kitty", "unknown", "default", "Kitty takes --preset baseline|current"],
+    ["xterm", "baseline", "default", "xterm has only the default preset"],
+    ["kitty", "current", "unknown", "Unknown clipboard profile"],
+  ])("refuses invalid target/preset/profile %s/%s/%s before preparing a run", (target, preset, profile, error) => {
+    const result = spawnSync(
+      "bash",
+      [launcher, "--target", target, "--preset", preset, "--clipboard-profile", profile, dir],
+      { encoding: "utf8" },
+    )
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain(error)
     expect(existsSync(join(dir, "prep"))).toBe(false)
@@ -319,7 +323,7 @@ exit 0
     }
     const result = spawnSync(
       "bash",
-      [fixtureLauncher, "--preset", "current", "--clipboard-profile", "default", output],
+      [fixtureLauncher, "--target", "kitty", "--preset", "current", "--clipboard-profile", "default", output],
       {
         encoding: "utf8",
         env: { ...process.env, PATH: `${bins}:${process.env.PATH ?? ""}`, CALL_LOG: calls },
@@ -347,7 +351,7 @@ describe("private finite launch arguments", () => {
   it("refuses an unknown flag before preparing or building", () => {
     const result = spawnSync(
       "bash",
-      [launcher, "--preset", "current", "--clipboard-profile", "default", "--unknown", dir],
+      [launcher, "--target", "kitty", "--preset", "current", "--clipboard-profile", "default", "--unknown", dir],
       { encoding: "utf8" },
     )
     expect(result.status).toBe(2)
@@ -364,7 +368,7 @@ describe("private finite launch arguments", () => {
   ])("refuses invalid supplied filter %j before preparing or building", (suffix, message) => {
     const result = spawnSync(
       "bash",
-      [launcher, "--preset", "current", "--clipboard-profile", "default", "--ids", ...suffix, dir],
+      [launcher, "--target", "kitty", "--preset", "current", "--clipboard-profile", "default", "--ids", ...suffix, dir],
       { encoding: "utf8" },
     )
     expect(result.status).toBe(2)
