@@ -7,7 +7,8 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
-import { barOverMeasured, isStaleSuite, loadReleaseScope, staleCaption, tierLine } from "../docs/data/release-scope.ts"
+import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
+import { barOverMeasured, isStaleSuite, staleCaption, tierLine } from "../docs/data/release-scope.ts"
 
 const root = join(import.meta.dirname, "..")
 
@@ -91,5 +92,7 @@ describe("release 1 measurement scope", () => {
     expect(loader).toContain("isStaleSuite")
     expect(loader).toContain("staleCaption")
     expect(loader).toContain("releaseStale")
+    const helper = readFileSync(join(root, "docs", "data", "release-scope.ts"), "utf8")
+    expect(helper).not.toMatch(/from ["']node:fs["']/)
   })
 })
