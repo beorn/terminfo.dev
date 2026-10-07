@@ -57,6 +57,18 @@ afterAll(() => {
   rmSync(directory, { recursive: true, force: true })
 })
 
+// 27875: the frame-less controlled-Linux capture exists so a probe that needs a frame fails by
+// name in its own result, instead of reaching an absent callback.
+test("the frame-less controlled-Linux capture fails by name", async () => {
+  const { frameUnavailableCapture } = await import("./serve.ts")
+  const thrown = await frameUnavailableCapture()({ role: "target", label: "frame-less" }).catch(
+    (error: unknown) => error,
+  )
+  expect(thrown).toBeInstanceOf(Error)
+  expect((thrown as Error).name).toBe("FrameUnavailable")
+  expect((thrown as Error).message).toContain("no capture directory")
+})
+
 test("provenance without owned capture or clipboard refuses before selecting any callback", async () => {
   writeFileSync(receipt, JSON.stringify({ executable: { path: process.execPath, sha256: "0".repeat(64) } }))
   await expect(collectProbeRun({ ids: [] })).rejects.toThrow("requires owned capture or clipboard")

@@ -111,6 +111,17 @@ export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collec
   return { manifest, collectorRevision: sourceRevision }
 }
 
+/** The capture a controlled Linux run installs when no capture directory is configured (27875).
+ * Absence is a fact about the run, and a probe that needs a frame must be able to say so: the
+ * named error lands as an `ungradedDiagnostic` keyed by that probe's own id. */
+export function frameUnavailableCapture(): ProbeCapture {
+  return async () => {
+    const error = new Error("This run has no capture directory, so no frame is available for a probe that needs one")
+    error.name = "FrameUnavailable"
+    throw error
+  }
+}
+
 /** The same source-tree collector powers daemon and inline CLI entry points. */
 export async function collectProbeRun(
   options: {
@@ -143,6 +154,13 @@ export async function collectProbeRun(
   if (captureDirectory) {
     if (!executable) throw new Error("Configured Linux capture lacks measured executable")
     capture = await createLinuxCapture(captureDirectory, executable)
+  } else if (provenancePath) {
+    // A controlled Linux run with no capture directory cannot make a frame, so a probe that needs
+    // one must fail BY NAME in its own result instead of reaching an absent callback (27875).
+    // The stub is installed ONLY here: every other run keeps no capture callback at all, so the
+    // probes' own absence branches (cursor, erase, charsets, helpers) still decide those rows
+    // exactly as they do today, and no non-container row changes.
+    capture = frameUnavailableCapture()
   }
   let ownedTerminal: OwnedTerminal | undefined
   if (clipboardReceipt && options.terminalAppOwner) {

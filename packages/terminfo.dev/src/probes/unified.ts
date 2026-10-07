@@ -420,8 +420,14 @@ export async function runProbeBatch(
     } catch (error) {
       const name = error instanceof Error ? error.name : "Error"
       const message = error instanceof Error ? error.message : String(error)
+      // FrameUnavailable joins UndeclaredTerminalGeometry: the probe could not run at all, so the
+      // error is named in its own result and nothing about pixels is claimed (27875).
       const errorEvidence =
-        name === "UndeclaredTerminalGeometry" ? undefined : captureAttempted ? "pixels" : probe.termObservationEvidence
+        name === "UndeclaredTerminalGeometry" || name === "FrameUnavailable"
+          ? undefined
+          : captureAttempted
+            ? "pixels"
+            : probe.termObservationEvidence
       if (errorEvidence) {
         batch.observations.push({
           featureId: probe.id,

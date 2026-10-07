@@ -212,6 +212,60 @@ describe("frame-less container run", () => {
     expect(source).not.toMatch(/png_sha=\$\(jq -er '\[\.observations\[\]\.frames/)
   })
 
+  const gateExpression = (() => {
+    const source = readFileSync(launcher, "utf8")
+    const match = source.match(/jq -e --argjson ids "\$selected_ids" --argjson frameless "\$frameless_ids" '([^']*)'/)
+    if (!match) throw new Error("--ids gate expression not found in scripts/linux-container-run.sh")
+    return match[1]!
+  })()
+
+  function gate(ids: string[], frameless: string[], run: unknown) {
+    return spawnSync(
+      "jq",
+      [
+        "-e",
+        "--argjson",
+        "ids",
+        JSON.stringify(ids),
+        "--argjson",
+        "frameless",
+        JSON.stringify(frameless),
+        gateExpression,
+      ],
+      { input: JSON.stringify(run), encoding: "utf8" },
+    )
+  }
+
+  const frameUnavailable = {
+    kind: "collector-error",
+    name: "FrameUnavailable",
+    message: "This run has no capture directory",
+  }
+
+  it("accepts a frame-less selection whose only diagnostic is the named FrameUnavailable", () => {
+    const result = gate(["device.primary-da", "cursor.shape"], ["cursor.shape"], {
+      observations: [{ featureId: "device.primary-da" }],
+      ungradedDiagnostics: { "cursor.shape": frameUnavailable },
+    })
+    expect(result.status).toBe(0)
+  })
+
+  it("refuses a FrameUnavailable in a run that had a capture directory", () => {
+    const result = gate(["device.primary-da", "cursor.shape"], [], {
+      observations: [{ featureId: "device.primary-da" }],
+      ungradedDiagnostics: { "cursor.shape": frameUnavailable },
+    })
+    expect(result.status).not.toBe(0)
+  })
+
+  it("refuses any other diagnostic in a frame-less selection", () => {
+    const result = gate(["cursor.shape"], ["cursor.shape"], {
+      observations: [],
+      ungradedDiagnostics: { "cursor.shape": { kind: "collector-error", name: "Error", message: "boom" } },
+    })
+    expect(result.status).not.toBe(0)
+  })
+
   it("composes a frame-less run, whose container receipt carries no capture", () => {
     const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", null)
     expect(result.status).toBe(0)

@@ -1214,6 +1214,51 @@ it("retains same-callback control and target frames without declaring visual sup
   expect(batch.suiteComplete).toBe(false)
 })
 
+// 27875: a controlled-Linux run with no capture directory cannot make a frame. A probe that needs
+// one must say so by name, in its own result, and must not claim pixels that do not exist.
+it("records a FrameUnavailable capture as a named collector error, never invented pixels", async () => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["sgr.underline.curly"],
+    ownedTerminal: geometryOwner(measured(24, 80)),
+    captureRunId: "a".repeat(32),
+    capture: async () => {
+      const error = new Error("This run has no capture directory, so no frame is available for a probe that needs one")
+      error.name = "FrameUnavailable"
+      throw error
+    },
+  })
+  expect(batch.ungradedDiagnostics["sgr.underline.curly"]).toMatchObject({
+    kind: "collector-error",
+    name: "FrameUnavailable",
+    message: expect.stringContaining("no capture directory"),
+  })
+  expect(batch.observations).toEqual([])
+})
+
+// The stub is installed only on a controlled-Linux run with no capture directory. Everywhere else
+// no capture callback exists at all, and these rows keep deciding exactly as they do today (27875).
+it("keeps today's graceful absence row when no capture callback is installed", async () => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["cursor.shape"],
+    ownedTerminal: geometryOwner(measured(24, 80)),
+    captureRunId: "a".repeat(32),
+  })
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: "cursor.shape",
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: "No cursor pixel readback for shape",
+    },
+  ])
+  expect(batch.ungradedDiagnostics).toEqual({})
+})
+
 it("records an installed capture adapter failure as an error rather than quietly dropping pixels", async () => {
   verifiedBatchFixture()
   process.stdout.write = ((value: string) => {

@@ -325,12 +325,28 @@ if [[ "${1:-}" == "--inside" ]]; then
   date -u +%FT%TZ > /out/batch-wall-end.txt
   [[ "$batch_status" == 0 ]] || { echo "Probe batch HTTP request failed: $batch_status" >&2; exit "$batch_status"; }
   if [[ "$selected_ids" != null ]]; then
-    jq -e --argjson ids "$selected_ids" '
-      (.observations | map(.featureId)) as $actual |
+    # A controlled-Linux run with NO capture directory cannot make a frame, so a probe that needs
+    # one reports FrameUnavailable by its own id and the selection is still honored (27875). Every
+    # other diagnostic is a defect, and so is a FrameUnavailable in a run that HAD a capture
+    # directory. This container always exports TERMINFO_CAPTURE_DIRECTORY, so inside it the
+    # permitted set is empty by construction and any diagnostic is still refused.
+    if [[ -z "${TERMINFO_CAPTURE_DIRECTORY:-}" ]]; then
+      frameless_ids=$(jq -c '[.ungradedDiagnostics | to_entries[] | select(.value.name == "FrameUnavailable") | .key]' /out/v2-run.json)
+    else
+      frameless_ids='[]'
+    fi
+    jq -e --argjson ids "$selected_ids" --argjson frameless "$frameless_ids" '
+      (.ungradedDiagnostics | to_entries) as $diag |
+      ($diag | map(select(.value.name == "FrameUnavailable") | .key) | sort) as $found |
+      ($diag | map(select(.value.name != "FrameUnavailable") | .key)) as $unnamed |
+      (.observations | map(.featureId) + $found) as $actual |
+      ($unnamed | length) == 0 and $found == ($frameless | sort) and
       ($actual | length) == ($ids | length) and ($actual | unique | length) == ($ids | length) and
-      ($actual | sort) == ($ids | sort) and (.ungradedDiagnostics | length) == 0' /out/v2-run.json >/dev/null || {
-      echo "Actual observation selection differs from requested IDs or has diagnostics" >&2; exit 2;
+      ($actual | sort) == ($ids | sort)' /out/v2-run.json >/dev/null || {
+      echo "Actual observation selection differs from requested IDs or has diagnostics: $(jq -c '[.ungradedDiagnostics | to_entries[] | "\(.key)=\(.value.name)"]' /out/v2-run.json)" >&2
+      exit 2;
     }
+    [[ "$frameless_ids" == "[]" ]] || echo "frame-less selected ids: $frameless_ids" >&2
   fi
   jq -e --slurpfile build "$build_receipt" --arg executablePath "$live_executable" \
     --arg executableSha "$live_executable_sha" '
