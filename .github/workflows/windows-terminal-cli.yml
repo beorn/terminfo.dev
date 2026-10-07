@@ -234,7 +234,7 @@ jobs:
             }
           }
           $receiptJson = $receipt | ConvertTo-Json -Depth 5
-          $receiptJson | Out-File "C:\artifacts\disposable-receipt.json" -Encoding utf8
+          [System.IO.File]::WriteAllText("C:\artifacts\disposable-receipt.json", $receiptJson, [System.Text.UTF8Encoding]::new($false))
           Write-Output "Generated disposable-ownership receipt at C:\artifacts\disposable-receipt.json:"
           Write-Output $receiptJson
           [Environment]::SetEnvironmentVariable("TERMINFO_DISPOSABLE_RECEIPT", "C:\artifacts\disposable-receipt.json", "Machine")
