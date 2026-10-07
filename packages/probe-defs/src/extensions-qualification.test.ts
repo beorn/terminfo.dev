@@ -400,6 +400,8 @@ test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", as
   }
   const malformed = headless("\x1b[?2;S")
   expect(malformed.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+})
+
 /**
  * 27915: kitty graphics control data is an unordered comma-separated key=value list. WezTerm answers an allocation
  * with `I=<number>,i=<id>` where kitty writes `i=<id>,I=<number>`; both are the same reply.
