@@ -83,7 +83,7 @@ export function persistSuiteManifest(
 export function declaredSuiteManifest(snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot()): ProbeSuiteManifest {
   const path = join(SUITES_DIR, `${snapshot.probeHash}.json`)
   if (existsSync(path)) return verifySuiteManifest(path, snapshot)
-  assertDeclareIsAuthoring(ROOT)
+  assertDeclareIsAuthoring(ROOT, snapshot.probeHash)
   return persistSuiteManifest(path, derivedSuiteManifest(snapshot), snapshot) === "created"
     ? derivedSuiteManifest(snapshot)
     : verifySuiteManifest(path, snapshot)
@@ -91,15 +91,21 @@ export function declaredSuiteManifest(snapshot: ProbeSuiteSnapshot = probeSuiteS
 
 /**
  * Declaring a suite is authoring (27843 AC2), so it may only run on a checkout carrying work that
- * is not yet on main. In a shared-main checkout HEAD is always an ancestor of origin/main and a
- * declare there writes a manifest no commit will take — the stray that reached /hh/dev twice.
- * `--check` still runs anywhere: validating a stored declaration is a read.
+ * is not yet on main: a declare on a shared-main checkout writes a manifest no commit will take —
+ * the stray that reached /hh/dev twice. `--check` still runs anywhere; validating a stored
+ * declaration is a read.
+ *
+ * The refusal NAMES THE STATE, because it is the operator's first signal (27864). When a
+ * non-fast-forward compose lands a suite nobody declared, an ordinary build on that checkout fails
+ * here, and "HEAD is already on origin/main" reads like a git problem rather than an undeclared
+ * suite. So when the caller knows the hash, the message carries it and the cure: collect the run
+ * from an authoring branch at these pins, then admit it.
  *
  * ADMISSION PASSES THIS GUARD. `scripts/admit-run.ts` declares the run's manifest and admits the
  * run in one commit on a branch ahead of origin/main, so the guard holds unchanged. Do not weaken
  * it to "fix" admission; admission is authoring by construction.
  */
-export function assertDeclareIsAuthoring(cwd: string): void {
+export function assertDeclareIsAuthoring(cwd: string, suiteHash?: string): void {
   const run = (args: string[]) => {
     const result = spawnSync("git", args, { cwd, encoding: "utf8" })
     if (result.error) throw new Error(`Cannot declare a suite: git ${args.join(" ")} failed`, { cause: result.error })
@@ -113,9 +119,11 @@ export function assertDeclareIsAuthoring(cwd: string): void {
   }
   const ancestor = run(["merge-base", "--is-ancestor", head.stdout.trim(), declared.stdout.trim()])
   if (ancestor.status === 0) {
+    const subject = suiteHash ? `Suite ${suiteHash}` : "This tree's suite"
     throw new Error(
-      `Refusing to declare a suite manifest whose HEAD is already on origin/main (${cwd}).\n` +
-        "Declaring is authoring: commit the change in your own worktree, then declare there.",
+      `${subject} is undeclared on this checkout (${cwd}), and its HEAD is already on origin/main, so declaring here ` +
+        "writes a manifest no commit can take.\n" +
+        "Collect the run from an authoring branch at these pins, then admit it: bun scripts/admit-run.ts --for <run.json>",
     )
   }
   if (ancestor.status !== 1) {
@@ -140,8 +148,8 @@ export function derivedSuiteManifest(snapshot: ProbeSuiteSnapshot): ProbeSuiteMa
 }
 
 export function declareCurrentSuiteManifest(): { status: "created" | "existing"; path: string } {
-  assertDeclareIsAuthoring(ROOT)
   const snapshot = probeSuiteSnapshot()
+  assertDeclareIsAuthoring(ROOT, snapshot.probeHash)
   const path = join(SUITES_DIR, `${snapshot.probeHash}.json`)
   if (existsSync(path)) {
     verifySuiteManifest(path, snapshot)
