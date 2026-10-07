@@ -45,6 +45,7 @@ function loadRows(): Array<{
   runId: string
   observation: { outcome: string; note?: string }
   query: StoredQuery | null
+  decstbm: StoredQuery | null
 }> {
   const rows = []
   for (const dir of ["probes-apps", "probes-mux"] as const) {
@@ -62,9 +63,12 @@ function loadRows(): Array<{
       if (!observation) continue
       const raw = data.rawReplies?.["device.decrqss"]
       let query: StoredQuery | null = null
+      let decstbm: StoredQuery | null = null
       if (typeof raw === "string" && raw.startsWith("{")) {
         const parsed = JSON.parse(raw) as { queries?: StoredQuery[] }
         query = parsed.queries?.[0] ?? null
+        // A run collected with the conditional second setting logged the DECSTBM exchange itself.
+        decstbm = parsed.queries?.find((item) => item.sequence.startsWith(DECSTBM_QUERY)) ?? null
       }
       rows.push({
         file,
@@ -73,6 +77,7 @@ function loadRows(): Array<{
         runId: data.runId ?? name,
         observation,
         query,
+        decstbm,
       })
     }
   }
@@ -81,6 +86,7 @@ function loadRows(): Array<{
 
 async function regrade(
   query: StoredQuery,
+  decstbm: StoredQuery | null,
 ): Promise<{ outcome: string | undefined; note: string | undefined; queries: string[] }> {
   const probe = deviceProbes.find((item) => item.id === "device.decrqss")
   if (!probe?.term) throw new Error("missing device.decrqss term callback")
@@ -98,6 +104,15 @@ async function regrade(
         })
       }
       if (sequence !== DECSTBM_QUERY) throw new Error(`unexpected query ${JSON.stringify(sequence)}`)
+      if (decstbm) {
+        return Promise.resolve({
+          match: decstbm.reason === "reply" ? pattern.exec(decstbm.raw) : null,
+          reason: decstbm.reason,
+          raw: decstbm.raw,
+          rawBase64: Buffer.from(decstbm.raw).toString("base64"),
+          ...(decstbm.sentinel && { sentinel: decstbm.sentinel }),
+        })
+      }
       const da1 = /\x1b\[\?[0-9;]*c/.exec(query.raw)
       if (da1) {
         return Promise.resolve({
@@ -136,7 +151,7 @@ describe("device.decrqss admitted-run regrade", () => {
         })
         continue
       }
-      const next = await regrade(row.query)
+      const next = await regrade(row.query, row.decstbm)
       instances.push({
         file: row.file,
         terminal: row.terminal,
@@ -168,6 +183,11 @@ describe("device.decrqss admitted-run regrade", () => {
         "a240ac80d66cf53d818ad3b9151f4791",
         "e40dd22ab0d8144583d5cb9b02e4487c",
         "ed1a16b871b927666bc8de7dc9912dc6",
+        // 27915's clean-tree WezTerm runs collected before 27919 landed (the SGR-only stimulus).
+        "c02903f02617684e516bdd55667dd8ba",
+        "4dfdb6e75245aa219adc0b5c53727726",
+        "9b013dcf6611d9806ad5a50d662dbe7e",
+        "5f4df380b9b1f8a02971f2d0e7cdb3ed",
       ].sort(),
     )
     expect(changed.every((row) => row.terminal === "wezterm")).toBe(true)
