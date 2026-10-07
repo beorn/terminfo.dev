@@ -13,10 +13,10 @@
       "sources": ["content/probes-apps/ghostty-1.3.1-macos.json"]
     },
     "app:xterm": {
-      "contextKey": "app:xterm@[\"app\",\"xterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/cdi2hk128w2mpxcx7rglx65dc9jamfv4-xterm-411/bin/xterm -name terminfo-xterm-container-daemon -fa DejaVu\\\\ Sans\\\\ Mono -fs 16 -geometry 100x30 -e bun /nix/store/41by8p0m56krqjjyiws3jgmw7ldck4kk-terminfo-linux-runner/index.js test --serve \",null]",
+      "contextKey": "app:xterm@[\"app\",\"xterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/cdi2hk128w2mpxcx7rglx65dc9jamfv4-xterm-411/bin/xterm -name terminfo-xterm-container-daemon -fa DejaVu\\\\ Sans\\\\ Mono -fs 16 -geometry 100x30 -e bun /nix/store/9k9yq98ncdzsy624ijp8s5sw7qkqv5ax-terminfo-linux-runner/index.js test --serve \",null]",
       "reviewer": "@dev/5 (automated review)",
-      "reason": "Pins the row to the 27914 re-collection on the merged suite 698c89366d6b (the fixed XTREPORTCOLORS and Sixel-geometry matchers, collected from a clean tree). The Linux apparatus holds several xterm runs that differ only by the frozen runner's store path; this names the one 27914 triages, so the site selects it. Same mechanism the app:ghostty and app:kitty rows use.",
-      "sources": ["content/probes-apps/xterm-411-linux-2511f4feefd4a95563bfe2d37d7f1bc9.json"]
+      "reason": "Pins the row to the 27914 re-collection on suite 621e92ea4818 (the decisive-negative XTGETXRES grading, plus the XTREPORTCOLORS and Sixel-geometry matchers, collected from a clean tree). The Linux apparatus holds several xterm runs that differ only by the frozen runner's store path; this names the one 27914 triages, so the site selects it. Same mechanism the app:ghostty and app:kitty rows use.",
+      "sources": ["content/probes-apps/xterm-411-linux-885b4bef3d656143bf129de67ee8efd7.json"]
     },
     "app:wezterm": {
       "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/mmvpz8sgpp4gg1lwsjv68knvkzqmsdwk-wezterm-0-unstable-2026-09-17/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun /nix/store/vz7958zbm6bxiqqvfzg60ah6l95p3n0z-terminfo-linux-runner/index.js test --serve \",null]",
