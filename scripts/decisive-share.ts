@@ -15,7 +15,9 @@
  *     and the bar verdict on BOTH clauses over the 52 (the declared 62 prints only as a labelled
  *     context line, never as the verdict). A context with no selected run
  *     prints "not measured — no selected run", a real tie with no reviewed row prints "ambiguous"
- *     naming the contexts, and neither is ever 0%.
+ *     naming the contexts, and neither is ever 0%. The header names the Release 1 exceptions once
+ *     with their ruling ids - ruled by name, not excluded by this reader, so a named row still
+ *     prints its own FAIL/PASS on the bar.
  *  2. ADMITTED RUNS — one line per admitted schema-v2 run under content/probes-apps, labelled
  *     `<terminal id> <version> <os> <runId>` with decisive/62 and decisive/52, so the Release 1 Linux
  *     runs and any admitted-but-unselected run stay visible by run id without polluting the bar rows.
@@ -78,6 +80,31 @@ export const RELEASE_1_CONTEXTS = [
 export interface ReleaseContext {
   terminalId: string
   os: string
+}
+
+/**
+ * The Release 1 named exceptions, ruled by name (@chief). They are excluded from the RELEASE
+ * DECISION by the ruling, not by this reader: every row is still graded on the bar, so a row listed
+ * here that fails on the 52 prints FAIL — the bar's own truth — and the header names it so the FAIL
+ * is not read as a release blocker (or the header read as a claim the reader excludes it).
+ */
+export const NAMED_EXCEPTIONS = [
+  {
+    terminalId: "kitty",
+    os: "macos",
+    note: "31/52 by contract - codimac is persistent hardware and can carry no legitimate disposable receipt (@chief e0bd3081)",
+  },
+  {
+    terminalId: "windows-terminal",
+    os: "windows",
+    note: "row owed by @dev/agy-other (27931); a named gap, not a silent omission, if absent at the act (@chief 009afbbc)",
+  },
+] as const
+
+/** The header line that names the exceptions once, with their ruling ids. */
+export function namedExceptionsLine(): string {
+  const named = NAMED_EXCEPTIONS.map((entry) => `${entry.terminalId}/${entry.os} - ${entry.note}`).join("; ")
+  return `named exceptions (excluded from the decision by name, NOT by this reader): ${named}`
 }
 
 /** A row that is neither decisive nor inconclusive: a present-but-error cell, or no cell at all. */
@@ -376,7 +403,7 @@ export function formatBarRow(row: BarRow): string[] {
     `    decisive/52     ${tier52.decisive}/${tier52.denominator} = ${tier52.decisivePct}%  (bar >= ${RELEASE_BAR.decisivePct}%)`,
     `    inconclusive/52 ${tier52.inconclusive}/${tier52.denominator} = ${tier52.inconclusivePct}%  (bar <= ${RELEASE_BAR.inconclusivePct}%)`,
     remainderLine(tier52.remainder),
-    `    verdict         ${tier52.pass ? "PASS" : "FAIL"}  (on the ratified 52; the named exceptions are excluded by name)`,
+    `    verdict         ${tier52.pass ? "PASS" : "FAIL"}  (on the ratified 52)`,
     `    context/62      decisive ${tier62.decisive}/${tier62.denominator} = ${tier62.decisivePct}%, inconclusive ${tier62.inconclusive}/${tier62.denominator} = ${tier62.inconclusivePct}%  (context only, not the bar)`,
   )
   return lines
@@ -409,6 +436,7 @@ function main(): void {
       `skipped ${report.legacySkipped} schema-v1 legacy documents (unverified callback results); ` +
       `${report.rejected} run documents rejected by that projection`,
   )
+  console.log(namedExceptionsLine())
   console.log("")
   console.log(`BAR ROWS — the site's selected run per Release 1 (terminal, os) context`)
   for (const row of contexts) {

@@ -17,6 +17,7 @@ import {
   decisiveShare,
   F2_MOVERS,
   formatBarRow,
+  namedExceptionsLine,
   pickContextRun,
   RATIFIED_TIER1_COUNT,
   ratifiedTierOneIds,
@@ -215,6 +216,11 @@ describe("release 1 decisive-count reader", () => {
     expect(printed).toContain("inconclusive/52 1/4 = 25%  (bar <= 1%)")
     expect(printed).toContain("verdict         FAIL  (on the ratified 52")
     expect(printed).toContain("context/62      decisive 3/6 = 50%, inconclusive 1/6 = 17%  (context only, not the bar)")
+    // The row verdict states the bar's own truth and does not claim the reader excludes the named
+    // exceptions; the header names them once, with their ruling ids, instead.
+    expect(printed).not.toContain("excluded by name")
+    expect(namedExceptionsLine()).toContain("kitty/macos - 31/52 by contract")
+    expect(namedExceptionsLine()).toContain("windows-terminal/windows")
   })
 
   it("reads the verdict on the ratified 52, not the 62, so a row that passes on 52 reads PASS", () => {
