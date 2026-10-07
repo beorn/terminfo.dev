@@ -436,14 +436,22 @@ export function refusalForProducedRun(run: ProducedRun, options: RefusalOptions)
   return null
 }
 
+/**
+ * The one key a census row and a produced run share. An app row is its (id, os). A headless engine
+ * row is its id alone: the census cannot know the host os, and the run records the host it ran on,
+ * so an id/os key matched no headless run and every engine row read uncovered (#27929 D7).
+ */
+const coverageKey = (kind: unknown, id: unknown, os: unknown): string =>
+  kind === "headless" ? `headless:${String(id)}` : `${String(id)}/${String(os)}`
+
 /** Contexts in the census that produced no run at all, each with its own named reason. */
 export function uncoveredContexts(
   census: readonly CollectionContext[],
-  producedContexts: readonly string[],
+  producedRuns: readonly ProducedRun[],
 ): readonly { readonly context: CollectionContext; readonly reason: string }[] {
-  const produced = new Set(producedContexts)
+  const produced = new Set(producedRuns.map((run) => coverageKey(run.target?.kind, run.target?.id, run.target?.os)))
   return census
-    .filter((entry) => !produced.has(`${entry.id}/${entry.os}`))
+    .filter((entry) => !produced.has(coverageKey(entry.kind, entry.id, entry.os)))
     .map((entry) => ({
       context: entry,
       reason:
@@ -560,10 +568,7 @@ if (import.meta.main) {
       runChild(["bun", ADMIT, "--for", path], `admit-run ${contextOf(run)}`)
       produced.push(run)
     }
-    const gaps = uncoveredContexts(
-      census,
-      produced.map((run) => contextOf(run)),
-    )
+    const gaps = uncoveredContexts(census, produced)
     console.log(
       gaps.length === 0
         ? `Every one of the ${census.length} Release 1 contexts produced a run.`

@@ -137,18 +137,29 @@ describe("release 1 collection census", () => {
 
   it("names each context that produced no run, with its own reason", () => {
     const all = census()
-    const uncovered = uncoveredContexts(all, ["xterm/linux"])
+    const uncovered = uncoveredContexts(all, [cleanRun()])
     expect(uncovered).toHaveLength(21)
     expect(uncovered.find((entry) => entry.context.id === "windows-terminal")?.reason).toMatch(
       /no owner and no hosted workflow/,
     )
     expect(uncovered.find((entry) => entry.context.id === "kitty")?.reason).toMatch(/linux-container/)
-    expect(
-      uncoveredContexts(
-        all,
-        all.map((entry) => `${entry.id}/${entry.os}`),
-      ),
-    ).toHaveLength(0)
+    // A produced run carries the os it was MEASURED on: an app its own, a headless engine the host's.
+    const measured = all.map((entry) =>
+      cleanRun({ target: { kind: entry.kind, id: entry.id, os: entry.kind === "headless" ? "linux" : entry.os } }),
+    )
+    expect(uncoveredContexts(all, measured)).toHaveLength(0)
+  })
+
+  it("credits an admitted headless engine run to its engine row, whatever host os it records (#27929 D7)", () => {
+    // The census keys an engine row at os "unknown", while the run itself records the host it ran on
+    // ("linux"), so a key of id/os matched no headless run and every engine row read "no run produced"
+    // right after its run was admitted (rehearsed on 950882d4f34d, xtermjs 7866d892).
+    const all = census()
+    const headless = cleanRun({ target: { kind: "headless", id: "xtermjs", os: "linux" }, provenance: undefined })
+    const uncovered = uncoveredContexts(all, [headless]).map((entry) => `${entry.context.kind}:${entry.context.id}`)
+    expect(uncovered).not.toContain("headless:xtermjs")
+    expect(uncovered).toContain("app:xterm")
+    expect(uncovered).toHaveLength(21)
   })
 
   it("leaves a Linux row uncollectable, named, when no committed run can be read", () => {
