@@ -477,13 +477,12 @@ describe("device contracts without prior coverage", () => {
       expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
     }
-    // Status 0 is a complete answer that refuses the name: inconclusive, never a negative claim.
-    for (const result of [
-      probe.headless(headless("\x1bP0+r7465726d4e616d65\x1b\\")),
-      await probe.terminal(app("\x1bP0+r7465726d4e616d65\x1b\\")),
-    ]) {
-      expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
-      expect(result.assertions).toBeUndefined()
+    // The contract asks exactly one name, so a status-0 refusal is this probe's measured negative
+    // (27914) — unlike the shared refusal branch, which stays inconclusive for multi-subject probes.
+    const refusal = "\x1bP0+r7465726d4e616d65\x1b\\"
+    for (const result of [probe.headless(headless(refusal)), await probe.terminal(app(refusal))]) {
+      expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+      expect(result.assertions).toMatchObject([{ kind: "negative", observed: refusal }])
     }
     // A missing ST, or a status-1 frame with no value, is malformed rather than absent.
     for (const raw of ["\x1bP1+r7465726d4e616d65", "\x1bP1+r7465726d4e616d65=\x1b\\"]) {
