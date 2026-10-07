@@ -171,10 +171,12 @@ describe("release 1 Linux launcher flags", () => {
     expect(ledger.kitty?.clipboardProfile).toBe("default")
     expect(ledger.kitty?.selection).toBe("site-selected")
     expect(ledger.xterm?.clipboardProfile).toBe("default")
+    // 27916 gave both an admission path (AC1 WezTerm's identity profile, AC2 Alacritty's apparatus provenance),
+    // and each now has a clean admitted run (27915 for WezTerm), so the site selects every Linux row.
     for (const id of ["alacritty", "wezterm"]) {
       const row = ledger[id]
-      expect(row?.selection).toBe("newest-admitted")
-      expect(row?.exclusion).toBeTruthy()
+      expect(row?.selection).toBe("site-selected")
+      expect(row?.exclusion).toBeFalsy()
     }
   })
 
