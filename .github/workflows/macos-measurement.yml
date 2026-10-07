@@ -3,6 +3,10 @@ name: macos-measurement
 on:
   workflow_dispatch:
     inputs:
+      identity_probe_only:
+        description: "Sample hosted VM identity only; no collector or ownership receipt"
+        type: boolean
+        default: false
       cli_version:
         description: "terminfo.dev CLI version to install/test (or 'local' to test repo build)"
         required: true
@@ -10,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,6 +22,7 @@ concurrency:
 
 jobs:
   measure-macos:
+    if: ${{ !inputs.identity_probe_only }}
     name: macOS 4-Terminal Measurement
     runs-on: macos-latest
     timeout-minutes: 30
@@ -55,7 +61,8 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      - name: Prepare Global Node & CLI Environment
+      - &prepare-cli
+        name: Prepare Global Node & CLI Environment
         run: |
           echo "=== Setting up global symlinks ==="
           NODE_BIN="$(which node)"
@@ -85,7 +92,8 @@ jobs:
           echo "=== Warmup check ==="
           terminfo --version
 
-      - name: Install terminal matrix (iTerm2, Ghostty via Brew; Alacritty via GitHub release)
+      - &install-terminals
+        name: Install terminal matrix (iTerm2, Ghostty via Brew; Alacritty via GitHub release)
         continue-on-error: true
         run: |
           export HOMEBREW_NO_AUTO_UPDATE=1
@@ -468,3 +476,88 @@ jobs:
         with:
           name: macos-terminal-measurement-artifacts
           path: /tmp/measurement-artifacts
+
+  probe-macos-identity:
+    if: ${{ inputs.identity_probe_only }}
+    name: Mac identity sample ${{ matrix.sample }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [one, two]
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      IDENTITY_OUTPUT_DIR: ${{ runner.temp }}/mac-identity
+    steps:
+      - name: Sample VM identity at job start
+        env:
+          IDENTITY_PHASE: start
+        run: &sample-macos-identity |
+          node --input-type=module <<'NODE'
+          import { spawnSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { mkdirSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const env = process.env;
+          function sample(command, args, field) {
+            const result = spawnSync(command, args, { encoding: 'utf8' });
+            const output = result.stdout ?? '';
+            const value = field ? (output.match(new RegExp('"' + field + '"\\s*=\\s*"([^"\\r\\n]+)"'))?.[1] ?? '') : output.trim();
+            const byteLength = Buffer.byteLength(value);
+            return { command: [command, ...args].join(' ') + (field ? ' [field ' + field + ']' : ''),
+              exitStatus: result.status, spawnErrorCode: result.error?.code ?? null, byteLength,
+              available: result.status === 0 && byteLength > 0,
+              sha256: byteLength ? createHash('sha256').update(value).digest('hex') : null };
+          }
+          const identifiers = {
+            uuid: sample('ioreg', ['-rd1', '-c', 'IOPlatformExpertDevice'], 'IOPlatformUUID'),
+            serial: sample('ioreg', ['-rd1', '-c', 'IOPlatformExpertDevice'], 'IOPlatformSerialNumber'),
+            boot: sample('sysctl', ['-n', 'kern.bootsessionuuid']),
+          };
+          let job;
+          try {
+            let url = `${env.GITHUB_API_URL}/repos/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}/attempts/${env.GITHUB_RUN_ATTEMPT}/jobs?per_page=100`;
+            const matches = [];
+            while (url) {
+              const response = await fetch(url, { headers: { Authorization: `Bearer ${env.GH_TOKEN}`, Accept: 'application/vnd.github+json' } });
+              if (!response.ok) throw new Error(`Actions jobs API HTTP ${response.status}`);
+              const data = await response.json();
+              if (!Array.isArray(data.jobs)) throw new Error('Actions jobs API omitted jobs array');
+              matches.push(...data.jobs.filter(row => row.runner_name === env.RUNNER_NAME && row.status === 'in_progress'));
+              url = response.headers.get('link')?.match(/<([^>]+)>; rel="next"/)?.[1] ?? '';
+            }
+            job = { matchCount: matches.length, id: matches.length === 1 ? matches[0].id : null,
+              finding: matches.length === 1 ? null : 'Expected exactly one in-progress job matching RUNNER_NAME' };
+          } catch (error) {
+            job = { matchCount: null, id: null, finding: error.message };
+          }
+          const result = { sampledAt: new Date().toISOString(), phase: env.IDENTITY_PHASE, identifiers, job,
+            runId: env.GITHUB_RUN_ID, runAttempt: env.GITHUB_RUN_ATTEMPT,
+            runner: { environment: env.RUNNER_ENVIRONMENT, os: env.RUNNER_OS, arch: env.RUNNER_ARCH,
+              name: env.RUNNER_NAME, imageOS: env.ImageOS, imageVersion: env.ImageVersion } };
+          if (!env.IDENTITY_OUTPUT_DIR || !['start', 'collection'].includes(env.IDENTITY_PHASE)) throw new Error('Missing identity output directory or phase');
+          mkdirSync(env.IDENTITY_OUTPUT_DIR, { recursive: true });
+          writeFileSync(join(env.IDENTITY_OUTPUT_DIR, `${env.IDENTITY_PHASE}.json`), JSON.stringify(result, null, 2) + '\n');
+          console.log(JSON.stringify(result));
+          NODE
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - *prepare-cli
+      - *install-terminals
+      - name: Sample VM identity where collection would start
+        env:
+          IDENTITY_PHASE: collection
+        run: *sample-macos-identity
+      - name: Upload identity facts only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-identity-${{ matrix.sample }}
+          path: ${{ runner.temp }}/mac-identity
+          if-no-files-found: error
