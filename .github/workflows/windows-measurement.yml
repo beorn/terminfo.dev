@@ -46,9 +46,13 @@ jobs:
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" start "$OUT/job-start.json"
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
@@ -56,6 +60,7 @@ jobs:
       - name: Build and install the current collector
         run: |
           set -euo pipefail
+          git fetch origin main:refs/remotes/origin/main || true
           bun install
           bun scripts/build-cli.ts
           npm install -g ./packages/terminfo.dev
@@ -91,23 +96,24 @@ jobs:
 
           WIN_OUT="$(powershell -NoProfile -Command "[System.IO.Path]::GetFullPath('$OUT')")"
           WIN_COLLECTOR="$(powershell -NoProfile -Command "[System.IO.Path]::GetFullPath('$COLLECTOR')")"
+          WIN_COMMAND="$(powershell -NoProfile -Command "[System.IO.Path]::GetFullPath('$COMMAND_PATH')")"
 
-          cat > "$COMMAND_PATH" <<BATCH
+          cat > "$COMMAND_PATH" <<EOF
           @echo off
-          set "TERMINFO_DISPOSABLE_RECEIPT=$WIN_OUT\\host-measured.json"
+          set "TERMINFO_DISPOSABLE_RECEIPT=${WIN_OUT}\\host-measured.json"
           :wait_loop
-          if not exist "$WIN_OUT\\collector-ready" (
+          if not exist "${WIN_OUT}\\collector-ready" (
             powershell -NoProfile -Command "Start-Sleep -Milliseconds 500"
             goto wait_loop
           )
-          call "$WIN_COLLECTOR" test --output "$WIN_OUT\\run.json" > "$WIN_OUT\\collector.log" 2>&1
-          echo %ERRORLEVEL% > "$WIN_OUT\\collector-exit"
+          call "${WIN_COLLECTOR}" test --output "${WIN_OUT}\\run.json" > "${WIN_OUT}\\collector.log" 2>&1
+          echo %ERRORLEVEL% > "${WIN_OUT}\\collector-exit"
           exit /b %ERRORLEVEL%
-          BATCH
+          EOF
 
           case "$APP_ID" in
             windows-terminal)
-              C:/WindowsTerminal/wt.exe -d . cmd.exe /c "$COMMAND_PATH" &
+              C:/WindowsTerminal/wt.exe -d . cmd.exe /c "$WIN_COMMAND" &
               ;;
             *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
           esac
