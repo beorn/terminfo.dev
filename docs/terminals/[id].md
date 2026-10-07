@@ -19,8 +19,6 @@ const runs = [defaultRun, ...JSON.parse(p.otherRuns || '[]')].filter(Boolean)
 const runSha = ref(defaultRun?.sha256 || '')
 const selectedRun = computed(() => runs.find(run => run.sha256 === runSha.value))
 const counts = computed(() => selectedRun.value?.counts)
-const inconclusive = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'inconclusive').length)
-const errors = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'error').length)
 const namedNotTested = computed(() => selectedRun.value?.notTestedCoverage?.namedCount ?? 0)
 const measuredBar = computed(() => barOverMeasured(selectedRun.value?.cells ?? {}, data.releaseScope.measuredIds))
 const stale = computed(() => selectedRun.value ? isStaleSuite(selectedRun.value.suiteFreshness) : false)
@@ -170,11 +168,11 @@ const breadcrumbParent = (() => {
     <span v-if="measuredBar.errors" class="result-share-error" :style="{ width: `${measuredBar.errors / measuredBar.denominator * 100}%` }"></span>
   </div>
   <ul class="result-counts">
-    <li><strong>{{ counts.supported }}</strong> supported <small>Positive evidence</small></li>
-    <li><strong>{{ counts.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
-    <li><strong>{{ inconclusive }}</strong> inconclusive <small>Cannot decide</small></li>
-    <li><strong>{{ counts.notTested }}</strong> not tested <small>{{ namedNotTested ? namedNotTested + ' named: no applicable observable' : 'No observation' }}</small></li>
-    <li><strong>{{ errors }}</strong> errors <small>Probe error</small></li>
+    <li><strong>{{ measuredBar.supported }}</strong> supported <small>Positive evidence</small></li>
+    <li><strong>{{ measuredBar.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
+    <li><strong>{{ measuredBar.inconclusive }}</strong> inconclusive <small>Cannot decide</small></li>
+    <li><strong>{{ measuredBar.untested }}</strong> not tested <small>{{ namedNotTested ? namedNotTested + ' named: no applicable observable' : 'No observation' }}</small></li>
+    <li><strong>{{ measuredBar.errors }}</strong> errors <small>Probe error</small></li>
   </ul>
   <p class="score-detail">Inconclusive includes checks blocked by permissions or policy before execution. This distribution is not an overall compatibility score. <a href="/contribute#reading-results">How to read results</a></p>
   <details class="unmeasured">

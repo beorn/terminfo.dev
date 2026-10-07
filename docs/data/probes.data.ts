@@ -16,6 +16,7 @@ import { publicResults, type PublicProjection, type PublicCurrentResult } from "
 import { loadReleaseScope } from "./load-release-scope.ts"
 import {
   barOverMeasured,
+  coverageSentence,
   isStaleSuite,
   staleCaption,
   tierLine,
@@ -290,7 +291,11 @@ export function loadFullProbes(): ProbeData {
   const releaseBars: Record<string, MeasuredBar> = {}
   const releaseStale: Record<string, string | null> = {}
   for (const [key, { selected }] of byTarget) {
-    releaseBars[key] = barOverMeasured(selected.cells, release.measuredIds)
+    const bar = barOverMeasured(selected.cells, release.measuredIds)
+    if (bar.denominator && coverageSentence(bar) === "No selected run") {
+      throw new Error(`release bar ${key} has a denominator but no coverage sentence`)
+    }
+    releaseBars[key] = bar
     releaseStale[key] = isStaleSuite(selected.suiteFreshness) ? staleCaption(selected.measuredAt) : null
   }
   const result: ProbeData = {
