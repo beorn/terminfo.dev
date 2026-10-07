@@ -237,7 +237,7 @@ export function placeOwnershipReceipt(
     }
     const current = JSON.parse(bytes.toString("utf8")) as HostedFields
     const os = current.runner.os
-    if (!(os in HOSTED_IDENTITY_SOURCES)) {
+    if (!Object.hasOwn(HOSTED_IDENTITY_SOURCES, os)) {
       throw new Error(
         `Hosted receipt ${receiptPath}: runner.os ${JSON.stringify(os)} has no ratified identity source/scope table`,
       )

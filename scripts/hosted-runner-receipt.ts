@@ -21,7 +21,7 @@ function decimal(key: string): string {
 
 function sampleIdentity(): Record<string, string> {
   const os = required("RUNNER_OS")
-  if (!(os in HOSTED_IDENTITY_SOURCES)) {
+  if (!Object.hasOwn(HOSTED_IDENTITY_SOURCES, os)) {
     throw new Error(
       `Hosted receipt has no producer for RUNNER_OS=${JSON.stringify(os)}; ratified entries are ${Object.keys(HOSTED_IDENTITY_SOURCES).join(", ")}`,
     )
@@ -29,18 +29,16 @@ function sampleIdentity(): Record<string, string> {
   const ratified = HOSTED_IDENTITY_SOURCES[os as keyof typeof HOSTED_IDENTITY_SOURCES]
   return Object.fromEntries(
     Object.entries(ratified.sources).map(([field, source]) => {
-      let value: string | undefined
-      if ("command" in source && "args" in source && "pattern" in source) {
-        const result = spawnSync(source.command, source.args, { encoding: "utf8" })
-        if (result.error || result.status !== 0) {
-          throw new Error(
-            `Hosted receipt ${field}: ${source.command} failed with exit ${result.status}, signal ${result.signal}; cannot measure ${source.source}`,
-          )
-        }
-        value = new RegExp(source.pattern).exec(result.stdout)?.[1]
-      } else if ("source" in source && typeof source.source === "string" && isAbsolute(source.source)) {
-        value = readFileSync(source.source, "utf8").trim()
+      if (!("command" in source && "args" in source && "pattern" in source)) {
+        throw new Error(`Hosted receipt ${field}: source ${source.source} is not produced by the hosted producer`)
       }
+      const result = spawnSync(source.command, source.args, { encoding: "utf8" })
+      if (result.error || result.status !== 0) {
+        throw new Error(
+          `Hosted receipt ${field}: ${source.command} failed with exit ${result.status}, signal ${result.signal}; cannot measure ${source.source}`,
+        )
+      }
+      const value = new RegExp(source.pattern).exec(result.stdout)?.[1]
       if (!value) {
         throw new Error(`Hosted receipt ${field}: ${source.source} returned no value; no identity is substituted`)
       }

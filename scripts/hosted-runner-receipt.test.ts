@@ -216,6 +216,20 @@ if (cmd.includes('Get-NetAdapter')) {
     raw.mac = "00:00:00:00:00:00"
     await writeFile(join(dir, "powershell.exe"), fakePs(), { mode: 0o755 })
     await expect(run("start", join(dir, "degenerate-zero-mac.json"))).rejects.toThrow(/degenerate all-zero MAC/)
+
+    // Refusal test 4: Untrusted RUNNER_OS prototype property
+    await expect(
+      promisify(execFile)(
+        "node",
+        [
+          "--experimental-strip-types",
+          fileURLToPath(new URL("./hosted-runner-receipt.ts", import.meta.url)),
+          "start",
+          join(dir, "untrusted-os.json"),
+        ],
+        { env: { ...env, RUNNER_OS: "toString" } },
+      ),
+    ).rejects.toThrow(/Hosted receipt has no producer for RUNNER_OS="toString"/)
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
     await rm(dir, { recursive: true, force: true })

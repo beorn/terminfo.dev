@@ -242,6 +242,25 @@ test("hosted admission refuses OS-specific non-reuse witnesses before placement,
   }
 })
 
+test("hosted admission refuses untrusted runner.os prototype properties by name", () => {
+  for (const maliciousOs of ["toString", "constructor", "valueOf"]) {
+    const source = join(temp("terminfo-hosted-source-"), "run.json")
+    const content = temp("terminfo-hosted-content-")
+    const receipt = hostedReceipt("Windows", "1001")
+    receipt.runner.os = maliciousOs
+    expect(() =>
+      placeOwnershipReceipt(
+        source,
+        ownershipBesideRun(source, receipt),
+        "untrusted-os",
+        { kind: "app", id: "fixture", os: maliciousOs },
+        content,
+      ),
+    ).toThrow(new RegExp(`runner\\.os "${maliciousOs}" has no ratified identity source/scope table`))
+    expect(existsSync(join(content, "receipts", "untrusted-os.json"))).toBe(false)
+  }
+})
+
 test("hosted admission reads every prior receipt and names corrupt history instead of skipping it", () => {
   const source = join(temp("terminfo-hosted-source-"), "run.json")
   const content = temp("terminfo-hosted-content-")

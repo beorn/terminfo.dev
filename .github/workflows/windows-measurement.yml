@@ -2,9 +2,6 @@ name: windows-measurement
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - task/27931-windows-terminal-workflow
 
 permissions:
   contents: read
@@ -73,13 +70,18 @@ jobs:
           set -euo pipefail
           case "$APP_ID" in
             windows-terminal)
-              WT_DIR="C:/WindowsTerminal"
-              if [ ! -f "$WT_DIR/wt.exe" ]; then
-                curl -L -s -f "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -o "$RUNNER_TEMP/wt.zip"
-                powershell -NoProfile -Command "Expand-Archive -Path '$RUNNER_TEMP/wt.zip' -DestinationPath '$RUNNER_TEMP/wt_unpacked' -Force"
-                mkdir -p "$WT_DIR"
-                cp -r "$RUNNER_TEMP"/wt_unpacked/terminal-*/* "$WT_DIR/"
+              WT_DIR="$RUNNER_TEMP/windows-terminal"
+              if [ -e "$WT_DIR" ]; then
+                echo "Target directory $WT_DIR already exists; refusing reuse" >&2
+                exit 1
               fi
+              curl -L -s -f "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -o "$RUNNER_TEMP/wt.zip"
+              powershell -NoProfile -Command "Expand-Archive -Path '$RUNNER_TEMP/wt.zip' -DestinationPath '$RUNNER_TEMP/wt_unpacked' -Force"
+              mkdir -p "$WT_DIR"
+              cp -r "$RUNNER_TEMP"/wt_unpacked/terminal-*/* "$WT_DIR/"
+              touch "$WT_DIR/.portable"
+              mkdir -p "$WT_DIR/settings"
+              printf '%s\n' '{"$schema":"https://aka.ms/terminal-profiles-schema","profiles":{"defaults":{"closeOnExit":"always"}}}' > "$WT_DIR/settings/settings.json"
               test -f "$WT_DIR/wt.exe" || { echo "Windows Terminal binary missing at $WT_DIR/wt.exe" >&2; exit 1; }
               ;;
             *) echo "Unknown Windows measurement app: $APP_ID" >&2; exit 1 ;;
@@ -93,27 +95,41 @@ jobs:
           set -euo pipefail
           OUT="$RUNNER_TEMP/measurement-artifacts"
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
-          COMMAND_PATH="$RUNNER_TEMP/collect.bat"
+          COMMAND_PATH="$RUNNER_TEMP/collect.ps1"
 
-          WIN_OUT="$(powershell -NoProfile -Command "[System.IO.Path]::GetFullPath('$OUT')")"
-          WIN_COMMAND="$(powershell -NoProfile -Command "[System.IO.Path]::GetFullPath('$COMMAND_PATH')")"
+          WIN_OUT="$(cygpath -w "$OUT")"
+          WIN_COMMAND="$(cygpath -w "$COMMAND_PATH")"
+          NODE_DIR="$(cygpath -w "$(dirname "$(command -v node)")")"
+          TERMINFO_DIR="$(cygpath -w "$(dirname "$(command -v terminfo)")")"
+          WT_DIR="$(cygpath -w "$RUNNER_TEMP/windows-terminal")"
 
-          cat > "$COMMAND_PATH" <<EOF
-          @echo off
-          set "TERMINFO_DISPOSABLE_RECEIPT=${WIN_OUT}\\host-measured.json"
-          :wait_loop
-          if not exist "${WIN_OUT}\\collector-ready" (
-            powershell -NoProfile -Command "Start-Sleep -Milliseconds 500"
-            goto wait_loop
-          )
-          call terminfo test --output "${WIN_OUT}\\run.json" > "${WIN_OUT}\\collector.log" 2>&1
-          echo %ERRORLEVEL% > "${WIN_OUT}\\collector-exit"
-          exit /b %ERRORLEVEL%
-          EOF
+          cat > "$COMMAND_PATH" <<PS1
+          \$ErrorActionPreference = "Continue"
+          \$env:PATH = "$WT_DIR;$NODE_DIR;$TERMINFO_DIR;" + \$env:PATH
+          \$env:TERMINFO_TARGET_VERSION = "1.21.2361.0"
+          \$env:TERMINFO_DISPOSABLE_RECEIPT = "$WIN_OUT\\host-measured.json"
+
+          \$attempts = 0
+          while (-not (Test-Path "$WIN_OUT\\collector-ready")) {
+            \$attempts++
+            if (\$attempts -ge 180) {
+              Set-Content -Path "$WIN_OUT\\collector.log" -Value "Receipt self-parse never succeeded; collection refused"
+              Set-Content -Path "$WIN_OUT\\collector-exit" -Value "1"
+              exit 1
+            }
+            Start-Sleep -Seconds 1
+          }
+
+          & terminfo test --output "$WIN_OUT\\run.json" *>&1 | Out-File -FilePath "$WIN_OUT\\collector.log" -Encoding utf8
+          \$exitCode = \$LASTEXITCODE
+          if (\$null -eq \$exitCode) { \$exitCode = 0 }
+          Set-Content -Path "$WIN_OUT\\collector-exit" -Value \$exitCode -Encoding ascii
+          exit \$exitCode
+          PS1
 
           case "$APP_ID" in
             windows-terminal)
-              C:/WindowsTerminal/wt.exe -d . cmd.exe /c "$WIN_COMMAND" &
+              "$RUNNER_TEMP/windows-terminal/wt.exe" -d "$WIN_OUT" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
               ;;
             *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
           esac
