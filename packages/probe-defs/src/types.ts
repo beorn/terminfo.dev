@@ -119,7 +119,24 @@ export interface AppLaunchReceipt {
   sourceArtifact: AppSourceArtifact
 }
 
-/** An installed app may come from a retained file or a measured sealed macOS system volume. */
+/**
+ * A source artifact DERIVED from an upstream tree: a deterministic tar of a recursive `src`, flat
+ * hashed, with the tree hash it was made from (@cto 2026-10-06, 27892). `narSri` is the trust root -
+ * the tree hash nixpkgs pins for the source - and `sha256` is the derived tar's flat hash, the one
+ * the image re-measures. Its presence is NAMED by `kind`; an absent kind keeps the flat-archive.
+ */
+export interface DerivedSourceTreeArtifact {
+  kind: "derived-source-tree"
+  url: string
+  revision: string
+  narSri: string
+  sha256: string
+}
+
+/**
+ * An installed app may come from a retained file, a measured sealed macOS system volume, or a source
+ * tree this repo derived a flat artifact from.
+ */
 export type AppSourceArtifact =
   | { path: string; sha256: string }
   | {
@@ -130,6 +147,7 @@ export type AppSourceArtifact =
       sealed: true
       codeSignature: { identifier: string; cdHash: string; strictVerified: true }
     }
+  | DerivedSourceTreeArtifact
 
 /**
  * Immutable declaration of the probes available in one suite revision.
@@ -253,7 +271,7 @@ export interface ProbeRun {
 /** One native-app receipt, independent of which OS executed the collector. */
 export interface RunProvenance {
   executable: { path: string; sha256: string; version: string }
-  sourceArtifact: { url: string; sha256: string }
+  sourceArtifact: { url: string; sha256: string } | DerivedSourceTreeArtifact
   runtime: {
     imageId: string
     imageTarSha256: string
