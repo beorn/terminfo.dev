@@ -794,6 +794,37 @@ it("reports undeclared geometry reads as collector errors without invented evide
   }
 })
 
+// 27863: a feature whose app callback reads the measured grid must declare termNeedsGeometry; a
+// missing declaration is a collector error that silently costs the feature every run.
+it("grades cursor.shape and cursor.reverse-wrap when each declares its measured-grid read", async () => {
+  verifiedBatchFixture()
+  const replies = ["\x1b[1;1R", "\x1b[2;2R", "\x1b[1;61R"]
+  process.stdout.write = ((text: string) => {
+    if (text === "\x1b[6n") {
+      const reply = replies.shift()
+      if (reply) process.stdin.emit("data", Buffer.from(reply))
+    }
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["cursor.shape", "cursor.reverse-wrap"],
+    capture: async ({ role, label }) => ({
+      frame: { role, label, capturedAt: Date.now(), ref: `sha256:${"a".repeat(64)}` },
+      trace: {},
+    }),
+    ownedTerminal: geometryOwner(measured(24, 61)),
+  })
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.observations.find((item) => item.featureId === "cursor.shape")).toMatchObject({
+    outcome: "inconclusive",
+    evidence: "pixels",
+  })
+  expect(batch.observations.find((item) => item.featureId === "cursor.reverse-wrap")).toMatchObject({
+    outcome: "supported",
+    evidence: "query",
+  })
+})
+
 // The public inline runner must put both callback writes and nested CPR queries on its selected TTY.
 it("uses the injected TTY for callback writes, columns, and nested cursor queries", async () => {
   verifiedBatchFixture()
