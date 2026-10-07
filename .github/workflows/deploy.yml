@@ -22,7 +22,7 @@ jobs:
         with:
           bun-version: latest
 
-      - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/source-siblings
 
       - name: Validate content
         run: bun run validate
@@ -61,6 +61,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - uses: actions/download-artifact@v5
         with:

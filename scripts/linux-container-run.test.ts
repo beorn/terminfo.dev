@@ -8,6 +8,7 @@
  */
 
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   chmodSync,
   copyFileSync,
@@ -276,12 +277,16 @@ describe("frame-less container run", () => {
 
 describe("explicit Linux image selection", () => {
   it.each([
-    ["unknown", "default", "Unknown Kitty preset"],
-    ["current", "unknown", "Unknown clipboard profile"],
-  ])("refuses invalid preset/profile %s/%s before preparing a run", (preset, profile, error) => {
-    const result = spawnSync("bash", [launcher, "--preset", preset, "--clipboard-profile", profile, dir], {
-      encoding: "utf8",
-    })
+    ["bogus", "default", "default", "Unknown target"],
+    ["kitty", "unknown", "default", "Kitty takes --preset baseline|current"],
+    ["xterm", "baseline", "default", "xterm has only the default preset"],
+    ["kitty", "current", "unknown", "Unknown clipboard profile"],
+  ])("refuses invalid target/preset/profile %s/%s/%s before preparing a run", (target, preset, profile, error) => {
+    const result = spawnSync(
+      "bash",
+      [launcher, "--target", target, "--preset", preset, "--clipboard-profile", profile, dir],
+      { encoding: "utf8" },
+    )
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain(error)
     expect(existsSync(join(dir, "prep"))).toBe(false)
@@ -319,7 +324,7 @@ exit 0
     }
     const result = spawnSync(
       "bash",
-      [fixtureLauncher, "--preset", "current", "--clipboard-profile", "default", output],
+      [fixtureLauncher, "--target", "kitty", "--preset", "current", "--clipboard-profile", "default", output],
       {
         encoding: "utf8",
         env: { ...process.env, PATH: `${bins}:${process.env.PATH ?? ""}`, CALL_LOG: calls },
@@ -347,7 +352,7 @@ describe("private finite launch arguments", () => {
   it("refuses an unknown flag before preparing or building", () => {
     const result = spawnSync(
       "bash",
-      [launcher, "--preset", "current", "--clipboard-profile", "default", "--unknown", dir],
+      [launcher, "--target", "kitty", "--preset", "current", "--clipboard-profile", "default", "--unknown", dir],
       { encoding: "utf8" },
     )
     expect(result.status).toBe(2)
@@ -364,11 +369,43 @@ describe("private finite launch arguments", () => {
   ])("refuses invalid supplied filter %j before preparing or building", (suffix, message) => {
     const result = spawnSync(
       "bash",
-      [launcher, "--preset", "current", "--clipboard-profile", "default", "--ids", ...suffix, dir],
+      [launcher, "--target", "kitty", "--preset", "current", "--clipboard-profile", "default", "--ids", ...suffix, dir],
       { encoding: "utf8" },
     )
     expect(result.status).toBe(2)
     expect(result.stderr).toContain(message)
     expect(readdirSync(dir)).toEqual([])
+  })
+})
+
+describe("in-image source archive proof", () => {
+  it("refuses a wrong declared flat hash for either proof kind through one comparison", () => {
+    // A matching real run can never exercise a mismatch, so it is proven here: the derived kind and
+    // the flat kind reach this SAME comparison, and a wrong pin or a missing declared hash is refused
+    // (@cto 2026-10-06, 27892).
+    const archive = join(dir, "derived-source-tar")
+    writeFileSync(archive, "derived tar bytes\n")
+    const digest = createHash("sha256").update(readFileSync(archive)).digest()
+    const sri = (bytes: Buffer) => `sha256-${bytes.toString("base64")}`
+    const check = (measured: string, declared: string) =>
+      spawnSync(
+        "bash",
+        [
+          "-c",
+          'source "$1"; verify_source_archive_hash "$2" "$3" "Loaded ghostty source"',
+          "_",
+          launcher,
+          measured,
+          declared,
+        ],
+        { encoding: "utf8" },
+      )
+    expect(check(digest.toString("hex"), sri(digest)).status).toBe(0)
+    const mismatch = check(digest.toString("hex"), sri(createHash("sha256").update("another tar").digest()))
+    expect(mismatch.status).toBe(2)
+    expect(mismatch.stderr).toContain("Loaded ghostty source archive differs from declared fixed hash")
+    const undeclared = check(digest.toString("hex"), "")
+    expect(undeclared.status).toBe(2)
+    expect(undeclared.stderr).toContain("Loaded ghostty source has no declared flat sha256")
   })
 })

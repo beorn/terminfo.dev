@@ -1,0 +1,31 @@
+{
+  "schema": "vendor-kit/source-siblings/v1",
+  "siblings": [
+    {
+      "name": "silvery",
+      "repository": "beorn/silvery",
+      "commit": "88d5ab9a4576849d6699c29ab243b5aa08c98bf1",
+      "pack": true
+    },
+    {
+      "name": "@silvery/ansi",
+      "repository": "beorn/silvery",
+      "commit": "88d5ab9a4576849d6699c29ab243b5aa08c98bf1",
+      "pack": true,
+      "directory": "packages/ansi"
+    },
+    {
+      "name": "@silvery/commander",
+      "repository": "beorn/silvery",
+      "commit": "88d5ab9a4576849d6699c29ab243b5aa08c98bf1",
+      "pack": true,
+      "directory": "packages/commander"
+    },
+    {
+      "name": "loggily",
+      "repository": "beorn/loggily",
+      "commit": "115f855f63d7666e821b7cfbf1253ded91348d75",
+      "pack": true
+    }
+  ]
+}

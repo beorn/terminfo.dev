@@ -1126,6 +1126,47 @@ describe("selected results", () => {
     }
   })
 
+  it("accepts a derived source tree for an app launch and refuses one with no upstream revision", () => {
+    const appLaunch = {
+      bundlePath: "/Applications/Ghostty.app",
+      cfBundleShortVersionString: "1.3.1",
+      cfBundleVersion: "1",
+      executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      executableSha256: "a".repeat(64),
+      sourceArtifact: {
+        kind: "derived-source-tree",
+        url: "https://github.com/ghostty-org/ghostty/archive/refs/tags/v1.3.1.tar.gz",
+        revision: "refs/tags/v1.3.1",
+        narSri: "sha256-+ddMmUe9Jjkun4qqW8XFXVgwVZdVHsGWcQzndgIlBjQ=",
+        sha256: "b".repeat(64),
+      },
+    }
+    const candidate = (launch: unknown) =>
+      parseRun(
+        "derived-source.json",
+        JSON.stringify(
+          run("derived-source", {
+            target: { ...target, id: "terminal-app", version: "2.15" },
+            rawReplies: {
+              "device.primary-da": "\x1b[?1;2c",
+              "device.secondary-da": "\x1b[>1;95;0c",
+              "extensions.query": "ACK",
+              "extensions.graphics": "NO",
+            },
+            origin: { kind: "collector", appLaunch: launch },
+          }),
+        ),
+        catalog,
+      )
+    expect(candidate(appLaunch).origin.appLaunch?.sourceArtifact).toMatchObject({ kind: "derived-source-tree" })
+    expect(() => candidate({ ...appLaunch, sourceArtifact: { ...appLaunch.sourceArtifact, revision: "" } })).toThrow(
+      /revision/,
+    )
+    expect(() =>
+      candidate({ ...appLaunch, sourceArtifact: { ...appLaunch.sourceArtifact, sha256: "not-a-sha256" } }),
+    ).toThrow(/sourceArtifact/)
+  })
+
   it("refuses a headless runtime receipt whose loaded engine version conflicts with target", () => {
     const value = run("headless-mismatch", {
       target: { ...target, kind: "headless" },
