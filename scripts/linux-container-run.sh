@@ -177,9 +177,11 @@ if [[ "${1:-}" == "--inside" ]]; then
     alacritty)
       target_command_lead=(-e)
       # Measured 2026-10-07: alacritty resolves the run user from USER/HOME/SHELL before its passwd
-      # fallback, and refuses with `pw not found` only when that lookup fails. The image now carries
-      # a passwd entry for the run uid, and the raw XTVERSION answer is recorded and named; promoted
-      # to require/forbid once its exact expected answer is measured through the apparatus. (27874)
+      # fallback, and refuses with `pw not found` only when that lookup fails. No passwd entry for
+      # the run uid exists in the image - the image's own baked entry is gone - so the LAUNCHER
+      # generates one and mounts it read-only (see the run-user block below). The raw XTVERSION
+      # answer is recorded and named; promoted to require/forbid once its exact expected answer is
+      # measured through the apparatus. (27874)
       target_xtversion_mode=record
       ;;
     *) echo "Unknown target id: $target_id" >&2; exit 2 ;;
