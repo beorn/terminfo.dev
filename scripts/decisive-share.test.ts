@@ -43,6 +43,7 @@ function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate 
     runId: "72cd4dea4fd2866e829c0ad7f0f0d718",
     version: "0.17.0",
     measuredAt: "2026-10-07T04:42:46.018Z",
+    suiteId: "c6ec4ee8f580",
     suiteFreshness: "current suite",
     cells,
     ...overrides,
@@ -199,7 +200,7 @@ describe("release 1 decisive-count reader", () => {
     expect(stale.reason).toContain("store-a, store-b, store-c")
   })
 
-  it("prints both denominators, the named remainder and the bar line for a measured context", () => {
+  it("prints the ratified-52 clauses, the verdict on the 52, the 62 as labelled context and the suite id", () => {
     const row = barRowForContext({
       context: { terminalId: "alacritty", os: "linux" },
       candidates: [candidate()],
@@ -209,10 +210,34 @@ describe("release 1 decisive-count reader", () => {
     expect(row.measured).toBe(true)
     if (!row.measured) throw new Error("expected the alacritty row to be measured")
     const printed = formatBarRow(row).join("\n")
-    expect(printed).toContain("decisive/62     3/6 = 50%")
-    expect(printed).toContain("decisive/52     3/4 = 75%")
-    expect(printed).toContain("inconclusive/62 1/6 = 17%")
-    expect(printed).toContain("remainder    2 rows: e.error (error), f.missing (untested)")
-    expect(printed).toContain("verdict         FAIL")
+    expect(printed).toContain("suite c6ec4ee8f580")
+    expect(printed).toContain("decisive/52     3/4 = 75%  (bar >= 95%)")
+    expect(printed).toContain("inconclusive/52 1/4 = 25%  (bar <= 1%)")
+    expect(printed).toContain("verdict         FAIL  (on the ratified 52")
+    expect(printed).toContain("context/62      decisive 3/6 = 50%, inconclusive 1/6 = 17%  (context only, not the bar)")
+  })
+
+  it("reads the verdict on the ratified 52, not the 62, so a row that passes on 52 reads PASS", () => {
+    // 4/4 decisive on the ratified 52, but only 4/6 on the declared 62 (e.error and f.missing remain).
+    const cells52 = {
+      "a.supported": { outcome: "supported", conclusive: true },
+      "b.supported": { outcome: "supported", conclusive: true },
+      "c.unsupported": { outcome: "unsupported", conclusive: true },
+      "d.inconclusive": { outcome: "supported", conclusive: true },
+      "e.error": { outcome: "error" },
+    }
+    const row = barRowForContext({
+      context: { terminalId: "kitty", os: "linux" },
+      candidates: [candidate({ cells: cells52 })],
+      tier62Ids: IDS,
+      tier52Ids: IDS.slice(0, 4),
+    })
+    expect(row.measured).toBe(true)
+    if (!row.measured) throw new Error("expected the kitty row to be measured")
+    const printed = formatBarRow(row).join("\n")
+    expect(printed).toContain("decisive/52     4/4 = 100%")
+    expect(printed).toContain("verdict         PASS")
+    // The 62 line is context only: it differs from the 52 and does not decide the verdict.
+    expect(printed).toContain("context/62      decisive 4/6 = 67%")
   })
 })

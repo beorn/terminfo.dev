@@ -11,7 +11,9 @@
  *     are current for one (terminal id, os) the reviewed `content/default-contexts.json` row decides,
  *     the same policy `compatibilityTargets` applies; the row it used is printed. It prints the run
  *     id, the decisive count and share over the declared 62 tier-1 rows AND over the ratified 52, the
- *     inconclusive share, the remainder rows by name, and the bar line. A context with no selected run
+ *     inconclusive share ON THE RATIFIED 52, the remainder rows by name, each row's selected suite id,
+ *     and the bar verdict on BOTH clauses over the 52 (the declared 62 prints only as a labelled
+ *     context line, never as the verdict). A context with no selected run
  *     prints "not measured — no selected run", a real tie with no reviewed row prints "ambiguous"
  *     naming the contexts, and neither is ever 0%.
  *  2. ADMITTED RUNS — one line per admitted schema-v2 run under content/probes-apps, labelled
@@ -174,6 +176,7 @@ export interface ContextCandidate {
   runId: string
   version: string
   measuredAt: string
+  suiteId: string
   suiteFreshness: string
   cells: ShareCells
 }
@@ -280,6 +283,7 @@ function candidateFromSelected(key: string, selected: SelectedVersion): ContextC
     runId: selected.runId,
     version: selected.target.version ?? "",
     measuredAt: selected.measuredAt,
+    suiteId: selected.suiteId,
     suiteFreshness: selected.suiteFreshness,
     cells: selected.cells,
   }
@@ -363,24 +367,25 @@ export function formatBarRow(row: BarRow): string[] {
   const { tier62, tier52 } = row.shares
   const lines = [
     `${label} ${row.run.version || "version not recorded"}`,
-    `  run ${row.run.runId} · measured ${row.run.measuredAt} · ${row.run.suiteFreshness}`,
+    `  run ${row.run.runId} · measured ${row.run.measuredAt} · suite ${row.run.suiteId} · ${row.run.suiteFreshness}`,
   ]
   if (row.selection !== "only current") {
     lines.push(`  selected by the ${row.selection} · ${row.run.key}`)
   }
   lines.push(
-    `    decisive/62     ${tier62.decisive}/${tier62.denominator} = ${tier62.decisivePct}%  (bar >= ${RELEASE_BAR.decisivePct}%)`,
-    `    decisive/52     ${tier52.decisive}/${tier52.denominator} = ${tier52.decisivePct}%`,
-    `    inconclusive/62 ${tier62.inconclusive}/${tier62.denominator} = ${tier62.inconclusivePct}%  (bar <= ${RELEASE_BAR.inconclusivePct}%)`,
-    remainderLine(tier62.remainder),
-    `    verdict         ${tier62.pass ? "PASS" : "FAIL"}`,
+    `    decisive/52     ${tier52.decisive}/${tier52.denominator} = ${tier52.decisivePct}%  (bar >= ${RELEASE_BAR.decisivePct}%)`,
+    `    inconclusive/52 ${tier52.inconclusive}/${tier52.denominator} = ${tier52.inconclusivePct}%  (bar <= ${RELEASE_BAR.inconclusivePct}%)`,
+    remainderLine(tier52.remainder),
+    `    verdict         ${tier52.pass ? "PASS" : "FAIL"}  (on the ratified 52; the named exceptions are excluded by name)`,
+    `    context/62      decisive ${tier62.decisive}/${tier62.denominator} = ${tier62.decisivePct}%, inconclusive ${tier62.inconclusive}/${tier62.denominator} = ${tier62.inconclusivePct}%  (context only, not the bar)`,
   )
   return lines
 }
 
 export function formatAdmittedRun(run: ContextCandidate, shares: ContextShares): string {
   return (
-    `${run.terminalId} ${run.version || "version not recorded"} ${run.os || "os not recorded"} ${run.runId} · ` +
+    `${run.terminalId} ${run.version || "version not recorded"} ${run.os || "os not recorded"} ${run.runId} ` +
+    `suite ${run.suiteId} · ` +
     `decisive/62 ${shares.tier62.decisive}/${shares.tier62.denominator} = ${shares.tier62.decisivePct}% · ` +
     `decisive/52 ${shares.tier52.decisive}/${shares.tier52.denominator} = ${shares.tier52.decisivePct}%`
   )
@@ -396,7 +401,7 @@ function main(): void {
 
   console.log(
     `Release 1 decisive-count reader · tier-1 rows: ${report.tier62Ids.length} declared / ` +
-      `${report.tier52Ids.length} ratified (62 minus the ten 27832 F2 movers) · bar: ` +
+      `${report.tier52Ids.length} ratified (62 minus the ten 27832 F2 movers) · bar ON THE 52: ` +
       `>=${RELEASE_BAR.decisivePct}% decisive, <=${RELEASE_BAR.inconclusivePct}% inconclusive`,
   )
   console.log(

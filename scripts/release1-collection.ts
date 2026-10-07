@@ -226,6 +226,7 @@ const asContextCandidate = (key: string, selected: SelectedVersion): ContextCand
   runId: selected.runId,
   version: selected.target.version ?? "",
   measuredAt: selected.measuredAt,
+  suiteId: selected.suiteId,
   suiteFreshness: selected.suiteFreshness,
   cells: selected.cells,
 })
