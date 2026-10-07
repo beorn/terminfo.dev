@@ -803,15 +803,15 @@ function graphicsQueryResult(
   imageId: number,
   acceptedNote = "Graphics query accepted RGB pixel data; visible rendering was not tested",
 ): ProbeResult {
-  const match = new RegExp(`\\x1b_Gi=${imageId};([^\\x1b]+)\\x1b\\\\`).exec(response)
+  const match = kittyReplyFrame({ i: String(imageId) }).exec(response)
   if (!match) {
     return unansweredQuery(
       { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
       "No matching graphics query reply; image rendering was not tested",
     )
   }
-  const pass = match[1] === "OK"
-  const note = pass ? acceptedNote : `Graphics query returned ${match[1]}; no support conclusion`
+  const pass = match[2] === "OK"
+  const note = pass ? acceptedNote : `Graphics query returned ${match[2]}; no support conclusion`
   return {
     pass,
     response,
@@ -828,14 +828,40 @@ function graphicsQueryResult(
   }
 }
 
+/**
+ * A kitty graphics reply frame, APC G <control data> ; <message> ST, whose control data carries every key in `keys`
+ * at the given value pattern, in any order. The protocol defines control data as a comma-separated list of key=value
+ * pairs; WezTerm answers an allocation with `I=<number>,i=<id>` where kitty writes `i=<id>,I=<number>` (27915).
+ * Group 1 is the control data and group 2 the message.
+ */
+function kittyReplyFrame(keys: Readonly<Record<string, string>>): RegExp {
+  const lookaheads = Object.entries(keys)
+    .map(([key, value]) => `(?=(?:[^;\\x1b]*,)?${key}=${value}[,;])`)
+    .join("")
+  return new RegExp(`\\x1b_G${lookaheads}([^;\\x1b]*);([^\\x1b]+)\\x1b\\\\`)
+}
+
+/** The value of `key` in a kitty reply's control data. */
+function kittyControlValue(control: string, key: string): string | undefined {
+  return control
+    .split(",")
+    .map((pair) => pair.split("="))
+    .find(([name]) => name === key)?.[1]
+}
+
+/** The allocation reply to an `I=<imageNumber>` transfer: a fresh numeric `i` with the echoed `I`, in any order. */
+function allocationReply(imageNumber: number): RegExp {
+  return kittyReplyFrame({ I: String(imageNumber), i: "\\d+" })
+}
+
 function imageTransferRequest(imageNumber: number): string {
   // I requests a new image; a fixed i would overwrite somebody else's image.
   return `\x1b_Ga=t,f=24,s=1,v=1,t=d,I=${imageNumber};/wAA\x1b\\`
 }
 
 function allocatedImageResult(response: string, imageNumber: number): { imageId: number | null; result: ProbeResult } {
-  const match = new RegExp(`\\x1b_Gi=(\\d+),I=${imageNumber};([^\\x1b]+)\\x1b\\\\`).exec(response)
-  const imageId = match ? Number(match[1]) : 0
+  const match = allocationReply(imageNumber).exec(response)
+  const imageId = match ? Number(kittyControlValue(match[1] ?? "", "i")) : 0
   if (!match || imageId < 1 || imageId > 0xffffffff) {
     return {
       imageId: null,
@@ -898,7 +924,7 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         try {
           const reply = await ctx.queryWithSentinelOutcome(
             imageTransferRequest(imageNumber),
-            new RegExp(`\\x1b_Gi=(\\d+),I=${imageNumber};([^\\x1b]+)\\x1b\\\\`),
+            allocationReply(imageNumber),
           )
           if (!reply.match) {
             return unansweredQuery(
@@ -911,7 +937,7 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
           if (!imageId || !display) return uploaded.result
           const placement = await ctx.queryWithSentinelOutcome(
             `\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`,
-            new RegExp(`\\x1b_Gi=${imageId};([^\\x1b]+)\\x1b\\\\`),
+            kittyReplyFrame({ i: String(imageId) }),
           )
           if (!placement.match) {
             return unansweredQuery(placement, "No matching placement reply; visible pixels were not tested")
@@ -1852,9 +1878,11 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscSimpleQueryProbe(
     "extensions.osc1337-cellsize",
     "\x1b]1337;ReportCellSize\x07",
-    /\x1b\]1337;ReportCellSize=[1-9][0-9]*(?:\.[0-9]+)?;[1-9][0-9]*(?:\.[0-9]+)?(?:\x07|\x1b\\)/,
+    // iTerm2 documents both forms: height;width, and the newer height;width;scale (pixels per point). WezTerm sends the
+    // newer one (27915: `ReportCellSize=16.5;7.5;1.3`).
+    /\x1b\]1337;ReportCellSize=[1-9][0-9]*(?:\.[0-9]+)?;[1-9][0-9]*(?:\.[0-9]+)?(?:;[0-9]+(?:\.[0-9]+)?)?(?:\x07|\x1b\\)/,
     /\x1b\]1337;ReportCellSize=/,
-    "Complete OSC 1337 ReportCellSize reply with two positive dimensions",
+    "Complete OSC 1337 ReportCellSize reply with two positive dimensions and an optional scale",
   ),
 
   // OSC 1337 RequestCapabilities — query terminal capabilities
