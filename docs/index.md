@@ -167,7 +167,11 @@ function barWidth(backendName, segment) {
 function scoreLabel(backendName) {
   const bar = data.releaseBars[backendName]
   if (!bar) return 'No conclusive score'
-  return decisiveShare(bar)
+  // The D3 verdict (pass / with gaps / fail) over the included 52 leads, with its fraction; the
+  // measured-62 share follows as the secondary, differently-denominated readout.
+  const verdict = data.releaseVerdicts[backendName]
+  const share = decisiveShare(bar)
+  return verdict ? `${verdict.text} · ${share}` : share
 }
 
 function coverageLabel(backendName) {

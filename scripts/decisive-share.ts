@@ -10,9 +10,9 @@
  *     reusing docs/data/current-results.ts — there is no second selection here. When several contexts
  *     are current for one (terminal id, os) the reviewed `content/default-contexts.json` row decides,
  *     the same policy `compatibilityTargets` applies; the row it used is printed. It prints the run
- *     id, the decisive count and share over the declared 62 tier-1 rows AND over the ratified 52, the
- *     inconclusive share ON THE RATIFIED 52, the remainder rows by name, each row's selected suite id,
- *     and the bar verdict on BOTH clauses over the 52 (the declared 62 prints only as a labelled
+ *     id, the decisive count and share over the declared 62 tier-1 rows AND over the included 52, the
+ *     inconclusive share ON THE INCLUDED 52, the remainder rows by name, each row's selected suite id,
+ *     and the D3 verdict label over the included 52 (the declared 62 prints only as a labelled
  *     context line, never as the verdict). A context with no selected run
  *     prints "not measured — no selected run", a real tie with no reviewed row prints "ambiguous"
  *     naming the contexts, and neither is ever 0%. The header names the Release 1 exceptions once
@@ -36,31 +36,20 @@ import {
   type DefaultContextReview,
 } from "../docs/data/current-results.ts"
 import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
-import { barOverMeasured } from "../docs/data/release-scope.ts"
+import {
+  barOverMeasured,
+  d3Verdict,
+  D3_VERDICT_BAR,
+  F2_MOVERS,
+  INCLUDED_TIER1_COUNT,
+  includedTierOneIds,
+  type D3Verdict,
+} from "../docs/data/release-scope.ts"
+
+// The included-52 set and the D3 verdict rule are ONE owner, in docs/data/release-scope.ts, so the
+// site's label and this reader's verdict can never be two copies. Re-exported for the reader's callers.
+export { F2_MOVERS, INCLUDED_TIER1_COUNT, includedTierOneIds }
 import type { SelectedVersion } from "../docs/data/selected-results.ts"
-
-/** The Release 1 bar, quoted from the plan: >=95% decisive, <=1% inconclusive on the tier-1 rows. */
-export const RELEASE_BAR = { decisivePct: 95, inconclusivePct: 1 } as const
-
-/**
- * The ratified tier-1 52 = the declared 62 minus the ten F2 movers (silent-consumed / fixture-gated
- * osc rows) named in the 27832 audit § "F2 mover list". There is no machine-readable mover list yet;
- * this is the audited list, hard-coded, and the 62-vs-52 disagreement is a separate ruling.
- */
-export const F2_MOVERS = [
-  "extensions.osc777-notify",
-  "extensions.osc666-termprop",
-  "extensions.osc3008-context",
-  "extensions.osc440-audio",
-  "extensions.osc555-flash",
-  "extensions.osc176-app-id",
-  "extensions.osc22-pointer",
-  "extensions.osc52-clipboard",
-  "extensions.osc52-read",
-  "extensions.osc52-write",
-] as const
-
-export const RATIFIED_TIER1_COUNT = 52
 
 /** The eleven Release 1 desktop contexts (15323 § Release 1; children 27834 Mac, 27835 Linux+Windows). */
 export const RELEASE_1_CONTEXTS = [
@@ -120,7 +109,7 @@ export interface DecisiveShare {
   inconclusive: number
   inconclusivePct: number
   remainder: RemainderRow[]
-  pass: boolean
+  verdict: D3Verdict
 }
 
 /** Minimal cell view barOverMeasured consumes; SelectedCell satisfies it structurally. */
@@ -158,7 +147,7 @@ export function decisiveShare(cells: ShareCells, measuredIds: readonly string[])
     inconclusive: bar.inconclusive,
     inconclusivePct,
     remainder,
-    pass: decisivePct >= RELEASE_BAR.decisivePct && inconclusivePct <= RELEASE_BAR.inconclusivePct,
+    verdict: d3Verdict(bar.conclusive, bar.denominator),
   }
 }
 
@@ -176,21 +165,6 @@ export function tierOneIds(contentDir: string): string[] {
     catalog[id] = { name: typeof declared === "string" && declared ? declared : id }
   }
   return loadReleaseScope({ catalog, declarationPath: join(contentDir, "release-scope.json") }).measuredIds
-}
-
-/** The ratified 52: the 62 minus the F2 movers, refusing loudly if the audited list no longer fits. */
-export function ratifiedTierOneIds(declaredIds: readonly string[]): string[] {
-  const declared = new Set(declaredIds)
-  const missing = F2_MOVERS.filter((id) => !declared.has(id))
-  if (missing.length) {
-    throw new Error(`F2 movers (27832) are not all in the declared tier-1 set: ${missing.join(", ")}`)
-  }
-  const movers = new Set<string>(F2_MOVERS)
-  const ratified = declaredIds.filter((id) => !movers.has(id))
-  if (ratified.length !== RATIFIED_TIER1_COUNT) {
-    throw new Error(`ratified tier-1 set is ${ratified.length}, expected ${RATIFIED_TIER1_COUNT}`)
-  }
-  return ratified
 }
 
 /** One candidate context the site currently selects, reduced to what the reader consumes. */
@@ -357,7 +331,7 @@ export function buildReport(args: { contentDir: string; contexts?: readonly Rele
       left.runId.localeCompare(right.runId),
   )
   const tier62Ids = tierOneIds(args.contentDir)
-  const tier52Ids = ratifiedTierOneIds(tier62Ids)
+  const tier52Ids = includedTierOneIds(tier62Ids)
   const contexts = args.contexts ?? RELEASE_1_CONTEXTS
   const barRows = contexts.map((context) =>
     barRowForContext({
@@ -400,11 +374,11 @@ export function formatBarRow(row: BarRow): string[] {
     lines.push(`  selected by the ${row.selection} · ${row.run.key}`)
   }
   lines.push(
-    `    decisive/52     ${tier52.decisive}/${tier52.denominator} = ${tier52.decisivePct}%  (bar >= ${RELEASE_BAR.decisivePct}%)`,
-    `    inconclusive/52 ${tier52.inconclusive}/${tier52.denominator} = ${tier52.inconclusivePct}%  (bar <= ${RELEASE_BAR.inconclusivePct}%)`,
+    `    decisive/52     ${tier52.decisive}/${tier52.denominator} = ${tier52.decisivePct}%  (pass >= ${D3_VERDICT_BAR.passPct}%)`,
+    `    inconclusive/52 ${tier52.inconclusive}/${tier52.denominator} = ${tier52.inconclusivePct}%`,
     remainderLine(tier52.remainder),
-    `    verdict         ${tier52.pass ? "PASS" : "FAIL"}  (on the ratified 52)`,
-    `    context/62      decisive ${tier62.decisive}/${tier62.denominator} = ${tier62.decisivePct}%, inconclusive ${tier62.inconclusive}/${tier62.denominator} = ${tier62.inconclusivePct}%  (context only, not the bar)`,
+    `    verdict         ${tier52.verdict.text}  (${tier52.decisivePct}% decisive of the included ${tier52.denominator})`,
+    `    context/62      decisive ${tier62.decisive}/${tier62.denominator} = ${tier62.decisivePct}%, inconclusive ${tier62.inconclusive}/${tier62.denominator} = ${tier62.inconclusivePct}%  (context only, not the verdict)`,
   )
   return lines
 }
@@ -428,8 +402,8 @@ function main(): void {
 
   console.log(
     `Release 1 decisive-count reader · tier-1 rows: ${report.tier62Ids.length} declared / ` +
-      `${report.tier52Ids.length} ratified (62 minus the ten 27832 F2 movers) · bar ON THE 52: ` +
-      `>=${RELEASE_BAR.decisivePct}% decisive, <=${RELEASE_BAR.inconclusivePct}% inconclusive`,
+      `${report.tier52Ids.length} included (62 minus the ten 27832 F2 movers) · verdict ON THE INCLUDED 52: ` +
+      `>=${D3_VERDICT_BAR.passPct}% decisive = pass, >=${D3_VERDICT_BAR.gapsPct}% = with gaps, else fail`,
   )
   console.log(
     `read ${report.searched} through the published selection projection (docs/data/current-results.ts); ` +

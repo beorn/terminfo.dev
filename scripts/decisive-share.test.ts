@@ -1,8 +1,9 @@
 /**
  * @failure The Release 1 bar's instrument would read a missing row as a decisive 0, fold a
  *   present-but-error row into inconclusive, guess which of several site-selected profiles is the
- *   (terminal, os) row, or drift the ratified 52 away from the audited mover list — so "at least 95%
- *   decisive, at most 1% inconclusive, the rest named" would report the wrong rest.
+ *   (terminal, os) row, or drift the included 52 away from the audited mover list — so the D3 verdict
+ *   ("pass" at 90% decisive of the included 52, "with gaps" from 70%, "fail" below, the fraction
+ *   beside the label) would report the wrong verdict or the wrong denominator.
  * @level l2
  * @consumer Release 1 decisive-count reader (scripts/decisive-share.ts)
  * @source-grep nothing but this fixture exercises the error and untested buckets, the ambiguous
@@ -19,10 +20,10 @@ import {
   formatBarRow,
   namedExceptionsLine,
   pickContextRun,
-  RATIFIED_TIER1_COUNT,
-  ratifiedTierOneIds,
-  RELEASE_BAR,
+  INCLUDED_TIER1_COUNT,
+  includedTierOneIds,
 } from "./decisive-share.ts"
+import { d3Verdict } from "../docs/data/release-scope.ts"
 
 const IDS = ["a.supported", "b.supported", "c.unsupported", "d.inconclusive", "e.error", "f.missing"]
 
@@ -63,7 +64,7 @@ describe("release 1 decisive-count reader", () => {
       { featureId: "e.error", bucket: "error" },
       { featureId: "f.missing", bucket: "untested" },
     ])
-    expect(share.pass).toBe(false)
+    expect(share.verdict.text).toBe("fail · 3/6")
   })
 
   it("names every row of a 62-row remainder as untested when only a few cells exist", () => {
@@ -83,22 +84,33 @@ describe("release 1 decisive-count reader", () => {
     expect(share.remainder).toEqual([])
   })
 
-  it("passes the bar only when decisive is at least 95% and inconclusive at most 1%", () => {
+  it("labels the D3 verdict: pass from 90% decisive of the included 52, with gaps from 70%, fail below, the fraction beside the label", () => {
+    // 47/52 = 90.4% -> pass (the || ruling's own example), 46/52 = 88.5% -> with gaps,
+    // 37/52 = 71.2% -> with gaps, 36/52 = 69.2% -> fail. The label reads the same rounded
+    // percentage the fraction prints, so the two can never disagree.
+    expect(d3Verdict(52, 52)).toMatchObject({ label: "pass", pct: 100, text: "pass · 52/52" })
+    expect(d3Verdict(47, 52)).toMatchObject({ label: "pass", pct: 90, text: "pass · 47/52" })
+    expect(d3Verdict(46, 52)).toMatchObject({ label: "with gaps", pct: 88, text: "with gaps · 46/52" })
+    expect(d3Verdict(37, 52)).toMatchObject({ label: "with gaps", pct: 71 })
+    expect(d3Verdict(36, 52)).toMatchObject({ label: "fail", pct: 69, text: "fail · 36/52" })
+    expect(d3Verdict(0, 52).label).toBe("fail")
+
     const allDecisive = Object.fromEntries(IDS.map((id) => [id, { outcome: "supported", conclusive: true }]))
     const pass = decisiveShare(allDecisive, IDS)
     expect(pass.decisivePct).toBe(100)
-    expect(pass.inconclusivePct).toBe(0)
-    expect(pass.pass).toBe(true)
-    expect(RELEASE_BAR).toEqual({ decisivePct: 95, inconclusivePct: 1 })
+    expect(pass.verdict.text).toBe("pass · 6/6")
+    // A verdict over zero included capabilities is not "fail" — it is not measured, and it refuses.
+    expect(() => d3Verdict(0, 0)).toThrow(/positive denominator/)
+    expect(() => d3Verdict(3, 2)).toThrow(/0 <= decisive <= denominator/)
   })
 
   it("takes the audited F2 movers out of the declared 62 and refuses a mismatched list", () => {
     const declared = ["device.primary-da", ...F2_MOVERS, ...Array.from({ length: 51 }, (_, i) => `f.${i}`)]
-    const ratified = ratifiedTierOneIds(declared)
-    expect(ratified).toHaveLength(RATIFIED_TIER1_COUNT)
-    expect(ratified).not.toContain(F2_MOVERS[0])
-    expect(() => ratifiedTierOneIds(declared.slice(1))).toThrow(/ratified tier-1 set is 51/)
-    expect(() => ratifiedTierOneIds(declared.filter((id) => id !== F2_MOVERS[0]))).toThrow(/27832|F2 movers/)
+    const included = includedTierOneIds(declared)
+    expect(included).toHaveLength(INCLUDED_TIER1_COUNT)
+    expect(included).not.toContain(F2_MOVERS[0])
+    expect(() => includedTierOneIds(declared.slice(1))).toThrow(/included tier-1 set is 51/)
+    expect(() => includedTierOneIds(declared.filter((id) => id !== F2_MOVERS[0]))).toThrow(/27832|F2 movers/)
   })
 
   it("resolves a context with no selected run as not measured, never as a zero reading", () => {
@@ -201,7 +213,7 @@ describe("release 1 decisive-count reader", () => {
     expect(stale.reason).toContain("store-a, store-b, store-c")
   })
 
-  it("prints the ratified-52 clauses, the verdict on the 52, the 62 as labelled context and the suite id", () => {
+  it("prints the included-52 clauses, the D3 verdict on the 52, the 62 as labelled context and the suite id", () => {
     const row = barRowForContext({
       context: { terminalId: "alacritty", os: "linux" },
       candidates: [candidate()],
@@ -212,19 +224,21 @@ describe("release 1 decisive-count reader", () => {
     if (!row.measured) throw new Error("expected the alacritty row to be measured")
     const printed = formatBarRow(row).join("\n")
     expect(printed).toContain("suite c6ec4ee8f580")
-    expect(printed).toContain("decisive/52     3/4 = 75%  (bar >= 95%)")
-    expect(printed).toContain("inconclusive/52 1/4 = 25%  (bar <= 1%)")
-    expect(printed).toContain("verdict         FAIL  (on the ratified 52")
-    expect(printed).toContain("context/62      decisive 3/6 = 50%, inconclusive 1/6 = 17%  (context only, not the bar)")
-    // The row verdict states the bar's own truth and does not claim the reader excludes the named
+    expect(printed).toContain("decisive/52     3/4 = 75%  (pass >= 90%)")
+    expect(printed).toContain("inconclusive/52 1/4 = 25%")
+    expect(printed).toContain("verdict         with gaps · 3/4  (75% decisive of the included 4)")
+    expect(printed).toContain(
+      "context/62      decisive 3/6 = 50%, inconclusive 1/6 = 17%  (context only, not the verdict)",
+    )
+    // The row verdict states the D3 rule's own truth and does not claim the reader excludes the named
     // exceptions; the header names them once, with their ruling ids, instead.
     expect(printed).not.toContain("excluded by name")
     expect(namedExceptionsLine()).toContain("kitty/macos - 31/52 by contract")
     expect(namedExceptionsLine()).toContain("windows-terminal/windows")
   })
 
-  it("reads the verdict on the ratified 52, not the 62, so a row that passes on 52 reads PASS", () => {
-    // 4/4 decisive on the ratified 52, but only 4/6 on the declared 62 (e.error and f.missing remain).
+  it("reads the verdict on the included 52, not the 62, so a row decisive on 52 reads pass", () => {
+    // 4/4 decisive on the included 52, but only 4/6 on the declared 62 (e.error and f.missing remain).
     const cells52 = {
       "a.supported": { outcome: "supported", conclusive: true },
       "b.supported": { outcome: "supported", conclusive: true },
@@ -242,7 +256,7 @@ describe("release 1 decisive-count reader", () => {
     if (!row.measured) throw new Error("expected the kitty row to be measured")
     const printed = formatBarRow(row).join("\n")
     expect(printed).toContain("decisive/52     4/4 = 100%")
-    expect(printed).toContain("verdict         PASS")
+    expect(printed).toContain("verdict         pass · 4/4")
     // The 62 line is context only: it differs from the 52 and does not decide the verdict.
     expect(printed).toContain("context/62      decisive 4/6 = 67%")
   })

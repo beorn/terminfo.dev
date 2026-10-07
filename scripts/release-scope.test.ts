@@ -112,6 +112,19 @@ describe("release 1 measurement scope", () => {
     )
   })
 
+  it("prints the D3 verdict beside the label on the front page, every terminal page and the loader", () => {
+    const home = readFileSync(join(root, "docs", "index.md"), "utf8")
+    const terminal = readFileSync(join(root, "docs", "terminals", "[id].md"), "utf8")
+    const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
+    expect(home).toContain("data.releaseVerdicts[backendName]")
+    expect(home).toContain("verdict.text")
+    expect(terminal).toContain("barVerdict(barOverMeasured(")
+    expect(terminal).toContain("includedTierOneIds(data.releaseScope.measuredIds)")
+    expect(terminal).toContain("measuredVerdict.text")
+    expect(loader).toContain("includedTierOneIds(release.measuredIds)")
+    expect(loader).toContain("releaseVerdicts[key] = d3Verdict(")
+  })
+
   it("puts the tier line on the front page and every terminal page", () => {
     const home = readFileSync(join(root, "docs", "index.md"), "utf8")
     const terminal = readFileSync(join(root, "docs", "terminals", "[id].md"), "utf8")

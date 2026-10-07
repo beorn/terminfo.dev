@@ -17,9 +17,12 @@ import { loadReleaseScope } from "./load-release-scope.ts"
 import {
   barOverMeasured,
   coverageSentence,
+  d3Verdict,
+  includedTierOneIds,
   isStaleSuite,
   staleCaption,
   tierLine,
+  type D3Verdict,
   type MeasuredBar,
   type ReleaseScope,
 } from "./release-scope.ts"
@@ -92,6 +95,8 @@ export interface ProbeData {
   selectedByBackend: Record<string, PublicCurrentResult>
   releaseScope: ReleaseScope & { line: string }
   releaseBars: Record<string, MeasuredBar>
+  /** Backend name -> the D3 release verdict over the INCLUDED 52 (@chief 2026-10-07). */
+  releaseVerdicts: Record<string, D3Verdict>
   /** Default-run stale caption when suiteFreshness is not current; null when current. */
   releaseStale: Record<string, string | null>
 }
@@ -289,13 +294,19 @@ export function loadFullProbes(): ProbeData {
     line: tierLine(release, generated ? { measuredAt: generated } : undefined),
   }
   const releaseBars: Record<string, MeasuredBar> = {}
+  const releaseVerdicts: Record<string, D3Verdict> = {}
   const releaseStale: Record<string, string | null> = {}
+  // The verdict is over the INCLUDED 52, not the declared 62: the ten F2 movers are excluded by
+  // contract and never counted (docs/data/release-scope.ts owns the list and the D3 rule).
+  const includedIds = includedTierOneIds(release.measuredIds)
   for (const [key, { selected }] of byTarget) {
     const bar = barOverMeasured(selected.cells, release.measuredIds)
     if (bar.denominator && coverageSentence(bar) === "No selected run") {
       throw new Error(`release bar ${key} has a denominator but no coverage sentence`)
     }
     releaseBars[key] = bar
+    const includedBar = barOverMeasured(selected.cells, includedIds)
+    if (includedBar.denominator > 0) releaseVerdicts[key] = d3Verdict(includedBar.conclusive, includedBar.denominator)
     releaseStale[key] = isStaleSuite(selected.suiteFreshness) ? staleCaption(selected.measuredAt) : null
   }
   const result: ProbeData = {
@@ -316,6 +327,7 @@ export function loadFullProbes(): ProbeData {
     selectedByBackend,
     releaseScope,
     releaseBars,
+    releaseVerdicts,
     releaseStale,
   }
   computeBaselines(result)

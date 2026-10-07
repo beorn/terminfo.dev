@@ -8,7 +8,7 @@ next: false
 import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
-import { barOverMeasured, isStaleSuite, staleCaption } from '../data/release-scope.ts'
+import { barOverMeasured, barVerdict, includedTierOneIds, isStaleSuite, staleCaption } from '../data/release-scope.ts'
 const { params } = useData()
 const p = params.value
 
@@ -21,6 +21,8 @@ const selectedRun = computed(() => runs.find(run => run.sha256 === runSha.value)
 const counts = computed(() => selectedRun.value?.counts)
 const namedNotTested = computed(() => selectedRun.value?.notTestedCoverage?.namedCount ?? 0)
 const measuredBar = computed(() => barOverMeasured(selectedRun.value?.cells ?? {}, data.releaseScope.measuredIds))
+const includedIds = includedTierOneIds(data.releaseScope.measuredIds)
+const measuredVerdict = computed(() => barVerdict(barOverMeasured(selectedRun.value?.cells ?? {}, includedIds)))
 const stale = computed(() => selectedRun.value ? isStaleSuite(selectedRun.value.suiteFreshness) : false)
 const staleText = computed(() => selectedRun.value ? staleCaption(selectedRun.value.measuredAt) : '')
 function runLabel(run) {
@@ -165,6 +167,7 @@ const breadcrumbParent = (() => {
     </select>
     <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
   </div>
+  <p v-if="measuredVerdict" class="result-verdict">{{ measuredVerdict.text }} · <span class="result-verdict-detail">{{ measuredVerdict.pct }}% of the {{ measuredVerdict.denominator }} included capabilities read decisive</span></p>
   <p class="result-share-label">{{ measuredBar.fillPct }}% decisive of {{ measuredBar.denominator }} · measured per terminal</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
     <span v-if="measuredBar.supported" class="result-share-supported" :style="{ width: `${measuredBar.supported / measuredBar.denominator * 100}%` }"></span>
@@ -407,7 +410,9 @@ const breadcrumbParent = (() => {
 .terminal-about summary, .analysis summary { cursor: pointer; font-weight: 600; }
 
 .score-card .run-picker { margin: 1em 0; }
-.result-share-label { margin: 1em 0 0.35em; font-weight: 600; }
+.result-verdict { margin: 1em 0 0.35em; font-weight: 600; }
+.result-verdict-detail { font-weight: 400; color: var(--vp-c-text-2); }
+.result-share-label { margin: 0 0 0.35em; font-weight: 400; color: var(--vp-c-text-2); }
 .result-share { display: flex; height: 12px; overflow: hidden; border-radius: 6px; background: var(--vp-c-divider); }
 .result-share span { display: block; height: 100%; }
 .result-share-supported { background: #10b981; }
