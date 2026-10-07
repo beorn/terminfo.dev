@@ -276,6 +276,9 @@ export default {
     for (const page of pages) {
       const id = page.params.id
       const backendId = page.params.backendId ?? "(no backendId)"
+      if (id === undefined) {
+        throw new Error(`terminalPaths.paths(): the terminal page for '${backendId}' has no id, so it has no URL.`)
+      }
       const owner = slugOwner.get(id)
       if (owner !== undefined) {
         throw new Error(
