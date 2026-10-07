@@ -165,6 +165,8 @@ describe("release 1 Linux launcher flags", () => {
     expect(presetFor("xterm", "411")).toBe("default")
   })
 
+  // linuxLedger reads the whole committed corpus, which grows with every admitted run, so this row carries the
+  // budget the corpus-reading consumer-selection rows use (CI took 5054 ms against the 5000 ms default).
   it("reads the five Linux invocations back from the committed runs in the corpus", () => {
     const ledger = linuxLedger(CONTENT)
     expect(Object.keys(ledger).sort()).toEqual(["alacritty", "ghostty", "kitty", "wezterm", "xterm"])
@@ -182,7 +184,7 @@ describe("release 1 Linux launcher flags", () => {
       else expect(row.exclusion).toBeNull()
       if (id === "kitty") expect(row.preset).not.toBe("default")
     }
-  })
+  }, 30_000)
 
   it("puts the read flags into the row's command", () => {
     const all = census()
