@@ -117,13 +117,18 @@ jobs:
           case "$APP_ID" in
             terminal-app) open -a "$APP_BUNDLE" "$COMMAND_PATH" ;;
             iterm2)
-              open -b com.googlecode.iterm2
+              test -d "$APP_BUNDLE" || { echo "Required iTerm2 bundle missing: $APP_BUNDLE" >&2; exit 1; }
+              bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_BUNDLE/Contents/Info.plist")"
+              printf 'iTerm2 bundle: %s; identifier: %s\n' "$APP_BUNDLE" "$bundle_id"
+              test "$bundle_id" = com.googlecode.iterm2 || { echo "Unexpected iTerm2 bundle identifier: $bundle_id" >&2; exit 1; }
+              open "$APP_BUNDLE"
               for attempt in {1..30}; do
                 if pgrep -x iTerm2 > /dev/null; then break; fi
                 if [ "$attempt" -eq 30 ]; then echo "iTerm2 did not launch within 30 seconds (com.googlecode.iterm2)" >&2; exit 1; fi
                 sleep 1
               done
               osascript -e 'POSIX path of (path to application id "com.googlecode.iterm2")'
+              osascript -e 'tell application id "com.googlecode.iterm2" to get version' || { echo "iTerm2 scripting dictionary/version lookup failed" >&2; exit 1; }
               osascript - "$COMMAND_PATH" <<'APPLESCRIPT'
           on run argv
             tell application id "com.googlecode.iterm2"
