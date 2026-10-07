@@ -105,7 +105,10 @@ function sixelGeometryResult(
   missingReason: "no-response" | "timeout",
   sentinel?: { atMs: number; graceMs: number },
 ): ProbeResult {
-  const reply = frame ? /\x1b\[\?2;([0-9]+);([0-9;]*)S/.exec(frame) : null
+  // xterm replies with CSI ? Pi ; Ps ; Pv S, but omits the value on failure, so the
+  // measured failure frame is two parameters (CSI ? 2 ; 3 S). Requiring a third
+  // parameter graded that documented failure as a malformed geometry.
+  const reply = frame ? /\x1b\[\?2;([0-9]+)(?:;([0-9;]*))?S/.exec(frame) : null
   if (!reply) {
     const malformed = frame !== null
     const note = malformed ? "Malformed Sixel geometry response" : "No Sixel geometry response for item 2"
@@ -129,7 +132,9 @@ function sixelGeometryResult(
   if (status !== 0) {
     const validFailure = status === 1 || status === 2 || status === 3
     const note = validFailure
-      ? `Sixel geometry query reported protocol status ${status}`
+      ? status === 3
+        ? "Sixel geometry query reported protocol status 3 (failure; no graphics geometry is configured)"
+        : `Sixel geometry query reported protocol status ${status}`
       : `Unknown Sixel geometry protocol status ${reply[1]}`
     return {
       pass: false,
