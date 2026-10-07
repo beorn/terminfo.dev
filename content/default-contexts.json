@@ -11,6 +11,12 @@
       "reviewer": "@dev/3 (automated review)",
       "reason": "Keeps the default ghostty already had: until the 27892 apparatus runs, the macOS hardware run was ghostty's only current context, so the site does not move when the Linux container run becomes current alongside it. The kitty row names the macOS hardware run as the reviewed default the same way.",
       "sources": ["content/probes-apps/ghostty-1.3.1-macos.json"]
+    },
+    "app:wezterm": {
+      "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/mmvpz8sgpp4gg1lwsjv68knvkzqmsdwk-wezterm-0-unstable-2026-09-17/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun /nix/store/lkir11pfhm3p0z8s1cyffx9z7pvindyd-terminfo-linux-runner/index.js test --serve \",null]",
+      "reviewer": "@dev/12 (automated review)",
+      "reason": "The clean-tree WezTerm run on the current suite 3917e7e5e9f9 (27915). 27916's identity profile makes every clean WezTerm app run current, and the context key carries the runner's store path, so the stale-suite runs ed1a16b8 (16f4067cfb88) and c02903f0 (1ee91a75f7c9) stay current as separate contexts; this row picks the current-suite one.",
+      "sources": ["content/probes-apps/wezterm-0-unstable-2026-09-17-linux-4dfdb6e75245aa219adc0b5c53727726.json"]
     }
   }
 }
