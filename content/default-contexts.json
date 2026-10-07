@@ -19,10 +19,10 @@
       "sources": ["content/probes-apps/xterm-411-linux-885b4bef3d656143bf129de67ee8efd7.json"]
     },
     "app:wezterm": {
-      "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/mmvpz8sgpp4gg1lwsjv68knvkzqmsdwk-wezterm-0-unstable-2026-09-17/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun /nix/store/vz7958zbm6bxiqqvfzg60ah6l95p3n0z-terminfo-linux-runner/index.js test --serve \",null]",
+      "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/mmvpz8sgpp4gg1lwsjv68knvkzqmsdwk-wezterm-0-unstable-2026-09-17/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun /nix/store/rq8fvs1gvqpmm7f6lj6gx691ls77rdkl-terminfo-linux-runner/index.js test --serve \",null]",
       "reviewer": "@dev/12 (automated review)",
-      "reason": "The clean-tree WezTerm run on main's suite f173b3679f36 (27915). 27916's identity profile makes every clean WezTerm app run current, and the context key carries the runner's store path, so the stale-suite runs ed1a16b8 (16f4067cfb88), c02903f0 (1ee91a75f7c9) and 4dfdb6e7 (3917e7e5e9f9) stay current as separate contexts; this row picks the current-suite one.",
-      "sources": ["content/probes-apps/wezterm-0-unstable-2026-09-17-linux-9b013dcf6611d9806ad5a50d662dbe7e.json"]
+      "reason": "The clean-tree WezTerm run on main's suite 621e92ea4818 (27915). 27916's identity profile makes every clean WezTerm app run current, and the context key carries the runner's store path, so the stale-suite runs ed1a16b8 (16f4067cfb88), c02903f0 (1ee91a75f7c9), 4dfdb6e7 (3917e7e5e9f9) and 9b013dcf (f173b3679f36) stay current as separate contexts; this row picks the current-suite one.",
+      "sources": ["content/probes-apps/wezterm-0-unstable-2026-09-17-linux-5f4df380b9b1f8a02971f2d0e7cdb3ed.json"]
     }
   }
 }
