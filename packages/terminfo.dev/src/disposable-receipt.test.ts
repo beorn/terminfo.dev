@@ -104,6 +104,23 @@ test("a self-hosted or unknown runner environment can never authorize a write", 
   expect(() => parseDisposableReceipt(JSON.stringify(unknown))).toThrow(/unknown kind/)
 })
 
+// 27910: existing missing-field checks allow a YAML job key to masquerade as a jobs-API id.
+// All three API identity fields must instead contain decimal digits, with jobId naming the trap.
+test("hosted job identity requires decimal API ids and refuses GITHUB_JOB by name", () => {
+  for (const key of ["githubRunId", "githubRunAttempt", "jobId"] as const) {
+    for (const invalid of ["collect", "1.5", "-1", " 123", "123\n"]) {
+      const receipt = githubReceipt()
+      receipt.job[key] = invalid
+      expect(() => parseDisposableReceipt(JSON.stringify(receipt)), `${key}=${JSON.stringify(invalid)}`).toThrow(
+        new RegExp(`${key} must be decimal digits`),
+      )
+    }
+  }
+  const yamlKey = githubReceipt()
+  yamlKey.job.jobId = yamlKey.job.job
+  expect(() => parseDisposableReceipt(JSON.stringify(yamlKey))).toThrow(/GITHUB_JOB is a YAML key/)
+})
+
 test("every forgeable envelope field and leaf field is refused loudly", () => {
   const cases: Array<[string, RegExp]> = [
     ["not json at all", /is not JSON/],

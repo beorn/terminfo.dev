@@ -9,7 +9,7 @@
  */
 
 import { createHash } from "node:crypto"
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
@@ -17,6 +17,7 @@ import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import {
   bindReceiptToRun,
+  HOSTED_IDENTITY_SOURCES,
   parseDisposableReceipt,
   type ReceiptTarget,
 } from "../packages/terminfo.dev/src/disposable-receipt.ts"
@@ -226,6 +227,58 @@ export function placeOwnershipReceipt(
     )
   }
   bindReceiptToRun(receipt, target, `run ${runId}`)
+  if (receipt.kind === "github-hosted-runner") {
+    // Strict parsing above owns validation. Decode only the already-validated hosted fields here;
+    // history is visible to admission, never to the collector's single-receipt parser.
+    type HostedFields = {
+      runner: { os: string }
+      job: { githubRunId: string; jobId: string }
+      vm: { identityAtJobStart: Record<string, string> }
+    }
+    const current = JSON.parse(bytes.toString("utf8")) as HostedFields
+    const os = current.runner.os
+    if (os !== "Linux" && os !== "macOS") {
+      throw new Error(
+        `Hosted receipt ${receiptPath}: runner.os ${JSON.stringify(os)} has no ratified identity source/scope table`,
+      )
+    }
+    const directory = join(contentDir, "receipts")
+    // ENOENT means the first admission in this content tree. Other directory/read failures stay loud.
+    let names: string[]
+    try {
+      names = readdirSync(directory)
+    } catch (cause) {
+      if (isRecord(cause) && cause.code === "ENOENT") names = []
+      else throw new Error(`Cannot read admitted ownership receipt history at ${directory}`, { cause })
+    }
+    for (const name of names.filter((name) => name.endsWith(".json")).sort()) {
+      const path = join(directory, name)
+      let priorBytes: string
+      let prior: ReturnType<typeof parseDisposableReceipt>
+      try {
+        priorBytes = readFileSync(path, "utf8")
+        prior = parseDisposableReceipt(priorBytes)
+      } catch (cause) {
+        throw new Error(
+          `Cannot read/parse admitted ownership receipt ${path}; restore valid receipt bytes before retrying admission`,
+          { cause },
+        )
+      }
+      if (prior.kind !== "github-hosted-runner") continue
+      const previous = JSON.parse(priorBytes) as HostedFields
+      if (previous.runner.os !== os) continue // Different OS source values are not comparable.
+      if (previous.job.githubRunId === current.job.githubRunId && previous.job.jobId === current.job.jobId) continue
+      for (const field of HOSTED_IDENTITY_SOURCES[os].nonReuse) {
+        if (previous.vm.identityAtJobStart[field] === current.vm.identityAtJobStart[field]) {
+          throw new Error(
+            `Hosted receipt non-reuse: ${field} repeats between jobs ` +
+              `${previous.job.githubRunId}/${previous.job.jobId} (${path}) and ` +
+              `${current.job.githubRunId}/${current.job.jobId} (${receiptPath}); refusing before placement. Recollect in a fresh hosted job`,
+          )
+        }
+      }
+    }
+  }
   const placed = placeExclusive(join(contentDir, "receipts", `${runId}.json`), bytes, "disposable-ownership receipt")
   return { placed, detail: `${placed} content/receipts/${runId}.json (${RECEIPT_BESIDE_RUN}, ${actual})` }
 }

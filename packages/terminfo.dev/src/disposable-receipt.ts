@@ -21,6 +21,47 @@ import { readFileSync } from "node:fs"
  */
 export type DisposableKind = "linux-xvfb-container" | "github-hosted-runner"
 
+/** 27910 CTO amendment 1: one source/scope authority for producer and admission. Image constants
+ * are provenance, never non-reuse witnesses. Linux retains its ratified machine/platform set.
+ * Darwin's en0 MAC qualified in two fresh jobs of run 37583024982 (stable within, different across).
+ * That bounded probe did not exercise a reboot; the VM scope follows the ruling's outcome A. */
+export const HOSTED_IDENTITY_SOURCES = {
+  Linux: {
+    sources: {
+      machineIdSha256: { source: "/etc/machine-id", scope: "vm" },
+      productUuidSha256: { source: "/sys/class/dmi/id/product_uuid", scope: "vm" },
+      bootIdSha256: { source: "/proc/sys/kernel/random/boot_id", scope: "boot" },
+    },
+    nonReuse: ["machineIdSha256", "productUuidSha256"],
+  },
+  macOS: {
+    sources: {
+      machineIdSha256: {
+        source: "en0 MAC",
+        scope: "vm",
+        command: "ifconfig",
+        args: ["en0"],
+        pattern: "\\bether\\s+([0-9a-f:]{17})\\b",
+      },
+      productUuidSha256: {
+        source: "IOPlatformUUID",
+        scope: "image",
+        command: "ioreg",
+        args: ["-rd1", "-c", "IOPlatformExpertDevice"],
+        pattern: '"IOPlatformUUID"\\s*=\\s*"([^"\\n]+)"',
+      },
+      bootIdSha256: {
+        source: "kern.bootsessionuuid",
+        scope: "boot",
+        command: "sysctl",
+        args: ["-n", "kern.bootsessionuuid"],
+        pattern: "^(\\S+)\\s*$",
+      },
+    },
+    nonReuse: ["machineIdSha256", "bootIdSha256"],
+  },
+} as const
+
 export interface ReceiptTarget {
   kind: string
   id: string
@@ -160,6 +201,16 @@ function assertGithubHostedRunner(value: Record<string, unknown>): {
   const job = object(value, "job", where)
   for (const key of ["repository", "workflow", "workflowRef", "githubRunId", "githubRunAttempt", "job", "jobId"]) {
     text(job, key, `${where} job`)
+  }
+  for (const key of ["githubRunId", "githubRunAttempt", "jobId"]) {
+    const value = text(job, key, `${where} job`)
+    if (/[^0-9]/.test(value)) {
+      fail(
+        `${where} job`,
+        `${key} must be decimal digits` +
+          (key === "jobId" ? "; GITHUB_JOB is a YAML key, not the numeric jobs-API id" : ""),
+      )
+    }
   }
   const runner = object(value, "runner", where)
   const environment = text(runner, "environment", `${where} runner`)
