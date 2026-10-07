@@ -18,6 +18,12 @@
       "reason": "Pins the row to the 27914 re-collection on suite 621e92ea4818 (the decisive-negative XTGETXRES grading, plus the XTREPORTCOLORS and Sixel-geometry matchers, collected from a clean tree). The Linux apparatus holds several xterm runs that differ only by the frozen runner's store path; this names the one 27914 triages, so the site selects it. Same mechanism the app:ghostty and app:kitty rows use.",
       "sources": ["content/probes-apps/xterm-411-linux-885b4bef3d656143bf129de67ee8efd7.json"]
     },
+    "app:alacritty": {
+      "contextKey": "app:alacritty@[\"app\",\"alacritty\",\"macos\",\"26.6.2\",null,null,null,null]",
+      "reviewer": "@cto (27916 AC2 ruling)",
+      "reason": "Same rule as the kitty and ghostty rows: until 27916 AC2 admitted the controlled-Linux run, the macOS hardware run was alacritty's only current context, so naming it the default leaves the site's alacritty page unmoved when the Linux container run becomes current alongside it. Both contexts stay readable as Release 1 bar rows (27917).",
+      "sources": ["content/probes-apps/alacritty-0.17.0-macos.json"]
+    },
     "app:wezterm": {
       "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/mmvpz8sgpp4gg1lwsjv68knvkzqmsdwk-wezterm-0-unstable-2026-09-17/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun /nix/store/rq8fvs1gvqpmm7f6lj6gx691ls77rdkl-terminfo-linux-runner/index.js test --serve \",null]",
       "reviewer": "@dev/12 (automated review)",
