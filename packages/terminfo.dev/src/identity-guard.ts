@@ -40,6 +40,18 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
     xtversionPattern: /^ghostty v?(?<version>\d+(?:\.\d+){1,3}(?:[-+][a-zA-Z0-9.-]+)?)$/i,
     requireXtversion: true,
   },
+  // Measured 2026-10-07 in the admitted Linux run wezterm-0-unstable-2026-09-17-linux-a98b86e8:
+  // DA1 "?65;4;6;18;22;52c" (DEC-private 65; no other admitted terminal claims it) and XTVERSION
+  // "WezTerm 0-unstable-2026-09-17". WezTerm also ships date-tagged builds ("WezTerm 20240203"),
+  // so the version capture accepts both a dotted release and a '-'/'+'-tagged build id. DA1 stays
+  // loose per the kitty/ghostty precedent: the XTVERSION, which only WezTerm answers, carries the
+  // identity; a run that answers WezTerm's DA1 without a WezTerm XTVERSION is refused.
+  wezterm: {
+    terminal: "wezterm",
+    da1Pattern: /\?65;/,
+    xtversionPattern: /^WezTerm\s+v?(?<version>\d+(?:\.\d+){0,3}(?:[-+][a-zA-Z0-9.-]+)?)$/i,
+    requireXtversion: true,
+  },
   iterm2: {
     terminal: "iterm2",
     da1Pattern: /\?64;/,

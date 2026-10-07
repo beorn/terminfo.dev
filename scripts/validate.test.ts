@@ -89,12 +89,12 @@ test("validation inventories v2 targets and refuses malformed probe data with it
     expect(unverified.stdout).toMatch(/unverified|unchecked/i)
     expect(unverified.stdout).not.toContain("DA1 mismatch")
 
-    const noProfilePath = join(root, "content", "probes-apps", "wezterm-noprofile.json")
+    const noProfilePath = join(root, "content", "probes-apps", "cursor-noprofile.json")
     writeFileSync(
       noProfilePath,
       JSON.stringify({
-        terminal: "wezterm",
-        responses: { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "WezTerm 20240203" },
+        terminal: "cursor",
+        responses: { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "Cursor 2.6.21" },
         results: { "sgr.bold": true },
       }),
     )
