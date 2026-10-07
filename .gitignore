@@ -9,4 +9,3 @@ packages/*/dist/
 !content/artifacts/*.png
 !docs/public/og-image.png
 .gstack/
-.ci-siblings/
