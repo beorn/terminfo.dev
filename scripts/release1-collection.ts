@@ -27,7 +27,7 @@ import { spawnSync } from "node:child_process"
 import { readFileSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { loadCurrentResults } from "../docs/data/current-results.ts"
+import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
 import type { SelectedVersion } from "../docs/data/selected-results.ts"
 import { pickContextRun, type ContextCandidate } from "./decisive-share.ts"
 
@@ -296,14 +296,16 @@ function linuxLedgerEntry(
 /**
  * The lines the census prints for a Linux row, read from the committed run that row re-measures. The
  * run is the one the SITE selects for the (terminal id, os) context, by `decisive-share.ts`'s own
- * `pickContextRun` — the selection is not re-implemented here. When the site selects none (alacritty
- * and wezterm linux are excluded on identity/provenance today), the row falls back to the newest
- * admitted run for that context and NAMES the exclusion, because those are exactly the rows this
- * re-collection exists to bring back; a context with no committed run at all is left for the census
- * to report as uncollectable, named.
+ * `pickContextRun` — the selection is not re-implemented here — including the reviewed
+ * `default-contexts.json` row that breaks a multi-current tie (xterm/linux carries one entry per
+ * frozen-runner store path). When the site selects none (alacritty and wezterm linux are excluded on
+ * identity/provenance today), the row falls back to the newest admitted run for that context and
+ * NAMES the exclusion, because those are exactly the rows this re-collection exists to bring back; a
+ * context with no committed run at all is left for the census to report as uncollectable, named.
  */
 export function linuxLedger(contentDir: string): LinuxLedger {
   const projection = loadCurrentResults(contentDir).projection
+  const reviewed = loadDefaultContextPolicy(contentDir)
   const exclusions = new Map(projection.exclusions.map((entry) => [entry.runId, entry.reason]))
   const current = new Map<string, Array<{ key: string; selected: SelectedVersion }>>()
   for (const [key, selected] of Object.entries(projection.current)) {
@@ -314,7 +316,10 @@ export function linuxLedger(contentDir: string): LinuxLedger {
   }
   const ledger: Record<string, LinuxLedgerEntry> = {}
   for (const id of LINUX_TARGET_IDS) {
-    const picked = pickContextRun((current.get(id) ?? []).map(({ key, selected }) => asContextCandidate(key, selected)))
+    const picked = pickContextRun(
+      (current.get(id) ?? []).map(({ key, selected }) => asContextCandidate(key, selected)),
+      reviewed[`app:${id}`],
+    )
     if (picked !== undefined && "ambiguous" in picked) {
       throw new Error(
         `${id}/linux: the site selects more than one run for the context (${picked.ambiguous.join(", ")}); ` +

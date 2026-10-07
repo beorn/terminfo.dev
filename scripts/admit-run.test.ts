@@ -156,6 +156,109 @@ function ownershipBesideRun(source: string, receipt: unknown): string {
   })
 }
 
+/** Hosted identities are measured by the apparatus; these fixture digests model independent jobs. */
+function hostedReceipt(os: "macOS" | "Linux", jobId: string) {
+  const hash = (value: string) => createHash("sha256").update(value).digest("hex")
+  const sample = {
+    machineIdSha256: hash(`${os}-${jobId}-machine`),
+    productUuidSha256: hash(os === "macOS" ? "mac-image" : `${jobId}-platform`),
+    bootIdSha256: hash(`${os}-${jobId}-boot`),
+  }
+  return {
+    schemaVersion: 1,
+    kind: "github-hosted-runner",
+    runId: hash(`${os}-${jobId}`).slice(0, 32),
+    collectedAt: "2026-10-07T06:00:00Z",
+    job: {
+      repository: "beorn/terminfo.dev",
+      workflow: "collect",
+      workflowRef: "collect.yml@main",
+      githubRunId: "37583024982",
+      githubRunAttempt: "1",
+      job: "collect",
+      jobId,
+    },
+    runner: {
+      environment: "github-hosted",
+      name: `runner-${jobId}`,
+      os,
+      arch: "ARM64",
+      imageOS: "fixture",
+      imageVersion: "1",
+      trackingId: hash(jobId),
+    },
+    vm: { identityAtJobStart: { ...sample }, identityAtCollection: { ...sample } },
+  }
+}
+
+// 27910 amendment 1: container-only admission tests cannot see hosted cross-job identity reuse.
+test("hosted admission permits same jobs and fresh jobs, including Mac image constants", () => {
+  for (const os of ["macOS", "Linux"] as const) {
+    const source = join(temp("terminfo-hosted-source-"), "run.json")
+    const content = temp("terminfo-hosted-content-")
+    const first = hostedReceipt(os, "1001")
+    const target = { kind: "app", id: "fixture", os }
+    const citation = ownershipBesideRun(source, first)
+    expect(placeOwnershipReceipt(source, citation, "first", target, content).placed).toBe("created")
+    expect(placeOwnershipReceipt(source, citation, "first", target, content).placed).toBe("existing")
+    expect(placeOwnershipReceipt(source, citation, "same-job", target, content).placed).toBe("created")
+    const fresh = hostedReceipt(os, "1002")
+    if (os === "Linux") {
+      fresh.vm.identityAtJobStart.bootIdSha256 = first.vm.identityAtJobStart.bootIdSha256
+      fresh.vm.identityAtCollection = { ...fresh.vm.identityAtJobStart }
+    }
+    expect(placeOwnershipReceipt(source, ownershipBesideRun(source, fresh), "fresh", target, content).placed).toBe(
+      "created",
+    )
+  }
+})
+
+test("hosted admission refuses OS-specific non-reuse witnesses before placement, naming both jobs", () => {
+  for (const [os, fields] of [
+    ["macOS", ["machineIdSha256", "bootIdSha256"]],
+    ["Linux", ["machineIdSha256", "productUuidSha256"]],
+  ] as const) {
+    for (const field of fields) {
+      for (const differentRun of [false, true]) {
+        const source = join(temp("terminfo-hosted-source-"), "run.json")
+        const content = temp("terminfo-hosted-content-")
+        const first = hostedReceipt(os, "1001")
+        const target = { kind: "app", id: "fixture", os }
+        placeOwnershipReceipt(source, ownershipBesideRun(source, first), "first", target, content)
+        const repeat = hostedReceipt(os, "1002")
+        if (differentRun) {
+          repeat.job.githubRunId = "37583024983"
+          repeat.job.jobId = "1001"
+        }
+        repeat.vm.identityAtJobStart[field] = first.vm.identityAtJobStart[field]
+        repeat.vm.identityAtCollection = { ...repeat.vm.identityAtJobStart }
+        expect(() =>
+          placeOwnershipReceipt(source, ownershipBesideRun(source, repeat), "repeat", target, content),
+        ).toThrow(new RegExp(`${field}.*37583024982/1001.*${repeat.job.githubRunId}/${repeat.job.jobId}`))
+        expect(existsSync(join(content, "receipts", "repeat.json"))).toBe(false)
+      }
+    }
+  }
+})
+
+test("hosted admission reads every prior receipt and names corrupt history instead of skipping it", () => {
+  const source = join(temp("terminfo-hosted-source-"), "run.json")
+  const content = temp("terminfo-hosted-content-")
+  mkdirSync(join(content, "receipts"))
+  const corrupt = join(content, "receipts", "corrupt.json")
+  writeFileSync(corrupt, "not JSON")
+  expect(() =>
+    placeOwnershipReceipt(
+      source,
+      ownershipBesideRun(source, hostedReceipt("macOS", "1001")),
+      "new",
+      { kind: "app", id: "fixture", os: "macOS" },
+      content,
+    ),
+  ).toThrow(/corrupt.json/)
+  expect(existsSync(join(content, "receipts", "new.json"))).toBe(false)
+})
+
 test("admission places the ownership receipt a run cites, exclusively and immutably", () => {
   const source = join(temp("terminfo-admit-receipt-"), "run.json")
   const content = temp("terminfo-admit-content-")

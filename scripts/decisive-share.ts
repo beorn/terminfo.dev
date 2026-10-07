@@ -7,10 +7,13 @@
  *  1. BAR ROWS — one per Release 1 desktop context (terminal id + os, from the 15323 § Release 1
  *     plan: Linux kitty/ghostty/wezterm/alacritty/xterm, macOS terminal-app/iterm2/ghostty/alacritty/
  *     kitty, Windows Terminal). Each row resolves the run the SITE selects for that context, by
- *     reusing docs/data/current-results.ts — there is no second selection here. It prints the run id,
- *     the decisive count and share over the declared 62 tier-1 rows AND over the ratified 52, the
+ *     reusing docs/data/current-results.ts — there is no second selection here. When several contexts
+ *     are current for one (terminal id, os) the reviewed `content/default-contexts.json` row decides,
+ *     the same policy `compatibilityTargets` applies; the row it used is printed. It prints the run
+ *     id, the decisive count and share over the declared 62 tier-1 rows AND over the ratified 52, the
  *     inconclusive share, the remainder rows by name, and the bar line. A context with no selected run
- *     prints "not measured — no selected run", never 0%.
+ *     prints "not measured — no selected run", a real tie with no reviewed row prints "ambiguous"
+ *     naming the contexts, and neither is ever 0%.
  *  2. ADMITTED RUNS — one line per admitted schema-v2 run under content/probes-apps, labelled
  *     `<terminal id> <version> <os> <runId>` with decisive/62 and decisive/52, so the Release 1 Linux
  *     runs and any admitted-but-unselected run stay visible by run id without polluting the bar rows.
@@ -23,7 +26,11 @@
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import { loadCurrentResults } from "../docs/data/current-results.ts"
+import {
+  loadCurrentResults,
+  loadDefaultContextPolicy,
+  type DefaultContextReview,
+} from "../docs/data/current-results.ts"
 import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
 import { barOverMeasured } from "../docs/data/release-scope.ts"
 import type { SelectedVersion } from "../docs/data/selected-results.ts"
@@ -180,6 +187,7 @@ export interface MeasuredRow {
   context: ReleaseContext
   measured: true
   run: ContextCandidate
+  selection: RunSelection
   shares: ContextShares
 }
 
@@ -191,31 +199,49 @@ export interface NotMeasuredRow {
 
 export type BarRow = MeasuredRow | NotMeasuredRow
 
+/** How the one run for a context was chosen, printed with the row so the choice is auditable. */
+export type RunSelection = "only current" | "reviewed default-context row" | "default profile"
+
+export type PickedContextRun = { run: ContextCandidate; selection: RunSelection } | { ambiguous: string[] }
+
 /**
  * Choose the one run the site selects for a (terminal id, os) context. The site's own selection keys by
- * terminal id, not by id+os, so a context can carry several current entries (kitty/linux has the
- * default and two clipboard-override profiles). The default profile — the entry with no permissions
- * override — is the row; anything still ambiguous is reported, never guessed.
+ * terminal id, not by id+os, so a context can carry several current entries: kitty/linux has the
+ * default and two clipboard-override profiles, and xterm/linux carries one entry per frozen-runner
+ * store path. The site resolves such a tie by the reviewed `default-contexts.json` row
+ * (`compatibilityTargets`), and so does this reader.
+ *
+ * The bar keys rows by terminal id + os while the review is keyed by terminal id alone, so a review
+ * is a tie-break ONLY for the group whose context it names — `app:kitty` names the macOS context, and
+ * kitty/linux must still resolve on its own. A review that names no candidate of this group is
+ * therefore not this group's tie-break and the fallbacks below apply; the single permissions-free
+ * entry is the row, and anything still ambiguous is reported with its contexts, never guessed.
  */
 export function pickContextRun(
   candidates: readonly ContextCandidate[],
-): { run: ContextCandidate } | { ambiguous: string[] } | undefined {
+  reviewed?: DefaultContextReview,
+): PickedContextRun | undefined {
   if (candidates.length === 0) return undefined
+  if (reviewed !== undefined) {
+    const chosen = candidates.find((candidate) => candidate.key === reviewed.contextKey)
+    if (chosen) return { run: chosen, selection: "reviewed default-context row" }
+  }
   const [only] = candidates
-  if (candidates.length === 1 && only) return { run: only }
+  if (candidates.length === 1 && only) return { run: only, selection: "only current" }
   const defaults = candidates.filter((candidate) => candidate.permissions === null)
   const [onlyDefault] = defaults
-  if (defaults.length === 1 && onlyDefault) return { run: onlyDefault }
+  if (defaults.length === 1 && onlyDefault) return { run: onlyDefault, selection: "default profile" }
   return { ambiguous: candidates.map((candidate) => candidate.key) }
 }
 
 export function barRowForContext(args: {
   context: ReleaseContext
   candidates: readonly ContextCandidate[]
+  reviewed?: DefaultContextReview
   tier62Ids: readonly string[]
   tier52Ids: readonly string[]
 }): BarRow {
-  const picked = pickContextRun(args.candidates)
+  const picked = pickContextRun(args.candidates, args.reviewed)
   if (!picked) {
     return {
       context: args.context,
@@ -236,6 +262,7 @@ export function barRowForContext(args: {
     context: args.context,
     measured: true,
     run: picked.run,
+    selection: picked.selection,
     shares: {
       tier62: decisiveShare(picked.run.cells, args.tier62Ids),
       tier52: decisiveShare(picked.run.cells, args.tier52Ids),
@@ -275,6 +302,7 @@ export interface Report {
 export function buildReport(args: { contentDir: string; contexts?: readonly ReleaseContext[] }): Report {
   const projection = loadCurrentResults(args.contentDir).projection
   const current = Object.entries(projection.current).map(([key, selected]) => candidateFromSelected(key, selected))
+  const reviewed = loadDefaultContextPolicy(args.contentDir)
   const admitted: ContextCandidate[] = []
   let legacySkipped = 0
   for (const [key, list] of Object.entries(projection.history)) {
@@ -307,6 +335,7 @@ export function buildReport(args: { contentDir: string; contexts?: readonly Rele
         (candidate) =>
           candidate.kind === "app" && candidate.terminalId === context.terminalId && candidate.os === context.os,
       ),
+      reviewed: reviewed[`app:${context.terminalId}`],
       tier62Ids,
       tier52Ids,
     }),
@@ -332,15 +361,21 @@ export function formatBarRow(row: BarRow): string[] {
   const label = `${row.context.terminalId}/${row.context.os || "os not recorded"}`
   if (!row.measured) return [label, `  ${row.reason}`]
   const { tier62, tier52 } = row.shares
-  return [
+  const lines = [
     `${label} ${row.run.version || "version not recorded"}`,
     `  run ${row.run.runId} · measured ${row.run.measuredAt} · ${row.run.suiteFreshness}`,
+  ]
+  if (row.selection !== "only current") {
+    lines.push(`  selected by the ${row.selection} · ${row.run.key}`)
+  }
+  lines.push(
     `    decisive/62     ${tier62.decisive}/${tier62.denominator} = ${tier62.decisivePct}%  (bar >= ${RELEASE_BAR.decisivePct}%)`,
     `    decisive/52     ${tier52.decisive}/${tier52.denominator} = ${tier52.decisivePct}%`,
     `    inconclusive/62 ${tier62.inconclusive}/${tier62.denominator} = ${tier62.inconclusivePct}%  (bar <= ${RELEASE_BAR.inconclusivePct}%)`,
     remainderLine(tier62.remainder),
     `    verdict         ${tier62.pass ? "PASS" : "FAIL"}`,
-  ]
+  )
+  return lines
 }
 
 export function formatAdmittedRun(run: ContextCandidate, shares: ContextShares): string {

@@ -114,8 +114,12 @@ export function loadCurrentResults(contentDir: string, options: { artifactDir?: 
   return { projection }
 }
 
-/** Parse the reviewed choice for a compatibility key without changing v2's complete context map. */
-function loadDefaultContextPolicy(contentDir: string): Record<string, DefaultContextReview> {
+/**
+ * Parse the reviewed choice for a compatibility key without changing v2's complete context map. Also
+ * consumed by `scripts/decisive-share.ts`, so the bar reader resolves a multi-current tie by the SAME
+ * reviewed row `compatibilityTargets` applies — one policy source, not a second parser.
+ */
+export function loadDefaultContextPolicy(contentDir: string): Record<string, DefaultContextReview> {
   const path = join(contentDir, "default-contexts.json")
   if (!existsSync(path)) return {}
   const parsed = parseJsonStrict(path, readFileSync(path, "utf8"))

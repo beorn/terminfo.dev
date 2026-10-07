@@ -118,10 +118,85 @@ describe("release 1 decisive-count reader", () => {
     const plain = candidate()
     const allow = candidate({ key: "allow", permissions: "clipboard: read=allow,write=allow" })
     const deny = candidate({ key: "deny", permissions: "clipboard: read=deny,write=allow" })
-    expect(pickContextRun([plain])).toEqual({ run: plain })
-    expect(pickContextRun([allow, plain, deny])).toEqual({ run: plain })
+    expect(pickContextRun([plain])).toEqual({ run: plain, selection: "only current" })
+    expect(pickContextRun([allow, plain, deny])).toEqual({ run: plain, selection: "default profile" })
     expect(pickContextRun([allow, deny])).toEqual({ ambiguous: ["allow", "deny"] })
     expect(pickContextRun([])).toBeUndefined()
+  })
+
+  it("resolves the three-context xterm/linux tie by the reviewed default-context row, and names the tie without one", () => {
+    const store = (key: string) => candidate({ key, runId: `xterm-${key}` })
+    const three = [store("store-a"), store("store-b"), store("store-c")]
+    const review = {
+      contextKey: "store-b",
+      reviewer: "@dev/3",
+      reason: "the reviewed row for xterm/linux",
+      sources: ["content/default-contexts.json"],
+    }
+    expect(pickContextRun(three, review)).toEqual({ run: three[1], selection: "reviewed default-context row" })
+    expect(pickContextRun(three)).toEqual({ ambiguous: ["store-a", "store-b", "store-c"] })
+    expect(pickContextRun(three, { ...review, contextKey: "store-z" })).toEqual({
+      ambiguous: ["store-a", "store-b", "store-c"],
+    })
+  })
+
+  it("does not apply a review that names another (terminal id, os) group's context", () => {
+    const mac = candidate({ key: "macos", os: "macos" })
+    const linuxDefault = candidate({ key: "linux-default" })
+    const linuxAllow = candidate({ key: "linux-allow", permissions: "clipboard: read=allow,write=allow" })
+    const macReview = {
+      contextKey: "macos",
+      reviewer: "@dev/3",
+      reason: "the macOS row",
+      sources: ["content/default-contexts.json"],
+    }
+    // The site keys the review by terminal id; the bar keys by terminal id + os. The macOS row is not
+    // a tie-break for the linux group, so the linux tie still resolves on its own single default.
+    expect(pickContextRun([linuxDefault, linuxAllow], macReview)).toEqual({
+      run: linuxDefault,
+      selection: "default profile",
+    })
+    expect(pickContextRun([mac], macReview)).toEqual({ run: mac, selection: "reviewed default-context row" })
+  })
+
+  it("prints the reviewed row it used, and names both failures, on a bar row", () => {
+    const store = (key: string) => candidate({ key, runId: `xterm-${key}` })
+    const three = [store("store-a"), store("store-b"), store("store-c")]
+    const args = { context: { terminalId: "xterm", os: "linux" }, candidates: three, tier62Ids: IDS, tier52Ids: IDS }
+
+    const measured = barRowForContext({
+      ...args,
+      reviewed: {
+        contextKey: "store-b",
+        reviewer: "@dev/3",
+        reason: "the reviewed row for xterm/linux",
+        sources: ["content/default-contexts.json"],
+      },
+    })
+    expect(measured.measured).toBe(true)
+    if (!measured.measured) throw new Error("expected the reviewed xterm row to be measured")
+    expect(measured.run.key).toBe("store-b")
+    expect(formatBarRow(measured).join("\n")).toContain("selected by the reviewed default-context row · store-b")
+
+    const tied = barRowForContext(args)
+    expect(tied.measured).toBe(false)
+    if (tied.measured) throw new Error("expected the unreviewed xterm row to be not measured")
+    expect(tied.reason).toContain("ambiguous current selection for xterm/linux")
+    expect(tied.reason).toContain("store-a, store-b, store-c")
+
+    const stale = barRowForContext({
+      ...args,
+      reviewed: {
+        contextKey: "store-z",
+        reviewer: "@dev/3",
+        reason: "a row that is no longer current",
+        sources: ["content/default-contexts.json"],
+      },
+    })
+    expect(stale.measured).toBe(false)
+    if (stale.measured) throw new Error("expected the stale review to fall back to not measured")
+    expect(stale.reason).toContain("ambiguous current selection for xterm/linux")
+    expect(stale.reason).toContain("store-a, store-b, store-c")
   })
 
   it("prints both denominators, the named remainder and the bar line for a measured context", () => {
