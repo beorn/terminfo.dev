@@ -32,6 +32,7 @@ function compose(
   writeContainer = true,
   containerRunnerSha = "runner-hash",
   containerProfile = "default",
+  capture: unknown = { xwdSha256: "xwd-hash", pngSha256: "png-hash" },
 ) {
   const host = join(dir, "host.json")
   const container = join(dir, "container.json")
@@ -58,7 +59,7 @@ function compose(
         probeRun: { path: "v2-run.json", runId: "b".repeat(32), sha256: "probe-hash" },
         display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
         clipboardFixture: { runId: containerRunId, profile: containerProfile, sha256: "fixture-hash" },
-        capture: { xwdSha256: "xwd-hash", pngSha256: "png-hash" },
+        capture,
       }),
     )
   }
@@ -173,6 +174,49 @@ describe("disposable ownership receipt mount", () => {
     expect(source).toMatch(/--mount "type=bind,src=\$prep\/receipt,dst=\/receipt,readonly"/)
     expect(source).toMatch(/--env "TERMINFO_DISPOSABLE_RECEIPT=\/receipt\/host-measured\.json"/)
     expect(source).toMatch(/cmp -s "\$raw\/host-measured\.json" "\$prep\/receipt\/host-measured\.json" \|\|/)
+  })
+})
+
+/** A run whose selection called no capture callback carries no frame. That is a fact about the
+ * run, not a failure of it (27875): the launcher records "no frame captured" and carries the run,
+ * instead of aborting on a bare `jq -er` exit 2 that named nothing. */
+describe("frame-less container run", () => {
+  const expression = (() => {
+    const source = readFileSync(launcher, "utf8")
+    const match = source.match(/capture_frame=\$\(jq -c '([^']*)' \/out\/v2-run\.json\)/)
+    if (!match) throw new Error("frame selection expression not found in scripts/linux-container-run.sh")
+    return match[1]!
+  })()
+
+  function select(run: unknown) {
+    return spawnSync("jq", ["-c", expression], { input: JSON.stringify(run), encoding: "utf8" })
+  }
+
+  it("selects null for a run that captured no frame, without failing", () => {
+    const result = select({ observations: [{ featureId: "device.primary-da" }, { featureId: "reset.ris" }] })
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim()).toBe("null")
+  })
+
+  it("selects the target frame when a probe captured one", () => {
+    const frame = { role: "target", ref: `sha256:${"a".repeat(64)}`, sourceRef: `sha256:${"b".repeat(64)}` }
+    const result = select({ observations: [{ featureId: "cursor.shape", frames: [frame] }] })
+    expect(result.status).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(frame)
+  })
+
+  it("records the absence by name and no longer refuses on the bare jq -er", () => {
+    const source = readFileSync(launcher, "utf8")
+    expect(source).toMatch(/no frame captured: no selected probe called ctx\.capture/)
+    expect(source).toMatch(/capture_receipt=null/)
+    expect(source).not.toMatch(/png_sha=\$\(jq -er '\[\.observations\[\]\.frames/)
+  })
+
+  it("composes a frame-less run, whose container receipt carries no capture", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", null)
+    expect(result.status).toBe(0)
+    const receipt = JSON.parse(readFileSync(output, "utf8")) as { capture: unknown }
+    expect(receipt.capture).toBeNull()
   })
 })
 

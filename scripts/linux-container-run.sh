@@ -352,19 +352,38 @@ if [[ "${1:-}" == "--inside" ]]; then
   # The shared callbacks captured this daemon's own window before sealing the
   # run. Keep the original owned geometry in its receipt; a later window search
   # or geometry sample cannot replace the measurement recorded in provenance.
-  png_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' /out/v2-run.json)
-  xwd_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' /out/v2-run.json)
-  [[ -r "/out/artifacts/$png_sha.png" && -r "/out/artifacts/$xwd_sha.xwd" ]] || {
-    echo "Callback capture artifacts are missing" >&2; exit 2;
-  }
-  [[ "$(sha256sum "/out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
-     "$(sha256sum "/out/artifacts/$xwd_sha.xwd" | cut -d ' ' -f 1)" == "$xwd_sha" ]] || {
-    echo "Callback capture digest mismatch" >&2; exit 2;
-  }
-  magick identify "/out/artifacts/$png_sha.png" > /out/image-info.txt
-  sha256sum /out/artifacts/* > /out/capture-hashes.txt
-  jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --arg png "artifacts/$png_sha.png" \
-    '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,png:$png,context:"linux-x86_64-xvfb-llvmpipe"}' \
+  #
+  # A frame exists only when a selected probe called ctx.capture. A selection of pure queries
+  # carries none, and that is a fact about the run, not a failure of it (27875): record
+  # "no frame captured" and carry the run, instead of refusing it on a bare `jq -er` exit 2 that
+  # named nothing. A probe that wanted a frame still fails by name in its own result, so the run's
+  # results list exactly the frame-needing ids that were selected.
+  capture_frame=$(jq -c '[.observations[].frames[]? | select(.role == "target")][0] // null' /out/v2-run.json)
+  if [[ "$capture_frame" == null ]]; then
+    echo "no frame captured: no selected probe called ctx.capture" >&2
+    capture_receipt=null
+  else
+    png_sha=$(jq -er '.ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
+    xwd_sha=$(jq -er '.sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
+    [[ -r "/out/artifacts/$png_sha.png" && -r "/out/artifacts/$xwd_sha.xwd" ]] || {
+      echo "Callback capture artifacts are missing" >&2; exit 2;
+    }
+    [[ "$(sha256sum "/out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
+       "$(sha256sum "/out/artifacts/$xwd_sha.xwd" | cut -d ' ' -f 1)" == "$xwd_sha" ]] || {
+      echo "Callback capture digest mismatch" >&2; exit 2;
+    }
+    magick identify "/out/artifacts/$png_sha.png" > /out/image-info.txt
+    capture_receipt=$(jq -n --arg xwd "artifacts/$xwd_sha.xwd" --arg xwdSha "$xwd_sha" \
+      --arg png "artifacts/$png_sha.png" --arg pngSha "$png_sha" \
+      '{xwd:$xwd,xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}')
+  fi
+  if compgen -G "/out/artifacts/*" >/dev/null; then
+    sha256sum /out/artifacts/* > /out/capture-hashes.txt
+  else
+    : > /out/capture-hashes.txt
+  fi
+  jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --argjson capture "$capture_receipt" \
+    '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,capture:$capture,context:"linux-x86_64-xvfb-llvmpipe"}' \
     > /out/observed.json
   read -r invocation_sha invocation_path < /out/invocation.sha256
   read -r source_sha source_path < /out/source-archive.sha256
@@ -374,8 +393,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg executableVersion "$(cat /out/executable-version.txt)" \
     --arg sourcePath "$source_path" --arg sourceSha "$source_sha" \
     --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
-    --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" \
-    --arg png "artifacts/$png_sha.png" --arg pngSha "$png_sha" --arg xwdSha "$xwd_sha" \
+    --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" --argjson capture "$capture_receipt" \
     --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg clipboardSha "$clipboard_fixture_sha" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
@@ -387,7 +405,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       probeRun:{path:"v2-run.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
       clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
-      capture:{xwd:("artifacts/"+$xwdSha+".xwd"),xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
+      capture:$capture} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
     > /out/container-receipt.json
   exit 0
 fi
