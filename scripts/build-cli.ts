@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
-import { checkCurrentSuiteManifest } from "./suite-manifest.ts"
+import { declaredSuiteManifest } from "./suite-manifest.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
     encoding: "utf8",
   }).trim()
   if (dirty) throw new Error(`Cannot bundle an uncommitted CLI collector:\n${dirty}`)
-  const manifest = checkCurrentSuiteManifest()
+  const manifest = declaredSuiteManifest()
   const collectorRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const result = await Bun.build({
     entrypoints: [join(ROOT, "packages", "terminfo.dev", "src", "index.tsx")],
