@@ -161,6 +161,16 @@ function assertGithubHostedRunner(value: Record<string, unknown>): {
   for (const key of ["repository", "workflow", "workflowRef", "githubRunId", "githubRunAttempt", "job", "jobId"]) {
     text(job, key, `${where} job`)
   }
+  for (const key of ["githubRunId", "githubRunAttempt", "jobId"]) {
+    const value = text(job, key, `${where} job`)
+    if (/[^0-9]/.test(value)) {
+      fail(
+        `${where} job`,
+        `${key} must be decimal digits` +
+          (key === "jobId" ? "; GITHUB_JOB is a YAML key, not the numeric jobs-API id" : ""),
+      )
+    }
+  }
   const runner = object(value, "runner", where)
   const environment = text(runner, "environment", `${where} runner`)
   if (environment !== "github-hosted") {
