@@ -119,7 +119,7 @@ jobs:
             iterm2)
               osascript - "$COMMAND_PATH" <<'APPLESCRIPT'
           on run argv
-            tell application "iTerm"
+            tell application "iTerm2"
               create window with default profile command ("/bin/bash " & quoted form of item 1 of argv)
             end tell
           end run
