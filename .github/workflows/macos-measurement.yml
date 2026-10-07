@@ -488,11 +488,11 @@ jobs:
         sample: [one, two]
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      IDENTITY_OUTPUT_DIR: ${{ runner.temp }}/mac-identity
     steps:
       - name: Sample VM identity at job start
         env:
           IDENTITY_PHASE: start
+          IDENTITY_OUTPUT_DIR: ${{ runner.temp }}/mac-identity
         run: &sample-macos-identity |
           node --input-type=module <<'NODE'
           import { spawnSync } from 'node:child_process';
@@ -553,6 +553,7 @@ jobs:
       - name: Sample VM identity where collection would start
         env:
           IDENTITY_PHASE: collection
+          IDENTITY_OUTPUT_DIR: ${{ runner.temp }}/mac-identity
         run: *sample-macos-identity
       - name: Upload identity facts only
         if: always()
