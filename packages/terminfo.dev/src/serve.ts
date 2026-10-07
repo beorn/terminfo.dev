@@ -250,10 +250,20 @@ export async function collectProbeRun(
   }
   if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
   if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
+  const measuredVersion = resolveMeasuredAppVersion(terminal.name, terminal.version, batch.rawReplies)
+  const declaredVersion = (process.env.TERMINFO_TARGET_VERSION || "").trim()
   const target: ProbeRun["target"] = {
     kind: "app",
     id: terminal.name,
-    version: resolveMeasuredAppVersion(terminal.name, terminal.version, batch.rawReplies),
+    // The measured version is the version the TERMINAL reported. alacritty reports none at all -
+    // XTVERSION answers with nothing and neither TERM_PROGRAM nor TERM_PROGRAM_VERSION is set - so
+    // it is "unknown" here, which provenance can never agree with. When the APPARATUS declared a
+    // version for this target (the launcher passes TERMINFO_TARGET_VERSION in the image
+    // environment; it is never read back out of the ownership receipt), write that declaration
+    // instead. The value is NOT a version the terminal reported - the raw replies show it reported
+    // none - and the provenance check still does its work: the binary's own `--version` must agree
+    // with the declaration. A non-apparatus run has no declaration, so "unknown" stays as before.
+    version: measuredVersion === "unknown" && declaredVersion ? declaredVersion : measuredVersion,
     os: terminal.os,
     osVersion: terminal.osVersion,
     outerTerminal: null,

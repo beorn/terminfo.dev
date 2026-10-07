@@ -149,25 +149,37 @@ if [[ "${1:-}" == "--inside" ]]; then
       target_xtversion_expect="XTerm($target_version)"
       ;;
     ghostty)
+      # `title` is ghostty's own key: `--window-title` is not a config key, so ghostty reports a
+      # configuration error and opens a SECOND owned window, which the one-window check below
+      # refuses. Measured 2026-10-07 in ghostty-visual-default-image: `--window-title=` -> 2 visible
+      # owned windows, `--title=` -> exactly 1. (27892)
       target_launch_args=(--font-family='DejaVu Sans Mono' --font-size=16
-        --window-title="terminfo-$target_id-container-daemon")
+        --title="terminfo-$target_id-container-daemon")
       target_command_lead=(-e)
       # Measured 2026-10-07 in ghostty-visual-default-image: XTVERSION "ghostty 1.3.1", DA1 "?62;...".
       target_xtversion_mode=require
       target_xtversion_expect="ghostty $target_version"
       ;;
     wezterm)
-      target_launch_args=(--config-file /dev/null)
+      # --config-file is a Lua chunk: /dev/null returns nil, which wezterm reports as a
+      # "Configuration Error" and renders as a second owned window. One empty table is a valid
+      # config with nothing in it. Measured 2026-10-07 in wezterm-visual-default-image:
+      # --config-file /dev/null -> 2 visible owned windows, `return {}` -> exactly 1. (27892)
+      printf 'return {}\n' > "$HOME/wezterm-config.lua"
+      target_launch_args=(--config-file "$HOME/wezterm-config.lua")
       target_command_lead=(start --)
-      # NOT YET MEASURED through the apparatus: this image cannot open a window as it stands
-      # (wezterm wants EGL, the image ships software GLX). The raw XTVERSION answer, or its
-      # absence, is recorded and named; the row is promoted to require/forbid once measured. (27874)
+      # Measured 2026-10-07: with libglvnd on LD_LIBRARY_PATH and __EGL_VENDOR_LIBRARY_DIRS pointing
+      # at mesa's egl_vendor.d the image opens exactly one owned window under software EGL, so the
+      # raw XTVERSION answer is recorded and named; promoted to require/forbid once its exact
+      # expected answer is measured through the apparatus. (27874)
       target_xtversion_mode=record
       ;;
     alacritty)
       target_command_lead=(-e)
-      # NOT YET MEASURED through the apparatus: this image cannot start as it stands (alacritty
-      # needs a passwd entry for the run user). Recorded and named; promoted once measured. (27874)
+      # Measured 2026-10-07: alacritty resolves the run user from USER/HOME/SHELL before its passwd
+      # fallback, and refuses with `pw not found` only when that lookup fails. The image now carries
+      # a passwd entry for the run uid, and the raw XTVERSION answer is recorded and named; promoted
+      # to require/forbid once its exact expected answer is measured through the apparatus. (27874)
       target_xtversion_mode=record
       ;;
     *) echo "Unknown target id: $target_id" >&2; exit 2 ;;
@@ -258,6 +270,12 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "Loaded $target_id version $actual_version is not declared $target_version" >&2
     exit 2
   }
+  # The receipts record the version the executable REPORTS, never a whole build report: ghostty
+  # answers --version with a multi-line report naming its Zig, GTK and libadwaita versions, and the
+  # run parser admits exactly ONE version token equal to target.version, so a report carrying
+  # several numbers is refused by name. The line kept is the one parse_version reads, and the full
+  # report stays in /out/executable-version.txt and in the app's own daemon log.
+  executable_version=$(head -n 1 /out/executable-version.txt)
   fc-match -f '%{family} | %{file}\n' 'DejaVu Sans Mono' > /out/font.txt
 
   xvfb_pid=
@@ -424,7 +442,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   read -r source_sha source_path < /out/source-archive.sha256
   jq -n --slurpfile host /out/host-measured.json \
     --arg path "$live_executable" --arg sha "$live_executable_sha" \
-    --arg version "$(cat /out/executable-version.txt)" --arg sourceSha "$source_sha" \
+    --arg version "$executable_version" --arg sourceSha "$source_sha" \
     --arg config "$target_config" \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
     --rawfile display /out/xdpyinfo.txt --rawfile gl /out/glxinfo.txt '
@@ -531,7 +549,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   jq -n --argjson ids "$selected_ids" --arg run "$TERMINFO_RUN_ID" \
     --arg executablePath "$live_executable" --arg executableSha "$live_executable_sha" \
     --arg invocationPath "$invocation_path" --arg invocationSha "$invocation_sha" \
-    --arg executableVersion "$(cat /out/executable-version.txt)" \
+    --arg executableVersion "$executable_version" \
     --arg sourcePath "$source_path" --arg sourceSha "$source_sha" \
     --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
     --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" --argjson capture "$capture_receipt" \
@@ -798,18 +816,40 @@ jq -n \
 # must not be able to rewrite the receipt that authorizes writing to the terminal it drives.
 cp "$raw/host-measured.json" "$prep/receipt/host-measured.json"
 
+# The run user is the INVOKING user, never the image's declared User: docker create overrides it with
+# --user (below) so the bind-mounted /out is writable by this process, and a program that then
+# resolves the user by uid finds no passwd entry at all - alacritty refuses `pw not found` before it
+# can open a window, and ghostty cannot detect a default shell. Generate the two files the image
+# cannot carry for a uid it does not know, and mount them read-only. ONE binding (@cto 2026-10-06,
+# 27892): this uid/gid feeds --user, the private /home/runner tmpfs and both files, and the shell is
+# the image's own entrypoint rather than a guessed path.
+run_uid=$(id -u)
+run_gid=$(id -g)
+[[ "$run_uid" != 0 ]] || { echo "Refusing root run user" >&2; exit 2; }
+container_shell=$(jq -er '.[0].Config.Entrypoint[0]' "$prep/image-inspect.json") || {
+  echo "Loaded image declares no entrypoint, so the run user has no shell" >&2; exit 2;
+}
+[[ "$container_shell" == /* ]] || {
+  echo "Loaded image entrypoint is not an absolute shell path: $container_shell" >&2; exit 2;
+}
+printf 'runner:x:%s:%s:terminfo run user:/home/runner:%s\n' "$run_uid" "$run_gid" "$container_shell" > "$prep/passwd"
+printf 'runner:x:%s:\n' "$run_gid" > "$prep/group"
+chmod 0644 "$prep/passwd" "$prep/group"
+
 selection_env=()
 [[ "$probe_ids" == null ]] || selection_env=(--env "TERMINFO_PROBE_IDS=$probe_ids")
 # The one-time sentinel-grace sizing pass widens the post-DA1 read; forward it only when the host
 # asked for it, so an ordinary collection keeps the measured floor.
 grace_env=()
 [[ -z "${TERMINFO_SENTINEL_GRACE_MS:-}" ]] || grace_env=(--env "TERMINFO_SENTINEL_GRACE_MS=$TERMINFO_SENTINEL_GRACE_MS")
-container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-only \
+container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-only \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 2g --cpus 2 \
   --tmpfs "/tmp:rw,nosuid,nodev,mode=1777" \
-  --tmpfs "/home/runner:rw,nosuid,nodev,uid=$(id -u),gid=$(id -g),mode=0700" \
+  --tmpfs "/home/runner:rw,nosuid,nodev,uid=$run_uid,gid=$run_gid,mode=0700" \
   --mount "type=bind,src=$raw,dst=/out" \
   --mount "type=bind,src=$prep/receipt,dst=/receipt,readonly" \
+  --mount "type=bind,src=$prep/passwd,dst=/etc/passwd,readonly" \
+  --mount "type=bind,src=$prep/group,dst=/etc/group,readonly" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
