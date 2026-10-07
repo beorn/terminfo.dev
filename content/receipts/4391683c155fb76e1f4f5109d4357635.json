@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-07T06:22:07Z",
+  "runId": "adb545550f128e1c0671b26044a4fe95",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "xterm",
+    "version": "411",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://invisible-island.net/archives/xterm/xterm-411.tgz",
+    "sri": "sha256-lpvig2cN6t1mk0hlxN5sWrBF46P6zCsijez5GiDYw2w="
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev5/27914-runs/adb545550f128e1c0671b26044a4fe95/prep/runner-bundle.tar",
+    "sha256": "472e1b96aa48d07ec7478b6945ed4b22986a9e23f0d188f74c1f529984c8a831",
+    "narSha256": "sha256-cfSoD/S9QL32kYnkDr79pGbu/14vxUcGCfIgaRKnKVk=",
+    "frozenRunnerSha256": "1cb656db6756699e9e4493a031505b9f40001cd3cb8de12fb7ce540f371b3730",
+    "buildReceiptSha256": "c03414a18a2d5dd69e2226968af3c55fa672e11c815d448177fe5a2eb3204145",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "2ea0741f3e02",
+      "collectorRevision": "3b69a8775860ac46524b750f2ba77333b1c79dc0",
+      "manifestSha256": "bbfc9c6b1f639dc6a2004cc029c2272fad7195518d122faf71c3e8f938721787",
+      "bundleSha256": "8e6b659e0bd118dfe8209944786e7850b25d1096f2db75f36ef2612725ba962e"
+    },
+    "rootBunLockSha256": "63f4c52c45776a2f65b5c2c7af6b055d0ef8302f886f5f9787c9b28d57e2f415"
+  },
+  "runtime": {
+    "imageId": "sha256:5dccd06f16f799d0d2afa154dc741d830fcad8df29af07a46014578f2772d375",
+    "imageTarSha256": "da94a6eeb77ffc181ff678e5cbc2990f1c8d0111e6be44ceb9f33156f1963e96",
+    "arch": "amd64",
+    "nixLockRevision": "f2e16882cd75b5180bf14f77740fcb8643b35c10",
+    "sourceRevision": "3b69a8775860ac46524b750f2ba77333b1c79dc0",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "7d2c3ad472fad7063847c83a12265058bf856fa9",
+    "suiteHash": "2ea0741f3e02"
+  },
+  "status": "raw-unreviewed-history"
+}
