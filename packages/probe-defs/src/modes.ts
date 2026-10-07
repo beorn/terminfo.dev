@@ -104,11 +104,14 @@ async function xtModeSaveCapture(ctx: TermContext, id: string): Promise<ProbeRes
 
 /**
  * Color-stack capture: index 1 is first set to a KNOWN baseline (blue) so a pop is measurably
- * distinct. The target pushes the palette, redefines index 1 green, prints X green, pops, then
- * prints Y: Y must be the restored blue baseline. Both X and Y are in one frame, so the green-vs-blue
- * difference is directly reviewable. A working push/pop therefore shows green X and blue Y; an
- * ignored push/pop shows blue X and blue Y. A pending push is popped only when one is open, so a
- * successful roundtrip is never double-popped.
+ * distinct. The target pushes the palette, redefines index 1 green, prints X, pops, then prints Y.
+ * Judge the roundtrip by Y ALONE: Y must match the blue baseline control, so a green Y means the pop
+ * did not restore the saved palette. Do NOT grade on X: X is printed through SGR 38;5;1, a palette
+ * reference into index 1, so a correct pop may recolor the already-drawn X blue -- its green-or-blue
+ * color is not evidence either way, and a blue X is not an ignored push/pop. If a pre-pop green X is
+ * wanted as extra evidence, capture it before the pop instead of reading it from this frame. A
+ * palette-setup failure (the control not measured blue) stays inconclusive. A pending push is popped
+ * only when one is open, so a successful roundtrip is never double-popped.
  */
 async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
   const refusal = captureRefusal(ctx, 3, 8, id)
@@ -139,7 +142,7 @@ async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeR
         evidence: "pixels",
         screenshotRef: target.ref,
         frames: [control, target],
-        note: "Control shows X and Y in the blue baseline index 1; the target pushes the palette, redefines index 1 green, prints X, pops before Y, so Y should return to the blue baseline. Green X with blue Y shows the roundtrip; blue X with blue Y shows an ignored push/pop. Requires independent pixel review",
+        note: "Control shows X and Y in the blue baseline index 1; the target pushes the palette, redefines index 1 green, prints X, pops before Y. Grade the roundtrip by Y alone: Y must match the blue baseline control, so a green Y means the pop did not restore the saved palette. Do not grade on X -- it is drawn through palette index 1, so a correct pop may recolor it blue and its color is not evidence either way. A palette-setup failure (control not measured blue) stays inconclusive. Requires independent pixel review",
       },
     }
   } finally {
