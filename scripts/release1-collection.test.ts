@@ -22,6 +22,7 @@ import {
   assertFrozenSuite,
   clipboardProfileFor,
   linuxLedger,
+  preAdmissionRefusalOptions,
   presetFor,
   release1Census,
   refusalForProducedRun,
@@ -233,6 +234,23 @@ describe("release 1 collection refusal checks", () => {
 
   it("passes a clean, frozen, admitted run", () => {
     expect(refusalForProducedRun(cleanRun(), { frozenSuiteId: "frozen01", admitted: true })).toBeNull()
+  })
+
+  it("passes a clean, frozen run under the CLI admission options, so --admit reaches admit-run", () => {
+    // The `--admit` call site is where admission HAPPENS, so it must classify with the admission
+    // options. If it passed `admitted: false` the classifier would refuse every clean frozen run as
+    // `unadmitted` before scripts/admit-run.ts could ever run, and the collection could admit nothing.
+    // Bound to the exported call-site options so this can never drift from what the CLI actually passes.
+    expect(refusalForProducedRun(cleanRun(), preAdmissionRefusalOptions("frozen01"))).toBeNull()
+    expect(preAdmissionRefusalOptions("frozen01").frozenSuiteId).toBe("frozen01")
+  })
+
+  it("still refuses as unadmitted when a caller has not admitted the run", () => {
+    // The other side of the same coin: the pre-admission options differ from `admitted: false` ONLY in
+    // that they let a clean frozen run through; the unadmitted refusal must remain reachable by name.
+    const beforeAdmission = refusalForProducedRun(cleanRun(), { frozenSuiteId: "frozen01", admitted: false })
+    expect(beforeAdmission?.kind).toBe("unadmitted")
+    expect(beforeAdmission?.detail).toMatch(/admit-run/)
   })
 })
 
