@@ -22,7 +22,12 @@ import {
   validateObservationOutcome,
   validateObservation,
 } from "@terminfo/run-parser"
-import { deriveIdentity, verifyTerminalIdentity, TERMINAL_IDENTITY_RULES } from "terminfo.dev/src/identity-guard.ts"
+import {
+  deriveIdentity,
+  verifyTerminalIdentity,
+  TERMINAL_IDENTITY_RULES,
+  type TerminalIdentityRule,
+} from "terminfo.dev/src/identity-guard.ts"
 
 export interface SelectedCell extends Observation {
   conclusive: boolean
@@ -286,6 +291,15 @@ function xtversionVersionEquals(payload: string, declared: string): boolean {
   return payload === declared || payload.endsWith(` ${declared}`) || payload.endsWith(`/${declared}`)
 }
 
+const ADMISSION_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
+  ...TERMINAL_IDENTITY_RULES,
+  alacritty: {
+    terminal: "alacritty",
+    da1Pattern: /\?6c/,
+    forbidXtversion: true,
+  },
+}
+
 function identityMatch(run: LoadedRun): IdentityAdmission | null {
   if (run.target.kind === "headless") {
     const receipt = run.runtimeIdentity
@@ -293,15 +307,22 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
     if (!(receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree)) {
       return null
     }
+    if (run.schemaVersion === 2) {
+      const versionReply = deriveIdentity(run.rawReplies).xtversionPayload
+      return versionReply ? { rule: "runtime-identity", xtversion: versionReply } : null
+    }
     return { rule: "runtime-identity" }
   }
-  const rule = TERMINAL_IDENTITY_RULES[run.target.id]
+  const rule = ADMISSION_IDENTITY_RULES[run.target.id]
   if (!rule) return null
   const results = Object.fromEntries(run.observations.map((o) => [o.featureId, o.outcome === "supported"]))
-  const verification = verifyTerminalIdentity(run.target.id, run.rawReplies, results)
+  const verification = TERMINAL_IDENTITY_RULES[run.target.id]
+    ? verifyTerminalIdentity(run.target.id, run.rawReplies, results)
+    : { ok: true, checked: true }
   if (!verification.checked || !verification.ok) return null
   const identity = deriveIdentity(run.rawReplies)
   if (!nonempty(identity.da1)) return null
+  if (rule.da1Pattern && !rule.da1Pattern.test(identity.da1)) return null
   if (rule.forbidXtversion) {
     const receipt = run.origin.appLaunch
     if (!receipt || run.target.version === "unknown" || receipt.cfBundleShortVersionString !== run.target.version) {
@@ -335,7 +356,7 @@ function identityDecision(run: LoadedRun, active: readonly Interpretation[]): st
     }
     return identityMatch(run) ? null : "runtime-identity-unverified"
   }
-  if (!TERMINAL_IDENTITY_RULES[run.target.id]) return "identity-no-profile"
+  if (!ADMISSION_IDENTITY_RULES[run.target.id]) return "identity-no-profile"
   if (run.schemaVersion !== 2) {
     if (!pin) return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
     return identityMatch(run) ? null : "identity-replies-mismatch"
