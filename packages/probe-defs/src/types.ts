@@ -131,11 +131,19 @@ export type AppSourceArtifact =
       codeSignature: { identifier: string; cdHash: string; strictVerified: true }
     }
 
-/** Immutable declaration of the probes available in one suite revision. */
+/**
+ * Immutable declaration of the probes available in one suite revision.
+ *
+ * `probeHash`, `adapterVersion` and `probes` are the DERIVED record: a pure function of the suite
+ * sources (27832 manifest direction (2)). `sourceRevision` and `generatedAt` are legacy provenance
+ * that only old manifests carry. They are BOTH-OR-NEITHER: a manifest is legacy-complete (both,
+ * validated as today) or new-minimal (neither). A half-present pair can only come from a hand edit
+ * or corruption, so the parser refuses it by name.
+ */
 export interface ProbeSuiteManifest {
   probeHash: string
-  sourceRevision: string
-  generatedAt: string
+  sourceRevision?: string
+  generatedAt?: string
   adapterVersion: string
   probes: Record<ProbeTarget["kind"], string[]>
 }
