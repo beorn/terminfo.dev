@@ -269,6 +269,24 @@ export default {
       })
     }
 
+    // A page id is a public URL: VitePress writes one file per id, so two backends minting
+    // the same id silently publishes one terminal's run under another's name. Refuse the
+    // build and name both backends instead (28047).
+    const slugOwner = new Map<string, string>()
+    for (const page of pages) {
+      const id = page.params.id
+      const backendId = page.params.backendId ?? "(no backendId)"
+      const owner = slugOwner.get(id)
+      if (owner !== undefined) {
+        throw new Error(
+          `terminalPaths.paths(): two terminal pages mint the id '${id}' — '${owner}' and '${backendId}'.\n` +
+            `One would overwrite the other. Give each its own page slug in content/terminals.json ` +
+            `(the declared 'slug' is the page URL) or in @termless/core backends.json.`,
+        )
+      }
+      slugOwner.set(id, backendId)
+    }
+
     return pages
   },
 }

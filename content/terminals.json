@@ -10,6 +10,17 @@
     "manifestBackend": "ghostty",
     "platforms": ["macos", "linux"]
   },
+  "ghostty-native": {
+    "label": "Ghostty (native)",
+    "slug": "headless-ghostty-native",
+    "kind": "headless",
+    "url": "https://ghostty.org",
+    "repo": "https://github.com/ghostty-org/ghostty",
+    "description": "Ghostty's native Zig parser, measured headlessly by Termless. Not the app renderer.",
+    "body": "<p><strong>Ghostty's native parser</strong> is libghostty's terminal emulation core, exposed to Termless through Zig N-API bindings (<code>@termless/ghostty-native</code>). It is the engine the <a href=\"/terminals/ghostty\" class=\"hover-link\">Ghostty application</a> embeds, measured without a renderer: escape sequences are fed to the parser and its replies and programmatic state are checked. It is not an app-rendering test.</p>\n<p>Ghostty also ships a WebAssembly build of the same core, measured separately as <a href=\"/terminals/headless-ghostty\" class=\"hover-link\">Ghostty (headless)</a>.</p>",
+    "headlessBackends": ["ghostty-native"],
+    "platforms": ["linux"]
+  },
   "kitty": {
     "label": "Kitty",
     "slug": "kitty",

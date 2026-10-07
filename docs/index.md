@@ -194,6 +194,14 @@ function backendLabel(name) {
   return data.meta[name]?.label ?? name
 }
 
+// Every score below belongs to one measured run, and one terminal key can hold several:
+// ghostty is measured on macOS and on Linux. Print the run's OS beside the label so two
+// legitimate runs cannot read as one contradictory number (28047).
+function backendContextLabel(name) {
+  const os = data.selectedByBackend[name]?.selected.target.os
+  return `${backendLabel(name)} · ${os ? (data.platformLabels?.[os] ?? os) : 'OS not recorded'}`
+}
+
 function featureTooltip(f) {
   const desc = data.featureDescriptions[f.id]
   if (!desc) return f.name
@@ -251,7 +259,7 @@ function backendTooltip(name, version) {
 
 <div v-if="appBackends.length > 0" class="summary">
   <div v-for="b in appBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendContextLabel(b.name) }}</a>
     <span class="summary-platforms" v-html="platformIcons(b.name)"></span>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
@@ -279,7 +287,7 @@ function backendTooltip(name, version) {
     <div class="baseline-desc">{{ bl === 'core' ? 'Every terminal should support these — SGR basics, cursor, erase, alt screen' : bl === 'modern' ? 'Expected by modern TUIs — truecolor, bracketed paste, focus events, mouse' : bl === 'rich' ? 'Advanced features — kitty keyboard, graphics, hyperlinks, semantic prompts' : 'Unicode correctness — wide chars, combining, emoji, grapheme clusters' }}</div>
     <div class="baseline-backends">
       <div v-for="b in appBackends" :key="b.name" class="baseline-backend">
-        <span class="baseline-backend-name">{{ backendLabel(b.name) }}</span>
+        <span class="baseline-backend-name">{{ backendContextLabel(b.name) }}</span>
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
@@ -359,7 +367,7 @@ function backendTooltip(name, version) {
 
 <div class="summary summary-muted">
   <div v-for="b in headlessBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendContextLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
@@ -382,7 +390,7 @@ function backendTooltip(name, version) {
     </div>
     <div class="baseline-backends">
       <div v-for="b in headlessBackends" :key="b.name" class="baseline-backend">
-        <span class="baseline-backend-name">{{ backendLabel(b.name) }}</span>
+        <span class="baseline-backend-name">{{ backendContextLabel(b.name) }}</span>
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
@@ -431,7 +439,7 @@ function backendTooltip(name, version) {
 
 <div class="summary summary-muted">
   <div v-for="b in muxBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendContextLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>

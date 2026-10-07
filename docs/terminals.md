@@ -12,7 +12,7 @@ outline: deep
 
 ## App Terminals
 
-These are terminal applications, but a product card does not mean its app has an admitted measurement. Check the badge on each linked result page: **App Terminal** means an app run; **Headless Backend** means only its parser was measured. The current app result is Kitty; linked Ghostty, Alacritty, and WezTerm results are headless.
+These are terminal applications, but a product card does not mean its app has an admitted measurement. Check the badge on each linked result page: **App Terminal** means an app run; **Headless Backend** means only its parser was measured. Kitty and Ghostty link to app results; Alacritty and WezTerm currently link to headless parser results.
 
 <div class="term-grid">
 
@@ -21,7 +21,7 @@ These are terminal applications, but a product card does not mean its app has an
     <span class="term-name">Ghostty</span>
     <span class="term-tag">Zig</span>
   </div>
-  <p class="term-desc">GPU-accelerated terminal by Mitchell Hashimoto. The linked result measures its headless parser, not the app renderer.</p>
+  <p class="term-desc">GPU-accelerated terminal by Mitchell Hashimoto. The linked result is the app run on macOS; its headless parsers are measured separately.</p>
 </a>
 
 <a class="term-card" href="/terminals/kitty">

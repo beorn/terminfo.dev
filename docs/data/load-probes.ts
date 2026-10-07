@@ -90,11 +90,17 @@ export function featureSlug(id: string): string {
 }
 
 /**
- * Convert backend name to a URL-friendly terminal slug using the label.
- * ghostty-native -> ghostty, xtermjs -> xterm-js, ghostty (WASM) -> ghostty-wasm
+ * The public page slug of a published backend.
+ *
+ * The declared slug is the page URL: content/terminals.json overrides @termless/core's
+ * backends.json, and the loader prefixes a backend probed under a different kind
+ * (xtermjs -> xterm-js, ghostty's WASM parser -> headless-ghostty). A slugified label is
+ * only the fallback for a backend no catalog declares, so two pages cannot inherit one id
+ * by both slugging their label the same way (ghostty-native and ghostty are both "Ghostty").
  */
 export function terminalSlug(name: string, meta: ProbeData["meta"]): string {
-  if (meta[name]?.slug === name) return name
+  const declared = meta[name]?.slug
+  if (declared) return declared
   const label = (meta[name]?.label ?? name).toLowerCase()
   return label.replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
 }

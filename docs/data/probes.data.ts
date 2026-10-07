@@ -91,6 +91,8 @@ export interface ProbeData {
   baselineStats: Record<string, Record<string, BaselineStats>>
   /** category slug -> display label */
   categoryLabels: Record<string, string>
+  /** platform id -> display label, so a printed score can name the OS it came from (macos -> macOS) */
+  platformLabels: Record<string, string>
   generated: string
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
@@ -191,6 +193,20 @@ function loadCategoryLabels(): Record<string, string> {
   }
   return Object.fromEntries(
     Object.entries(raw as Record<string, { label: string }>).map(([id, value]) => [id, value.label]),
+  )
+}
+
+/** platform id -> display label; the site prints it beside a score so the OS is never implied. */
+function loadPlatformLabels(): Record<string, string> {
+  const path = join(contentDir, "platforms.json")
+  const raw = parseJsonStrict(path, readFileSync(path, "utf-8"))
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`${path}: expected platform catalog object`)
+  }
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, { label?: string }>)
+      .filter(([, value]) => value && typeof value.label === "string")
+      .map(([id, value]) => [id, value.label as string]),
   )
 }
 
@@ -327,6 +343,7 @@ export function loadFullProbes(): ProbeData {
     baselines: {},
     baselineStats: {},
     categoryLabels: loadCategoryLabels(),
+    platformLabels: loadPlatformLabels(),
     generated,
     selected: published.projection,
     selectedByBackend,
