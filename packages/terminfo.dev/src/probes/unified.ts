@@ -250,6 +250,7 @@ export async function runProbeBatch(
   // absent or unparsable receipt is loud, and no env flag or caller option stands in for it.
   const ownsTerminal = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
   const disposable = resolveDisposableReceipt()
+  const authorizedToWrite = ownsTerminal || Boolean(disposable)
   batch.rawReplies["collector.disposableOwnership"] = JSON.stringify(
     disposable
       ? {
@@ -270,8 +271,8 @@ export async function runProbeBatch(
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
     const refusedBecause = !needsOwnership
       ? undefined
-      : !ownsTerminal
-        ? "disposable terminal ownership was not verified"
+      : !authorizedToWrite
+        ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
         : probe.termNeedsDisposable === true && !disposable
           ? "no verified disposable-ownership receipt was presented"
           : undefined
