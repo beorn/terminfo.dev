@@ -240,6 +240,16 @@
     "headlessBackends": ["wezterm"],
     "platforms": ["macos", "linux", "windows"]
   },
+  "xterm": {
+    "label": "xterm",
+    "slug": "xterm",
+    "kind": "app",
+    "url": "https://invisible-island.net/xterm/",
+    "repo": "https://github.com/ThomasDickey/xterm-snapshots",
+    "description": "The reference X11 terminal emulator, measured as a real app on Linux.",
+    "body": "<p><strong>xterm</strong> is the reference X11 terminal emulator. Written in 1984 by Mark Vandevoorde and maintained by <strong>Thomas Dickey</strong> since 1996, it defined most of what \"standard\" terminal behavior means, and the ctlseqs document it ships is what emulator implementors reference.</p><p><strong>xterm-historical</strong> covers xterm's place in terminal history. This entry is the measured application: on terminfo.dev xterm runs as a real app on Linux through the container apparatus, with the apparatus's own ownership receipt, rather than through a reusable parser backend.</p><p>Its XTVERSION, primary DA and secondary DA replies name the running patch level, so a collected xterm run identifies the build it measured.</p>",
+    "platforms": ["linux"]
+  },
   "xtermjs": {
     "label": "xterm.js",
     "slug": "xterm-js",

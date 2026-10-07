@@ -437,4 +437,18 @@ describe("consumer selection", () => {
       rmSync(content, { recursive: true, force: true })
     }
   })
+
+  it("names the declared xterm app run as a compatibility target", () => {
+    const appXterm = { target: { kind: "app", id: "xterm" } }
+    const projection = { current: { "app:xterm": appXterm } } as unknown as SelectedProjection
+    const content = mkdtempSync(join(tmpdir(), "terminfo-xterm-target-"))
+    try {
+      writeCatalog(content)
+      const rows = compatibilityTargets(projection, content)
+      expect(rows.get("xterm")?.contextKey).toBe("app:xterm")
+      expect(rows.get("xterm")?.selected.target.kind).toBe("app")
+    } finally {
+      rmSync(content, { recursive: true, force: true })
+    }
+  })
 })

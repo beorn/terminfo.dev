@@ -43,7 +43,7 @@
     "slug": "linux",
     "tagline": "A broad terminal ecosystem with parser coverage and clear app-probe gaps.",
     "description": "Linux support spans native GUI terminals, Wayland-first terminals, editor-integrated terminals, and Unix multiplexers. The Linux page separates availability from measured app coverage because most current full-app probes were captured on macOS.",
-    "appTerminalIds": ["ghostty", "kitty", "warp", "cursor", "com.microsoft.VSCode", "alacritty", "wezterm"],
+    "appTerminalIds": ["ghostty", "kitty", "warp", "cursor", "com.microsoft.VSCode", "alacritty", "wezterm", "xterm"],
     "parserBackendIds": ["vterm", "vt100", "xtermjs"],
     "multiplexerIds": ["tmux", "screen"],
     "untrackedTerminals": [

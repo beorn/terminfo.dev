@@ -36,13 +36,25 @@ test("validation inventories v2 targets and refuses malformed probe data with it
     expect(baseline.stdout).toContain("Legacy annotation coverage: 0/0")
     expect(baseline.stdout).not.toContain('Terminal "libvterm" (libvterm (Neovim fork)) has no probe data files')
     expect(baseline.stdout).toContain("With probe data: 1")
-    expect(baseline.stdout).toContain("Without probe data: 22")
+    expect(baseline.stdout).toContain("Without probe data: 23")
 
     writeFileSync(v2Path, JSON.stringify({ ...v2Probe, target: { kind: "headless", id: "unknown-backend" } }))
     const unknownV2 = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
     expect(unknownV2.error).toBeUndefined()
-    expect(unknownV2.status, unknownV2.stdout + unknownV2.stderr).toBe(0)
-    expect(unknownV2.stdout).toContain('Probe file "probes-libs/v2-observations.json" references "unknown-backend"')
+    expect(unknownV2.status, unknownV2.stdout + unknownV2.stderr).toBe(1)
+    expect(unknownV2.stdout).toContain(
+      'Probe file "probes-libs/v2-observations.json" targets undeclared headless:unknown-backend',
+    )
+
+    // A legacy run keeps the warning: it carries no explicit target, so its backend name is only a hint.
+    writeFileSync(v2Path, JSON.stringify(v2Probe))
+    const legacyUnknown = join(root, "content", "probes-libs", "legacy-unknown.json")
+    writeFileSync(legacyUnknown, JSON.stringify({ backend: "legacy-unknown", results: {} }))
+    const legacyWarn = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
+    expect(legacyWarn.error).toBeUndefined()
+    expect(legacyWarn.status, legacyWarn.stdout + legacyWarn.stderr).toBe(0)
+    expect(legacyWarn.stdout).toContain('Probe file "probes-libs/legacy-unknown.json" references "legacy-unknown"')
+    rmSync(legacyUnknown)
 
     for (const target of [undefined, { kind: "app", id: "libvterm" }, { kind: "headless", id: " " }]) {
       writeFileSync(v2Path, JSON.stringify({ ...v2Probe, target }))

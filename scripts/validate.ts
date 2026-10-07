@@ -546,14 +546,52 @@ heading("Warnings (fix soon)")
   }
 
   let count = 0
-  for (const { file, dir, backendName } of probeFiles) {
+  for (const { file, dir, backendName, data } of probeFiles) {
+    // A v2 run states its target (kind + id) and is checked against the catalog by section 8b below;
+    // this looser name check covers legacy runs, whose backend naming predates the catalog.
+    if (data.schemaVersion === 2) continue
     if (backendName && !knownBackends.has(backendName)) {
       warn(`Probe file "${dir}/${file}" references "${backendName}" — no matching terminal in terminals.json`)
       warnings++
       count++
     }
   }
-  if (count === 0) info("All probe files match a terminal in terminals.json")
+  if (count === 0) info("All legacy probe files match a terminal in terminals.json")
+}
+
+// 8b. Every v2 run names a target declared in terminals.json
+{
+  // compatibilityTargets (docs/data/current-results.ts) derives every published v1 and site key from
+  // (target.kind, target.id) against terminals.json alone, and throws "Undeclared compatibility target"
+  // for a current run it cannot name. Admitting a run before its target is declared is what turned
+  // main red on app:xterm (27892), so an undeclared v2 target is an error here, before any consumer reads it.
+  const declaredKinds = new Map<string, Set<string>>()
+  const declare = (id: string, kind: string): void => {
+    const kinds = declaredKinds.get(id) ?? new Set<string>()
+    kinds.add(kind)
+    declaredKinds.set(id, kinds)
+  }
+  for (const [id, term] of Object.entries(terminals)) {
+    if (term.historical === true) continue
+    if (typeof term.kind !== "string") continue
+    declare(id, term.kind)
+    for (const backend of term.headlessBackends ?? []) declare(backend, "headless")
+  }
+
+  let count = 0
+  for (const { file, dir, data } of probeFiles) {
+    if (data.schemaVersion !== 2) continue
+    const target = data.target as { kind?: unknown; id?: unknown } | undefined
+    const kind = target?.kind
+    const id = target?.id
+    if (typeof kind !== "string" || typeof id !== "string") continue
+    if (!declaredKinds.get(id)?.has(kind)) {
+      error(`Probe file "${dir}/${file}" targets undeclared ${kind}:${id} - terminals.json declares no such target`)
+      errors++
+      count++
+    }
+  }
+  if (count === 0) info("Every v2 run names a target declared in terminals.json")
 }
 
 // 9. Features missing body text
