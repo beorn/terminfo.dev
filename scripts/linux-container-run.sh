@@ -42,7 +42,8 @@ compose_receipt() {
       $h + {
         executable:$c.executable,
         invocation:$c.invocation,
-        sourceArtifact:($h.sourceArtifact + $c.sourceArtifact),
+        sourceArtifact:(($h.sourceArtifact + $c.sourceArtifact)
+          | if (.kind // null) == "derived-source-tree" then del(.sri) else . end),
         collector:$c.collector,
         probeRun:$c.probeRun,
         display:$c.display,
@@ -56,6 +57,23 @@ compose_receipt() {
     return 2
   }
   mv "$output.partial" "$output"
+}
+
+# The in-image source proof is ONE comparison for both proof kinds (@cto 2026-10-06, 27892): the
+# archive the image carries - a flat upstream archive, or a tar DERIVED from the upstream tree - must
+# hash to exactly the flat sha256 the image declared in TERMINFO_TARGET_SOURCE_SRI. A derived kind
+# adds no second mechanism; it feeds this same check, so a wrong pin is refused here by name.
+verify_source_archive_hash() { # $1 measured sha256 hex, $2 declared sri, $3 label for the message
+  local measured=$1 declared=$2 label=${3:-source} expected
+  [[ "$declared" == sha256-* ]] || {
+    echo "$label has no declared flat sha256: ${declared:-<empty>}" >&2
+    return 2
+  }
+  expected=$(printf '%s' "${declared#sha256-}" | base64 -d | od -An -tx1 -v | tr -d ' \n')
+  [[ -n "$expected" && "$measured" == "$expected" ]] || {
+    echo "$label archive differs from declared fixed hash" >&2
+    return 2
+  }
 }
 
 # The launcher uses this same function after Docker exits. Shell-level checks
@@ -93,6 +111,9 @@ if [[ "${1:-}" == "--inside" ]]; then
   target_source_url=${TERMINFO_TARGET_SOURCE_URL:-}
   target_source_sri=${TERMINFO_TARGET_SOURCE_SRI:-}
   target_source_archive=${TERMINFO_TARGET_SOURCE_ARCHIVE:-}
+  target_source_kind=${TERMINFO_TARGET_SOURCE_KIND:-}
+  target_source_nar_sri=${TERMINFO_TARGET_SOURCE_NAR_SRI:-}
+  target_source_revision=${TERMINFO_TARGET_SOURCE_REVISION:-}
   target_launch_args=()
   target_command_lead=()
   target_clipboard_args=()
@@ -207,17 +228,27 @@ if [[ "${1:-}" == "--inside" ]]; then
   sha256sum "$target_binary" | tee /out/invocation.sha256
   case "$target_source_archive" in
     "")
-      echo "$target_id: no flat source archive; source proof unavailable" >&2
+      echo "$target_id: no source archive; source proof unavailable" >&2
       exit 2
       ;;
   esac
+  # The proof is NAMED by its kind (@cto 2026-10-06, 27892): absent means the flat upstream archive at
+  # url; "derived-source-tree" means a tar built from the upstream tree, which must also carry the tree
+  # hash nix pinned and the revision it came from. An unknown kind, or a derived tree without them, is
+  # refused by name rather than described with a plausible source.
+  case "$target_source_kind" in
+    ""|derived-source-tree) ;;
+    *) echo "$target_id: unknown source proof kind $target_source_kind" >&2; exit 2 ;;
+  esac
+  if [[ "$target_source_kind" == derived-source-tree ]]; then
+    [[ "$target_source_nar_sri" == sha256-* && -n "$target_source_revision" ]] || {
+      echo "$target_id: derived source tree lacks a pinned revision or tree hash; source proof unavailable" >&2
+      exit 2
+    }
+  fi
   sha256sum "$target_source_archive" | tee /out/source-archive.sha256
   read -r source_sha source_path < /out/source-archive.sha256
-  expected_source_sha=$(printf '%s' "${target_source_sri#sha256-}" | base64 -d | od -An -tx1 -v | tr -d ' \n')
-  [[ "$target_source_sri" == sha256-* && "$source_sha" == "$expected_source_sha" ]] || {
-    echo "Loaded $target_id source archive differs from declared fixed hash" >&2
-    exit 2
-  }
+  verify_source_archive_hash "$source_sha" "$target_source_sri" "Loaded $target_id source" || exit 2
   case "$target_id" in
     xterm) "$target_binary" -version ;;
     *) "$target_binary" --version ;;
@@ -399,7 +430,10 @@ if [[ "${1:-}" == "--inside" ]]; then
     --rawfile display /out/xdpyinfo.txt --rawfile gl /out/glxinfo.txt '
     $host[0] as $h | {
       executable:{path:$path,sha256:$sha,version:$version},
-      sourceArtifact:{url:$h.sourceArtifact.url,sha256:$sourceSha},
+      sourceArtifact:({url:$h.sourceArtifact.url,sha256:$sourceSha}
+        + (if ($h.sourceArtifact.kind // null) == "derived-source-tree"
+           then {kind:$h.sourceArtifact.kind,narSri:$h.sourceArtifact.narSri,revision:$h.sourceArtifact.revision}
+           else {} end)),
       runtime:{imageId:$h.runtime.imageId,imageTarSha256:$h.runtime.imageTarSha256,
         arch:$h.runtime.arch,nixLockRevision:$h.runtime.nixLockRevision,
         sourceRevision:$h.runtime.sourceRevision,cleanTree:($h.runtime.sourceTreeStatus == "clean"),
@@ -673,6 +707,10 @@ jq -e --arg label "${label_prefix}preset" --arg preset "$preset" \
 target_version=$(jq -er --arg label "${label_prefix}version" '.[0].Config.Labels[$label]' "$prep/image-inspect.json")
 source_url=$(jq -er --arg label "${label_prefix}source-url" '.[0].Config.Labels[$label] // ""' "$prep/image-inspect.json")
 source_sri=$(jq -er --arg label "${label_prefix}source-sri" '.[0].Config.Labels[$label] // ""' "$prep/image-inspect.json")
+# `source_revision` above is the COLLECTOR revision; the proof's upstream revision must not shadow it.
+proof_kind=$(jq -er --arg label "${label_prefix}source-kind" '.[0].Config.Labels[$label] // ""' "$prep/image-inspect.json")
+proof_nar_sri=$(jq -er --arg label "${label_prefix}source-nar-sri" '.[0].Config.Labels[$label] // ""' "$prep/image-inspect.json")
+proof_revision=$(jq -er --arg label "${label_prefix}source-revision" '.[0].Config.Labels[$label] // ""' "$prep/image-inspect.json")
 # Kitty's image predates the uniform TERMINFO_TARGET_* names; map its env either way, and check the
 # image really declares what the labels and the receipt are about to claim.
 case "$target_id" in
@@ -701,12 +739,35 @@ for declared_env in "$preset_env=$preset" "$version_env=$target_version" \
     exit 2
   }
 done
+# The uniform source-proof metadata is declared by every mkVisualImage target; kitty's own image
+# predates it and its target never derives a tree, so its absence is not a disagreement.
+if [[ "$target_id" != kitty ]]; then
+  for declared_env in "TERMINFO_TARGET_SOURCE_KIND=$proof_kind" \
+    "TERMINFO_TARGET_SOURCE_NAR_SRI=$proof_nar_sri" \
+    "TERMINFO_TARGET_SOURCE_REVISION=$proof_revision"; do
+    jq -e --arg entry "$declared_env" '.[0].Config.Env | index($entry) != null' \
+      "$prep/image-inspect.json" >/dev/null || {
+      echo "Loaded image environment disagrees with declared $target_id metadata: $declared_env" >&2
+      exit 2
+    }
+  done
+fi
 target_binary=$(jq -er --arg name "$binary_env" '.[0].Config.Env | map(select(startswith($name + "="))) | .[0] | sub("^[^=]*="; "")' "$prep/image-inspect.json")
 target_source_archive=$(jq -er --arg name "$archive_env" '.[0].Config.Env | map(select(startswith($name + "="))) | .[0] | sub("^[^=]*="; "")' "$prep/image-inspect.json")
 [[ -n "$target_source_archive" ]] || {
-  echo "$target_id: no flat source archive; source proof unavailable" >&2
+  echo "$target_id: no source archive; source proof unavailable" >&2
   exit 2
 }
+case "$proof_kind" in
+  ""|derived-source-tree) ;;
+  *) echo "$target_id: unknown source proof kind $proof_kind" >&2; exit 2 ;;
+esac
+if [[ "$proof_kind" == derived-source-tree ]]; then
+  [[ "$proof_nar_sri" == sha256-* && -n "$proof_revision" ]] || {
+    echo "$target_id: derived source tree lacks a pinned revision or tree hash; source proof unavailable" >&2
+    exit 2
+  }
+fi
 jq -n \
   --argjson ids "$probe_ids" --arg run "$run_id" --arg image "$image_id" --arg tar "$image_tar_sha" \
   --arg arch "$image_arch" --arg nix "$nix_lock_revision" --arg source "$source_revision" \
@@ -719,10 +780,13 @@ jq -n \
   --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$target_version" \
   --arg target "$target_id" \
   --arg url "$source_url" --arg sri "$source_sri" \
+  --arg kind "$proof_kind" --arg narSri "$proof_nar_sri" --arg revision "$proof_revision" \
   --arg runnerUrl "file://$prep/runner-bundle.tar" \
   '{schemaVersion:1,kind:"linux-xvfb-container",collectedAt:$collectedAt,runId:$run,preset:$preset,clipboardProfile:$profile,sentinelGraceMs:($grace|tonumber),
     declaredTarget:{kind:"app",id:$target,version:$version,os:"linux"},
-    sourceArtifact:{url:$url,sri:$sri},
+    sourceArtifact:({url:$url,sri:$sri}
+      + (if $kind == "derived-source-tree"
+         then {kind:$kind,narSri:$narSri,revision:$revision} else {} end)),
     runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
       frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
       build:$build[0],rootBunLockSha256:$lock},
@@ -752,6 +816,9 @@ container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-on
   --env "TERMINFO_TARGET_BINARY=$target_binary" --env "TERMINFO_TARGET_VERSION=$target_version" \
   --env "TERMINFO_TARGET_SOURCE_URL=$source_url" --env "TERMINFO_TARGET_SOURCE_SRI=$source_sri" \
   --env "TERMINFO_TARGET_SOURCE_ARCHIVE=$target_source_archive" \
+  --env "TERMINFO_TARGET_SOURCE_KIND=$proof_kind" \
+  --env "TERMINFO_TARGET_SOURCE_NAR_SRI=$proof_nar_sri" \
+  --env "TERMINFO_TARGET_SOURCE_REVISION=$proof_revision" \
   "${grace_env[@]}" \
   --env "TERMINFO_DISPOSABLE_RECEIPT=/receipt/host-measured.json" \
   "$image_id")

@@ -25,6 +25,7 @@ export type {
   RunOrigin,
   AppLaunchReceipt,
   AppSourceArtifact,
+  DerivedSourceTreeArtifact,
   ProbeAssertion,
   UngradedDiagnostic,
   NotTestedCoverage,
