@@ -247,7 +247,8 @@ test("hosted admission refuses untrusted runner.os prototype properties by name"
     const source = join(temp("terminfo-hosted-source-"), "run.json")
     const content = temp("terminfo-hosted-content-")
     const receipt = hostedReceipt("Windows", "1001")
-    receipt.runner.os = maliciousOs
+    // An untrusted receipt carries an os the type forbids; write it past the type, as such a receipt arrives.
+    Object.assign(receipt.runner, { os: maliciousOs })
     expect(() =>
       placeOwnershipReceipt(
         source,
