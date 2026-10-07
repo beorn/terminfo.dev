@@ -1,0 +1,374 @@
+name: windows-measurement
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe-windows-identity:
+    name: Windows Identity Probe (${{ matrix.sample }})
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Sample identity at start
+        env:
+          IDENTITY_PHASE: start
+          IDENTITY_OUTPUT_DIR: ${{ runner.temp }}/windows-identity
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node -e '
+          const { spawnSync } = require("child_process");
+          const { createHash } = require("crypto");
+          const { mkdirSync, writeFileSync } = require("fs");
+          const { join } = require("path");
+
+          const phase = process.env.IDENTITY_PHASE || "unknown";
+          const outDir = process.env.IDENTITY_OUTPUT_DIR || ".";
+          mkdirSync(outDir, { recursive: true });
+
+          async function getJob() {
+            const repo = process.env.GITHUB_REPOSITORY;
+            const runId = process.env.GITHUB_RUN_ID;
+            const attempt = process.env.GITHUB_RUN_ATTEMPT;
+            const runnerName = process.env.RUNNER_NAME;
+            const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+            const token = process.env.GH_TOKEN;
+
+            if (!repo || !runId || !runnerName || !token) {
+              return { matchCount: null, id: null };
+            }
+
+            try {
+              const url = attempt
+                ? `${apiUrl}/repos/${repo}/actions/runs/${runId}/attempts/${attempt}/jobs`
+                : `${apiUrl}/repos/${repo}/actions/runs/${runId}/jobs`;
+              const res = await fetch(url, {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  Accept: "application/vnd.github+json",
+                },
+              });
+              if (!res.ok) {
+                return { matchCount: null, id: null };
+              }
+              const data = await res.json();
+              const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+              const matched = jobs.filter((j) => j.runner_name === runnerName);
+              return {
+                matchCount: matched.length,
+                id: matched.length === 1 && typeof matched[0].id === "number" ? matched[0].id : null,
+              };
+            } catch {
+              return { matchCount: null, id: null };
+            }
+          }
+
+          function sampleMachineGuid() {
+            try {
+              const res = spawnSync("reg.exe", ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid", "/reg:64"], { encoding: "utf8" });
+              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
+              const m = res.stdout.match(/MachineGuid\s+REG_SZ\s+([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})/i);
+              if (!m) return { available: false, sha256: null, byteLength: 0 };
+              const val = m[1];
+              if (/^[0f-]+$/i.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              return {
+                available: true,
+                sha256: createHash("sha256").update(val).digest("hex"),
+                byteLength: Buffer.byteLength(val),
+              };
+            } catch {
+              return { available: false, sha256: null, byteLength: 0 };
+            }
+          }
+
+          function sampleNicMac() {
+            try {
+              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "Get-NetAdapter -Physical | Where-Object { $_.Status -eq '\''Up'\'' } | Sort-Object ifIndex | Select-Object -First 1 -ExpandProperty MacAddress"], { encoding: "utf8" });
+              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
+              const val = res.stdout.trim();
+              if (!/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              return {
+                available: true,
+                sha256: createHash("sha256").update(val).digest("hex"),
+                byteLength: Buffer.byteLength(val),
+              };
+            } catch {
+              return { available: false, sha256: null, byteLength: 0 };
+            }
+          }
+
+          function sampleProductUuid() {
+            try {
+              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct).UUID"], { encoding: "utf8" });
+              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
+              const val = res.stdout.trim();
+              if (!/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              if (/^[0f-]+$/i.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              return {
+                available: true,
+                sha256: createHash("sha256").update(val).digest("hex"),
+                byteLength: Buffer.byteLength(val),
+              };
+            } catch {
+              return { available: false, sha256: null, byteLength: 0 };
+            }
+          }
+
+          function sampleBootTime() {
+            try {
+              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('\''o'\'')"], { encoding: "utf8" });
+              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
+              const val = res.stdout.trim();
+              if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              return {
+                available: true,
+                sha256: createHash("sha256").update(val).digest("hex"),
+                byteLength: Buffer.byteLength(val),
+              };
+            } catch {
+              return { available: false, sha256: null, byteLength: 0 };
+            }
+          }
+
+          function sampleKernelEvent12() {
+            try {
+              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-WinEvent -FilterHashtable @{LogName='\''System'\''; ProviderName='\''Microsoft-Windows-Kernel-General'\''; Id=12} -MaxEvents 1).TimeCreated.ToUniversalTime().ToString('\''o'\'')"], { encoding: "utf8" });
+              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
+              const val = res.stdout.trim();
+              if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              return {
+                available: true,
+                sha256: createHash("sha256").update(val).digest("hex"),
+                byteLength: Buffer.byteLength(val),
+              };
+            } catch {
+              return { available: false, sha256: null, byteLength: 0 };
+            }
+          }
+
+          async function main() {
+            const job = await getJob();
+            const machineGuid = sampleMachineGuid();
+            const nicMac = sampleNicMac();
+            const productUuid = sampleProductUuid();
+            const bootTime = sampleBootTime();
+            const kernelEvent12 = sampleKernelEvent12();
+
+            const output = {
+              phase,
+              job,
+              identifiers: {
+                machineGuid,
+                nicMac,
+                productUuid,
+                bootTime,
+                kernelEvent12,
+              },
+            };
+
+            writeFileSync(join(outDir, `${phase}.json`), JSON.stringify(output, null, 2) + "\n");
+            process.stderr.write(`[${phase}] job: matchCount=${job.matchCount}, id=${job.id}\n`);
+            for (const [k, v] of Object.entries(output.identifiers)) {
+              process.stderr.write(`[${phase}] ${k}: available=${v.available}, sha256=${v.sha256}, bytes=${v.byteLength}\n`);
+            }
+          }
+
+          main().catch((err) => {
+            process.stderr.write(`${err && err.message ? err.message : String(err)}\n`);
+            process.exitCode = 1;
+          });
+          '
+
+      - name: Wait 60s between samples
+        run: sleep 60
+
+      - name: Sample identity at collection
+        env:
+          IDENTITY_PHASE: collection
+          IDENTITY_OUTPUT_DIR: ${{ runner.temp }}/windows-identity
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node -e '
+          const { spawnSync } = require("child_process");
+          const { createHash } = require("crypto");
+          const { mkdirSync, writeFileSync } = require("fs");
+          const { join } = require("path");
+
+          const phase = process.env.IDENTITY_PHASE || "unknown";
+          const outDir = process.env.IDENTITY_OUTPUT_DIR || ".";
+          mkdirSync(outDir, { recursive: true });
+
+          async function getJob() {
+            const repo = process.env.GITHUB_REPOSITORY;
+            const runId = process.env.GITHUB_RUN_ID;
+            const attempt = process.env.GITHUB_RUN_ATTEMPT;
+            const runnerName = process.env.RUNNER_NAME;
+            const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
+            const token = process.env.GH_TOKEN;
+
+            if (!repo || !runId || !runnerName || !token) {
+              return { matchCount: null, id: null };
+            }
+
+            try {
+              const url = attempt
+                ? `${apiUrl}/repos/${repo}/actions/runs/${runId}/attempts/${attempt}/jobs`
+                : `${apiUrl}/repos/${repo}/actions/runs/${runId}/jobs`;
+              const res = await fetch(url, {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  Accept: "application/vnd.github+json",
+                },
+              });
+              if (!res.ok) {
+                return { matchCount: null, id: null };
+              }
+              const data = await res.json();
+              const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+              const matched = jobs.filter((j) => j.runner_name === runnerName);
+              return {
+                matchCount: matched.length,
+                id: matched.length === 1 && typeof matched[0].id === "number" ? matched[0].id : null,
+              };
+            } catch {
+              return { matchCount: null, id: null };
+            }
+          }
+
+          function sampleMachineGuid() {
+            try {
+              const res = spawnSync("reg.exe", ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid", "/reg:64"], { encoding: "utf8" });
+              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
+              const m = res.stdout.match(/MachineGuid\s+REG_SZ\s+([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})/i);
+              if (!m) return { available: false, sha256: null, byteLength: 0 };
+              const val = m[1];
+              if (/^[0f-]+$/i.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              return {
+                available: true,
+                sha256: createHash("sha256").update(val).digest("hex"),
+                byteLength: Buffer.byteLength(val),
+              };
+            } catch {
+              return { available: false, sha256: null, byteLength: 0 };
+            }
+          }
+
+          function sampleNicMac() {
+            try {
+              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "Get-NetAdapter -Physical | Where-Object { $_.Status -eq '\''Up'\'' } | Sort-Object ifIndex | Select-Object -First 1 -ExpandProperty MacAddress"], { encoding: "utf8" });
+              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
+              const val = res.stdout.trim();
+              if (!/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              return {
+                available: true,
+                sha256: createHash("sha256").update(val).digest("hex"),
+                byteLength: Buffer.byteLength(val),
+              };
+            } catch {
+              return { available: false, sha256: null, byteLength: 0 };
+            }
+          }
+
+          function sampleProductUuid() {
+            try {
+              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct).UUID"], { encoding: "utf8" });
+              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
+              const val = res.stdout.trim();
+              if (!/^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              if (/^[0f-]+$/i.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              return {
+                available: true,
+                sha256: createHash("sha256").update(val).digest("hex"),
+                byteLength: Buffer.byteLength(val),
+              };
+            } catch {
+              return { available: false, sha256: null, byteLength: 0 };
+            }
+          }
+
+          function sampleBootTime() {
+            try {
+              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('\''o'\'')"], { encoding: "utf8" });
+              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
+              const val = res.stdout.trim();
+              if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              return {
+                available: true,
+                sha256: createHash("sha256").update(val).digest("hex"),
+                byteLength: Buffer.byteLength(val),
+              };
+            } catch {
+              return { available: false, sha256: null, byteLength: 0 };
+            }
+          }
+
+          function sampleKernelEvent12() {
+            try {
+              const res = spawnSync("powershell.exe", ["-NoProfile", "-Command", "(Get-WinEvent -FilterHashtable @{LogName='\''System'\''; ProviderName='\''Microsoft-Windows-Kernel-General'\''; Id=12} -MaxEvents 1).TimeCreated.ToUniversalTime().ToString('\''o'\'')"], { encoding: "utf8" });
+              if (res.status !== 0 || !res.stdout) return { available: false, sha256: null, byteLength: 0 };
+              const val = res.stdout.trim();
+              if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(val)) return { available: false, sha256: null, byteLength: 0 };
+              return {
+                available: true,
+                sha256: createHash("sha256").update(val).digest("hex"),
+                byteLength: Buffer.byteLength(val),
+              };
+            } catch {
+              return { available: false, sha256: null, byteLength: 0 };
+            }
+          }
+
+          async function main() {
+            const job = await getJob();
+            const machineGuid = sampleMachineGuid();
+            const nicMac = sampleNicMac();
+            const productUuid = sampleProductUuid();
+            const bootTime = sampleBootTime();
+            const kernelEvent12 = sampleKernelEvent12();
+
+            const output = {
+              phase,
+              job,
+              identifiers: {
+                machineGuid,
+                nicMac,
+                productUuid,
+                bootTime,
+                kernelEvent12,
+              },
+            };
+
+            writeFileSync(join(outDir, `${phase}.json`), JSON.stringify(output, null, 2) + "\n");
+            process.stderr.write(`[${phase}] job: matchCount=${job.matchCount}, id=${job.id}\n`);
+            for (const [k, v] of Object.entries(output.identifiers)) {
+              process.stderr.write(`[${phase}] ${k}: available=${v.available}, sha256=${v.sha256}, bytes=${v.byteLength}\n`);
+            }
+          }
+
+          main().catch((err) => {
+            process.stderr.write(`${err && err.message ? err.message : String(err)}\n`);
+            process.exitCode = 1;
+          });
+          '
+
+      - name: Upload identity samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-identity-sample-${{ matrix.sample }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/windows-identity
+          if-no-files-found: error
