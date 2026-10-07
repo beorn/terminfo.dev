@@ -515,7 +515,12 @@ test("checksum observations require a complete reply for the issued request", ()
 test("checksum app path is bound to the issued request and ends on the DA1 sentinel", async () => {
   const definition = editingProbes.find((probe) => probe.id === "editing.decrqcra")
   if (!definition?.term) throw new Error("Missing checksum app callback")
-  const context = (outcome: { match: string[] | null; reason: "reply" | "sentinel" | "timeout"; raw: string }) => {
+  const context = (outcome: {
+    match: string[] | null
+    reason: "reply" | "sentinel" | "timeout"
+    raw: string
+    sentinel?: { atMs: number; graceMs: number }
+  }) => {
     const queries: string[] = []
     return {
       queries,
@@ -537,11 +542,62 @@ test("checksum app path is bound to the issued request and ends on the DA1 senti
   expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
   expect(supported.assertions).toMatchObject([{ kind: "positive" }])
 
-  const silent = context({ match: null, reason: "sentinel", raw: "\x1b[?62;c" })
+  // F1: a complete checksum reply that lands after the DA1 answer is a late reply, graded by its
+  // own bytes and recorded with the ordering note (device.ts:25-30's rule).
+  const lateReply = context({
+    match: ["\x1bP1!~012F\x1b\\"],
+    reason: "reply",
+    raw: "\x1b[?62;c\x1bP1!~012F\x1b\\",
+    sentinel: { atMs: 9, graceMs: 250 },
+  })
+  const late = await definition.term(lateReply.value)
+  expect(lateReply.queries).toEqual(["\x1b[1;1;1;1;1;1*y"])
+  expect(late.observation).toMatchObject({
+    outcome: "supported",
+    evidence: "query",
+    note: "Checks framed reply and request id; checksum arithmetic is not verified; reply after sentinel",
+  })
+  expect(late.assertions).toMatchObject([{ kind: "positive" }])
+
+  // A frame after DA1 with no measured ordering keeps its null: it is not graded supported.
+  const unorderedLateReply = context({
+    match: ["\x1bP1!~012F\x1b\\"],
+    reason: "reply",
+    raw: "\x1b[?62;c\x1bP1!~012F\x1b\\",
+  })
+  const unordered = await definition.term(unorderedLateReply.value)
+  expect(unordered.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+  expect(unordered.assertions).toBeUndefined()
+
+  // F1: DA1 answered alone through the grace window is a measured negative, not an unknown.
+  const silent = context({
+    match: null,
+    reason: "sentinel",
+    raw: "\x1b[?62;c",
+    sentinel: { atMs: 9, graceMs: 250 },
+  })
   const unanswered = await definition.term(silent.value)
   expect(silent.queries).toEqual(["\x1b[1;1;1;1;1;1*y"])
-  expect(unanswered.observation).toMatchObject({ outcome: "inconclusive", evidence: "query", reason: "no-response" })
-  expect(unanswered.assertions).toBeUndefined()
+  expect(unanswered.observation).toMatchObject({
+    outcome: "unsupported",
+    evidence: "query",
+    note: "negative by sentinel",
+  })
+  expect(unanswered.assertions).toMatchObject([
+    { kind: "negative", observed: "DA1 answered at +9ms; no reply through the 250 ms window" },
+  ])
+
+  // F1: a read with no DA1 at all stays unknown, and its reason keeps the timeout marker.
+  const timedOut = context({ match: null, reason: "timeout", raw: "" })
+  const notAnswered = await definition.term(timedOut.value)
+  expect(notAnswered.observation).toMatchObject({ outcome: "inconclusive", evidence: "query", reason: "timeout" })
+  expect(notAnswered.assertions).toBeUndefined()
+
+  // A raw that carries more than DA1 is a partial frame, not silence: the inconclusive grade stays.
+  const partial = context({ match: null, reason: "sentinel", raw: "\x1bP1!~012\x1b[?62;c" })
+  const partialResult = await definition.term(partial.value)
+  expect(partialResult.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+  expect(partialResult.assertions).toBeUndefined()
 })
 
 test("DECSACE app leaves the mode unchanged when extent is not measured", async () => {
