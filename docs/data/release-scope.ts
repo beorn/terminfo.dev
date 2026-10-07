@@ -74,3 +74,8 @@ export function barOverMeasured(
     fillPct: denominator === 0 ? 0 : Math.round((supported / denominator) * 100),
   }
 }
+
+export function coverageSentence(bar: MeasuredBar): string {
+  if (!bar.denominator) return "No selected run"
+  return `${bar.supported} supported · ${bar.unsupported} unsupported · ${bar.inconclusive} inconclusive · ${bar.errors} errors · ${bar.untested} untested`
+}
