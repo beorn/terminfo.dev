@@ -511,6 +511,92 @@ it("a verified disposable receipt runs the reset exchange and records its kind a
   expect(recorded.receiptSha256).toBe(createHash("sha256").update(bytes).digest("hex"))
 })
 
+it("refuses a mutating probe when neither owned terminal nor disposable receipt is presented", async () => {
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })
+  expect(writes).toEqual([])
+  expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: "extensions.osc110-reset-fg",
+      outcome: "inconclusive",
+      reason: "policy-refused",
+      evidence: "none",
+      note: "Collector refused before sending bytes because neither a verified owned terminal nor a verified disposable-ownership receipt was presented",
+    },
+  ])
+  expect(batch.assertions).toEqual([])
+})
+
+it("authorizes write probes and records receipt kind and digest when disposable-only receipt is presented", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const bytes = JSON.stringify(validContainerReceipt())
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, bytes)
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  const replies = [
+    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+    "\x1b]10;rgb:aa/bb/cc\x07\x1b[?62;c",
+    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+  ]
+  let read = 0
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    if (text === "\x1b]10;?\x07\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })
+  expect(batch.observations).toMatchObject([
+    { featureId: "extensions.osc110-reset-fg", outcome: "supported", evidence: "behavior" },
+  ])
+  expect(writes).toEqual([
+    "\x1b]10;?\x07\x1b[c",
+    "\x1b]10;rgb:aa/bb/cc\x07",
+    "\x1b]10;?\x07\x1b[c",
+    "\x1b]110\x07",
+    "\x1b]10;?\x07\x1b[c",
+  ])
+  const recorded = JSON.parse(batch.rawReplies["collector.disposableOwnership"]!) as {
+    kind: string
+    runId: string
+    receiptSha256: string
+  }
+  expect(recorded).toMatchObject({ kind: "linux-xvfb-container", runId: "b".repeat(32) })
+  expect(recorded.receiptSha256).toBe(createHash("sha256").update(bytes).digest("hex"))
+})
+
+it("gives the named geometry error for a geometry probe on disposable-only terminal", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const bytes = JSON.stringify(validContainerReceipt())
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, bytes)
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: ["cursor.shape"] })
+  expect(writes).toEqual([])
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: "cursor.shape",
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: "No verified owned terminal for geometry read",
+    },
+  ])
+})
+
 const measured = (
   rows: number,
   cols: number,
