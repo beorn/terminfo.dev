@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-07T04:42:15Z",
+  "runId": "0faf043c3a9d686d2b359e45da57f0d0",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "alacritty",
+    "version": "0.17.0",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/alacritty/alacritty/archive/refs/tags/v0.17.0.tar.gz",
+    "sri": "sha256-vfn7ZLqknQkZjkbCJ7dcu7TTPUqJIJQ8TNamE7rKKjM=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-iZtCH2DrSs6o3AG2koI2TyC3116aMlawHFkCd0TYhas=",
+    "revision": "refs/tags/v0.17.0"
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev/3/27892-runs/alacritty/0faf043c3a9d686d2b359e45da57f0d0/prep/runner-bundle.tar",
+    "sha256": "af325f7701c134c4ecf1c9aed15433032ffcee3663fd38fdabba206a8e03e3de",
+    "narSha256": "sha256-71LEwWmUf+RTarWkZlCnZ8XaiUCWblouuz2xswlbn1U=",
+    "frozenRunnerSha256": "6195dcf6bf4ab949eb0afb5bcd8bbe933380253eba66c1e084c3c583ad1eb4f5",
+    "buildReceiptSha256": "d47c99e1d4fc2511945d8b7a971113a7cd2228ccdc9255e67192e423c47e4b3a",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "16f4067cfb88",
+      "collectorRevision": "5472b43aad0f1f2c399a701083c9b3e31a17a1df",
+      "manifestSha256": "00c0d96f7ccdc508d3d8f6097588a2173653f1f3dbaf88beea9d7e7398f554eb",
+      "bundleSha256": "9350daf31eda36a42e025fb7276fedf7957fa922202dda889ef929aa95b173c4"
+    },
+    "rootBunLockSha256": "63f4c52c45776a2f65b5c2c7af6b055d0ef8302f886f5f9787c9b28d57e2f415"
+  },
+  "runtime": {
+    "imageId": "sha256:4b18c6fc2f34607a8fc0d7cc36f69184c0ec32987430e2bbacc2824e29a96f07",
+    "imageTarSha256": "e4bc4bb334c3acf2984531c57d4df40cd9a75b2c6649fd23d4b5e6421231ec6a",
+    "arch": "amd64",
+    "nixLockRevision": "f2e16882cd75b5180bf14f77740fcb8643b35c10",
+    "sourceRevision": "5472b43aad0f1f2c399a701083c9b3e31a17a1df",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "bd6ad0e0bc37b5157d76b53d24e04a5f0b91f217",
+    "suiteHash": "16f4067cfb88"
+  },
+  "status": "raw-unreviewed-history"
+}
