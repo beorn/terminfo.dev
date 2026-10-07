@@ -149,25 +149,37 @@ if [[ "${1:-}" == "--inside" ]]; then
       target_xtversion_expect="XTerm($target_version)"
       ;;
     ghostty)
+      # `title` is ghostty's own key: `--window-title` is not a config key, so ghostty reports a
+      # configuration error and opens a SECOND owned window, which the one-window check below
+      # refuses. Measured 2026-10-07 in ghostty-visual-default-image: `--window-title=` -> 2 visible
+      # owned windows, `--title=` -> exactly 1. (27892)
       target_launch_args=(--font-family='DejaVu Sans Mono' --font-size=16
-        --window-title="terminfo-$target_id-container-daemon")
+        --title="terminfo-$target_id-container-daemon")
       target_command_lead=(-e)
       # Measured 2026-10-07 in ghostty-visual-default-image: XTVERSION "ghostty 1.3.1", DA1 "?62;...".
       target_xtversion_mode=require
       target_xtversion_expect="ghostty $target_version"
       ;;
     wezterm)
-      target_launch_args=(--config-file /dev/null)
+      # --config-file is a Lua chunk: /dev/null returns nil, which wezterm reports as a
+      # "Configuration Error" and renders as a second owned window. One empty table is a valid
+      # config with nothing in it. Measured 2026-10-07 in wezterm-visual-default-image:
+      # --config-file /dev/null -> 2 visible owned windows, `return {}` -> exactly 1. (27892)
+      printf 'return {}\n' > "$HOME/wezterm-config.lua"
+      target_launch_args=(--config-file "$HOME/wezterm-config.lua")
       target_command_lead=(start --)
-      # NOT YET MEASURED through the apparatus: this image cannot open a window as it stands
-      # (wezterm wants EGL, the image ships software GLX). The raw XTVERSION answer, or its
-      # absence, is recorded and named; the row is promoted to require/forbid once measured. (27874)
+      # Measured 2026-10-07: with libglvnd on LD_LIBRARY_PATH and __EGL_VENDOR_LIBRARY_DIRS pointing
+      # at mesa's egl_vendor.d the image opens exactly one owned window under software EGL, so the
+      # raw XTVERSION answer is recorded and named; promoted to require/forbid once its exact
+      # expected answer is measured through the apparatus. (27874)
       target_xtversion_mode=record
       ;;
     alacritty)
       target_command_lead=(-e)
-      # NOT YET MEASURED through the apparatus: this image cannot start as it stands (alacritty
-      # needs a passwd entry for the run user). Recorded and named; promoted once measured. (27874)
+      # Measured 2026-10-07: alacritty resolves the run user from USER/HOME/SHELL before its passwd
+      # fallback, and refuses with `pw not found` only when that lookup fails. The image now carries
+      # a passwd entry for the run uid, and the raw XTVERSION answer is recorded and named; promoted
+      # to require/forbid once its exact expected answer is measured through the apparatus. (27874)
       target_xtversion_mode=record
       ;;
     *) echo "Unknown target id: $target_id" >&2; exit 2 ;;
