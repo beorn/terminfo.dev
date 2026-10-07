@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { parseDisposableReceipt, readDisposableReceipt } from "./disposable-receipt.ts"
+import { bindReceiptToRun, parseDisposableReceipt, readDisposableReceipt } from "./disposable-receipt.ts"
 
 const digest = (seed: string) => createHash("sha256").update(seed).digest("hex")
 const directories: string[] = []
@@ -32,8 +32,8 @@ const linuxReceipt = () => ({
   runtime: {
     imageId: "sha256:" + digest("image"),
     imageTarSha256: digest("tar"),
-    arch: "x86_64",
-    nixLockRevision: "c".repeat(40),
+    arch: "amd64",
+    nixLockRevision: digest("nix").slice(0, 40),
     sourceRevision: "d".repeat(40),
     sourceTreeStatus: "clean",
     rootRevision: "e".repeat(40),
@@ -76,6 +76,15 @@ test("a well-formed container receipt parses and its digest is the exact bytes t
     kind: "linux-xvfb-container",
     runId: envelope.runId,
     collectedAt: envelope.collectedAt,
+    declaredTarget: { kind: "app", id: "kitty", os: "linux" },
+    identity: {
+      imageId: "sha256:" + digest("image"),
+      imageTarSha256: digest("tar"),
+      arch: "amd64",
+      nixLockRevision: digest("nix").slice(0, 40),
+      frozenRunnerSha256: digest("runner"),
+      buildReceiptSha256: digest("build"),
+    },
     sha256: createHash("sha256").update(bytes).digest("hex"),
   })
 })
@@ -126,6 +135,41 @@ test("every forgeable envelope field and leaf field is refused loudly", () => {
   expect(() => parseDisposableReceipt(JSON.stringify(noVm))).toThrow(/vm must be an object/)
 })
 
+// 27874: the four receipts behind the reopened 27874 epic were hand-typed, and the fields nothing
+// derived were all zeros — while this repo's own fixtures were placeholder-shaped too, which is how
+// such an envelope passed. A placeholder is now refused by name, before any byte is written.
+test("a placeholder identity is refused by name, never admitted as a measurement", () => {
+  const zeroedImage = linuxReceipt()
+  zeroedImage.runtime.imageId = "sha256:" + "0".repeat(64)
+  expect(() => parseDisposableReceipt(JSON.stringify(zeroedImage))).toThrow(
+    /imageId is a placeholder: one repeated character/,
+  )
+  const zeroedTar = linuxReceipt()
+  zeroedTar.runtime.imageTarSha256 = "0".repeat(64)
+  expect(() => parseDisposableReceipt(JSON.stringify(zeroedTar))).toThrow(
+    /imageTarSha256 is a placeholder: one repeated character/,
+  )
+  const zeroedLock = linuxReceipt()
+  zeroedLock.runtime.nixLockRevision = "0".repeat(40)
+  expect(() => parseDisposableReceipt(JSON.stringify(zeroedLock))).toThrow(
+    /nixLockRevision is a placeholder: one repeated character/,
+  )
+  const repeatedRunner = linuxReceipt()
+  repeatedRunner.runnerArtifact.frozenRunnerSha256 = "a".repeat(64)
+  expect(() => parseDisposableReceipt(JSON.stringify(repeatedRunner))).toThrow(
+    /frozenRunnerSha256 is a placeholder: one repeated character/,
+  )
+})
+
+test("an image identity must name its scheme and come from docker inspect", () => {
+  const bareDigest = linuxReceipt()
+  bareDigest.runtime.imageId = digest("image")
+  expect(() => parseDisposableReceipt(JSON.stringify(bareDigest))).toThrow(/imageId must name its scheme/)
+  const inventedArch = linuxReceipt()
+  inventedArch.runtime.arch = "x86_64"
+  expect(() => parseDisposableReceipt(JSON.stringify(inventedArch))).toThrow(/arch must be one of amd64, arm64/)
+})
+
 test("an absent receipt is loud at read time, never an empty object that reads as authorization", () => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
   directories.push(directory)
@@ -133,4 +177,25 @@ test("an absent receipt is loud at read time, never an empty object that reads a
   const path = join(directory, "receipt.json")
   writeFileSync(path, JSON.stringify(linuxReceipt()))
   expect(readDisposableReceipt(path).kind).toBe("linux-xvfb-container")
+})
+
+// 27874 part 2: consistent bytes for the WRONG terminal are still wrong. The run's own target is the
+// binding side — never a value read back out of the receipt — and the check is loud by name.
+test("a receipt binds only to the target it declares, and cannot bind to none", () => {
+  const receipt = parseDisposableReceipt(JSON.stringify(linuxReceipt()))
+  expect(receipt.declaredTarget).toEqual({ kind: "app", id: "kitty", os: "linux" })
+  expect(() => bindReceiptToRun(receipt, { kind: "app", id: "kitty", os: "linux" }, "test")).not.toThrow()
+  expect(() => bindReceiptToRun(receipt, { kind: "app", id: "wezterm", os: "linux" }, "test")).toThrow(
+    /receipt declares target .*kitty.* but this run is .*wezterm/,
+  )
+  expect(() => bindReceiptToRun(receipt, { kind: "app", id: "kitty", os: "macos" }, "test")).toThrow(/os disagree/)
+  expect(() => bindReceiptToRun(receipt, undefined, "test")).toThrow(/no run target was supplied to bind it to/)
+})
+
+// A kind that declares no target carries no target claim to bind; that absence is recorded, not faked.
+test("a github-hosted receipt declares no target and is not refused for the absence", () => {
+  const receipt = parseDisposableReceipt(JSON.stringify(githubReceipt()))
+  expect(receipt.declaredTarget).toBeUndefined()
+  expect(receipt.identity).toBeUndefined()
+  expect(() => bindReceiptToRun(receipt, { kind: "app", id: "kitty", os: "linux" }, "test")).not.toThrow()
 })

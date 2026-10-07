@@ -15,6 +15,11 @@ import { fileURLToPath } from "node:url"
 import type { ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import {
+  bindReceiptToRun,
+  parseDisposableReceipt,
+  type ReceiptTarget,
+} from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import { assertDeclareIsAuthoring, declareCurrentSuiteManifest, verifySuiteManifest } from "./suite-manifest.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -145,6 +150,87 @@ export function placeScreenshots(
 }
 
 /**
+ * The launcher's own name for the receipt it mounts read-only and hands the collector (27874):
+ * `host-measured.json`. Admission reads it from beside the run and re-hashes it against the digest
+ * the run cites, so the bytes the ownership claim rests on are in the repository, not only a digest.
+ */
+const RECEIPT_BESIDE_RUN = "host-measured.json"
+
+/**
+ * Place the disposable-ownership receipt a run cites (27874). The run document records the receipt
+ * only as a digest, so a reader on main cannot see the identity the claim rests on — which is exactly
+ * how the four hand-typed 27874 receipts stayed invisible. This places the exact bytes beside the run
+ * at content/receipts/<runId>.json, exclusive-create and immutable once admitted, the same rule as
+ * suite manifests, and re-parses them through the strict receipt parser so a placeholder identity is
+ * refused by name HERE, at admission, and not only where the collector first read it.
+ *
+ * <runId> is the run document's own runId, so the receipt pairs with the admitted file name. The
+ * receipt's own `runId` is the launcher's run id and is not required to equal it: the one genuine
+ * container run on main differs (kitty 2912118b… cites a receipt whose own runId is 68eb134d…).
+ *
+ * What this proves is CONSISTENCY, not ORIGIN. The bytes hash to the digest the run cites, the run's
+ * own target is the one the receipt names, and the identity fields are not degenerate — but a
+ * determined hand-written receipt with plausible digests passes all of it. Origin is the apparatus
+ * handoff (launcher-target-family): the receipt is written outside the measured environment, handed
+ * in read-only, and refused if that environment rewrites it.
+ *
+ * A run collected against a shared terminal cites no receipt ({kind:"shared"}) and places nothing;
+ * that is the untouched default path, and the F2 write gate is a separate question.
+ */
+export function placeOwnershipReceipt(
+  source: string,
+  ownership: string | undefined,
+  runId: string,
+  target: ReceiptTarget,
+  contentDir: string = CONTENT_DIR,
+): { placed: "created" | "existing" | "none"; detail: string } {
+  if (ownership === undefined) {
+    return { placed: "none", detail: "the run cites no collector.disposableOwnership reply" }
+  }
+  let citation: unknown
+  try {
+    citation = JSON.parse(ownership)
+  } catch (cause) {
+    throw new Error(`Run ${runId} has an unparsable collector.disposableOwnership reply: ${source}`, { cause })
+  }
+  if (!isRecord(citation)) {
+    throw new Error(`Run ${runId} has a collector.disposableOwnership reply that is not an object: ${source}`)
+  }
+  const kind = citation.kind
+  if (kind === "shared") {
+    return { placed: "none", detail: "collected against a shared terminal: it cites no receipt, so none is placed" }
+  }
+  const cited = citation.receiptSha256
+  if (typeof cited !== "string" || !/^[0-9a-f]{64}$/.test(cited)) {
+    throw new Error(
+      `Run ${runId} cites disposable ownership kind ${JSON.stringify(kind)} but no sha256 receiptSha256, ` +
+        "so the receipt it trusted cannot be re-checked",
+    )
+  }
+  const receiptPath = join(dirname(source), RECEIPT_BESIDE_RUN)
+  if (!existsSync(receiptPath)) {
+    throw new Error(
+      `Run ${runId} cites ownership receipt ${cited}, but ${receiptPath} does not exist beside the run: ` +
+        "the bytes the claim rests on were not handed in",
+    )
+  }
+  const bytes = readFileSync(receiptPath)
+  const actual = createHash("sha256").update(bytes).digest("hex")
+  if (actual !== cited) {
+    throw new Error(`Receipt ${receiptPath} hashes to ${actual}, not the ${cited} the run cites`)
+  }
+  const receipt = parseDisposableReceipt(bytes.toString("utf8"))
+  if (receipt.kind !== kind) {
+    throw new Error(
+      `Receipt ${receiptPath} is kind ${JSON.stringify(receipt.kind)} but the run records ${JSON.stringify(kind)}`,
+    )
+  }
+  bindReceiptToRun(receipt, target, `run ${runId}`)
+  const placed = placeExclusive(join(contentDir, "receipts", `${runId}.json`), bytes, "disposable-ownership receipt")
+  return { placed, detail: `${placed} content/receipts/${runId}.json (${RECEIPT_BESIDE_RUN}, ${actual})` }
+}
+
+/**
  * Admit a run. Condition 1 of the ruling: a manifest may be computed ONLY from the run's own suite,
  * so this refuses by name unless the live suite equals the run's `probeHash`. That keeps "the
  * revision is current here" a check rather than an assumption, and it never computes `probes` from
@@ -154,6 +240,7 @@ export function admitRun(plan: AdmissionPlan): {
   manifest: "created" | "existing"
   run: "created" | "existing"
   screenshots: { created: number; existing: number }
+  receipt: { placed: "created" | "existing" | "none"; detail: string }
 } {
   const snapshot = probeSuiteSnapshot()
   if (snapshot.probeHash !== plan.probeHash) {
@@ -173,9 +260,17 @@ export function admitRun(plan: AdmissionPlan): {
   const bytes = readFileSync(plan.source, "utf8")
   const loaded = parseRun(plan.source, bytes, catalogIds(), suites)
 
+  // Refuse a cited receipt that is missing, mismatched, degenerate or bound to another target,
+  // BEFORE placing the run: the ownership claim the run makes is part of what admission admits.
+  const receipt = placeOwnershipReceipt(plan.source, loaded.rawReplies["collector.disposableOwnership"], loaded.runId, {
+    kind: loaded.target.kind,
+    id: loaded.target.id,
+    os: loaded.target.os ?? "",
+  })
+
   const screenshots = placeScreenshots(plan.source, loaded.screenshotRefs)
   const run = placeRun(plan.destination, bytes)
-  return { manifest: declaration.status, run, screenshots }
+  return { manifest: declaration.status, run, screenshots, receipt }
 }
 
 function usage(): never {
@@ -183,7 +278,8 @@ function usage(): never {
     "Usage: bun scripts/admit-run.ts --for <run.json> [--into <path>]\n" +
       "  Declares the run's suite manifest (derived record only) and places the run and every\n" +
       "  screenshot it cites in content/. Refuses by name if a cited screenshot is missing.\n" +
-      "  Refuses unless this tree runs the run's own suite; commit the admission in your own worktree.",
+      "  Refuses unless this tree runs the run's own suite; commit the admission in your own worktree.\n" +
+      "  Refuses by name when a receipt the run cites is missing beside it, mismatched or bound to another target.",
   )
   process.exit(2)
 }
@@ -206,6 +302,7 @@ if (import.meta.main) {
         `${result.screenshots.existing} already present): ${plan.destination}`,
     )
     console.log(`Suite manifest ${result.manifest}: ${join(CONTENT_DIR, "suites", `${plan.probeHash}.json`)}`)
+    console.log(`Ownership receipt ${result.receipt.placed}: ${result.receipt.detail}`)
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     process.exitCode = 1

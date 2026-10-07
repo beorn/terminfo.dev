@@ -1,5 +1,5 @@
 /**
- * @failure A run can be admitted against a suite this tree does not run, so its manifest is computed from the wrong probe-defs; or a concurrent admission of the same run can overwrite different bytes; or the run can be misnamed.
+ * @failure A run can be admitted against a suite this tree does not run, so its manifest is computed from the wrong probe-defs; or a concurrent admission of the same run can overwrite different bytes; or the run can be misnamed; or the ownership receipt a run cites can go unread, so a hand-typed identity that nothing measured is admitted beside the run it claims to authorize.
  * @level l1
  * @consumer The one declare-and-admit entry point (27859)
  * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/
@@ -7,12 +7,12 @@
  * @testonly none
  */
 import { createHash } from "node:crypto"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
-import { admitRun, placeRun, placeScreenshots, planAdmission } from "./admit-run.ts"
+import { admitRun, placeOwnershipReceipt, placeRun, placeScreenshots, planAdmission } from "./admit-run.ts"
 
 const temporaryPaths: string[] = []
 afterEach(() => {
@@ -106,4 +106,133 @@ test("admission carries every screenshot the run cites, and refuses a missing or
   const notPngDigest = createHash("sha256").update(notPng).digest("hex")
   writeFileSync(join(source, "..", "artifacts", `${notPngDigest}.png`), notPng)
   expect(() => placeScreenshots(source, [`sha256:${notPngDigest}`], content)).toThrow(/is not a PNG/)
+})
+
+// ---------------------------------------------------------------------------------------------
+// 27874: the four hand-typed receipts went through admission because it recorded a digest and
+// never opened the bytes. Admission now places the receipt beside the run and re-checks it.
+// What these checks prove is CONSISTENCY, not ORIGIN; origin is the apparatus handoff.
+// ---------------------------------------------------------------------------------------------
+
+const KITTY_TARGET = { kind: "app", id: "kitty", os: "linux" }
+const RECEIPT_RUN_ID = "9".repeat(32)
+
+/** A container receipt shaped as the launcher writes it: docker-inspected identity, no placeholders. */
+function baseReceipt() {
+  return {
+    schemaVersion: 1,
+    kind: "linux-xvfb-container",
+    runId: "a".repeat(32),
+    collectedAt: "2026-10-06T22:00:00Z",
+    runtime: {
+      imageId: "sha256:3f263739c9bebf6e015166eb0aa9c62dd37baf47384391d87875158eeae0bc8d",
+      imageTarSha256: "22ab7b15460795eb0c774b68f0d8c5f853d87597bacbffdd809e0fcac9130333",
+      arch: "amd64",
+      nixLockRevision: "f2e16882cd75b5180bf14f77740fcb8643b35c10",
+      sourceRevision: "d".repeat(40),
+      sourceTreeStatus: "clean",
+      rootRevision: "e".repeat(40),
+      suiteHash: "f".repeat(12),
+    },
+    runnerArtifact: {
+      frozenRunnerSha256: "d0a6b28177cce4be5dc241fe53adc636cbfba8a60e9362b38e5ccf3c5074d4c6",
+      buildReceiptSha256: "63648108c641030f0d0cc0ee7ba92d27cb4627dc1da5ba953f0bd632f4de2044",
+    },
+    declaredTarget: { kind: "app", id: "kitty", version: "0.49.2", os: "linux" },
+    preset: "current",
+    clipboardProfile: "default",
+  }
+}
+
+/** Write the receipt beside the run as the launcher hands it (`host-measured.json`) and cite it. */
+function ownershipBesideRun(source: string, receipt: unknown): string {
+  const bytes = JSON.stringify(receipt)
+  writeFileSync(join(source, "..", "host-measured.json"), bytes)
+  return JSON.stringify({
+    kind: (receipt as { kind: string }).kind,
+    runId: (receipt as { runId: string }).runId,
+    collectedAt: (receipt as { collectedAt: string }).collectedAt,
+    receiptSha256: createHash("sha256").update(bytes).digest("hex"),
+  })
+}
+
+test("admission places the ownership receipt a run cites, exclusively and immutably", () => {
+  const source = join(temp("terminfo-admit-receipt-"), "run.json")
+  const content = temp("terminfo-admit-content-")
+  const bytes = JSON.stringify(baseReceipt())
+  const citation = ownershipBesideRun(source, baseReceipt())
+  expect(placeOwnershipReceipt(source, citation, RECEIPT_RUN_ID, KITTY_TARGET, content).placed).toBe("created")
+  expect(readFileSync(join(content, "receipts", `${RECEIPT_RUN_ID}.json`), "utf8")).toBe(bytes)
+  expect(placeOwnershipReceipt(source, citation, RECEIPT_RUN_ID, KITTY_TARGET, content).placed).toBe("existing")
+})
+
+test("admission refuses a cited receipt that is missing, mismatched or uncited", () => {
+  const source = join(temp("terminfo-admit-receipt-"), "run.json")
+  const content = temp("terminfo-admit-content-")
+  const bytes = JSON.stringify(baseReceipt())
+  const cited = createHash("sha256").update(bytes).digest("hex")
+  const citation = JSON.stringify({
+    kind: "linux-xvfb-container",
+    runId: "a".repeat(32),
+    collectedAt: "2026-10-06T22:00:00Z",
+    receiptSha256: cited,
+  })
+  expect(() => placeOwnershipReceipt(source, citation, RECEIPT_RUN_ID, KITTY_TARGET, content)).toThrow(
+    /does not exist beside the run/,
+  )
+  const different = baseReceipt()
+  different.collectedAt = "2026-10-06T23:00:00Z"
+  writeFileSync(join(source, "..", "host-measured.json"), JSON.stringify(different))
+  expect(() => placeOwnershipReceipt(source, citation, RECEIPT_RUN_ID, KITTY_TARGET, content)).toThrow(/hashes to/)
+  expect(() =>
+    placeOwnershipReceipt(
+      source,
+      JSON.stringify({ kind: "linux-xvfb-container" }),
+      RECEIPT_RUN_ID,
+      KITTY_TARGET,
+      content,
+    ),
+  ).toThrow(/no sha256 receiptSha256/)
+  expect(existsSync(join(content, "receipts", `${RECEIPT_RUN_ID}.json`))).toBe(false)
+})
+
+test("admission refuses the four hand-typed 27874 receipts by name", () => {
+  const source = join(temp("terminfo-admit-receipt-"), "run.json")
+  const content = temp("terminfo-admit-content-")
+  const zeroed = baseReceipt()
+  zeroed.runtime.imageId = "sha256:" + "0".repeat(64)
+  zeroed.runtime.imageTarSha256 = "0".repeat(64)
+  zeroed.runtime.nixLockRevision = "0".repeat(40)
+  expect(() =>
+    placeOwnershipReceipt(source, ownershipBesideRun(source, zeroed), RECEIPT_RUN_ID, KITTY_TARGET, content),
+  ).toThrow(/imageId is a placeholder/)
+
+  const inventedArch = baseReceipt()
+  inventedArch.runtime.arch = "x86_64"
+  expect(() =>
+    placeOwnershipReceipt(source, ownershipBesideRun(source, inventedArch), RECEIPT_RUN_ID, KITTY_TARGET, content),
+  ).toThrow(/arch must be one of amd64, arm64/)
+  expect(existsSync(join(content, "receipts", `${RECEIPT_RUN_ID}.json`))).toBe(false)
+})
+
+test("admission refuses a receipt bound to another target, placing nothing", () => {
+  const source = join(temp("terminfo-admit-receipt-"), "run.json")
+  const content = temp("terminfo-admit-content-")
+  const citation = ownershipBesideRun(source, baseReceipt())
+  expect(() =>
+    placeOwnershipReceipt(source, citation, RECEIPT_RUN_ID, { kind: "app", id: "wezterm", os: "linux" }, content),
+  ).toThrow(/receipt declares target .*kitty.* this run is .*wezterm/)
+  expect(existsSync(join(content, "receipts", `${RECEIPT_RUN_ID}.json`))).toBe(false)
+})
+
+test("a run collected against a shared terminal cites no receipt and places none", () => {
+  const source = join(temp("terminfo-admit-receipt-"), "run.json")
+  const content = temp("terminfo-admit-content-")
+  expect(
+    placeOwnershipReceipt(source, JSON.stringify({ kind: "shared" }), RECEIPT_RUN_ID, KITTY_TARGET, content),
+  ).toEqual({
+    placed: "none",
+    detail: "collected against a shared terminal: it cites no receipt, so none is placed",
+  })
+  expect(placeOwnershipReceipt(source, undefined, RECEIPT_RUN_ID, KITTY_TARGET, content).placed).toBe("none")
 })

@@ -10,21 +10,57 @@ import { readFileSync } from "node:fs"
  *
  * The collector verifies this ONCE, before its first write, and records the kind and the digest;
  * it is never a per-probe decision.
+ *
+ * WHAT THESE CHECKS PROVE: CONSISTENCY, not ORIGIN (27874). They prove the bytes are present and
+ * hash to the digest the run cites, that the receipt binds to the run's own detected target, and
+ * that the identity fields are not degenerate. They do NOT prove where the receipt came from: a
+ * hand-written receipt with random-looking digests passes every one of them, and `arch` is only a
+ * floor (amd64 | arm64). Origin is the apparatus handoff (launcher-target-family): a receipt the
+ * apparatus wrote OUTSIDE the measured environment, handed to the collector read-only, and refused
+ * if the measured environment rewrote it. Do not name a check here "verify" if it cannot verify.
  */
 export type DisposableKind = "linux-xvfb-container" | "github-hosted-runner"
+
+export interface ReceiptTarget {
+  kind: string
+  id: string
+  os: string
+}
 
 export interface DisposableReceipt {
   kind: DisposableKind
   runId: string
   collectedAt: string
+  /** What the receipt says it measured, when its kind declares one. The collector binds this to the
+   * run the receipt authorizes, so a receipt for one target cannot enable writes against another. */
+  declaredTarget?: ReceiptTarget
+  /** The identity the receipt names, when its kind declares one, so a reader on main can see what
+   * the claim rests on instead of only a digest of bytes it cannot read (27874). */
+  identity?: ContainerIdentity
   /** sha256 of the exact bytes the verdict was read from, so a run names the receipt it trusted. */
   sha256: string
+}
+
+/** Every identity field a container receipt names, as the launcher wrote it. None is derived here:
+ * this is the receipt's own claim, recorded verbatim so it can be read beside the run it authorizes. */
+export interface ContainerIdentity {
+  imageId: string
+  imageTarSha256: string
+  arch: string
+  nixLockRevision: string
+  frozenRunnerSha256: string
+  buildReceiptSha256: string
 }
 
 const RUN_ID = /^[0-9a-f]{32}$/
 const DIGEST = /^[0-9a-f]{64}$/
 const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/
 const CLIPBOARD_PROFILES = ["default", "allow", "deny-read"] as const
+/** The architectures `docker inspect` reports for the container the launcher loads, and asserts. */
+const CONTAINER_ARCHES = ["amd64", "arm64"] as const
+/** One repeated character at any length. The apparatus derives these values from real bytes, so an
+ * all-zero or all-'a' value is a placeholder: what a hand writes when nothing was measured. */
+const PLACEHOLDER = /^(.)\1*$/
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -52,6 +88,27 @@ function digest(source: Record<string, unknown>, key: string, where: string): st
   return value
 }
 
+/** A value the apparatus derived from bytes. It must carry real entropy: a placeholder is refused
+ * by name, because admitting one is admitting a receipt nothing derived (27874). */
+function measured(
+  source: Record<string, unknown>,
+  key: string,
+  where: string,
+  options: { digest?: boolean; scheme?: boolean } = {},
+): string {
+  const value = text(source, key, where)
+  let bare = value
+  if (options.scheme) {
+    if (!value.startsWith("sha256:")) fail(where, `${key} must name its scheme, sha256:…`)
+    bare = value.slice("sha256:".length)
+  }
+  if (options.digest && !DIGEST.test(bare)) fail(where, `${key} must be a sha256 digest`)
+  if (PLACEHOLDER.test(bare)) {
+    fail(where, `${key} is a placeholder: one repeated character, so no bytes were measured`)
+  }
+  return value
+}
+
 function oneOf(source: Record<string, unknown>, key: string, allowed: readonly string[], where: string): string {
   const value = text(source, key, where)
   if (!allowed.includes(value)) fail(where, `${key} must be one of ${allowed.join(", ")}`)
@@ -61,32 +118,44 @@ function oneOf(source: Record<string, unknown>, key: string, allowed: readonly s
 /** The Linux half the collector can actually read: /out/host-measured.json, authored by the host
  * launcher and mounted read-only before the container starts. The composed container receipt is
  * written on the host after the container is removed, so it is deliberately not what this accepts. */
-function assertLinuxXvfbContainer(value: Record<string, unknown>): void {
+function assertLinuxXvfbContainer(value: Record<string, unknown>): {
+  declaredTarget: ReceiptTarget
+  identity: ContainerIdentity
+} {
   const where = "linux-xvfb-container"
   const runtime = object(value, "runtime", where)
-  text(runtime, "imageId", `${where} runtime`)
-  digest(runtime, "imageTarSha256", `${where} runtime`)
-  text(runtime, "arch", `${where} runtime`)
-  text(runtime, "nixLockRevision", `${where} runtime`)
+  const imageId = measured(runtime, "imageId", `${where} runtime`, { digest: true, scheme: true })
+  const imageTarSha256 = measured(runtime, "imageTarSha256", `${where} runtime`, { digest: true })
+  const arch = oneOf(runtime, "arch", CONTAINER_ARCHES, `${where} runtime`)
+  const nixLockRevision = measured(runtime, "nixLockRevision", `${where} runtime`)
   text(runtime, "sourceRevision", `${where} runtime`)
   text(runtime, "sourceTreeStatus", `${where} runtime`)
   text(runtime, "rootRevision", `${where} runtime`)
   text(runtime, "suiteHash", `${where} runtime`)
   const runner = object(value, "runnerArtifact", where)
-  digest(runner, "frozenRunnerSha256", `${where} runnerArtifact`)
-  digest(runner, "buildReceiptSha256", `${where} runnerArtifact`)
+  const frozenRunnerSha256 = measured(runner, "frozenRunnerSha256", `${where} runnerArtifact`, { digest: true })
+  const buildReceiptSha256 = measured(runner, "buildReceiptSha256", `${where} runnerArtifact`, { digest: true })
   const target = object(value, "declaredTarget", where)
-  text(target, "kind", `${where} declaredTarget`)
-  text(target, "id", `${where} declaredTarget`)
-  text(target, "os", `${where} declaredTarget`)
+  const declaredTarget = {
+    kind: text(target, "kind", `${where} declaredTarget`),
+    id: text(target, "id", `${where} declaredTarget`),
+    os: text(target, "os", `${where} declaredTarget`),
+  }
   text(value, "preset", where)
   oneOf(value, "clipboardProfile", CLIPBOARD_PROFILES, where)
+  return {
+    declaredTarget,
+    identity: { imageId, imageTarSha256, arch, nixLockRevision, frozenRunnerSha256, buildReceiptSha256 },
+  }
 }
 
 /** A GitHub-hosted runner is disposable only when GitHub says so AND the VM identity never recurs.
  * This accepts the two checks a receipt can carry (hosted environment; one machine for the whole
  * job). Non-reuse across job identities is checked where all receipts are seen, not here. */
-function assertGithubHostedRunner(value: Record<string, unknown>): void {
+function assertGithubHostedRunner(value: Record<string, unknown>): {
+  declaredTarget?: ReceiptTarget
+  identity?: ContainerIdentity
+} {
   const where = "github-hosted-runner"
   const job = object(value, "job", where)
   for (const key of ["repository", "workflow", "workflowRef", "githubRunId", "githubRunAttempt", "job", "jobId"]) {
@@ -113,9 +182,13 @@ function assertGithubHostedRunner(value: Record<string, unknown>): void {
   if (JSON.stringify(samples[0]) !== JSON.stringify(samples[1])) {
     fail(`${where} vm`, "identityAtJobStart and identityAtCollection disagree; one machine must serve the whole job")
   }
+  return {}
 }
 
-const KINDS: Record<DisposableKind, (value: Record<string, unknown>) => void> = {
+const KINDS: Record<
+  DisposableKind,
+  (value: Record<string, unknown>) => { declaredTarget?: ReceiptTarget; identity?: ContainerIdentity }
+> = {
   "linux-xvfb-container": assertLinuxXvfbContainer,
   "github-hosted-runner": assertGithubHostedRunner,
 }
@@ -138,8 +211,39 @@ export function parseDisposableReceipt(bytes: string): DisposableReceipt {
   if (!RUN_ID.test(runId)) fail("envelope", "runId must be 32 lowercase hex")
   const collectedAt = text(value, "collectedAt", "envelope")
   if (!UTC_INSTANT.test(collectedAt)) fail("envelope", "collectedAt must be an RFC3339 UTC instant")
-  KINDS[kind](value)
-  return { kind, runId, collectedAt, sha256: createHash("sha256").update(bytes).digest("hex") }
+  const parsed = KINDS[kind](value)
+  return {
+    kind,
+    runId,
+    collectedAt,
+    ...(parsed.declaredTarget ? { declaredTarget: parsed.declaredTarget } : {}),
+    ...(parsed.identity ? { identity: parsed.identity } : {}),
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  }
+}
+
+/**
+ * Refuse a receipt that is not about the run it is authorizing (27874 part 2). The caller supplies
+ * the run's OWN target — the target detected or launched on the measured side, never a value read
+ * back out of the receipt — so a receipt naming kitty cannot authorize a wezterm run. Loud by name.
+ *
+ * A kind that declares no target (github-hosted-runner today) carries no target claim to bind, and
+ * this returns without complaint; the caller's summary records that absence rather than faking one.
+ */
+export function bindReceiptToRun(receipt: DisposableReceipt, target: ReceiptTarget | undefined, where: string): void {
+  const declared = receipt.declaredTarget
+  if (!declared) return
+  if (!target) {
+    fail(where, `receipt names target ${JSON.stringify(declared)} but no run target was supplied to bind it to`)
+  }
+  const disagree = (["kind", "id", "os"] as const).filter((key) => declared[key] !== target[key])
+  if (disagree.length > 0) {
+    fail(
+      where,
+      `receipt declares target ${JSON.stringify(declared)} but this run is ${JSON.stringify(target)}: ` +
+        `${disagree.join(", ")} disagree, and a receipt for one target cannot authorize another`,
+    )
+  }
 }
 
 /** Read and parse the receipt at `path`; a missing file or a bad read is loud, never a silent default. */

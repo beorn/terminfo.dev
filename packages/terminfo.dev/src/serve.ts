@@ -232,6 +232,8 @@ export async function collectProbeRun(
         ids: options.ids,
         out,
         captureRunId,
+        // The run's own target, from the launched app: the receipt is bound to this before any write.
+        target: { kind: "app", id: terminal.name, os: terminal.os },
         ...(capture && { capture }),
         ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),

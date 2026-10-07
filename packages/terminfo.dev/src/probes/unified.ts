@@ -32,7 +32,12 @@ import {
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
 import { ownedTerminalVerifiedFor, type GeometryMeasurement, type OwnedTerminal } from "../owned-terminal.ts"
-import { readDisposableReceipt, type DisposableReceipt } from "../disposable-receipt.ts"
+import {
+  bindReceiptToRun,
+  readDisposableReceipt,
+  type DisposableReceipt,
+  type ReceiptTarget,
+} from "../disposable-receipt.ts"
 
 /**
  * Resolve the disposable-ownership receipt once per batch (27832 amendment 1). No receipt is
@@ -210,6 +215,9 @@ export async function runProbeBatch(
     captureRunId?: string
     out?: NodeJS.WriteStream
     geometryCorroboration?: GeometryCorroboration
+    /** The target this run is measuring, from the measured side (the launched app), never read out
+     * of the receipt. A receipt naming another target is refused before the first write (27874). */
+    target?: ReceiptTarget
   } = {},
 ): Promise<ProbeBatch> {
   const out = options.out ?? process.stdout
@@ -250,6 +258,9 @@ export async function runProbeBatch(
   // absent or unparsable receipt is loud, and no env flag or caller option stands in for it.
   const ownsTerminal = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
   const disposable = resolveDisposableReceipt()
+  // Bind BEFORE the first write: a receipt for another target must not authorize this terminal, and
+  // checking it afterwards would mean the wrong terminal was already written to. (27874)
+  if (disposable) bindReceiptToRun(disposable, options.target, "collector.disposableOwnership")
   const authorizedToWrite = ownsTerminal || Boolean(disposable)
   batch.rawReplies["collector.disposableOwnership"] = JSON.stringify(
     disposable
@@ -258,6 +269,8 @@ export async function runProbeBatch(
           runId: disposable.runId,
           collectedAt: disposable.collectedAt,
           receiptSha256: disposable.sha256,
+          ...(disposable.declaredTarget ? { declaredTarget: disposable.declaredTarget } : {}),
+          ...(disposable.identity ? { identity: disposable.identity } : {}),
         }
       : { kind: "shared" },
   )

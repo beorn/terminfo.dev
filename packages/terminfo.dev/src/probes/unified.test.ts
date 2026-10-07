@@ -414,16 +414,19 @@ function validContainerReceipt() {
     runId: "b".repeat(32),
     collectedAt: "2026-10-06T22:00:00Z",
     runtime: {
-      imageId: "sha256:" + "a".repeat(64),
-      imageTarSha256: "a".repeat(64),
-      arch: "x86_64",
-      nixLockRevision: "c".repeat(40),
+      imageId: "sha256:3f263739c9bebf6e015166eb0aa9c62dd37baf47384391d87875158eeae0bc8d",
+      imageTarSha256: "22ab7b15460795eb0c774b68f0d8c5f853d87597bacbffdd809e0fcac9130333",
+      arch: "amd64",
+      nixLockRevision: "f2e16882cd75b5180bf14f77740fcb8643b35c10",
       sourceRevision: "d".repeat(40),
       sourceTreeStatus: "clean",
       rootRevision: "e".repeat(40),
       suiteHash: "f".repeat(12),
     },
-    runnerArtifact: { frozenRunnerSha256: "1".repeat(64), buildReceiptSha256: "2".repeat(64) },
+    runnerArtifact: {
+      frozenRunnerSha256: "d0a6b28177cce4be5dc241fe53adc636cbfba8a60e9362b38e5ccf3c5074d4c6",
+      buildReceiptSha256: "63648108c641030f0d0cc0ee7ba92d27cb4627dc1da5ba953f0bd632f4de2044",
+    },
     declaredTarget: { kind: "app", id: "kitty", version: "0.49.2", os: "linux" },
     preset: "current",
     clipboardProfile: "default",
@@ -439,7 +442,10 @@ it("refuses a mutating reset probe with no disposable receipt and writes nothing
     writes.push(text)
     return true
   }) as typeof process.stdout.write
-  const batch = await runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc110-reset-fg"],
+    target: { kind: "app", id: "kitty", os: "linux" },
+  })
   expect(writes).toEqual([])
   expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
   expect(batch.observations).toMatchObject([
@@ -467,7 +473,9 @@ it("a declared receipt that cannot be verified is loud before any byte, never a 
     writes.push(text)
     return true
   }) as typeof process.stdout.write
-  await expect(runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })).rejects.toThrow(/unknown kind/)
+  await expect(
+    runProbeBatch({ ids: ["extensions.osc110-reset-fg"], target: { kind: "app", id: "kitty", os: "linux" } }),
+  ).rejects.toThrow(/unknown kind/)
   expect(writes).toEqual([])
 })
 
@@ -491,7 +499,10 @@ it("a verified disposable receipt runs the reset exchange and records its kind a
     if (text === "\x1b]10;?\x07\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
     return true
   }) as typeof process.stdout.write
-  const batch = await runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc110-reset-fg"],
+    target: { kind: "app", id: "kitty", os: "linux" },
+  })
   expect(batch.observations).toMatchObject([
     { featureId: "extensions.osc110-reset-fg", outcome: "supported", evidence: "behavior" },
   ])
@@ -506,9 +517,22 @@ it("a verified disposable receipt runs the reset exchange and records its kind a
     kind: string
     runId: string
     receiptSha256: string
+    declaredTarget: { kind: string; id: string; os: string }
+    identity: Record<string, string>
   }
   expect(recorded).toMatchObject({ kind: "linux-xvfb-container", runId: "b".repeat(32) })
   expect(recorded.receiptSha256).toBe(createHash("sha256").update(bytes).digest("hex"))
+  // 27874 part 3: the identity the receipt names is recorded with the run, not only a digest of
+  // bytes a reader on main cannot open.
+  expect(recorded.declaredTarget).toEqual({ kind: "app", id: "kitty", os: "linux" })
+  expect(recorded.identity).toEqual({
+    imageId: "sha256:3f263739c9bebf6e015166eb0aa9c62dd37baf47384391d87875158eeae0bc8d",
+    imageTarSha256: "22ab7b15460795eb0c774b68f0d8c5f853d87597bacbffdd809e0fcac9130333",
+    arch: "amd64",
+    nixLockRevision: "f2e16882cd75b5180bf14f77740fcb8643b35c10",
+    frozenRunnerSha256: "d0a6b28177cce4be5dc241fe53adc636cbfba8a60e9362b38e5ccf3c5074d4c6",
+    buildReceiptSha256: "63648108c641030f0d0cc0ee7ba92d27cb4627dc1da5ba953f0bd632f4de2044",
+  })
 })
 
 it("refuses a mutating probe when neither owned terminal nor disposable receipt is presented", async () => {
@@ -517,7 +541,10 @@ it("refuses a mutating probe when neither owned terminal nor disposable receipt 
     writes.push(text)
     return true
   }) as typeof process.stdout.write
-  const batch = await runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc110-reset-fg"],
+    target: { kind: "app", id: "kitty", os: "linux" },
+  })
   expect(writes).toEqual([])
   expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
   expect(batch.observations).toMatchObject([
@@ -551,7 +578,10 @@ it("authorizes write probes and records receipt kind and digest when disposable-
     if (text === "\x1b]10;?\x07\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
     return true
   }) as typeof process.stdout.write
-  const batch = await runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc110-reset-fg"],
+    target: { kind: "app", id: "kitty", os: "linux" },
+  })
   expect(batch.observations).toMatchObject([
     { featureId: "extensions.osc110-reset-fg", outcome: "supported", evidence: "behavior" },
   ])
@@ -566,9 +596,22 @@ it("authorizes write probes and records receipt kind and digest when disposable-
     kind: string
     runId: string
     receiptSha256: string
+    declaredTarget: { kind: string; id: string; os: string }
+    identity: Record<string, string>
   }
   expect(recorded).toMatchObject({ kind: "linux-xvfb-container", runId: "b".repeat(32) })
   expect(recorded.receiptSha256).toBe(createHash("sha256").update(bytes).digest("hex"))
+  // 27874 part 3: the identity the receipt names is recorded with the run, not only a digest of
+  // bytes a reader on main cannot open.
+  expect(recorded.declaredTarget).toEqual({ kind: "app", id: "kitty", os: "linux" })
+  expect(recorded.identity).toEqual({
+    imageId: "sha256:3f263739c9bebf6e015166eb0aa9c62dd37baf47384391d87875158eeae0bc8d",
+    imageTarSha256: "22ab7b15460795eb0c774b68f0d8c5f853d87597bacbffdd809e0fcac9130333",
+    arch: "amd64",
+    nixLockRevision: "f2e16882cd75b5180bf14f77740fcb8643b35c10",
+    frozenRunnerSha256: "d0a6b28177cce4be5dc241fe53adc636cbfba8a60e9362b38e5ccf3c5074d4c6",
+    buildReceiptSha256: "63648108c641030f0d0cc0ee7ba92d27cb4627dc1da5ba953f0bd632f4de2044",
+  })
 })
 
 it("gives the named geometry error for a geometry probe on disposable-only terminal", async () => {
@@ -584,7 +627,7 @@ it("gives the named geometry error for a geometry probe on disposable-only termi
     writes.push(text)
     return true
   }) as typeof process.stdout.write
-  const batch = await runProbeBatch({ ids: ["cursor.shape"] })
+  const batch = await runProbeBatch({ ids: ["cursor.shape"], target: { kind: "app", id: "kitty", os: "linux" } })
   expect(writes).toEqual([])
   expect(batch.observations).toMatchObject([
     {
@@ -1281,4 +1324,48 @@ it("records an installed capture adapter failure as an error rather than quietly
   ])
   expect(batch.screenshotRefs).toEqual([])
   expect(batch.ungradedDiagnostics).toEqual({})
+})
+
+// 27874 part 2: a receipt is bound to the run's own target BEFORE the first write. Checking it after
+// the batch would mean a mismatched receipt had already authorized mutate+readback against the
+// wrong app, so the refusal has to happen with nothing written.
+it("refuses a receipt for another target before writing any byte", async () => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, JSON.stringify(validContainerReceipt()))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  await expect(
+    runProbeBatch({
+      ids: ["extensions.osc110-reset-fg"],
+      target: { kind: "app", id: "wezterm", os: "linux" },
+    }),
+  ).rejects.toThrow(/receipt declares target .*kitty.* but this run is .*wezterm/)
+  expect(writes).toEqual([])
+})
+
+// A receipt that names a target cannot be bound to nothing: the caller must supply the run's own
+// target, so a caller that forgot is loud rather than silently unbound.
+it("refuses a receipt that names a target when the caller supplied no run target", async () => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, JSON.stringify(validContainerReceipt()))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  await expect(runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })).rejects.toThrow(
+    /no run target was supplied to bind it to/,
+  )
+  expect(writes).toEqual([])
 })
