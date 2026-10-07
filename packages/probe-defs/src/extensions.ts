@@ -940,7 +940,8 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
             kittyReplyFrame({ i: String(imageId) }),
           )
           if (!placement.match) {
-            return unansweredQuery(placement, "No matching placement reply; visible pixels were not tested")
+            // The probe grades the acknowledgement, never rendering: WezTerm places silently (27915).
+            return unansweredQuery(placement, "No placement acknowledgement; visible pixels were not tested")
           }
           return graphicsQueryResult(
             placement.match[0] ?? "",

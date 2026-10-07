@@ -410,6 +410,29 @@ test.each([
   },
 )
 
+test("a placement that is never acknowledged is a decisive negative about the acknowledgement, not display", async () => {
+  // 27915: WezTerm acknowledges the transfer and places silently; DA1 answers and no a=p reply comes in the window.
+  const definition = callback("extensions.kitty-graphics.display")
+  const result = await definition.term!({
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => {
+      const imageNumber = /I=(\d+)/.exec(sequence)?.[1]
+      const raw = `${imageNumber === undefined ? "" : `\x1b_GI=${imageNumber},i=2;OK\x1b\\`}\x1b[?65;4;6;18;22;52c`
+      const match = pattern.exec(raw)
+      return {
+        match,
+        reason: match ? ("reply" as const) : ("sentinel" as const),
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+        ...(match ? {} : { sentinel: { atMs: 3, graceMs: 250 } }),
+      }
+    },
+    write: () => undefined,
+  } as unknown as TermContext)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(result.assertions).toMatchObject([{ kind: "negative", expected: expect.stringContaining("acknowledgement") }])
+  expect(JSON.stringify(result)).not.toMatch(/does not display/u)
+})
+
 test("a kitty allocation reply that echoes another image number does not qualify", async () => {
   for (const id of ["extensions.kitty-graphics.transmit", "extensions.kitty-graphics.display"]) {
     const { app, headless } = kittyTransfer(id, (imageNumber) => `\x1b_GI=${imageNumber + 1},i=2;OK\x1b\\`)
