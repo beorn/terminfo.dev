@@ -76,7 +76,9 @@ jobs:
               WT_DIR="C:/WindowsTerminal"
               if [ ! -f "$WT_DIR/wt.exe" ]; then
                 curl -L -s -f "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -o "$RUNNER_TEMP/wt.zip"
-                powershell -NoProfile -Command "Expand-Archive -Path '$RUNNER_TEMP/wt.zip' -DestinationPath '$WT_DIR' -Force"
+                powershell -NoProfile -Command "Expand-Archive -Path '$RUNNER_TEMP/wt.zip' -DestinationPath '$RUNNER_TEMP/wt_unpacked' -Force"
+                mkdir -p "$WT_DIR"
+                cp -r "$RUNNER_TEMP"/wt_unpacked/terminal-*/* "$WT_DIR/"
               fi
               test -f "$WT_DIR/wt.exe" || { echo "Windows Terminal binary missing at $WT_DIR/wt.exe" >&2; exit 1; }
               ;;
@@ -92,10 +94,8 @@ jobs:
           OUT="$RUNNER_TEMP/measurement-artifacts"
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
           COMMAND_PATH="$RUNNER_TEMP/collect.bat"
-          COLLECTOR="$(command -v terminfo)"
 
           WIN_OUT="$(powershell -NoProfile -Command "[System.IO.Path]::GetFullPath('$OUT')")"
-          WIN_COLLECTOR="$(powershell -NoProfile -Command "[System.IO.Path]::GetFullPath('$COLLECTOR')")"
           WIN_COMMAND="$(powershell -NoProfile -Command "[System.IO.Path]::GetFullPath('$COMMAND_PATH')")"
 
           cat > "$COMMAND_PATH" <<EOF
@@ -106,7 +106,7 @@ jobs:
             powershell -NoProfile -Command "Start-Sleep -Milliseconds 500"
             goto wait_loop
           )
-          call "${WIN_COLLECTOR}" test --output "${WIN_OUT}\\run.json" > "${WIN_OUT}\\collector.log" 2>&1
+          call terminfo test --output "${WIN_OUT}\\run.json" > "${WIN_OUT}\\collector.log" 2>&1
           echo %ERRORLEVEL% > "${WIN_OUT}\\collector-exit"
           exit /b %ERRORLEVEL%
           EOF
