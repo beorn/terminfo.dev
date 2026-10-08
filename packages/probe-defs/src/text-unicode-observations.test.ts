@@ -848,6 +848,7 @@ function emojiTerminal(
         continue
       }
       const scalar = scalars[index]
+      if (scalar === undefined) throw new Error(`fake terminal: no scalar at ${index} of ${scalars.length}`)
       const isSentinel = scalar === "X" && index === scalars.length - 1 && isTarget
       if (isSentinel && opts.markerMode === "drop") {
         index += 1

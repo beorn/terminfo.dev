@@ -294,10 +294,11 @@ function emojiWidthResult(ctx: TermlessContext, { sample, maxColumns }: Declared
     const markerColumns: number[] = []
     for (let col = 0; col < row.length; col += 1) if (row[col] === marker) markerColumns.push(col)
     const state = { sample, cursorBefore, cursorAfter, row, markerColumns }
-    if (markerColumns.length === 0) {
+    const [markerColumn, ...duplicateColumns] = markerColumns
+    if (markerColumn === undefined) {
       return parserStateResult(null, expected, state, "Sentinel marker was not exposed after the sample")
     }
-    if (markerColumns.length > 1) {
+    if (duplicateColumns.length > 0) {
       return parserStateResult(
         null,
         expected,
@@ -316,7 +317,6 @@ function emojiWidthResult(ctx: TermlessContext, { sample, maxColumns }: Declared
         "Sample plus sentinel wrapped the row; width is not measurable in this geometry",
       )
     }
-    const markerColumn = markerColumns[0]
     const target = row.slice(0, markerColumn)
     if (target.some(isLoneSurrogate)) {
       return parserStateResult(
