@@ -43,6 +43,7 @@ import {
   F2_MOVERS,
   INCLUDED_TIER1_COUNT,
   includedTierOneIds,
+  isStaleSuite,
   type D3Verdict,
 } from "../docs/data/release-scope.ts"
 
@@ -220,6 +221,13 @@ export type PickedContextRun = { run: ContextCandidate; selection: RunSelection 
  * kitty/linux must still resolve on its own. A review that names no candidate of this group is
  * therefore not this group's tie-break and the fallbacks below apply; the single permissions-free
  * entry is the row, and anything still ambiguous is reported with its contexts, never guessed.
+ *
+ * The fallbacks consider only CURRENT-suite candidates whenever any are present: the bar reports a
+ * run's decisive share on the current suite, so an older-suite entry can never be the measured row,
+ * and letting it tie up the choice reports a false ambiguity (kitty/linux: one stale permissions-free
+ * entry beside the current one and a current clipboard override, which read "ambiguous" until this
+ * rule). With no current-suite candidate the fallbacks are unchanged, and a review still names any
+ * candidate it likes — this rule is the tie-break of last resort, not a filter on the review.
  */
 export function pickContextRun(
   candidates: readonly ContextCandidate[],
@@ -230,12 +238,14 @@ export function pickContextRun(
     const chosen = candidates.find((candidate) => candidate.key === reviewed.contextKey)
     if (chosen) return { run: chosen, selection: "reviewed default-context row" }
   }
-  const [only] = candidates
-  if (candidates.length === 1 && only) return { run: only, selection: "only current" }
-  const defaults = candidates.filter((candidate) => candidate.permissions === null)
+  const current = candidates.filter((candidate) => !isStaleSuite(candidate.suiteFreshness))
+  const considered = current.length > 0 ? current : candidates
+  const [only] = considered
+  if (considered.length === 1 && only) return { run: only, selection: "only current" }
+  const defaults = considered.filter((candidate) => candidate.permissions === null)
   const [onlyDefault] = defaults
   if (defaults.length === 1 && onlyDefault) return { run: onlyDefault, selection: "default profile" }
-  return { ambiguous: candidates.map((candidate) => candidate.key) }
+  return { ambiguous: considered.map((candidate) => candidate.key) }
 }
 
 export function barRowForContext(args: {

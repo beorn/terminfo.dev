@@ -7,8 +7,9 @@
  * @level l2
  * @consumer Release 1 decisive-count reader (scripts/decisive-share.ts)
  * @source-grep nothing but this fixture exercises the error and untested buckets, the ambiguous
- *   context and the mover-list assertion: real admitted runs fill all 62 tier-1 rows and every real
- *   Release 1 context has at most one permissions-free candidate.
+ *   context and the mover-list assertion: real admitted runs fill all 62 tier-1 rows, and the one
+ *   real tie (kitty/linux carries a stale permissions-free entry beside the current one plus a
+ *   current clipboard override) is separated by suite freshness, not by the fixture's shapes.
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
@@ -136,6 +137,44 @@ describe("release 1 decisive-count reader", () => {
     expect(pickContextRun([allow, plain, deny])).toEqual({ run: plain, selection: "default profile" })
     expect(pickContextRun([allow, deny])).toEqual({ ambiguous: ["allow", "deny"] })
     expect(pickContextRun([])).toBeUndefined()
+  })
+
+  it("prefers the current-suite candidates for the fallbacks: kitty/linux's stale default cannot be the bar's row", () => {
+    const staleDefault = candidate({
+      key: "config-none-old-suite",
+      suiteId: "e81b6548c1c7",
+      suiteFreshness: "older suite (1 probes)",
+    })
+    const currentDefault = candidate({ key: "nix-store-kitty", suiteId: "4482b8eb5823" })
+    const currentOverride = candidate({
+      key: "clipboard-allow",
+      suiteId: "4482b8eb5823",
+      permissions: "clipboard: read=allow,write=allow",
+    })
+    // kitty/linux's real shape: two permissions-free entries (one stale, one current) plus a
+    // current-suite clipboard override. An older-suite entry can never be the measured row, so only
+    // the current-suite entries decide, and the single permissions-free one of those is the row.
+    expect(pickContextRun([staleDefault, currentOverride, currentDefault])).toEqual({
+      run: currentDefault,
+      selection: "default profile",
+    })
+    // The same set on one suite keeps the old behaviour: a fresh clipboard override is not a default.
+    expect(pickContextRun([staleDefault, currentDefault, currentOverride])).toEqual({
+      run: currentDefault,
+      selection: "default profile",
+    })
+  })
+
+  it("keeps two current-suite permissions-free candidates ambiguous, and leaves an all-stale set unchanged", () => {
+    const first = candidate({ key: "current-a" })
+    const second = candidate({ key: "current-b" })
+    expect(pickContextRun([first, second])).toEqual({ ambiguous: ["current-a", "current-b"] })
+
+    const staleA = candidate({ key: "stale-a", suiteFreshness: "older suite (1 probes)" })
+    const staleB = candidate({ key: "stale-b", suiteFreshness: "older suite (1 probes)" })
+    // No current-suite candidate at all: the fallbacks see the whole set, exactly as before.
+    expect(pickContextRun([staleA, staleB])).toEqual({ ambiguous: ["stale-a", "stale-b"] })
+    expect(pickContextRun([staleA])).toEqual({ run: staleA, selection: "only current" })
   })
 
   it("resolves the three-context xterm/linux tie by the reviewed default-context row, and names the tie without one", () => {
