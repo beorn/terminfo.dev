@@ -102,7 +102,7 @@ jobs:
             await run("open-bundle", ["/usr/bin/open", bundle], 10_000)
             const pidDeadline = Math.min(deadline, Date.now() + 30_000)
             while (Date.now() < pidDeadline) {
-              const pid = await run("process-observation", ["/usr/bin/pgrep", "-x", "iTerm2"], 2_000)
+              const pid = await run("process-observation", ["/usr/bin/pgrep", "-x", "iTerm2"], Math.min(2_000, Math.max(1, pidDeadline - Date.now())))
               if (pid.exitCode === 0 && /^\d+$/u.test(pid.stdout.text.trim())) { itermPid = pid.stdout.text.trim(); break }
               await Bun.sleep(Math.min(1000, Math.max(0, pidDeadline - Date.now())))
             }
