@@ -175,7 +175,7 @@ export function suiteDeclarationState(
  * (`verifySuiteManifest` already checks its content against the live snapshot) while imposing a
  * declaration commit on every probe development change (the measured 13 commits / ~1 h in one week).
  */
-export function collectorCommittedInputs(snapshot: ProbeSuiteSnapshot): string[] {
+function collectorCommittedInputs(snapshot: ProbeSuiteSnapshot): string[] {
   return [
     ...snapshot.sourcePaths,
     "packages/terminfo.dev/src",
