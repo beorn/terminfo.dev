@@ -8,6 +8,7 @@ next: false
 import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
+import { barOverMeasured, barVerdict, includedTierOneIds, isStaleSuite, staleCaption } from '../data/release-scope.ts'
 const { params } = useData()
 const p = params.value
 
@@ -18,9 +19,12 @@ const runs = [defaultRun, ...JSON.parse(p.otherRuns || '[]')].filter(Boolean)
 const runSha = ref(defaultRun?.sha256 || '')
 const selectedRun = computed(() => runs.find(run => run.sha256 === runSha.value))
 const counts = computed(() => selectedRun.value?.counts)
-const inconclusive = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'inconclusive').length)
-const errors = computed(() => Object.values(selectedRun.value?.cells || {}).filter(cell => cell.outcome === 'error').length)
 const namedNotTested = computed(() => selectedRun.value?.notTestedCoverage?.namedCount ?? 0)
+const measuredBar = computed(() => barOverMeasured(selectedRun.value?.cells ?? {}, data.releaseScope.measuredIds))
+const includedIds = includedTierOneIds(data.releaseScope.measuredIds)
+const measuredVerdict = computed(() => barVerdict(barOverMeasured(selectedRun.value?.cells ?? {}, includedIds)))
+const stale = computed(() => selectedRun.value ? isStaleSuite(selectedRun.value.suiteFreshness) : false)
+const staleText = computed(() => selectedRun.value ? staleCaption(selectedRun.value.measuredAt) : '')
 function runLabel(run) {
   return `${run.target.version} · ${run.target.os || 'OS not recorded'} · ${run.target.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
 }
@@ -104,6 +108,14 @@ const breadcrumbParent = (() => {
 
 <p v-if="p.terminalDescription" class="terminal-desc">{{ p.terminalDescription }}</p>
 
+<p class="tier-line">{{ data.releaseScope.line }}</p>
+<details class="unmeasured">
+  <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
+  <ul>
+    <li v-for="feature in data.releaseScope.unmeasured" :key="feature.id">{{ feature.name }} · {{ feature.status }}</li>
+  </ul>
+</details>
+
 <div v-if="relatedPages.length" class="see-also">
   See also: <span v-for="(r, i) in relatedPages"><a :href="r.link">{{ r.text }}</a><span v-if="i < relatedPages.length - 1"> · </span></span>
 </div>
@@ -145,6 +157,7 @@ const breadcrumbParent = (() => {
 
 <div v-if="!isHistorical && selectedRun" class="score-card">
   <h2 class="results-heading">Feature support</h2>
+  <p v-if="stale" class="stale-line">{{ staleText }}</p>
   <p class="selected-run">{{ p.terminalName }} {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
   <p class="score-detail">Recorded suite: {{ selectedRun.suiteFreshness }} · {{ selectedRun.suite.observed }}/{{ selectedRun.suite.expected ?? '?' }} results recorded. A recorded result does not mean its check ran. Results from different suites are not directly comparable.</p>
   <div v-if="runs.length > 1" class="run-picker">
@@ -154,20 +167,21 @@ const breadcrumbParent = (() => {
     </select>
     <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
   </div>
-  <p class="result-share-label">Results across {{ counts.catalog }} catalog features</p>
-  <div v-if="counts.catalog > 0" class="result-share" aria-hidden="true">
-    <span v-if="counts.supported" class="result-share-supported" :style="{ width: `${counts.supported / counts.catalog * 100}%` }"></span>
-    <span v-if="counts.unsupported" class="result-share-unsupported" :style="{ width: `${counts.unsupported / counts.catalog * 100}%` }"></span>
-    <span v-if="inconclusive" class="result-share-inconclusive" :style="{ width: `${inconclusive / counts.catalog * 100}%` }"></span>
-    <span v-if="counts.notTested" class="result-share-not-tested" :style="{ width: `${counts.notTested / counts.catalog * 100}%` }"></span>
-    <span v-if="errors" class="result-share-error" :style="{ width: `${errors / counts.catalog * 100}%` }"></span>
+  <p v-if="measuredVerdict" class="result-verdict">{{ measuredVerdict.text }} · <span class="result-verdict-detail">{{ measuredVerdict.pct }}% of the {{ measuredVerdict.denominator }} included capabilities read decisive</span></p>
+  <p class="result-share-label">{{ measuredBar.fillPct }}% supported of {{ measuredBar.denominator }} · measured per terminal</p>
+  <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
+    <span v-if="measuredBar.supported" class="result-share-supported" :style="{ width: `${measuredBar.supported / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.unsupported / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.inconclusive" class="result-share-inconclusive" :style="{ width: `${measuredBar.inconclusive / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.untested" class="result-share-not-tested" :style="{ width: `${measuredBar.untested / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.errors" class="result-share-error" :style="{ width: `${measuredBar.errors / measuredBar.denominator * 100}%` }"></span>
   </div>
   <ul class="result-counts">
-    <li><strong>{{ counts.supported }}</strong> supported <small>Positive evidence</small></li>
-    <li><strong>{{ counts.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
-    <li><strong>{{ inconclusive }}</strong> inconclusive <small>Cannot decide</small></li>
-    <li><strong>{{ counts.notTested }}</strong> not tested <small>{{ namedNotTested ? namedNotTested + ' named: no applicable observable' : 'No observation' }}</small></li>
-    <li><strong>{{ errors }}</strong> errors <small>Probe error</small></li>
+    <li><strong>{{ measuredBar.supported }}</strong> supported <small>Positive evidence</small></li>
+    <li><strong>{{ measuredBar.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
+    <li><strong>{{ measuredBar.inconclusive }}</strong> inconclusive <small>Cannot decide</small></li>
+    <li><strong>{{ measuredBar.untested }}</strong> not tested <small>{{ namedNotTested ? namedNotTested + ' named: no applicable observable' : 'No observation' }}</small></li>
+    <li><strong>{{ measuredBar.errors }}</strong> errors <small>Probe error</small></li>
   </ul>
   <p class="score-detail">Inconclusive includes checks blocked by permissions or policy before execution. This distribution is not an overall compatibility score. <a href="/contribute#reading-results">How to read results</a></p>
   <details class="result-counting">
@@ -388,11 +402,17 @@ const breadcrumbParent = (() => {
   font-weight: 600;
 }
 
+.tier-line { margin: 0.75em 0 0.25em; font-weight: 600; }
+.stale-line { margin: 0 0 0.5em; color: var(--vp-c-text-2); }
+.unmeasured { margin: 1em 0; }
+.unmeasured ul { max-height: 16em; overflow: auto; }
 .selected-run { margin: 0.5em 0 1em; color: var(--vp-c-text-2); }
 .terminal-about summary, .analysis summary { cursor: pointer; font-weight: 600; }
 
 .score-card .run-picker { margin: 1em 0; }
-.result-share-label { margin: 1em 0 0.35em; font-weight: 600; }
+.result-verdict { margin: 1em 0 0.35em; font-weight: 600; }
+.result-verdict-detail { font-weight: 400; color: var(--vp-c-text-2); }
+.result-share-label { margin: 0 0 0.35em; font-weight: 400; color: var(--vp-c-text-2); }
 .result-share { display: flex; height: 12px; overflow: hidden; border-radius: 6px; background: var(--vp-c-divider); }
 .result-share span { display: block; height: 100%; }
 .result-share-supported { background: #10b981; }

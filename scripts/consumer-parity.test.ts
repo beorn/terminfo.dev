@@ -1047,8 +1047,11 @@ describe("selected-run consumer parity", () => {
   })
 })
 
-it("binds native parser page analysis to its selected run despite sharing an app route slug", () => {
-  // Ghostty's native parser uses /terminals/ghostty; the unmeasured app has its own analysis placeholder.
+it("binds the native parser page to its own slug and its selected run, now that the app is measured", () => {
+  // The old premise here — "the native parser uses /terminals/ghostty; the unmeasured app has its
+  // own analysis placeholder" — is stale: the app carries two measured rows (macOS bee88159, Linux
+  // c1cfa180), so the shared slug published the parser's run under the app's URL (28047). The
+  // parser now owns /terminals/headless-ghostty-native and the app keeps /terminals/ghostty.
   const native = structuredClone(fixture.selected) as unknown as SelectedVersion
   native.target = { ...native.target, kind: "headless", id: "ghostty-native" }
   const targets = vi
@@ -1062,10 +1065,11 @@ it("binds native parser page analysis to its selected run despite sharing an app
     const generated = generateAnalysis()
     probes = vi.spyOn(probeData, "loadProbes").mockReturnValue(data)
     analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue(generated)
-    expect(generated["terminals/ghostty"]?.analysis).toContain("awaiting verified measurements")
+    expect(generated["terminals/headless-ghostty-native"]).toBeDefined()
+    expect(generated["terminals/headless-ghostty-native"]?.analysis).not.toContain("awaiting verified measurements")
     const page = terminalPaths.paths().find((entry) => entry.params.backendId === "ghostty-native")
     expect(page?.params).toMatchObject({
-      id: "ghostty",
+      id: "headless-ghostty-native",
       terminalType: "headless",
       runSha256: fixture.runSha256,
       generated: fixture.measuredAt,
@@ -1076,8 +1080,12 @@ it("binds native parser page analysis to its selected run despite sharing an app
     })
     expect(page?.params.analysis).not.toContain("awaiting verified measurements")
     expect(page?.params.analysis).toContain("(1/2)")
-    // Missing or stale analysis must not silently fall back to the app placeholder.
-    delete generated["terminals/ghostty-native"]
+    // The app is a second page with its own id, never a second owner of the parser's id.
+    const appPage = terminalPaths.paths().find((entry) => entry.params.backendId === "ghostty")
+    expect(appPage?.params.id).toBe("ghostty")
+    expect(appPage?.params.analysis).not.toContain("(1/2)")
+    // A measured run whose analysis is missing must fail loud, never borrow another terminal's.
+    delete generated["terminals/headless-ghostty-native"]
     expect(() => terminalPaths.paths()).toThrow(/ghostty-native.*selected run.*aaaaaaaa/)
     // The inverse collision must not attribute a measured app's analysis to an unmeasured parser.
     const app = structuredClone(native)
@@ -1091,11 +1099,60 @@ it("binds native parser page analysis to its selected run despite sharing an app
     probes.mockReturnValue(loadFullProbes())
     const unmeasured = terminalPaths.paths().find((entry) => entry.params.backendId === "ghostty-native")
     expect(unmeasured?.params).toMatchObject({
+      id: "headless-ghostty-native",
       total: "0",
-      analysis: "",
       analysisDate: "",
       runSha256: fixture.runSha256,
     })
+    expect(unmeasured?.params.analysis).not.toContain("(1/2)")
+  } finally {
+    probes?.mockRestore()
+    analysis?.mockRestore()
+    warning.mockRestore()
+    targets.mockRestore()
+  }
+})
+
+it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
+  // The guard 28047 adds, on the pair it was written for: before the fix the app 'ghostty' and the
+  // headless parser 'ghostty-native' both minted page id 'ghostty', so VitePress wrote one run over
+  // the other's URL and nothing failed. Restore that shape and require a build error naming both keys.
+  const app = structuredClone(fixture.selected) as unknown as SelectedVersion
+  app.target = { ...app.target, kind: "app", id: "ghostty" }
+  const native = structuredClone(fixture.selected) as unknown as SelectedVersion
+  native.target = { ...native.target, kind: "headless", id: "ghostty-native" }
+  const targets = vi.spyOn(currentResults, "compatibilityTargets").mockReturnValue(
+    new Map([
+      ["ghostty", { contextKey: "app:ghostty", selected: app }],
+      ["ghostty-native", { contextKey: "headless:ghostty-native", selected: native }],
+    ]),
+  )
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+  let probes: ReturnType<typeof vi.spyOn> | undefined
+  let analysis: ReturnType<typeof vi.spyOn> | undefined
+  try {
+    const data = loadFullProbes()
+    probes = vi.spyOn(probeData, "loadProbes").mockReturnValue({
+      ...data,
+      meta: { ...data.meta, "ghostty-native": { ...data.meta["ghostty-native"], slug: "ghostty" } },
+    })
+    analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue({
+      "terminals/ghostty": { analysis: "<p>app</p>", date: "2026-09-28", changes: null, runSha256: fixture.runSha256 },
+      "terminals/ghostty-native": {
+        analysis: "<p>parser</p>",
+        date: "2026-09-28",
+        changes: null,
+        runSha256: fixture.runSha256,
+      },
+    } as unknown as ReturnType<typeof probeData.loadAnalysis>)
+    let message = ""
+    try {
+      terminalPaths.paths()
+    } catch (cause) {
+      message = cause instanceof Error ? cause.message : String(cause)
+    }
+    expect(message).toContain("mint the id 'ghostty'")
+    expect(message).toContain("'ghostty-native'")
   } finally {
     probes?.mockRestore()
     analysis?.mockRestore()

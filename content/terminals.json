@@ -10,6 +10,17 @@
     "manifestBackend": "ghostty",
     "platforms": ["macos", "linux"]
   },
+  "ghostty-native": {
+    "label": "Ghostty (native)",
+    "slug": "headless-ghostty-native",
+    "kind": "headless",
+    "url": "https://ghostty.org",
+    "repo": "https://github.com/ghostty-org/ghostty",
+    "description": "Ghostty's native Zig parser, measured headlessly by Termless. Not the app renderer.",
+    "body": "<p><strong>Ghostty's native parser</strong> is libghostty's terminal emulation core, exposed to Termless through Zig N-API bindings (<code>@termless/ghostty-native</code>). It is the engine the <a href=\"/terminals/ghostty\" class=\"hover-link\">Ghostty application</a> embeds, measured without a renderer: escape sequences are fed to the parser and its replies and programmatic state are checked. It is not an app-rendering test.</p>\n<p>Ghostty also ships a WebAssembly build of the same core, measured separately as <a href=\"/terminals/headless-ghostty\" class=\"hover-link\">Ghostty (headless)</a>.</p>",
+    "headlessBackends": ["ghostty-native"],
+    "platforms": ["linux"]
+  },
   "kitty": {
     "label": "Kitty",
     "slug": "kitty",
@@ -239,6 +250,16 @@
     "body": "<p><strong>WezTerm</strong> is a cross-platform terminal emulator and multiplexer written in Rust by <strong>Wez Furlong</strong>, a veteran systems engineer known for his work on PHP internals, Mercurial, and the Watchman file watcher at Facebook. First released in 2018, WezTerm reflects Furlong's philosophy of building practical, feature-complete tools — unlike Alacritty's minimalism, WezTerm is batteries-included, replacing tmux/screen with built-in tabs, splits, and remote session management.</p>\n<p>WezTerm's most distinctive feature is its <strong>Lua-based configuration</strong>. Where most terminals use static YAML or TOML, WezTerm's config is a full Lua program — enabling dynamic keybindings, conditional themes, complex layouts, and event-driven behavior. Its <strong>SSH domain multiplexing</strong> with auto-reconnection lets terminal sessions survive network drops and resume transparently, a feature rarely found outside dedicated SSH tools like Mosh.</p>\n<p>WezTerm supports the kitty keyboard protocol, kitty graphics protocol, sixel, OSC 8 hyperlinks, and extensive Unicode support including grapheme clustering. The <code>wezterm-term</code> Rust crate provides the terminal emulation core, which Termless uses as a headless backend for cross-terminal testing.</p>",
     "headlessBackends": ["wezterm"],
     "platforms": ["macos", "linux", "windows"]
+  },
+  "xterm": {
+    "label": "xterm",
+    "slug": "xterm",
+    "kind": "app",
+    "url": "https://invisible-island.net/xterm/",
+    "repo": "https://github.com/ThomasDickey/xterm-snapshots",
+    "description": "The reference X11 terminal emulator, measured as a real app on Linux.",
+    "body": "<p><strong>xterm</strong> is the reference X11 terminal emulator. Written in 1984 by Mark Vandevoorde and maintained by <strong>Thomas Dickey</strong> since 1996, it defined most of what \"standard\" terminal behavior means, and the ctlseqs document it ships is what emulator implementors reference.</p><p><strong>xterm-historical</strong> covers xterm's place in terminal history. This entry is the measured application: on terminfo.dev xterm runs as a real app on Linux through the container apparatus, with the apparatus's own ownership receipt, rather than through a reusable parser backend.</p><p>Its XTVERSION, primary DA and secondary DA replies name the running patch level, so a collected xterm run identifies the build it measured.</p>",
+    "platforms": ["linux"]
   },
   "xtermjs": {
     "label": "xterm.js",

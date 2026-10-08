@@ -6,15 +6,28 @@ export interface NoSemanticObservable {
   noObservable: string
 }
 
-export interface ProbeResult {
+/** A probe result is exactly one of two things: a measured observation, or a coverage record. */
+export type ProbeResult = MeasuredProbeResult | NotTestedCoverageResult
+
+export interface MeasuredProbeResult {
+  /** Historical raw documents carry it; the live collector reads only observation. */
   pass: boolean
   note?: string
   response?: string
-  /** Explicit measured result; the legacy pass boolean is never promoted. */
-  observation?: Omit<Observation, "featureId" | "rawReplyRef">
+  /** The explicit measured result. Never promoted from pass. */
+  observation: Omit<Observation, "featureId" | "rawReplyRef">
   assertions?: Array<Omit<ProbeAssertion, "featureId" | "rawReplyRef">>
+  notTested?: never
+}
+
+export interface NotTestedCoverageResult {
+  pass: boolean
+  note?: string
+  response?: string
+  observation?: never
+  assertions?: never
   /** Per-result coverage: the probe ran and captured raw state, but no applicable observable exists here. */
-  notTested?: NoSemanticObservable
+  notTested: NoSemanticObservable
 }
 
 /** A proposition's measured outcome. Missing catalog IDs mean not tested. */
@@ -106,7 +119,24 @@ export interface AppLaunchReceipt {
   sourceArtifact: AppSourceArtifact
 }
 
-/** An installed app may come from a retained file or a measured sealed macOS system volume. */
+/**
+ * A source artifact DERIVED from an upstream tree: a deterministic tar of a recursive `src`, flat
+ * hashed, with the tree hash it was made from (@cto 2026-10-06, 27892). `narSri` is the trust root -
+ * the tree hash nixpkgs pins for the source - and `sha256` is the derived tar's flat hash, the one
+ * the image re-measures. Its presence is NAMED by `kind`; an absent kind keeps the flat-archive.
+ */
+export interface DerivedSourceTreeArtifact {
+  kind: "derived-source-tree"
+  url: string
+  revision: string
+  narSri: string
+  sha256: string
+}
+
+/**
+ * An installed app may come from a retained file, a measured sealed macOS system volume, or a source
+ * tree this repo derived a flat artifact from.
+ */
 export type AppSourceArtifact =
   | { path: string; sha256: string }
   | {
@@ -117,12 +147,21 @@ export type AppSourceArtifact =
       sealed: true
       codeSignature: { identifier: string; cdHash: string; strictVerified: true }
     }
+  | DerivedSourceTreeArtifact
 
-/** Immutable declaration of the probes available in one suite revision. */
+/**
+ * Immutable declaration of the probes available in one suite revision.
+ *
+ * `probeHash`, `adapterVersion` and `probes` are the DERIVED record: a pure function of the suite
+ * sources (27832 manifest direction (2)). `sourceRevision` and `generatedAt` are legacy provenance
+ * that only old manifests carry. They are BOTH-OR-NEITHER: a manifest is legacy-complete (both,
+ * validated as today) or new-minimal (neither). A half-present pair can only come from a hand edit
+ * or corruption, so the parser refuses it by name.
+ */
 export interface ProbeSuiteManifest {
   probeHash: string
-  sourceRevision: string
-  generatedAt: string
+  sourceRevision?: string
+  generatedAt?: string
   adapterVersion: string
   probes: Record<ProbeTarget["kind"], string[]>
 }
@@ -140,6 +179,12 @@ export interface ProbeAssertion {
 }
 
 export type UngradedDiagnostic =
+  /**
+   * HISTORICAL ONLY. Raised by the collector before the one-probe-result-path refactor (27832) and
+   * still present in immutable run documents, which the parser must keep reading. No collector path
+   * produces it any more: a result that is neither a measurement nor a coverage record is refused
+   * as a `collector-error` instead.
+   */
   | { kind: "legacy-callback"; pass: boolean; note?: string; response?: string }
   | { kind: "collector-error"; name: string; message?: string }
 
@@ -226,7 +271,7 @@ export interface ProbeRun {
 /** One native-app receipt, independent of which OS executed the collector. */
 export interface RunProvenance {
   executable: { path: string; sha256: string; version: string }
-  sourceArtifact: { url: string; sha256: string }
+  sourceArtifact: { url: string; sha256: string } | DerivedSourceTreeArtifact
   runtime: {
     imageId: string
     imageTarSha256: string
@@ -318,6 +363,13 @@ export interface TerminalQueryOutcome {
   reason: "reply" | "sentinel" | "timeout"
   raw: string
   rawBase64: string
+  /**
+   * The DA1 sentinel's arrival, in ms measured from the query write, with the grace window that
+   * followed it. Present exactly when DA1 was answered before this query's reply: a later reply is
+   * a late reply graded by the reply, and a silent grace window is the measured negative that the
+   * grader records as "negative by sentinel". Absent when nothing answered DA1.
+   */
+  sentinel?: { atMs: number; graceMs: number }
 }
 
 /** Independently observed text selection in an owned disposable display. */
@@ -349,6 +401,12 @@ export interface ProbeDefinition {
   term: ((ctx: TermContext) => Promise<ProbeResult>) | null
   /** Only an explicitly reviewed report request may run without a disposable terminal. */
   termWrites?: "query"
+  /**
+   * This callback may MUTATE the terminal and read the state back, so it needs a verified
+   * disposable-ownership receipt as well as an owned terminal. A person's terminal is never
+   * authorized: absent, forged or foreign receipt leaves the untouched default path.
+   */
+  termNeedsDisposable?: true
   /** App callback requires measured geometry from its owned output stream. */
   termNeedsGeometry?: true
   /** Explicit opt-in for recording callback exceptions as observations. */

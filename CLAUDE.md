@@ -96,6 +96,29 @@ DERIVED     docs/data/*.ts        ← computed at build time from above two
 
 Each file: `{ backend, version, results: { featureId: boolean }, notes, probeHash, generated }`
 
+### Admitting a run (the one suite-manifest writer)
+
+A schema-v2 run cites the executable suite (`probeHash`) that produced it, and the parser refuses a run
+whose suite has no trusted declaration in `content/suites/<probeHash>.json`. The declaration is a
+DERIVED record — `{ probeHash, adapterVersion, probes }`, a pure function of the suite sources — and it
+is written at admission, never by hand and never by a standalone verb:
+
+```bash
+bun scripts/admit-run.ts --for <collected-run.json> [--into <path>]
+```
+
+- Required resources: a Git checkout whose HEAD is ahead of `origin/main` (admission is authoring), the
+  run file, and a tree whose live suite equals the run's `probeHash`.
+- Refusals are loud and named: a foreign suite refuses with "Admit from a tree at the run's suite"; a
+  checkout whose HEAD is on `origin/main` refuses; a partial or malformed run refuses.
+- Concurrent admission of the same run is success when the bytes match; different bytes at the same
+  name refuse. Commit the run and its manifest together.
+
+`bun scripts/suite-manifest.ts --check` (in `bun run validate`) is the composed-tree gate: it requires a
+declaration for every run that CITES a suite, and does not require the tree's own suite to be declared,
+so a non-fast-forward compose of two adapter branches is green. The declared manifest is verified
+against the live snapshot when this tree's suite is declared.
+
 ### Curated: Editorial Content
 
 `content/` — JSON files that humans and AI edit:

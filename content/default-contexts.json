@@ -1,17 +1,34 @@
 {
   "defaultContext": {
     "app:kitty": {
-      "contextKey": "app:kitty@[\"app\",\"kitty\",\"linux\",\"7.0.0-34-generic\",null,null,\"--config NONE --class terminfo-kitty-container-daemon -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600 -o font_family=DejaVu\\\\ Sans\\\\ Mono -o font_size=16 \",null]",
-      "reviewer": "Codex (automated review)",
-      "reason": "Use the controlled Linux Kitty default configuration for the compatibility view. OSC52 was not sent in this profile and remains inconclusive. Explicit allow and deny-read contexts remain available in v2.",
-      "sources": [
-        "content/probes-apps/kitty-0.49.1-linux-92b128d025af9aa6ade894a51fa86ba9.json",
-        "content/probes-apps/kitty-0.49.1-linux-7db8a7e3a125a2f396f503fe8aeaa66c.json",
-        "content/probes-apps/kitty-0.49.1-linux-588ec5fa968637ed28badfaa3dc278d4.json",
-        "content/probes-apps/kitty-0.49.1-linux-0e7692c1e94570e89689f40a530929fc.json",
-        "content/probes-apps/kitty-0.49.1-linux-a6c258c6fddf29113e0a9c81489866e2.json",
-        "content/probes-apps/kitty-0.49.2-linux-ec9fc8e4dc2365223a8eeaf594f3817a.json"
-      ]
+      "contextKey": "app:kitty@[\"app\",\"kitty\",\"macos\",\"26.6.2\",null,null,null,null]",
+      "reviewer": "agy-gemini (automated review)",
+      "reason": "Release 1 macOS hardware run on codimac",
+      "sources": ["content/probes-apps/kitty-0.48.2-macos.json"]
+    },
+    "app:ghostty": {
+      "contextKey": "app:ghostty@[\"app\",\"ghostty\",\"macos\",\"26.6.2\",null,null,null,null]",
+      "reviewer": "@dev/3 (automated review)",
+      "reason": "Keeps the default ghostty already had: until the 27892 apparatus runs, the macOS hardware run was ghostty's only current context, so the site does not move when the Linux container run becomes current alongside it. The kitty row names the macOS hardware run as the reviewed default the same way.",
+      "sources": ["content/probes-apps/ghostty-1.3.1-macos.json"]
+    },
+    "app:xterm": {
+      "contextKey": "app:xterm@[\"app\",\"xterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/cdi2hk128w2mpxcx7rglx65dc9jamfv4-xterm-411/bin/xterm -name terminfo-xterm-container-daemon -fa DejaVu\\\\ Sans\\\\ Mono -fs 16 -geometry 100x30 -e bun /nix/store/9k9yq98ncdzsy624ijp8s5sw7qkqv5ax-terminfo-linux-runner/index.js test --serve \",null]",
+      "reviewer": "@dev/5 (automated review)",
+      "reason": "Pins the row to the 27914 re-collection on suite 621e92ea4818 (the decisive-negative XTGETXRES grading, plus the XTREPORTCOLORS and Sixel-geometry matchers, collected from a clean tree). The Linux apparatus holds several xterm runs that differ only by the frozen runner's store path; this names the one 27914 triages, so the site selects it. Same mechanism the app:ghostty and app:kitty rows use.",
+      "sources": ["content/probes-apps/xterm-411-linux-885b4bef3d656143bf129de67ee8efd7.json"]
+    },
+    "app:alacritty": {
+      "contextKey": "app:alacritty@[\"app\",\"alacritty\",\"macos\",\"26.6.2\",null,null,null,null]",
+      "reviewer": "@cto (27916 AC2 ruling)",
+      "reason": "Same rule as the kitty and ghostty rows: until 27916 AC2 admitted the controlled-Linux run, the macOS hardware run was alacritty's only current context, so naming it the default leaves the site's alacritty page unmoved when the Linux container run becomes current alongside it. Both contexts stay readable as Release 1 bar rows (27917).",
+      "sources": ["content/probes-apps/alacritty-0.17.0-macos.json"]
+    },
+    "app:wezterm": {
+      "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/mmvpz8sgpp4gg1lwsjv68knvkzqmsdwk-wezterm-0-unstable-2026-09-17/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun /nix/store/ps46shfhpf5kqs33q3hi0lgd9s626bh3-terminfo-linux-runner/index.js test --serve \",null]",
+      "reviewer": "@dev/12 (automated review)",
+      "reason": "The clean-tree WezTerm run on main's suite 7c4ead653220, after 27919, 52/52 decisive (27915). 27916's identity profile makes every clean WezTerm app run current, and the context key carries the runner's store path, so the stale-suite runs ed1a16b8 (16f4067cfb88), c02903f0 (1ee91a75f7c9), 4dfdb6e7 (3917e7e5e9f9), 9b013dcf (f173b3679f36) and 5f4df380 (621e92ea4818) stay current as separate contexts; this row picks the current-suite one.",
+      "sources": ["content/probes-apps/wezterm-0-unstable-2026-09-17-linux-087598267b683cf2ed27e2d463345885.json"]
     }
   }
 }

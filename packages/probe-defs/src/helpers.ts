@@ -3,6 +3,8 @@ import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermlessContext
 /** Keep the serialized state alongside the exact assertion that used it. */
 export function parserStateResult(pass: boolean | null, expected: string, state: object, note?: string): ProbeResult {
   const response = JSON.stringify(state)
+  const assertions: NonNullable<ProbeResult["assertions"]> | undefined =
+    pass === null ? undefined : [{ kind: pass ? "positive" : "negative", expected, observed: response }]
   return {
     pass: pass === true,
     response,
@@ -13,9 +15,7 @@ export function parserStateResult(pass: boolean | null, expected: string, state:
       evidence: "parser-state",
       ...(note && { note }),
     },
-    ...(pass !== null && {
-      assertions: [{ kind: pass ? "positive" : "negative", expected, observed: response }],
-    }),
+    ...(assertions && { assertions }),
   }
 }
 
@@ -69,6 +69,68 @@ export function unmeasuredCellResult(position: { row: number; col: number } | nu
       reason: position ? "insufficient-evidence" : "no-response",
       evidence: "query",
     },
+  }
+}
+
+/** SGR parameter codes a DECRQSS reply must carry (and, for a reset, must not). */
+export interface SgrReadback {
+  require: readonly number[]
+  forbid?: readonly number[]
+}
+
+/**
+ * DECRQSS `$ q m` — the SGR parameters the terminal itself reports as active.
+ * A complete `DCS 1 $ r <Ps> m ST` reply is parsed; a timeout, a DA1 sentinel, or a
+ * `DCS 0 $ r ST` "request not recognized" reply all return null. A missing readback is
+ * never a negative.
+ */
+export async function querySgrState(ctx: TermContext): Promise<number[] | null> {
+  const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP1\$r([0-9;:]*)m\x1b\\/)
+  if (outcome.reason !== "reply") return null
+  const payload = outcome.match?.[1]
+  if (payload === undefined) return null
+  if (payload === "") return []
+  return payload
+    .split(";")
+    .filter((part) => part !== "")
+    .map((part) => Number(part.split(":")[0]))
+    .filter((code) => Number.isInteger(code))
+}
+
+/**
+ * DECRQM for an ANSI (non-private) mode: `CSI Ps $ p` -> `CSI Ps ; Pm $ y`.
+ * Status 1/3 is set, 2/4 is reset, 0 is not recognized, any other value is no readback.
+ */
+export async function queryAnsiMode(ctx: TermContext, modeNumber: number): Promise<"set" | "reset" | "unknown" | null> {
+  const outcome = await ctx.queryWithSentinelOutcome(
+    `\x1b[${modeNumber}$p`,
+    new RegExp(`\\x1b\\[${modeNumber};([0-4])\\$y`),
+  )
+  if (outcome.reason !== "reply") return null
+  const status = Number(outcome.match?.[1])
+  if (status === 1 || status === 3) return "set"
+  if (status === 2 || status === 4) return "reset"
+  if (status === 0) return "unknown"
+  return null
+}
+
+/** Decide an SGR claim from the terminal own DECRQSS report. */
+export function sgrReadbackResult(id: string, sequence: string, state: number[], readback: SgrReadback): ProbeResult {
+  const required = readback.require.every((code) => state.includes(code))
+  const forbidden = readback.forbid?.some((code) => state.includes(code)) ?? false
+  const ok = required && !forbidden
+  const observed = state.length === 0 ? "0" : state.join(";")
+  return {
+    pass: ok,
+    response: JSON.stringify({ sgr: observed }),
+    observation: ok ? { outcome: "supported", evidence: "query" } : { outcome: "unsupported", evidence: "query" },
+    assertions: [
+      {
+        kind: ok ? "positive" : "negative",
+        expected: `${id}: DECRQSS reports ${readback.require.join(";")} after ${sequence}`,
+        observed,
+      },
+    ],
   }
 }
 
@@ -142,11 +204,12 @@ export function sgrProbe(
   sequence: string,
   check: (cell: ReturnType<TermlessContext["getCell"]>) => boolean | null,
   noObservableWhen?: (cell: ReturnType<TermlessContext["getCell"]>) => string | null,
+  readback?: SgrReadback,
 ): ProbeDefinition {
   return {
     id,
     termNeedsGeometry: true,
-    termObservationEvidence: "consumed",
+    termObservationEvidence: readback ? "query" : "consumed",
     termless(ctx) {
       ctx.feed(sequence + "X")
       const cell = ctx.getCell(0, 0)
@@ -167,6 +230,29 @@ export function sgrProbe(
       )
     },
     async term(ctx) {
+      if (readback) {
+        ctx.write("\x1b[0m")
+        ctx.write(sequence)
+        let state: number[] | null
+        try {
+          state = await querySgrState(ctx)
+        } finally {
+          ctx.write("\x1b[0m")
+        }
+        if (state === null) {
+          return {
+            pass: false,
+            note: "No complete DECRQSS SGR reply",
+            observation: {
+              outcome: "inconclusive",
+              reason: "no-response",
+              evidence: "query",
+              note: "DECRQSS $ q m returned no complete SGR state; no readback decision",
+            },
+          }
+        }
+        return sgrReadbackResult(id, sequence, state, readback)
+      }
       if (ctx.capture) {
         const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
         if (refusal) return refusal
@@ -435,71 +521,6 @@ function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum: number
   }
 }
 
-/**
- * Response probe — send query, check response via feedCapture (termless) or query (term).
- */
-export function responseProbe(
-  id: string,
-  sequence: string,
-  expectedPattern: RegExp,
-  termlessCheck?: (response: string) => ProbeResult,
-  termQueryFn?: (ctx: TermContext) => Promise<ProbeResult>,
-): ProbeDefinition {
-  return {
-    id,
-    termless(ctx) {
-      const response = ctx.feedCapture(sequence)
-      if (termlessCheck) return termlessCheck(response)
-      return {
-        pass: expectedPattern.test(response),
-        note: expectedPattern.test(response) ? undefined : `Response: ${JSON.stringify(response)}`,
-        response,
-      }
-    },
-    term: termQueryFn ?? null,
-  }
-}
-
-/**
- * Capability probe — check capabilities flag (termless only, term=null).
- */
-export function capabilityProbe(id: string, capName: keyof TermlessContext["capabilities"]): ProbeDefinition {
-  return {
-    id,
-    termless(ctx) {
-      const val = ctx.capabilities[capName]
-      return { pass: val === true }
-    },
-    term: null,
-  }
-}
-
-/**
- * Width probe — check rendered width of text.
- */
-export function widthProbe(id: string, text: string, expectedWidth: number): ProbeDefinition {
-  return {
-    id,
-    termless(ctx) {
-      ctx.feed(text + "X")
-      // Find X — it should be at column expectedWidth
-      const cell = ctx.getCell(0, expectedWidth)
-      return {
-        pass: cell.char === "X",
-        note: cell.char === "X" ? undefined : `char at col ${expectedWidth} is "${cell.char}", expected "X"`,
-      }
-    },
-    async term(ctx) {
-      const width = await ctx.measureRenderedWidth(text)
-      if (width === null) return { pass: false, note: "Cannot measure width" }
-      return {
-        pass: width === expectedWidth,
-        note: width === expectedWidth ? undefined : `width=${width}, expected ${expectedWidth}`,
-      }
-    },
-  }
-}
-
 /** Check if a cell character is blank (empty or space). */
 export function isBlank(char: string): boolean {
   return char === "" || char === " "
@@ -535,3 +556,34 @@ export function readHyperlinkMetadata(
   }
   return hyperlink
 }
+
+/** Every complete answer a terminal gives to a DA1 query. */
+const DA1_REPLY = /\x1b\[\?[0-9;]*c/gu
+
+/**
+ * F1 (27832): a DA1 sentinel answered on time with nothing else said through the grace window is a
+ * measured negative, not an unknown — the terminal was alive and did not answer the query. `sentinel`
+ * carries the measured ordering (its arrival and the window that followed), which the negative cites
+ * so a reader can tell it from an explicit negative reply without a new evidence member.
+ *
+ * Returns null when the collector measured no sentinel, or when `raw` carries anything besides the
+ * DA1 answers (a partial frame is the site's own `invalid-reply`, not a silent terminal), so the
+ * caller keeps its existing inconclusive grade.
+ */
+export function sentinelNegativeResult(
+  raw: string,
+  sentinel: { atMs: number; graceMs: number } | undefined,
+  expected: string,
+): ProbeResult | null {
+  if (!sentinel || raw.replace(DA1_REPLY, "").trim() !== "") return null
+  const observed = `DA1 answered at +${String(sentinel.atMs)}ms; no reply through the ${String(sentinel.graceMs)} ms window`
+  return {
+    pass: false,
+    response: raw,
+    observation: { outcome: "unsupported", evidence: "query", note: "negative by sentinel" },
+    assertions: [{ kind: "negative", expected, observed }],
+  }
+}
+
+/** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */
+export const REPLY_AFTER_SENTINEL_NOTE = "reply after sentinel"

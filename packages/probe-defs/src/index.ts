@@ -25,6 +25,7 @@ export type {
   RunOrigin,
   AppLaunchReceipt,
   AppSourceArtifact,
+  DerivedSourceTreeArtifact,
   ProbeAssertion,
   UngradedDiagnostic,
   NotTestedCoverage,
@@ -33,17 +34,7 @@ export type {
   RunProvenance,
   Interpretation,
 } from "./types.ts"
-export {
-  sgrProbe,
-  cursorProbe,
-  decrpmModeProbe,
-  responseProbe,
-  capabilityProbe,
-  widthProbe,
-  isBlank,
-  readHyperlinkMetadata,
-  probe,
-} from "./helpers.ts"
+export { sgrProbe, cursorProbe, decrpmModeProbe, isBlank, readHyperlinkMetadata, probe } from "./helpers.ts"
 
 import { sgrProbes } from "./sgr.ts"
 import { cursorProbes } from "./cursor.ts"

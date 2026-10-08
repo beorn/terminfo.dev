@@ -97,12 +97,12 @@ Full terminal applications whose VT parser can be tested headlessly. These are t
   <p class="backend-desc">The parser behind the Kitty keyboard protocol, graphics protocol, and other innovations. Kitty also has a separate app result.</p>
 </a>
 
-<a class="backend-card" href="/terminals/ghostty">
+<a class="backend-card" href="/terminals/headless-ghostty-native">
   <div class="backend-header">
-    <span class="backend-name">Ghostty</span>
+    <span class="backend-name">Ghostty (native)</span>
     <span class="backend-lang">Zig</span>
   </div>
-  <p class="backend-desc">Ghostty's from-scratch Zig parser, tested independently of the GPU renderer. No app result is selected.</p>
+  <p class="backend-desc">Ghostty's from-scratch Zig parser (libghostty), tested independently of the GPU renderer. Ghostty also has a separate app result.</p>
 </a>
 
 </div>
@@ -128,7 +128,7 @@ Probe: "SGR bold"
 
 ## App Terminal Overlap
 
-Kitty currently has both an [app result](/terminals/kitty) and a separate [headless parser result](/terminals/headless-kitty). Alacritty, WezTerm, and Ghostty have headless results here; these do not establish app rendering. The linked result page's badge names the measured mode.
+Kitty has both an [app result](/terminals/kitty) and a separate [headless parser result](/terminals/headless-kitty), and Ghostty has an [app result](/terminals/ghostty) beside its [native parser result](/terminals/headless-ghostty-native). Alacritty and WezTerm have headless results here only; these do not establish app rendering. The linked result page's badge names the measured mode.
 
 The two test types answer different questions:
 

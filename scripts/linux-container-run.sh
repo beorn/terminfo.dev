@@ -42,7 +42,8 @@ compose_receipt() {
       $h + {
         executable:$c.executable,
         invocation:$c.invocation,
-        sourceArtifact:($h.sourceArtifact + $c.sourceArtifact),
+        sourceArtifact:(($h.sourceArtifact + $c.sourceArtifact)
+          | if (.kind // null) == "derived-source-tree" then del(.sri) else . end),
         collector:$c.collector,
         probeRun:$c.probeRun,
         display:$c.display,
@@ -58,6 +59,23 @@ compose_receipt() {
   mv "$output.partial" "$output"
 }
 
+# The in-image source proof is ONE comparison for both proof kinds (@cto 2026-10-06, 27892): the
+# archive the image carries - a flat upstream archive, or a tar DERIVED from the upstream tree - must
+# hash to exactly the flat sha256 the image declared in TERMINFO_TARGET_SOURCE_SRI. A derived kind
+# adds no second mechanism; it feeds this same check, so a wrong pin is refused here by name.
+verify_source_archive_hash() { # $1 measured sha256 hex, $2 declared sri, $3 label for the message
+  local measured=$1 declared=$2 label=${3:-source} expected
+  [[ "$declared" == sha256-* ]] || {
+    echo "$label has no declared flat sha256: ${declared:-<empty>}" >&2
+    return 2
+  }
+  expected=$(printf '%s' "${declared#sha256-}" | base64 -d | od -An -tx1 -v | tr -d ' \n')
+  [[ -n "$expected" && "$measured" == "$expected" ]] || {
+    echo "$label archive differs from declared fixed hash" >&2
+    return 2
+  }
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -66,11 +84,10 @@ fi
 
 if [[ "${1:-}" == "--inside" ]]; then
   shift
-  [[ -n "${TERMINFO_RUN_ID:-}" && -n "${TERMINFO_RUNNER:-}" && -n "${KITTY_BINARY:-}" &&
-     -n "${KITTY_EXPECTED_VERSION:-}" && -n "${KITTY_SOURCE_ARCHIVE:-}" &&
-     -n "${KITTY_SOURCE_SRI:-}" && -n "${KITTY_SOURCE_URL:-}" &&
-     -n "${TERMINFO_KITTY_PRESET:-}" && -n "${TERMINFO_CLIPBOARD_PROFILE:-}" ]] || {
-    echo "Missing run, runner, Kitty, source, preset, or clipboard profile metadata" >&2
+  [[ -n "${TERMINFO_RUN_ID:-}" && -n "${TERMINFO_RUNNER:-}" && -n "${TERMINFO_TARGET_ID:-}" &&
+     -n "${TERMINFO_TARGET_BINARY:-}" && -n "${TERMINFO_TARGET_VERSION:-}" &&
+     -n "${TERMINFO_TARGET_PRESET:-}" && -n "${TERMINFO_CLIPBOARD_PROFILE:-}" ]] || {
+    echo "Missing run, runner, target, preset, or clipboard profile metadata" >&2
     exit 2
   }
   [[ "$(id -u)" != 0 ]] || { echo "Refusing root container user" >&2; exit 2; }
@@ -83,12 +100,127 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "Loaded image ID disagrees with host receipt" >&2
     exit 2
   }
-  jq -e --arg preset "$TERMINFO_KITTY_PRESET" --arg profile "$TERMINFO_CLIPBOARD_PROFILE" \
-    --arg version "$KITTY_EXPECTED_VERSION" --arg url "$KITTY_SOURCE_URL" \
+
+  # Per-target descriptor (27874 launcher-target-family, @cto 1100603): ONE launcher mechanism, with
+  # each app's command shape, version probe and XTVERSION answer named here by the image's own id.
+  # The host passes these uniformly; the image's labels are the same values.
+  target_id=$TERMINFO_TARGET_ID
+  target_binary=$TERMINFO_TARGET_BINARY
+  target_version=$TERMINFO_TARGET_VERSION
+  target_preset=$TERMINFO_TARGET_PRESET
+  target_source_url=${TERMINFO_TARGET_SOURCE_URL:-}
+  target_source_sri=${TERMINFO_TARGET_SOURCE_SRI:-}
+  target_source_archive=${TERMINFO_TARGET_SOURCE_ARCHIVE:-}
+  target_source_kind=${TERMINFO_TARGET_SOURCE_KIND:-}
+  target_source_nar_sri=${TERMINFO_TARGET_SOURCE_NAR_SRI:-}
+  target_source_revision=${TERMINFO_TARGET_SOURCE_REVISION:-}
+  target_launch_args=()
+  target_command_lead=()
+  target_clipboard_args=()
+  target_xtversion_mode=
+  target_xtversion_expect=
+  # Pure bash: the image's runtime tools are a measured set and an unlisted dependency is a
+  # missing tool, not an assumption to make (@cto 1100603 named no new tool).
+  parse_version() {
+    local line
+    IFS= read -r line
+    printf '%s\n' "${line##* }"
+  }
+  case "$target_id" in
+    kitty)
+      target_launch_args=(--config NONE --class "terminfo-$target_id-container-daemon"
+        -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600
+        -o 'font_family=DejaVu Sans Mono' -o font_size=16)
+      # kitty --version prints one line, "kitty 0.49.2 created by Kovid Goyal": the version is the
+      # SECOND word, so the default last-word parse would read "Goyal" and refuse the run (27929 D1).
+      parse_version() {
+        local line
+        IFS= read -r line
+        line=${line#kitty }
+        printf '%s\n' "${line%% *}"
+      }
+      target_xtversion_mode=require
+      target_xtversion_expect="kitty($target_version)"
+      ;;
+    xterm)
+      target_launch_args=(-name "terminfo-$target_id-container-daemon" -fa 'DejaVu Sans Mono'
+        -fs 16 -geometry 100x30)
+      target_command_lead=(-e)
+      parse_version() {
+        local line
+        IFS= read -r line
+        line=${line#XTerm(}
+        printf '%s\n' "${line%)}"
+      }
+      # Measured 2026-10-07 in xterm-visual-default-image: XTVERSION "XTerm(411)", DA1 "?64;...".
+      target_xtversion_mode=require
+      target_xtversion_expect="XTerm($target_version)"
+      ;;
+    ghostty)
+      # `title` is ghostty's own key: `--window-title` is not a config key, so ghostty reports a
+      # configuration error and opens a SECOND owned window, which the one-window check below
+      # refuses. Measured 2026-10-07 in ghostty-visual-default-image: `--window-title=` -> 2 visible
+      # owned windows, `--title=` -> exactly 1. (27892)
+      target_launch_args=(--font-family='DejaVu Sans Mono' --font-size=16
+        --title="terminfo-$target_id-container-daemon")
+      target_command_lead=(-e)
+      # Measured 2026-10-07 in ghostty-visual-default-image: XTVERSION "ghostty 1.3.1", DA1 "?62;...".
+      target_xtversion_mode=require
+      target_xtversion_expect="ghostty $target_version"
+      ;;
+    wezterm)
+      # --config-file is a Lua chunk: /dev/null returns nil, which wezterm reports as a
+      # "Configuration Error" and renders as a second owned window. One empty table is a valid
+      # config with nothing in it. Measured 2026-10-07 in wezterm-visual-default-image:
+      # --config-file /dev/null -> 2 visible owned windows, `return {}` -> exactly 1. (27892)
+      printf 'return {}\n' > "$HOME/wezterm-config.lua"
+      target_launch_args=(--config-file "$HOME/wezterm-config.lua")
+      target_command_lead=(start --)
+      # Measured 2026-10-07: with libglvnd on LD_LIBRARY_PATH and __EGL_VENDOR_LIBRARY_DIRS pointing
+      # at mesa's egl_vendor.d the image opens exactly one owned window under software EGL, so the
+      # raw XTVERSION answer is recorded and named; promoted to require/forbid once its exact
+      # expected answer is measured through the apparatus. (27874)
+      target_xtversion_mode=record
+      ;;
+    alacritty)
+      target_command_lead=(-e)
+      # Measured 2026-10-07: alacritty resolves the run user from USER/HOME/SHELL before its passwd
+      # fallback, and refuses with `pw not found` only when that lookup fails. No passwd entry for
+      # the run uid exists in the image - the image's own baked entry is gone - so the LAUNCHER
+      # generates one and mounts it read-only (see the run-user block below). The raw XTVERSION
+      # answer is recorded and named; promoted to require/forbid once its exact expected answer is
+      # measured through the apparatus. (27874)
+      target_xtversion_mode=record
+      ;;
+    *) echo "Unknown target id: $target_id" >&2; exit 2 ;;
+  esac
+
+  case "$TERMINFO_CLIPBOARD_PROFILE" in
+    default)
+      clipboard_permissions='clipboard: read=ask,write=allow; OSC52=not-run'
+      ;;
+    allow|deny-read)
+      if [[ "$target_id" != kitty ]]; then
+        echo "$target_id: clipboard profile $TERMINFO_CLIPBOARD_PROFILE has no declared control on this target" >&2
+        exit 2
+      fi
+      if [[ "$TERMINFO_CLIPBOARD_PROFILE" == allow ]]; then
+        target_clipboard_args=(-o 'clipboard_control=write-clipboard read-clipboard')
+        clipboard_permissions='clipboard: read=allow,write=allow'
+      else
+        target_clipboard_args=(-o 'clipboard_control=write-clipboard')
+        clipboard_permissions='clipboard: read=deny,write=allow'
+      fi
+      ;;
+    *) echo "Unknown clipboard profile: $TERMINFO_CLIPBOARD_PROFILE" >&2; exit 2 ;;
+  esac
+
+  jq -e --arg preset "$target_preset" --arg profile "$TERMINFO_CLIPBOARD_PROFILE" \
+    --arg version "$target_version" --arg url "$target_source_url" \
     '.preset == $preset and .clipboardProfile == $profile and
      .declaredTarget.version == $version and .sourceArtifact.url == $url' \
     /out/host-measured.json >/dev/null || {
-      echo "Container preset, profile, or Kitty metadata disagrees with host receipt" >&2
+      echo "Container preset, profile, or target metadata disagrees with host receipt" >&2
       exit 2
     }
   [[ -d "$HOME" && -w "$HOME" ]] || { echo "HOME is not a writable private tmpfs" >&2; exit 2; }
@@ -115,20 +247,45 @@ if [[ "${1:-}" == "--inside" ]]; then
     echo "Frozen collector differs from host build receipt" >&2; exit 2;
   }
   # This is the declared invocation. Nixpkgs may wrap it and exec another ELF.
-  sha256sum "$KITTY_BINARY" | tee /out/invocation.sha256
-  sha256sum "$KITTY_SOURCE_ARCHIVE" | tee /out/source-archive.sha256
+  sha256sum "$target_binary" | tee /out/invocation.sha256
+  case "$target_source_archive" in
+    "")
+      echo "$target_id: no source archive; source proof unavailable" >&2
+      exit 2
+      ;;
+  esac
+  # The proof is NAMED by its kind (@cto 2026-10-06, 27892): absent means the flat upstream archive at
+  # url; "derived-source-tree" means a tar built from the upstream tree, which must also carry the tree
+  # hash nix pinned and the revision it came from. An unknown kind, or a derived tree without them, is
+  # refused by name rather than described with a plausible source.
+  case "$target_source_kind" in
+    ""|derived-source-tree) ;;
+    *) echo "$target_id: unknown source proof kind $target_source_kind" >&2; exit 2 ;;
+  esac
+  if [[ "$target_source_kind" == derived-source-tree ]]; then
+    [[ "$target_source_nar_sri" == sha256-* && -n "$target_source_revision" ]] || {
+      echo "$target_id: derived source tree lacks a pinned revision or tree hash; source proof unavailable" >&2
+      exit 2
+    }
+  fi
+  sha256sum "$target_source_archive" | tee /out/source-archive.sha256
   read -r source_sha source_path < /out/source-archive.sha256
-  expected_source_sha=$(printf '%s' "${KITTY_SOURCE_SRI#sha256-}" | base64 -d | od -An -tx1 -v | tr -d ' \n')
-  [[ "$KITTY_SOURCE_SRI" == sha256-* && "$source_sha" == "$expected_source_sha" ]] || {
-    echo "Loaded Kitty source archive differs from declared fixed hash" >&2
+  verify_source_archive_hash "$source_sha" "$target_source_sri" "Loaded $target_id source" || exit 2
+  case "$target_id" in
+    xterm) "$target_binary" -version ;;
+    *) "$target_binary" --version ;;
+  esac 2>/dev/null | tee /out/executable-version.txt
+  actual_version=$(parse_version < /out/executable-version.txt)
+  [[ "$actual_version" == "$target_version" ]] || {
+    echo "Loaded $target_id version $actual_version is not declared $target_version" >&2
     exit 2
   }
-  "$KITTY_BINARY" --version | tee /out/executable-version.txt
-  read -r executable_name actual_version _ < /out/executable-version.txt
-  [[ "$executable_name" == kitty && "$actual_version" == "$KITTY_EXPECTED_VERSION" ]] || {
-    echo "Loaded Kitty version is not declared $KITTY_EXPECTED_VERSION" >&2
-    exit 2
-  }
+  # The receipts record the version the executable REPORTS, never a whole build report: ghostty
+  # answers --version with a multi-line report naming its Zig, GTK and libadwaita versions, and the
+  # run parser admits exactly ONE version token equal to target.version, so a report carrying
+  # several numbers is refused by name. The line kept is the one parse_version reads, and the full
+  # report stays in /out/executable-version.txt and in the app's own daemon log.
+  executable_version=$(head -n 1 /out/executable-version.txt)
   fc-match -f '%{family} | %{file}\n' 'DejaVu Sans Mono' > /out/font.txt
 
   xvfb_pid=
@@ -172,21 +329,6 @@ if [[ "${1:-}" == "--inside" ]]; then
     exit 2
   }
 
-  case "$TERMINFO_CLIPBOARD_PROFILE" in
-    default)
-      kitty_clipboard_control=
-      clipboard_permissions='clipboard: read=ask,write=allow; OSC52=not-run'
-      ;;
-    allow)
-      kitty_clipboard_control='write-clipboard read-clipboard'
-      clipboard_permissions='clipboard: read=allow,write=allow'
-      ;;
-    deny-read)
-      kitty_clipboard_control='write-clipboard'
-      clipboard_permissions='clipboard: read=deny,write=allow'
-      ;;
-    *) echo "Unknown clipboard profile: $TERMINFO_CLIPBOARD_PROFILE" >&2; exit 2 ;;
-  esac
   baseline_path="$HOME/clipboard-baseline.txt"
   printf 'terminfo-owned-clipboard-%s' "$TERMINFO_RUN_ID" > "$baseline_path"
   chmod 600 "$baseline_path"
@@ -214,14 +356,10 @@ if [[ "${1:-}" == "--inside" ]]; then
   export TERMINFO_CAPTURE_DIRECTORY=/out/artifacts
   export TERMINFO_RUNTIME_PROVENANCE=/out/runtime-provenance.json
   export TERMINFO_CLIPBOARD_FIXTURE_RECEIPT=/out/clipboard-fixture.json
-  kitty_args=(--config NONE --class terminfo-kitty-container-daemon
-    -o remember_window_size=no -o initial_window_width=800 -o initial_window_height=600
-    -o 'font_family=DejaVu Sans Mono' -o font_size=16)
-  if [[ -n "$kitty_clipboard_control" ]]; then
-    kitty_args+=(-o "clipboard_control=$kitty_clipboard_control")
-  fi
-  printf -v kitty_config '%q ' "${kitty_args[@]}"
-  "$KITTY_BINARY" "${kitty_args[@]}" \
+  # The declared invocation: what the descriptor table launches, exactly and uniformly.
+  printf -v target_config '%q ' "$target_binary" "${target_launch_args[@]}" \
+    "${target_clipboard_args[@]}" "${target_command_lead[@]}" bun "$TERMINFO_RUNNER" test --serve
+  "$target_binary" "${target_launch_args[@]}" "${target_clipboard_args[@]}" "${target_command_lead[@]}" \
     bun "$TERMINFO_RUNNER" test --serve >/out/daemon.log 2>&1 &
   daemon_pid=$!
   daemon_dir="$HOME/.terminfo-dev/daemons"
@@ -261,16 +399,27 @@ if [[ "${1:-}" == "--inside" ]]; then
   curl --fail-with-body --silent --show-error -H "Authorization: Bearer $token" \
     -H 'Content-Type: application/json' --data-binary @"$HOME/version-query.json" \
     "http://127.0.0.1:$port/query" > /out/xtversion-observation.json
-  jq -e --arg version "$KITTY_EXPECTED_VERSION" \
-    '.results[0].response | contains("kitty(" + $version + ")")' \
-    /out/xtversion-observation.json >/dev/null || {
-    echo "XTVERSION did not return declared Kitty $KITTY_EXPECTED_VERSION; run invalid" >&2; exit 2;
-  }
+  case "$target_xtversion_mode" in
+    require)
+      jq -e --arg expect "$target_xtversion_expect" \
+        '.results[0].response | type == "string" and contains($expect)' \
+        /out/xtversion-observation.json >/dev/null || {
+        echo "XTVERSION did not return the measured $target_id answer $target_xtversion_expect; run invalid" >&2
+        exit 2
+      }
+      ;;
+    record)
+      # The answer (or its absence) is written down and named; this target is not yet measured through
+      # the apparatus, so the raw reply is evidence, not a silent skip. (27874 launcher-target-family)
+      echo "$target_id: XTVERSION not yet measured; recorded reply $(jq -c '.results[0].response // null' /out/xtversion-observation.json)" >&2
+      ;;
+    *) echo "No XTVERSION expectation declared for $target_id" >&2; exit 2 ;;
+  esac
   timeout 10 xdotool search --sync --onlyvisible --pid "$daemon_pid" > /out/windows.txt
   [[ "$(wc -l < /out/windows.txt)" == 1 ]] || { echo "Ambiguous owned probe window" >&2; exit 2; }
   read -r window_id </out/windows.txt
   [[ "$(xdotool getwindowpid "$window_id")" == "$daemon_pid" ]] || {
-    echo "Probe window does not belong to the launched Kitty" >&2; exit 2;
+    echo "Probe window does not belong to the launched $target_id" >&2; exit 2;
   }
   collector_pid=$(jq -er .pid /out/daemon-registration.json)
   [[ "$collector_pid" =~ ^[0-9]+$ && -r "/proc/$collector_pid/status" ]] || {
@@ -279,7 +428,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   window_pid=$(xdotool getwindowpid "$window_id")
   live_executable=$(readlink -f "/proc/$daemon_pid/exe")
   [[ -f "$live_executable" && -x "$live_executable" ]] || {
-    echo "Owned Kitty PID has no live executable" >&2; exit 2;
+    echo "Owned $target_id PID has no live executable" >&2; exit 2;
   }
   live_executable_sha=$(sha256sum "/proc/$daemon_pid/exe" | cut -d ' ' -f 1)
   printf '%s  %s\n' "$live_executable_sha" "$live_executable" > /out/live-executable.sha256
@@ -290,7 +439,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg windowId "$window_id" --argjson windowPid "$window_pid" \
     --argjson helperPid "$helper_pid" --arg helperPath "$xclip_binary" --arg helperSha "$xclip_sha" \
     --arg baselinePath "$baseline_path" --arg baselineSha "$baseline_sha" --arg initialSha "$initial_read_sha" \
-    --arg config "$kitty_config" --arg permissions "$clipboard_permissions" \
+    --arg config "$target_config" --arg permissions "$clipboard_permissions" \
     '{schemaVersion:1,runId:$run,profile:$profile,
       display:{name:$display,number:$number,displayFdPath:$displayFdPath,xvfbPid:$xvfbPid},
       terminal:{pid:$terminalPid,collectorPid:$collectorPid,windowId:$windowId,windowPid:$windowPid},
@@ -303,13 +452,16 @@ if [[ "${1:-}" == "--inside" ]]; then
   read -r source_sha source_path < /out/source-archive.sha256
   jq -n --slurpfile host /out/host-measured.json \
     --arg path "$live_executable" --arg sha "$live_executable_sha" \
-    --arg version "$(cat /out/executable-version.txt)" --arg sourceSha "$source_sha" \
-    --arg config "$kitty_config" \
+    --arg version "$executable_version" --arg sourceSha "$source_sha" \
+    --arg config "$target_config" \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
     --rawfile display /out/xdpyinfo.txt --rawfile gl /out/glxinfo.txt '
     $host[0] as $h | {
       executable:{path:$path,sha256:$sha,version:$version},
-      sourceArtifact:{url:$h.sourceArtifact.url,sha256:$sourceSha},
+      sourceArtifact:({url:$h.sourceArtifact.url,sha256:$sourceSha}
+        + (if ($h.sourceArtifact.kind // null) == "derived-source-tree"
+           then {kind:$h.sourceArtifact.kind,narSri:$h.sourceArtifact.narSri,revision:$h.sourceArtifact.revision}
+           else {} end)),
       runtime:{imageId:$h.runtime.imageId,imageTarSha256:$h.runtime.imageTarSha256,
         arch:$h.runtime.arch,nixLockRevision:$h.runtime.nixLockRevision,
         sourceRevision:$h.runtime.sourceRevision,cleanTree:($h.runtime.sourceTreeStatus == "clean"),
@@ -325,17 +477,33 @@ if [[ "${1:-}" == "--inside" ]]; then
   date -u +%FT%TZ > /out/batch-wall-end.txt
   [[ "$batch_status" == 0 ]] || { echo "Probe batch HTTP request failed: $batch_status" >&2; exit "$batch_status"; }
   if [[ "$selected_ids" != null ]]; then
-    jq -e --argjson ids "$selected_ids" '
-      (.observations | map(.featureId)) as $actual |
+    # A controlled-Linux run with NO capture directory cannot make a frame, so a probe that needs
+    # one reports FrameUnavailable by its own id and the selection is still honored (27875). Every
+    # other diagnostic is a defect, and so is a FrameUnavailable in a run that HAD a capture
+    # directory. This container always exports TERMINFO_CAPTURE_DIRECTORY, so inside it the
+    # permitted set is empty by construction and any diagnostic is still refused.
+    if [[ -z "${TERMINFO_CAPTURE_DIRECTORY:-}" ]]; then
+      frameless_ids=$(jq -c '[.ungradedDiagnostics | to_entries[] | select(.value.name == "FrameUnavailable") | .key]' /out/v2-run.json)
+    else
+      frameless_ids='[]'
+    fi
+    jq -e --argjson ids "$selected_ids" --argjson frameless "$frameless_ids" '
+      (.ungradedDiagnostics | to_entries) as $diag |
+      ($diag | map(select(.value.name == "FrameUnavailable") | .key) | sort) as $found |
+      ($diag | map(select(.value.name != "FrameUnavailable") | .key)) as $unnamed |
+      (.observations | map(.featureId) + $found) as $actual |
+      ($unnamed | length) == 0 and $found == ($frameless | sort) and
       ($actual | length) == ($ids | length) and ($actual | unique | length) == ($ids | length) and
-      ($actual | sort) == ($ids | sort) and (.ungradedDiagnostics | length) == 0' /out/v2-run.json >/dev/null || {
-      echo "Actual observation selection differs from requested IDs or has diagnostics" >&2; exit 2;
+      ($actual | sort) == ($ids | sort)' /out/v2-run.json >/dev/null || {
+      echo "Actual observation selection differs from requested IDs or has diagnostics: $(jq -c '[.ungradedDiagnostics | to_entries[] | "\(.key)=\(.value.name)"]' /out/v2-run.json)" >&2
+      exit 2;
     }
+    [[ "$frameless_ids" == "[]" ]] || echo "frame-less selected ids: $frameless_ids" >&2
   fi
   jq -e --slurpfile build "$build_receipt" --arg executablePath "$live_executable" \
-    --arg executableSha "$live_executable_sha" '
+    --arg executableSha "$live_executable_sha" --arg target "$target_id" '
     .schemaVersion == 2 and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
-    .target.kind == "app" and .target.id == "kitty" and
+    .target.kind == "app" and .target.id == $target and
     .identity == "unverified" and .origin.kind == "collector" and
     .probeHash == $build[0].probeHash and .suiteId == $build[0].probeHash and
     .sourceRevision == $build[0].collectorRevision and
@@ -344,7 +512,8 @@ if [[ "${1:-}" == "--inside" ]]; then
     (.suiteComplete | type == "boolean") and (.rawReplies | type == "object") and
     (.assertions | type == "array") and (.observations | type == "array") and
     (has("results") | not)' /out/v2-run.json >/dev/null || {
-    echo "Daemon returned an invalid or mismatched v2 probe run; raw response retained" >&2; exit 2;
+    echo "Daemon returned an invalid v2 probe run, or named a target other than $target_id ($(jq -c '.target // null' /out/v2-run.json)); raw response retained" >&2
+    exit 2
   }
   probe_run_id=$(jq -er .runId /out/v2-run.json)
   probe_run_sha=$(sha256sum /out/v2-run.json | cut -d ' ' -f 1)
@@ -352,30 +521,48 @@ if [[ "${1:-}" == "--inside" ]]; then
   # The shared callbacks captured this daemon's own window before sealing the
   # run. Keep the original owned geometry in its receipt; a later window search
   # or geometry sample cannot replace the measurement recorded in provenance.
-  png_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' /out/v2-run.json)
-  xwd_sha=$(jq -er '[.observations[].frames[]? | select(.role == "target")][0].sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' /out/v2-run.json)
-  [[ -r "/out/artifacts/$png_sha.png" && -r "/out/artifacts/$xwd_sha.xwd" ]] || {
-    echo "Callback capture artifacts are missing" >&2; exit 2;
-  }
-  [[ "$(sha256sum "/out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
-     "$(sha256sum "/out/artifacts/$xwd_sha.xwd" | cut -d ' ' -f 1)" == "$xwd_sha" ]] || {
-    echo "Callback capture digest mismatch" >&2; exit 2;
-  }
-  magick identify "/out/artifacts/$png_sha.png" > /out/image-info.txt
-  sha256sum /out/artifacts/* > /out/capture-hashes.txt
-  jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --arg png "artifacts/$png_sha.png" \
-    '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,png:$png,context:"linux-x86_64-xvfb-llvmpipe"}' \
+  #
+  # A frame exists only when a selected probe called ctx.capture. A selection of pure queries
+  # carries none, and that is a fact about the run, not a failure of it (27875): record
+  # "no frame captured" and carry the run, instead of refusing it on a bare `jq -er` exit 2 that
+  # named nothing. A probe that wanted a frame still fails by name in its own result, so the run's
+  # results list exactly the frame-needing ids that were selected.
+  capture_frame=$(jq -c '[.observations[].frames[]? | select(.role == "target")][0] // null' /out/v2-run.json)
+  if [[ "$capture_frame" == null ]]; then
+    echo "no frame captured: no selected probe called ctx.capture" >&2
+    capture_receipt=null
+  else
+    png_sha=$(jq -er '.ref | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
+    xwd_sha=$(jq -er '.sourceRef | select(test("^sha256:[a-f0-9]{64}$")) | sub("^sha256:"; "")' <<<"$capture_frame")
+    [[ -r "/out/artifacts/$png_sha.png" && -r "/out/artifacts/$xwd_sha.xwd" ]] || {
+      echo "Callback capture artifacts are missing" >&2; exit 2;
+    }
+    [[ "$(sha256sum "/out/artifacts/$png_sha.png" | cut -d ' ' -f 1)" == "$png_sha" &&
+       "$(sha256sum "/out/artifacts/$xwd_sha.xwd" | cut -d ' ' -f 1)" == "$xwd_sha" ]] || {
+      echo "Callback capture digest mismatch" >&2; exit 2;
+    }
+    magick identify "/out/artifacts/$png_sha.png" > /out/image-info.txt
+    capture_receipt=$(jq -n --arg xwd "artifacts/$xwd_sha.xwd" --arg xwdSha "$xwd_sha" \
+      --arg png "artifacts/$png_sha.png" --arg pngSha "$png_sha" \
+      '{xwd:$xwd,xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}')
+  fi
+  if compgen -G "/out/artifacts/*" >/dev/null; then
+    sha256sum /out/artifacts/* > /out/capture-hashes.txt
+  else
+    : > /out/capture-hashes.txt
+  fi
+  jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --argjson capture "$capture_receipt" \
+    '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,capture:$capture,context:"linux-x86_64-xvfb-llvmpipe"}' \
     > /out/observed.json
   read -r invocation_sha invocation_path < /out/invocation.sha256
   read -r source_sha source_path < /out/source-archive.sha256
   jq -n --argjson ids "$selected_ids" --arg run "$TERMINFO_RUN_ID" \
     --arg executablePath "$live_executable" --arg executableSha "$live_executable_sha" \
     --arg invocationPath "$invocation_path" --arg invocationSha "$invocation_sha" \
-    --arg executableVersion "$(cat /out/executable-version.txt)" \
+    --arg executableVersion "$executable_version" \
     --arg sourcePath "$source_path" --arg sourceSha "$source_sha" \
     --arg runnerSha "$runner_sha" --arg receiptSha "$receipt_sha" \
-    --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" \
-    --arg png "artifacts/$png_sha.png" --arg pngSha "$png_sha" --arg xwdSha "$xwd_sha" \
+    --arg probeRun "$probe_run_id" --arg probeSha "$probe_run_sha" --argjson capture "$capture_receipt" \
     --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg clipboardSha "$clipboard_fixture_sha" \
     --rawfile glxinfo /out/glxinfo.txt --rawfile xdpyinfo /out/xdpyinfo.txt \
     --rawfile font /out/font.txt --rawfile geometry /out/geometry.txt \
@@ -387,37 +574,72 @@ if [[ "${1:-}" == "--inside" ]]; then
       probeRun:{path:"v2-run.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
       clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
-      capture:{xwd:("artifacts/"+$xwdSha+".xwd"),xwdSha256:$xwdSha,png:$png,pngSha256:$pngSha}} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
+      capture:$capture} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
     > /out/container-receipt.json
   exit 0
 fi
 
-[[ "$#" -ge 5 && "${1:-}" == --preset && "${3:-}" == --clipboard-profile ]] || {
-  echo "Usage: $0 --preset baseline|current --clipboard-profile default|allow|deny-read [--ids ID,ID] OUTPUT_DIRECTORY" >&2
+usage() {
+  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   exit 2
 }
-preset=$2
-clipboard_profile=$4
-shift 4
+target_id=
+preset=default
+clipboard_profile=
 probe_ids=null
-if [[ "${1:-}" == --ids ]]; then
-  count=0
-  for argument in "$@"; do [[ "$argument" != --ids ]] || count=$((count + 1)); done
-  [[ "$count" == 1 ]] || { echo "Repeated --ids" >&2; exit 2; }
-  [[ "$#" -ge 3 && "${2:-}" != --* ]] || { echo "Missing --ids value" >&2; exit 2; }
-  probe_ids=$(jq -cen --arg list "$2" '$list | split(",") | if length > 0 and all(.[]; test("^[a-z0-9][a-z0-9.-]*$")) and (unique | length) == length then . else error("Invalid probe IDs") end') || { echo "Invalid probe IDs" >&2; exit 2; }
-  shift 2
-fi
-[[ "$#" == 1 && "$1" != --* ]] || { echo "Unknown flag or unexpected launch argument" >&2; exit 2; }
-output_parent=$1
-case "$preset" in
-  baseline|current) ;;
-  *) echo "Unknown Kitty preset: $preset" >&2; exit 2 ;;
+output_parent=
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --target)
+      [[ "$#" -ge 2 && -n "${2:-}" && "${2:-}" != --* ]] || usage
+      target_id=$2
+      shift 2
+      ;;
+    --preset)
+      [[ "$#" -ge 2 && -n "${2:-}" && "${2:-}" != --* ]] || usage
+      preset=$2
+      shift 2
+      ;;
+    --clipboard-profile)
+      [[ "$#" -ge 2 && -n "${2:-}" && "${2:-}" != --* ]] || usage
+      clipboard_profile=$2
+      shift 2
+      ;;
+    --ids)
+      [[ "$#" -ge 3 && "${2:-}" != --* ]] || { echo "Missing --ids value" >&2; usage; }
+      [[ "$probe_ids" == null ]] || { echo "Repeated --ids" >&2; usage; }
+      probe_ids=$(jq -cen --arg list "$2" '$list | split(",") | if length > 0 and all(.[]; test("^[a-z0-9][a-z0-9.-]*$")) and (unique | length) == length then . else error("Invalid probe IDs") end') || { echo "Invalid probe IDs" >&2; exit 2; }
+      shift 2
+      ;;
+    -*)
+      echo "Unknown flag or unexpected launch argument: $1" >&2
+      usage
+      ;;
+    *)
+      [[ -z "$output_parent" ]] || { echo "Unknown flag or unexpected launch argument: $1" >&2; usage; }
+      output_parent=$1
+      shift
+      ;;
+  esac
+done
+[[ -n "$target_id" && -n "$clipboard_profile" && -n "$output_parent" ]] || usage
+case "$target_id" in
+  kitty|xterm|ghostty|wezterm|alacritty) ;;
+  *) echo "Unknown target: $target_id" >&2; exit 2 ;;
 esac
 case "$clipboard_profile" in
   default|allow|deny-read) ;;
   *) echo "Unknown clipboard profile: $clipboard_profile" >&2; exit 2 ;;
 esac
+if [[ "$target_id" == kitty ]]; then
+  case "$preset" in
+    baseline|current) ;;
+    *) echo "Kitty takes --preset baseline|current" >&2; exit 2 ;;
+  esac
+elif [[ "$preset" != default ]]; then
+  echo "$target_id has only the default preset" >&2
+  exit 2
+fi
 script_dir=$(cd "$(dirname "$0")" && pwd -P)
 vendor_root=$(cd "$script_dir/.." && pwd -P)
 code_root=$(cd "$vendor_root/../.." && pwd -P)
@@ -429,7 +651,7 @@ output_parent=$(cd "$output_parent" && pwd -P)
 run_id=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
 run_dir="$output_parent/$run_id"
 mkdir "$run_dir"
-mkdir "$run_dir/prep" "$run_dir/raw"
+mkdir -p "$run_dir/prep/receipt" "$run_dir/raw"
 prep="$run_dir/prep"
 raw="$run_dir/raw"
 
@@ -487,7 +709,7 @@ root_lock_sha=$(sha256sum "$code_root/bun.lock" | cut -d ' ' -f 1)
 (
   cd "$code_root"
   TERMINFO_LINUX_RUNNER_DIR="$prep/bundle" TERMINFO_LINUX_RUNNER_SHA256="$bundle_sha" \
-    nix build --impure ".#kitty-visual-${preset}-image" --out-link "$prep/image.tar" \
+    nix build --impure ".#${target_id}-visual-${preset}-image" --out-link "$prep/image.tar" \
       --option max-jobs 2 --option cores 2 -L
 ) > "$prep/nix-build.log" 2>&1 || {
   tail -100 "$prep/nix-build.log" >&2
@@ -496,29 +718,84 @@ root_lock_sha=$(sha256sum "$code_root/bun.lock" | cut -d ' ' -f 1)
 }
 image_tar_sha=$(sha256sum "$prep/image.tar" | cut -d ' ' -f 1)
 docker load --input "$prep/image.tar" >"$prep/docker-load.txt"
-image_id=$(docker image inspect "terminfo-kitty-probe:$preset" --format '{{.Id}}')
+image_id=$(docker image inspect "terminfo-${target_id}-probe:$preset" --format '{{.Id}}')
 docker image inspect "$image_id" > "$prep/image-inspect.json"
 image_arch=$(docker image inspect "$image_id" --format '{{.Architecture}}')
 [[ "$image_arch" == amd64 ]] || { echo "Loaded image architecture is $image_arch, expected amd64" >&2; exit 2; }
-jq -e --arg preset "$preset" '
-  .[0].Config.Labels["org.hallohuman.terminfo.kitty.preset"] == $preset and
-  (.[0].Config.Labels["org.hallohuman.terminfo.kitty.version"] | test("^[0-9]+[.][0-9]+[.][0-9]+$")) and
-  (.[0].Config.Labels["org.hallohuman.terminfo.kitty.source-url"] | startswith("https://github.com/kovidgoyal/kitty/")) and
-  (.[0].Config.Labels["org.hallohuman.terminfo.kitty.source-sri"] | test("^sha256-[A-Za-z0-9+/]{43}=$"))' \
+# The image's own labels are the identity: the launcher reads them and passes them on, so the
+# declared target, version and source describe the bytes the image actually carries (@cto 1100603).
+label_prefix="org.hallohuman.terminfo.${target_id}."
+jq -e --arg label "${label_prefix}preset" --arg preset "$preset" \
+  --arg versionLabel "${label_prefix}version" '
+  .[0].Config.Labels[$label] == $preset and
+  (.[0].Config.Labels[$versionLabel] | type == "string" and length > 0)' \
   "$prep/image-inspect.json" >/dev/null || {
-  echo "Loaded image lacks declared Kitty preset metadata" >&2; exit 2;
+  echo "Loaded image lacks declared $target_id preset metadata" >&2; exit 2;
 }
-kitty_version=$(jq -er '.[0].Config.Labels["org.hallohuman.terminfo.kitty.version"]' "$prep/image-inspect.json")
-source_url=$(jq -er '.[0].Config.Labels["org.hallohuman.terminfo.kitty.source-url"]' "$prep/image-inspect.json")
-source_sri=$(jq -er '.[0].Config.Labels["org.hallohuman.terminfo.kitty.source-sri"]' "$prep/image-inspect.json")
-for declared_env in "TERMINFO_KITTY_PRESET=$preset" "KITTY_EXPECTED_VERSION=$kitty_version" \
-  "KITTY_SOURCE_URL=$source_url" "KITTY_SOURCE_SRI=$source_sri"; do
+target_version=$(jq -er --arg label "${label_prefix}version" '.[0].Config.Labels[$label]' "$prep/image-inspect.json")
+source_url=$(jq -er --arg label "${label_prefix}source-url" '.[0].Config.Labels[$label] // ""' "$prep/image-inspect.json")
+source_sri=$(jq -er --arg label "${label_prefix}source-sri" '.[0].Config.Labels[$label] // ""' "$prep/image-inspect.json")
+# `source_revision` above is the COLLECTOR revision; the proof's upstream revision must not shadow it.
+proof_kind=$(jq -er --arg label "${label_prefix}source-kind" '.[0].Config.Labels[$label] // ""' "$prep/image-inspect.json")
+proof_nar_sri=$(jq -er --arg label "${label_prefix}source-nar-sri" '.[0].Config.Labels[$label] // ""' "$prep/image-inspect.json")
+proof_revision=$(jq -er --arg label "${label_prefix}source-revision" '.[0].Config.Labels[$label] // ""' "$prep/image-inspect.json")
+# Kitty's image predates the uniform TERMINFO_TARGET_* names; map its env either way, and check the
+# image really declares what the labels and the receipt are about to claim.
+case "$target_id" in
+  kitty)
+    binary_env=KITTY_BINARY
+    version_env=KITTY_EXPECTED_VERSION
+    url_env=KITTY_SOURCE_URL
+    sri_env=KITTY_SOURCE_SRI
+    archive_env=KITTY_SOURCE_ARCHIVE
+    preset_env=TERMINFO_KITTY_PRESET
+    ;;
+  *)
+    binary_env=TERMINFO_TARGET_BINARY
+    version_env=TERMINFO_TARGET_VERSION
+    url_env=TERMINFO_TARGET_SOURCE_URL
+    sri_env=TERMINFO_TARGET_SOURCE_SRI
+    archive_env=TERMINFO_TARGET_SOURCE_ARCHIVE
+    preset_env=TERMINFO_TARGET_PRESET
+    ;;
+esac
+for declared_env in "$preset_env=$preset" "$version_env=$target_version" \
+  "$url_env=$source_url" "$sri_env=$source_sri"; do
   jq -e --arg entry "$declared_env" '.[0].Config.Env | index($entry) != null' \
     "$prep/image-inspect.json" >/dev/null || {
-    echo "Loaded image environment disagrees with declared Kitty metadata: $declared_env" >&2
+    echo "Loaded image environment disagrees with declared $target_id metadata: $declared_env" >&2
     exit 2
   }
 done
+# The uniform source-proof metadata is declared by every mkVisualImage target; kitty's own image
+# predates it and its target never derives a tree, so its absence is not a disagreement.
+if [[ "$target_id" != kitty ]]; then
+  for declared_env in "TERMINFO_TARGET_SOURCE_KIND=$proof_kind" \
+    "TERMINFO_TARGET_SOURCE_NAR_SRI=$proof_nar_sri" \
+    "TERMINFO_TARGET_SOURCE_REVISION=$proof_revision"; do
+    jq -e --arg entry "$declared_env" '.[0].Config.Env | index($entry) != null' \
+      "$prep/image-inspect.json" >/dev/null || {
+      echo "Loaded image environment disagrees with declared $target_id metadata: $declared_env" >&2
+      exit 2
+    }
+  done
+fi
+target_binary=$(jq -er --arg name "$binary_env" '.[0].Config.Env | map(select(startswith($name + "="))) | .[0] | sub("^[^=]*="; "")' "$prep/image-inspect.json")
+target_source_archive=$(jq -er --arg name "$archive_env" '.[0].Config.Env | map(select(startswith($name + "="))) | .[0] | sub("^[^=]*="; "")' "$prep/image-inspect.json")
+[[ -n "$target_source_archive" ]] || {
+  echo "$target_id: no source archive; source proof unavailable" >&2
+  exit 2
+}
+case "$proof_kind" in
+  ""|derived-source-tree) ;;
+  *) echo "$target_id: unknown source proof kind $proof_kind" >&2; exit 2 ;;
+esac
+if [[ "$proof_kind" == derived-source-tree ]]; then
+  [[ "$proof_nar_sri" == sha256-* && -n "$proof_revision" ]] || {
+    echo "$target_id: derived source tree lacks a pinned revision or tree hash; source proof unavailable" >&2
+    exit 2
+  }
+fi
 jq -n \
   --argjson ids "$probe_ids" --arg run "$run_id" --arg image "$image_id" --arg tar "$image_tar_sha" \
   --arg arch "$image_arch" --arg nix "$nix_lock_revision" --arg source "$source_revision" \
@@ -526,12 +803,18 @@ jq -n \
   --arg bundleNar "$bundle_sha" --arg lock "$root_lock_sha" \
   --arg runnerSha "$frozen_runner_sha" --arg receiptSha "$build_receipt_sha" \
   --arg sourceStatus "$source_status" --slurpfile build "$cli_receipt" \
-  --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$kitty_version" \
+  --arg collectedAt "$(date -u +%FT%TZ)" \
+  --arg grace "${TERMINFO_SENTINEL_GRACE_MS:-250}" \
+  --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$target_version" \
+  --arg target "$target_id" \
   --arg url "$source_url" --arg sri "$source_sri" \
+  --arg kind "$proof_kind" --arg narSri "$proof_nar_sri" --arg revision "$proof_revision" \
   --arg runnerUrl "file://$prep/runner-bundle.tar" \
-  '{runId:$run,preset:$preset,clipboardProfile:$profile,
-    declaredTarget:{kind:"app",id:"kitty",version:$version,os:"linux"},
-    sourceArtifact:{url:$url,sri:$sri},
+  '{schemaVersion:1,kind:"linux-xvfb-container",collectedAt:$collectedAt,runId:$run,preset:$preset,clipboardProfile:$profile,sentinelGraceMs:($grace|tonumber),
+    declaredTarget:{kind:"app",id:$target,version:$version,os:"linux"},
+    sourceArtifact:({url:$url,sri:$sri}
+      + (if $kind == "derived-source-tree"
+         then {kind:$kind,narSri:$narSri,revision:$revision} else {} end)),
     runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
       frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
       build:$build[0],rootBunLockSha256:$lock},
@@ -539,15 +822,55 @@ jq -n \
       sourceRevision:$source,sourceTreeStatus:$sourceStatus,rootRevision:$root,suiteHash:$suite},
     status:"raw-unreviewed-history"} + (if $ids == null then {} else {selectedIDs:$ids} end)' > "$raw/host-measured.json"
 
+# The collector reads its ownership receipt from a read-only copy: the container being measured
+# must not be able to rewrite the receipt that authorizes writing to the terminal it drives.
+cp "$raw/host-measured.json" "$prep/receipt/host-measured.json"
+
+# The run user is the INVOKING user, never the image's declared User: docker create overrides it with
+# --user (below) so the bind-mounted /out is writable by this process, and a program that then
+# resolves the user by uid finds no passwd entry at all - alacritty refuses `pw not found` before it
+# can open a window, and ghostty cannot detect a default shell. Generate the two files the image
+# cannot carry for a uid it does not know, and mount them read-only. ONE binding (@cto 2026-10-06,
+# 27892): this uid/gid feeds --user, the private /home/runner tmpfs and both files, and the shell is
+# the image's own entrypoint rather than a guessed path.
+run_uid=$(id -u)
+run_gid=$(id -g)
+[[ "$run_uid" != 0 ]] || { echo "Refusing root run user" >&2; exit 2; }
+container_shell=$(jq -er '.[0].Config.Entrypoint[0]' "$prep/image-inspect.json") || {
+  echo "Loaded image declares no entrypoint, so the run user has no shell" >&2; exit 2;
+}
+[[ "$container_shell" == /* ]] || {
+  echo "Loaded image entrypoint is not an absolute shell path: $container_shell" >&2; exit 2;
+}
+printf 'runner:x:%s:%s:terminfo run user:/home/runner:%s\n' "$run_uid" "$run_gid" "$container_shell" > "$prep/passwd"
+printf 'runner:x:%s:\n' "$run_gid" > "$prep/group"
+chmod 0644 "$prep/passwd" "$prep/group"
+
 selection_env=()
 [[ "$probe_ids" == null ]] || selection_env=(--env "TERMINFO_PROBE_IDS=$probe_ids")
-container_id=$(docker create --user "$(id -u):$(id -g)" --network none --read-only \
+# The one-time sentinel-grace sizing pass widens the post-DA1 read; forward it only when the host
+# asked for it, so an ordinary collection keeps the measured floor.
+grace_env=()
+[[ -z "${TERMINFO_SENTINEL_GRACE_MS:-}" ]] || grace_env=(--env "TERMINFO_SENTINEL_GRACE_MS=$TERMINFO_SENTINEL_GRACE_MS")
+container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-only \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 2g --cpus 2 \
   --tmpfs "/tmp:rw,nosuid,nodev,mode=1777" \
-  --tmpfs "/home/runner:rw,nosuid,nodev,uid=$(id -u),gid=$(id -g),mode=0700" \
+  --tmpfs "/home/runner:rw,nosuid,nodev,uid=$run_uid,gid=$run_gid,mode=0700" \
   --mount "type=bind,src=$raw,dst=/out" \
+  --mount "type=bind,src=$prep/receipt,dst=/receipt,readonly" \
+  --mount "type=bind,src=$prep/passwd,dst=/etc/passwd,readonly" \
+  --mount "type=bind,src=$prep/group,dst=/etc/group,readonly" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
+  --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
+  --env "TERMINFO_TARGET_BINARY=$target_binary" --env "TERMINFO_TARGET_VERSION=$target_version" \
+  --env "TERMINFO_TARGET_SOURCE_URL=$source_url" --env "TERMINFO_TARGET_SOURCE_SRI=$source_sri" \
+  --env "TERMINFO_TARGET_SOURCE_ARCHIVE=$target_source_archive" \
+  --env "TERMINFO_TARGET_SOURCE_KIND=$proof_kind" \
+  --env "TERMINFO_TARGET_SOURCE_NAR_SRI=$proof_nar_sri" \
+  --env "TERMINFO_TARGET_SOURCE_REVISION=$proof_revision" \
+  "${grace_env[@]}" \
+  --env "TERMINFO_DISPOSABLE_RECEIPT=/receipt/host-measured.json" \
   "$image_id")
 echo "$container_id" > "$prep/container-id.txt"
 if ! timeout 180 docker start --attach "$container_id" > "$prep/container-stdout.log" 2>"$prep/container-stderr.log"; then
@@ -565,6 +888,11 @@ docker rm "$container_id" > "$prep/docker-rm.txt"
 [[ "$logs_status" == 0 ]] || {
   echo "Could not preserve Docker logs for $container_id (status $logs_status)" >&2
   exit 2
+}
+# The collector was judged by the read-only copy; if the container rewrote the writable one the
+# run's authorization is not the host's, so the receipt and the run are both refused.
+cmp -s "$raw/host-measured.json" "$prep/receipt/host-measured.json" || {
+  echo "Container rewrote the host-measured receipt; run invalid" >&2; exit 2;
 }
 if [[ "$exit_code" != 0 || ! -f "$raw/observed.json" ]]; then
   echo "Container failed (exit $exit_code); raw artifacts preserved at $run_dir" >&2
@@ -591,7 +919,7 @@ jq -e --slurpfile run "$raw/v2-run.json" \
 source_sha=$(jq -er .sourceArtifact.sha256 "$raw/container-receipt.json")
 source_sri=$(nix hash convert --hash-algo sha256 --to sri "$source_sha")
 [[ "$source_sri" == "$(jq -er .sourceArtifact.sri "$raw/host-measured.json")" ]] || {
-  echo "Runtime Kitty source archive differs from the flake pin: $source_sri" >&2
+  echo "Runtime $target_id source archive differs from the declared source proof: $source_sri" >&2
   exit 2
 }
 clipboard_sha=$(sha256sum "$raw/clipboard-fixture.json" | cut -d ' ' -f 1)

@@ -15,6 +15,7 @@ import {
 } from "@terminfo/probe-defs"
 import {
   type LoadedRun,
+  measuredVersionTokens,
   parseJsonStrict,
   parseSuiteManifest,
   parseRun,
@@ -22,7 +23,12 @@ import {
   validateObservationOutcome,
   validateObservation,
 } from "@terminfo/run-parser"
-import { deriveIdentity, verifyTerminalIdentity, TERMINAL_IDENTITY_RULES } from "terminfo.dev/src/identity-guard.ts"
+import {
+  deriveIdentity,
+  verifyTerminalIdentity,
+  TERMINAL_IDENTITY_RULES,
+  type TerminalIdentityRule,
+} from "terminfo.dev/src/identity-guard.ts"
 
 export interface SelectedCell extends Observation {
   conclusive: boolean
@@ -55,6 +61,14 @@ export interface SelectedCell extends Observation {
   }
 }
 
+export interface IdentityAdmission {
+  rule: string
+  da1?: string
+  xtversion?: string
+  receipt?: { cfBundleShortVersionString: string }
+  executable?: { version: string; sha256: string }
+}
+
 export interface SelectedVersion {
   runId: string
   target: ProbeTarget
@@ -65,6 +79,7 @@ export interface SelectedVersion {
   suite: { observed: number; expected: number | null; complete: boolean; namedNotTested: number }
   sourceRevision: string | null
   sha256: string
+  identityAdmission?: IdentityAdmission
   cells: Record<string, SelectedCell>
   v1: Record<string, boolean>
   ungradedDiagnostics: {
@@ -272,27 +287,139 @@ function applies(entry: Interpretation, run: LoadedRun): boolean {
   )
 }
 
-function identityRepliesMatch(run: LoadedRun): boolean {
+function xtversionVersionEquals(payload: string, declared: string): boolean {
+  const paren = /^(?:[A-Za-z][\w.+-]*)\(([^)]+)\)$/.exec(payload)
+  if (paren) return paren[1] === declared
+  return payload === declared || payload.endsWith(` ${declared}`) || payload.endsWith(`/${declared}`)
+}
+
+const ADMISSION_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
+  ...TERMINAL_IDENTITY_RULES,
+  alacritty: {
+    terminal: "alacritty",
+    da1Pattern: /\?6c/,
+    forbidXtversion: true,
+  },
+}
+
+function identityMatch(run: LoadedRun): IdentityAdmission | null {
   if (run.target.kind === "headless") {
     const receipt = run.runtimeIdentity
-    if (!receipt || receipt.engineVersion !== run.target.version) return false
-    return receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree
+    if (!receipt || receipt.engineVersion !== run.target.version) return null
+    if (!(receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree)) {
+      return null
+    }
+    const versionReply = run.schemaVersion === 2 ? deriveIdentity(run.rawReplies).xtversionPayload : undefined
+    return versionReply ? { rule: "runtime-identity", xtversion: versionReply } : { rule: "runtime-identity" }
   }
-  const rule = TERMINAL_IDENTITY_RULES[run.target.id]
-  if (!rule) return false
+  const rule = ADMISSION_IDENTITY_RULES[run.target.id]
+  if (!rule) return null
   const results = Object.fromEntries(run.observations.map((o) => [o.featureId, o.outcome === "supported"]))
-  const verification = verifyTerminalIdentity(run.target.id, run.rawReplies, results)
-  if (!verification.checked || !verification.ok) return false
+  const verification = TERMINAL_IDENTITY_RULES[run.target.id]
+    ? verifyTerminalIdentity(run.target.id, run.rawReplies, results)
+    : { ok: true, checked: true }
+  if (!verification.checked || !verification.ok) return null
   const identity = deriveIdentity(run.rawReplies)
-  if (!nonempty(identity.da1)) return false
+  if (!nonempty(identity.da1)) return null
+  if (rule.da1Pattern && !rule.da1Pattern.test(identity.da1)) return null
   if (rule.forbidXtversion) {
-    const receipt = run.origin.appLaunch
-    return !!receipt && run.target.version !== "unknown" && receipt.cfBundleShortVersionString === run.target.version
+    const os = (run.target.os ?? "").toLowerCase()
+    // Linux: a terminal that answers no XTVERSION (alacritty) is attested by the APPARATUS, not by
+    // itself. The container launcher runs the launched binary's own --version and exits on a
+    // disagreement, and records the executable's path and sha256; parseRunProvenance carries that
+    // receipt here as `provenance` (@cto 2026-10-07, 31d5bdd0 option b). `?6c` alone is too weak to
+    // identify — VT102 is a whole class — so the executable version CONFIRMS what DA1 only bounds.
+    if (os.startsWith("linux")) {
+      const provenance = run.provenance
+      if (run.target.version === "unknown" || !provenance || !provenance.runtime.cleanTree) return null
+      const { version, sha256 } = provenance.executable
+      if (!/^[a-f0-9]{64}$/.test(sha256)) return null
+      const tokens = measuredVersionTokens(version)
+      if (tokens.length !== 1 || tokens[0] !== run.target.version) return null
+      return { rule: run.target.id, da1: identity.da1, executable: { version, sha256 } }
+    }
+    // macOS: unchanged. The launched bundle's CFBundleShortVersionString must equal the declared version.
+    if (os.startsWith("mac") || os.startsWith("darwin")) {
+      const receipt = run.origin.appLaunch
+      if (!receipt || run.target.version === "unknown" || receipt.cfBundleShortVersionString !== run.target.version) {
+        return null
+      }
+      return {
+        rule: run.target.id,
+        da1: identity.da1,
+        receipt: { cfBundleShortVersionString: receipt.cfBundleShortVersionString },
+      }
+    }
+    // Any other OS has no apparatus we trust: refused, with no fallback to either branch.
+    return null
   }
   const versionReply = identity.xtversionPayload
-  if (!versionReply) return false
-  const escapedVersion = run.target.version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-  return new RegExp(`(^|[^a-zA-Z0-9])${escapedVersion}($|[^a-zA-Z0-9])`).test(versionReply)
+  if (!versionReply || !xtversionVersionEquals(versionReply, run.target.version)) return null
+  return { rule: run.target.id, da1: identity.da1, xtversion: versionReply }
+}
+
+function pinnedIdentity(run: LoadedRun, active: readonly Interpretation[]): boolean {
+  return active.some(
+    (entry) =>
+      entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.verifiesIdentity,
+  )
+}
+
+/** Identity, then provenance, then source/community/suite. Pin is one identity input. */
+function identityDecision(run: LoadedRun, active: readonly Interpretation[]): string | null {
+  if (run.identity === "disputed") return "identity-disputed"
+  const pin = pinnedIdentity(run, active)
+  if (run.target.kind === "headless") {
+    if (run.schemaVersion !== 2 && !pin) {
+      return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
+    }
+    return identityMatch(run) ? null : "runtime-identity-unverified"
+  }
+  if (!ADMISSION_IDENTITY_RULES[run.target.id]) return "identity-no-profile"
+  if (run.schemaVersion !== 2) {
+    if (!pin) return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
+    return identityMatch(run) ? null : "identity-replies-mismatch"
+  }
+  return identityMatch(run) ? null : "identity-replies-mismatch"
+}
+
+/**
+ * The run fields the native-provenance gate reads, written structurally so the SITE and the Release 1
+ * re-collection runner (`scripts/release1-collection.ts`) share ONE gate: the runner reads unknown
+ * documents, and a document it cannot recognise must be judged, never crash.
+ */
+export interface ProvenanceSubject {
+  readonly target?: { readonly kind?: unknown; readonly os?: unknown }
+  readonly provenance?: { readonly runtime?: { readonly cleanTree?: unknown } }
+}
+
+/**
+ * The ONE native-provenance gate (#27929 D6). Only a LINUX APP run must carry a provenance block, and
+ * any run that carries one must prove its tree was clean. `scripts/linux-container-run.sh` is the only
+ * collector that writes a provenance block, so a headless or macOS run has none BY CONSTRUCTION — a
+ * gate that demanded `cleanTree === true` would refuse every such run as `native-provenance-dirty`,
+ * and no headless row could ever be admitted.
+ */
+export function provenanceRefusal(subject: ProvenanceSubject): string | null {
+  const kind = subject.target?.kind
+  const os = typeof subject.target?.os === "string" ? subject.target.os.toLowerCase() : undefined
+  if (kind === "app" && os?.startsWith("linux") && !subject.provenance) return "native-provenance-missing"
+  if (subject.provenance && !subject.provenance.runtime?.cleanTree) return "native-provenance-dirty"
+  return null
+}
+
+function provenanceDecision(run: LoadedRun): string | null {
+  return provenanceRefusal(run)
+}
+
+function admitRun(run: LoadedRun, active: readonly Interpretation[], reviewed: boolean): string | null {
+  return (
+    identityDecision(run, active) ??
+    provenanceDecision(run) ??
+    (!/^[0-9a-f]{40}$/.test(run.sourceRevision ?? "") ? "source-uncommitted" : null) ??
+    (run.origin.kind === "community-issue" && !reviewed ? "community-unreviewed" : null) ??
+    (!run.suiteComplete ? "suite-incomplete" : null)
+  )
 }
 
 function activeInterpretations(entries: readonly Interpretation[]): Interpretation[] {
@@ -505,6 +632,7 @@ function projectRun(
       : run.probeHash === currentProbeHash && run.suiteComplete
         ? "current suite"
         : `older suite (${suiteObserved} probes)${run.probeHash ? "" : "; missing probeHash"}`
+  const identityAdmission = identityMatch(run)
   return {
     runId: run.runId,
     target: run.target,
@@ -520,6 +648,7 @@ function projectRun(
     },
     sourceRevision: run.sourceRevision,
     sha256: run.sha256,
+    ...(identityAdmission && { identityAdmission }),
     cells,
     v1,
     ungradedDiagnostics: {
@@ -552,8 +681,31 @@ function projectRun(
   }
 }
 
+/**
+ * The frozen runner's own build hash changes with every suite (its bundle embeds the suite), so the
+ * same row measured on a later suite would otherwise land in a NEW context and never supersede the run
+ * it replaces (27929 D5: three xterm/linux runs differed ONLY in this path). Mask it wherever a
+ * config string enters a context key — it is apparatus, not a difference in how the row was measured.
+ * Exported so the reviewed `default-contexts.json` rows, which record the unmasked key from the era
+ * they were reviewed in, are normalized by the SAME rule instead of needing a hand edit per collect.
+ */
+export function maskRunnerStorePath(config: unknown): unknown {
+  return typeof config === "string"
+    ? config.replace(/\/nix\/store\/[a-z0-9]+-terminfo-linux-runner\/index\.js/g, "<terminfo-linux-runner>")
+    : config
+}
+
 const contextKey = (t: ProbeTarget): string =>
-  JSON.stringify([t.kind, t.id, t.os, t.osVersion, t.outerTerminal, t.mux, t.config, t.permissions])
+  JSON.stringify([
+    t.kind,
+    t.id,
+    t.os,
+    t.osVersion,
+    t.outerTerminal,
+    t.mux,
+    maskRunnerStorePath(t.config),
+    t.permissions,
+  ])
 const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
 export function projectResults(
@@ -618,32 +770,7 @@ export function projectResults(
     const reviewed = active.some(
       (entry) => entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.reviewed,
     )
-    const identityReview = active.some(
-      (entry) =>
-        entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.verifiesIdentity,
-    )
-    const reason =
-      run.identity === "disputed"
-        ? "identity-disputed"
-        : !identityReview
-          ? run.identity === "unverified"
-            ? "identity-unverified"
-            : "identity-unreviewed"
-          : run.target.kind === "app" && run.target.os?.toLowerCase().startsWith("linux") && !run.provenance
-            ? "native-provenance-missing"
-            : run.provenance && !run.provenance.runtime.cleanTree
-              ? "native-provenance-dirty"
-              : !identityRepliesMatch(run)
-                ? run.target.kind === "headless"
-                  ? "runtime-identity-unverified"
-                  : "identity-replies-mismatch"
-                : !/^[0-9a-f]{40}$/.test(run.sourceRevision ?? "")
-                  ? "source-uncommitted"
-                  : run.origin.kind === "community-issue" && !reviewed
-                    ? "community-unreviewed"
-                    : !run.suiteComplete
-                      ? "suite-incomplete"
-                      : null
+    const reason = admitRun(run, active, reviewed)
     if (reason) {
       exclusions.push({ runId: run.runId, path: run.path, reason })
       continue

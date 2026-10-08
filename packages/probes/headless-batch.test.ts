@@ -11,6 +11,7 @@ import { createVtermBackend } from "@termless/vterm"
 import { resolve as resolveLibvterm } from "@termless/libvterm"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
 import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
+import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -78,7 +79,7 @@ for (const [name, create, available] of [
           replies.push(ctx.feedCapture("\x1b[4;5H\x1b[6n"))
           ctx.reset()
           replies.push(ctx.feedCapture("\x1b[6n"))
-          return { pass: true }
+          return fakeProbeResult()
         }),
       ])
       expect(replies).toEqual(["\x1b[2;3R", "\x1b[4;5R", "\x1b[1;1R"])
@@ -230,7 +231,7 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
       throw failure
     })
   }
-  const callback = vi.fn(() => ({ pass: true }))
+  const callback = vi.fn(() => fakeProbeResult())
   const batch = await collectBatch(
     async () => {
       if (stage === "factory") throw failure
@@ -264,11 +265,11 @@ test("aborts the batch on failed cleanup before invoking another probe", async (
   vi.spyOn(value, "destroy").mockImplementationOnce(() => {
     throw new Error("Cleanup failed")
   })
-  const next = vi.fn(() => ({ pass: true }))
+  const next = vi.fn(() => fakeProbeResult())
   try {
     await expect(
       collectBatch(async () => value, "xtermjs", [
-        definition("first", () => ({ pass: true })),
+        definition("first", () => fakeProbeResult()),
         definition("next", next),
       ]),
     ).rejects.toThrow("headless xtermjs probe first: backend cleanup failed")
@@ -290,7 +291,7 @@ test("attributes a context operation failure and restores the backend response l
       "query",
       (ctx) => {
         ctx.feedCapture("\x1b[c")
-        return { pass: false }
+        return fakeProbeResult("query")
       },
       { termlessObservationEvidence: "query" },
     ),
@@ -314,7 +315,7 @@ test("attributes a context operation failure and restores the backend response l
 })
 
 test("attributes unavailable fixture grids to each probe without invoking callbacks", async () => {
-  const callback = vi.fn(() => ({ pass: false }))
+  const callback = vi.fn(() => fakeProbeResult())
   const factory = async () => {
     const value = await backend()
     vi.spyOn(value, "getRow").mockImplementation(() => {
@@ -424,18 +425,25 @@ test.each(["supported", "error", "raw", "assertion"] as const)(
   },
 )
 
-test("does not promote a marked legacy callback's conclusion into an observation", async () => {
+test("refuses a callback result that is neither a measurement nor a coverage record", async () => {
+  // The union makes this unreachable from a typed callback; an untyped caller still gets a loud refusal.
+  const untyped = (() => ({ pass: true, note: "Legacy conclusion" })) as unknown as ProbeDefinition["termless"]
   const batch = await collectBatch(backend, "xtermjs", [
-    definition("legacy", () => ({ pass: true, note: "Legacy conclusion" }), {
-      termlessObservationEvidence: "parser-state",
-    }),
+    definition("legacy", untyped, { termlessObservationEvidence: "parser-state" }),
   ])
   expect(batch).toEqual({
     observations: [],
     assertions: [],
     notTested: [],
     rawReplies: {},
-    ungradedDiagnostics: { legacy: { kind: "legacy-callback", pass: true, note: "Legacy conclusion" } },
+    ungradedDiagnostics: {
+      legacy: {
+        kind: "collector-error",
+        name: "Error",
+        message:
+          "Callback for legacy returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded",
+      },
+    },
   })
 })
 
@@ -507,7 +515,7 @@ test("refuses named coverage that arrives beside its returned error observation"
   const batch = await collectBatch(backend, "xtermjs", [
     definition(
       "modes.bracketed-paste",
-      () => ({
+      (() => ({
         pass: false,
         response: JSON.stringify({ mode: false }),
         notTested: { reason: "no-semantic-observable", noObservable: "input events" },
@@ -517,7 +525,7 @@ test("refuses named coverage that arrives beside its returned error observation"
           evidence: "parser-state",
           note: "backend read failed",
         },
-      }),
+      })) as unknown as ProbeDefinition["termless"],
       { termlessObservationEvidence: "parser-state" },
     ),
     definition(
@@ -553,13 +561,13 @@ test("refuses named coverage that arrives beside supported observation and asser
   const batch = await collectBatch(backend, "xtermjs", [
     definition(
       "modes.bracketed-paste",
-      () => ({
+      (() => ({
         pass: true,
         response: JSON.stringify({ mode: true }),
         notTested: { reason: "no-semantic-observable", noObservable: "input events" },
         observation: { outcome: "supported", evidence: "parser-state" },
         assertions: [{ kind: "positive", expected: "mode=true", observed: JSON.stringify({ mode: true }) }],
-      }),
+      })) as unknown as ProbeDefinition["termless"],
       { termlessObservationEvidence: "parser-state" },
     ),
   ])

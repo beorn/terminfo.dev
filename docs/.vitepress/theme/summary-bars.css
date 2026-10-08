@@ -3,6 +3,7 @@
 .summary-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 8px 0;
 }
@@ -51,7 +52,9 @@
 }
 
 .summary-pct {
-  width: 40px;
+  width: auto;
+  min-width: 16ch;
+  white-space: nowrap;
   font-weight: 600;
   font-size: 0.9em;
   text-align: right;
@@ -59,12 +62,23 @@
 }
 
 .summary-counts {
-  width: 70px;
-  font-family: var(--vp-font-family-mono);
+  width: auto;
+  white-space: nowrap;
   font-size: 0.8em;
   color: var(--vp-c-text-3);
   text-align: right;
   flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+  .summary-bar {
+    flex: 1 1 100%;
+  }
+
+  .summary-pct,
+  .summary-counts {
+    text-align: left;
+  }
 }
 
 /* Bar segment tooltips appear below with opaque background */

@@ -57,9 +57,49 @@ afterAll(() => {
   rmSync(directory, { recursive: true, force: true })
 })
 
+// 27875: the frame-less controlled-Linux capture exists so a probe that needs a frame fails by
+// name in its own result, instead of reaching an absent callback.
+test("the frame-less controlled-Linux capture fails by name", async () => {
+  const { frameUnavailableCapture } = await import("./serve.ts")
+  const thrown = await frameUnavailableCapture()({
+    featureId: "cursor.shape",
+    role: "target",
+    label: "frame-less",
+  }).catch((error: unknown) => error)
+  expect(thrown).toBeInstanceOf(Error)
+  expect((thrown as Error).name).toBe("FrameUnavailable")
+  expect((thrown as Error).message).toContain("no capture directory")
+})
+
 test("provenance without owned capture or clipboard refuses before selecting any callback", async () => {
   writeFileSync(receipt, JSON.stringify({ executable: { path: process.execPath, sha256: "0".repeat(64) } }))
   await expect(collectProbeRun({ ids: [] })).rejects.toThrow("requires owned capture or clipboard")
+})
+
+test.each(["C:\\artifacts\\terminfo-run.exe", "C:/artifacts/terminfo-run.exe", "D:\\Program Files\\app.exe"])(
+  "provenance accepts valid Windows drive-letter path %s as absolute",
+  async (windowsPath) => {
+    writeFileSync(receipt, JSON.stringify({ executable: { path: windowsPath, sha256: "0".repeat(64) } }))
+    process.env.TERMINFO_CAPTURE_DIRECTORY = join(directory, "frames")
+    try {
+      // Passes measuredExecutable check; fails later on executable digest or existence check
+      await expect(collectProbeRun({ ids: [] })).rejects.not.toThrow(
+        "Runtime provenance has invalid measured executable",
+      )
+    } finally {
+      delete process.env.TERMINFO_CAPTURE_DIRECTORY
+    }
+  },
+)
+
+test("provenance rejects relative path", async () => {
+  writeFileSync(receipt, JSON.stringify({ executable: { path: "relative/path/app.exe", sha256: "0".repeat(64) } }))
+  process.env.TERMINFO_CAPTURE_DIRECTORY = join(directory, "frames")
+  try {
+    await expect(collectProbeRun({ ids: [] })).rejects.toThrow("Runtime provenance has invalid measured executable")
+  } finally {
+    delete process.env.TERMINFO_CAPTURE_DIRECTORY
+  }
 })
 
 test.runIf(process.platform === "linux")(

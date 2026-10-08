@@ -3,10 +3,12 @@
  * @level l1 — invokes the real shell receipt composer on owned temporary files.
  * @consumer scripts/linux-container-run.sh host-side run receipt and prerequisite handling.
  * @reach fs-walk <fixture-only: readdir enumerates the owned temporary run output only>
+ * @reach fs-walk vendor/terminfo.dev/scripts/
  * @testonly none
  */
 
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   chmodSync,
   copyFileSync,
@@ -31,6 +33,7 @@ function compose(
   writeContainer = true,
   containerRunnerSha = "runner-hash",
   containerProfile = "default",
+  capture: unknown = { xwdSha256: "xwd-hash", pngSha256: "png-hash" },
 ) {
   const host = join(dir, "host.json")
   const container = join(dir, "container.json")
@@ -57,7 +60,7 @@ function compose(
         probeRun: { path: "v2-run.json", runId: "b".repeat(32), sha256: "probe-hash" },
         display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
         clipboardFixture: { runId: containerRunId, profile: containerProfile, sha256: "fixture-hash" },
-        capture: { xwdSha256: "xwd-hash", pngSha256: "png-hash" },
+        capture,
       }),
     )
   }
@@ -164,14 +167,126 @@ describe("container run receipt composition", () => {
   })
 })
 
+/** The receipt authorizes writing to a terminal, so the container judged by it must not be able
+ * to rewrite the copy it is judged against, and the host must be able to prove that afterwards. */
+describe("disposable ownership receipt mount", () => {
+  it("hands the collector a read-only copy outside the writable output mount and re-checks it after removal", () => {
+    const source = readFileSync(launcher, "utf8")
+    expect(source).toMatch(/--mount "type=bind,src=\$prep\/receipt,dst=\/receipt,readonly"/)
+    expect(source).toMatch(/--env "TERMINFO_DISPOSABLE_RECEIPT=\/receipt\/host-measured\.json"/)
+    expect(source).toMatch(/cmp -s "\$raw\/host-measured\.json" "\$prep\/receipt\/host-measured\.json" \|\|/)
+  })
+})
+
+/** A run whose selection called no capture callback carries no frame. That is a fact about the
+ * run, not a failure of it (27875): the launcher records "no frame captured" and carries the run,
+ * instead of aborting on a bare `jq -er` exit 2 that named nothing. */
+describe("frame-less container run", () => {
+  const expression = (() => {
+    const source = readFileSync(launcher, "utf8")
+    const match = source.match(/capture_frame=\$\(jq -c '([^']*)' \/out\/v2-run\.json\)/)
+    if (!match) throw new Error("frame selection expression not found in scripts/linux-container-run.sh")
+    return match[1]!
+  })()
+
+  function select(run: unknown) {
+    return spawnSync("jq", ["-c", expression], { input: JSON.stringify(run), encoding: "utf8" })
+  }
+
+  it("selects null for a run that captured no frame, without failing", () => {
+    const result = select({ observations: [{ featureId: "device.primary-da" }, { featureId: "reset.ris" }] })
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim()).toBe("null")
+  })
+
+  it("selects the target frame when a probe captured one", () => {
+    const frame = { role: "target", ref: `sha256:${"a".repeat(64)}`, sourceRef: `sha256:${"b".repeat(64)}` }
+    const result = select({ observations: [{ featureId: "cursor.shape", frames: [frame] }] })
+    expect(result.status).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(frame)
+  })
+
+  it("records the absence by name and no longer refuses on the bare jq -er", () => {
+    const source = readFileSync(launcher, "utf8")
+    expect(source).toMatch(/no frame captured: no selected probe called ctx\.capture/)
+    expect(source).toMatch(/capture_receipt=null/)
+    expect(source).not.toMatch(/png_sha=\$\(jq -er '\[\.observations\[\]\.frames/)
+  })
+
+  const gateExpression = (() => {
+    const source = readFileSync(launcher, "utf8")
+    const match = source.match(/jq -e --argjson ids "\$selected_ids" --argjson frameless "\$frameless_ids" '([^']*)'/)
+    if (!match) throw new Error("--ids gate expression not found in scripts/linux-container-run.sh")
+    return match[1]!
+  })()
+
+  function gate(ids: string[], frameless: string[], run: unknown) {
+    return spawnSync(
+      "jq",
+      [
+        "-e",
+        "--argjson",
+        "ids",
+        JSON.stringify(ids),
+        "--argjson",
+        "frameless",
+        JSON.stringify(frameless),
+        gateExpression,
+      ],
+      { input: JSON.stringify(run), encoding: "utf8" },
+    )
+  }
+
+  const frameUnavailable = {
+    kind: "collector-error",
+    name: "FrameUnavailable",
+    message: "This run has no capture directory",
+  }
+
+  it("accepts a frame-less selection whose only diagnostic is the named FrameUnavailable", () => {
+    const result = gate(["device.primary-da", "cursor.shape"], ["cursor.shape"], {
+      observations: [{ featureId: "device.primary-da" }],
+      ungradedDiagnostics: { "cursor.shape": frameUnavailable },
+    })
+    expect(result.status).toBe(0)
+  })
+
+  it("refuses a FrameUnavailable in a run that had a capture directory", () => {
+    const result = gate(["device.primary-da", "cursor.shape"], [], {
+      observations: [{ featureId: "device.primary-da" }],
+      ungradedDiagnostics: { "cursor.shape": frameUnavailable },
+    })
+    expect(result.status).not.toBe(0)
+  })
+
+  it("refuses any other diagnostic in a frame-less selection", () => {
+    const result = gate(["cursor.shape"], ["cursor.shape"], {
+      observations: [],
+      ungradedDiagnostics: { "cursor.shape": { kind: "collector-error", name: "Error", message: "boom" } },
+    })
+    expect(result.status).not.toBe(0)
+  })
+
+  it("composes a frame-less run, whose container receipt carries no capture", () => {
+    const { result, output } = compose("a".repeat(32), true, "runner-hash", "default", null)
+    expect(result.status).toBe(0)
+    const receipt = JSON.parse(readFileSync(output, "utf8")) as { capture: unknown }
+    expect(receipt.capture).toBeNull()
+  })
+})
+
 describe("explicit Linux image selection", () => {
   it.each([
-    ["unknown", "default", "Unknown Kitty preset"],
-    ["current", "unknown", "Unknown clipboard profile"],
-  ])("refuses invalid preset/profile %s/%s before preparing a run", (preset, profile, error) => {
-    const result = spawnSync("bash", [launcher, "--preset", preset, "--clipboard-profile", profile, dir], {
-      encoding: "utf8",
-    })
+    ["bogus", "default", "default", "Unknown target"],
+    ["kitty", "unknown", "default", "Kitty takes --preset baseline|current"],
+    ["xterm", "baseline", "default", "xterm has only the default preset"],
+    ["kitty", "current", "unknown", "Unknown clipboard profile"],
+  ])("refuses invalid target/preset/profile %s/%s/%s before preparing a run", (target, preset, profile, error) => {
+    const result = spawnSync(
+      "bash",
+      [launcher, "--target", target, "--preset", preset, "--clipboard-profile", profile, dir],
+      { encoding: "utf8" },
+    )
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain(error)
     expect(existsSync(join(dir, "prep"))).toBe(false)
@@ -209,7 +324,7 @@ exit 0
     }
     const result = spawnSync(
       "bash",
-      [fixtureLauncher, "--preset", "current", "--clipboard-profile", "default", output],
+      [fixtureLauncher, "--target", "kitty", "--preset", "current", "--clipboard-profile", "default", output],
       {
         encoding: "utf8",
         env: { ...process.env, PATH: `${bins}:${process.env.PATH ?? ""}`, CALL_LOG: calls },
@@ -237,7 +352,7 @@ describe("private finite launch arguments", () => {
   it("refuses an unknown flag before preparing or building", () => {
     const result = spawnSync(
       "bash",
-      [launcher, "--preset", "current", "--clipboard-profile", "default", "--unknown", dir],
+      [launcher, "--target", "kitty", "--preset", "current", "--clipboard-profile", "default", "--unknown", dir],
       { encoding: "utf8" },
     )
     expect(result.status).toBe(2)
@@ -254,11 +369,43 @@ describe("private finite launch arguments", () => {
   ])("refuses invalid supplied filter %j before preparing or building", (suffix, message) => {
     const result = spawnSync(
       "bash",
-      [launcher, "--preset", "current", "--clipboard-profile", "default", "--ids", ...suffix, dir],
+      [launcher, "--target", "kitty", "--preset", "current", "--clipboard-profile", "default", "--ids", ...suffix, dir],
       { encoding: "utf8" },
     )
     expect(result.status).toBe(2)
     expect(result.stderr).toContain(message)
     expect(readdirSync(dir)).toEqual([])
+  })
+})
+
+describe("in-image source archive proof", () => {
+  it("refuses a wrong declared flat hash for either proof kind through one comparison", () => {
+    // A matching real run can never exercise a mismatch, so it is proven here: the derived kind and
+    // the flat kind reach this SAME comparison, and a wrong pin or a missing declared hash is refused
+    // (@cto 2026-10-06, 27892).
+    const archive = join(dir, "derived-source-tar")
+    writeFileSync(archive, "derived tar bytes\n")
+    const digest = createHash("sha256").update(readFileSync(archive)).digest()
+    const sri = (bytes: Buffer) => `sha256-${bytes.toString("base64")}`
+    const check = (measured: string, declared: string) =>
+      spawnSync(
+        "bash",
+        [
+          "-c",
+          'source "$1"; verify_source_archive_hash "$2" "$3" "Loaded ghostty source"',
+          "_",
+          launcher,
+          measured,
+          declared,
+        ],
+        { encoding: "utf8" },
+      )
+    expect(check(digest.toString("hex"), sri(digest)).status).toBe(0)
+    const mismatch = check(digest.toString("hex"), sri(createHash("sha256").update("another tar").digest()))
+    expect(mismatch.status).toBe(2)
+    expect(mismatch.stderr).toContain("Loaded ghostty source archive differs from declared fixed hash")
+    const undeclared = check(digest.toString("hex"), "")
+    expect(undeclared.status).toBe(2)
+    expect(undeclared.stderr).toContain("Loaded ghostty source has no declared flat sha256")
   })
 })

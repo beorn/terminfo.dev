@@ -118,7 +118,37 @@ export function detectTerminal(): TerminalInfo {
     version = getMacOSAppVersion(name)
   }
 
+  // On Windows, get version from app/package metadata if we don't have it yet
+  if (!version && os === "windows") {
+    version = getWindowsAppVersion(name)
+  }
+
   return { name, version, os, osVersion }
+}
+
+/**
+ * Get app version on Windows.
+ * For Windows Terminal, queries package version or executable ProductVersion via PowerShell.
+ */
+function getWindowsAppVersion(terminalName: string): string {
+  try {
+    if (terminalName === "windows-terminal") {
+      const script = [
+        "$v = (Get-AppxPackage *WindowsTerminal* -ErrorAction SilentlyContinue | Select-Object -First 1).Version",
+        "if (-not $v) { $cmd = Get-Command wt.exe -ErrorAction SilentlyContinue; if ($cmd) { $v = (Get-Item $cmd.Source).VersionInfo.ProductVersion } }",
+        "if (-not $v) { $item = Get-ChildItem 'C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal*\\wt.exe' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($item) { $v = (Get-Item $item.FullName).VersionInfo.ProductVersion } }",
+        "if ($v) { Write-Output $v.Trim() }",
+      ].join("; ")
+      const version = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+        encoding: "utf-8",
+        timeout: 3000,
+      }).trim()
+      return version
+    }
+    return ""
+  } catch {
+    return ""
+  }
 }
 
 /**

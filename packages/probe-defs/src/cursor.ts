@@ -183,6 +183,36 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
           }
         }
+        // DECTCEM is DEC private mode 25; DECRQM reports shown/hidden without pixels.
+        // A complete report decides the claim; no report falls through to the pixel path below.
+        ctx.write("\x1b[?25h")
+        const shown = await ctx.queryMode(25)
+        if (shown === "set" || shown === "reset") {
+          ctx.write("\x1b[?25l")
+          let hidden: "set" | "reset" | "unknown" | null = null
+          try {
+            hidden = await ctx.queryMode(25)
+          } finally {
+            ctx.write(shown === "set" ? "\x1b[?25h" : "\x1b[?25l")
+          }
+          if (hidden === "set" || hidden === "reset") {
+            const ok = shown === "set" && hidden === "reset"
+            return {
+              pass: ok,
+              response: JSON.stringify({ shown, hidden }),
+              observation: ok
+                ? { outcome: "supported", evidence: "query" }
+                : { outcome: "unsupported", evidence: "query" },
+              assertions: [
+                {
+                  kind: ok ? "positive" : "negative",
+                  expected: "DECRQM mode 25 reports set after CSI ? 25 h and reset after CSI ? 25 l",
+                  observed: `${shown} -> ${hidden}`,
+                },
+              ],
+            }
+          }
+        }
         // Only used inside the collector's owned disposable terminal, not an arbitrary user's screen.
         try {
           ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -226,55 +256,58 @@ export const cursorProbes: ProbeDefinition[] = [
   },
 
   // DECSCUSR — cursor shape
-  probe(
-    "cursor.shape",
-    (ctx) => {
-      ctx.feed("\x1b[6 q")
-      const style = ctx.getCursor().style
-      return parserStateResult(
-        style === null ? null : style === "beam",
-        "DECSCUSR reports a beam cursor after CSI 6 SP q",
-        { style },
-        style === null ? "Cursor style readback is unavailable" : undefined,
-      )
-    },
-    async (ctx) => {
-      if (!ctx.capture) {
-        const note = "No cursor pixel readback for shape"
-        return {
-          pass: false,
-          note,
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+  {
+    ...probe(
+      "cursor.shape",
+      (ctx) => {
+        ctx.feed("\x1b[6 q")
+        const style = ctx.getCursor().style
+        return parserStateResult(
+          style === null ? null : style === "beam",
+          "DECSCUSR reports a beam cursor after CSI 6 SP q",
+          { style },
+          style === null ? "Cursor style readback is unavailable" : undefined,
+        )
+      },
+      async (ctx) => {
+        if (!ctx.capture) {
+          const note = "No cursor pixel readback for shape"
+          return {
+            pass: false,
+            note,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+          }
         }
-      }
-      const control = await ctx.capture({ role: "control", label: "Default cursor shape" })
-      try {
-        ctx.write("\x1b[5 q") // blinking bar
-        const target = await ctx.capture({ role: "target", label: "Bar cursor shape" })
-        return {
-          pass: false,
-          response: JSON.stringify({
-            rows: ctx.rows,
-            cols: ctx.cols,
-            cursorCell: null,
-            detail: "DECSCUSR shape fixture does not establish the cursor cell; only measured geometry and roles",
-            control: control.label,
-            target: target.label,
-          }),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "pixels",
-            screenshotRef: target.ref,
-            frames: [control, target],
-            note: "Cursor pixels captured; shape difference requires review",
-          },
+        const control = await ctx.capture({ role: "control", label: "Default cursor shape" })
+        try {
+          ctx.write("\x1b[5 q") // blinking bar
+          const target = await ctx.capture({ role: "target", label: "Bar cursor shape" })
+          return {
+            pass: false,
+            response: JSON.stringify({
+              rows: ctx.rows,
+              cols: ctx.cols,
+              cursorCell: null,
+              detail: "DECSCUSR shape fixture does not establish the cursor cell; only measured geometry and roles",
+              control: control.label,
+              target: target.label,
+            }),
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: target.ref,
+              frames: [control, target],
+              note: "Cursor pixels captured; shape difference requires review",
+            },
+          }
+        } finally {
+          ctx.write("\x1b[0 q")
         }
-      } finally {
-        ctx.write("\x1b[0 q")
-      }
-    },
-  ),
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // CHA — cursor horizontal absolute
   cursorProbe("cursor.horizontal-absolute", "\x1b[3;1H", "\x1b[15G", { row: 2, col: 14 }, { row: 2, col: 0 }),
@@ -468,111 +501,119 @@ export const cursorProbes: ProbeDefinition[] = [
   },
 
   // DECSET 45 — reverse wrap mode
-  probe(
-    "cursor.reverse-wrap",
-    (ctx) => {
-      const cols = ctx.cols
-      const rows = ctx.getScrollback().screenLines
-      const expected = "Backspace reverses a wrap across the measured row width"
-      if (!Number.isSafeInteger(cols) || cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
-        return parserStateResult(
-          null,
-          expected,
-          { rows, cols },
-          "Measured grid needs two rows and at least two columns",
-        )
-      }
-      const originallyAutoWrap = ctx.getMode("autoWrap")
-      try {
-        ctx.feed("\x1b[?7h") // enable auto-wrap
-        ctx.feed("\x1b[?45h") // enable reverse wrap
-        ctx.feed("\x1b[H")
-        const start = ctx.getCursor()
-        if (start.y !== 0 || start.x !== 0) {
-          return parserStateResult(null, expected, { cols, start }, "Home-position control was not measured")
+  {
+    ...probe(
+      "cursor.reverse-wrap",
+      (ctx) => {
+        const cols = ctx.cols
+        const rows = ctx.getScrollback().screenLines
+        const expected = "Backspace reverses a wrap across the measured row width"
+        if (!Number.isSafeInteger(cols) || cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
+          return parserStateResult(
+            null,
+            expected,
+            { rows, cols },
+            "Measured grid needs two rows and at least two columns",
+          )
         }
-        ctx.feed("A".repeat(cols) + "B") // B forces a deferred wrap into row 1
-        const wrapped = ctx.getCursor()
-        if (wrapped.y !== 1 || wrapped.x !== 1) {
-          return parserStateResult(null, expected, { cols, start, wrapped }, "Second-row displacement was not measured")
+        const originallyAutoWrap = ctx.getMode("autoWrap")
+        try {
+          ctx.feed("\x1b[?7h") // enable auto-wrap
+          ctx.feed("\x1b[?45h") // enable reverse wrap
+          ctx.feed("\x1b[H")
+          const start = ctx.getCursor()
+          if (start.y !== 0 || start.x !== 0) {
+            return parserStateResult(null, expected, { cols, start }, "Home-position control was not measured")
+          }
+          ctx.feed("A".repeat(cols) + "B") // B forces a deferred wrap into row 1
+          const wrapped = ctx.getCursor()
+          if (wrapped.y !== 1 || wrapped.x !== 1) {
+            return parserStateResult(
+              null,
+              expected,
+              { cols, start, wrapped },
+              "Second-row displacement was not measured",
+            )
+          }
+          ctx.feed("\x08\x08") // first reaches col 0; second must reverse-wrap
+          const cursor = ctx.getCursor()
+          return parserStateResult(cursor.y === 0 && cursor.x === cols - 1, expected, { cols, start, wrapped, cursor })
+        } finally {
+          ctx.feed("\x1b[?45l")
+          ctx.feed(originallyAutoWrap ? "\x1b[?7h" : "\x1b[?7l")
         }
-        ctx.feed("\x08\x08") // first reaches col 0; second must reverse-wrap
-        const cursor = ctx.getCursor()
-        return parserStateResult(cursor.y === 0 && cursor.x === cols - 1, expected, { cols, start, wrapped, cursor })
-      } finally {
-        ctx.feed("\x1b[?45l")
-        ctx.feed(originallyAutoWrap ? "\x1b[?7h" : "\x1b[?7l")
-      }
-    },
-    async (ctx) => {
-      const expected = "Backspace from column 1 of row 2 reverses the wrap to the last column of row 1"
-      if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 2) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "none",
-            note: "reverse-wrap fixture needs two measured rows and at least two columns",
-          },
-        }
-      }
-      const cols = ctx.cols
-      const measured: Array<{ step: string; report: { row: number; col: number } | null }> = []
-      const ask = async (step: string) => {
-        const pos = await ctx.queryCursorPosition()
-        measured.push({ step, report: pos })
-        return pos
-      }
-      const inconclusive = (note?: string) => ({
-        pass: false,
-        response: JSON.stringify({ measured }),
-        observation: {
-          outcome: "inconclusive" as const,
-          ...(note ? { reason: "insufficient-evidence" as const, note } : { reason: "no-response" as const }),
-          evidence: "query" as const,
-        },
-      })
-      ctx.write("\x1b[?45h") // enable reverse wrap
-      try {
-        ctx.write("\x1b[?7h") // reverse wrap is only observable with auto-wrap on
-        ctx.write("\x1b[H")
-        const home = await ask("home")
-        if (!home) return inconclusive()
-        if (home.row !== 1 || home.col !== 1) return inconclusive("Home position was not reported at 1;1")
-        ctx.write("A".repeat(cols) + "B") // the deferred wrap parks the cursor on row 2
-        const wrapped = await ask("wrapped")
-        if (!wrapped) return inconclusive()
-        if (wrapped.row !== 2 || wrapped.col !== 2) {
-          return inconclusive("Deferred wrap was not reported at 2;2")
-        }
-        ctx.write("\x08\x08") // first backspace to column 1; second must reverse-wrap
-        const reverted = await ask("reverted")
-        if (!reverted) return inconclusive()
-        const response = JSON.stringify({ measured })
-        if (reverted.row === 1 && reverted.col === cols) {
+      },
+      async (ctx) => {
+        const expected = "Backspace from column 1 of row 2 reverses the wrap to the last column of row 1"
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 2) {
           return {
-            pass: true,
-            response,
-            observation: { outcome: "supported", evidence: "query" },
-            assertions: [{ kind: "positive", expected, observed: response }],
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "reverse-wrap fixture needs two measured rows and at least two columns",
+            },
           }
         }
-        return {
-          pass: false,
-          response,
-          observation: {
-            outcome: "unsupported",
-            evidence: "query",
-            note: "Measured wrap was not reversed to row 1 column " + cols,
-          },
-          assertions: [{ kind: "negative", expected, observed: response }],
+        const cols = ctx.cols
+        const measured: Array<{ step: string; report: { row: number; col: number } | null }> = []
+        const ask = async (step: string) => {
+          const pos = await ctx.queryCursorPosition()
+          measured.push({ step, report: pos })
+          return pos
         }
-      } finally {
-        ctx.write("\x1b[?45l") // disable reverse wrap after the query, including errors
-      }
-    },
-  ),
+        const inconclusive = (note?: string) => ({
+          pass: false,
+          response: JSON.stringify({ measured }),
+          observation: {
+            outcome: "inconclusive" as const,
+            ...(note ? { reason: "insufficient-evidence" as const, note } : { reason: "no-response" as const }),
+            evidence: "query" as const,
+          },
+        })
+        ctx.write("\x1b[?45h") // enable reverse wrap
+        try {
+          ctx.write("\x1b[?7h") // reverse wrap is only observable with auto-wrap on
+          ctx.write("\x1b[H")
+          const home = await ask("home")
+          if (!home) return inconclusive()
+          if (home.row !== 1 || home.col !== 1) return inconclusive("Home position was not reported at 1;1")
+          ctx.write("A".repeat(cols) + "B") // the deferred wrap parks the cursor on row 2
+          const wrapped = await ask("wrapped")
+          if (!wrapped) return inconclusive()
+          if (wrapped.row !== 2 || wrapped.col !== 2) {
+            return inconclusive("Deferred wrap was not reported at 2;2")
+          }
+          ctx.write("\x08\x08") // first backspace to column 1; second must reverse-wrap
+          const reverted = await ask("reverted")
+          if (!reverted) return inconclusive()
+          const response = JSON.stringify({ measured })
+          if (reverted.row === 1 && reverted.col === cols) {
+            return {
+              pass: true,
+              response,
+              observation: { outcome: "supported", evidence: "query" },
+              assertions: [{ kind: "positive", expected, observed: response }],
+            }
+          }
+          return {
+            pass: false,
+            response,
+            observation: {
+              outcome: "unsupported",
+              evidence: "query",
+              note: "Measured wrap was not reversed to row 1 column " + cols,
+            },
+            assertions: [{ kind: "negative", expected, observed: response }],
+          }
+        } finally {
+          ctx.write("\x1b[?45l") // disable reverse wrap after the query, including errors
+        }
+      },
+    ),
+    termNeedsGeometry: true,
+  },
 
   // CUP at screen boundaries — cursor should clamp to valid range
   {

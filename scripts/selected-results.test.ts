@@ -15,6 +15,7 @@ import {
   projectResults,
   readVerifiedScreenshot,
 } from "../docs/data/selected-results.ts"
+import { publicResults } from "../docs/data/public-results.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
@@ -659,7 +660,16 @@ describe("selected results", () => {
         measuredAt: "2026-10-01T00:00:00.000Z",
       }),
       run("old-suite", { probeHash: "old", measuredAt: "2026-10-02T00:00:00.000Z" }),
-      run("unverified", { identity: "unverified", measuredAt: "2026-10-03T00:00:00.000Z" }),
+      run("unverified", {
+        identity: "unverified",
+        measuredAt: "2026-10-03T00:00:00.000Z",
+        rawReplies: {
+          "device.primary-da": "\u001b[?62;52;c",
+          "extensions.query": "ACK",
+          "extensions.graphics": "NO",
+          "cursor.position": "",
+        },
+      }),
       run("a"),
       run("z"),
       run("headless", {
@@ -681,7 +691,7 @@ describe("selected results", () => {
     expect(projection.current["app:kitty"]?.runId).toBe("z")
     expect(projection.current["headless:kitty"]?.runId).toBe("headless")
     expect(projection.exclusions).toContainEqual(
-      expect.objectContaining({ runId: "unverified", reason: "identity-unverified" }),
+      expect.objectContaining({ runId: "unverified", reason: "identity-replies-mismatch" }),
     )
     expect(projection.versions["app:kitty"]).toHaveLength(2)
     expect(projection.current["app:kitty"]?.counts).toMatchObject({
@@ -867,20 +877,268 @@ describe("selected results", () => {
     )
   })
 
-  it("requires matching run SHA and a measured identity reply before selection", () => {
-    const candidate = parseRun("kitty.json", JSON.stringify(run("kitty-verified")), catalog)
-    expect(
-      projectResults([candidate], [], catalog, { currentProbeHash: "current" }).current["app:kitty"],
-    ).toBeUndefined()
-    expect(
-      projectResults([candidate], [{ ...reviewFor(candidate), runSha256: "0".repeat(64) }], catalog, {
-        currentProbeHash: "current",
-      }).current["app:kitty"],
-    ).toBeUndefined()
-    expect(
-      projectResults([candidate], [reviewFor(candidate)], catalog, { currentProbeHash: "current" }).current["app:kitty"]
-        ?.runId,
-    ).toBe(candidate.runId)
+  it("admits a schema-v2 kitty run from matching DA1 and XTVERSION without a pin, and records the rule", () => {
+    const da1 = "\u001b[?62;52;c"
+    const xtversion = "kitty(0.46.2)"
+    const candidate = parseRun(
+      "kitty-self.json",
+      JSON.stringify(
+        run("kitty-self", {
+          rawReplies: {
+            "device.primary-da": da1,
+            "device.xtversion": xtversion,
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+            "cursor.position": "",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const selected = projectResults([candidate], [], catalog, { currentProbeHash: "current" }).current["app:kitty"]
+    expect(selected?.runId).toBe("kitty-self")
+    expect(selected?.identityAdmission).toEqual({
+      rule: "kitty",
+      da1,
+      xtversion,
+    })
+    if (!selected) throw new Error("expected admitted kitty run")
+    const published = publicResults(
+      { current: { "app:kitty": selected }, versions: {}, history: {}, exclusions: [] },
+      new Map(),
+    ).projection.current["app:kitty"]
+    expect(published?.identityAdmission).toEqual(selected.identityAdmission)
+  })
+
+  it("admits a schema-v2 wezterm run from its measured DA1 and XTVERSION, and refuses either half alone", () => {
+    const da1 = "\u001b[?65;4;6;18;22;52c"
+    const xtversion = "WezTerm 0-unstable-2026-09-17"
+    const provenance = {
+      executable: {
+        path: "/nix/store/wezterm/bin/wezterm",
+        sha256: "a".repeat(64),
+        version: "wezterm 0-unstable-2026-09-17",
+      },
+      sourceArtifact: { url: "https://example.invalid/wezterm-0-unstable-2026-09-17.tar.gz", sha256: "b".repeat(64) },
+      runtime: {
+        imageId: `sha256:${"c".repeat(64)}`,
+        imageTarSha256: "d".repeat(64),
+        arch: "x86_64-linux",
+        nixLockRevision: "e".repeat(40),
+        sourceRevision: "2".repeat(40),
+        cleanTree: true,
+        suiteHash: "current",
+      },
+      fixture: {
+        definition: "wezterm identity",
+        config: "NONE",
+        font: "DejaVu Sans Mono",
+        geometry: "80x24, 800x600",
+        display: "Xvfb :0",
+        gl: "Mesa llvmpipe",
+      },
+    }
+    const wezterm = (runId: string, replies: Record<string, string>) =>
+      parseRun(
+        `${runId}.json`,
+        JSON.stringify(
+          run(runId, {
+            target: { ...target, id: "wezterm", version: "0-unstable-2026-09-17", os: "linux" },
+            provenance,
+            rawReplies: { ...replies, "extensions.query": "ACK", "extensions.graphics": "NO", "cursor.position": "" },
+          }),
+        ),
+        catalog,
+      )
+    const candidate = wezterm("wezterm-self", { "device.primary-da": da1, "device.xtversion": xtversion })
+    const selected = projectResults([candidate], [], catalog, { currentProbeHash: "current" }).current["app:wezterm"]
+    expect(selected?.runId).toBe("wezterm-self")
+    expect(selected?.identityAdmission).toEqual({ rule: "wezterm", da1, xtversion })
+
+    const projection = projectResults(
+      [
+        wezterm("wezterm-foreign-da1", { "device.primary-da": "\u001b[?62;52;c", "device.xtversion": xtversion }),
+        wezterm("wezterm-foreign-xtversion", { "device.primary-da": da1, "device.xtversion": "kitty(0.46.2)" }),
+        wezterm("wezterm-silent", { "device.primary-da": da1 }),
+      ],
+      [],
+      catalog,
+      { currentProbeHash: "current" },
+    )
+    expect(projection.current["app:wezterm"]).toBeUndefined()
+    expect(projection.exclusions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ runId: "wezterm-foreign-da1", reason: "identity-replies-mismatch" }),
+        expect.objectContaining({ runId: "wezterm-foreign-xtversion", reason: "identity-replies-mismatch" }),
+        expect.objectContaining({ runId: "wezterm-silent", reason: "identity-replies-mismatch" }),
+      ]),
+    )
+  })
+
+  it("admits a controlled-Linux alacritty run from ?6c and the apparatus-measured executable, and refuses every other half", () => {
+    const da1 = "\u001b[?6c"
+    const executable = { version: "alacritty 0.17.0", sha256: "3".repeat(64) }
+    const provenance = {
+      executable: { path: "/nix/store/alacritty-0.17.0/bin/alacritty", ...executable },
+      sourceArtifact: { url: "https://example.invalid/alacritty-0.17.0.tar.gz", sha256: "b".repeat(64) },
+      runtime: {
+        imageId: `sha256:${"c".repeat(64)}`,
+        imageTarSha256: "d".repeat(64),
+        arch: "x86_64-linux",
+        nixLockRevision: "e".repeat(40),
+        sourceRevision: "2".repeat(40),
+        cleanTree: true,
+        suiteHash: "current",
+      },
+      fixture: {
+        definition: "alacritty identity",
+        config: "NONE",
+        font: "DejaVu Sans Mono",
+        geometry: "80x24, 800x600",
+        display: "Xvfb :0",
+        gl: "Mesa llvmpipe",
+      },
+    }
+    const linuxTarget = { ...target, id: "alacritty", version: "0.17.0", os: "linux" }
+    const replies = (primaryDa: string) => ({
+      "device.primary-da": primaryDa,
+      "extensions.query": "ACK",
+      "extensions.graphics": "NO",
+      "cursor.position": "",
+    })
+    const alacritty = (runId: string, changes: Record<string, unknown> = {}) =>
+      parseRun(
+        `${runId}.json`,
+        JSON.stringify(run(runId, { target: linuxTarget, provenance, rawReplies: replies(da1), ...changes })),
+        catalog,
+      )
+    const projected = (candidates: ReturnType<typeof alacritty>[]) =>
+      projectResults(candidates, [], catalog, { currentProbeHash: "current" })
+
+    const admitted = projected([alacritty("alacritty-linux")])
+    expect(admitted.current["app:alacritty"]?.runId).toBe("alacritty-linux")
+    expect(admitted.current["app:alacritty"]?.identityAdmission).toEqual({ rule: "alacritty", da1, executable })
+
+    const refused = projected([
+      alacritty("alacritty-foreign-da1", { rawReplies: replies("\u001b[?64;1;2c") }),
+      alacritty("alacritty-unknown", { target: { ...linuxTarget, version: "unknown" }, provenance: undefined }),
+      alacritty("alacritty-no-provenance", { provenance: undefined }),
+      alacritty("alacritty-dirty", {
+        provenance: { ...provenance, runtime: { ...provenance.runtime, cleanTree: false } },
+      }),
+      alacritty("alacritty-other-os", { target: { ...linuxTarget, os: "windows" } }),
+      alacritty("alacritty-macos-no-receipt", { target: { ...linuxTarget, os: "macos" } }),
+    ])
+    expect(refused.current["app:alacritty"]).toBeUndefined()
+    expect(refused.exclusions).toEqual(
+      expect.arrayContaining(
+        [
+          "alacritty-foreign-da1",
+          "alacritty-unknown",
+          "alacritty-no-provenance",
+          "alacritty-dirty",
+          "alacritty-other-os",
+          "alacritty-macos-no-receipt",
+        ].map((runId) => expect.objectContaining({ runId, reason: "identity-replies-mismatch" })),
+      ),
+    )
+    // A version that disagrees never reaches identity: the loader refuses it by name, so a second
+    // number can never pass falsely (packages/run-parser/src/provenance-version.test.ts).
+    expect(() =>
+      alacritty("alacritty-version-mismatch", {
+        provenance: { ...provenance, executable: { ...provenance.executable, version: "alacritty 0.17.1" } },
+      }),
+    ).toThrow(/differs from target.version/)
+
+    // macOS is unchanged by the Linux branch: the same run with a matching CFBundle receipt admits.
+    const launchReceipt = {
+      bundlePath: "/Applications/Alacritty.app",
+      cfBundleShortVersionString: "0.17.0",
+      cfBundleVersion: "1",
+      executablePath: "/Applications/Alacritty.app/Contents/MacOS/alacritty",
+      executableSha256: "a".repeat(64),
+      sourceArtifact: { path: "/System/Library/Assets/com.alacritty.pkg", sha256: "b".repeat(64) },
+    }
+    const macos = projected([
+      alacritty("alacritty-macos", {
+        target: { ...linuxTarget, os: "macos" },
+        provenance: undefined,
+        origin: { kind: "collector", appLaunch: launchReceipt },
+      }),
+    ])
+    expect(macos.current["app:alacritty"]?.identityAdmission).toEqual({
+      rule: "alacritty",
+      da1,
+      receipt: { cfBundleShortVersionString: "0.17.0" },
+    })
+
+    // ?6c identifies nothing on its own: a terminal with no profile is still refused, not admitted
+    // by the alacritty rule.
+    const stranger = projected([alacritty("stranger-da1", { target: { ...linuxTarget, id: "cursor" } })])
+    expect(stranger.current["app:cursor"]).toBeUndefined()
+    expect(stranger.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "stranger-da1", reason: "identity-no-profile" }),
+    )
+  })
+
+  it("excludes a pinned app without an identity profile as identity-no-profile, before provenance", () => {
+    const replies = {
+      "device.primary-da": "\u001b[?62;52;c",
+      "device.xtversion": "Cursor 2.6.21",
+      "extensions.query": "ACK",
+      "extensions.graphics": "NO",
+      "cursor.position": "",
+    }
+    const macos = parseRun(
+      "cursor-macos.json",
+      JSON.stringify(
+        run("cursor-macos", {
+          target: { ...target, id: "cursor" },
+          rawReplies: replies,
+        }),
+      ),
+      catalog,
+    )
+    const linux = parseRun(
+      "cursor-linux.json",
+      JSON.stringify(
+        run("cursor-linux", {
+          target: { ...target, id: "cursor", os: "linux" },
+          rawReplies: replies,
+        }),
+      ),
+      catalog,
+    )
+    const mismatch = parseRun(
+      "kitty-mismatch.json",
+      JSON.stringify(
+        run("kitty-mismatch", {
+          rawReplies: {
+            ...identityReplies,
+            "device.primary-da": "\u001b[?1;2c",
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+            "cursor.position": "",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const projection = projectResults([macos, linux, mismatch], [macos, linux, mismatch].map(reviewFor), catalog, {
+      currentProbeHash: "current",
+    })
+    expect(projection.current["app:cursor"]).toBeUndefined()
+    expect(projection.current["app:kitty"]).toBeUndefined()
+    expect(projection.exclusions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ runId: "cursor-macos", reason: "identity-no-profile" }),
+        expect.objectContaining({ runId: "cursor-linux", reason: "identity-no-profile" }),
+        expect.objectContaining({ runId: "kitty-mismatch", reason: "identity-replies-mismatch" }),
+      ]),
+    )
+    expect(projection.exclusions.find((row) => row.runId === "cursor-linux")?.reason).not.toBe(
+      "native-provenance-missing",
+    )
   })
 
   it("keeps retained HTTP bodies outside selection and binds review to the enriched run", async () => {
@@ -907,10 +1165,11 @@ describe("selected results", () => {
     expect(enriched.observations).toEqual(original.observations)
     expect(enriched.assertions).toEqual(original.assertions)
 
-    // Retaining a valid body does not review it, and its digest cannot review the enriched file.
-    expect(loadSelectedResults(content, "current").current).toEqual({})
+    // Schema v2 matching replies admit the enriched run without a pin; a pin of the raw body SHA cannot review it.
+    expect(Object.keys(loadSelectedResults(content, "current").current)).toEqual(["app:kitty"])
+    expect(loadSelectedResults(content, "current").current["app:kitty"]!.reviews).toEqual([])
     writeFileSync(join(content, "interpretations.json"), JSON.stringify([reviewFor(original)]))
-    expect(loadSelectedResults(content, "current").current).toEqual({})
+    expect(loadSelectedResults(content, "current").current["app:kitty"]!.reviews).toEqual([])
     writeFileSync(join(content, "interpretations.json"), JSON.stringify([reviewFor(enriched)]))
     const after = loadSelectedResults(content, "current")
     expect(Object.keys(after.current)).toEqual(["app:kitty"])
@@ -1036,6 +1295,47 @@ describe("selected results", () => {
     ]) {
       expect(() => candidate(invalid)).toThrow(/sourceArtifact/)
     }
+  })
+
+  it("accepts a derived source tree for an app launch and refuses one with no upstream revision", () => {
+    const appLaunch = {
+      bundlePath: "/Applications/Ghostty.app",
+      cfBundleShortVersionString: "1.3.1",
+      cfBundleVersion: "1",
+      executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      executableSha256: "a".repeat(64),
+      sourceArtifact: {
+        kind: "derived-source-tree",
+        url: "https://github.com/ghostty-org/ghostty/archive/refs/tags/v1.3.1.tar.gz",
+        revision: "refs/tags/v1.3.1",
+        narSri: "sha256-+ddMmUe9Jjkun4qqW8XFXVgwVZdVHsGWcQzndgIlBjQ=",
+        sha256: "b".repeat(64),
+      },
+    }
+    const candidate = (launch: unknown) =>
+      parseRun(
+        "derived-source.json",
+        JSON.stringify(
+          run("derived-source", {
+            target: { ...target, id: "terminal-app", version: "2.15" },
+            rawReplies: {
+              "device.primary-da": "\x1b[?1;2c",
+              "device.secondary-da": "\x1b[>1;95;0c",
+              "extensions.query": "ACK",
+              "extensions.graphics": "NO",
+            },
+            origin: { kind: "collector", appLaunch: launch },
+          }),
+        ),
+        catalog,
+      )
+    expect(candidate(appLaunch).origin.appLaunch?.sourceArtifact).toMatchObject({ kind: "derived-source-tree" })
+    expect(() => candidate({ ...appLaunch, sourceArtifact: { ...appLaunch.sourceArtifact, revision: "" } })).toThrow(
+      /revision/,
+    )
+    expect(() =>
+      candidate({ ...appLaunch, sourceArtifact: { ...appLaunch.sourceArtifact, sha256: "not-a-sha256" } }),
+    ).toThrow(/sourceArtifact/)
   })
 
   it("refuses a headless runtime receipt whose loaded engine version conflicts with target", () => {
@@ -1543,9 +1843,11 @@ describe("selected results", () => {
     ).toBe("inconclusive")
     const review = reviewFor(measured)
     const revoke = { ...review, id: "revoke", verifiesIdentity: false, reviewed: false, supersedes: [review.id] }
-    expect(
-      projectResults([measured], [review, revoke], catalog, { currentProbeHash: "current" }).current["app:kitty"],
-    ).toBeUndefined()
+    const afterRevoke = projectResults([measured], [review, revoke], catalog, { currentProbeHash: "current" }).current[
+      "app:kitty"
+    ]
+    expect(afterRevoke?.runId).toBe("supersession")
+    expect(afterRevoke?.reviews).toEqual([])
   })
 
   it("presents only the immutable original feature payload across a correction and withdrawal", () => {
@@ -1772,5 +2074,293 @@ describe("named not-tested coverage partition", () => {
     expect(selected?.counts).toMatchObject({ catalog: 3, tested: 0, notTested: 3 })
     expect(selected?.notTestedCoverage).toEqual({ named: [], measured: 0, namedCount: 0, remainder: 3 })
     expect(selected?.suiteFreshness).toBe("partial (0 of 2 probes)")
+  })
+})
+
+describe("identity self-admission", () => {
+  const project = (runs: ReturnType<typeof parseRun>[], pins: ReturnType<typeof reviewFor>[] = []) =>
+    projectResults(runs, pins, catalog, { currentProbeHash: "current" })
+
+  const terminalAppLaunch = {
+    bundlePath: "/System/Applications/Utilities/Terminal.app",
+    cfBundleShortVersionString: "2.15",
+    cfBundleVersion: "455",
+    executablePath: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+    executableSha256: "a".repeat(64),
+    sourceArtifact: { path: "/System/Library/Assets/com.apple.Terminal.pkg", sha256: "b".repeat(64) },
+  }
+
+  it("excludes a schema-v2 kitty run whose XTVERSION is missing", () => {
+    const parsed = parseRun(
+      "kitty-missing.json",
+      JSON.stringify(
+        run("kitty-missing", {
+          rawReplies: {
+            "device.primary-da": "\u001b[?62;52;c",
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+            "cursor.position": "",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const projection = project([parsed])
+    expect(projection.current["app:kitty"]).toBeUndefined()
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "kitty-missing", reason: "identity-replies-mismatch" }),
+    )
+  })
+
+  it("refuses a version prefix that the token regex would have accepted", () => {
+    const parsed = parseRun(
+      "kitty-prefix.json",
+      JSON.stringify(
+        run("kitty-prefix", {
+          target: { ...target, version: "0.42" },
+          rawReplies: {
+            "device.primary-da": "\u001b[?62;52;c",
+            "device.xtversion": "kitty(0.42.1)",
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+            "cursor.position": "",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const projection = project([parsed])
+    expect(projection.current["app:kitty"]).toBeUndefined()
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "kitty-prefix", reason: "identity-replies-mismatch" }),
+    )
+  })
+
+  it("rejects iTerm2 when a mux-relayed screen DA3 is present without an iTerm2 XTVERSION", () => {
+    const parsed = parseRun(
+      "iterm2-relay.json",
+      JSON.stringify(
+        run("iterm2-relay", {
+          target: { ...target, id: "iterm2", version: "3.5.11" },
+          rawReplies: {
+            "device.primary-da": "\u001b[?64;1;2;6;9;15;21;22;28;32c",
+            "device.tertiary-da": "\u001bP!|7E56544D\u001b\\",
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+            "cursor.position": "",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const projection = project([parsed])
+    expect(projection.current["app:iterm2"]).toBeUndefined()
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "iterm2-relay", reason: "identity-replies-mismatch" }),
+    )
+  })
+
+  it("does not let a schema-v2 pin admit a mismatching XTVERSION", () => {
+    const parsed = parseRun(
+      "kitty-pinned-mismatch.json",
+      JSON.stringify(
+        run("kitty-pinned-mismatch", {
+          rawReplies: {
+            "device.primary-da": "\u001b[?62;52;c",
+            "device.xtversion": "kitty(0.40.0)",
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+            "cursor.position": "",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const projection = project([parsed], [reviewFor(parsed)])
+    expect(projection.current["app:kitty"]).toBeUndefined()
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "kitty-pinned-mismatch", reason: "identity-replies-mismatch" }),
+    )
+  })
+
+  it("still requires a pin for a schema-v1 run even when identity replies match", () => {
+    const parsed = parseRun(
+      "legacy-kitty.json",
+      JSON.stringify({
+        terminal: "kitty",
+        terminalVersion: "0.46.2",
+        os: "macos",
+        osVersion: "25.4.0",
+        generated: "2026-04-06T16:53:04.733Z",
+        results: { "extensions.query": true, "extensions.graphics": false },
+        responses: {
+          "device.primary-da": "\u001b[?62;52;c",
+          "device.xtversion": "kitty(0.46.2)",
+        },
+      }),
+      catalog,
+    )
+    expect(parsed.schemaVersion).toBe(1)
+    const projection = project([parsed])
+    expect(projection.current["app:kitty"]).toBeUndefined()
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: parsed.runId, reason: "identity-unverified" }),
+    )
+  })
+
+  it("keeps existing pins admitting eleven engines and three kitty apps", () => {
+    const engines = [
+      "xtermjs",
+      "ghostty",
+      "vt100",
+      "vt220",
+      "vterm",
+      "alacritty",
+      "wezterm",
+      "vt100-rust",
+      "libvterm",
+      "ghostty-native",
+      "kitty",
+    ]
+    const headlessRuns = engines.map((id, index) =>
+      parseRun(
+        `engine-${id}.json`,
+        JSON.stringify(
+          run(`engine-${id}`, {
+            target: { ...target, kind: "headless", id, version: `1.${index}.0` },
+            runtimeIdentity: {
+              kind: "js",
+              runtimeFormat: "js",
+              engineVersion: `1.${index}.0`,
+              resolvedPath: `/pkg/${id}/index.js`,
+              integrity: { kind: "registry", lockIntegrity: "sha512-example" },
+              adapterVersion: "1.0.0",
+              termlessRevision: "rev123",
+            },
+          }),
+        ),
+        catalog,
+      ),
+    )
+    const kittyRuns = ["25.4.0", "24.6.0", "23.5.0"].map((osVersion) =>
+      parseRun(
+        `kitty-${osVersion}.json`,
+        JSON.stringify(
+          run(`kitty-${osVersion}`, {
+            target: { ...target, os: "macos", osVersion },
+            rawReplies: {
+              ...identityReplies,
+              "extensions.query": "ACK",
+              "extensions.graphics": "NO",
+              "cursor.position": "",
+            },
+          }),
+        ),
+        catalog,
+      ),
+    )
+    const all = [...headlessRuns, ...kittyRuns]
+    const projection = project(all, all.map(reviewFor))
+    expect(engines.map((id) => projection.current[`headless:${id}`]?.runId)).toEqual(
+      engines.map((id) => `engine-${id}`),
+    )
+    const kittyCurrent = Object.entries(projection.current)
+      .filter(([key]) => key.startsWith("app:kitty"))
+      .map(([, value]) => value.runId)
+      .sort()
+    expect(kittyCurrent).toEqual(["kitty-23.5.0", "kitty-24.6.0", "kitty-25.4.0"])
+  })
+
+  it("admits a schema-v2 headless engine from runtimeIdentity without XTVERSION or a pin", () => {
+    const parsed = parseRun(
+      "engine-no-xtversion.json",
+      JSON.stringify(
+        run("engine-no-xtversion", {
+          target: { ...target, kind: "headless", id: "xtermjs", version: "6.0.0" },
+          runtimeIdentity: {
+            kind: "js",
+            runtimeFormat: "js",
+            engineVersion: "6.0.0",
+            resolvedPath: "/pkg/xtermjs/index.js",
+            integrity: { kind: "registry", lockIntegrity: "sha512-example" },
+            adapterVersion: "1.0.0",
+            termlessRevision: "rev123",
+          },
+          rawReplies: {
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+            "cursor.position": "",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const projection = project([parsed])
+    expect(projection.current["headless:xtermjs"]?.runId).toBe("engine-no-xtversion")
+    expect(projection.current["headless:xtermjs"]?.identityAdmission).toEqual({ rule: "runtime-identity" })
+    expect(projection.exclusions).not.toContainEqual(expect.objectContaining({ runId: "engine-no-xtversion" }))
+  })
+
+  it("rejects Terminal.app XTVERSION, admits kitty on a shared DA1, and records the launch receipt", () => {
+    const da1 = "\u001b[?62;52;c"
+    const kitty = parseRun(
+      "kitty-shared-da1.json",
+      JSON.stringify(
+        run("kitty-shared-da1", {
+          rawReplies: {
+            "device.primary-da": da1,
+            "device.xtversion": "kitty(0.46.2)",
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+            "cursor.position": "",
+          },
+        }),
+      ),
+      catalog,
+    )
+    const unexpectedXtversion = parseRun(
+      "terminal-xtversion.json",
+      JSON.stringify(
+        run("terminal-xtversion", {
+          target: { ...target, id: "terminal-app", version: "2.15" },
+          rawReplies: {
+            "device.primary-da": "\x1b[?1;2c",
+            "device.secondary-da": "\x1b[>1;95;0c",
+            "device.xtversion": "kitty(0.46.2)",
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+          },
+          origin: { kind: "collector", appLaunch: terminalAppLaunch },
+        }),
+      ),
+      catalog,
+    )
+    const accepted = parseRun(
+      "terminal-receipt.json",
+      JSON.stringify(
+        run("terminal-receipt", {
+          target: { ...target, id: "terminal-app", version: "2.15" },
+          rawReplies: {
+            "device.primary-da": "\x1b[?1;2c",
+            "device.secondary-da": "\x1b[>1;95;0c",
+            "extensions.query": "ACK",
+            "extensions.graphics": "NO",
+          },
+          origin: { kind: "collector", appLaunch: terminalAppLaunch },
+        }),
+      ),
+      catalog,
+    )
+    const projection = project([kitty, unexpectedXtversion, accepted])
+    expect(projection.current["app:kitty"]?.runId).toBe("kitty-shared-da1")
+    expect(projection.current["app:terminal-app"]?.runId).toBe("terminal-receipt")
+    expect(projection.current["app:terminal-app"]?.identityAdmission).toEqual({
+      rule: "terminal-app",
+      da1: "\x1b[?1;2c",
+      receipt: { cfBundleShortVersionString: "2.15" },
+    })
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({ runId: "terminal-xtversion", reason: "identity-replies-mismatch" }),
+    )
   })
 })

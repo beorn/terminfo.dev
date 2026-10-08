@@ -66,3 +66,40 @@ test("non-Darwin target identity keeps the OS release", () => {
   expect(detectTerminal()).toMatchObject({ os: "linux", osVersion: "6.17.0" })
   expect(execFile).not.toHaveBeenCalled()
 })
+
+test("Windows Terminal detects version via PowerShell", () => {
+  Object.defineProperty(process, "platform", { value: "win32", configurable: true })
+  kernelRelease.mockReturnValue("10.0.26100")
+  vi.stubEnv("TERM_PROGRAM", "")
+  vi.stubEnv("TERM_PROGRAM_VERSION", "")
+  vi.stubEnv("WT_SESSION", "9f8a3d4e-1234-5678-abcd-ef0123456789")
+  execFile.mockReturnValue("1.21.2361.0\n")
+  expect(detectTerminal()).toMatchObject({
+    name: "windows-terminal",
+    version: "1.21.2361.0",
+    os: "windows",
+    osVersion: "10.0.26100",
+  })
+  expect(execFile).toHaveBeenCalledWith(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-Command", expect.stringContaining("Get-AppxPackage *WindowsTerminal*")],
+    expect.objectContaining({ encoding: "utf-8", timeout: 3000 }),
+  )
+})
+
+test("Windows Terminal handles PowerShell error gracefully with empty version", () => {
+  Object.defineProperty(process, "platform", { value: "win32", configurable: true })
+  kernelRelease.mockReturnValue("10.0.26100")
+  vi.stubEnv("TERM_PROGRAM", "")
+  vi.stubEnv("TERM_PROGRAM_VERSION", "")
+  vi.stubEnv("WT_SESSION", "9f8a3d4e-1234-5678-abcd-ef0123456789")
+  execFile.mockImplementation(() => {
+    throw new Error("PowerShell not available")
+  })
+  expect(detectTerminal()).toMatchObject({
+    name: "windows-terminal",
+    version: "",
+    os: "windows",
+    osVersion: "10.0.26100",
+  })
+})

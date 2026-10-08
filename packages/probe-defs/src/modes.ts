@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
-import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank } from "./helpers.ts"
+import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank, queryAnsiMode } from "./helpers.ts"
 
 /** Refuse a modes capture fixture before any bytes when the measured geometry is too small. */
 function captureRefusal(ctx: TermContext, minRows: number, minCols: number, feature: string): ProbeResult | undefined {
@@ -520,6 +520,31 @@ export const modesProbes: ProbeDefinition[] = [
         }
         const refusal = captureRefusal(ctx, 1, 6, "Insert/replace")
         if (refusal) return refusal
+        // IRM is ANSI mode 4; DECRQM (`CSI 4 $ p`) reports it without reading cells.
+        // A complete report decides the claim; no report falls through to the cell fixture below.
+        ctx.write("\x1b[4h")
+        const on = await queryAnsiMode(ctx, 4)
+        ctx.write("\x1b[4l")
+        if (on === "set" || on === "reset") {
+          const off = await queryAnsiMode(ctx, 4)
+          if (off === "set" || off === "reset") {
+            const ok = on === "set" && off === "reset"
+            return {
+              pass: ok,
+              response: JSON.stringify({ on, off }),
+              observation: ok
+                ? { outcome: "supported", evidence: "query" }
+                : { outcome: "unsupported", evidence: "query" },
+              assertions: [
+                {
+                  kind: ok ? "positive" : "negative",
+                  expected: "DECRQM mode 4 reports set after CSI 4 h and reset after CSI 4 l",
+                  observed: `${on} -> ${off}`,
+                },
+              ],
+            }
+          }
+        }
         if (ctx.capture) {
           try {
             ctx.write("\x1b[4l\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCD\x1b[1;1HX")

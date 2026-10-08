@@ -36,6 +36,26 @@ describe("verifyTerminalIdentity", () => {
     },
   )
 
+  it("measures the WezTerm version from its release-tagged XTVERSION and refuses either half alone", () => {
+    const responses = { "collector.xtversion": "\x1bP>|WezTerm 0-unstable-2026-09-17\x1b\\\x1b[?65;4;6;18;22;52c" }
+    expect(resolveMeasuredAppVersion("wezterm", "", responses)).toBe("0-unstable-2026-09-17")
+    expect(verifyTerminalIdentity("wezterm", responses)).toEqual({ ok: true, checked: true })
+    // A date-tagged build keeps resolving rather than being refused.
+    expect(
+      resolveMeasuredAppVersion("wezterm", "", {
+        "collector.xtversion": "\x1bP>|WezTerm 20240203\x1b\\\x1b[?65;4;6;18;22;52c",
+      }),
+    ).toBe("20240203")
+    // WezTerm's DA1 without a WezTerm XTVERSION is not WezTerm.
+    expect(
+      verifyTerminalIdentity("wezterm", { "collector.xtversion": "\x1bP>|kitty(0.49.2)\x1b\\\x1b[?65;4;6;18;22;52c" }),
+    ).toMatchObject({ ok: false, checked: true })
+    // A foreign DA1 beside the WezTerm XTVERSION is refused too.
+    expect(
+      verifyTerminalIdentity("wezterm", { "collector.xtversion": "\x1bP>|WezTerm 20240203\x1b\\\x1b[?62;52;c" }).reason,
+    ).toContain("DA1 mismatch")
+  })
+
   it("requires explicit DA1 bytes to agree with the collector witness and judges suffixless frames independently", () => {
     const da1 = "\x1b[?62;52;c"
     const responses = {
@@ -268,8 +288,9 @@ describe("verifyTerminalIdentity", () => {
 
   it("marks checked: false when no identity rule is registered", () => {
     const res = verifyTerminalIdentity("unknown-terminal", { "device.primary-da": "\u001b[?1;2c" })
-    expect(res.ok).toBe(true)
+    expect(res.ok).toBe(false)
     expect(res.checked).toBe(false)
+    expect(res.reason).toMatch(/no identity profile/)
   })
 
   it("resolves Kitty's version from the complete captured frame and refuses declared conflict", () => {
@@ -286,5 +307,26 @@ describe("verifyTerminalIdentity", () => {
     expect(() =>
       resolveMeasuredAppVersion("kitty", "0.49.1", { ...replies, "device.xtversion": "\x1bP>|xterm(0.49.1)\x1b\\" }),
     ).toThrow(/identity mismatch/)
+  })
+
+  it("resolves each measured target's version from its own identity rule", () => {
+    const xterm = {
+      "collector.xtversion": "\x1bP>|XTerm(411)\x1b\\\x1b[?64;1;2;6;9;15;16;17;18;21;22;28;29c",
+    }
+    expect(resolveMeasuredAppVersion("xterm", "", xterm)).toBe("411")
+    expect(resolveMeasuredAppVersion("xterm", "411", xterm)).toBe("411")
+    expect(() => resolveMeasuredAppVersion("xterm", "410", xterm)).toThrow(/version mismatch/)
+    expect(verifyTerminalIdentity("xterm", xterm)).toEqual({ ok: true, checked: true })
+    const ghostty = { "collector.xtversion": "\x1bP>|ghostty 1.3.1\x1b\\\x1b[?62;22;52c" }
+    expect(resolveMeasuredAppVersion("ghostty", "", ghostty)).toBe("1.3.1")
+    expect(verifyTerminalIdentity("ghostty", ghostty)).toEqual({ ok: true, checked: true })
+  })
+
+  it("keeps the detected version for an id whose rule captures none, and invents nothing", () => {
+    const iterm = { "collector.xtversion": "\x1bP>|iTerm2 3.6.11\x1b\\\x1b[?64;1;2;6;9;15;16;17;18;21;22;28;29c" }
+    expect(resolveMeasuredAppVersion("iterm2", "3.6.11", iterm)).toBe("3.6.11")
+    // wezterm and alacritty have no identity rule at all: named-unavailable, never guessed.
+    expect(resolveMeasuredAppVersion("wezterm", "", {})).toBe("unknown")
+    expect(resolveMeasuredAppVersion("alacritty", "", {})).toBe("unknown")
   })
 })

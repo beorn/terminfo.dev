@@ -1,23 +1,36 @@
 import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
-import { parserStateResult, probe, isBlank, unmeasuredCellResult, selectiveEraseResult } from "./helpers.ts"
+import {
+  parserStateResult,
+  probe,
+  isBlank,
+  REPLY_AFTER_SENTINEL_NOTE,
+  sentinelNegativeResult,
+  unmeasuredCellResult,
+  selectiveEraseResult,
+} from "./helpers.ts"
 
 // DECRQCRA is a reply capability probe, not a checksum-correctness oracle.
-function checksumResult(response: string): ProbeResult {
+function checksumResult(response: string, lateNote?: string): ProbeResult {
   const supported = /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/.test(response)
+  // F1 (27832): a reply that lands after the DA1 sentinel is graded by its own bytes and recorded
+  // as a late reply, exactly as device.ts:25-30 does for a device query.
+  const note = lateNote
+    ? `Checks framed reply and request id; checksum arithmetic is not verified; ${lateNote}`
+    : "Checks framed reply and request id; checksum arithmetic is not verified"
+  const assertions: NonNullable<ProbeResult["assertions"]> | undefined = supported
+    ? [{ kind: "positive", expected: "Complete four-digit checksum reply for request 1", observed: response }]
+    : undefined
   return {
     pass: supported,
     response,
-    note: "Checks framed reply and request id; checksum arithmetic is not verified",
+    note,
     observation: {
       outcome: supported ? "supported" : "inconclusive",
       evidence: "query",
+      ...(lateNote && { note }),
       ...(!supported && { reason: response ? ("invalid-reply" as const) : ("no-response" as const) }),
     },
-    ...(supported && {
-      assertions: [
-        { kind: "positive", expected: "Complete four-digit checksum reply for request 1", observed: response },
-      ],
-    }),
+    ...(assertions && { assertions }),
   }
 }
 
@@ -874,8 +887,41 @@ const editingProbeDefinitions: ProbeDefinition[] = [
       return checksumResult(ctx.feedCapture("\x1b[1;1;1;1;1;5*y")) // id, page, top, left, bottom, right
     },
     async (ctx) => {
-      const reply = await ctx.queryOutcome("\x1b[1;1;1;1;1;1*y", /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/, 2000)
-      return checksumResult(reply.raw)
+      // The DA1 follow-up ends the read on a channel the terminal has already
+      // answered, so a terminal that never answers is disproved instead of
+      // being waited out on a bare timeout. id, page, top, left, bottom, right.
+      const reply = await ctx.queryWithSentinelOutcome("\x1b[1;1;1;1;1;1*y", /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/)
+      if (reply.match) {
+        // F1 (27832): a frame that lands after the DA1 answer is a late reply, graded by the frame
+        // and recorded with the ordering note — device.ts:25-30 applies the same rule. Only a
+        // measured sentinel proves that ordering, so a late frame without it keeps its null and
+        // falls through to the inconclusive grade below.
+        const frame = reply.match[0] ?? ""
+        const da1At = reply.raw.search(/\x1b\[\?[0-9;]*c/)
+        const unorderedLateFrame = da1At !== -1 && reply.raw.indexOf(frame) > da1At && !reply.sentinel
+        if (!unorderedLateFrame) {
+          return checksumResult(frame, reply.sentinel ? REPLY_AFTER_SENTINEL_NOTE : undefined)
+        }
+      }
+      // F1 (27832): a DA1 answer with nothing else through the grace window is a measured
+      // negative, the same rule device.ts and extensions.ts already apply. A raw that carries
+      // anything besides DA1, or a read with no DA1 at all, keeps the inconclusive grade below.
+      const silent = sentinelNegativeResult(
+        reply.raw,
+        reply.sentinel,
+        "Complete four-digit checksum reply for request 1",
+      )
+      if (silent) return silent
+      return {
+        pass: false,
+        response: reply.raw,
+        note: "No complete checksum reply before the DA1 sentinel",
+        observation: {
+          outcome: "inconclusive",
+          evidence: "query",
+          reason: reply.reason === "timeout" ? "timeout" : "no-response",
+        },
+      }
     },
   ),
 

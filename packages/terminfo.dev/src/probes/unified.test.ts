@@ -3,7 +3,12 @@
  * @level l1
  * @consumer Real-terminal app, daemon, and inline probe batch
  * @testonly none
+ * @reach fs-walk /tmp/terminfo-disposable-receipts
  */
+import { createHash } from "node:crypto"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import { ALL_PROBES, type ProbeRun, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { decodeCollectorRun } from "@terminfo/run-parser"
@@ -67,78 +72,179 @@ it.each([
   { label: "sentinel", response: "nonsecret-callback-response" },
   { label: "empty", response: "" },
   { label: "absent", response: undefined },
-])("retains the $label explicit callback response while preserving legacy behavior", async ({ response }) => {
-  const id = "modes.bracketed-paste"
-  const definition = ALL_PROBES.find((probe) => probe.id === id)!
-  expect(definition.termWrites).toBe("query")
-  expect(definition.termNeedsGeometry).toBeUndefined()
-  const original = definition.term
-  const responseFields = response === undefined ? {} : { response }
-  const note = "Deterministic callback response retention fixture"
-  const observation = {
-    outcome: "inconclusive" as const,
-    reason: "insufficient-evidence" as const,
-    evidence: "none" as const,
-    note,
-  }
-  const trace = JSON.stringify({ writes: [], queries: [], events: [] })
-  try {
-    definition.term = async () => ({ pass: false, ...responseFields, observation })
-    const explicit = await runProbeBatch({ ids: [id] })
-    definition.term = async () => ({ pass: false, ...responseFields, note })
-    const legacy = await runProbeBatch({ ids: [id] })
-    const decodedExplicit = decodeCollectorRun(
-      "explicit-callback-response.json",
-      JSON.stringify(asRun(explicit)),
-      manifest,
-      sourceRevision,
-    ).run
-    const decodedLegacy = decodeCollectorRun(
-      "legacy-callback-response.json",
-      JSON.stringify(asRun(legacy)),
-      manifest,
-      sourceRevision,
-    ).run
-    const expectedObservation = { featureId: id, ...observation, rawReplyRef: id }
-    expect(explicit.observations).toEqual([expectedObservation])
-    expect(decodedExplicit.observations).toEqual([expectedObservation])
-    expect(explicit.ungradedDiagnostics).toEqual({})
-    expect(decodedExplicit.ungradedDiagnostics).toEqual({})
-    expect(explicit.assertions).toEqual([])
-    expect(decodedExplicit.assertions).toEqual([])
-    expect(explicit.screenshotRefs).toEqual([])
-    expect(decodedExplicit.screenshotRefs).toEqual([])
-    expect(explicit.suiteComplete).toBe(false)
-    expect(decodedExplicit.suiteComplete).toBe(false)
-    expect(decodedExplicit.identity).toBe("unverified")
-    expect(explicit.rawReplies[id]).toBe(trace)
-    expect(decodedExplicit.rawReplies[id]).toBe(trace)
-
-    const diagnostic = { kind: "legacy-callback", pass: false, note, ...(response ? { response } : {}) }
-    expect(legacy.observations).toEqual([])
-    expect(decodedLegacy.observations).toEqual([])
-    expect(legacy.ungradedDiagnostics).toEqual({ [id]: diagnostic })
-    expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: diagnostic })
-    expect(legacy.rawReplies).toEqual({ [id]: trace })
-    expect(decodedLegacy.rawReplies).toEqual({ [id]: trace })
-    expect(legacy.assertions).toEqual([])
-    expect(decodedLegacy.assertions).toEqual([])
-    expect(legacy.screenshotRefs).toEqual([])
-    expect(decodedLegacy.screenshotRefs).toEqual([])
-    expect(legacy.suiteComplete).toBe(false)
-    expect(decodedLegacy.suiteComplete).toBe(false)
-    expect(decodedLegacy.identity).toBe("unverified")
-
-    const expectedReplies = {
-      [id]: trace,
-      ...(response === undefined ? {} : { [`${id}.callbackResponse`]: response }),
+])(
+  "retains the $label explicit callback response and refuses an untyped legacy-shaped result",
+  async ({ response }) => {
+    const id = "modes.bracketed-paste"
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    expect(definition.termWrites).toBe("query")
+    expect(definition.termNeedsGeometry).toBeUndefined()
+    const original = definition.term
+    const responseFields = response === undefined ? {} : { response }
+    const note = "Deterministic callback response retention fixture"
+    const observation = {
+      outcome: "inconclusive" as const,
+      reason: "insufficient-evidence" as const,
+      evidence: "none" as const,
+      note,
     }
-    expect(explicit.rawReplies).toEqual(expectedReplies)
-    expect(decodedExplicit.rawReplies).toEqual(expectedReplies)
-  } finally {
-    definition.term = original
-  }
-})
+    const trace = JSON.stringify({ writes: [], queries: [], events: [] })
+    // The collector records its own disposable-ownership verdict beside the replies.
+    const sharedOwnership = { "collector.disposableOwnership": JSON.stringify({ kind: "shared" }) }
+    try {
+      definition.term = async () => ({ pass: false, ...responseFields, observation })
+      const explicit = await runProbeBatch({ ids: [id] })
+      definition.term = (async () => ({ pass: false, ...responseFields, note })) as unknown as typeof definition.term
+      const legacy = await runProbeBatch({ ids: [id] })
+      const decodedExplicit = decodeCollectorRun(
+        "explicit-callback-response.json",
+        JSON.stringify(asRun(explicit)),
+        manifest,
+        sourceRevision,
+      ).run
+      const decodedLegacy = decodeCollectorRun(
+        "legacy-callback-response.json",
+        JSON.stringify(asRun(legacy)),
+        manifest,
+        sourceRevision,
+      ).run
+      const expectedObservation = { featureId: id, ...observation, rawReplyRef: id }
+      expect(explicit.observations).toEqual([expectedObservation])
+      expect(decodedExplicit.observations).toEqual([expectedObservation])
+      expect(explicit.ungradedDiagnostics).toEqual({})
+      expect(decodedExplicit.ungradedDiagnostics).toEqual({})
+      expect(explicit.assertions).toEqual([])
+      expect(decodedExplicit.assertions).toEqual([])
+      expect(explicit.screenshotRefs).toEqual([])
+      expect(decodedExplicit.screenshotRefs).toEqual([])
+      expect(explicit.suiteComplete).toBe(false)
+      expect(decodedExplicit.suiteComplete).toBe(false)
+      expect(decodedExplicit.identity).toBe("unverified")
+      expect(explicit.rawReplies[id]).toBe(trace)
+      expect(decodedExplicit.rawReplies[id]).toBe(trace)
+
+      // The one-path refactor deleted the legacy-callback record. A result that is neither a
+      // measurement nor a coverage record is refused loudly instead of silently ungraded.
+      const refusal = {
+        kind: "collector-error",
+        name: "Error",
+        message: `Callback for ${id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
+      }
+      expect(legacy.observations).toEqual([])
+      expect(decodedLegacy.observations).toEqual([])
+      expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
+      expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: refusal })
+      expect(legacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(decodedLegacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(legacy.assertions).toEqual([])
+      expect(decodedLegacy.assertions).toEqual([])
+      expect(legacy.screenshotRefs).toEqual([])
+      expect(decodedLegacy.screenshotRefs).toEqual([])
+      expect(legacy.suiteComplete).toBe(false)
+      expect(decodedLegacy.suiteComplete).toBe(false)
+      expect(decodedLegacy.identity).toBe("unverified")
+
+      const expectedReplies = {
+        [id]: trace,
+        ...sharedOwnership,
+        ...(response === undefined ? {} : { [`${id}.callbackResponse`]: response }),
+      }
+      expect(explicit.rawReplies).toEqual(expectedReplies)
+      expect(decodedExplicit.rawReplies).toEqual(expectedReplies)
+    } finally {
+      definition.term = original
+    }
+  },
+)
+
+// A result-level note beside an explicit observation must reach the run document, and an
+// observation's own note is never replaced by it; the legacy control keeps the result note.
+it.each([
+  {
+    label: "result-note-beside-observation",
+    resultNote: "Deterministic result-level note retention fixture",
+    observationNote: undefined,
+  },
+  {
+    label: "observation-own-note",
+    resultNote: undefined,
+    observationNote: "Deterministic observation-level note fixture",
+  },
+  {
+    label: "both-notes",
+    resultNote: "Deterministic legacy label",
+    observationNote: "Deterministic observation-level note fixture",
+  },
+])(
+  "retains the ProbeResult note for the $label case and refuses an untyped legacy-shaped result",
+  async ({ resultNote, observationNote }) => {
+    const id = "modes.bracketed-paste"
+    const definition = ALL_PROBES.find((probe) => probe.id === id)!
+    expect(definition.termWrites).toBe("query")
+    expect(definition.termNeedsGeometry).toBeUndefined()
+    const original = definition.term
+    const resultNoteFields = resultNote === undefined ? {} : { note: resultNote }
+    const observation = {
+      outcome: "inconclusive" as const,
+      reason: "insufficient-evidence" as const,
+      evidence: "none" as const,
+      ...(observationNote === undefined ? {} : { note: observationNote }),
+    }
+    const expectedNote = observationNote ?? resultNote
+    const trace = JSON.stringify({ writes: [], queries: [], events: [] })
+    // The collector records its own disposable-ownership verdict beside the replies.
+    const sharedOwnership = { "collector.disposableOwnership": JSON.stringify({ kind: "shared" }) }
+    try {
+      definition.term = async () => ({ pass: false, ...resultNoteFields, observation })
+      const explicit = await runProbeBatch({ ids: [id] })
+      definition.term = (async () => ({ pass: false, ...resultNoteFields })) as unknown as typeof definition.term
+      const legacy = await runProbeBatch({ ids: [id] })
+      const decodedExplicit = decodeCollectorRun(
+        "explicit-callback-note.json",
+        JSON.stringify(asRun(explicit)),
+        manifest,
+        sourceRevision,
+      ).run
+      const decodedLegacy = decodeCollectorRun(
+        "legacy-callback-note.json",
+        JSON.stringify(asRun(legacy)),
+        manifest,
+        sourceRevision,
+      ).run
+      const expectedObservation = { featureId: id, ...observation, note: expectedNote, rawReplyRef: id }
+      expect(explicit.observations).toEqual([expectedObservation])
+      expect(decodedExplicit.observations).toEqual([expectedObservation])
+      expect(explicit.ungradedDiagnostics).toEqual({})
+      expect(decodedExplicit.ungradedDiagnostics).toEqual({})
+      expect(explicit.assertions).toEqual([])
+      expect(decodedExplicit.assertions).toEqual([])
+      expect(explicit.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(decodedExplicit.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(explicit.suiteComplete).toBe(false)
+      expect(decodedExplicit.suiteComplete).toBe(false)
+      expect(decodedExplicit.identity).toBe("unverified")
+
+      // The one-path refactor deleted the legacy-callback record; the untyped refusal replaces it.
+      const refusal = {
+        kind: "collector-error",
+        name: "Error",
+        message: `Callback for ${id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
+      }
+      expect(legacy.observations).toEqual([])
+      expect(decodedLegacy.observations).toEqual([])
+      expect(legacy.ungradedDiagnostics).toEqual({ [id]: refusal })
+      expect(decodedLegacy.ungradedDiagnostics).toEqual({ [id]: refusal })
+      expect(legacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(decodedLegacy.rawReplies).toEqual({ [id]: trace, ...sharedOwnership })
+      expect(legacy.assertions).toEqual([])
+      expect(decodedLegacy.assertions).toEqual([])
+      expect(decodedLegacy.suiteComplete).toBe(false)
+      expect(decodedLegacy.identity).toBe("unverified")
+    } finally {
+      definition.term = original
+    }
+  },
+)
 
 // An unowned inline batch must refuse before a callback can send RIS or paint the user's TTY.
 it("refuses an unowned mutating callback without sending terminal bytes", async () => {
@@ -237,6 +343,8 @@ it("lets reviewed DECRPM queries run while refusing cursor and title-writing cal
 })
 
 // A real Terminal.app run returned DA1 as the XTVERSION query's sentinel; it was not an XTVERSION reply.
+// F1 (27832): that sentinel answered alone through the grace window is now a measured negative, not an
+// unknown — the terminal was alive and did not answer the query.
 it("projects Terminal.app identity replies without mistaking the DA1 sentinel for XTVERSION", async () => {
   const da1 = "\x1b[?1;2c"
   const da2 = "\x1b[>1;95;0c"
@@ -254,8 +362,20 @@ it("projects Terminal.app identity replies without mistaking the DA1 sentinel fo
   expect(batch.observations).toMatchObject([
     { featureId: "device.primary-da", outcome: "supported" },
     { featureId: "device.secondary-da", outcome: "supported" },
-    { featureId: "device.xtversion", outcome: "inconclusive", reason: "no-response" },
+    {
+      featureId: "device.xtversion",
+      outcome: "unsupported",
+      evidence: "query",
+      note: "negative by sentinel",
+    },
   ])
+  expect(batch.assertions).toContainEqual({
+    featureId: "device.xtversion",
+    kind: "negative",
+    expected: "complete XTVERSION DCS >| printable name/version ST",
+    observed: expect.stringMatching(/DA1 answered at \+\d+ms; no reply through the \d+ ms window/),
+    rawReplyRef: "device.xtversion",
+  })
   expect(verifyTerminalIdentity("terminal-app", batch.rawReplies)).toMatchObject({ ok: true, checked: true })
   expect(batch.rawReplies["device.secondary-da"]).toBe(da2 + da1)
   expect(JSON.parse(batch.rawReplies["device.secondary-da.trace"]!)).toMatchObject({
@@ -272,6 +392,9 @@ afterEach(() => {
   vi.restoreAllMocks()
   process.stdout.write = originalWrite
   process.stdin.removeAllListeners("data")
+  for (const path of receiptDirectories.splice(0)) rmSync(path, { recursive: true, force: true })
+  if (originalDisposableReceipt === undefined) delete process.env.TERMINFO_DISPOSABLE_RECEIPT
+  else process.env.TERMINFO_DISPOSABLE_RECEIPT = originalDisposableReceipt
 })
 
 // These callback/capture contract tests exercise the post-authorization batch path;
@@ -279,6 +402,243 @@ afterEach(() => {
 function verifiedBatchFixture() {
   vi.spyOn(terminalOwnership, "ownedTerminalVerifiedFor").mockReturnValue(true)
 }
+
+const receiptDirectories: string[] = []
+const originalDisposableReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
+
+/** The host-authored half the collector can read: /out/host-measured.json plus the envelope. */
+function validContainerReceipt() {
+  return {
+    schemaVersion: 1,
+    kind: "linux-xvfb-container",
+    runId: "b".repeat(32),
+    collectedAt: "2026-10-06T22:00:00Z",
+    runtime: {
+      imageId: "sha256:3f263739c9bebf6e015166eb0aa9c62dd37baf47384391d87875158eeae0bc8d",
+      imageTarSha256: "22ab7b15460795eb0c774b68f0d8c5f853d87597bacbffdd809e0fcac9130333",
+      arch: "amd64",
+      nixLockRevision: "f2e16882cd75b5180bf14f77740fcb8643b35c10",
+      sourceRevision: "d".repeat(40),
+      sourceTreeStatus: "clean",
+      rootRevision: "e".repeat(40),
+      suiteHash: "f".repeat(12),
+    },
+    runnerArtifact: {
+      frozenRunnerSha256: "d0a6b28177cce4be5dc241fe53adc636cbfba8a60e9362b38e5ccf3c5074d4c6",
+      buildReceiptSha256: "63648108c641030f0d0cc0ee7ba92d27cb4627dc1da5ba953f0bd632f4de2044",
+    },
+    declaredTarget: { kind: "app", id: "kitty", version: "0.49.2", os: "linux" },
+    preset: "current",
+    clipboardProfile: "default",
+  }
+}
+
+// 27832 amendment 1: a mutating probe needs a verified disposable-ownership receipt, the collector
+// checks it once before the first write, and the run records the kind and the digest.
+it("refuses a mutating reset probe with no disposable receipt and writes nothing", async () => {
+  verifiedBatchFixture()
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc110-reset-fg"],
+    target: { kind: "app", id: "kitty", os: "linux" },
+  })
+  expect(writes).toEqual([])
+  expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: "extensions.osc110-reset-fg",
+      outcome: "inconclusive",
+      reason: "policy-refused",
+      evidence: "none",
+      note: "Collector refused before sending bytes because no verified disposable-ownership receipt was presented",
+    },
+  ])
+  expect(batch.assertions).toEqual([])
+  expect(JSON.parse(batch.rawReplies["extensions.osc110-reset-fg"]!)).toEqual({ writes: [], queries: [], events: [] })
+})
+
+it("a declared receipt that cannot be verified is loud before any byte, never a silent shared default", async () => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, JSON.stringify({ ...validContainerReceipt(), kind: "a-person-s-laptop" }))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  await expect(
+    runProbeBatch({ ids: ["extensions.osc110-reset-fg"], target: { kind: "app", id: "kitty", os: "linux" } }),
+  ).rejects.toThrow(/unknown kind/)
+  expect(writes).toEqual([])
+})
+
+it("a verified disposable receipt runs the reset exchange and records its kind and digest", async () => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const bytes = JSON.stringify(validContainerReceipt())
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, bytes)
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  const replies = [
+    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+    "\x1b]10;rgb:aa/bb/cc\x07\x1b[?62;c",
+    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+  ]
+  let read = 0
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    if (text === "\x1b]10;?\x07\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc110-reset-fg"],
+    target: { kind: "app", id: "kitty", os: "linux" },
+  })
+  expect(batch.observations).toMatchObject([
+    { featureId: "extensions.osc110-reset-fg", outcome: "supported", evidence: "behavior" },
+  ])
+  expect(writes).toEqual([
+    "\x1b]10;?\x07\x1b[c",
+    "\x1b]10;rgb:aa/bb/cc\x07",
+    "\x1b]10;?\x07\x1b[c",
+    "\x1b]110\x07",
+    "\x1b]10;?\x07\x1b[c",
+  ])
+  const recorded = JSON.parse(batch.rawReplies["collector.disposableOwnership"]!) as {
+    kind: string
+    runId: string
+    receiptSha256: string
+    declaredTarget: { kind: string; id: string; os: string }
+    identity: Record<string, string>
+  }
+  expect(recorded).toMatchObject({ kind: "linux-xvfb-container", runId: "b".repeat(32) })
+  expect(recorded.receiptSha256).toBe(createHash("sha256").update(bytes).digest("hex"))
+  // 27874 part 3: the identity the receipt names is recorded with the run, not only a digest of
+  // bytes a reader on main cannot open.
+  expect(recorded.declaredTarget).toEqual({ kind: "app", id: "kitty", os: "linux" })
+  expect(recorded.identity).toEqual({
+    imageId: "sha256:3f263739c9bebf6e015166eb0aa9c62dd37baf47384391d87875158eeae0bc8d",
+    imageTarSha256: "22ab7b15460795eb0c774b68f0d8c5f853d87597bacbffdd809e0fcac9130333",
+    arch: "amd64",
+    nixLockRevision: "f2e16882cd75b5180bf14f77740fcb8643b35c10",
+    frozenRunnerSha256: "d0a6b28177cce4be5dc241fe53adc636cbfba8a60e9362b38e5ccf3c5074d4c6",
+    buildReceiptSha256: "63648108c641030f0d0cc0ee7ba92d27cb4627dc1da5ba953f0bd632f4de2044",
+  })
+})
+
+it("refuses a mutating probe when neither owned terminal nor disposable receipt is presented", async () => {
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc110-reset-fg"],
+    target: { kind: "app", id: "kitty", os: "linux" },
+  })
+  expect(writes).toEqual([])
+  expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: "extensions.osc110-reset-fg",
+      outcome: "inconclusive",
+      reason: "policy-refused",
+      evidence: "none",
+      note: "Collector refused before sending bytes because neither a verified owned terminal nor a verified disposable-ownership receipt was presented",
+    },
+  ])
+  expect(batch.assertions).toEqual([])
+})
+
+it("authorizes write probes and records receipt kind and digest when disposable-only receipt is presented", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const bytes = JSON.stringify(validContainerReceipt())
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, bytes)
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  const replies = [
+    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+    "\x1b]10;rgb:aa/bb/cc\x07\x1b[?62;c",
+    "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+  ]
+  let read = 0
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    if (text === "\x1b]10;?\x07\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["extensions.osc110-reset-fg"],
+    target: { kind: "app", id: "kitty", os: "linux" },
+  })
+  expect(batch.observations).toMatchObject([
+    { featureId: "extensions.osc110-reset-fg", outcome: "supported", evidence: "behavior" },
+  ])
+  expect(writes).toEqual([
+    "\x1b]10;?\x07\x1b[c",
+    "\x1b]10;rgb:aa/bb/cc\x07",
+    "\x1b]10;?\x07\x1b[c",
+    "\x1b]110\x07",
+    "\x1b]10;?\x07\x1b[c",
+  ])
+  const recorded = JSON.parse(batch.rawReplies["collector.disposableOwnership"]!) as {
+    kind: string
+    runId: string
+    receiptSha256: string
+    declaredTarget: { kind: string; id: string; os: string }
+    identity: Record<string, string>
+  }
+  expect(recorded).toMatchObject({ kind: "linux-xvfb-container", runId: "b".repeat(32) })
+  expect(recorded.receiptSha256).toBe(createHash("sha256").update(bytes).digest("hex"))
+  // 27874 part 3: the identity the receipt names is recorded with the run, not only a digest of
+  // bytes a reader on main cannot open.
+  expect(recorded.declaredTarget).toEqual({ kind: "app", id: "kitty", os: "linux" })
+  expect(recorded.identity).toEqual({
+    imageId: "sha256:3f263739c9bebf6e015166eb0aa9c62dd37baf47384391d87875158eeae0bc8d",
+    imageTarSha256: "22ab7b15460795eb0c774b68f0d8c5f853d87597bacbffdd809e0fcac9130333",
+    arch: "amd64",
+    nixLockRevision: "f2e16882cd75b5180bf14f77740fcb8643b35c10",
+    frozenRunnerSha256: "d0a6b28177cce4be5dc241fe53adc636cbfba8a60e9362b38e5ccf3c5074d4c6",
+    buildReceiptSha256: "63648108c641030f0d0cc0ee7ba92d27cb4627dc1da5ba953f0bd632f4de2044",
+  })
+})
+
+it("gives the named geometry error for a geometry probe on disposable-only terminal", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const bytes = JSON.stringify(validContainerReceipt())
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, bytes)
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: ["cursor.shape"], target: { kind: "app", id: "kitty", os: "linux" } })
+  expect(writes).toEqual([])
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: "cursor.shape",
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: "No verified owned terminal for geometry read",
+    },
+  ])
+})
 
 const measured = (
   rows: number,
@@ -467,12 +827,12 @@ it("refuses app named coverage that arrives beside its returned error observatio
   const originalTerm = definition.term
   const originalEvidence = definition.termObservationEvidence
   definition.termObservationEvidence = "query"
-  definition.term = async () => ({
+  definition.term = (async () => ({
     pass: false,
     response: "\x1b[?62;4c",
     notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
     observation: { outcome: "error", reason: "collector-error", evidence: "query", note: "TTY write failed" },
-  })
+  })) as unknown as typeof definition.term
   try {
     const batch = await runProbeBatch({ ids: [definition.id] })
     expect(batch.notTested).toEqual([])
@@ -503,13 +863,13 @@ it("refuses app named coverage that arrives beside supported observation and ass
   verifiedBatchFixture()
   const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
   const originalTerm = definition.term
-  definition.term = async () => ({
+  definition.term = (async () => ({
     pass: true,
     response: "\x1b[?62;4c",
     notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
     observation: { outcome: "supported", evidence: "query" },
     assertions: [{ kind: "positive", expected: "\x1b[?62;4c", observed: "\x1b[?62;4c" }],
-  })
+  })) as unknown as typeof definition.term
   try {
     const batch = await runProbeBatch({ ids: [definition.id] })
     expect(batch.notTested).toEqual([])
@@ -610,6 +970,37 @@ it.each([
     definition.termNeedsGeometry = original
     definition.termObservationEvidence = originalEvidence
   }
+})
+
+// 27863: a feature whose app callback reads the measured grid must declare termNeedsGeometry; a
+// missing declaration is a collector error that silently costs the feature every run.
+it("grades cursor.shape and cursor.reverse-wrap when each declares its measured-grid read", async () => {
+  verifiedBatchFixture()
+  const replies = ["\x1b[1;1R", "\x1b[2;2R", "\x1b[1;61R"]
+  process.stdout.write = ((text: string) => {
+    if (text === "\x1b[6n") {
+      const reply = replies.shift()
+      if (reply) process.stdin.emit("data", Buffer.from(reply))
+    }
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["cursor.shape", "cursor.reverse-wrap"],
+    capture: async ({ role, label }) => ({
+      frame: { role, label, capturedAt: Date.now(), ref: `sha256:${"a".repeat(64)}` },
+      trace: {},
+    }),
+    ownedTerminal: geometryOwner(measured(24, 61)),
+  })
+  expect(batch.ungradedDiagnostics).toEqual({})
+  expect(batch.observations.find((item) => item.featureId === "cursor.shape")).toMatchObject({
+    outcome: "inconclusive",
+    evidence: "pixels",
+  })
+  expect(batch.observations.find((item) => item.featureId === "cursor.reverse-wrap")).toMatchObject({
+    outcome: "supported",
+    evidence: "query",
+  })
 })
 
 // The public inline runner must put both callback writes and nested CPR queries on its selected TTY.
@@ -915,6 +1306,51 @@ it("retains same-callback control and target frames without declaring visual sup
   expect(batch.suiteComplete).toBe(false)
 })
 
+// 27875: a controlled-Linux run with no capture directory cannot make a frame. A probe that needs
+// one must say so by name, in its own result, and must not claim pixels that do not exist.
+it("records a FrameUnavailable capture as a named collector error, never invented pixels", async () => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["sgr.underline.curly"],
+    ownedTerminal: geometryOwner(measured(24, 80)),
+    captureRunId: "a".repeat(32),
+    capture: async () => {
+      const error = new Error("This run has no capture directory, so no frame is available for a probe that needs one")
+      error.name = "FrameUnavailable"
+      throw error
+    },
+  })
+  expect(batch.ungradedDiagnostics["sgr.underline.curly"]).toMatchObject({
+    kind: "collector-error",
+    name: "FrameUnavailable",
+    message: expect.stringContaining("no capture directory"),
+  })
+  expect(batch.observations).toEqual([])
+})
+
+// The stub is installed only on a controlled-Linux run with no capture directory. Everywhere else
+// no capture callback exists at all, and these rows keep deciding exactly as they do today (27875).
+it("keeps today's graceful absence row when no capture callback is installed", async () => {
+  verifiedBatchFixture()
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["cursor.shape"],
+    ownedTerminal: geometryOwner(measured(24, 80)),
+    captureRunId: "a".repeat(32),
+  })
+  expect(batch.observations).toMatchObject([
+    {
+      featureId: "cursor.shape",
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: "No cursor pixel readback for shape",
+    },
+  ])
+  expect(batch.ungradedDiagnostics).toEqual({})
+})
+
 it("records an installed capture adapter failure as an error rather than quietly dropping pixels", async () => {
   verifiedBatchFixture()
   process.stdout.write = ((value: string) => {
@@ -937,4 +1373,48 @@ it("records an installed capture adapter failure as an error rather than quietly
   ])
   expect(batch.screenshotRefs).toEqual([])
   expect(batch.ungradedDiagnostics).toEqual({})
+})
+
+// 27874 part 2: a receipt is bound to the run's own target BEFORE the first write. Checking it after
+// the batch would mean a mismatched receipt had already authorized mutate+readback against the
+// wrong app, so the refusal has to happen with nothing written.
+it("refuses a receipt for another target before writing any byte", async () => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, JSON.stringify(validContainerReceipt()))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  await expect(
+    runProbeBatch({
+      ids: ["extensions.osc110-reset-fg"],
+      target: { kind: "app", id: "wezterm", os: "linux" },
+    }),
+  ).rejects.toThrow(/receipt declares target .*kitty.* but this run is .*wezterm/)
+  expect(writes).toEqual([])
+})
+
+// A receipt that names a target cannot be bound to nothing: the caller must supply the run's own
+// target, so a caller that forgot is loud rather than silently unbound.
+it("refuses a receipt that names a target when the caller supplied no run target", async () => {
+  verifiedBatchFixture()
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, JSON.stringify(validContainerReceipt()))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  const writes: string[] = []
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  await expect(runProbeBatch({ ids: ["extensions.osc110-reset-fg"] })).rejects.toThrow(
+    /no run target was supplied to bind it to/,
+  )
+  expect(writes).toEqual([])
 })

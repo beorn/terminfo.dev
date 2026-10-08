@@ -32,6 +32,23 @@ import {
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
 import { ownedTerminalVerifiedFor, type GeometryMeasurement, type OwnedTerminal } from "../owned-terminal.ts"
+import {
+  bindReceiptToRun,
+  readDisposableReceipt,
+  type DisposableReceipt,
+  type ReceiptTarget,
+} from "../disposable-receipt.ts"
+
+/**
+ * Resolve the disposable-ownership receipt once per batch (27832 amendment 1). No receipt is
+ * normal and means the untouched default path; a receipt that was declared but cannot be verified
+ * is loud, before any byte is written, because a silent fall back to "shared" would look like a
+ * gate while grading nothing.
+ */
+function resolveDisposableReceipt(): DisposableReceipt | undefined {
+  const path = process.env.TERMINFO_DISPOSABLE_RECEIPT
+  return path ? readDisposableReceipt(path) : undefined
+}
 
 export interface Probe {
   id: string
@@ -152,6 +169,16 @@ function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selecte
   }
 }
 
+/**
+ * Runtime totality guard. `ProbeResult` is a union that makes a measurement or a coverage
+ * record mandatory, so a typed callback cannot reach here without one; an untyped caller
+ * can, and that is reported rather than silently ungraded.
+ */
+function claimsMeasurement(result: ProbeResult): boolean {
+  const widened: { observation?: unknown; assertions?: readonly unknown[] } = result
+  return widened.observation !== undefined || (widened.assertions?.length ?? 0) > 0
+}
+
 /** A refused claim keeps its own observation detail and assertion contents in the error text, never as a claim. */
 function refusedClaimEvidence(result: ProbeResult): string {
   const parts: string[] = []
@@ -188,6 +215,9 @@ export async function runProbeBatch(
     captureRunId?: string
     out?: NodeJS.WriteStream
     geometryCorroboration?: GeometryCorroboration
+    /** The target this run is measuring, from the measured side (the launched app), never read out
+     * of the receipt. A receipt naming another target is refused before the first write (27874). */
+    target?: ReceiptTarget
   } = {},
 ): Promise<ProbeBatch> {
   const out = options.out ?? process.stdout
@@ -223,6 +253,27 @@ export async function runProbeBatch(
       return unavailable(error)
     }
   }
+  // Ownership is checked ONCE, before the first write, never per probe (27832 amendment 1). A
+  // mutation-and-readback probe additionally needs a verified disposable-ownership receipt; an
+  // absent or unparsable receipt is loud, and no env flag or caller option stands in for it.
+  const ownsTerminal = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
+  const disposable = resolveDisposableReceipt()
+  // Bind BEFORE the first write: a receipt for another target must not authorize this terminal, and
+  // checking it afterwards would mean the wrong terminal was already written to. (27874)
+  if (disposable) bindReceiptToRun(disposable, options.target, "collector.disposableOwnership")
+  const authorizedToWrite = ownsTerminal || Boolean(disposable)
+  batch.rawReplies["collector.disposableOwnership"] = JSON.stringify(
+    disposable
+      ? {
+          kind: disposable.kind,
+          runId: disposable.runId,
+          collectedAt: disposable.collectedAt,
+          receiptSha256: disposable.sha256,
+          ...(disposable.declaredTarget ? { declaredTarget: disposable.declaredTarget } : {}),
+          ...(disposable.identity ? { identity: disposable.identity } : {}),
+        }
+      : { kind: "shared" },
+  )
   for (const probe of selected) {
     const writes: string[] = []
     const queries: TTYQueryTrace[] = []
@@ -230,16 +281,21 @@ export async function runProbeBatch(
     const clipboardEvents: ClipboardTraceEvent[] = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
-    if (
-      probe.termWrites !== "query" &&
-      !ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
-    ) {
+    const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
+    const refusedBecause = !needsOwnership
+      ? undefined
+      : !authorizedToWrite
+        ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
+        : probe.termNeedsDisposable === true && !disposable
+          ? "no verified disposable-ownership receipt was presented"
+          : undefined
+    if (refusedBecause) {
       batch.observations.push({
         featureId: probe.id,
         outcome: "inconclusive",
         reason: "policy-refused",
         evidence: "none",
-        note: "Collector refused before sending bytes because disposable terminal ownership was not verified",
+        note: `Collector refused before sending bytes because ${refusedBecause}`,
         rawReplyRef: probe.id,
       })
       batch.rawReplies[probe.id] = JSON.stringify({ writes, queries, events })
@@ -250,14 +306,13 @@ export async function runProbeBatch(
     if (probe.termNeedsGeometry) {
       geometryCheck = { featureId: probe.id }
       geometryChecks.push(geometryCheck)
-      const geometryOwner = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
-      const grant = geometryOwner ? options.ownedTerminal?.geometryAtGrant : undefined
+      const grant = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       if (grant?.status === "measured") {
         preGeometry = await readGeometry()
         geometryCheck.pre = preGeometry
       }
       const corroboration = options.geometryCorroboration
-      const diagnostic = !geometryOwner
+      const diagnostic = !ownsTerminal
         ? "No verified owned terminal for geometry read"
         : grant?.status !== "measured"
           ? `Grant geometry unavailable: ${grant?.status === "unavailable" ? grant.diagnostic : "no owned measurement"}`
@@ -323,7 +378,7 @@ export async function runProbeBatch(
         if (result.response !== undefined) {
           batch.rawReplies[`${probe.id}.callbackResponse`] = result.response
         }
-        if (result.observation !== undefined || (result.assertions?.length ?? 0) > 0) {
+        if (claimsMeasurement(result)) {
           batch.ungradedDiagnostics[probe.id] = {
             kind: "collector-error",
             name: "Error",
@@ -353,6 +408,7 @@ export async function runProbeBatch(
         batch.observations.push({
           featureId: probe.id,
           ...result.observation,
+          ...(result.note && !result.observation.note ? { note: result.note } : {}),
           ...(resized
             ? {
                 outcome: "inconclusive" as const,
@@ -366,18 +422,25 @@ export async function runProbeBatch(
           batch.assertions.push({ featureId: probe.id, ...assertion, ...(rawReplyRef ? { rawReplyRef } : {}) })
         }
       } else {
+        // The callback returned neither a measurement nor a coverage record. The type makes
+        // that impossible for a typed callback; an untyped caller still gets a loud error.
         batch.ungradedDiagnostics[probe.id] = {
-          kind: "legacy-callback",
-          pass: result.pass,
-          ...(result.note ? { note: result.note } : {}),
-          ...(result.response ? { response: result.response } : {}),
+          kind: "collector-error",
+          name: "Error",
+          message: `Callback for ${probe.id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
         }
       }
     } catch (error) {
       const name = error instanceof Error ? error.name : "Error"
       const message = error instanceof Error ? error.message : String(error)
+      // FrameUnavailable joins UndeclaredTerminalGeometry: the probe could not run at all, so the
+      // error is named in its own result and nothing about pixels is claimed (27875).
       const errorEvidence =
-        name === "UndeclaredTerminalGeometry" ? undefined : captureAttempted ? "pixels" : probe.termObservationEvidence
+        name === "UndeclaredTerminalGeometry" || name === "FrameUnavailable"
+          ? undefined
+          : captureAttempted
+            ? "pixels"
+            : probe.termObservationEvidence
       if (errorEvidence) {
         batch.observations.push({
           featureId: probe.id,
@@ -408,7 +471,7 @@ export async function runProbeBatch(
       }
     }
   }
-  if (options.ownedTerminal && ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)) {
+  if (ownsTerminal && options.ownedTerminal) {
     batch.rawReplies["collector.geometry"] = JSON.stringify({
       source: options.ownedTerminal?.geometrySource ?? "unavailable: no verified output device",
       bindingReceiptRef: "collector.terminalOwnership",

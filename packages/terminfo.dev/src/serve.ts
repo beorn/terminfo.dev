@@ -16,11 +16,10 @@
 import { createStyle } from "@silvery/ansi"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, isAbsolute, join, win32 } from "node:path"
 import { homedir } from "node:os"
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import { execFileSync } from "node:child_process"
-import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
@@ -50,12 +49,8 @@ function measuredExecutable(value: unknown): LiveExecutable {
   const executable = (value as { executable?: unknown }).executable
   if (!executable || typeof executable !== "object") throw new Error("Runtime provenance has no executable")
   const { path, sha256 } = executable as { path?: unknown; sha256?: unknown }
-  if (
-    typeof path !== "string" ||
-    !path.startsWith("/") ||
-    typeof sha256 !== "string" ||
-    !/^[0-9a-f]{64}$/.test(sha256)
-  ) {
+  const isAbs = typeof path === "string" && (isAbsolute(path) || win32.isAbsolute(path))
+  if (typeof path !== "string" || !isAbs || typeof sha256 !== "string" || !/^[0-9a-f]{64}$/.test(sha256)) {
     throw new Error("Runtime provenance has invalid measured executable")
   }
   return { path, sha256 }
@@ -116,6 +111,17 @@ export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collec
   return { manifest, collectorRevision: sourceRevision }
 }
 
+/** The capture a controlled Linux run installs when no capture directory is configured (27875).
+ * Absence is a fact about the run, and a probe that needs a frame must be able to say so: the
+ * named error lands as an `ungradedDiagnostic` keyed by that probe's own id. */
+export function frameUnavailableCapture(): ProbeCapture {
+  return async () => {
+    const error = new Error("This run has no capture directory, so no frame is available for a probe that needs one")
+    error.name = "FrameUnavailable"
+    throw error
+  }
+}
+
 /** The same source-tree collector powers daemon and inline CLI entry points. */
 export async function collectProbeRun(
   options: {
@@ -148,6 +154,13 @@ export async function collectProbeRun(
   if (captureDirectory) {
     if (!executable) throw new Error("Configured Linux capture lacks measured executable")
     capture = await createLinuxCapture(captureDirectory, executable)
+  } else if (provenancePath) {
+    // A controlled Linux run with no capture directory cannot make a frame, so a probe that needs
+    // one must fail BY NAME in its own result instead of reaching an absent callback (27875).
+    // The stub is installed ONLY here: every other run keeps no capture callback at all, so the
+    // probes' own absence branches (cursor, erase, charsets, helpers) still decide those rows
+    // exactly as they do today, and no non-container row changes.
+    capture = frameUnavailableCapture()
   }
   let ownedTerminal: OwnedTerminal | undefined
   if (clipboardReceipt && options.terminalAppOwner) {
@@ -219,6 +232,8 @@ export async function collectProbeRun(
         ids: options.ids,
         out,
         captureRunId,
+        // The run's own target, from the launched app: the receipt is bound to this before any write.
+        target: { kind: "app", id: terminal.name, os: terminal.os },
         ...(capture && { capture }),
         ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),
@@ -235,10 +250,20 @@ export async function collectProbeRun(
   }
   if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
   if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
+  const measuredVersion = resolveMeasuredAppVersion(terminal.name, terminal.version, batch.rawReplies)
+  const declaredVersion = (process.env.TERMINFO_TARGET_VERSION || "").trim()
   const target: ProbeRun["target"] = {
     kind: "app",
     id: terminal.name,
-    version: resolveMeasuredAppVersion(terminal.name, terminal.version, batch.rawReplies),
+    // The measured version is the version the TERMINAL reported. alacritty reports none at all -
+    // XTVERSION answers with nothing and neither TERM_PROGRAM nor TERM_PROGRAM_VERSION is set - so
+    // it is "unknown" here, which provenance can never agree with. When the APPARATUS declared a
+    // version for this target (the launcher passes TERMINFO_TARGET_VERSION in the image
+    // environment; it is never read back out of the ownership receipt), write that declaration
+    // instead. The value is NOT a version the terminal reported - the raw replies show it reported
+    // none - and the provenance check still does its work: the binary's own `--version` must agree
+    // with the declaration. A non-apparatus run has no declaration, so "unknown" stays as before.
+    version: measuredVersion === "unknown" && declaredVersion ? declaredVersion : measuredVersion,
     os: terminal.os,
     osVersion: terminal.osVersion,
     outerTerminal: null,

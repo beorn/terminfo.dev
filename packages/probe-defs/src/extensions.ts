@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto"
 import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
 import {
+  REPLY_AFTER_SENTINEL_NOTE,
+  notTestedResult,
   parserStateResult,
   probe,
   readHyperlinkMetadata,
+  sentinelNegativeResult,
   sgrCaptureFrames,
   sgrCaptureTooSmall,
-  notTestedResult,
   unmeasuredCellResult,
 } from "./helpers.ts"
 
@@ -18,16 +20,31 @@ function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }
 }
 
-/** Bind a complete reply from this query; a prefix or unrelated output is not a result. */
-function oscReplyResult(raw: string, frame: string | null, expected: string, prefix: RegExp): ProbeResult {
+/**
+ * Bind a complete reply from this query; a prefix or unrelated output is not a result. When the
+ * collector measured a DA1 sentinel before the reply, the ordering rides along as a note.
+ */
+function oscReplyResult(
+  raw: string,
+  frame: string | null,
+  expected: string,
+  prefix: RegExp,
+  sentinel?: { atMs: number; graceMs: number },
+): ProbeResult {
   if (frame) {
     return {
       pass: true,
       response: raw,
-      observation: { outcome: "supported", evidence: "query" },
+      observation: {
+        outcome: "supported",
+        evidence: "query",
+        ...(sentinel && { note: REPLY_AFTER_SENTINEL_NOTE }),
+      },
       assertions: [{ kind: "positive", expected, observed: frame }],
     }
   }
+  const silent = sentinelNegativeResult(raw, sentinel, expected)
+  if (silent) return silent
   return {
     pass: false,
     response: raw,
@@ -88,11 +105,23 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeResult {
 }
 
 /** A read of current Sixel geometry; protocol failure and silence never establish a negative. */
-function sixelGeometryResult(raw: string, frame: string | null, missingReason: "no-response" | "timeout"): ProbeResult {
-  const reply = frame ? /\x1b\[\?2;([0-9]+);([0-9;]*)S/.exec(frame) : null
+function sixelGeometryResult(
+  raw: string,
+  frame: string | null,
+  missingReason: "no-response" | "timeout",
+  sentinel?: { atMs: number; graceMs: number },
+): ProbeResult {
+  // xterm replies with CSI ? Pi ; Ps ; Pv S, but omits the value on failure, so the
+  // measured failure frame is two parameters (CSI ? 2 ; 3 S). Requiring a third
+  // parameter graded that documented failure as a malformed geometry.
+  const reply = frame ? /\x1b\[\?2;([0-9]+)(?:;([0-9;]*))?S/.exec(frame) : null
   if (!reply) {
     const malformed = frame !== null
     const note = malformed ? "Malformed Sixel geometry response" : "No Sixel geometry response for item 2"
+    if (!malformed) {
+      const silent = sentinelNegativeResult(raw, sentinel, "Complete Sixel geometry response for item 2")
+      if (silent) return silent
+    }
     return {
       pass: false,
       response: raw,
@@ -109,7 +138,9 @@ function sixelGeometryResult(raw: string, frame: string | null, missingReason: "
   if (status !== 0) {
     const validFailure = status === 1 || status === 2 || status === 3
     const note = validFailure
-      ? `Sixel geometry query reported protocol status ${status}`
+      ? status === 3
+        ? "Sixel geometry query reported protocol status 3 (failure; no graphics geometry is configured)"
+        : `Sixel geometry query reported protocol status ${status}`
       : `Unknown Sixel geometry protocol status ${reply[1]}`
     return {
       pass: false,
@@ -185,6 +216,7 @@ function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
             reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
             `Complete OSC ${oscCode} color reply`,
             prefix,
+            reply.sentinel,
           )
         },
         "query",
@@ -216,6 +248,7 @@ function oscSimpleQueryProbe(
             reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
             expected,
             prefix,
+            reply.sentinel,
           )
         },
         "query",
@@ -250,7 +283,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
       const restoredRaw = ctx.feedCapture(query)
       const restored = replyPattern.exec(restoredRaw)?.[1]
       const response = JSON.stringify({ originalRaw, changedRaw, restoredRaw })
-      if (!changed || !restored || !sameRgb(changed, requested)) {
+      if (!changed || !restored) {
         return {
           pass: false,
           response,
@@ -261,6 +294,9 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
             note: "Color mutation or readback control was not established",
           },
         }
+      }
+      if (!sameRgb(changed, requested)) {
+        return colorSetIgnoredResult(response, setCode)
       }
       const pass = sameRgb(restored, original)
       return {
@@ -290,6 +326,25 @@ function foregroundValue(response: string): string | null {
   return foregroundReply.exec(response)?.[1] ?? null
 }
 
+function colorSetIgnoredResult(response: string, setCode: number): ProbeResult {
+  return {
+    pass: false,
+    response,
+    observation: {
+      outcome: "unsupported",
+      evidence: "behavior",
+      note: "OSC set did not change the queried color",
+    },
+    assertions: [
+      {
+        kind: "negative",
+        expected: `OSC ${setCode} changes the queried color`,
+        observed: response,
+      },
+    ],
+  }
+}
+
 function sameRgb(left: string, right: string): boolean {
   const channels = (color: string) =>
     color
@@ -307,6 +362,91 @@ function sameRgbCells(left: { r: number; g: number; b: number }, right: { r: num
 
 function probeForeground(before: string): string {
   return sameRgb(before, "rgb:aa/bb/cc") ? "rgb:12/34/56" : "rgb:aa/bb/cc"
+}
+
+/**
+ * App-side reset exchange (27832): read the colour, set it, read the change back, reset it, read
+ * the restoration back — the termless restore discipline against a real terminal. The collector
+ * runs this only with a verified disposable-ownership receipt, so the mutation is confined to a
+ * machine nobody uses; a failed restore is graded, never retried into a pass.
+ */
+async function colorResetAppProbe(
+  ctx: TermContext,
+  spec: { setCode: number; resetCode: number; index?: number },
+): Promise<ProbeResult> {
+  const indexPart = spec.index === undefined ? "" : `${spec.index};`
+  const query = `\x1b]${spec.setCode};${indexPart}?\x07`
+  const reply = new RegExp(
+    `\\x1b\\]${spec.setCode};${indexPart}(rgb:[0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
+    "i",
+  )
+  const prefix = new RegExp(`\\x1b\\]${spec.setCode};`)
+  const read = async () => {
+    const outcome = await ctx.queryWithSentinelOutcome(query, reply)
+    return { outcome, rgb: outcome.match?.[1] ?? null }
+  }
+  const before = await read()
+  if (!before.rgb) {
+    return oscReplyResult(
+      before.outcome.raw,
+      null,
+      `Complete OSC ${spec.setCode} color reply`,
+      prefix,
+      before.outcome.sentinel,
+    )
+  }
+  const requested = probeForeground(before.rgb)
+  const reset = `\x1b]${spec.resetCode}${spec.index === undefined ? "" : `;${spec.index}`}\x07`
+  ctx.write(`\x1b]${spec.setCode};${indexPart}${requested}\x07`)
+  const changed = await read()
+  ctx.write(reset)
+  const restored = await read()
+  const response = JSON.stringify({
+    originalRaw: before.outcome.raw,
+    changedRaw: changed.outcome.raw,
+    restoredRaw: restored.outcome.raw,
+  })
+  if (!changed.rgb || !restored.rgb) {
+    return {
+      pass: false,
+      response,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+        note: "Color mutation or readback control was not established",
+      },
+    }
+  }
+  if (!sameRgb(changed.rgb, requested)) {
+    return colorSetIgnoredResult(response, spec.setCode)
+  }
+  const pass = sameRgb(restored.rgb, before.rgb)
+  return {
+    pass,
+    response,
+    observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
+    assertions: [
+      {
+        kind: pass ? "positive" : "negative",
+        expected: `OSC ${spec.resetCode} restores the prior OSC ${spec.setCode} color after a verified change`,
+        observed: response,
+      },
+    ],
+  }
+}
+
+/** The reset features mutate and read back, so they are the probes a disposable receipt gates. */
+function resetProbe(id: string, setCode: number, resetCode: number, index?: number): ProbeDefinition {
+  return {
+    ...probe(
+      id,
+      colorResetProbe(setCode, resetCode, index),
+      (ctx) => colorResetAppProbe(ctx, { setCode, resetCode, index }),
+      "behavior",
+    ),
+    termNeedsDisposable: true,
+  }
 }
 
 function colorStackResult(before: string, requested: string, changed: string, restored: string): ProbeResult {
@@ -651,6 +791,10 @@ export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: n
 }
 
 function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeResult {
+  // A measured sentinel with nothing beside it is a decisive negative, not an unknown; a timeout
+  // never answered DA1 at all, so it stays inconclusive.
+  const silent = sentinelNegativeResult(reply.raw, reply.sentinel, note)
+  if (silent) return silent
   return {
     pass: false,
     response: reply.raw,
@@ -695,15 +839,15 @@ function graphicsQueryResult(
   imageId: number,
   acceptedNote = "Graphics query accepted RGB pixel data; visible rendering was not tested",
 ): ProbeResult {
-  const match = new RegExp(`\\x1b_Gi=${imageId};([^\\x1b]+)\\x1b\\\\`).exec(response)
+  const match = kittyReplyFrame({ i: String(imageId) }).exec(response)
   if (!match) {
     return unansweredQuery(
       { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
       "No matching graphics query reply; image rendering was not tested",
     )
   }
-  const pass = match[1] === "OK"
-  const note = pass ? acceptedNote : `Graphics query returned ${match[1]}; no support conclusion`
+  const pass = match[2] === "OK"
+  const note = pass ? acceptedNote : `Graphics query returned ${match[2]}; no support conclusion`
   return {
     pass,
     response,
@@ -720,14 +864,40 @@ function graphicsQueryResult(
   }
 }
 
+/**
+ * A kitty graphics reply frame, APC G <control data> ; <message> ST, whose control data carries every key in `keys`
+ * at the given value pattern, in any order. The protocol defines control data as a comma-separated list of key=value
+ * pairs; WezTerm answers an allocation with `I=<number>,i=<id>` where kitty writes `i=<id>,I=<number>` (27915).
+ * Group 1 is the control data and group 2 the message.
+ */
+function kittyReplyFrame(keys: Readonly<Record<string, string>>): RegExp {
+  const lookaheads = Object.entries(keys)
+    .map(([key, value]) => `(?=(?:[^;\\x1b]*,)?${key}=${value}[,;])`)
+    .join("")
+  return new RegExp(`\\x1b_G${lookaheads}([^;\\x1b]*);([^\\x1b]+)\\x1b\\\\`)
+}
+
+/** The value of `key` in a kitty reply's control data. */
+function kittyControlValue(control: string, key: string): string | undefined {
+  return control
+    .split(",")
+    .map((pair) => pair.split("="))
+    .find(([name]) => name === key)?.[1]
+}
+
+/** The allocation reply to an `I=<imageNumber>` transfer: a fresh numeric `i` with the echoed `I`, in any order. */
+function allocationReply(imageNumber: number): RegExp {
+  return kittyReplyFrame({ I: String(imageNumber), i: "\\d+" })
+}
+
 function imageTransferRequest(imageNumber: number): string {
   // I requests a new image; a fixed i would overwrite somebody else's image.
   return `\x1b_Ga=t,f=24,s=1,v=1,t=d,I=${imageNumber};/wAA\x1b\\`
 }
 
 function allocatedImageResult(response: string, imageNumber: number): { imageId: number | null; result: ProbeResult } {
-  const match = new RegExp(`\\x1b_Gi=(\\d+),I=${imageNumber};([^\\x1b]+)\\x1b\\\\`).exec(response)
-  const imageId = match ? Number(match[1]) : 0
+  const match = allocationReply(imageNumber).exec(response)
+  const imageId = match ? Number(kittyControlValue(match[1] ?? "", "i")) : 0
   if (!match || imageId < 1 || imageId > 0xffffffff) {
     return {
       imageId: null,
@@ -790,7 +960,7 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         try {
           const reply = await ctx.queryWithSentinelOutcome(
             imageTransferRequest(imageNumber),
-            new RegExp(`\\x1b_Gi=(\\d+),I=${imageNumber};([^\\x1b]+)\\x1b\\\\`),
+            allocationReply(imageNumber),
           )
           if (!reply.match) {
             return unansweredQuery(
@@ -803,10 +973,11 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
           if (!imageId || !display) return uploaded.result
           const placement = await ctx.queryWithSentinelOutcome(
             `\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`,
-            new RegExp(`\\x1b_Gi=${imageId};([^\\x1b]+)\\x1b\\\\`),
+            kittyReplyFrame({ i: String(imageId) }),
           )
           if (!placement.match) {
-            return unansweredQuery(placement, "No matching placement reply; visible pixels were not tested")
+            // The probe grades the acknowledgement, never rendering: WezTerm places silently (27915).
+            return unansweredQuery(placement, "No placement acknowledgement; visible pixels were not tested")
           }
           return graphicsQueryResult(
             placement.match[0] ?? "",
@@ -1806,9 +1977,11 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscSimpleQueryProbe(
     "extensions.osc1337-cellsize",
     "\x1b]1337;ReportCellSize\x07",
-    /\x1b\]1337;ReportCellSize=[1-9][0-9]*(?:\.[0-9]+)?;[1-9][0-9]*(?:\.[0-9]+)?(?:\x07|\x1b\\)/,
+    // iTerm2 documents both forms: height;width, and the newer height;width;scale (pixels per point). WezTerm sends the
+    // newer one (27915: `ReportCellSize=16.5;7.5;1.3`).
+    /\x1b\]1337;ReportCellSize=[1-9][0-9]*(?:\.[0-9]+)?;[1-9][0-9]*(?:\.[0-9]+)?(?:;[0-9]+(?:\.[0-9]+)?)?(?:\x07|\x1b\\)/,
     /\x1b\]1337;ReportCellSize=/,
-    "Complete OSC 1337 ReportCellSize reply with two positive dimensions",
+    "Complete OSC 1337 ReportCellSize reply with two positive dimensions and an optional scale",
   ),
 
   // OSC 1337 RequestCapabilities — query terminal capabilities
@@ -1975,24 +2148,16 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscColorQueryProbe("extensions.osc12-cursor-color", 12),
 
   // OSC 104 — reset color palette
-  probe("extensions.osc104-reset-palette", colorResetProbe(4, 104, 0), () =>
-    Promise.resolve(unmeasuredStateEffect("OSC 104 palette reset")),
-  ),
+  resetProbe("extensions.osc104-reset-palette", 4, 104, 0),
 
   // OSC 110 — reset foreground color
-  probe("extensions.osc110-reset-fg", colorResetProbe(10, 110), () =>
-    Promise.resolve(unmeasuredStateEffect("OSC 110 foreground reset")),
-  ),
+  resetProbe("extensions.osc110-reset-fg", 10, 110),
 
   // OSC 111 — reset background color
-  probe("extensions.osc111-reset-bg", colorResetProbe(11, 111), () =>
-    Promise.resolve(unmeasuredStateEffect("OSC 111 background reset")),
-  ),
+  resetProbe("extensions.osc111-reset-bg", 11, 111),
 
   // OSC 112 — reset cursor color
-  probe("extensions.osc112-reset-cursor", colorResetProbe(12, 112), () =>
-    Promise.resolve(unmeasuredStateEffect("OSC 112 cursor-color reset")),
-  ),
+  resetProbe("extensions.osc112-reset-cursor", 12, 112),
 
   // OSC 117 — reset highlight background
   {
@@ -2139,24 +2304,10 @@ export const extensionsProbes: ProbeDefinition[] = [
   ),
 
   // OSC 113 — reset pointer fg color
-  probe("extensions.osc113-reset-pointer-fg", colorResetProbe(13, 113), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]113\x07")
-    const pos = await ctx.queryCursorPosition()
-    return unverifiedEffect(
-      pos ? "Cursor answered; pointer foreground restoration was not measured" : "No cursor response after OSC 113",
-    )
-  }),
+  resetProbe("extensions.osc113-reset-pointer-fg", 13, 113),
 
   // OSC 114 — reset pointer bg color
-  probe("extensions.osc114-reset-pointer-bg", colorResetProbe(14, 114), async (ctx) => {
-    ctx.write("\x1b[1;1H\x1b[2K")
-    ctx.write("\x1b]114\x07")
-    const pos = await ctx.queryCursorPosition()
-    return unverifiedEffect(
-      pos ? "Cursor answered; pointer background restoration was not measured" : "No cursor response after OSC 114",
-    )
-  }),
+  resetProbe("extensions.osc114-reset-pointer-bg", 14, 114),
 
   // OSC 21 — require the actual foreground reply, never a subsequent CPR.
   {
@@ -2317,7 +2468,12 @@ export const extensionsProbes: ProbeDefinition[] = [
         async (ctx) => {
           const reply = await ctx.queryWithSentinelOutcome("\x1b[?2;1;0S", /\x1b\[\?2;[0-9;]*S/, 1000)
           const frame = reply.reason === "reply" ? (reply.match?.[0] ?? null) : null
-          return sixelGeometryResult(reply.raw, frame, reply.reason === "timeout" ? "timeout" : "no-response")
+          return sixelGeometryResult(
+            reply.raw,
+            frame,
+            reply.reason === "timeout" ? "timeout" : "no-response",
+            reply.sentinel,
+          )
         },
         "query",
       ),

@@ -21,13 +21,35 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
     terminal: "kitty",
     da1Pattern: /\?62;/,
     da1ForbiddenPattern: /\?1;2c/,
-    xtversionPattern: /^kitty\(\d+(?:\.\d+){1,3}(?:[-+][a-zA-Z0-9.-]+)?\)$/i,
+    xtversionPattern: /^kitty\((?<version>\d+(?:\.\d+){1,3}(?:[-+][a-zA-Z0-9.-]+)?)\)$/i,
+    requireXtversion: true,
+  },
+  // Measured 2026-10-07 in xterm-visual-default-image: DA1 "?64;1;2;6;9;15;16;17;18;21;22;28;29c",
+  // XTVERSION "XTerm(411)". iterm2 also answers ?64;; XTVERSION is what separates the two.
+  xterm: {
+    terminal: "xterm",
+    da1Pattern: /\?64;/,
+    xtversionPattern: /^XTerm\((?<version>\d+)\)$/,
     requireXtversion: true,
   },
   ghostty: {
     terminal: "ghostty",
     da1Pattern: /\?62;/,
-    xtversionPattern: /^ghostty\b/i,
+    // Every admitted ghostty app run answers "ghostty 1.3.1" (2 of 2 in content/probes-apps,
+    // 2026-10-07), so the prefix rule now captures the version it was only tolerating.
+    xtversionPattern: /^ghostty v?(?<version>\d+(?:\.\d+){1,3}(?:[-+][a-zA-Z0-9.-]+)?)$/i,
+    requireXtversion: true,
+  },
+  // Measured 2026-10-07 in the admitted Linux run wezterm-0-unstable-2026-09-17-linux-a98b86e8:
+  // DA1 "?65;4;6;18;22;52c" (DEC-private 65; no other admitted terminal claims it) and XTVERSION
+  // "WezTerm 0-unstable-2026-09-17". WezTerm also ships date-tagged builds ("WezTerm 20240203"),
+  // so the version capture accepts both a dotted release and a '-'/'+'-tagged build id. DA1 stays
+  // loose per the kitty/ghostty precedent: the XTVERSION, which only WezTerm answers, carries the
+  // identity; a run that answers WezTerm's DA1 without a WezTerm XTVERSION is refused.
+  wezterm: {
+    terminal: "wezterm",
+    da1Pattern: /\?65;/,
+    xtversionPattern: /^WezTerm\s+v?(?<version>\d+(?:\.\d+){0,3}(?:[-+][a-zA-Z0-9.-]+)?)$/i,
     requireXtversion: true,
   },
   iterm2: {
@@ -94,13 +116,25 @@ export function deriveIdentity(responses: Record<string, string> | undefined): {
   }
 }
 
-/** Use only a complete measured Kitty reply; a detected version must agree with it. */
+/**
+ * A rule opts into measured-version resolution by naming its version capture `version` in
+ * xtversionPattern. A rule without that group keeps the detected version, so an id we have not
+ * measured resolves exactly as it did before (27874 launcher-target-family, @cto 1101133).
+ */
+function measuredVersionPattern(rule: TerminalIdentityRule | undefined): RegExp | undefined {
+  return rule?.xtversionPattern?.source.includes("(?<version>") ? rule.xtversionPattern : undefined
+}
+
+/** Use only a complete measured reply; a detected version must agree with it. */
 export function resolveMeasuredAppVersion(
   terminal: string,
   detectedVersion: string,
   responses: Record<string, string>,
 ): string {
-  if (terminal !== "kitty") return detectedVersion || "unknown"
+  const normTerminal = terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
+  const rule = TERMINAL_IDENTITY_RULES[normTerminal] || TERMINAL_IDENTITY_RULES[terminal.toLowerCase()]
+  const payloadPattern = measuredVersionPattern(rule)
+  if (!payloadPattern) return detectedVersion || "unknown"
   const identity = deriveIdentity(responses)
   if (identity.source === "collector" && !identity.xtversionPayload) {
     throw new Error("identity: XTVERSION preflight silent")
@@ -109,10 +143,10 @@ export function resolveMeasuredAppVersion(
   if (identity.source === "feature" && !identity.xtversionRaw?.startsWith("\x1bP")) return detectedVersion || "unknown"
   const payload = identity.xtversionPayload
   if (!payload) return detectedVersion || "unknown"
-  const version = /^kitty\((\d+(?:\.\d+){1,3}(?:[-+][a-zA-Z0-9.-]+)?)\)$/i.exec(payload)?.[1]
-  if (!version) throw new Error(`Kitty identity mismatch: measured XTVERSION ${payload}`)
+  const version = payloadPattern.exec(payload)?.groups?.version
+  if (!version) throw new Error(`${terminal} identity mismatch: measured XTVERSION ${payload}`)
   if (detectedVersion && detectedVersion !== version) {
-    throw new Error(`Kitty version mismatch: detected ${detectedVersion}, measured ${version}`)
+    throw new Error(`${terminal} version mismatch: detected ${detectedVersion}, measured ${version}`)
   }
   return version
 }
@@ -129,8 +163,7 @@ export function verifyTerminalIdentity(
   const rule = TERMINAL_IDENTITY_RULES[normTerminal] || TERMINAL_IDENTITY_RULES[terminal.toLowerCase()]
 
   if (!rule) {
-    // No specific rule registered for this terminal
-    return { ok: true, checked: false }
+    return { ok: false, checked: false, reason: `no identity profile for "${terminal}"` }
   }
 
   let identity: ReturnType<typeof deriveIdentity>

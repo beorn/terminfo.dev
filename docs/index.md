@@ -19,6 +19,7 @@ hero:
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
+import { coverageSentence } from './data/release-scope.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -150,30 +151,33 @@ function barSegmentTooltip(backendName, segment) {
 }
 
 function failBarWidth(backendName) {
-  const s = data.stats[backendName]
-  if (!s?.total) return '0%'
-  const fail = s.total - s.yes - (s.partial ?? 0)
-  return (fail / s.total * 100) + '%'
+  const bar = data.releaseBars[backendName]
+  if (!bar?.denominator) return '0%'
+  return (bar.unsupported / bar.denominator * 100) + '%'
 }
 
 function barWidth(backendName, segment) {
-  const s = data.stats[backendName]
-  return s?.total ? (s[segment] / s.total * 100) + '%' : '0%'
+  const bar = data.releaseBars[backendName]
+  if (!bar?.denominator) return '0%'
+  if (segment === 'yes') return (bar.supported / bar.denominator * 100) + '%'
+  if (segment === 'partial') return (bar.inconclusive / bar.denominator * 100) + '%'
+  return '0%'
 }
 
 function scoreLabel(backendName) {
-  const pct = data.stats[backendName]?.pct
-  return pct == null ? 'No conclusive score' : `${pct}% of conclusive`
+  const bar = data.releaseBars[backendName]
+  if (!bar) return 'No conclusive score'
+  // The D3 verdict (pass / with gaps / fail) over the included 52 leads, with its fraction; the
+  // measured-62 SUPPORTED share follows as the secondary, differently-denominated readout.
+  const verdict = data.releaseVerdicts[backendName]
+  const share = data.releaseShares[backendName]
+  return verdict ? `${verdict.text} · ${share}` : share
 }
 
 function coverageLabel(backendName) {
-  const selected = data.selectedByBackend[backendName]?.selected
-  if (!selected) return 'No selected run'
-  const cells = Object.values(selected.cells)
-  const inconclusive = cells.filter(cell => cell.outcome === 'inconclusive').length
-  const errors = cells.filter(cell => cell.outcome === 'error').length
-  const counts = selected.counts
-  return `${counts.supported} supported · ${counts.unsupported} unsupported · ${inconclusive} inconclusive · ${errors} errors · ${counts.notTested} untested`
+  const bar = data.releaseBars[backendName]
+  if (!bar) return 'No selected run'
+  return coverageSentence(bar)
 }
 
 // Slug helpers for SEO page links — use slug from features.json if available
@@ -188,6 +192,14 @@ function termSlug(name) {
 // Backend metadata comes from @termless/core via probes data loader
 function backendLabel(name) {
   return data.meta[name]?.label ?? name
+}
+
+// Every score below belongs to one measured run, and one terminal key can hold several:
+// ghostty is measured on macOS and on Linux. Print the run's OS beside the label so two
+// legitimate runs cannot read as one contradictory number (28047).
+function backendContextLabel(name) {
+  const os = data.selectedByBackend[name]?.selected.target.os
+  return `${backendLabel(name)} · ${os ? (data.platformLabels?.[os] ?? os) : 'OS not recorded'}`
 }
 
 function featureTooltip(f) {
@@ -216,6 +228,13 @@ function backendTooltip(name, version) {
 
 <div class="problem-summary">
   <p>Does your terminal support truecolor, modern keyboard protocols, or image rendering? Real data from automated tests (<a href="https://termless.dev">Termless</a>) and <a href="/contribute">user contributions</a>.</p>
+  <p class="tier-line">{{ data.releaseScope.line }}</p>
+  <details class="unmeasured">
+    <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
+    <ul>
+      <li v-for="feature in data.releaseScope.unmeasured" :key="feature.id">{{ feature.name }} · {{ feature.status }}</li>
+    </ul>
+  </details>
 </div>
 
 <div v-if="data.backends.length === 0" class="no-data">
@@ -240,7 +259,7 @@ function backendTooltip(name, version) {
 
 <div v-if="appBackends.length > 0" class="summary">
   <div v-for="b in appBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendContextLabel(b.name) }}</a>
     <span class="summary-platforms" v-html="platformIcons(b.name)"></span>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
@@ -268,7 +287,7 @@ function backendTooltip(name, version) {
     <div class="baseline-desc">{{ bl === 'core' ? 'Every terminal should support these — SGR basics, cursor, erase, alt screen' : bl === 'modern' ? 'Expected by modern TUIs — truecolor, bracketed paste, focus events, mouse' : bl === 'rich' ? 'Advanced features — kitty keyboard, graphics, hyperlinks, semantic prompts' : 'Unicode correctness — wide chars, combining, emoji, grapheme clusters' }}</div>
     <div class="baseline-backends">
       <div v-for="b in appBackends" :key="b.name" class="baseline-backend">
-        <span class="baseline-backend-name">{{ backendLabel(b.name) }}</span>
+        <span class="baseline-backend-name">{{ backendContextLabel(b.name) }}</span>
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
@@ -348,7 +367,7 @@ function backendTooltip(name, version) {
 
 <div class="summary summary-muted">
   <div v-for="b in headlessBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendContextLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
@@ -371,7 +390,7 @@ function backendTooltip(name, version) {
     </div>
     <div class="baseline-backends">
       <div v-for="b in headlessBackends" :key="b.name" class="baseline-backend">
-        <span class="baseline-backend-name">{{ backendLabel(b.name) }}</span>
+        <span class="baseline-backend-name">{{ backendContextLabel(b.name) }}</span>
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
@@ -420,7 +439,7 @@ function backendTooltip(name, version) {
 
 <div class="summary summary-muted">
   <div v-for="b in muxBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendContextLabel(b.name) }}</a>
     <span class="summary-version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
@@ -659,6 +678,7 @@ strips, or mishandles.
 .summary-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 8px 0;
 }
@@ -706,8 +726,9 @@ strips, or mishandles.
   transition: width 0.3s ease;
 }
 
-.summary-pct {
-  width: 16ch;
+.VPHome .summary-pct {
+  width: auto;
+  min-width: 16ch;
   white-space: nowrap;
   font-weight: 600;
   font-size: 0.9em;
@@ -715,8 +736,9 @@ strips, or mishandles.
   flex-shrink: 0;
 }
 
-.summary-counts {
-  width: 19em;
+.VPHome .summary-counts {
+  width: auto;
+  white-space: nowrap;
   font-size: 0.8em;
   color: var(--vp-c-text-3);
   text-align: right;
@@ -727,7 +749,7 @@ strips, or mishandles.
   .summary-row { flex-wrap: wrap; }
   .VPHome .summary-bar { order: 1; flex-basis: 100%; }
   .VPHome .summary-pct { order: 2; width: auto; text-align: left; }
-  .VPHome .summary-counts { order: 3; width: 100%; text-align: left; }
+  .VPHome .summary-counts { order: 3; width: 100%; white-space: normal; text-align: left; }
 }
 
 /* Filters */
@@ -1062,5 +1084,22 @@ strips, or mishandles.
 
 .problem-summary p {
   margin: 0;
+}
+
+.problem-summary .tier-line {
+  margin-top: 0.75em;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+}
+
+.problem-summary .unmeasured {
+  margin-top: 0.5em;
+}
+
+.problem-summary .unmeasured ul {
+  margin: 0.5em 0 0;
+  padding-left: 1.2em;
+  max-height: 16em;
+  overflow: auto;
 }
 </style>

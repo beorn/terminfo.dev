@@ -13,6 +13,7 @@ import {
   type ProbeTarget,
   type RunOrigin,
   type AppLaunchReceipt,
+  type DerivedSourceTreeArtifact,
   type HeadlessRuntimeIdentity,
   type RunProvenance,
   type UngradedDiagnostic,
@@ -469,19 +470,42 @@ export function validateObservationOutcome(value: Record<string, unknown>, path:
 
 export function parseSuiteManifest(path: string, source: string): ProbeSuiteManifest {
   const value = parseJsonStrict(path, source)
-  if (
-    !object(value) ||
-    Object.keys(value).sort().join(",") !== "adapterVersion,generatedAt,probeHash,probes,sourceRevision"
-  ) {
-    fail(path, "invalid suite manifest shape")
+  if (!object(value)) fail(path, "invalid suite manifest shape")
+  // A manifest is legacy-complete (sourceRevision AND generatedAt) or new-minimal (neither): the
+  // derived record is a pure function of the suite sources (27832 manifest direction (2)), and the
+  // legacy provenance is optional. A half-present pair can only come from a hand edit or
+  // corruption, so it refuses by name. Unknown fields are refused rather than silently accepted.
+  const derivedKeys = ["adapterVersion", "probeHash", "probes"]
+  const legacyKeys = ["generatedAt", "sourceRevision"]
+  const known = new Set([...derivedKeys, ...legacyKeys])
+  const unknown = Object.keys(value)
+    .filter((key) => !known.has(key))
+    .sort()
+  if (unknown.length > 0) fail(path, `unknown suite manifest field ${unknown[0]}`)
+  for (const key of derivedKeys) {
+    if (!(key in value)) fail(path, `missing suite manifest field ${key}`)
+  }
+  const legacyPresent = legacyKeys.map((key) => key in value)
+  if (legacyPresent[0] !== legacyPresent[1]) {
+    fail(path, "partial suite manifest provenance: sourceRevision and generatedAt are both-or-neither")
   }
   const probeHash = asString(value.probeHash, path, "suite probeHash")
   const adapterVersion = asString(value.adapterVersion, path, "suite adapterVersion")
-  if (typeof value.sourceRevision !== "string" || !/^[0-9a-f]{40}$/.test(value.sourceRevision)) {
-    fail(path, "invalid suite sourceRevision")
-  }
-  if (!date(value.generatedAt) || new Date(value.generatedAt).toISOString() !== value.generatedAt) {
-    fail(path, "invalid suite generatedAt")
+  let sourceRevision: string | undefined
+  let generatedAt: string | undefined
+  if (legacyPresent[1]) {
+    if (typeof value.sourceRevision !== "string" || !/^[0-9a-f]{40}$/.test(value.sourceRevision)) {
+      fail(path, "invalid suite sourceRevision")
+    }
+    if (
+      typeof value.generatedAt !== "string" ||
+      !date(value.generatedAt) ||
+      new Date(value.generatedAt).toISOString() !== value.generatedAt
+    ) {
+      fail(path, "invalid suite generatedAt")
+    }
+    sourceRevision = value.sourceRevision
+    generatedAt = value.generatedAt
   }
   if (!object(value.probes) || Object.keys(value.probes).sort().join(",") !== "app,headless,mux") {
     fail(path, "invalid suite probe kinds")
@@ -494,7 +518,43 @@ export function parseSuiteManifest(path: string, source: string): ProbeSuiteMani
     }
     probes[kind] = ids
   }
-  return { probeHash, sourceRevision: value.sourceRevision, generatedAt: value.generatedAt, adapterVersion, probes }
+  return {
+    probeHash,
+    adapterVersion,
+    probes,
+    ...(sourceRevision === undefined ? {} : { sourceRevision }),
+    ...(generatedAt === undefined ? {} : { generatedAt }),
+  }
+}
+
+/**
+ * A DERIVED source artifact is honest only when the receipt names the proof: the upstream source at
+ * `url`@`revision`, the tree hash nixpkgs pins for it (`narSri`, the trust root tying the tar to
+ * upstream) and the derived tar's flat `sha256`, the one re-measured in the image (@cto 2026-10-06,
+ * 27892). The key set is EXACT, so a missing revision and an unknown kind are both refused by name.
+ */
+function parseDerivedSourceTree(
+  value: Record<string, unknown>,
+  path: string,
+  field: string,
+): DerivedSourceTreeArtifact {
+  if (Object.keys(value).sort().join(",") !== "kind,narSri,revision,sha256,url") {
+    fail(path, `invalid ${field} fields`)
+  }
+  const url = asString(value.url, path, `${field}.url`)
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(url)
+  } catch {
+    fail(path, `invalid ${field}.url`)
+  }
+  if (parsedUrl.protocol !== "https:") fail(path, `${field}.url must use HTTPS`)
+  const revision = asString(value.revision, path, `${field}.revision`)
+  const narSri = asString(value.narSri, path, `${field}.narSri`)
+  if (!narSri.startsWith("sha256-")) fail(path, `invalid ${field}.narSri`)
+  const sha256 = asString(value.sha256, path, `${field}.sha256`)
+  if (!/^[a-f0-9]{64}$/.test(sha256)) fail(path, `invalid ${field}.sha256`)
+  return { kind: "derived-source-tree", url, revision, narSri, sha256 }
 }
 
 function parseAppLaunchReceipt(
@@ -556,6 +616,8 @@ function parseAppLaunchReceipt(
       sealed: true,
       codeSignature: { identifier, cdHash, strictVerified: true },
     }
+  } else if (value.sourceArtifact.kind === "derived-source-tree") {
+    sourceArtifact = parseDerivedSourceTree(value.sourceArtifact, path, "appLaunch.sourceArtifact")
   } else if (value.sourceArtifact.kind === undefined) {
     const sourcePath = asString(value.sourceArtifact.path, path, "appLaunch.sourceArtifact.path")
     if (!sourcePath.startsWith("/") || !/^[a-f0-9]{64}$/.test(String(value.sourceArtifact.sha256))) {
@@ -573,6 +635,17 @@ function parseAppLaunchReceipt(
     executableSha256: value.executableSha256 as string,
     sourceArtifact,
   }
+}
+
+/**
+ * The ONE measured-version extractor. An apparatus- or terminal-reported version string must carry
+ * exactly one version token equal to the run's declared target version; a second bare number (a
+ * build id) must never let a disagreement pass falsely. Shared by native-run sealing
+ * (`parseRunProvenance`) and Linux identity admission (`docs/data/selected-results.ts`) so the two
+ * cannot drift into different answers (@cto 2026-10-07, 27916 AC2).
+ */
+export function measuredVersionTokens(version: string): string[] {
+  return version.match(/(?<![A-Za-z0-9.])\d+(?:\.\d+){0,3}(?:[-+][A-Za-z0-9.-]+)?(?![A-Za-z0-9.])/g) ?? []
 }
 
 /** The collector and loader share this validation before a native run is sealed or selected. */
@@ -601,18 +674,31 @@ export function parseRunProvenance(
   const executablePath = asString(value.executable.path, path, "provenance.executable.path")
   if (!executablePath.startsWith("/")) fail(path, "provenance.executable.path must be absolute")
   const version = asString(value.executable.version, path, "provenance.executable.version")
-  const versionTokens = version.match(/(?<![A-Za-z0-9.])\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9.-]+)?(?![A-Za-z0-9.])/g)
-  if (versionTokens?.length !== 1 || versionTokens[0] !== target.version) {
+  const versionTokens = measuredVersionTokens(version)
+  if (versionTokens.length !== 1 || versionTokens[0] !== target.version) {
     fail(path, `provenance.executable.version differs from target.version ${target.version}`)
   }
-  const sourceUrl = asString(value.sourceArtifact.url, path, "provenance.sourceArtifact.url")
-  let parsedUrl: URL
-  try {
-    parsedUrl = new URL(sourceUrl)
-  } catch {
-    fail(path, "invalid provenance.sourceArtifact.url")
+  // An absent kind keeps today's meaning: flat bytes at `url` (xterm, kitty). A derived tree names
+  // its own proof, so the discriminator here mirrors the app-launch one (@cto 2026-10-06, 27892).
+  let parsedSourceArtifact: RunProvenance["sourceArtifact"]
+  if (value.sourceArtifact.kind === undefined) {
+    const sourceUrl = asString(value.sourceArtifact.url, path, "provenance.sourceArtifact.url")
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(sourceUrl)
+    } catch {
+      fail(path, "invalid provenance.sourceArtifact.url")
+    }
+    if (parsedUrl.protocol !== "https:") fail(path, "provenance.sourceArtifact.url must use HTTPS")
+    parsedSourceArtifact = {
+      url: sourceUrl,
+      sha256: digest(value.sourceArtifact.sha256, "provenance.sourceArtifact.sha256"),
+    }
+  } else if (value.sourceArtifact.kind === "derived-source-tree") {
+    parsedSourceArtifact = parseDerivedSourceTree(value.sourceArtifact, path, "provenance.sourceArtifact")
+  } else {
+    fail(path, "unknown provenance.sourceArtifact kind")
   }
-  if (parsedUrl.protocol !== "https:") fail(path, "provenance.sourceArtifact.url must use HTTPS")
   const imageId = asString(value.runtime.imageId, path, "provenance.runtime.imageId")
   if (!/^sha256:[a-f0-9]{64}$/.test(imageId)) fail(path, "invalid provenance.runtime.imageId")
   const nixLockRevision = asString(value.runtime.nixLockRevision, path, "provenance.runtime.nixLockRevision")
@@ -630,7 +716,7 @@ export function parseRunProvenance(
       sha256: digest(value.executable.sha256, "provenance.executable.sha256"),
       version,
     },
-    sourceArtifact: { url: sourceUrl, sha256: digest(value.sourceArtifact.sha256, "provenance.sourceArtifact.sha256") },
+    sourceArtifact: parsedSourceArtifact,
     runtime: {
       imageId,
       imageTarSha256: digest(value.runtime.imageTarSha256, "provenance.runtime.imageTarSha256"),

@@ -34,7 +34,7 @@ jobs:
         with:
           bun-version: latest
 
-      - run: bun install
+      - uses: ./.github/actions/source-siblings
 
       - name: Run validation
         id: validate

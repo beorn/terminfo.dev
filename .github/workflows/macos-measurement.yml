@@ -1,0 +1,189 @@
+name: macos-measurement
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure-macos:
+    name: macOS ${{ matrix.id }}
+    runs-on: macos-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: terminal-app
+            bundle: /System/Applications/Utilities/Terminal.app
+          - id: iterm2
+            bundle: /Applications/iTerm.app
+          - id: ghostty
+            bundle: /Applications/Ghostty.app
+          - id: alacritty
+            bundle: /Applications/Alacritty.app
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Bootstrap the pinned producer and sample at job start
+        run: |
+          set -euo pipefail
+          APPARATUS="$RUNNER_TEMP/hosted-apparatus"
+          OUT="$RUNNER_TEMP/measurement-artifacts"
+          mkdir -p "$APPARATUS/scripts" "$APPARATUS/packages/terminfo.dev/src" "$OUT"
+          for source in scripts/hosted-runner-receipt.ts packages/terminfo.dev/src/disposable-receipt.ts; do
+            curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github.raw+json' \
+              --output "$APPARATUS/$source" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/contents/$source?ref=$GITHUB_SHA"
+          done
+          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" start "$OUT/job-start.json"
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Build and install the current collector
+        run: |
+          set -euo pipefail
+          bun install
+          bun scripts/build-cli.ts
+          npm install -g ./packages/terminfo.dev
+          terminfo --version
+
+      - name: Install this job's terminal
+        env:
+          APP_ID: ${{ matrix.id }}
+          APP_BUNDLE: ${{ matrix.bundle }}
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          set -euo pipefail
+          case "$APP_ID" in
+            terminal-app) ;;
+            iterm2) brew install --cask iterm2 ;;
+            ghostty) brew install --cask ghostty ;;
+            alacritty)
+              curl --location --fail --silent --show-error \
+                https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg \
+                --output "$RUNNER_TEMP/Alacritty.dmg"
+              hdiutil attach "$RUNNER_TEMP/Alacritty.dmg" -mountpoint /Volumes/Alacritty
+              cp -R /Volumes/Alacritty/Alacritty.app /Applications/
+              hdiutil detach /Volumes/Alacritty
+              ;;
+            *) echo "Unknown Mac measurement app: $APP_ID" >&2; exit 1 ;;
+          esac
+          test -d "$APP_BUNDLE" || { echo "Required terminal bundle missing: $APP_BUNDLE" >&2; exit 1; }
+          if [ "$APP_ID" != terminal-app ]; then sudo xattr -cr "$APP_BUNDLE"; fi
+
+      - name: Launch, emit the receipt, and collect as the last mutating step
+        id: collect
+        env:
+          APP_ID: ${{ matrix.id }}
+          APP_BUNDLE: ${{ matrix.bundle }}
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/measurement-artifacts"
+          APPARATUS="$RUNNER_TEMP/hosted-apparatus"
+          COMMAND_PATH="$RUNNER_TEMP/collect.command"
+          NODE_DIR="$(dirname "$(command -v node)")"
+          COLLECTOR="$(command -v terminfo)"
+          TARGET_VERSION_EXPORT=""
+          if [ "$APP_ID" = alacritty ]; then
+            bundle_status=0
+            bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")" || bundle_status=$?
+            printf 'Alacritty bundle version (raw): %s\n' "$bundle_version"
+            test "$bundle_status" = 0 || { echo "Alacritty bundle version read failed ($bundle_status)" >&2; exit 1; }
+            test -n "$bundle_version" || { echo "Alacritty bundle version is empty" >&2; exit 1; }
+            binary_status=0
+            binary_version="$("$APP_BUNDLE/Contents/MacOS/alacritty" --version)" || binary_status=$?
+            printf 'Alacritty binary --version (raw): %s\n' "$binary_version"
+            test "$binary_status" = 0 || { echo "Alacritty binary --version failed ($binary_status)" >&2; exit 1; }
+            version_pattern='^alacritty[[:blank:]]+([^[:space:]]+)([[:blank:]]+\([^[:space:]]+\))?$'
+            [[ "$binary_version" =~ $version_pattern ]] || { echo "Alacritty binary --version has an unexpected shape" >&2; exit 1; }
+            test "${BASH_REMATCH[1]}" = "$bundle_version" || { echo "Alacritty bundle and binary versions disagree" >&2; exit 1; }
+            TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
+          fi
+          cat > "$COMMAND_PATH" <<SCRIPT
+          #!/bin/bash
+          $TARGET_VERSION_EXPORT
+          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
+          export TERMINFO_DISPOSABLE_RECEIPT="$OUT/host-measured.json"
+          attempts=0
+          while [ ! -f "$OUT/collector-ready" ]; do
+            attempts=\$((attempts + 1))
+            if [ "\$attempts" -ge 180 ]; then echo "Receipt self-parse never succeeded; collection refused" >&2; exit 1; fi
+            sleep 1
+          done
+          "$COLLECTOR" test --output "$OUT/run.json" > "$OUT/collector.log" 2>&1
+          status=\$?
+          printf '%s\n' "\$status" > "$OUT/collector-exit"
+          SCRIPT
+          chmod +x "$COMMAND_PATH"
+          case "$APP_ID" in
+            terminal-app) open -a "$APP_BUNDLE" "$COMMAND_PATH" ;;
+            iterm2)
+              test -d "$APP_BUNDLE" || { echo "Required iTerm2 bundle missing: $APP_BUNDLE" >&2; exit 1; }
+              bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_BUNDLE/Contents/Info.plist")"
+              printf 'iTerm2 bundle: %s; identifier: %s\n' "$APP_BUNDLE" "$bundle_id"
+              test "$bundle_id" = com.googlecode.iterm2 || { echo "Unexpected iTerm2 bundle identifier: $bundle_id" >&2; exit 1; }
+              open "$APP_BUNDLE"
+              for attempt in {1..30}; do
+                if pgrep -x iTerm2 > /dev/null; then break; fi
+                if [ "$attempt" -eq 30 ]; then echo "iTerm2 did not launch within 30 seconds (com.googlecode.iterm2)" >&2; exit 1; fi
+                sleep 1
+              done
+              osascript -e 'POSIX path of (path to application id "com.googlecode.iterm2")'
+              osascript -e 'tell application id "com.googlecode.iterm2" to get version' || { echo "iTerm2 scripting dictionary/version lookup failed" >&2; exit 1; }
+              osascript - "$COMMAND_PATH" <<'APPLESCRIPT'
+          on run argv
+            tell application id "com.googlecode.iterm2"
+              create window with default profile command ("/bin/bash " & quoted form of item 1 of argv)
+            end tell
+          end run
+          APPLESCRIPT
+              ;;
+            ghostty)
+              mkdir -p "$HOME/.config/ghostty"
+              printf 'command = /bin/bash %s\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
+              "$APP_BUNDLE/Contents/MacOS/ghostty" > "$OUT/launcher.log" 2>&1 &
+              ;;
+            alacritty)
+              "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &
+              ;;
+            *) echo "Unknown Mac collection app: $APP_ID" >&2; exit 1 ;;
+          esac
+          sleep 3
+          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
+          # The receipt exists before strict parsing. Release collection ONLY after producer success.
+          touch "$OUT/collector-ready"
+          for attempt in {1..300}; do
+            if [ -f "$OUT/collector-exit" ]; then
+              status="$(cat "$OUT/collector-exit")"
+              test "$status" = 0 || { echo "$APP_ID collector failed ($status); see collector.log artifact" >&2; exit 1; }
+              test -s "$OUT/run.json" || { echo "$APP_ID collector returned no run.json" >&2; exit 1; }
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "$APP_ID collector did not finish within 300 seconds; see launcher/collector artifacts" >&2
+          exit 1
+
+      - name: Upload the receipt beside the exact collected run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/measurement-artifacts
+          if-no-files-found: error

@@ -13,6 +13,20 @@ import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
+import { loadReleaseScope } from "./load-release-scope.ts"
+import {
+  barOverMeasured,
+  coverageSentence,
+  d3Verdict,
+  includedTierOneIds,
+  isStaleSuite,
+  staleCaption,
+  supportedShare,
+  tierLine,
+  type D3Verdict,
+  type MeasuredBar,
+  type ReleaseScope,
+} from "./release-scope.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -77,9 +91,19 @@ export interface ProbeData {
   baselineStats: Record<string, Record<string, BaselineStats>>
   /** category slug -> display label */
   categoryLabels: Record<string, string>
+  /** platform id -> display label, so a printed score can name the OS it came from (macos -> macOS) */
+  platformLabels: Record<string, string>
   generated: string
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
+  releaseScope: ReleaseScope & { line: string }
+  releaseBars: Record<string, MeasuredBar>
+  /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
+  releaseShares: Record<string, string>
+  /** Backend name -> the D3 release verdict over the INCLUDED 52 (@chief 2026-10-07). */
+  releaseVerdicts: Record<string, D3Verdict>
+  /** Default-run stale caption when suiteFreshness is not current; null when current. */
+  releaseStale: Record<string, string | null>
 }
 
 interface FeatureMeta {
@@ -169,6 +193,20 @@ function loadCategoryLabels(): Record<string, string> {
   }
   return Object.fromEntries(
     Object.entries(raw as Record<string, { label: string }>).map(([id, value]) => [id, value.label]),
+  )
+}
+
+/** platform id -> display label; the site prints it beside a score so the OS is never implied. */
+function loadPlatformLabels(): Record<string, string> {
+  const path = join(contentDir, "platforms.json")
+  const raw = parseJsonStrict(path, readFileSync(path, "utf-8"))
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`${path}: expected platform catalog object`)
+  }
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, { label?: string }>)
+      .filter(([, value]) => value && typeof value.label === "string")
+      .map(([id, value]) => [id, value.label as string]),
   )
 }
 
@@ -266,6 +304,32 @@ export function loadFullProbes(): ProbeData {
       .map((v) => v.measuredAt)
       .sort()
       .at(-1) ?? ""
+  const release = loadReleaseScope({
+    catalog: featureDescriptions,
+    declarationPath: join(contentDir, "release-scope.json"),
+  })
+  const releaseScope = {
+    ...release,
+    line: tierLine(release, generated ? { measuredAt: generated } : undefined),
+  }
+  const releaseBars: Record<string, MeasuredBar> = {}
+  const releaseShares: Record<string, string> = {}
+  const releaseVerdicts: Record<string, D3Verdict> = {}
+  const releaseStale: Record<string, string | null> = {}
+  // The verdict is over the INCLUDED 52, not the declared 62: the ten F2 movers are excluded by
+  // contract and never counted (docs/data/release-scope.ts owns the list and the D3 rule).
+  const includedIds = includedTierOneIds(release.measuredIds)
+  for (const [key, { selected }] of byTarget) {
+    const bar = barOverMeasured(selected.cells, release.measuredIds)
+    if (bar.denominator && coverageSentence(bar) === "No selected run") {
+      throw new Error(`release bar ${key} has a denominator but no coverage sentence`)
+    }
+    releaseBars[key] = bar
+    releaseShares[key] = supportedShare(bar)
+    const includedBar = barOverMeasured(selected.cells, includedIds)
+    if (includedBar.denominator > 0) releaseVerdicts[key] = d3Verdict(includedBar.conclusive, includedBar.denominator)
+    releaseStale[key] = isStaleSuite(selected.suiteFreshness) ? staleCaption(selected.measuredAt) : null
+  }
   const result: ProbeData = {
     backends,
     features,
@@ -279,9 +343,15 @@ export function loadFullProbes(): ProbeData {
     baselines: {},
     baselineStats: {},
     categoryLabels: loadCategoryLabels(),
+    platformLabels: loadPlatformLabels(),
     generated,
     selected: published.projection,
     selectedByBackend,
+    releaseScope,
+    releaseBars,
+    releaseShares,
+    releaseVerdicts,
+    releaseStale,
   }
   computeBaselines(result)
   return result

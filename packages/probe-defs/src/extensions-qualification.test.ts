@@ -68,6 +68,8 @@ const directReplies = [
   ["extensions.osc4-palette", "\x1b]4;0;rgb:ffff/0000/0000\x07"],
   ["extensions.osc5-special-color", "\x1b]5;0;rgb:ffff/0000/0000\x07"],
   ["extensions.osc1337-cellsize", "\x1b]1337;ReportCellSize=12;8\x07"],
+  // 27915: iTerm2's newer height;width;scale form, as WezTerm 0-unstable-2026-09-17 sends it.
+  ["extensions.osc1337-cellsize", "\x1b]1337;ReportCellSize=16.5;7.5;1.3\x1b\\"],
   ["extensions.osc1337-capabilities", "\x1b]1337;Capabilities=alpha\x07"],
   ["extensions.osc7770-font-size", "\x1b]7770;14\x07"],
   ["extensions.osc7777-font-window-size", "\x1b]7777;14\x07"],
@@ -160,39 +162,107 @@ test.each([
   const notRestored = run([original, changed, color("12/34/56")])
   expect(notRestored.result.observation, id).toMatchObject({ outcome: "unsupported", evidence: "behavior" })
   expect(notRestored.result.assertions, id).toMatchObject([{ kind: "negative" }])
+  // 27932 / Terminal.app 1225b26b: query replies, SET is ignored, original rgb comes back.
+  const setIgnored = run([original, original, original])
+  expect(setIgnored.result.observation, id).toMatchObject({
+    outcome: "unsupported",
+    evidence: "behavior",
+    note: "OSC set did not change the queried color",
+  })
+  expect(setIgnored.result.assertions, id).toMatchObject([{ kind: "negative" }])
   const noControl = run([original, "", original])
   expect(noControl.result.observation?.outcome, id).toBe("inconclusive")
   expect(noControl.result.assertions, id).toBeUndefined()
 })
 
-test.each([
-  "extensions.osc104-reset-palette",
-  "extensions.osc110-reset-fg",
-  "extensions.osc111-reset-bg",
-  "extensions.osc112-reset-cursor",
-  "extensions.osc710-font-normal",
-  "extensions.osc2-title",
-  "extensions.osc9-progress",
-] as const)("app %s leaves state untouched when no effect readback exists", async (id) => {
-  const definition = extensionsProbes.find((item) => item.id === id)
-  if (!definition?.term) throw new Error(`missing app extension callback ${id}`)
-  const writes: string[] = []
-  const result = await definition.term({
-    write: (bytes: string) => {
-      writes.push(bytes)
-    },
-    queryCursorPosition: async () => {
-      throw new Error("unmeasured CPR must not run")
-    },
-  } as unknown as TermContext)
-  expect(writes, id).toEqual([])
-  expect(result.observation, id).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
-  })
-  expect(result.assertions, id).toBeUndefined()
-})
+test.each(["extensions.osc710-font-normal", "extensions.osc2-title", "extensions.osc9-progress"] as const)(
+  "app %s leaves state untouched when no effect readback exists",
+  async (id) => {
+    const definition = extensionsProbes.find((item) => item.id === id)
+    if (!definition?.term) throw new Error(`missing app extension callback ${id}`)
+    const writes: string[] = []
+    const result = await definition.term({
+      write: (bytes: string) => {
+        writes.push(bytes)
+      },
+      queryCursorPosition: async () => {
+        throw new Error("unmeasured CPR must not run")
+      },
+    } as unknown as TermContext)
+    expect(writes, id).toEqual([])
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+    })
+    expect(result.assertions, id).toBeUndefined()
+  },
+)
+
+// 27832: the reset features mutate and read back. The collector runs this exchange only with a
+// verified disposable-ownership receipt; the callback itself grades the measured four legs.
+const appResetProbes = [
+  ["extensions.osc104-reset-palette", 4, 104, 0],
+  ["extensions.osc110-reset-fg", 10, 110, undefined],
+  ["extensions.osc111-reset-bg", 11, 111, undefined],
+  ["extensions.osc112-reset-cursor", 12, 112, undefined],
+  ["extensions.osc113-reset-pointer-fg", 13, 113, undefined],
+  ["extensions.osc114-reset-pointer-bg", 14, 114, undefined],
+] as const
+
+test.each(appResetProbes)(
+  "app %s reads the colour, sets it, reads the change, resets, and reads the restoration",
+  async (id, setCode, resetCode, index) => {
+    const definition = callback(id)
+    // The collector's gate is the disposable receipt; the declaration is what makes it apply.
+    expect(definition.termNeedsDisposable, id).toBe(true)
+    const indexPart = index === undefined ? "" : `${index};`
+    const rgb = (hex: string) => `\x1b]${setCode};${indexPart}rgb:${hex}\x07`
+    const run = async (replies: string[]) => {
+      const writes: string[] = []
+      const queue = [...replies]
+      const exchange = async (_sequence: string, pattern: RegExp) => {
+        const raw = queue.shift() ?? ""
+        return {
+          match: pattern.exec(raw),
+          reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
+          raw,
+          rawBase64: Buffer.from(raw).toString("base64"),
+        }
+      }
+      const result = await definition.term!({
+        write: (bytes: string) => {
+          writes.push(bytes)
+        },
+        queryWithSentinelOutcome: exchange,
+      } as unknown as TermContext)
+      return { result, writes }
+    }
+    const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
+    const restored = await run([rgb("0000/0000/0000"), rgb("aa/bb/cc"), rgb("0000/0000/0000")])
+    expect(restored.result.observation, id).toMatchObject({ outcome: "supported", evidence: "behavior" })
+    expect(restored.result.assertions, id).toMatchObject([{ kind: "positive" }])
+    expect(restored.writes, id).toEqual([`\x1b]${setCode};${indexPart}rgb:aa/bb/cc\x07`, reset])
+    const notRestored = await run([rgb("0000/0000/0000"), rgb("aa/bb/cc"), rgb("12/34/56")])
+    expect(notRestored.result.observation, id).toMatchObject({ outcome: "unsupported", evidence: "behavior" })
+    expect(notRestored.result.assertions, id).toMatchObject([{ kind: "negative" }])
+    // 27932 specimen: Terminal.app answers OSC 13/14 queries and ignores SET (run 1225b26b).
+    const setIgnored = await run([rgb("0000/0000/0000"), rgb("0000/0000/0000"), rgb("0000/0000/0000")])
+    expect(setIgnored.result.observation, id).toMatchObject({
+      outcome: "unsupported",
+      evidence: "behavior",
+      note: "OSC set did not change the queried color",
+    })
+    expect(setIgnored.result.assertions, id).toMatchObject([{ kind: "negative" }])
+    const noControl = await run([rgb("0000/0000/0000"), ""])
+    expect(noControl.result.observation?.outcome, id).toBe("inconclusive")
+    expect(noControl.result.assertions, id).toBeUndefined()
+    const noReply = await run([])
+    expect(noReply.writes, id).toEqual([])
+    expect(noReply.result.observation, id).toMatchObject({ evidence: "query" })
+    expect(noReply.result.observation?.outcome, id).toBe("inconclusive")
+  },
+)
 
 const appOnlyEffects = [
   "extensions.osc22-pointer",
@@ -234,4 +304,200 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
     evidence: "query",
   })
   expect(silent.assertions, id).toBeUndefined()
+})
+
+test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grades by the reply", async () => {
+  const definition = callback("extensions.osc10-fg-color")
+  const da1 = "\x1b[?1;2c"
+  const frame = "\x1b]10;rgb:ffff/0000/0000\x07"
+  const app = (raw: string, sentinel?: { atMs: number; graceMs: number }) =>
+    definition.term!({
+      queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
+        match: pattern.exec(raw),
+        reason: pattern.test(raw) ? "reply" : "sentinel",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+        ...(sentinel && { sentinel }),
+      }),
+    } as unknown as TermContext)
+
+  const silent = await app(da1, { atMs: 7, graceMs: 250 })
+  expect(silent.observation).toMatchObject({
+    outcome: "unsupported",
+    evidence: "query",
+    note: "negative by sentinel",
+  })
+  expect(silent.assertions).toMatchObject([
+    { kind: "negative", observed: "DA1 answered at +7ms; no reply through the 250 ms window" },
+  ])
+
+  const late = await app(da1 + frame, { atMs: 7, graceMs: 250 })
+  expect(late.observation).toMatchObject({
+    outcome: "supported",
+    evidence: "query",
+    note: "reply after sentinel",
+  })
+  expect(late.assertions).toMatchObject([{ kind: "positive", observed: frame }])
+
+  // Without the measured ordering an engine or simulated capture carries, silence stays unknown; the
+  // ordering note is the only thing the measurement adds to a reply the site already matched.
+  const unmeasured = await app(da1)
+  expect(unmeasured.observation?.outcome).toBe("inconclusive")
+  expect(unmeasured.assertions).toBeUndefined()
+  const unmeasuredLate = await app(da1 + frame)
+  expect(unmeasuredLate.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(unmeasuredLate.observation?.note).toBeUndefined()
+
+  // A partial frame after DA1 is the terminal answering badly, not a silent terminal.
+  const partial = await app(da1 + "\x1b]10;", { atMs: 7, graceMs: 250 })
+  expect(partial.observation?.outcome).toBe("inconclusive")
+  expect(partial.assertions).toBeUndefined()
+})
+
+test("the unanswered-query choke point grades a measured sentinel and never a timeout", async () => {
+  const definition = callback("extensions.osc21-kitty-color")
+  const context = (reply: Record<string, unknown>) =>
+    definition.term!({ queryWithSentinelOutcome: async () => reply } as unknown as TermContext)
+
+  const silent = await context({
+    match: null,
+    reason: "sentinel",
+    raw: "\x1b[?1;2c",
+    rawBase64: Buffer.from("\x1b[?1;2c").toString("base64"),
+    sentinel: { atMs: 5, graceMs: 250 },
+  })
+  expect(silent.observation).toMatchObject({
+    outcome: "unsupported",
+    evidence: "query",
+    note: "negative by sentinel",
+  })
+  expect(silent.assertions).toMatchObject([
+    { kind: "negative", observed: "DA1 answered at +5ms; no reply through the 250 ms window" },
+  ])
+
+  // A timeout never answered DA1 at all, so it cannot be a sentinel negative.
+  const timedOut = await context({ match: null, reason: "timeout", raw: "", rawBase64: "" })
+  expect(timedOut.observation).toMatchObject({ outcome: "inconclusive", reason: "timeout" })
+  expect(timedOut.assertions).toBeUndefined()
+})
+
+// 27914: xterm answers the item-2 read with CSI ? 2 ; 3 S — the documented failure
+// reply, which omits the value (ctlseqs: "XTSMGRAPHICS ... return failure status if
+// the terminal is not configured to support the corresponding ... SIXEL feature").
+// Demanding a third parameter graded that failure as a malformed geometry.
+test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", async () => {
+  const definition = callback("extensions.sixel-geometry-report")
+  const headless = (raw: string) => definition.termless!({ feedCapture: () => raw } as unknown as TermlessContext)
+  const app = (raw: string) =>
+    definition.term!({
+      queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
+        match: pattern.exec(raw),
+        reason: pattern.test(raw) ? "reply" : "sentinel",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      }),
+    } as unknown as TermContext)
+  const failure = "\x1b[?2;3S"
+  for (const result of [headless(failure), await app(failure)]) {
+    expect(result.response).toBe(failure)
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      note: "Sixel geometry query reported protocol status 3 (failure; no graphics geometry is configured)",
+    })
+    expect(result.assertions).toBeUndefined()
+  }
+  const success = "\x1b[?2;0;800;528S"
+  for (const result of [headless(success), await app(success)]) {
+    expect(result.observation).toMatchObject({
+      outcome: "supported",
+      note: "Current Sixel geometry reported as 800×528 pixels",
+    })
+  }
+  const malformed = headless("\x1b[?2;S")
+  expect(malformed.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+})
+
+/**
+ * 27915: kitty graphics control data is an unordered comma-separated key=value list. WezTerm answers an allocation
+ * with `I=<number>,i=<id>` where kitty writes `i=<id>,I=<number>`; both are the same reply.
+ */
+function kittyTransfer(id: string, allocation: (imageNumber: number) => string) {
+  const definition = callback(id)
+  const answer = (sequence: string): string => {
+    const imageNumber = /I=(\d+)/.exec(sequence)?.[1]
+    if (imageNumber !== undefined) return allocation(Number(imageNumber))
+    return /a=p,i=2,/.test(sequence) ? "\x1b_Gi=2;OK\x1b\\" : ""
+  }
+  const headless = () =>
+    definition.termless!({ feed: () => undefined, feedCapture: answer } as unknown as TermlessContext)
+  const app = () =>
+    definition.term!({
+      queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => {
+        const raw = `${answer(sequence)}\x1b[?65;4;6;18;22;52c`
+        return {
+          match: pattern.exec(raw),
+          reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
+          raw,
+          rawBase64: Buffer.from(raw).toString("base64"),
+        }
+      },
+      write: () => undefined,
+    } as unknown as TermContext)
+  return { app, headless }
+}
+
+test.each([
+  ["kitty's order", (imageNumber: number) => `\x1b_Gi=2,I=${imageNumber};OK\x1b\\`],
+  ["WezTerm's order", (imageNumber: number) => `\x1b_GI=${imageNumber},i=2;OK\x1b\\`],
+] as const)(
+  "kitty transmit and display accept the allocation reply in %s, in both collectors",
+  async (_order, reply) => {
+    for (const id of ["extensions.kitty-graphics.transmit", "extensions.kitty-graphics.display"]) {
+      const { app, headless } = kittyTransfer(id, reply)
+      for (const result of [headless(), await app()]) {
+        expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+        expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
+      }
+    }
+  },
+)
+
+test("a placement that is never acknowledged is a decisive negative about the acknowledgement, not display", async () => {
+  // 27915: WezTerm acknowledges the transfer and places silently; DA1 answers and no a=p reply comes in the window.
+  const definition = callback("extensions.kitty-graphics.display")
+  const result = await definition.term!({
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => {
+      const imageNumber = /I=(\d+)/.exec(sequence)?.[1]
+      const raw = `${imageNumber === undefined ? "" : `\x1b_GI=${imageNumber},i=2;OK\x1b\\`}\x1b[?65;4;6;18;22;52c`
+      const match = pattern.exec(raw)
+      return {
+        match,
+        reason: match ? ("reply" as const) : ("sentinel" as const),
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+        ...(match ? {} : { sentinel: { atMs: 3, graceMs: 250 } }),
+      }
+    },
+    write: () => undefined,
+  } as unknown as TermContext)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(result.assertions).toMatchObject([{ kind: "negative", expected: expect.stringContaining("acknowledgement") }])
+  expect(JSON.stringify(result)).not.toMatch(/does not display/u)
+})
+
+test("a kitty allocation reply that echoes another image number does not qualify", async () => {
+  for (const id of ["extensions.kitty-graphics.transmit", "extensions.kitty-graphics.display"]) {
+    const { app, headless } = kittyTransfer(id, (imageNumber) => `\x1b_GI=${imageNumber + 1},i=2;OK\x1b\\`)
+    for (const result of [headless(), await app()]) {
+      expect(result.observation?.outcome, id).not.toBe("supported")
+      expect(result.assertions, id).toBeUndefined()
+    }
+  }
+})
+
+test("the kitty graphics query still qualifies its i=31;OK reply (27915 kept the single-key frame)", () => {
+  const definition = callback("extensions.kitty-graphics")
+  const result = definition.termless!({ feedCapture: () => "\x1b_Gi=31;OK\x1b\\" } as unknown as TermlessContext)
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
 })

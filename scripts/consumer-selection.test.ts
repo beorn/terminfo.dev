@@ -2,7 +2,9 @@
  * @failure Unreviewed runs become current scores, or refresh skips its release assessment and errors.
  * @level l2
  * @consumer Site data and JSON API use the canonical reviewed-run selector.
+ * @reach fs-walk <fixture-only: walks temporary scratch fixtures for run selection>
  * @testonly none
+ * @reach fs-walk vendor/terminfo.dev/content/probes-apps/ vendor/terminfo.dev/content/probes-mux/ vendor/terminfo.dev/content/probes-libs/
  */
 import { describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
@@ -11,6 +13,7 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -229,7 +232,10 @@ describe("consumer selection", () => {
         ...Object.values(expected.history).flat(),
       ]
       for (const version of allExpectedVersions) expectedRuns.set(version.sha256, version)
-      expect(expectedRuns.size).toBe(166)
+      const retainedFiles = ["probes-apps", "probes-mux", "probes-libs"].flatMap((dir) =>
+        readdirSync(join(contentDir, dir)).filter((name) => name.endsWith(".json") && name !== "unified.json"),
+      )
+      expect(expectedRuns.size).toBe(retainedFiles.length)
 
       const assertGroup = (
         actual: Record<string, RunReference> | Record<string, RunReference[]>,
@@ -427,6 +433,20 @@ describe("consumer selection", () => {
       expect(() => compatibilityTargets(projection, content)).toThrow(
         /released key wezterm changed meaning from headless/,
       )
+    } finally {
+      rmSync(content, { recursive: true, force: true })
+    }
+  })
+
+  it("names the declared xterm app run as a compatibility target", () => {
+    const appXterm = { target: { kind: "app", id: "xterm" } }
+    const projection = { current: { "app:xterm": appXterm } } as unknown as SelectedProjection
+    const content = mkdtempSync(join(tmpdir(), "terminfo-xterm-target-"))
+    try {
+      writeCatalog(content)
+      const rows = compatibilityTargets(projection, content)
+      expect(rows.get("xterm")?.contextKey).toBe("app:xterm")
+      expect(rows.get("xterm")?.selected.target.kind).toBe("app")
     } finally {
       rmSync(content, { recursive: true, force: true })
     }

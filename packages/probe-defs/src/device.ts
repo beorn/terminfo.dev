@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TerminalQueryOutcome } from "./types.ts"
-import { parserStateResult, probe } from "./helpers.ts"
+import { REPLY_AFTER_SENTINEL_NOTE, parserStateResult, probe, sentinelNegativeResult } from "./helpers.ts"
 
 /** These patterns match complete answers to the specific query, not arbitrary consumed output. */
 interface DeviceReply {
@@ -9,6 +9,12 @@ interface DeviceReply {
   malformed: RegExp
   expected: string
   refusal?: RegExp
+  /**
+   * A refusal of the single setting or name this probe's contract asks is the measured answer,
+   * not a partial one. Set only where the contract names exactly one subject (27914: XTGETXRES
+   * termName); the default leaves a refusal inconclusive.
+   */
+  refusalDecisive?: boolean
   /** A complete, well-formed answer to this query whose payload is not the expected one. */
   contradicts?: RegExp
   note?: (frame: string) => string | undefined
@@ -20,23 +26,43 @@ function deviceReplyResult(
   raw: string,
   matchedFrame: string | null,
   reason: TerminalQueryOutcome["reason"],
+  sentinel?: { atMs: number; graceMs: number },
 ): ProbeResult {
-  // A frame that appears after a DA1 response is late sentinel output, not this query's answer.
+  // F1 (27832): a frame that lands after the DA1 answer is a late reply, graded by the frame and
+  // recorded as late. Only when `sentinel` carries the measured ordering is that certain, so a
+  // frame arriving after DA1 without the measurement keeps its null.
   const da1At = raw.search(/\x1b\[\?[0-9;]*c/)
-  if (matchedFrame && da1At !== -1 && raw.indexOf(matchedFrame) > da1At) matchedFrame = null
+  if (matchedFrame && da1At !== -1 && raw.indexOf(matchedFrame) > da1At && !sentinel) matchedFrame = null
+  const ordered = { ...(sentinel && { note: REPLY_AFTER_SENTINEL_NOTE }) }
   const valid = matchedFrame ? spec.valid.exec(matchedFrame) : null
   if (valid?.[0]) {
     const note = spec.note?.(valid[0])
+    const composed = [note, ordered.note].filter((part): part is string => part !== undefined).join("; ")
     return {
       pass: true,
       response: raw,
-      ...(note && { note }),
-      observation: { outcome: "supported", evidence: "query", ...(note && { note }) },
+      ...(composed && { note: composed }),
+      observation: { outcome: "supported", evidence: "query", ...(composed && { note: composed }) },
       assertions: [{ kind: "positive", expected: spec.expected, observed: valid[0] }],
     }
   }
   const refusal = matchedFrame ? spec.refusal?.exec(matchedFrame) : null
   if (refusal?.[0]) {
+    if (spec.refusalDecisive) {
+      const decisiveNote = ["Requested name refused; the contract asks exactly one name", ordered.note]
+        .filter((part): part is string => part !== undefined)
+        .join("; ")
+      return {
+        pass: false,
+        response: raw,
+        note: decisiveNote,
+        observation: { outcome: "unsupported", evidence: "query", note: decisiveNote },
+        assertions: [{ kind: "negative", expected: spec.expected, observed: refusal[0] }],
+      }
+    }
+    const refusalNote = ["Requested setting or name refused; other settings or names unmeasured", ordered.note]
+      .filter((part): part is string => part !== undefined)
+      .join("; ")
     return {
       pass: false,
       response: raw,
@@ -44,7 +70,7 @@ function deviceReplyResult(
         outcome: "inconclusive",
         reason: "insufficient-evidence",
         evidence: "query",
-        note: "Requested setting or name refused; other settings or names unmeasured",
+        note: refusalNote,
       },
     }
   }
@@ -55,11 +81,14 @@ function deviceReplyResult(
     return {
       pass: false,
       response: raw,
-      observation: { outcome: "unsupported", evidence: "query" },
+      ...(ordered.note && { note: ordered.note }),
+      observation: { outcome: "unsupported", evidence: "query", ...ordered },
       assertions: [{ kind: "negative", expected: spec.expected, observed: contradiction[0] }],
     }
   }
-  // Raw bytes remain available for diagnostics, but a frame after DA1 cannot establish a result.
+  const silent = sentinelNegativeResult(raw, sentinel, spec.expected)
+  if (silent) return silent
+  // Raw bytes remain available for diagnostics.
   const hasCompleteUnmatchedFrame =
     spec.valid.test(raw) || spec.refusal?.test(raw) === true || spec.contradicts?.test(raw) === true
   const missingReason =
@@ -97,7 +126,95 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
         ? await ctx.queryOutcome(spec.query, responsePattern)
         : await ctx.queryWithSentinelOutcome(spec.query, responsePattern)
       const matchedFrame = outcome.reason === "reply" ? (outcome.match?.[0] ?? null) : null
-      return deviceReplyResult(spec, outcome.raw, matchedFrame, outcome.reason)
+      return deviceReplyResult(spec, outcome.raw, matchedFrame, outcome.reason, outcome.sentinel)
+    },
+    "query",
+  )
+  return { ...definition, termWrites: "query", termlessObservationEvidence: "query" }
+}
+
+const DECRQSS_SGR: DeviceReply = {
+  id: "device.decrqss",
+  query: "\x1bP$qm\x1b\\",
+  valid: /\x1bP1\$r[0-9:;]*m\x1b\\/,
+  refusal: /\x1bP0\$r\x1b\\/,
+  malformed: /\x1bP[01]\$r/,
+  expected: "complete DECRQSS status 1 SGR parameters ending m and ST",
+}
+
+const DECRQSS_DECSTBM: DeviceReply = {
+  id: "device.decrqss",
+  query: "\x1bP$qr\x1b\\",
+  valid: /\x1bP1\$r[0-9]+;[0-9]+r\x1b\\/,
+  refusal: /\x1bP0\$r\x1b\\/,
+  malformed: /\x1bP[01]\$r/,
+  expected: "complete DECRQSS status 1 DECSTBM margins ending r and ST",
+}
+
+function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
+  return Boolean(matchedFrame && spec.refusal?.exec(matchedFrame)?.[0])
+}
+
+/** Status-0 to SGR already shows the terminal speaks DECRQSS, so a silent second setting is not F1. */
+function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeResult {
+  const secondFrame = second.reason === "reply" ? (second.match?.[0] ?? null) : null
+  const graded = deviceReplyResult(DECRQSS_DECSTBM, second.raw, secondFrame, second.reason, second.sentinel)
+  if (graded.observation?.outcome === "supported") return graded
+  if (refusedFrame(DECRQSS_DECSTBM, secondFrame)) {
+    const da1At = second.raw.search(/\x1b\[\?[0-9;]*c/)
+    const late =
+      Boolean(second.sentinel) && secondFrame !== null && da1At !== -1 && second.raw.indexOf(secondFrame) > da1At
+    const note = ["SGR refused; DECSTBM refused", late ? REPLY_AFTER_SENTINEL_NOTE : undefined]
+      .filter((part): part is string => part !== undefined)
+      .join("; ")
+    return {
+      pass: false,
+      response: second.raw,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "query",
+        note,
+      },
+    }
+  }
+  const hasCompleteUnmatchedFrame =
+    DECRQSS_DECSTBM.valid.test(second.raw) || DECRQSS_DECSTBM.refusal?.test(second.raw) === true
+  const reason =
+    !hasCompleteUnmatchedFrame && DECRQSS_DECSTBM.malformed.test(second.raw)
+      ? "invalid-reply"
+      : second.reason === "timeout"
+        ? "timeout"
+        : "insufficient-evidence"
+  return {
+    pass: false,
+    response: second.raw,
+    observation: {
+      outcome: "inconclusive",
+      reason,
+      evidence: "query",
+      note: "SGR refused; DECSTBM unanswered; DECRQSS facility still speaks",
+    },
+  }
+}
+
+function decrqssFacilityProbe(): ProbeDefinition {
+  const sgrPattern = answerPattern(DECRQSS_SGR)
+  const decstbmPattern = answerPattern(DECRQSS_DECSTBM)
+  const definition = probe(
+    "device.decrqss",
+    (ctx) => {
+      const raw = ctx.feedCapture(DECRQSS_SGR.query)
+      return deviceReplyResult(DECRQSS_SGR, raw, sgrPattern.exec(raw)?.[0] ?? null, "sentinel")
+    },
+    async (ctx) => {
+      const sgr = await ctx.queryWithSentinelOutcome(DECRQSS_SGR.query, sgrPattern)
+      const sgrFrame = sgr.reason === "reply" ? (sgr.match?.[0] ?? null) : null
+      if (!refusedFrame(DECRQSS_SGR, sgrFrame)) {
+        return deviceReplyResult(DECRQSS_SGR, sgr.raw, sgrFrame, sgr.reason, sgr.sentinel)
+      }
+      const second = await ctx.queryWithSentinelOutcome(DECRQSS_DECSTBM.query, decstbmPattern)
+      return decrqssAfterSgrRefusal(second)
     },
     "query",
   )
@@ -155,14 +272,7 @@ export const deviceProbes: ProbeDefinition[] = [
     malformed: /\x1bP!\|/,
     expected: "complete DECRPTUI DCS !| followed by four hexadecimal pairs and ST",
   }),
-  deviceQuery({
-    id: "device.decrqss",
-    query: "\x1bP$qm\x1b\\",
-    valid: /\x1bP1\$r[0-9:;]*m\x1b\\/,
-    refusal: /\x1bP0\$r\x1b\\/,
-    malformed: /\x1bP[01]\$r/,
-    expected: "complete DECRQSS status 1 SGR parameters ending m and ST",
-  }),
+  decrqssFacilityProbe(),
   deviceQuery({
     id: "device.xtgettcap",
     query: "\x1bP+q544e\x1b\\",
@@ -238,6 +348,12 @@ export const deviceProbes: ProbeDefinition[] = [
         const reply = await ctx.queryWithSentinelOutcome("\x1b[?996n", /\x1b\[\?997;([12])n/)
         const match = reply.match
         if (!match?.[0]) {
+          const silent = sentinelNegativeResult(
+            reply.raw,
+            reply.sentinel,
+            "DSR ?996 yields complete DSR ?997;1n or ?997;2n",
+          )
+          if (silent) return silent
           return {
             pass: false,
             note: "No valid DSR ?997 color-scheme response",
@@ -319,6 +435,7 @@ export const deviceProbes: ProbeDefinition[] = [
           reply.raw,
           reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
           reply.reason,
+          reply.sentinel,
         )
       },
     ),
@@ -343,6 +460,7 @@ export const deviceProbes: ProbeDefinition[] = [
           reply.raw,
           reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
           reply.reason,
+          reply.sentinel,
         )
       },
     ),
@@ -434,8 +552,12 @@ export const deviceProbes: ProbeDefinition[] = [
   deviceQuery({
     id: "device.xtreportcolors",
     query: "\x1b[#R",
-    valid: /\x1b\[[0-9;]*#Q/,
-    malformed: /\x1b\[[0-9;]*#|#Q/,
+    // xterm's own reply carries a DEC-private `?` before the parameters (measured:
+    // CSI ? 0 ; 1 # Q on xterm 411); kitty answers without it (CSI 0 ; 0 # Q).
+    // The `?` is part of the reference implementation's reply, so the matcher accepts
+    // it rather than grading xterm's own extension as an invalid reply.
+    valid: /\x1b\[\??[0-9;]*#Q/,
+    malformed: /\x1b\[\??[0-9;]*#|#Q/,
     expected: "CSI # R returns a complete CSI Pm # Q frame",
   }),
 
@@ -447,7 +569,12 @@ export const deviceProbes: ProbeDefinition[] = [
     query: "\x1bP+Q7465726d4e616d65\x1b\\",
     valid: /\x1bP1\+R7465726d4e616d65=[0-9A-Fa-f]+\x1b\\/i,
     refusal: /\x1bP0\+R7465726d4e616d65\x1b\\/i,
-    malformed: /\x1bP[01]\+R/,
+    // The contract asks exactly one name, so a status-0 refusal is this probe's measured answer.
+    refusalDecisive: true,
+    // The name is hex-encoded, so a terminal may echo it in either case; valid and
+    // refusal are already case-insensitive, and a case-sensitive malformed pattern
+    // graded the same frame no-response instead of invalid-reply.
+    malformed: /\x1bP[01]\+R/i,
     expected: "XTGETXRES returns a complete status-1 termName resource value",
   }),
 ]
