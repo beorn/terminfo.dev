@@ -4,7 +4,8 @@
     "bunVersion": "1.4.2",
     "testCommand": "bun run validate",
     "buildStep": "",
-    "linksCronMinute": "40"
+    "linksCronMinute": "40",
+    "formatCheckPushTrigger": ""
   },
   "overrides": {
     "oxfmt": "extra ignorePatterns beyond canonical: .next/, .vitepress/dist/, content/probes-libs/",
