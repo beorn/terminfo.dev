@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "da040af43733f2c110ea2dde22bd729c",
+  "collectedAt": "2026-10-08T20:59:27.961Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "macos-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/main",
+    "githubRunId": "37843477088",
+    "githubRunAttempt": "1",
+    "job": "measure-macos",
+    "jobId": "113538436146"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000045549",
+    "os": "macOS",
+    "arch": "ARM64",
+    "imageOS": "macos26",
+    "imageVersion": "20260907.0351.1",
+    "trackingId": "github_6101c397-3a74-4631-90a2-e36edcd8c7f4"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "a117acfb642c452b26f6f8cf7edcbad3132ba499afb9e7a3fcba8a2115fe14ec",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "436410755fa30179618c8805494254f61c78d2d069236a3cd6430f6e8db55768"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "a117acfb642c452b26f6f8cf7edcbad3132ba499afb9e7a3fcba8a2115fe14ec",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "436410755fa30179618c8805494254f61c78d2d069236a3cd6430f6e8db55768"
+    }
+  }
+}
