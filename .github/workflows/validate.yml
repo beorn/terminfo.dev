@@ -1,6 +1,9 @@
 # Content Validation
 #
-# Runs `bun scripts/validate.ts` weekly and on push to main.
+# Runs `bun scripts/validate.ts` weekly (Monday 09:00 UTC) and on demand.
+# The per-push trigger was dropped on 2026-10-08 (D4 of the terminfo replan, bead 28018): it cost
+# ~83 GitHub runs in 2.5 days and judged nothing another gate does not — `bun fix` runs in each
+# change's own worktree, and the weekly run below still judges the whole repository.
 # - Errors (exit code 1): workflow fails
 # - Warnings: opens/updates a rolling GitHub issue with label "content-refresh"
 #
@@ -13,8 +16,6 @@ name: Content Validation
 on:
   schedule:
     - cron: "0 9 * * 1" # Every Monday 9am UTC
-  push:
-    branches: [main]
   workflow_dispatch: # Manual trigger
 
 permissions:
