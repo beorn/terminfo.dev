@@ -42,15 +42,18 @@ jobs:
           const sentinel = join(out, "window-command-ran")
           const calls: Record<string, unknown>[] = []
           const evidence: Record<string, unknown> = {}
-          const active = new Set<{ pid: number; kill: (signal: "SIGKILL") => void }>()
+          const active = new Set<{ pid: number; kill: (signal: "SIGKILL") => void; exited: Promise<number> }>()
           const identity = Object.fromEntries([
             "GITHUB_SHA", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB",
             "RUNNER_NAME", "RUNNER_OS", "RUNNER_ARCH", "ImageOS", "ImageVersion",
           ].map(key => [key, process.env[key] ?? null]))
-          const parentTimer = setTimeout(() => {
-            for (const child of active) child.kill("SIGKILL")
-            writeFileSync(join(out, "result.json"), JSON.stringify({ identity, calls, evidence, failure: "210-second parent deadline reached", activeChildPids: [...active].map(child => child.pid) }, null, 2))
-            process.exit(124)
+          const parentTimer = setTimeout(async () => {
+            const owned = [...active]
+            for (const child of owned) child.kill("SIGKILL")
+            await Promise.all(owned.map(child => child.exited))
+            try {
+              writeFileSync(join(out, "result.json"), JSON.stringify({ identity, calls, evidence, failure: "210-second parent deadline reached", terminatedAndReapedChildPids: owned.map(child => child.pid) }, null, 2))
+            } finally { process.exit(124) }
           }, 210_000)
           await writeFile(join(out, "identity.json"), JSON.stringify({ parentPid: process.pid, bundle, identity }, null, 2))
 
@@ -84,7 +87,9 @@ jobs:
           }
 
           const ae = (body: string, seconds: number) => ["/usr/bin/osascript", "-e", `with timeout of ${seconds} seconds\n${body}\nend timeout`]
-          const stamp = (iso: string) => iso.replace("T", " ").replace("Z", "")
+          // log(1) accepts whole seconds with an explicit offset. Retain exact call times
+          // in each row; round the query outward by less than one second at each edge.
+          const stamp = (iso: string, end = false) => new Date((end ? Math.ceil : Math.floor)(Date.parse(iso) / 1000) * 1000).toISOString().slice(0, 19).replace("T", " ") + "+0000"
           let control: Awaited<ReturnType<typeof run>> | undefined
           let itermPid: string | undefined
           let failure: unknown
@@ -111,18 +116,33 @@ jobs:
               await run("screen", ["/usr/sbin/screencapture", "-x", join(out, "screen.png")], 10_000)
               const windows = await run("windows", ["/usr/bin/osascript", "-l", "JavaScript", "-e", `
                 ObjC.import('CoreGraphics'); ObjC.import('Foundation');
-                var raw = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, $.kCGNullWindowID);
+                var raw = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID);
                 if (!raw) throw new Error('CGWindowListCopyWindowInfo returned null');
-                var rows = ObjC.deepUnwrap(raw).map(function(w) {
-                  return { owner: w.kCGWindowOwnerName, pid: w.kCGWindowOwnerPID, layer: w.kCGWindowLayer };
-                });
-                JSON.stringify({ windows: rows, nonDesktopWindowObserved: rows.some(function(w) { return w.layer === 0 && w.owner !== 'Window Server' && w.owner !== 'Dock'; }) });
+                function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
+                var rows = [], count = $.CFArrayGetCount(raw);
+                for (var i = 0; i < count; i++) {
+                  var w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(raw, i));
+                  rows.push({ owner: value(w, 'kCGWindowOwnerName'), pid: value(w, 'kCGWindowOwnerPID'), layer: value(w, 'kCGWindowLayer') });
+                }
+                JSON.stringify({ windows: rows, desktopElementsExcluded: true, nonDesktopWindowObserved: rows.length > 0 });
               `], 10_000)
-              evidence.windowCensusMeasured = windows.exitCode === 0 && !windows.outerTimedOut
+              evidence.windowCensusMeasured = false
+              if (windows.exitCode === 0 && !windows.outerTimedOut) {
+                try {
+                  const census = JSON.parse(windows.stdout.text)
+                  if (!Array.isArray(census.windows) || !census.windows.every((w: any) => (typeof w.owner === "string" || w.owner === null) && typeof w.pid === "number" && typeof w.layer === "number") || census.nonDesktopWindowObserved !== (census.windows.length > 0)) throw new Error("Invalid CoreGraphics census; see windows.json")
+                  evidence.windowCensusMeasured = true
+                  evidence.nonDesktopWindowObserved = census.nonDesktopWindowObserved
+                  evidence.windowOwnerNamesUnavailable = census.windows.filter((w: any) => w.owner === null).length
+                } catch (error) {
+                  evidence.windowCensusError = String(error)
+                  console.error("WINDOW CENSUS UNMEASURED; see windows.json", error)
+                }
+              }
               evidence.screenshotVisibility = "Requires human inspection; blank image cannot prove absence of a modal. Screen Recording permission was not changed."
               if (itermPid) await run("iterm-process", ["/bin/ps", "-p", itermPid, "-o", "pid=,ppid=,state=,comm="], 5_000)
               for (const interval of [call, ...(control && control.exitCode !== 0 ? [control] : [])]) {
-                await run(`log-${interval.label}`, ["/usr/bin/log", "show", "--style", "json", "--start", stamp(interval.start), "--end", stamp(interval.end), "--predicate", predicate], 20_000, { ...process.env, TZ: "UTC" })
+                await run(`log-${interval.label}`, ["/usr/bin/log", "show", "--style", "json", "--start", stamp(interval.start), "--end", stamp(interval.end, true), "--predicate", predicate], 20_000, { ...process.env, TZ: "UTC" })
               }
             }
             const path = await run("application-path", ae('POSIX path of (path to application id "com.googlecode.iterm2")', 15), 20_000)
