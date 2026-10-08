@@ -134,25 +134,43 @@ jobs:
           case "$APP_ID" in
             terminal-app) open -a "$APP_BUNDLE" "$COMMAND_PATH" ;;
             iterm2)
-              test -d "$APP_BUNDLE" || { echo "Required iTerm2 bundle missing: $APP_BUNDLE" >&2; exit 1; }
-              bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_BUNDLE/Contents/Info.plist")"
-              printf 'iTerm2 bundle: %s; identifier: %s\n' "$APP_BUNDLE" "$bundle_id"
-              test "$bundle_id" = com.googlecode.iterm2 || { echo "Unexpected iTerm2 bundle identifier: $bundle_id" >&2; exit 1; }
-              open "$APP_BUNDLE"
-              for attempt in {1..30}; do
-                if pgrep -x iTerm2 > /dev/null; then break; fi
-                if [ "$attempt" -eq 30 ]; then echo "iTerm2 did not launch within 30 seconds (com.googlecode.iterm2)" >&2; exit 1; fi
-                sleep 1
-              done
-              osascript -e 'POSIX path of (path to application id "com.googlecode.iterm2")'
-              osascript -e 'tell application id "com.googlecode.iterm2" to get version' || { echo "iTerm2 scripting dictionary/version lookup failed" >&2; exit 1; }
-              osascript - "$COMMAND_PATH" <<'APPLESCRIPT'
-          on run argv
-            tell application id "com.googlecode.iterm2"
-              create window with default profile command ("/bin/bash " & quoted form of item 1 of argv)
-            end tell
-          end run
-          APPLESCRIPT
+              printf 'iterm_launch_start=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+              test -d "$APP_BUNDLE" || {
+                echo "Required iTerm2 bundle missing: $APP_BUNDLE" >&2
+                printf 'iterm_launch_end=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+                echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"
+                exit 1
+              }
+              printf -v launch_command '/bin/bash %q' "$COMMAND_PATH"
+              if node - "$APP_BUNDLE" "--command=$launch_command" > "$OUT/launcher.log" 2>&1 <<'ITERM_STARTUP'
+          const { spawnSync } = require('node:child_process');
+          const [bundle, command] = process.argv.slice(2);
+          const run = (name, file, args, timeout = 5000) => {
+            const result = spawnSync(file, args, { encoding: 'utf8', timeout, killSignal: 'SIGKILL', maxBuffer: 262144 });
+            process.stdout.write(JSON.stringify({ name, file, args, status: result.status, signal: result.signal, error: result.error?.message, stdout: result.stdout, stderr: result.stderr, stdoutBytes: Buffer.byteLength(result.stdout || ''), stderrBytes: Buffer.byteLength(result.stderr || '') }) + '\n');
+            if (result.error || result.signal) throw new Error(`iTerm2 ${name} failed: ${result.error?.message || result.signal}`);
+            return result;
+          };
+          const plist = `${bundle}/Contents/Info.plist`;
+          const id = run('bundle identifier', '/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', plist]);
+          if (id.status !== 0 || id.stdout.trim() !== 'com.googlecode.iterm2') throw new Error('iTerm2 bundle identifier mismatch');
+          const version = run('version', '/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', plist]);
+          if (version.status !== 0 || version.stdout.trim() !== '3.6.11') throw new Error('iTerm2 version must be 3.6.11; renewed qualification required');
+          const existing = run('pgrep', '/usr/bin/pgrep', ['-x', 'iTerm2']);
+          if (existing.status === 0) throw new Error('iTerm2 already running; refusing to attach');
+          if (existing.status !== 1) throw new Error(`iTerm2 pgrep failed (${existing.status})`);
+          const opened = run('open', '/usr/bin/open', ['-a', bundle, '--args', command], 10000);
+          if (opened.status !== 0) throw new Error(`iTerm2 open failed (${opened.status})`);
+          ITERM_STARTUP
+              then
+                printf 'iterm_launch_end=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+                cat "$OUT/launcher.log"
+              else
+                printf 'iterm_launch_end=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+                cat "$OUT/launcher.log" >&2
+                echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"
+                exit 1
+              fi
               ;;
             ghostty)
               mkdir -p "$HOME/.config/ghostty"
@@ -178,7 +196,74 @@ jobs:
             sleep 1
           done
           echo "$APP_ID collector did not finish within 300 seconds; see launcher/collector artifacts" >&2
+          if [ "$APP_ID" = iterm2 ]; then echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"; fi
           exit 1
+
+      - name: Preserve iTerm launch failure evidence
+        if: failure() && steps.collect.outputs.iterm_failure == 'true'
+        env:
+          ITERM_LAUNCH_START: ${{ steps.collect.outputs.iterm_launch_start }}
+          ITERM_LAUNCH_END: ${{ steps.collect.outputs.iterm_launch_end }}
+        run: |
+          bun --eval '
+          const { writeFile } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
+          // Bounded capture and CoreGraphics bridge from diagnostic59f65a57.
+          async function capture(stream) {
+            const chunks = []; let bytes = 0, kept = 0;
+            for await (const chunk of stream) {
+              bytes += chunk.length;
+              const count = Math.min(chunk.length, 262144 - kept);
+              if (count > 0) { chunks.push(chunk.slice(0, count)); kept += count; }
+            }
+            return { text: Buffer.concat(chunks).toString("utf8"), bytes, omittedBytes: bytes - kept };
+          }
+          async function run(label, argv, wallMs) {
+            const start = new Date();
+            const child = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe", env: { ...process.env, TZ: "UTC" } });
+            let outerTimedOut = false;
+            const timer = setTimeout(() => { outerTimedOut = true; child.kill("SIGKILL"); }, wallMs);
+            try {
+              const [exitCode, stdout, stderr] = await Promise.all([child.exited, capture(child.stdout), capture(child.stderr)]);
+              const row = { label, argv, childPid: child.pid, start: start.toISOString(), end: new Date().toISOString(), wallMs, outerTimedOut, exitCode, stdout, stderr };
+              await writeFile(join(out, `iterm-${label}.json`), JSON.stringify(row, null, 2));
+              if (exitCode !== 0 || outerTimedOut) console.error(`iTerm failure evidence ${label} unmeasured; see iterm-${label}.json`);
+              return row;
+            } finally { clearTimeout(timer); }
+          }
+          // date(1) outputs whole seconds; include the entire final launch second.
+          const stamp = (iso, end = false) => new Date(Math.floor(Date.parse(iso) / 1000) * 1000 + (end ? 1000 : 0)).toISOString().slice(0, 19).replace("T", " ") + "+0000";
+          const launchEnd = process.env.ITERM_LAUNCH_END;
+          const failures = [];
+          for (const [label, argv, bound] of [
+            ["screen", ["/usr/sbin/screencapture", "-x", join(out, "iterm-screen.png")], 10000],
+            ["windows", ["/usr/bin/osascript", "-l", "JavaScript", "-e", `
+              ObjC.import("CoreGraphics"); ObjC.import("Foundation");
+              var raw = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID);
+              if (!raw) throw new Error("CGWindowListCopyWindowInfo returned null");
+              function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
+              var rows = [], count = $.CFArrayGetCount(raw);
+              for (var i = 0; i < count; i++) {
+                var w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(raw, i));
+                rows.push({ owner: value(w, "kCGWindowOwnerName"), pid: value(w, "kCGWindowOwnerPID"), layer: value(w, "kCGWindowLayer") });
+              }
+              JSON.stringify({ windows: rows });
+            `], 10000],
+            ["log", ["/usr/bin/log", "show", "--style", "json", "--start", stamp(process.env.ITERM_LAUNCH_START), "--end", stamp(launchEnd, true), "--predicate", `subsystem == "com.apple.TCC" OR subsystem CONTAINS[c] "appleevent" OR process == "appleeventsd"`], 20000],
+          ]) {
+            try {
+              const row = await run(label, argv, bound);
+              if (row.exitCode !== 0 || row.outerTimedOut) throw new Error(`${label} capture failed`);
+              if (label === "windows") {
+                const census = JSON.parse(row.stdout.text);
+                if (!Array.isArray(census.windows) || !census.windows.every(w => (typeof w.owner === "string" || w.owner === null) && typeof w.pid === "number" && typeof w.layer === "number")) throw new Error("Invalid CoreGraphics census");
+              }
+            } catch (error) { failures.push({ label, error: String(error) }); console.error("iTerm failure evidence incomplete", label, error); }
+          }
+          await writeFile(join(out, "iterm-failure-evidence.json"), JSON.stringify({ launchStart: process.env.ITERM_LAUNCH_START, launchEnd, failures }, null, 2));
+          if (failures.length) process.exitCode = 1;
+          '
 
       - name: Upload the receipt beside the exact collected run
         if: always()

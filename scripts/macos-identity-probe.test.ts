@@ -12,7 +12,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { parse } from "yaml"
 
 test("four fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
@@ -29,14 +29,13 @@ test("four fresh Mac jobs bootstrap the shared producer before checkout and coll
   const first = job.steps[0]
   expect(job.steps[1].uses).toBe("actions/checkout@v4")
   const collectIndex = job.steps.findIndex((step: { id?: string }) => step.id === "collect")
-  expect(job.steps.slice(collectIndex + 1).map((step: { uses?: string }) => step.uses)).toEqual([
-    "actions/upload-artifact@v4",
-  ])
+  expect(job.steps[collectIndex + 1].if).toBe("failure() && steps.collect.outputs.iterm_failure == 'true'")
+  expect(job.steps.at(-1).uses).toBe("actions/upload-artifact@v4")
   const collect = job.steps[collectIndex].run as string
   expect(collect).toContain("export TERMINFO_DISPOSABLE_RECEIPT=")
   expect(collect.indexOf(' emit "$OUT/job-start.json"')).toBeLessThan(collect.indexOf('touch "$OUT/collector-ready"'))
   expect(collect).toContain('while [ ! -f "$OUT/collector-ready" ]')
-  expect(collect).not.toMatch(/killall|screencapture|continue-on-error/)
+  expect(collect).not.toMatch(/killall|continue-on-error/)
   expect(job.steps.some((step: { run?: string }) => step.run?.includes("scripts/build-cli.ts"))).toBe(true)
   const dir = await mkdtemp(join(tmpdir(), "mac-bootstrap-"))
   const server = createServer((_req, res) => {
@@ -95,5 +94,62 @@ test("four fresh Mac jobs bootstrap the shared producer before checkout and coll
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
     await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test("iTerm startup passes one quoted command and refuses unqualified launch results", async () => {
+  const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
+  const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect")
+    .run as string
+  const source = collect.match(/<<'ITERM_STARTUP'\n([\s\S]*?)\nITERM_STARTUP/)
+  const startup = source?.[1]
+  if (!startup) throw new Error("iTerm startup script missing")
+  const bundle = "/Applications/iTerm.app"
+  const command = "--command=/bin/bash /tmp/space\\ path/collect.command"
+  const run = (overrides: Record<number, object> = {}) => {
+    const results = [
+      { status: 0, stdout: "com.googlecode.iterm2\n" },
+      { status: 0, stdout: "3.6.11\n" },
+      { status: 1, stdout: "" },
+      { status: 0, stdout: "" },
+    ]
+    const spawnSync = vi.fn((_file, _args, _options) => ({
+      stderr: "",
+      ...results[spawnSync.mock.calls.length - 1],
+      ...overrides[spawnSync.mock.calls.length - 1],
+    }))
+    const execute = () =>
+      new Function("require", "process", startup)(() => ({ spawnSync }), {
+        argv: ["node", "-", bundle, command],
+        stdout: { write: vi.fn() },
+        stderr: { write: vi.fn() },
+      })
+    return { execute, spawnSync }
+  }
+  const success = run()
+  success.execute()
+  expect(success.spawnSync.mock.calls.map(([file, args]) => [file, args])).toEqual([
+    ["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", `${bundle}/Contents/Info.plist`]],
+    ["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", `${bundle}/Contents/Info.plist`]],
+    ["/usr/bin/pgrep", ["-x", "iTerm2"]],
+    ["/usr/bin/open", ["-a", bundle, "--args", command]],
+  ])
+  expect(success.spawnSync.mock.calls.map(([, , options]) => options)).toEqual([
+    ...Array.from({ length: 3 }, () =>
+      expect.objectContaining({ timeout: 5000, killSignal: "SIGKILL", maxBuffer: 262144 }),
+    ),
+    expect.objectContaining({ timeout: 10000, killSignal: "SIGKILL", maxBuffer: 262144 }),
+  ])
+  for (const [index, result, diagnostic] of [
+    [0, { stdout: "wrong.id" }, "bundle identifier"],
+    [1, { stdout: "3.6.12" }, "version"],
+    [2, { status: 0, stdout: "123" }, "already running"],
+    [2, { status: 2 }, "pgrep"],
+    [2, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "pgrep"],
+    [3, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
+  ] as const) {
+    const failure = run({ [index]: result })
+    expect(failure.execute).toThrow(diagnostic)
+    expect(failure.spawnSync).toHaveBeenCalledTimes(index + 1)
   }
 })
