@@ -59,6 +59,28 @@ compose_receipt() {
   mv "$output.partial" "$output"
 }
 
+# A producer receipt is read by the host before any container starts. When a non-fast-forward
+# compose lands a suite nobody declared, the build stays green and the receipt carries that state,
+# so the FIRST sentence here must NAME the suite rather than read as a malformed receipt (27864 C);
+# a genuinely malformed document keeps the generic refusal.
+require_cli_producer_receipt() {
+  local receipt=$1
+  [[ -r "$receipt" ]] || { echo "Missing CLI producer receipt: $receipt" >&2; return 2; }
+  jq -e '
+    .schemaVersion == 1 and (.probeHash | type == "string" and test("^[0-9a-f]{12}$")) and
+    (.collectorRevision | type == "string" and test("^[0-9a-f]{40}$")) and
+    (.bundleSha256 | type == "string" and test("^[0-9a-f]{64}$"))' \
+    "$receipt" >/dev/null || { echo "Invalid CLI producer receipt" >&2; return 2; }
+  if [[ "$(jq -r '.suiteState // "declared"' "$receipt")" == "undeclared" ||
+        "$(jq -r '.manifestSha256 // "absent"' "$receipt")" == "absent" ]]; then
+    echo "Suite $(jq -r .probeHash "$receipt") is undeclared on this checkout: the producer receipt carries no manifest digest. A composed tree that landed a suite nobody declared cannot be collected here — collect from an authoring branch at these pins, then admit the run: bun scripts/admit-run.ts --for <run.json>" >&2
+    return 2
+  fi
+  jq -e '(.manifestSha256 | type == "string" and test("^[0-9a-f]{64}$"))' \
+    "$receipt" >/dev/null || { echo "Invalid CLI producer receipt" >&2; return 2; }
+  return 0
+}
+
 # The in-image source proof is ONE comparison for both proof kinds (@cto 2026-10-06, 27892): the
 # archive the image carries - a flat upstream archive, or a tar DERIVED from the upstream tree - must
 # hash to exactly the flat sha256 the image declared in TERMINFO_TARGET_SOURCE_SRI. A derived kind
@@ -676,12 +698,7 @@ cli_receipt="$vendor_root/packages/terminfo.dev/dist/terminfo.bundle.receipt.jso
 [[ -s "$cli_bundle" && -s "$cli_receipt" && -s "$prep/bundle/index.js" ]] || {
   echo "CLI producer or frozen runner output is missing; preserved at $run_dir" >&2; exit 2;
 }
-jq -e '
-  .schemaVersion == 1 and (.probeHash | type == "string" and test("^[0-9a-f]{12}$")) and
-  (.collectorRevision | type == "string" and test("^[0-9a-f]{40}$")) and
-  (.manifestSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
-  (.bundleSha256 | type == "string" and test("^[0-9a-f]{64}$"))' \
-  "$cli_receipt" >/dev/null || { echo "Invalid CLI producer receipt" >&2; exit 2; }
+require_cli_producer_receipt "$cli_receipt" || exit 2
 suite_hash=$(jq -er .probeHash "$cli_receipt")
 source_revision=$(jq -er .collectorRevision "$cli_receipt")
 cli_bundle_sha=$(sha256sum "$cli_bundle" | cut -d ' ' -f 1)

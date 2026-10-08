@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
-import { declaredSuiteManifest } from "./suite-manifest.ts"
+import { derivedSuiteManifest, suiteDeclarationState } from "./suite-manifest.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -30,7 +30,12 @@ async function main(): Promise<void> {
     encoding: "utf8",
   }).trim()
   if (dirty) throw new Error(`Cannot bundle an uncommitted CLI collector:\n${dirty}`)
-  const manifest = declaredSuiteManifest()
+  // A build is a first use of the suite, but on a checkout whose HEAD is on origin/main it can only
+  // verify what a commit already carries. A non-fast-forward compose that lands a suite nobody
+  // declared is therefore a STATE, not a throw: the bundle is produced and the receipt names it,
+  // and the launcher refuses that receipt by name before any container starts (27864 A/B/C).
+  const declaration = suiteDeclarationState()
+  const manifest = declaration.kind === "declared" ? declaration.manifest : derivedSuiteManifest(snapshot)
   const collectorRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const result = await Bun.build({
     entrypoints: [join(ROOT, "packages", "terminfo.dev", "src", "index.tsx")],
@@ -54,19 +59,31 @@ async function main(): Promise<void> {
   writeFileSync(temporary, bundle)
   renameSync(temporary, destination)
   const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex")
-  const manifestBytes = readFileSync(join(ROOT, "content", "suites", `${manifest.probeHash}.json`))
-  const receipt = {
-    schemaVersion: 1,
-    probeHash: manifest.probeHash,
-    collectorRevision,
-    manifestSha256: sha256(manifestBytes),
-    bundleSha256: sha256(bundle),
-  }
+  const receipt =
+    declaration.kind === "declared"
+      ? {
+          schemaVersion: 1,
+          probeHash: manifest.probeHash,
+          collectorRevision,
+          manifestSha256: sha256(readFileSync(join(ROOT, "content", "suites", `${manifest.probeHash}.json`))),
+          bundleSha256: sha256(bundle),
+        }
+      : {
+          schemaVersion: 1,
+          probeHash: declaration.probeHash,
+          collectorRevision,
+          manifestSha256: null,
+          suiteState: "undeclared",
+          bundleSha256: sha256(bundle),
+        }
   const receiptPath = join(dist, "terminfo.bundle.receipt.json")
   const receiptTemporary = `${receiptPath}.tmp-${process.pid}`
   writeFileSync(receiptTemporary, `${JSON.stringify(receipt, null, 2)}\n`)
   renameSync(receiptTemporary, receiptPath)
-  console.log(`CLI bundle ready: ${destination} (${manifest.probeHash}, ${collectorRevision})`)
+  console.log(
+    `CLI bundle ready: ${destination} (${manifest.probeHash}, ${collectorRevision})` +
+      (declaration.kind === "undeclared" ? " — suite undeclared on this checkout" : ""),
+  )
 }
 
 if (import.meta.main) await main()

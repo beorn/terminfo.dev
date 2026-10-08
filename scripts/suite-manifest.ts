@@ -80,10 +80,13 @@ export function persistSuiteManifest(
  * origin/main can only verify what a commit already carries. There is still no standalone declare
  * command: admission and this bundle binding call the same primitives.
  */
-export function declaredSuiteManifest(snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot()): ProbeSuiteManifest {
-  const path = join(SUITES_DIR, `${snapshot.probeHash}.json`)
+export function declaredSuiteManifest(
+  snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(),
+  root: string = ROOT,
+): ProbeSuiteManifest {
+  const path = join(root, "content", "suites", `${snapshot.probeHash}.json`)
   if (existsSync(path)) return verifySuiteManifest(path, snapshot)
-  assertDeclareIsAuthoring(ROOT, snapshot.probeHash)
+  assertDeclareIsAuthoring(root, snapshot.probeHash)
   return persistSuiteManifest(path, derivedSuiteManifest(snapshot), snapshot) === "created"
     ? derivedSuiteManifest(snapshot)
     : verifySuiteManifest(path, snapshot)
@@ -107,7 +110,7 @@ export function declaredSuiteManifest(snapshot: ProbeSuiteSnapshot = probeSuiteS
  * run in one commit on a branch ahead of origin/main, so the guard holds unchanged. Do not weaken
  * it to "fix" admission; admission is authoring by construction.
  */
-export function assertDeclareIsAuthoring(cwd: string, suiteHash?: string): void {
+function declarationCheckoutState(cwd: string): "authoring" | "on-main" {
   const run = (args: string[]) => {
     const result = spawnSync("git", args, { cwd, encoding: "utf8" })
     if (result.error) throw new Error(`Cannot declare a suite: git ${args.join(" ")} failed`, { cause: result.error })
@@ -120,21 +123,48 @@ export function assertDeclareIsAuthoring(cwd: string, suiteHash?: string): void 
     throw new Error(`Cannot declare a suite: ${cwd} offers no origin/main to compare the declared revision against`)
   }
   const ancestor = run(["merge-base", "--is-ancestor", head.stdout.trim(), declared.stdout.trim()])
-  if (ancestor.status === 0) {
-    const subject = suiteHash ? `Suite ${suiteHash}` : "This tree's suite"
-    throw new Error(
-      `${subject} cannot be declared or admitted on this checkout (${cwd}): its HEAD is already on origin/main, so a ` +
-        "declaration or an admission written here lands on no commit.\n" +
-        "A collector authors nothing: the freeze act lands this suite's declaration on main, and admission runs from " +
-        "a branch with at least one commit ahead of origin/main (a fresh branch cut at the pin is NOT enough): bun " +
-        "scripts/admit-run.ts --for <run.json>",
-    )
-  }
+  if (ancestor.status === 0) return "on-main"
   if (ancestor.status !== 1) {
     throw new Error(
       `Cannot declare a suite: git merge-base --is-ancestor failed (${ancestor.status}): ${ancestor.stderr.trim()}`,
     )
   }
+  return "authoring"
+}
+
+export function assertDeclareIsAuthoring(cwd: string, suiteHash?: string): void {
+  if (declarationCheckoutState(cwd) === "authoring") return
+  const subject = suiteHash ? `Suite ${suiteHash}` : "This tree's suite"
+  throw new Error(
+    `${subject} cannot be declared or admitted on this checkout (${cwd}): its HEAD is already on origin/main, so a ` +
+      "declaration or an admission written here lands on no commit.\n" +
+      "A collector authors nothing: the freeze act lands this suite's declaration on main, and admission runs from " +
+      "a branch with at least one commit ahead of origin/main (a fresh branch cut at the pin is NOT enough): bun " +
+      "scripts/admit-run.ts --for <run.json>",
+  )
+}
+
+export type SuiteDeclarationState =
+  | { kind: "declared"; manifest: ProbeSuiteManifest }
+  | { kind: "undeclared"; probeHash: string }
+
+/**
+ * What a bundle build can say about THIS tree's suite declaration, as a STATE rather than a throw.
+ * A build is a first use of the suite, so an authoring checkout declares the derived record; a
+ * checkout whose HEAD is already on origin/main can only verify what a commit already carries —
+ * and when a non-fast-forward compose lands a suite nobody declared, that is a nameable state the
+ * receipt must carry while the build stays green (27864 A/B). The refusal is NOT weakened where a
+ * declaration is required: `declaredSuiteManifest` and admission still throw
+ * (`assertDeclareIsAuthoring`), and the launcher refuses an undeclared receipt by name.
+ */
+export function suiteDeclarationState(
+  snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(),
+  root: string = ROOT,
+): SuiteDeclarationState {
+  const path = join(root, "content", "suites", `${snapshot.probeHash}.json`)
+  if (existsSync(path)) return { kind: "declared", manifest: verifySuiteManifest(path, snapshot) }
+  if (declarationCheckoutState(root) === "on-main") return { kind: "undeclared", probeHash: snapshot.probeHash }
+  return { kind: "declared", manifest: declaredSuiteManifest(snapshot, root) }
 }
 
 /**
