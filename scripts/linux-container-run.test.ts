@@ -409,3 +409,42 @@ describe("in-image source archive proof", () => {
     expect(undeclared.stderr).toContain("Loaded ghostty source has no declared flat sha256")
   })
 })
+
+describe("cli producer receipt gate", () => {
+  const receipt = (overrides: Record<string, unknown> = {}) => ({
+    schemaVersion: 1,
+    probeHash: "a".repeat(12),
+    collectorRevision: "b".repeat(40),
+    manifestSha256: "c".repeat(64),
+    bundleSha256: "d".repeat(64),
+    ...overrides,
+  })
+  const gate = (value: unknown) => {
+    const file = join(dir, "cli-receipt.json")
+    writeFileSync(file, JSON.stringify(value))
+    return spawnSync("bash", ["-c", 'source "$1"; require_cli_producer_receipt "$2"', "_", launcher, file], {
+      encoding: "utf8",
+    })
+  }
+
+  it("accepts a declared producer receipt", () => {
+    expect(gate(receipt()).status).toBe(0)
+  })
+
+  // A non-fast-forward compose lands a suite nobody declared: the build stays green and the receipt
+  // carries the state, so the launcher's FIRST sentence must name the suite, not read as a malformed
+  // receipt (27864 C).
+  it("refuses an undeclared suite BY NAME, not as a malformed receipt", () => {
+    const result = gate(receipt({ manifestSha256: null, suiteState: "undeclared" }))
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain(`Suite ${"a".repeat(12)}`)
+    expect(result.stderr).toMatch(/undeclared/i)
+    expect(result.stderr).not.toContain("Invalid CLI producer receipt")
+  })
+
+  it("still refuses a malformed producer receipt generically", () => {
+    const result = gate(receipt({ bundleSha256: "short" }))
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain("Invalid CLI producer receipt")
+  })
+})

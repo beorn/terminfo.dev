@@ -18,6 +18,7 @@ import {
   checkCitedSuiteManifests,
   derivedSuiteManifest,
   persistSuiteManifest,
+  suiteDeclarationState,
   suiteManifestMode,
   verifySuiteManifest,
 } from "./suite-manifest.ts"
@@ -187,4 +188,34 @@ test("declaring refuses a checkout whose HEAD is already on origin/main and allo
   git("add", "b.txt")
   git("commit", "-q", "-m", "two")
   expect(() => assertDeclareIsAuthoring(directory)).not.toThrow()
+})
+
+/**
+ * A non-fast-forward compose lands a suite nobody declared. The BUILD must stay green on that tree
+ * and the state must be nameable by the receipt, while a checkout that CAN author still declares
+ * (27864 A/B). RED BEFORE: this was an unconditional throw out of declaredSuiteManifest().
+ */
+test("an undeclared suite on a composed tree is a state, and an authoring checkout still declares", () => {
+  const directory = temp("terminfo-suite-state-")
+  const git = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+  git("init", "-q", "-b", "main")
+  git("config", "user.email", "fixture@example.invalid")
+  git("config", "user.name", "fixture")
+  mkdirSync(join(directory, "content", "suites"), { recursive: true })
+  writeFileSync(join(directory, "a.txt"), "one\n")
+  git("add", "a.txt")
+  git("commit", "-q", "-m", "one")
+  git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
+
+  const hash = "a".repeat(12)
+  const snapshot = snapshotOf(hash)
+  expect(suiteDeclarationState(snapshot, directory)).toEqual({ kind: "undeclared", probeHash: hash })
+
+  writeFileSync(join(directory, "b.txt"), "two\n")
+  git("add", "b.txt")
+  git("commit", "-q", "-m", "two")
+  const authoring = suiteDeclarationState(snapshot, directory)
+  expect(authoring.kind).toBe("declared")
+  expect(authoring.kind === "declared" && authoring.manifest.probeHash).toBe(hash)
 })
