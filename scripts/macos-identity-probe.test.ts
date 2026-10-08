@@ -84,6 +84,9 @@ test("four fresh Mac jobs bootstrap the shared producer before checkout and coll
     expect(requested).toEqual([
       { path: "scripts/hosted-runner-receipt.ts", sha },
       { path: "packages/terminfo.dev/src/disposable-receipt.ts", sha },
+      // The ONE app-launch parser rides the bootstrap too, so the producer and run-parser validate
+      // the launch receipt with exactly the same code (28216).
+      { path: "packages/run-parser/src/app-launch.ts", sha },
     ])
     const sampled = JSON.parse(await readFile(join(dir, "measurement-artifacts", "job-start.json"), "utf8")) as {
       job: { jobId: string }

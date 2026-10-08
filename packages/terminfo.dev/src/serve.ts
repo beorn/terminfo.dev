@@ -293,7 +293,9 @@ export async function collectProbeRun(
     suiteComplete: batch.suiteComplete,
     sourceRevision,
     measuredAt: new Date().toISOString(),
-    origin: { kind: "collector" },
+    // The launch receipt is COPIED from the parsed ownership receipt, never rebuilt here, so the
+    // apparatus measures and the collector only carries (28216).
+    origin: { kind: "collector", ...(batch.appLaunch && { appLaunch: batch.appLaunch }) },
     rawReplies: batch.rawReplies,
     assertions: batch.assertions,
     screenshotRefs: batch.screenshotRefs,

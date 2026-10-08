@@ -55,7 +55,11 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
   iterm2: {
     terminal: "iterm2",
     da1Pattern: /\?64;/,
-    xtversionPattern: /^iTerm2\b/i,
+    // Measured 2026-10-08: the admitted run iterm2-3.6.11-macos answers XTVERSION "iTerm2 3.6.11"
+    // and a hosted macOS job reports no other version source (detect.ts observes none), so a rule
+    // that only tolerates the prefix leaves target.version "unknown" and excludes every fresh run
+    // (28216). The capture is ghostty's anchored shape; it is not a new tolerance (i2).
+    xtversionPattern: /^iTerm2\s+v?(?<version>\d+(?:\.\d+){1,3}(?:[-+][a-zA-Z0-9.-]+)?)$/i,
     requireXtversion: true,
   },
   warp: {

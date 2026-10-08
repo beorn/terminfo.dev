@@ -7,7 +7,8 @@
  */
 import { execFile } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { realpathSync } from "node:fs"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -45,11 +46,36 @@ test("the actual hosted producer self-parses measured bytes and refuses incomple
   try {
     const fixture = `#!${process.execPath}\nconst n=process.argv[1]; if(n.endsWith('ifconfig')) console.log('ether ${raw.machine}'); else if(n.endsWith('ioreg')) console.log('"IOPlatformUUID" = "${raw.platform}"'); else console.log('${raw.boot}');\n`
     for (const name of ["ifconfig", "ioreg", "sysctl"]) await writeFile(join(dir, name), fixture, { mode: 0o755 })
+    // 28216: a hosted macOS job launches an app, so the producer must MEASURE its launch receipt from
+    // the bundle and installer it installed. Plutil/brew are faked on PATH; the bytes are real.
+    const bundle = join(dir, "Ghostty.app")
+    await mkdir(join(bundle, "Contents", "MacOS"), { recursive: true })
+    await writeFile(join(bundle, "Contents", "Info.plist"), "fixture plist; plutil is faked\n")
+    const executableBytes = "fixture-ghostty-executable\n"
+    await writeFile(join(bundle, "Contents", "MacOS", "ghostty"), executableBytes, { mode: 0o755 })
+    const installer = join(dir, "ghostty--1.3.1.zip")
+    const installerBytes = "fixture-ghostty-installer\n"
+    await writeFile(installer, installerBytes)
+    await writeFile(
+      join(dir, "plutil"),
+      `#!${process.execPath}
+const values = { CFBundleShortVersionString: "1.3.1", CFBundleVersion: "1", CFBundleExecutable: "ghostty" };
+const value = values[process.argv[3]];
+if (!value) { console.error("no fixture value for " + process.argv[3]); process.exit(1); }
+console.log(value);
+`,
+      { mode: 0o755 },
+    )
+    await writeFile(join(dir, "brew"), `#!${process.execPath}\nconsole.log(${JSON.stringify(installer)});\n`, {
+      mode: 0o755,
+    })
     const address = server.address()
     if (!address || typeof address === "string") throw new Error("Expected fixture server address")
     const env = {
       ...process.env,
       PATH: `${dir}:${process.env.PATH}`,
+      APP_ID: "ghostty",
+      APP_BUNDLE: bundle,
       RUNNER_ENVIRONMENT: "github-hosted",
       RUNNER_NAME: "fixture-runner",
       RUNNER_OS: "macOS",
@@ -82,7 +108,20 @@ test("the actual hosted producer self-parses measured bytes and refuses incomple
       job: { jobId: string }
       runId: string
       vm: { identityAtJobStart: Record<string, string>; identityAtCollection: Record<string, string> }
+      appLaunch: Record<string, unknown>
     }
+    // Every field is measured: the bundle's own Info.plist, the executable's bytes, the installer
+    // bytes this job installed. Nothing here is a declared or detected value (28216).
+    const launch = {
+      bundlePath: realpathSync(bundle),
+      cfBundleShortVersionString: "1.3.1",
+      cfBundleVersion: "1",
+      executablePath: realpathSync(join(bundle, "Contents", "MacOS", "ghostty")),
+      executableSha256: createHash("sha256").update(executableBytes).digest("hex"),
+      sourceArtifact: { path: installer, sha256: createHash("sha256").update(installerBytes).digest("hex") },
+    }
+    expect(decoded.appLaunch).toEqual(launch)
+    expect(parseDisposableReceipt(bytes).appLaunch).toEqual(launch)
     expect(decoded.job.jobId).toBe("1234")
     expect(decoded.runId).toBe(
       createHash("sha256")
@@ -128,6 +167,84 @@ test("the actual hosted producer self-parses measured bytes and refuses incomple
     matches = 1
     await writeFile(join(dir, "ifconfig"), `#!${process.execPath}\nprocess.exit(7);\n`, { mode: 0o755 })
     await expect(run("start", join(dir, "failed-source.json"))).rejects.toThrow(/machineIdSha256.*ifconfig.*7/)
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test("a hosted macOS job that cannot measure its launch refuses by name, never with an invented block", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-launch-"))
+  const server = createServer((_req, res) => {
+    res.setHeader("content-type", "application/json")
+    res.end(JSON.stringify({ jobs: [{ id: 4242, runner_name: "fixture-runner" }] }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const fixture = `#!${process.execPath}\nconst n=process.argv[1]; if(n.endsWith('ifconfig')) console.log('ether 02:00:00:00:00:02'); else if(n.endsWith('ioreg')) console.log('"IOPlatformUUID" = "fixture-platform"'); else console.log('fixture-boot');\n`
+    for (const name of ["ifconfig", "ioreg", "sysctl"]) await writeFile(join(dir, name), fixture, { mode: 0o755 })
+    const bundle = join(dir, "Ghostty.app")
+    await mkdir(join(bundle, "Contents", "MacOS"), { recursive: true })
+    await writeFile(join(bundle, "Contents", "Info.plist"), "fixture plist\n")
+    await writeFile(join(bundle, "Contents", "MacOS", "ghostty"), "fixture-ghostty-executable\n")
+    const plutil = `#!${process.execPath}
+if (process.env.PLUTIL_EXITS === "1") { console.error("fixture plutil refusal"); process.exit(1); }
+const values = { CFBundleShortVersionString: "1.3.1", CFBundleVersion: "1", CFBundleExecutable: "ghostty" };
+console.log(values[process.argv[3]] ?? "");
+`
+    await writeFile(join(dir, "plutil"), plutil, { mode: 0o755 })
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("Expected fixture server address")
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      APP_ID: "ghostty",
+      APP_BUNDLE: bundle,
+      RUNNER_TEMP: dir,
+      PLUTIL_EXITS: "0",
+      RUNNER_ENVIRONMENT: "github-hosted",
+      RUNNER_NAME: "fixture-runner",
+      RUNNER_OS: "macOS",
+      RUNNER_ARCH: "ARM64",
+      RUNNER_TRACKING_ID: "fixture-tracking",
+      ImageOS: "macos26",
+      ImageVersion: "fixture-image",
+      GITHUB_REPOSITORY: "fixture/repo",
+      GITHUB_WORKFLOW: "measure",
+      GITHUB_WORKFLOW_REF: "measure.yml@main",
+      GITHUB_RUN_ID: "42",
+      GITHUB_RUN_ATTEMPT: "1",
+      GITHUB_JOB: "measure",
+      GH_TOKEN: "fixture-token",
+      GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+    }
+    const run = (overrides: Record<string, string | undefined>, ...args: string[]) => {
+      const merged = { ...env, ...overrides }
+      for (const [key, value] of Object.entries(merged)) if (value === undefined) delete merged[key]
+      return promisify(execFile)(
+        "node",
+        ["--experimental-strip-types", fileURLToPath(new URL("./hosted-runner-receipt.ts", import.meta.url)), ...args],
+        { env: merged as NodeJS.ProcessEnv },
+      )
+    }
+    const start = join(dir, "start.json")
+    await run({ RUNNER_OS: "macOS" }, "start", start)
+    // The launch receipt is required on macOS: no bundle, no receipt, no run.
+    await expect(run({ APP_BUNDLE: undefined }, "emit", start, join(dir, "no-bundle.json"))).rejects.toThrow(
+      /requires environment APP_BUNDLE/,
+    )
+    // A failed Info.plist read refuses by name instead of substituting a detected value.
+    await expect(run({ PLUTIL_EXITS: "1" }, "emit", start, join(dir, "plutil-failed.json"))).rejects.toThrow(
+      /Info.plist CFBundleExecutable failed \(plutil exit 1/,
+    )
+    // The installer bytes are the source artifact; a missing installer refuses by name.
+    await expect(run({ APP_ID: "alacritty" }, "emit", start, join(dir, "no-installer.json"))).rejects.toThrow(
+      /cannot read the installed Alacritty\.dmg/,
+    )
+    // An app with no measured installer route is refused, never described.
+    await expect(run({ APP_ID: "warp" }, "emit", start, join(dir, "no-route.json"))).rejects.toThrow(
+      /no measured source-artifact route for APP_ID="warp"/,
+    )
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
     await rm(dir, { recursive: true, force: true })
@@ -194,6 +311,8 @@ if (cmd.includes('Get-NetAdapter')) {
     const bytes = await readFile(receipt, "utf8")
     const parsed = parseDisposableReceipt(bytes)
     expect(parsed.kind).toBe("github-hosted-runner")
+    // Only a macOS job measures a launch receipt; this one carries none, by absence.
+    expect(parsed.appLaunch).toBeUndefined()
     const decoded = JSON.parse(bytes) as {
       vm: { identityAtJobStart: Record<string, string> }
     }

@@ -74,6 +74,16 @@ const githubReceipt = () => ({
   vm: { identityAtJobStart: identity("job"), identityAtCollection: identity("job") },
 })
 
+/** The launch receipt a hosted macOS job measures from its own bundle and installer bytes (28216). */
+const macosLaunch = () => ({
+  bundlePath: "/Applications/iTerm.app",
+  cfBundleShortVersionString: "3.6.11",
+  cfBundleVersion: "3.6.11",
+  executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+  executableSha256: digest("iterm2-executable"),
+  sourceArtifact: { path: "/Library/Caches/Homebrew/downloads/iterm2--3.6.11.zip", sha256: digest("iterm2-installer") },
+})
+
 test("a well-formed container receipt parses and its digest is the exact bytes that were trusted", () => {
   const bytes = JSON.stringify(linuxReceipt(), null, 2)
   const receipt = parseDisposableReceipt(bytes)
@@ -99,6 +109,35 @@ test("a well-formed hosted-runner receipt parses only when one machine served th
   const moved = githubReceipt()
   moved.vm.identityAtCollection = identity("other")
   expect(() => parseDisposableReceipt(JSON.stringify(moved))).toThrow(/one machine must serve the whole job/)
+})
+
+// 28216: the launch receipt the apparatus measured rides the receipt itself, validated by the ONE
+// parser run-parser validates with, so the collector copies a parsed block instead of a second copy.
+test("a hosted-runner receipt carries the measured launch block through the ONE parser", () => {
+  const withLaunch = { ...githubReceipt(), appLaunch: macosLaunch() }
+  expect(parseDisposableReceipt(JSON.stringify(withLaunch)).appLaunch).toEqual(macosLaunch())
+  // Copied, never edited: a receipt that measured no launch carries none, and says so by absence.
+  expect(parseDisposableReceipt(JSON.stringify(githubReceipt())).appLaunch).toBeUndefined()
+})
+
+test("a launch block the ONE parser refuses fails the whole receipt by name", () => {
+  const cases: Array<[Record<string, unknown>, RegExp]> = [
+    [{ ...macosLaunch(), executableSha256: "not-a-digest" }, /invalid appLaunch\.executableSha256/],
+    [{ ...macosLaunch(), bundlePath: "Applications/iTerm.app" }, /bundle and executable paths must be absolute/],
+    [{ ...macosLaunch(), cfBundleVersion: "" }, /missing appLaunch\.cfBundleVersion/],
+    [
+      { ...macosLaunch(), sourceArtifact: { path: "/tmp/iterm2.zip", sha256: "short" } },
+      /invalid appLaunch\.sourceArtifact/,
+    ],
+    [
+      { ...macosLaunch(), sourceArtifact: { kind: "invented", path: "/tmp/x", sha256: digest("x") } },
+      /unknown appLaunch\.sourceArtifact kind/,
+    ],
+  ]
+  for (const [broken, expected] of cases) {
+    const receipt = { ...githubReceipt(), appLaunch: broken }
+    expect(() => parseDisposableReceipt(JSON.stringify(receipt)), JSON.stringify(broken)).toThrow(expected)
+  }
 })
 
 test("a self-hosted or unknown runner environment can never authorize a write", () => {

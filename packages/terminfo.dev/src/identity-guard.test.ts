@@ -322,9 +322,27 @@ describe("verifyTerminalIdentity", () => {
     expect(verifyTerminalIdentity("ghostty", ghostty)).toEqual({ ok: true, checked: true })
   })
 
-  it("keeps the detected version for an id whose rule captures none, and invents nothing", () => {
+  it("captures the measured iTerm2 version from the reply the admitted run answers (28216)", () => {
     const iterm = { "collector.xtversion": "\x1bP>|iTerm2 3.6.11\x1b\\\x1b[?64;1;2;6;9;15;16;17;18;21;22;28;29c" }
+    expect(resolveMeasuredAppVersion("iterm2", "", iterm)).toBe("3.6.11")
     expect(resolveMeasuredAppVersion("iterm2", "3.6.11", iterm)).toBe("3.6.11")
+    expect(() => resolveMeasuredAppVersion("iterm2", "3.6.10", iterm)).toThrow(/version mismatch/)
+    expect(verifyTerminalIdentity("iterm2", iterm)).toEqual({ ok: true, checked: true })
+    // A bare prefix names the terminal but no version, so the guard refuses it rather than admitting
+    // a run whose version nothing measured.
+    expect(
+      verifyTerminalIdentity("iterm2", {
+        "device.primary-da": "\x1b[?64;1;2;4;6;17;18;21;22;52c",
+        "device.xtversion": "\x1bP>|iTerm2\x1b\\\x1b[?64;1;2;4;6;17;18;21;22;52c",
+      }),
+    ).toMatchObject({ ok: false, checked: true })
+    // A feature-source reply is not a complete DCS frame, so the detected version stands as before.
+    expect(resolveMeasuredAppVersion("iterm2", "3.6.9", { "device.xtversion": "iTerm2 3.6.9" })).toBe("3.6.9")
+  })
+
+  it("keeps the detected version for an id whose rule captures none, and invents nothing", () => {
+    // warp's rule names its terminal but captures no version, so the detected version stands.
+    expect(resolveMeasuredAppVersion("warp", "0.2026.03.18.08.24.03", {})).toBe("0.2026.03.18.08.24.03")
     // wezterm and alacritty have no identity rule at all: named-unavailable, never guessed.
     expect(resolveMeasuredAppVersion("wezterm", "", {})).toBe("unknown")
     expect(resolveMeasuredAppVersion("alacritty", "", {})).toBe("unknown")

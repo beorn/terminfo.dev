@@ -155,6 +155,7 @@ describe("private finite daemon startup", () => {
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
       let raw = "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c", disposed = 0, calls = []
+      let launch
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
@@ -173,11 +174,18 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({...unified,runProbeBatch:async options=>({
         rawReplies:options.ids.includes("device.xtversion")?{"device.xtversion":"feature-owned reply"}:{},
-        observations:options.ids.map(featureId=>({featureId})), assertions:[],screenshotRefs:[],ungradedDiagnostics:{},suiteComplete:false
+        observations:options.ids.map(featureId=>({featureId})), assertions:[],screenshotRefs:[],ungradedDiagnostics:{},suiteComplete:false,
+        ...(launch && { appLaunch: launch })
       })}))
       const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
       const ids=unified.ALL_PROBES.filter(p=>p.id!=="device.xtversion").slice(0,10).map(p=>p.id)
+      // 28216: the collector COPIES the apparatus-measured launch block into origin.appLaunch, and a
+      // batch that carries none leaves the origin without one.
+      launch={bundlePath:"/Applications/iTerm.app",cfBundleShortVersionString:"3.6.11",cfBundleVersion:"3.6.11",
+        executablePath:"/Applications/iTerm.app/Contents/MacOS/iTerm2",executableSha256:"a".repeat(64),
+        sourceArtifact:{path:"/Library/Caches/Homebrew/downloads/iterm2.zip",sha256:"b".repeat(64)}}
       const run=await collectProbeRun({ids,terminalAppOwner:{}})
+      assert.deepEqual(run.origin,{kind:"collector",appLaunch:launch})
       assert.equal(run.target.version,"0.49.2")
       assert.deepEqual(run.observations.map(o=>o.featureId),ids)
       assert.equal(run.suiteComplete,false)
@@ -196,11 +204,17 @@ describe("private finite daemon startup", () => {
       const feature=await collectProbeRun({ids:["device.xtversion"],terminalAppOwner:{}})
       assert.equal(feature.rawReplies["device.xtversion"],"feature-owned reply")
       assert.equal(feature.rawReplies["collector.xtversion"],raw)
+      launch=undefined
+      const unlaunched=await collectProbeRun({ids:["device.xtversion"],terminalAppOwner:{}})
+      assert.deepEqual(unlaunched.origin,{kind:"collector"})
+      launch={bundlePath:"/Applications/iTerm.app",cfBundleShortVersionString:"3.6.11",cfBundleVersion:"3.6.11",
+        executablePath:"/Applications/iTerm.app/Contents/MacOS/iTerm2",executableSha256:"a".repeat(64),
+        sourceArtifact:{path:"/Library/Caches/Homebrew/downloads/iterm2.zip",sha256:"b".repeat(64)}}
       for(const invalid of ["\\x1b[?62;52;c","\\x1bP>|kitty(0.49.2)"]){
         raw=invalid
         await assert.rejects(collectProbeRun({ids,terminalAppOwner:{}}),/identity: XTVERSION preflight/)
       }
-      assert.equal(disposed,4)
+      assert.equal(disposed,5)
       calls=[]
       const nonowned=await collectProbeRun({ids})
       assert.equal(nonowned.target.version,"unknown")

@@ -36,8 +36,11 @@ jobs:
           set -euo pipefail
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
           OUT="$RUNNER_TEMP/measurement-artifacts"
-          mkdir -p "$APPARATUS/scripts" "$APPARATUS/packages/terminfo.dev/src" "$OUT"
-          for source in scripts/hosted-runner-receipt.ts packages/terminfo.dev/src/disposable-receipt.ts; do
+          # The ONE app-launch parser is fetched beside the two receipt files so the bootstrap
+          # shares exactly the parser run-parser validates with; a second copy is the drift this
+          # extraction exists to prevent (28216).
+          mkdir -p "$APPARATUS/scripts" "$APPARATUS/packages/terminfo.dev/src" "$APPARATUS/packages/run-parser/src" "$OUT"
+          for source in scripts/hosted-runner-receipt.ts packages/terminfo.dev/src/disposable-receipt.ts packages/run-parser/src/app-launch.ts; do
             curl --fail --silent --show-error \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H 'Accept: application/vnd.github.raw+json' \

@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
+import { parseAppLaunchReceipt } from "../../run-parser/src/app-launch.ts"
+import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 
 /**
  * A disposable-ownership receipt is what authorizes mutate+readback against a terminal (27832).
@@ -118,6 +120,10 @@ export interface DisposableReceipt {
   identity?: ContainerIdentity
   /** sha256 of the exact bytes the verdict was read from, so a run names the receipt it trusted. */
   sha256: string
+  /** The launch receipt the apparatus measured, validated by the ONE parser run-parser validates
+   * with, for the collector to copy into origin.appLaunch without adding or editing a field. A kind
+   * whose production flow measures no launch (Linux, Windows) carries none, and says so by absence. */
+  appLaunch?: AppLaunchReceipt
 }
 
 /** Every identity field a container receipt names, as the launcher wrote it. None is derived here:
@@ -234,6 +240,7 @@ function assertLinuxXvfbContainer(value: Record<string, unknown>): {
 function assertGithubHostedRunner(value: Record<string, unknown>): {
   declaredTarget?: ReceiptTarget
   identity?: ContainerIdentity
+  appLaunch?: AppLaunchReceipt
 } {
   const where = "github-hosted-runner"
   const job = object(value, "job", where)
@@ -271,12 +278,20 @@ function assertGithubHostedRunner(value: Record<string, unknown>): {
   if (JSON.stringify(samples[0]) !== JSON.stringify(samples[1])) {
     fail(`${where} vm`, "identityAtJobStart and identityAtCollection disagree; one machine must serve the whole job")
   }
-  return {}
+  // A hosted macOS collection is an app collection the apparatus launched, so the launch receipt it
+  // measured is validated here, by the ONE parser, and returned for the collector to copy verbatim
+  // into origin.appLaunch (28216). A malformed block is refused by the parser, by name.
+  const appLaunch = value.appLaunch === undefined ? undefined : parseAppLaunchReceipt(value.appLaunch, "collector", "app", where)
+  return { ...(appLaunch && { appLaunch }) }
 }
 
 const KINDS: Record<
   DisposableKind,
-  (value: Record<string, unknown>) => { declaredTarget?: ReceiptTarget; identity?: ContainerIdentity }
+  (value: Record<string, unknown>) => {
+    declaredTarget?: ReceiptTarget
+    identity?: ContainerIdentity
+    appLaunch?: AppLaunchReceipt
+  }
 > = {
   "linux-xvfb-container": assertLinuxXvfbContainer,
   "github-hosted-runner": assertGithubHostedRunner,
@@ -307,6 +322,7 @@ export function parseDisposableReceipt(bytes: string): DisposableReceipt {
     collectedAt,
     ...(parsed.declaredTarget ? { declaredTarget: parsed.declaredTarget } : {}),
     ...(parsed.identity ? { identity: parsed.identity } : {}),
+    ...(parsed.appLaunch ? { appLaunch: parsed.appLaunch } : {}),
     sha256: createHash("sha256").update(bytes).digest("hex"),
   }
 }

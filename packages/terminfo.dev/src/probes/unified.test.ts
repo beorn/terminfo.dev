@@ -407,6 +407,50 @@ const receiptDirectories: string[] = []
 const originalDisposableReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
 
 /** The host-authored half the collector can read: /out/host-measured.json plus the envelope. */
+function hostedLaunchReceipt() {
+  const sample = (seed: string) => ({
+    machineIdSha256: createHash("sha256").update(`${seed}-machine`).digest("hex"),
+    productUuidSha256: createHash("sha256").update(`${seed}-uuid`).digest("hex"),
+    bootIdSha256: createHash("sha256").update(`${seed}-boot`).digest("hex"),
+  })
+  return {
+    schemaVersion: 1,
+    kind: "github-hosted-runner",
+    runId: "c".repeat(32),
+    collectedAt: "2026-10-08T22:00:00Z",
+    job: {
+      repository: "beorn/terminfo.dev",
+      workflow: "macos-measurement.yml",
+      workflowRef: "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/main",
+      githubRunId: "1",
+      githubRunAttempt: "1",
+      job: "measure",
+      jobId: "2",
+    },
+    runner: {
+      environment: "github-hosted",
+      name: "GitHub Actions 1",
+      os: "macOS",
+      arch: "ARM64",
+      imageOS: "macos26",
+      imageVersion: "20261001.1",
+      trackingId: "a".repeat(32),
+    },
+    vm: { identityAtJobStart: sample("job"), identityAtCollection: sample("job") },
+    appLaunch: {
+      bundlePath: "/Applications/iTerm.app",
+      cfBundleShortVersionString: "3.6.11",
+      cfBundleVersion: "3.6.11",
+      executablePath: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+      executableSha256: createHash("sha256").update("fixture-iterm2-executable").digest("hex"),
+      sourceArtifact: {
+        path: "/Library/Caches/Homebrew/downloads/iterm2--3.6.11.zip",
+        sha256: createHash("sha256").update("fixture-iterm2-installer").digest("hex"),
+      },
+    },
+  }
+}
+
 function validContainerReceipt() {
   return {
     schemaVersion: 1,
@@ -533,6 +577,20 @@ it("a verified disposable receipt runs the reset exchange and records its kind a
     frozenRunnerSha256: "d0a6b28177cce4be5dc241fe53adc636cbfba8a60e9362b38e5ccf3c5074d4c6",
     buildReceiptSha256: "63648108c641030f0d0cc0ee7ba92d27cb4627dc1da5ba953f0bd632f4de2044",
   })
+})
+
+// 28216: the apparatus measures the launch receipt and the collector only CARRIES it, so the block
+// reaches origin.appLaunch with nothing rebuilt, added or edited on the measured side.
+it("copies the apparatus-measured launch block the receipt carries onto the batch", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-disposable-receipts-"))
+  receiptDirectories.push(directory)
+  const receipt = hostedLaunchReceipt()
+  const path = join(directory, "host-measured.json")
+  writeFileSync(path, JSON.stringify(receipt))
+  process.env.TERMINFO_DISPOSABLE_RECEIPT = path
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const batch = await runProbeBatch({ ids: [], target: { kind: "app", id: "iterm2", os: "macos" } })
+  expect(batch.appLaunch).toEqual(receipt.appLaunch)
 })
 
 it("refuses a mutating probe when neither owned terminal nor disposable receipt is presented", async () => {

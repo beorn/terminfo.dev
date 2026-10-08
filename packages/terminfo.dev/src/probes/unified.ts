@@ -127,6 +127,9 @@ export interface ProbeBatch {
   ungradedDiagnostics: Record<string, UngradedDiagnostic>
   suiteComplete: boolean
   screenshotRefs: string[]
+  /** The apparatus-measured launch receipt, parsed by the ONE parser; the caller copies this block
+   * into origin.appLaunch of the run document, adding and editing nothing (28216). */
+  appLaunch?: DisposableReceipt["appLaunch"]
 }
 
 export type ProbeCapture = (checkpoint: {
@@ -262,6 +265,7 @@ export async function runProbeBatch(
   // checking it afterwards would mean the wrong terminal was already written to. (27874)
   if (disposable) bindReceiptToRun(disposable, options.target, "collector.disposableOwnership")
   const authorizedToWrite = ownsTerminal || Boolean(disposable)
+  if (disposable?.appLaunch) batch.appLaunch = disposable.appLaunch
   batch.rawReplies["collector.disposableOwnership"] = JSON.stringify(
     disposable
       ? {
