@@ -1,5 +1,5 @@
 /**
- * @failure A suite declaration can be overwritten with new metadata or a wrong applicable probe set; a manifest may carry half of the legacy provenance; the composed-tree check may go red because the tree's own suite is uncited; or a declare may run on a commit origin/main already holds.
+ * @failure A suite declaration can be overwritten with new metadata or a wrong applicable probe set; a manifest may carry half of the legacy provenance; the composed-tree check may go red because the tree's own suite is uncited; a declare may run on a commit origin/main already holds; or a development build may demand a declaration commit for the derived in-development suite.
  * @level l1
  * @consumer Current probe suite manifest producer, admission, and deploy validation
  * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/ vendor/terminfo.dev/packages/terminfo.dev/src/
@@ -20,6 +20,7 @@ import {
   persistSuiteManifest,
   suiteDeclarationState,
   suiteManifestMode,
+  uncommittedCollectorDirt,
   verifySuiteManifest,
 } from "./suite-manifest.ts"
 
@@ -218,4 +219,37 @@ test("an undeclared suite on a composed tree is a state, and an authoring checko
   const authoring = suiteDeclarationState(snapshot, directory)
   expect(authoring.kind).toBe("declared")
   expect(authoring.kind === "declared" && authoring.manifest.probeHash).toBe(hash)
+})
+
+/**
+ * 28029 (T7): a development checkout DERIVES its own suite declaration so the collector can read it,
+ * and commits that ONE declaration at the RC freeze act — never per probe change. RED BEFORE: the
+ * build listed `content/suites/<hash>.json` among its committed inputs, so the declaration the
+ * previous build had just written made the next build refuse with "Cannot bundle an uncommitted CLI
+ * collector", a declaration commit for every probe development change (13 commits / ~1 h one week).
+ */
+test("the derived in-development declaration is not uncommitted collector dirt (28029/T7)", () => {
+  const directory = temp("terminfo-collector-dirt-")
+  const git = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+  git("init", "-q", "-b", "main")
+  git("config", "user.email", "fixture@example.invalid")
+  git("config", "user.name", "fixture")
+  mkdirSync(join(directory, "scripts"), { recursive: true })
+  writeFileSync(join(directory, "scripts", "build-cli.ts"), "// collector input\n")
+  git("add", "scripts/build-cli.ts")
+  git("commit", "-q", "-m", "one")
+  git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
+
+  const snapshot = snapshotOf("a".repeat(12))
+  expect(uncommittedCollectorDirt(directory, snapshot)).toBe("")
+
+  // The previous development build derived and wrote this file untracked so the collector can read it.
+  mkdirSync(join(directory, "content", "suites"), { recursive: true })
+  writeFileSync(join(directory, "content", "suites", `${snapshot.probeHash}.json`), "{}\n")
+  expect(uncommittedCollectorDirt(directory, snapshot)).toBe("")
+
+  // A changed committed input is still dirt, so the check still means what it says.
+  writeFileSync(join(directory, "scripts", "build-cli.ts"), "// collector input, developed\n")
+  expect(uncommittedCollectorDirt(directory, snapshot)).toContain("scripts/build-cli.ts")
 })

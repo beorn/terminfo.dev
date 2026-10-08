@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /** Record and validate the immutable declaration of an executable probe suite. */
 
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -165,6 +165,43 @@ export function suiteDeclarationState(
   if (existsSync(path)) return { kind: "declared", manifest: verifySuiteManifest(path, snapshot) }
   if (declarationCheckoutState(root) === "on-main") return { kind: "undeclared", probeHash: snapshot.probeHash }
   return { kind: "declared", manifest: declaredSuiteManifest(snapshot, root) }
+}
+
+/**
+ * The committed inputs a CLI bundle must be reproducible from (28029, T7). The tree's OWN suite
+ * declaration is deliberately EXCLUDED: on an authoring checkout it is DERIVED and written so the
+ * collector can read the file (`serve.ts` refuses a v2 collection whose suite is absent), and it is
+ * committed ONCE at the RC freeze act — never per probe change. Listing it here added no coverage
+ * (`verifySuiteManifest` already checks its content against the live snapshot) while imposing a
+ * declaration commit on every probe development change (the measured 13 commits / ~1 h in one week).
+ */
+export function collectorCommittedInputs(snapshot: ProbeSuiteSnapshot): string[] {
+  return [
+    ...snapshot.sourcePaths,
+    "packages/terminfo.dev/src",
+    "packages/terminfo.dev/bin/terminfo.mjs",
+    "packages/admin/versions.ts",
+    "packages/run-parser/src",
+    "packages/run-parser/package.json",
+    "scripts/build-cli.ts",
+    "scripts/suite-manifest.ts",
+    "bun.lock",
+  ]
+}
+
+/**
+ * The collector inputs that are not committed, so a bundle built from them is not reproducible.
+ * The derived in-development declaration is not among them (28029/T7): its file existing is what
+ * the collector needs, and its commitment belongs to the freeze act, not to this check.
+ */
+export function uncommittedCollectorDirt(
+  cwd: string = ROOT,
+  snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(),
+): string {
+  return execFileSync("git", ["status", "--porcelain", "--", ...collectorCommittedInputs(snapshot)], {
+    cwd,
+    encoding: "utf8",
+  }).trim()
 }
 
 /**

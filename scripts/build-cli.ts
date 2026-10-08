@@ -7,28 +7,17 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
-import { derivedSuiteManifest, suiteDeclarationState } from "./suite-manifest.ts"
+import { derivedSuiteManifest, suiteDeclarationState, uncommittedCollectorDirt } from "./suite-manifest.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
 async function main(): Promise<void> {
   const snapshot = probeSuiteSnapshot()
-  const sourcePaths = [
-    ...snapshot.sourcePaths,
-    "packages/terminfo.dev/src",
-    "packages/terminfo.dev/bin/terminfo.mjs",
-    "packages/admin/versions.ts",
-    "packages/run-parser/src",
-    "packages/run-parser/package.json",
-    "scripts/build-cli.ts",
-    "scripts/suite-manifest.ts",
-    "bun.lock",
-    `content/suites/${snapshot.probeHash}.json`,
-  ]
-  const dirty = execFileSync("git", ["status", "--porcelain", "--", ...sourcePaths], {
-    cwd: ROOT,
-    encoding: "utf8",
-  }).trim()
+  // 28029 (T7): a development checkout DERIVES its own suite declaration so the collector can read
+  // it, and commits that one declaration at the RC freeze act. It is therefore not a committed-input
+  // requirement of a development build — requiring it made every probe change need a declaration
+  // commit (13 commits / ~1 h in one week). `uncommittedCollectorDirt` names the inputs that are.
+  const dirty = uncommittedCollectorDirt(ROOT, snapshot)
   if (dirty) throw new Error(`Cannot bundle an uncommitted CLI collector:\n${dirty}`)
   // A build is a first use of the suite, but on a checkout whose HEAD is on origin/main it can only
   // verify what a commit already carries. A non-fast-forward compose that lands a suite nobody
