@@ -1,189 +1,163 @@
 name: macos-measurement
-
 on:
-  workflow_dispatch:
-
+  workflow_dispatch: null
 permissions:
   contents: read
-  actions: read
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+  cancel-in-progress: false
 jobs:
   measure-macos:
-    name: macOS ${{ matrix.id }}
+    name: macOS iterm2 diagnostic
     runs-on: macos-latest
     timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - id: terminal-app
-            bundle: /System/Applications/Utilities/Terminal.app
-          - id: iterm2
-            bundle: /Applications/iTerm.app
-          - id: ghostty
-            bundle: /Applications/Ghostty.app
-          - id: alacritty
-            bundle: /Applications/Alacritty.app
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Bootstrap the pinned producer and sample at job start
-        run: |
-          set -euo pipefail
-          APPARATUS="$RUNNER_TEMP/hosted-apparatus"
-          OUT="$RUNNER_TEMP/measurement-artifacts"
-          mkdir -p "$APPARATUS/scripts" "$APPARATUS/packages/terminfo.dev/src" "$OUT"
-          for source in scripts/hosted-runner-receipt.ts packages/terminfo.dev/src/disposable-receipt.ts; do
-            curl --fail --silent --show-error \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H 'Accept: application/vnd.github.raw+json' \
-              --output "$APPARATUS/$source" \
-              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/contents/$source?ref=$GITHUB_SHA"
-          done
-          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" start "$OUT/job-start.json"
-
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
-
-      - name: Build and install the current collector
-        run: |
-          set -euo pipefail
-          bun install
-          bun scripts/build-cli.ts
-          npm install -g ./packages/terminfo.dev
-          terminfo --version
-
-      - name: Install this job's terminal
+      - name: Install the same cold-start app
         env:
-          APP_ID: ${{ matrix.id }}
-          APP_BUNDLE: ${{ matrix.bundle }}
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
-          set -euo pipefail
-          case "$APP_ID" in
-            terminal-app) ;;
-            iterm2) brew install --cask iterm2 ;;
-            ghostty) brew install --cask ghostty ;;
-            alacritty)
-              curl --location --fail --silent --show-error \
-                https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg \
-                --output "$RUNNER_TEMP/Alacritty.dmg"
-              hdiutil attach "$RUNNER_TEMP/Alacritty.dmg" -mountpoint /Volumes/Alacritty
-              cp -R /Volumes/Alacritty/Alacritty.app /Applications/
-              hdiutil detach /Volumes/Alacritty
-              ;;
-            *) echo "Unknown Mac measurement app: $APP_ID" >&2; exit 1 ;;
-          esac
-          test -d "$APP_BUNDLE" || { echo "Required terminal bundle missing: $APP_BUNDLE" >&2; exit 1; }
-          if [ "$APP_ID" != terminal-app ]; then sudo xattr -cr "$APP_BUNDLE"; fi
-
-      - name: Launch, emit the receipt, and collect as the last mutating step
-        id: collect
-        env:
-          APP_ID: ${{ matrix.id }}
-          APP_BUNDLE: ${{ matrix.bundle }}
+          brew install --cask iterm2
+          test -d /Applications/iTerm.app
+          sudo xattr -cr /Applications/iTerm.app
+      - name: One bounded iTerm diagnostic (CTO 39838a35)
+        timeout-minutes: 4
+        shell: bash
         run: |
-          set -euo pipefail
-          OUT="$RUNNER_TEMP/measurement-artifacts"
-          APPARATUS="$RUNNER_TEMP/hosted-apparatus"
-          COMMAND_PATH="$RUNNER_TEMP/collect.command"
-          NODE_DIR="$(dirname "$(command -v node)")"
-          COLLECTOR="$(command -v terminfo)"
-          TARGET_VERSION_EXPORT=""
-          if [ "$APP_ID" = alacritty ]; then
-            bundle_status=0
-            bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")" || bundle_status=$?
-            printf 'Alacritty bundle version (raw): %s\n' "$bundle_version"
-            test "$bundle_status" = 0 || { echo "Alacritty bundle version read failed ($bundle_status)" >&2; exit 1; }
-            test -n "$bundle_version" || { echo "Alacritty bundle version is empty" >&2; exit 1; }
-            binary_status=0
-            binary_version="$("$APP_BUNDLE/Contents/MacOS/alacritty" --version)" || binary_status=$?
-            printf 'Alacritty binary --version (raw): %s\n' "$binary_version"
-            test "$binary_status" = 0 || { echo "Alacritty binary --version failed ($binary_status)" >&2; exit 1; }
-            version_pattern='^alacritty[[:blank:]]+([^[:space:]]+)([[:blank:]]+\([^[:space:]]+\))?$'
-            [[ "$binary_version" =~ $version_pattern ]] || { echo "Alacritty binary --version has an unexpected shape" >&2; exit 1; }
-            test "${BASH_REMATCH[1]}" = "$bundle_version" || { echo "Alacritty bundle and binary versions disagree" >&2; exit 1; }
-            TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
-          fi
-          cat > "$COMMAND_PATH" <<SCRIPT
-          #!/bin/bash
-          $TARGET_VERSION_EXPORT
-          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
-          export TERMINFO_DISPOSABLE_RECEIPT="$OUT/host-measured.json"
-          attempts=0
-          while [ ! -f "$OUT/collector-ready" ]; do
-            attempts=\$((attempts + 1))
-            if [ "\$attempts" -ge 180 ]; then echo "Receipt self-parse never succeeded; collection refused" >&2; exit 1; fi
-            sleep 1
-          done
-          "$COLLECTOR" test --output "$OUT/run.json" > "$OUT/collector.log" 2>&1
-          status=\$?
-          printf '%s\n' "\$status" > "$OUT/collector-exit"
-          SCRIPT
-          chmod +x "$COMMAND_PATH"
-          case "$APP_ID" in
-            terminal-app) open -a "$APP_BUNDLE" "$COMMAND_PATH" ;;
-            iterm2)
-              test -d "$APP_BUNDLE" || { echo "Required iTerm2 bundle missing: $APP_BUNDLE" >&2; exit 1; }
-              bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_BUNDLE/Contents/Info.plist")"
-              printf 'iTerm2 bundle: %s; identifier: %s\n' "$APP_BUNDLE" "$bundle_id"
-              test "$bundle_id" = com.googlecode.iterm2 || { echo "Unexpected iTerm2 bundle identifier: $bundle_id" >&2; exit 1; }
-              open "$APP_BUNDLE"
-              for attempt in {1..30}; do
-                if pgrep -x iTerm2 > /dev/null; then break; fi
-                if [ "$attempt" -eq 30 ]; then echo "iTerm2 did not launch within 30 seconds (com.googlecode.iterm2)" >&2; exit 1; fi
-                sleep 1
-              done
-              osascript -e 'POSIX path of (path to application id "com.googlecode.iterm2")'
-              osascript -e 'tell application id "com.googlecode.iterm2" to get version' || { echo "iTerm2 scripting dictionary/version lookup failed" >&2; exit 1; }
-              osascript - "$COMMAND_PATH" <<'APPLESCRIPT'
-          on run argv
-            tell application id "com.googlecode.iterm2"
-              create window with default profile command ("/bin/bash " & quoted form of item 1 of argv)
-            end tell
-          end run
-          APPLESCRIPT
-              ;;
-            ghostty)
-              mkdir -p "$HOME/.config/ghostty"
-              printf 'command = /bin/bash %s\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
-              "$APP_BUNDLE/Contents/MacOS/ghostty" > "$OUT/launcher.log" 2>&1 &
-              ;;
-            alacritty)
-              "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &
-              ;;
-            *) echo "Unknown Mac collection app: $APP_ID" >&2; exit 1 ;;
-          esac
-          sleep 3
-          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
-          # The receipt exists before strict parsing. Release collection ONLY after producer success.
-          touch "$OUT/collector-ready"
-          for attempt in {1..300}; do
-            if [ -f "$OUT/collector-exit" ]; then
-              status="$(cat "$OUT/collector-exit")"
-              test "$status" = 0 || { echo "$APP_ID collector failed ($status); see collector.log artifact" >&2; exit 1; }
-              test -s "$OUT/run.json" || { echo "$APP_ID collector returned no run.json" >&2; exit 1; }
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "$APP_ID collector did not finish within 300 seconds; see launcher/collector artifacts" >&2
-          exit 1
+          bun - <<'TS'
+          import { mkdir, writeFile, stat } from "node:fs/promises"
+          import { join } from "node:path"
+          import { writeFileSync } from "node:fs"
 
-      - name: Upload the receipt beside the exact collected run
+          // One diagnostic under CTO 39838a35. No collector, receipt, admission or retry.
+          const out = join(process.env.RUNNER_TEMP!, "iterm-diagnostic")
+          await mkdir(out, { recursive: true })
+          const deadline = Date.now() + 210_000
+          const bundle = "/Applications/iTerm.app"
+          const plist = join(bundle, "Contents/Info.plist")
+          const sentinel = join(out, "window-command-ran")
+          const calls: Record<string, unknown>[] = []
+          const evidence: Record<string, unknown> = {}
+          const active = new Set<{ pid: number; kill: (signal: "SIGKILL") => void }>()
+          const identity = Object.fromEntries([
+            "GITHUB_SHA", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB",
+            "RUNNER_NAME", "RUNNER_OS", "RUNNER_ARCH", "ImageOS", "ImageVersion",
+          ].map(key => [key, process.env[key] ?? null]))
+          const parentTimer = setTimeout(() => {
+            for (const child of active) child.kill("SIGKILL")
+            writeFileSync(join(out, "result.json"), JSON.stringify({ identity, calls, evidence, failure: "210-second parent deadline reached", activeChildPids: [...active].map(child => child.pid) }, null, 2))
+            process.exit(124)
+          }, 210_000)
+          await writeFile(join(out, "identity.json"), JSON.stringify({ parentPid: process.pid, bundle, identity }, null, 2))
+
+          async function capture(stream: ReadableStream<Uint8Array>) {
+            const chunks: Uint8Array[] = []
+            let bytes = 0, kept = 0
+            for await (const chunk of stream) {
+              bytes += chunk.length
+              const count = Math.min(chunk.length, 262_144 - kept)
+              if (count > 0) { chunks.push(chunk.slice(0, count)); kept += count }
+            }
+            return { text: Buffer.concat(chunks).toString("utf8"), bytes, omittedBytes: bytes - kept }
+          }
+
+          async function run(label: string, argv: string[], wallMs: number, env = process.env) {
+            const start = new Date(), remaining = deadline - Date.now()
+            if (remaining <= 0) throw new Error(`Parent deadline spent before ${label}`)
+            const bound = Math.min(wallMs, remaining)
+            const child = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe", env })
+            active.add(child)
+            let outerTimedOut = false
+            const timer = setTimeout(() => { outerTimedOut = true; child.kill("SIGKILL") }, bound)
+            try {
+              const [exitCode, stdout, stderr] = await Promise.all([child.exited, capture(child.stdout), capture(child.stderr)])
+              const end = new Date()
+              const row = { label, argv, parentPid: process.pid, childPid: child.pid, start: start.toISOString(), end: end.toISOString(), elapsedMs: +end - +start, wallMs: bound, outerTimedOut, exitCode, stdout, stderr }
+              calls.push(row)
+              await writeFile(join(out, `${label}.json`), JSON.stringify(row, null, 2))
+              return row
+            } finally { clearTimeout(timer); active.delete(child) }
+          }
+
+          const ae = (body: string, seconds: number) => ["/usr/bin/osascript", "-e", `with timeout of ${seconds} seconds\n${body}\nend timeout`]
+          const stamp = (iso: string) => iso.replace("T", " ").replace("Z", "")
+          let control: Awaited<ReturnType<typeof run>> | undefined
+          let itermPid: string | undefined
+          let failure: unknown
+          try {
+            const id = await run("bundle-id", ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier", plist], 5_000)
+            await run("bundle-version", ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", plist], 5_000)
+            if (id.exitCode !== 0 || id.stdout.text.trim() !== "com.googlecode.iterm2") throw new Error("Installed bundle identity mismatch; see bundle-id.json")
+            control = await run("positive-control", ae('tell application id "com.apple.finder" to get version', 5), 8_000)
+            evidence.controlQualified = control.exitCode === 0 && !control.outerTimedOut && control.stdout.text.trim().length > 0
+            await run("open-bundle", ["/usr/bin/open", bundle], 10_000)
+            const pidDeadline = Math.min(deadline, Date.now() + 30_000)
+            while (Date.now() < pidDeadline) {
+              const pid = await run("process-observation", ["/usr/bin/pgrep", "-x", "iTerm2"], 2_000)
+              if (pid.exitCode === 0 && /^\d+$/u.test(pid.stdout.text.trim())) { itermPid = pid.stdout.text.trim(); break }
+              await Bun.sleep(Math.min(1000, Math.max(0, pidDeadline - Date.now())))
+            }
+            evidence.itermPid = itermPid ?? null
+            let captured = false
+            async function inspectStall(call: Awaited<ReturnType<typeof run>>) {
+              if (captured || (call.exitCode === 0 && !call.outerTimedOut)) return
+              captured = true
+              // Query only these call intervals and these subsystems; never arbitrary logs.
+              const predicate = 'subsystem == "com.apple.TCC" OR subsystem CONTAINS[c] "appleevent" OR process == "appleeventsd"'
+              await run("screen", ["/usr/sbin/screencapture", "-x", join(out, "screen.png")], 10_000)
+              const windows = await run("windows", ["/usr/bin/osascript", "-l", "JavaScript", "-e", `
+                ObjC.import('CoreGraphics'); ObjC.import('Foundation');
+                var raw = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, $.kCGNullWindowID);
+                if (!raw) throw new Error('CGWindowListCopyWindowInfo returned null');
+                var rows = ObjC.deepUnwrap(raw).map(function(w) {
+                  return { owner: w.kCGWindowOwnerName, pid: w.kCGWindowOwnerPID, layer: w.kCGWindowLayer };
+                });
+                JSON.stringify({ windows: rows, nonDesktopWindowObserved: rows.some(function(w) { return w.layer === 0 && w.owner !== 'Window Server' && w.owner !== 'Dock'; }) });
+              `], 10_000)
+              evidence.windowCensusMeasured = windows.exitCode === 0 && !windows.outerTimedOut
+              evidence.screenshotVisibility = "Requires human inspection; blank image cannot prove absence of a modal. Screen Recording permission was not changed."
+              if (itermPid) await run("iterm-process", ["/bin/ps", "-p", itermPid, "-o", "pid=,ppid=,state=,comm="], 5_000)
+              for (const interval of [call, ...(control && control.exitCode !== 0 ? [control] : [])]) {
+                await run(`log-${interval.label}`, ["/usr/bin/log", "show", "--style", "json", "--start", stamp(interval.start), "--end", stamp(interval.end), "--predicate", predicate], 20_000, { ...process.env, TZ: "UTC" })
+              }
+            }
+            const path = await run("application-path", ae('POSIX path of (path to application id "com.googlecode.iterm2")', 15), 20_000)
+            await inspectStall(path)
+            const version = await run("application-version", ae('tell application id "com.googlecode.iterm2" to get version', 15), 20_000)
+            await inspectStall(version)
+            const command = `/usr/bin/touch '${sentinel.replaceAll("'", "'\\''")}'`
+            const window = await run("create-window", ae(`tell application id "com.googlecode.iterm2"\ncreate window with default profile command ${JSON.stringify(command)}\nend tell`, 15), 20_000)
+            await inspectStall(window)
+            const sentinelDeadline = Math.min(deadline, Date.now() + 5_000)
+            evidence.sentinelObserved = false
+            while (Date.now() < sentinelDeadline) {
+              try {
+                const sample = await stat(sentinel)
+                evidence.sentinelObserved = true
+                evidence.sentinelObservedAt = new Date().toISOString()
+                evidence.sentinelMtime = sample.mtime.toISOString()
+                break
+              } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error }
+              await Bun.sleep(Math.min(250, Math.max(0, sentinelDeadline - Date.now())))
+            }
+          } catch (error) {
+            failure = error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error)
+            console.error("DIAGNOSTIC INCOMPLETE", failure)
+          } finally {
+            clearTimeout(parentTimer)
+            await writeFile(join(out, "result.json"), JSON.stringify({ identity, parentPid: process.pid, calls, evidence, failure: failure ?? null, conclusion: "One diagnostic only. Interpret native evidence; unknown requires CTO before another run. No correction or parent acceptance is asserted." }, null, 2))
+          }
+          if (failure) process.exitCode = 1
+
+          TS
+      - name: Preserve exact diagnostic output
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/measurement-artifacts
+          name: iterm2-diagnostic
+          path: ${{ runner.temp }}/iterm-diagnostic
           if-no-files-found: error
