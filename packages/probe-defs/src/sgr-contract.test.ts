@@ -3,6 +3,7 @@
  *   observation moves it - so a group step reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28018 candidate-2 SGR group (child 28019); the first adopter of the 28453 harness.
+ * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/sgr-contract.test.ts vendor/terminfo.dev/packages/probe-defs/src/helper-observations.test.ts vendor/terminfo.dev/packages/probe-defs/src/readback.test.ts
  * @testonly none
  */
 import { expect, test } from "vitest"
@@ -14,6 +15,7 @@ import {
   missingContractTests,
   regradeCommand,
   regradeRow,
+  satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
   type HeadlessModel,
@@ -66,7 +68,9 @@ const SGR_CONTRACT_SPEC: GroupContractSpec = {
   ],
 }
 
-function inertModel(cols = 40): HeadlessModel {
+type InertCell = ReturnType<HeadlessModel["getCell"]>
+
+function inertModel(cols = 40, cell: Partial<InertCell> = {}): HeadlessModel {
   return {
     cols,
     feed: () => {},
@@ -83,6 +87,7 @@ function inertModel(cols = 40): HeadlessModel {
       fg: null,
       bg: null,
       wide: false,
+      ...cell,
     }),
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
   }
@@ -107,7 +112,11 @@ test("the SGR contract names its focused tests, and every named file exists", ()
   for (const path of SGR_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
-test("every SGR capability is re-gradable through the harness and is deterministic", async () => {
+// Determinism only (2026-10-09 @dev/10 review): the inert model feeds nothing, so this replay can
+// prove the harness is deterministic, NOT that a decided row is satisfied. The satisfaction proof is
+// bound separately by helper-observations.test.ts (named in SGR_CONTRACT_SPEC.tests), which drives
+// each capability with the cell state its claim requires.
+test("the harness replays every SGR capability deterministically (satisfaction is bound by helper-observations.test.ts)", async () => {
   for (const row of SGR_CONTRACT) {
     const probe = sgrProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing SGR probe ${row.id}`).toBeDefined()
@@ -116,5 +125,26 @@ test("every SGR capability is re-gradable through the harness and is determinist
     const first = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
     const second = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
+    expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
+    // The harness APPLIES the contract predicate; a re-grade is never a rubber stamp.
+    expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
   }
+})
+
+// The bound satisfaction proof: the harness really can read a decided row as satisfied, and really
+// refuses to when the cell state does not support it. This is what the determinism replay above cannot
+// show on its own (the whole 32-row proof is helper-observations.test.ts).
+test("a decided SGR row reads satisfied from a supporting cell and unsatisfied from an inert one", async () => {
+  const row = SGR_CONTRACT.find((entry) => entry.id === "sgr.bold")
+  const probe = sgrProbes.find((entry) => entry.id === "sgr.bold")
+  expect(row, "the SGR contract names sgr.bold").toBeDefined()
+  expect(probe, "the SGR contract names a real sgr.bold probe").toBeDefined()
+  if (!row || !probe) return
+  const supported = await regradeRow(probe, row, {
+    headless: headlessContext(inertModel(40, { char: "X", bold: true })),
+  })
+  expect(supported.after).toBe("supported")
+  expect(supported.satisfies).toBe(true)
+  const inert = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
+  expect(inert.satisfies).toBe(false)
 })

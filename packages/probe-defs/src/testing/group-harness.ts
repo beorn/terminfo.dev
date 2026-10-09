@@ -70,18 +70,61 @@ export interface GroupRow {
   readonly rawReplies: Readonly<Record<string, string>>
 }
 
-/** Part 1 - the fixture. Reads content/ rows once; a group names only its own ids. */
-export function loadGroupRows(contentDir: string, dirs: readonly string[] = ["probes-apps", "probes-mux"]): GroupRow[] {
+/**
+ * One content directory a fixture reads. A directory is REQUIRED unless it is explicitly declared
+ * `optional`; a required directory that cannot be read is a loud fault, never an empty fixture
+ * (2026-10-09 @dev/10 review: a blanket catch turned missing/unreadable dirs into a silent pass).
+ */
+export interface GroupRowsSource {
+  readonly dir: string
+  /** A directory the fixture may legitimately not have. Its absence is reported in `excluded`, never dropped. */
+  readonly optional?: boolean
+}
+
+/** An optional source that was absent or unreadable, named with its queried path and cause. */
+export interface GroupRowsExclusion {
+  readonly dir: string
+  readonly path: string
+  readonly cause: string
+}
+
+/** The fixture read: the rows, plus every optional source that was excluded (empty = none were). */
+export interface GroupRowsRead {
+  readonly rows: GroupRow[]
+  readonly excluded: readonly GroupRowsExclusion[]
+}
+
+/**
+ * Part 1 - the fixture. Reads content/ rows once; a group names only its own ids. Required sources
+ * MUST read (a failure throws with the queried path); optional sources are declared and any that was
+ * skipped is returned in `excluded`, so a caller can never read a missing directory as an empty set.
+ */
+export function loadGroupRows(
+  contentDir: string,
+  sources: readonly GroupRowsSource[] = [{ dir: "probes-apps" }, { dir: "probes-mux" }],
+): GroupRowsRead {
   const rows: GroupRow[] = []
-  for (const dir of dirs) {
+  const excluded: GroupRowsExclusion[] = []
+  for (const source of sources) {
+    const path = join(contentDir, source.dir)
     let names: string[]
     try {
-      names = readdirSync(join(contentDir, dir))
-    } catch {
-      continue
+      names = readdirSync(path)
+    } catch (error) {
+      const cause = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+      if (source.optional === true) {
+        excluded.push({ dir: source.dir, path, cause })
+        continue
+      }
+      throw new Error(
+        `loadGroupRows: required content directory ${source.dir} could not be read at ${path}: ${cause}`,
+        {
+          cause,
+        },
+      )
     }
     for (const name of names.filter((entry) => entry.endsWith(".json"))) {
-      const data = JSON.parse(readFileSync(join(contentDir, dir, name), "utf8")) as {
+      const data = JSON.parse(readFileSync(join(contentDir, source.dir, name), "utf8")) as {
         schemaVersion?: number
         runId?: string
         target?: { id?: string; version?: string }
@@ -90,7 +133,7 @@ export function loadGroupRows(contentDir: string, dirs: readonly string[] = ["pr
       }
       if (data.schemaVersion !== 2) continue
       rows.push({
-        file: `${dir}/${name}`,
+        file: `${source.dir}/${name}`,
         terminal: data.target?.id ?? "unknown",
         version: data.target?.version ?? "unknown",
         runId: data.runId ?? name,
@@ -99,7 +142,7 @@ export function loadGroupRows(contentDir: string, dirs: readonly string[] = ["pr
       })
     }
   }
-  return rows
+  return { rows, excluded }
 }
 
 /** Contract coverage: every probe id has a contract row, and no contract row names an unknown id. */
