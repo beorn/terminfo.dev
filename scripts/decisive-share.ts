@@ -25,17 +25,21 @@
  * It never touches content/terminals.json, collectors/probe-defs, the launcher, or any admitted run
  * document. It writes nothing. Bucket math is barOverMeasured's, not a second copy.
  *
- * Usage: bun scripts/decisive-share.ts [terminal-id ...]
+ * Usage: bun scripts/decisive-share.ts [--cohort candidate1|candidate2] [terminal-id ...]
+ * Candidate 1 is the default. Candidate 2 keeps all 125 classics on frozen suite a8bafe49cdd4.
+ * When live selection moves past it, bar rows are ineligible: selected run on suite X, required
+ * a8bafe49cdd4. The 125 verdict then lives only in admitted history for suite-H runs.
  */
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { parseJsonStrict } from "@terminfo/run-parser"
+import { parseArgs } from "node:util"
+import { parseJsonStrict, parseSuiteManifest } from "@terminfo/run-parser"
 import {
   loadCurrentResults,
   loadDefaultContextPolicy,
   type DefaultContextReview,
 } from "../docs/data/current-results.ts"
-import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
+import { loadReleaseScope, loadFeatureCohort, type FeatureCohort } from "../docs/data/load-release-scope.ts"
 import {
   barOverMeasured,
   d3Verdict,
@@ -154,6 +158,11 @@ export function decisiveShare(cells: ShareCells, measuredIds: readonly string[])
 
 /** The declared 62 tier-1 ids, validated against the feature catalog by the declaration's owner. */
 export function tierOneIds(contentDir: string): string[] {
+  const catalog = featureCatalog(contentDir)
+  return loadReleaseScope({ catalog, declarationPath: join(contentDir, "release-scope.json") }).measuredIds
+}
+
+function featureCatalog(contentDir: string): Record<string, { name: string }> {
   const featuresPath = join(contentDir, "features.json")
   const raw = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8"))
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
@@ -165,7 +174,7 @@ export function tierOneIds(contentDir: string): string[] {
     const declared = typeof value === "object" && value !== null ? (value as { name?: unknown }).name : value
     catalog[id] = { name: typeof declared === "string" && declared ? declared : id }
   }
-  return loadReleaseScope({ catalog, declarationPath: join(contentDir, "release-scope.json") }).measuredIds
+  return catalog
 }
 
 /** One candidate context the site currently selects, reduced to what the reader consumes. */
@@ -308,13 +317,62 @@ export interface Report {
   legacySkipped: number
   rejected: number
   searched: string
+  candidate2?: FeatureCohort & {
+    unavailableIds: string[]
+    barRows: CohortBarRow[]
+    admittedRuns: CohortRun[]
+  }
+}
+
+export type CohortRun =
+  | { run: ContextCandidate; measured: true; share: DecisiveShare }
+  | { run: ContextCandidate; measured: false; reason: string }
+
+export type CohortBarRow = NotMeasuredRow | (CohortRun & { context: ReleaseContext; selection: RunSelection })
+
+function cohortRun(run: ContextCandidate, cohort: FeatureCohort, role: "selected" | "admitted"): CohortRun {
+  if (run.suiteId !== cohort.frozenSuiteId) {
+    return {
+      run,
+      measured: false,
+      reason: `ineligible: ${role} run on suite ${run.suiteId}, required ${cohort.frozenSuiteId}`,
+    }
+  }
+  return { run, measured: true, share: decisiveShare(run.cells, cohort.measuredIds) }
+}
+
+/** Eligibility follows the site's completed selection; history never replaces the selected run. */
+export function cohortRowForSelected(row: BarRow, cohort: FeatureCohort): CohortBarRow {
+  if (!row.measured) return row
+  return { ...cohortRun(row.run, cohort, "selected"), context: row.context, selection: row.selection }
 }
 
 /**
  * The whole report: bar rows from the site's current selection, and every admitted schema-v2 `app` run
  * (newest first per context key) for the by-run-id section.
  */
-export function buildReport(args: { contentDir: string; contexts?: readonly ReleaseContext[] }): Report {
+export function buildReport(args: {
+  contentDir: string
+  contexts?: readonly ReleaseContext[]
+  cohort?: "candidate1" | "candidate2"
+}): Report {
+  let cohort: FeatureCohort | undefined
+  let unavailableIds: string[] = []
+  if (args.cohort === "candidate2") {
+    cohort = loadFeatureCohort({
+      catalog: featureCatalog(args.contentDir),
+      declarationPath: join(args.contentDir, "release-scope-candidate2.json"),
+    })
+    const manifestPath = join(args.contentDir, "suites", `${cohort.frozenSuiteId}.json`)
+    const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+    if (manifest.probeHash !== cohort.frozenSuiteId) {
+      throw new Error(
+        `${manifestPath}: probeHash ${manifest.probeHash} does not match required ${cohort.frozenSuiteId}`,
+      )
+    }
+    const scheduled = new Set(manifest.probes.app)
+    unavailableIds = cohort.measuredIds.filter((id) => !scheduled.has(id))
+  }
   const projection = loadCurrentResults(args.contentDir).projection
   const current = Object.entries(projection.current).map(([key, selected]) => candidateFromSelected(key, selected))
   const reviewed = loadDefaultContextPolicy(args.contentDir)
@@ -355,7 +413,7 @@ export function buildReport(args: { contentDir: string; contexts?: readonly Rele
       tier52Ids,
     }),
   )
-  return {
+  const report: Report = {
     tier62Ids,
     tier52Ids,
     barRows,
@@ -364,6 +422,15 @@ export function buildReport(args: { contentDir: string; contexts?: readonly Rele
     rejected: projection.exclusions.length,
     searched: join(args.contentDir, "probes-apps"),
   }
+  if (cohort) {
+    report.candidate2 = {
+      ...cohort,
+      unavailableIds,
+      barRows: barRows.map((row) => cohortRowForSelected(row, cohort)),
+      admittedRuns: admitted.map((run) => cohortRun(run, cohort, "admitted")),
+    }
+  }
+  return report
 }
 
 function remainderLine(remainder: readonly RemainderRow[]): string {
@@ -402,10 +469,62 @@ export function formatAdmittedRun(run: ContextCandidate, shares: ContextShares):
   )
 }
 
+export function parseReaderArgs(args: string[]): { cohort: "candidate1" | "candidate2"; terminalIds: string[] } {
+  const { values, positionals: terminalIds } = parseArgs({
+    args,
+    strict: true,
+    allowPositionals: true,
+    options: { cohort: { type: "string", default: "candidate1" } },
+  })
+  if (values.cohort !== "candidate1" && values.cohort !== "candidate2") {
+    throw new Error(`Unknown cohort ${values.cohort}; accepted values: candidate1, candidate2`)
+  }
+  return { cohort: values.cohort, terminalIds }
+}
+
 function main(): void {
   const contentDir = join(import.meta.dirname ?? process.cwd(), "..", "content")
-  const terminalIds = process.argv.slice(2).filter((arg) => !arg.startsWith("-"))
-  const report = buildReport({ contentDir })
+  const { cohort: selectedCohort, terminalIds } = parseReaderArgs(process.argv.slice(2))
+  const report = buildReport({ contentDir, cohort: selectedCohort })
+  if (report.candidate2) {
+    const cohort = report.candidate2
+    console.log(
+      `Candidate 2 classics · ${cohort.measuredIds.length} IDs · required suite ${cohort.frozenSuiteId}; ineligible: selected run on suite X, required ${cohort.frozenSuiteId} when live selection moves; only frozen-suite admitted history then receives the 125 verdict`,
+    )
+    console.log(
+      `read ${report.searched} through the published selection projection; skipped ${report.legacySkipped} legacy documents; ${report.rejected} rejected`,
+    )
+    console.log(
+      `unavailable in required app schedule (retained in denominator): ${cohort.unavailableIds.join(", ") || "none"}`,
+    )
+    console.log("BAR ROWS — the site's selected run per Release 1 (terminal, os) context")
+    for (const row of cohort.barRows.filter(
+      (row) => !terminalIds.length || terminalIds.includes(row.context.terminalId),
+    )) {
+      console.log(`${row.context.terminalId}/${row.context.os}`)
+      if ("run" in row) {
+        console.log(`  run ${row.run.runId} · suite ${row.run.suiteId} · selected by ${row.selection} · ${row.run.key}`)
+      }
+      if (!row.measured) console.log(`  not measured — ${row.reason}`)
+      else {
+        console.log(
+          `  decisive/125 ${row.share.decisive}/125 = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}`,
+        )
+        console.log(`  inconclusive/125 ${row.share.inconclusive}/125 = ${row.share.inconclusivePct}%`)
+        console.log(remainderLine(row.share.remainder))
+      }
+    }
+    console.log(`ADMITTED RUNS — every admitted schema-v2 app run in ${report.searched}`)
+    for (const row of cohort.admittedRuns) {
+      console.log(
+        `  ${row.run.terminalId} ${row.run.version} ${row.run.os} ${row.run.runId} · suite ${row.run.suiteId} · ` +
+          (row.measured
+            ? `decisive/125 ${row.share.decisive}/125 = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}`
+            : row.reason),
+      )
+    }
+    return
+  }
   const contexts = terminalIds.length
     ? report.barRows.filter((row) => terminalIds.includes(row.context.terminalId))
     : report.barRows

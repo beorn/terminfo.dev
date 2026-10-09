@@ -13,9 +13,17 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
+import { join } from "node:path"
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { createHash } from "node:crypto"
+import { parseSuiteManifest } from "@terminfo/run-parser"
 import {
   type ContextCandidate,
   barRowForContext,
+  buildReport,
+  cohortRowForSelected,
+  parseReaderArgs,
   decisiveShare,
   F2_MOVERS,
   formatBarRow,
@@ -54,6 +62,125 @@ function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate 
 }
 
 describe("release 1 decisive-count reader", () => {
+  it("names required catalog, cohort and frozen manifest failures instead of returning an empty report", () => {
+    const contentDir = mkdtempSync(join(tmpdir(), "reader-required-content-"))
+    const real = join(import.meta.dirname, "..", "content")
+    const load = () => buildReport({ contentDir, cohort: "candidate2" })
+    try {
+      const features = join(contentDir, "features.json")
+      expect(load).toThrow(features)
+      writeFileSync(features, "{")
+      expect(load).toThrow(features)
+      writeFileSync(features, readFileSync(join(real, "features.json")))
+      const declaration = join(contentDir, "release-scope-candidate2.json")
+      expect(load).toThrow(declaration)
+      writeFileSync(declaration, readFileSync(join(real, "release-scope-candidate2.json")))
+      const manifest = join(contentDir, "suites", "a8bafe49cdd4.json")
+      expect(load).toThrow(manifest)
+      mkdirSync(join(contentDir, "suites"))
+      writeFileSync(manifest, "{}")
+      expect(load).toThrow(manifest)
+      const realManifest = join(real, "suites", "a8bafe49cdd4.json")
+      const raw = parseSuiteManifest(realManifest, readFileSync(realManifest, "utf8"))
+      writeFileSync(manifest, JSON.stringify({ ...raw, probeHash: "wrong-suite" }))
+      expect(load).toThrow(/probeHash wrong-suite does not match required a8bafe49cdd4/)
+      expect(load).toThrow(manifest)
+    } finally {
+      rmSync(contentDir, { recursive: true })
+    }
+  })
+
+  it("preserves the default report and accepts only the named CLI selectors and positionals", () => {
+    const contentDir = join(import.meta.dirname, "..", "content")
+    expect(buildReport({ contentDir, cohort: "candidate1" })).toEqual(buildReport({ contentDir }))
+    expect(parseReaderArgs([])).toEqual({ cohort: "candidate1", terminalIds: [] })
+    expect(parseReaderArgs(["kitty", "--cohort", "candidate2", "xterm"])).toEqual({
+      cohort: "candidate2",
+      terminalIds: ["kitty", "xterm"],
+    })
+    expect(() => parseReaderArgs(["--cohort", "candidate3"])).toThrow(/candidate1, candidate2/)
+    expect(() => parseReaderArgs(["--unknown"])).toThrow(/unknown/i)
+    // Two complete real-data projections took 5.7s under measured host load; keep this bound local.
+  }, 15_000)
+
+  it("keeps the selected non-frozen run ineligible instead of replacing it with a competing frozen run", () => {
+    const frozen = candidate({
+      suiteId: "a8bafe49cdd4",
+      suiteFreshness: "older suite (256 probes)",
+      runId: "frozen-history",
+    })
+    const newer = candidate({ key: "app:alacritty@new", suiteId: "new-suite", runId: "selected-new" })
+    const row = barRowForContext({
+      context: { terminalId: "alacritty", os: "linux" },
+      candidates: [frozen, newer],
+      tier62Ids: IDS,
+      tier52Ids: IDS,
+    })
+    const result = cohortRowForSelected(row, { name: "candidate2", frozenSuiteId: "a8bafe49cdd4", measuredIds: IDS })
+    expect(result).toMatchObject({
+      measured: false,
+      run: { runId: "selected-new", suiteId: "new-suite" },
+      reason: "ineligible: selected run on suite new-suite, required a8bafe49cdd4",
+    })
+    expect(result).not.toHaveProperty("share")
+  })
+
+  it("grades all 125 frozen IDs through D3 rounding and preserves missing or ambiguous selection", () => {
+    const ids = Array.from({ length: 125 }, (_, i) => `classic.${i}`)
+    const cohort = { name: "candidate2" as const, frozenSuiteId: "a8bafe49cdd4", measuredIds: ids }
+    const frozen = candidate({
+      suiteId: cohort.frozenSuiteId,
+      cells: Object.fromEntries(ids.slice(0, 112).map((id) => [id, { outcome: "supported", conclusive: true }])),
+    })
+    const context = { terminalId: "alacritty", os: "linux" }
+    const row = barRowForContext({ context, candidates: [frozen], tier62Ids: IDS, tier52Ids: IDS })
+    expect(cohortRowForSelected(row, cohort)).toMatchObject({
+      measured: true,
+      share: { denominator: 125, decisive: 112, verdict: { text: "pass · 112/125", pct: 90 } },
+    })
+    for (const candidates of [[], [frozen, { ...frozen, key: "second" }]]) {
+      const absent = barRowForContext({ context, candidates, tier62Ids: IDS, tier52Ids: IDS })
+      expect(absent.measured).toBe(false)
+      expect(cohortRowForSelected(absent, cohort)).toEqual(absent)
+    }
+  })
+
+  it("reports the ratified Candidate 2 cohort without dropping overlaps or its unavailable scrollback ID", () => {
+    // The existing 52-ID reader cases cannot catch a named cohort being ignored or intersected
+    // with the frozen schedule, which would silently shrink the approved 125-ID denominator.
+    const args = { contentDir: join(import.meta.dirname, "..", "content"), cohort: "candidate2" as const }
+    const report = buildReport(args)
+    expect(report).toHaveProperty("candidate2.name", "candidate2")
+    expect(report).toHaveProperty("candidate2.frozenSuiteId", "a8bafe49cdd4")
+    expect(report).toHaveProperty(
+      "candidate2.measuredIds",
+      expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
+    )
+    expect(report).toHaveProperty("candidate2.measuredIds.length", 125)
+    expect(report).toHaveProperty("candidate2.unavailableIds", ["scrollback.viewport-hold-output"])
+    if (!report.candidate2) throw new Error("Candidate 2 report absent")
+    // Independent ratification snapshot: SHA256 of JSON.stringify(sorted 125 IDs), not a prefix census.
+    expect(
+      createHash("sha256")
+        .update(JSON.stringify([...report.candidate2.measuredIds].sort()))
+        .digest("hex"),
+    ).toBe("1a2012751b148b0230b97e27c74c11868ec36f1b3dd202fb798d42ec8abda17a")
+    report.candidate2.barRows.forEach((row, i) => {
+      const original = report.barRows[i]
+      expect(row.context).toEqual(original?.context)
+      if (original?.measured) expect(row).toHaveProperty("run", original.run)
+    })
+    expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
+    for (const row of report.candidate2.admittedRuns) {
+      expect(row.measured).toBe(row.run.suiteId === "a8bafe49cdd4")
+      if (row.measured) expect(row.share.denominator).toBe(125)
+      else {
+        expect(row).not.toHaveProperty("share")
+        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required a8bafe49cdd4`)
+      }
+    }
+  })
+
   it("splits a fixture run into decisive, inconclusive and named remainder buckets", () => {
     const share = decisiveShare(cells, IDS)
     expect(share.denominator).toBe(6)
