@@ -86,7 +86,12 @@ it("stays green on a composed tree and hands the launcher a receipt it refuses b
   const root = mkdtempSync(join(tmpdir(), "terminfo-composed-tree-"))
   try {
     const fixture = join(root, "composed")
-    execFileSync("git", ["clone", "--shared", "--quiet", REPO_ROOT, fixture], { encoding: "utf8" })
+    // REPO_ROOT may itself be a detached checkout (a submodule at a shared-main pin): cloning it
+    // then prints git's detached-HEAD advice on stderr, which execFileSync inherits and the Vitest
+    // output gate rejects. `advice.detachedHead=false` keeps the clone quiet in both states.
+    execFileSync("git", ["-c", "advice.detachedHead=false", "clone", "--shared", "--quiet", REPO_ROOT, fixture], {
+      encoding: "utf8",
+    })
     symlinkSync(join(REPO_ROOT, "node_modules"), join(fixture, "node_modules"))
     const git = (...args: string[]): string =>
       execFileSync("git", args, { cwd: fixture, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })

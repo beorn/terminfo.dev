@@ -31,6 +31,11 @@ async function main(): Promise<void> {
     target: "bun",
     format: "esm",
     external: ["@silvery/ansi", "@silvery/commander", "silvery", "react"],
+    // The published bundle is a production artifact: it must emit `react/jsx-runtime`, never
+    // `jsxDEV` from `react/jsx-dev-runtime` (guard 24460). terminfo.dev carries no tsconfig, so
+    // Bun.build falls back to its development JSX transform unless the runtime is named here — the
+    // estate-wide `jsx: "react-jsx"` pin lives in the root tsconfig, which this build never reads.
+    jsx: { runtime: "automatic", development: false },
     define: { __TERMINFO_BUNDLED_SUITE__: JSON.stringify({ manifest, collectorRevision }) },
   })
   if (!result.success || result.outputs.length !== 1) {
