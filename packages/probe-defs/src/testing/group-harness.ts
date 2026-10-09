@@ -1,0 +1,216 @@
+/**
+ * Shared group contract-test + re-grade fixture harness (#28453).
+ *
+ * One fixture, one expected-cells table, one re-grade invocation, so each of #28018's eight group
+ * steps is "contract + focused test" with no per-group reinvention. Precedent: #28001's 41
+ * fixture/control checks and scripts/decrqss-regrade.test.ts (the working re-grade model).
+ *
+ * @fakes @terminfo/probe-defs
+ */
+import { readdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
+import {
+  OBSERVATION_OUTCOMES,
+  type ObservationOutcome,
+  type ProbeDefinition,
+  type ProbeResult,
+  type TermContext,
+  type TermlessContext,
+  type TerminalQueryOutcome,
+} from "../types.ts"
+
+/** One capability's contract: the id, the outcome it must read when its controls hold, and its claim. */
+export interface ContractRow {
+  readonly id: string
+  /** "decided" = a pass/fail is required; an explicit outcome = exactly that observation. */
+  readonly expected: ObservationOutcome | "decided"
+  /** The one-line claim the focused test binds (#27832: every contract row binds a focused test). */
+  readonly claim: string
+}
+
+export type GroupContract = readonly ContractRow[]
+
+/** One stored run row, schema-v2, reduced to what a re-grade needs. */
+export interface GroupRow {
+  readonly file: string
+  readonly terminal: string
+  readonly version: string
+  readonly runId: string
+  readonly observation: { readonly outcome: string; readonly note?: string }
+  readonly rawReplies: Readonly<Record<string, string>>
+}
+
+/** Part 1 - the fixture. Reads content/ rows once; a group names only its own ids. */
+export function loadGroupRows(contentDir: string, dirs: readonly string[] = ["probes-apps", "probes-mux"]): GroupRow[] {
+  const rows: GroupRow[] = []
+  for (const dir of dirs) {
+    let names: string[]
+    try {
+      names = readdirSync(join(contentDir, dir))
+    } catch {
+      continue
+    }
+    for (const name of names.filter((entry) => entry.endsWith(".json"))) {
+      const data = JSON.parse(readFileSync(join(contentDir, dir, name), "utf8")) as {
+        schemaVersion?: number
+        runId?: string
+        target?: { id?: string; version?: string }
+        observations?: Array<{ featureId: string; outcome: string; note?: string }>
+        rawReplies?: Record<string, string>
+      }
+      if (data.schemaVersion !== 2) continue
+      rows.push({
+        file: `${dir}/${name}`,
+        terminal: data.target?.id ?? "unknown",
+        version: data.target?.version ?? "unknown",
+        runId: data.runId ?? name,
+        observation: { outcome: "unknown", note: undefined },
+        rawReplies: data.rawReplies ?? {},
+      })
+    }
+  }
+  return rows
+}
+
+/** Contract coverage: every probe id has a contract row, and no contract row names an unknown id. */
+export function contractGaps(
+  probes: readonly ProbeDefinition[],
+  contract: GroupContract,
+): { readonly uncovered: string[]; readonly unknown: string[] } {
+  const probeIds = new Set(probes.map((entry) => entry.id))
+  const contractIds = new Set(contract.map((entry) => entry.id))
+  return {
+    uncovered: [...probeIds].filter((id) => !contractIds.has(id)).sort(),
+    unknown: [...contractIds].filter((id) => !probeIds.has(id)).sort(),
+  }
+}
+
+/**
+ * Part 2 - the expected-cell check. A regraded observation satisfies a row when it is a known
+ * outcome and, for a "decided" row, it is not `inconclusive`/`not-tested`.
+ */
+export function satisfiesContract(row: ContractRow, observation: ObservationOutcome | undefined): boolean {
+  if (observation === undefined) return false
+  if (!(OBSERVATION_OUTCOMES as readonly string[]).includes(observation)) return false
+  return row.expected === "decided"
+    ? observation === "supported" || observation === "unsupported"
+    : observation === row.expected
+}
+
+/**
+ * Part 3 - the re-grade invocation. A group supplies only the TermlessContext fields its headless
+ * semantics need; the harness fills the inert remainder, so no group reinvents the whole fake.
+ */
+export interface HeadlessModel extends Partial<TermlessContext> {
+  readonly cols: number
+  feed(text: string): void
+  getCell(row: number, col: number): ReturnType<TermlessContext["getCell"]>
+  getCursor(): ReturnType<TermlessContext["getCursor"]>
+}
+
+export function headlessContext(model: HeadlessModel): TermlessContext {
+  const getText = (): string => {
+    const lines: string[] = []
+    for (let row = 0; row < 24; row++) {
+      let line = ""
+      for (let col = 0; col < model.cols; col++) line += model.getCell(row, col).char || " "
+      lines.push(line.replace(/\s+$/u, ""))
+    }
+    return lines.join("\n")
+  }
+  return {
+    getHyperlinkAt: () => null,
+    feedCapture: (text) => {
+      model.feed(text)
+      return getText()
+    },
+    getMode: () => false,
+    getText,
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset: () => {},
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "6.0.0",
+      extensions: new Set<string>(),
+    },
+    ...model,
+    getCursor: model.getCursor,
+    getCell: model.getCell,
+    feed: model.feed,
+    cols: model.cols,
+  }
+}
+
+/** A stored query, the shape scripts/decrqss-regrade.test.ts replays. */
+export interface StoredQuery {
+  readonly sequence: string
+  readonly match: string[] | null
+  readonly reason: TerminalQueryOutcome["reason"]
+  readonly raw: string
+  readonly sentinel?: { readonly atMs: number; readonly graceMs: number }
+}
+
+/** Part 3 (query rows) - a TermContext whose queries replay stored raw, not a terminal. */
+export function replayContext(
+  bySequence: ReadonlyMap<string, StoredQuery>,
+  defaults: Partial<TermContext> = {},
+): TermContext {
+  const outcome = (sequence: string, pattern: RegExp): TerminalQueryOutcome => {
+    const stored = bySequence.get(sequence)
+    if (stored === undefined) return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+    return {
+      match: stored.reason === "reply" ? pattern.exec(stored.raw) : null,
+      reason: stored.reason,
+      raw: stored.raw,
+      rawBase64: Buffer.from(stored.raw).toString("base64"),
+      ...(stored.sentinel !== undefined && { sentinel: stored.sentinel }),
+    }
+  }
+  return {
+    write: () => {},
+    queryCursorPosition: async () => null,
+    measureRenderedWidth: async () => null,
+    query: async (sequence, pattern) => outcome(sequence, pattern).match,
+    queryWithSentinel: async (sequence, pattern) => outcome(sequence, pattern).match,
+    queryOutcome: async (sequence, pattern) => outcome(sequence, pattern),
+    queryWithSentinelOutcome: async (sequence, pattern) => outcome(sequence, pattern),
+    queryMode: async () => null,
+    cols: 80,
+    rows: 24,
+    ...defaults,
+  }
+}
+
+export interface RegradeResult {
+  readonly id: string
+  readonly before: string | undefined
+  readonly after: ObservationOutcome | undefined
+  readonly moved: boolean
+  readonly satisfies: boolean
+}
+
+/** Part 3 (runner) - re-grade one row through its probe and compare to the contract. */
+export async function regradeRow(
+  probe: ProbeDefinition,
+  row: ContractRow,
+  contexts: { readonly headless?: TermlessContext; readonly term?: TermContext },
+): Promise<RegradeResult> {
+  let result: ProbeResult | undefined
+  if (probe.termless && contexts.headless !== undefined) result = probe.termless(contexts.headless)
+  else if (probe.term && contexts.term !== undefined) result = await probe.term(contexts.term)
+  const after = result?.observation?.outcome
+  return {
+    id: probe.id,
+    before: undefined,
+    after,
+    moved: false,
+    satisfies: satisfiesContract(row, after),
+  }
+}
