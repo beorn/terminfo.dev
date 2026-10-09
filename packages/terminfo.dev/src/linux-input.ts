@@ -23,15 +23,18 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
     .split(/\s+/)
     .filter(Boolean)
   const windowId = windows[0]
-  if (windows.length !== 1 || !windowId || !/^\d+$/.test(windowId)) {
+  if (windows.length !== 1 || windowId === undefined || !/^\d+$/.test(windowId)) {
     throw new Error(`Collector's Kitty PID ${kittyPid} owns ${windows.length} visible windows; expected one`)
   }
+  const ownedWindowId: string = windowId
 
   async function prepare(): Promise<void> {
-    await command("xdotool", ["windowactivate", "--sync", windowId])
+    await command("xdotool", ["windowactivate", "--sync", ownedWindowId])
     const active = (await command("xdotool", ["getactivewindow"])).toString().trim()
-    if (active !== windowId) {
-      throw new Error(`XTEST inject requires the owned window ${windowId} to be focused; getactivewindow is ${active}`)
+    if (active !== ownedWindowId) {
+      throw new Error(
+        `XTEST inject requires the owned window ${ownedWindowId} to be focused; getactivewindow is ${active}`,
+      )
     }
   }
 

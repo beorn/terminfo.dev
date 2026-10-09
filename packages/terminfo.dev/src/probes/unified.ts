@@ -26,6 +26,7 @@ import {
   queryCursorPosition,
   measureRenderedWidth,
   queryMode,
+  readResponse,
   withTTYOperation,
   withTTYQueryTrace,
   type TTYQueryTrace,
@@ -105,6 +106,7 @@ function createTermContext({
     queryWithSentinel,
     queryWithSentinelOutcome,
     queryMode,
+    readInput: (pattern, timeoutMs = 1000) => readResponse(pattern, timeoutMs),
     get cols() {
       return size().cols
     },
