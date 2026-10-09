@@ -330,12 +330,12 @@ export type CohortRun =
 
 export type CohortBarRow = NotMeasuredRow | (CohortRun & { context: ReleaseContext; selection: RunSelection })
 
-function cohortRun(run: ContextCandidate, cohort: FeatureCohort): CohortRun {
+function cohortRun(run: ContextCandidate, cohort: FeatureCohort, role: "selected" | "admitted"): CohortRun {
   if (run.suiteId !== cohort.frozenSuiteId) {
     return {
       run,
       measured: false,
-      reason: `ineligible: selected run on suite ${run.suiteId}, required ${cohort.frozenSuiteId}`,
+      reason: `ineligible: ${role} run on suite ${run.suiteId}, required ${cohort.frozenSuiteId}`,
     }
   }
   return { run, measured: true, share: decisiveShare(run.cells, cohort.measuredIds) }
@@ -344,7 +344,7 @@ function cohortRun(run: ContextCandidate, cohort: FeatureCohort): CohortRun {
 /** Eligibility follows the site's completed selection; history never replaces the selected run. */
 export function cohortRowForSelected(row: BarRow, cohort: FeatureCohort): CohortBarRow {
   if (!row.measured) return row
-  return { ...cohortRun(row.run, cohort), context: row.context, selection: row.selection }
+  return { ...cohortRun(row.run, cohort, "selected"), context: row.context, selection: row.selection }
 }
 
 /**
@@ -427,7 +427,7 @@ export function buildReport(args: {
       ...cohort,
       unavailableIds,
       barRows: barRows.map((row) => cohortRowForSelected(row, cohort)),
-      admittedRuns: admitted.map((run) => cohortRun(run, cohort)),
+      admittedRuns: admitted.map((run) => cohortRun(run, cohort, "admitted")),
     }
   }
   return report
@@ -497,7 +497,6 @@ function main(): void {
     console.log(
       `unavailable in required app schedule (retained in denominator): ${cohort.unavailableIds.join(", ") || "none"}`,
     )
-    console.log(namedExceptionsLine())
     console.log("BAR ROWS — the site's selected run per Release 1 (terminal, os) context")
     for (const row of cohort.barRows.filter(
       (row) => !terminalIds.length || terminalIds.includes(row.context.terminalId),
@@ -521,7 +520,7 @@ function main(): void {
         `  ${row.run.terminalId} ${row.run.version} ${row.run.os} ${row.run.runId} · suite ${row.run.suiteId} · ` +
           (row.measured
             ? `decisive/125 ${row.share.decisive}/125 = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}`
-            : row.reason.replace("selected run", "admitted run")),
+            : row.reason),
       )
     }
     return

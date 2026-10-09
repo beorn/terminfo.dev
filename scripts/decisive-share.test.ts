@@ -174,7 +174,10 @@ describe("release 1 decisive-count reader", () => {
     for (const row of report.candidate2.admittedRuns) {
       expect(row.measured).toBe(row.run.suiteId === "a8bafe49cdd4")
       if (row.measured) expect(row.share.denominator).toBe(125)
-      else expect(row).not.toHaveProperty("share")
+      else {
+        expect(row).not.toHaveProperty("share")
+        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required a8bafe49cdd4`)
+      }
     }
   })
 
