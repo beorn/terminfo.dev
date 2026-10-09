@@ -21,6 +21,10 @@ import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
+/** 28240: the app-launch receipt parser refuses a placeholder digest (one repeated character), so
+ * these receipt fixtures carry a two-character cycle where they used to carry "a".repeat(64). */
+const RECEIPT_EXECUTABLE_SHA256 = "a1".repeat(32)
+const RECEIPT_SOURCE_SHA256 = "b2".repeat(32)
 const manifest = (probeHash: string, ids = ["extensions.graphics", "extensions.query"]): ProbeSuiteManifest => ({
   probeHash,
   sourceRevision: "1".repeat(40),
@@ -1056,8 +1060,8 @@ describe("selected results", () => {
       cfBundleShortVersionString: "0.17.0",
       cfBundleVersion: "1",
       executablePath: "/Applications/Alacritty.app/Contents/MacOS/alacritty",
-      executableSha256: "a".repeat(64),
-      sourceArtifact: { path: "/System/Library/Assets/com.alacritty.pkg", sha256: "b".repeat(64) },
+      executableSha256: RECEIPT_EXECUTABLE_SHA256,
+      sourceArtifact: { path: "/System/Library/Assets/com.alacritty.pkg", sha256: RECEIPT_SOURCE_SHA256 },
     }
     const macos = projected([
       alacritty("alacritty-macos", {
@@ -1192,8 +1196,8 @@ describe("selected results", () => {
       cfBundleShortVersionString: "2.15",
       cfBundleVersion: "455",
       executablePath: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
-      executableSha256: "a".repeat(64),
-      sourceArtifact: { path: "/System/Library/Assets/com.apple.Terminal.pkg", sha256: "b".repeat(64) },
+      executableSha256: RECEIPT_EXECUTABLE_SHA256,
+      sourceArtifact: { path: "/System/Library/Assets/com.apple.Terminal.pkg", sha256: RECEIPT_SOURCE_SHA256 },
     }
     const candidate = (runId: string, changes: Record<string, unknown> = {}) =>
       parseRun(
@@ -1248,7 +1252,7 @@ describe("selected results", () => {
       cfBundleShortVersionString: "2.15",
       cfBundleVersion: "455",
       executablePath: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
-      executableSha256: "a".repeat(64),
+      executableSha256: RECEIPT_EXECUTABLE_SHA256,
       sourceArtifact: {
         kind: "sealed-macos-system-volume",
         macOSBuild: "25E144",
@@ -1303,13 +1307,13 @@ describe("selected results", () => {
       cfBundleShortVersionString: "1.3.1",
       cfBundleVersion: "1",
       executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
-      executableSha256: "a".repeat(64),
+      executableSha256: RECEIPT_EXECUTABLE_SHA256,
       sourceArtifact: {
         kind: "derived-source-tree",
         url: "https://github.com/ghostty-org/ghostty/archive/refs/tags/v1.3.1.tar.gz",
         revision: "refs/tags/v1.3.1",
         narSri: "sha256-+ddMmUe9Jjkun4qqW8XFXVgwVZdVHsGWcQzndgIlBjQ=",
-        sha256: "b".repeat(64),
+        sha256: RECEIPT_SOURCE_SHA256,
       },
     }
     const candidate = (launch: unknown) =>
@@ -2086,8 +2090,8 @@ describe("identity self-admission", () => {
     cfBundleShortVersionString: "2.15",
     cfBundleVersion: "455",
     executablePath: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
-    executableSha256: "a".repeat(64),
-    sourceArtifact: { path: "/System/Library/Assets/com.apple.Terminal.pkg", sha256: "b".repeat(64) },
+    executableSha256: RECEIPT_EXECUTABLE_SHA256,
+    sourceArtifact: { path: "/System/Library/Assets/com.apple.Terminal.pkg", sha256: RECEIPT_SOURCE_SHA256 },
   }
 
   it("excludes a schema-v2 kitty run whose XTVERSION is missing", () => {

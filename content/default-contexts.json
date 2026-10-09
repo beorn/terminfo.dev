@@ -21,8 +21,8 @@
     "app:alacritty": {
       "contextKey": "app:alacritty@[\"app\",\"alacritty\",\"macos\",\"26.6.2\",null,null,null,null]",
       "reviewer": "@cto (27916 AC2 ruling)",
-      "reason": "Same rule as the kitty and ghostty rows: until 27916 AC2 admitted the controlled-Linux run, the macOS hardware run was alacritty's only current context, so naming it the default leaves the site's alacritty page unmoved when the Linux container run becomes current alongside it. Both contexts stay readable as Release 1 bar rows (27917).",
-      "sources": ["content/probes-apps/alacritty-0.17.0-macos.json"]
+      "reason": "Same rule as the kitty and ghostty rows: until 27916 AC2 admitted the controlled-Linux run, the macOS hardware run was alacritty's only current context, so naming it the default leaves the site's alacritty page unmoved when the Linux container run becomes current alongside it. Both contexts stay readable as Release 1 bar rows (27917). 28240: the 9918f283 macOS document carried placeholder digests and is retired; this row cites the 28216 re-collection.",
+      "sources": ["content/probes-apps/alacritty-0.17.0-macos-d436c4ecd6e652a3427f245cda6b1204.json"]
     },
     "app:wezterm": {
       "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/mmvpz8sgpp4gg1lwsjv68knvkzqmsdwk-wezterm-0-unstable-2026-09-17/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun /nix/store/ps46shfhpf5kqs33q3hi0lgd9s626bh3-terminfo-linux-runner/index.js test --serve \",null]",

@@ -12,7 +12,7 @@
  * digest nothing measured with the same rule (27874), and a second copy of that rule is the same
  * drift this module exists to prevent.
  */
-import type { AppLaunchReceipt, DerivedSourceTreeArtifact } from "@terminfo/probe-defs"
+import type { AppLaunchReceipt, DerivedSourceTreeArtifact, ProbeTarget, RunOrigin } from "@terminfo/probe-defs"
 
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -28,9 +28,9 @@ const asString = (value: unknown, path: string, name: string): string =>
  * receipt nothing derived (27874). */
 export const PLACEHOLDER = /^(.)\1*$/
 
-/** A digest the apparatus derived from bytes: a sha256 AND carrying real entropy. */
+/** A digest the apparatus derived from bytes: present, a sha256, and carrying real entropy. */
 function measuredDigest(value: unknown, path: string, field: string): string {
-  const digest = String(value)
+  const digest = asString(value, path, field)
   if (!/^[a-f0-9]{64}$/.test(digest)) fail(path, `invalid ${field}`)
   if (PLACEHOLDER.test(digest)) {
     fail(path, `${field} is a placeholder: one repeated character, so no bytes were measured`)
@@ -63,8 +63,7 @@ export function parseDerivedSourceTree(
   const revision = asString(value.revision, path, `${field}.revision`)
   const narSri = asString(value.narSri, path, `${field}.narSri`)
   if (!narSri.startsWith("sha256-")) fail(path, `invalid ${field}.narSri`)
-  const sha256 = asString(value.sha256, path, `${field}.sha256`)
-  if (!/^[a-f0-9]{64}$/.test(sha256)) fail(path, `invalid ${field}.sha256`)
+  const sha256 = measuredDigest(value.sha256, path, `${field}.sha256`)
   return { kind: "derived-source-tree", url, revision, narSri, sha256 }
 }
 
