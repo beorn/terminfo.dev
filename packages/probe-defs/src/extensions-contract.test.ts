@@ -304,6 +304,172 @@ function inertModel(): HeadlessModel {
   }
 }
 
+const DIRECT_QUERY_REPLIES: Record<string, string> = {
+  "extensions.osc10-fg-color": "\x1b]10;rgb:ffff/0000/0000\x07",
+  "extensions.osc11-bg-color": "\x1b]11;rgb:0000/ffff/0000\x07",
+  "extensions.osc12-cursor-color": "\x1b]12;rgb:0000/0000/ffff\x07",
+  "extensions.osc17-highlight-bg": "\x1b]17;rgb:ffff/ffff/0000\x07",
+  "extensions.osc19-highlight-fg": "\x1b]19;rgb:ffff/0000/ffff\x07",
+  "extensions.osc4-palette": "\x1b]4;0;rgb:ffff/0000/0000\x07",
+  "extensions.osc5-special-color": "\x1b]5;0;rgb:ffff/0000/0000\x07",
+  "extensions.osc1337-cellsize": "\x1b]1337;ReportCellSize=12;8\x07",
+  "extensions.osc1337-capabilities": "\x1b]1337;Capabilities=alpha\x07",
+  "extensions.osc7770-font-size": "\x1b]7770;14\x07",
+  "extensions.osc7777-font-window-size": "\x1b]7777;14\x07",
+  "extensions.osc701-locale": "\x1b]701;en_US.UTF-8\x07",
+  "extensions.osc702-version": "\x1b]702;rxvt-1\x07",
+  "extensions.osc776-cell-size": "\x1b]776;8;16;2\x07",
+  "extensions.sixel-da1": "\x1b[?1;4c",
+  "extensions.sixel-geometry-report": "\x1b[?2;0;800;528S",
+}
+
+const COLOR_RESET_CODES: Record<string, string> = {
+  "extensions.osc104-reset-palette": "4;0",
+  "extensions.osc110-reset-fg": "10",
+  "extensions.osc111-reset-bg": "11",
+  "extensions.osc112-reset-cursor": "12",
+  "extensions.osc113-reset-pointer-fg": "13",
+  "extensions.osc114-reset-pointer-bg": "14",
+}
+
+function decidedSatisfactionContext(id: string) {
+  if (DIRECT_QUERY_REPLIES[id]) {
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feedCapture: () => DIRECT_QUERY_REPLIES[id],
+      }),
+    }
+  }
+  if (id.startsWith("extensions.kitty-keyboard")) {
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feedCapture: () => "\x1b[?31u\x1b[?1;0c",
+      }),
+    }
+  }
+  if (id === "extensions.kitty-graphics") {
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feedCapture: () => "\x1b_Gi=31;OK\x1b\\",
+      }),
+    }
+  }
+  if (id === "extensions.kitty-graphics.transmit" || id === "extensions.kitty-graphics.display") {
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feedCapture: (seq) => {
+          const num = /I=(\d+)/.exec(seq)?.[1] || "1"
+          if (/a=p,i=2,/.test(seq)) return "\x1b_Gi=2;OK\x1b\\"
+          return `\x1b_Gi=1,I=${num};OK\x1b\\`
+        },
+      }),
+    }
+  }
+  if (id.startsWith("extensions.osc52-")) {
+    let last = ""
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feed: (text) => {
+          last = text
+        },
+        feedCapture: () => last,
+      }),
+    }
+  }
+  if (id === "extensions.osc5522-clipboard") {
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feedCapture: () => "\x1b[?5522;1$y",
+      }),
+    }
+  }
+  if (id === "extensions.osc21-kitty-color") {
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feedCapture: () => "\x1b]21;foreground=rgb:ffff/ffff/ffff\x1b\\",
+      }),
+    }
+  }
+  if (COLOR_RESET_CODES[id]) {
+    const code = COLOR_RESET_CODES[id]
+    const color = (val: string) => `\x1b]${code};rgb:${val}\x07`
+    const queue = [color("00/00/00"), color("aa/bb/cc"), color("00/00/00")]
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feedCapture: () => queue.shift() || "",
+      }),
+    }
+  }
+  if (id === "extensions.osc30001-color-stack-push" || id === "extensions.osc30101-color-stack-pop") {
+    let current = "rgb:1010/2020/3030"
+    const stack: string[] = []
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feed: (seq) => {
+          if (seq.includes("]30001")) stack.push(current)
+          else if (seq.includes("]30101")) current = stack.pop() ?? current
+          else {
+            const m = /\x1b\]10;(rgb:[a-f\d/]+)/i.exec(seq)
+            if (m) current = m[1] ?? current
+          }
+        },
+        feedCapture: () => `\x1b]10;${current}\x1b\\`,
+      }),
+    }
+  }
+  if (id === "extensions.osc66-text-sizing") {
+    let step = 0
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feed: () => {
+          step++
+        },
+        getCursor: () => {
+          if (step <= 1) return { x: 0, y: 0, visible: true, style: null }
+          if (step === 2) return { x: 2, y: 0, visible: true, style: null }
+          return { x: 4, y: 0, visible: true, style: null }
+        },
+      }),
+    }
+  }
+  if (id === "extensions.osc99-kitty-notify") {
+    return {
+      term: {
+        write: () => {},
+        queryCursorPosition: async () => null,
+        measureRenderedWidth: async () => null,
+        query: async () => null,
+        queryWithSentinel: async () => null,
+        queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+        queryMode: async () => null,
+        cols: 80,
+        rows: 24,
+        queryWithSentinelOutcome: async (query: string, pattern: RegExp) => {
+          const nonce = /i=([^:]+):/.exec(query)?.[1]
+          const raw = `\x1b]99;i=${nonce}:p=?;p=title\x1b\\`
+          return {
+            match: pattern.exec(raw),
+            reason: "reply" as const,
+            raw,
+            rawBase64: Buffer.from(raw).toString("base64"),
+          }
+        },
+      },
+    }
+  }
+  throw new Error(`No satisfaction context configured for decided row ${id}`)
+}
+
 test("the extensions contract covers every extension capability and names none unknown", () => {
   const gaps = contractGaps(extensionsProbes, EXTENSIONS_CONTRACT, EXTENSIONS_CONTRACT_SPEC.namedUnavailable)
   expect(gaps.uncovered).toEqual([])
@@ -343,32 +509,57 @@ test("the harness replays every extension capability deterministically", async (
   }
 })
 
-test("query-based extension probes read supported when their expected protocol query is answered", async () => {
-  // Verify representative query-based extension probes through replayContext
-  const osc10Probe = extensionsProbes.find((p) => p.id === "extensions.osc10-fg-color")
-  const osc10Row = EXTENSIONS_CONTRACT.find((r) => r.id === "extensions.osc10-fg-color")
-  expect(osc10Probe).toBeDefined()
-  expect(osc10Row).toBeDefined()
-  if (!osc10Probe || !osc10Row) return
+test("every decided extension contract row is satisfied by its required protocol response", async () => {
+  const decidedRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "decided")
+  expect(decidedRows).toHaveLength(40)
 
-  const osc10Reply = "\x1b]10;rgb:ffff/0000/0000\x07"
-  const osc10Context = headlessContext({
-    ...inertModel(),
-    feedCapture: () => osc10Reply,
+  for (const row of decidedRows) {
+    const probe = extensionsProbes.find((p) => p.id === row.id)
+    expect(probe, `missing probe for ${row.id}`).toBeDefined()
+    if (!probe) continue
+    const context = decidedSatisfactionContext(row.id)
+    const graded = await regradeRow(probe, row, context)
+    expect(graded.after, `${row.id} outcome must be supported when simulated reply arrives`).toBe("supported")
+    expect(graded.satisfies, `${row.id} must satisfy contract`).toBe(true)
+  }
+})
+
+test("every inconclusive extension contract row evaluates to inconclusive under unasserted harness context", async () => {
+  const inconclusiveRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "inconclusive")
+  expect(inconclusiveRows).toHaveLength(37)
+
+  const term = replayContext(new Map(), {
+    queryCursorPosition: async () => ({ x: 0, y: 0 }),
+    write: () => {},
+    capture: async () => ({ role: "control", label: "test", capturedAt: 1, ref: "sha256:0" }),
   })
-  const gradedOsc10 = await regradeRow(osc10Probe, osc10Row, { headless: osc10Context })
-  expect(gradedOsc10.after).toBe("supported")
-  expect(gradedOsc10.satisfies).toBe(true)
+  const headless = headlessContext(inertModel())
 
-  // Negative assertion: unacknowledged OSC 10 query returns inconclusive
-  const silentOsc10Context = headlessContext(inertModel())
-  const silentOsc10 = await regradeRow(osc10Probe, osc10Row, { headless: silentOsc10Context })
-  expect(silentOsc10.after).toBe("inconclusive")
-  expect(silentOsc10.satisfies).toBe(false)
+  for (const row of inconclusiveRows) {
+    const probe = extensionsProbes.find((p) => p.id === row.id)
+    expect(probe, `missing probe for ${row.id}`).toBeDefined()
+    if (!probe) continue
+    const context = probe.term ? { term } : { headless }
+    const graded = await regradeRow(probe, row, context)
+    expect(graded.after, `${row.id} outcome must be inconclusive`).toBe("inconclusive")
+    expect(graded.satisfies, `${row.id} must satisfy inconclusive contract expectation`).toBe(true)
+  }
+})
+
+test("a decided extension row reads unsatisfied when silent or unacknowledged", async () => {
+  const probe = extensionsProbes.find((p) => p.id === "extensions.osc10-fg-color")
+  const row = EXTENSIONS_CONTRACT.find((r) => r.id === "extensions.osc10-fg-color")
+  expect(probe).toBeDefined()
+  expect(row).toBeDefined()
+  if (!probe || !row) return
+
+  const silentContext = headlessContext(inertModel())
+  const silent = await regradeRow(probe, row, { headless: silentContext })
+  expect(silent.after).toBe("inconclusive")
+  expect(silent.satisfies).toBe(false)
 })
 
 test("semantic observables omitted in headless mode return notTested without failing determinism", async () => {
-  // Probes that inspect optional semantic observables (icon-name, highlight colors)
   const omittedProbes = [
     "extensions.osc0-icon-title",
     "extensions.osc1-icon",
