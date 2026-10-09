@@ -6,10 +6,11 @@
  *   helper must import no node:fs; only a full site build exercises either at runtime
  * @testonly none
  */
-import { readFileSync } from "node:fs"
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { join } from "node:path"
+import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
-import { loadReleaseScope } from "../docs/data/load-release-scope.ts"
+import { loadReleaseScope, loadFeatureCohort } from "../docs/data/load-release-scope.ts"
 import {
   barOverMeasured,
   coverageSentence,
@@ -20,6 +21,42 @@ import {
 } from "../docs/data/release-scope.ts"
 
 const root = join(import.meta.dirname, "..")
+
+describe("named feature cohort declaration", () => {
+  // Existing site-scope tests never read this second declaration shape or exercise corrupt inputs.
+  it.each([
+    [{ name: "candidate1", frozenSuiteId: "hash", featureIds: ["known"] }, /candidate2/],
+    [{ name: "candidate2", frozenSuiteId: " ", featureIds: ["known"] }, /frozenSuiteId/],
+    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: [] }, /nonempty array/],
+    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: [""] }, /nonempty strings/],
+    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: ["known", "known"] }, /unique/],
+    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: ["unknown"] }, /unknown features unknown/],
+  ])("rejects invalid curated cohort %j with its queried path", (declaration, reason) => {
+    const dir = mkdtempSync(join(tmpdir(), "cohort-declaration-"))
+    const declarationPath = join(dir, "cohort.json")
+    try {
+      writeFileSync(declarationPath, JSON.stringify(declaration))
+      const load = () => loadFeatureCohort({ declarationPath, catalog: { known: { name: "Known" } } })
+      expect(load).toThrow(reason)
+      expect(load).toThrow(declarationPath)
+    } finally {
+      rmSync(dir, { recursive: true })
+    }
+  })
+
+  it("names missing and malformed declaration paths", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cohort-declaration-"))
+    const declarationPath = join(dir, "cohort.json")
+    try {
+      const load = () => loadFeatureCohort({ declarationPath, catalog: {} })
+      expect(load).toThrow(declarationPath)
+      writeFileSync(declarationPath, "{")
+      expect(load).toThrow(declarationPath)
+    } finally {
+      rmSync(dir, { recursive: true })
+    }
+  })
+})
 
 function catalogNames(): Record<string, { name: string }> {
   const raw = JSON.parse(readFileSync(join(root, "content", "features.json"), "utf8")) as Record<string, unknown>
