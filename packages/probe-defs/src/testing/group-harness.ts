@@ -7,7 +7,7 @@
  *
  * @fakes @terminfo/probe-defs
  */
-import { readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   OBSERVATION_OUTCOMES,
@@ -29,6 +29,36 @@ export interface ContractRow {
 }
 
 export type GroupContract = readonly ContractRow[]
+
+/**
+ * A group's whole contract - the named set 28454 reviews: the group `name`, its `rows`, and the
+ * focused test files that bind them. The test set is NAMED, never globbed from the definition
+ * filename: terminfo's focused tests are grouped by observation/geometry category, so a group has no
+ * `<def-file>*.test.ts` (measured 2026-10-09, @dev/3 - there is no `sgr*.test.ts`; SGR's probes are
+ * exercised by `readback.test.ts` and `helper-observations.test.ts`).
+ */
+export interface GroupContractSpec {
+  readonly group: string
+  readonly rows: GroupContract
+  /** Repo-relative paths of the focused test files that bind this group's observations. Named, never a glob. */
+  readonly tests: readonly string[]
+}
+
+/**
+ * The re-grade command for a group: its NAMED focused tests, then the decisive-share read. terminfo.dev
+ * runs Vitest, so the runner is `bunx --bun vitest run <paths>` - never Bun-native `bun test`.
+ */
+export function regradeCommand(spec: GroupContractSpec): string {
+  return `cd vendor/terminfo.dev && bunx --bun vitest run ${spec.tests.join(" ")} && bun run decisive-share`
+}
+
+/**
+ * A contract is reviewable only when its named tests exist: a named path that is absent is a silent
+ * gap, not a passing contract. Returns the missing paths (empty = the named set is real).
+ */
+export function missingContractTests(spec: GroupContractSpec, root: string): string[] {
+  return spec.tests.filter((path) => !existsSync(join(root, path))).sort()
+}
 
 /** One stored run row, schema-v2, reduced to what a re-grade needs. */
 export interface GroupRow {

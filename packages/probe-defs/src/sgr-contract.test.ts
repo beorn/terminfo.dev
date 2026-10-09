@@ -6,12 +6,16 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { join } from "node:path"
 import { sgrProbes } from "./sgr.ts"
 import {
   contractGaps,
   headlessContext,
+  missingContractTests,
+  regradeCommand,
   regradeRow,
   type GroupContract,
+  type GroupContractSpec,
   type HeadlessModel,
 } from "./testing/group-harness.ts"
 
@@ -51,6 +55,17 @@ const SGR_CONTRACT: GroupContract = [
   { id: "sgr.selective-reset.inverse", expected: "decided", claim: "SGR 27 clears inverse only" },
 ]
 
+/** The named set 28454 reviews: SGR's rows plus the focused test files that bind them (no glob). */
+const SGR_CONTRACT_SPEC: GroupContractSpec = {
+  group: "sgr",
+  rows: SGR_CONTRACT,
+  tests: [
+    "packages/probe-defs/src/sgr-contract.test.ts",
+    "packages/probe-defs/src/helper-observations.test.ts",
+    "packages/probe-defs/src/readback.test.ts",
+  ],
+}
+
 function inertModel(cols = 40): HeadlessModel {
   return {
     cols,
@@ -79,6 +94,17 @@ test("the SGR contract covers every SGR capability and names none unknown", () =
   expect(gaps.unknown).toEqual([])
   expect(sgrProbes).toHaveLength(32)
   expect(SGR_CONTRACT).toHaveLength(32)
+})
+
+test("the SGR contract names its focused tests, and every named file exists", () => {
+  const root = join(import.meta.dirname, "../../..")
+  expect(missingContractTests(SGR_CONTRACT_SPEC, root)).toEqual([])
+  // The re-grade command names the runners and the files, and never a glob (2026-10-09 @dev/3 correction).
+  const command = regradeCommand(SGR_CONTRACT_SPEC)
+  expect(command).toContain("bunx --bun vitest run")
+  expect(command).not.toContain("bun test")
+  expect(command).not.toMatch(/[*?]/u)
+  for (const path of SGR_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
 test("every SGR capability is re-gradable through the harness and is deterministic", async () => {
