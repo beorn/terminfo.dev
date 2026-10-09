@@ -122,6 +122,8 @@ const SGR_SATISFACTION_CELLS: Record<string, readonly TableCell[]> = {
   "sgr.inverse": [X({ inverse: true })],
   "sgr.hidden": [X({ hidden: true })],
   "sgr.strikethrough": [X({ strikethrough: true })],
+  // overline reads an OPTIONAL cell field: binding it needs the field PRESENT (omitted = notTested, below)
+  "sgr.overline": [X({ overline: true })],
   // full + selective resets; measuredReset reads the C (baseline), X (styled), Y (reset) cells
   "sgr.reset": [{ char: "C" }, X({ bold: true, italic: true, underline: "single" }), { char: "Y" }],
   "sgr.selective-reset.bold": [{ char: "C" }, X({ bold: true, dim: true, italic: true }), { char: "Y", italic: true }],
@@ -188,16 +190,6 @@ const SGR_SATISFACTION_CELLS: Record<string, readonly TableCell[]> = {
   ],
 }
 
-/**
- * Rows whose claim has no headless observable. sgr.overline reads `cell.overline`, a field the
- * headless model does not expose, so the probe returns notTested("no-semantic-observable") - it is
- * NOT MEASURED headlessly and is excluded from the satisfaction table. The claim is therefore 31 of
- * 32 rows bound by the table plus this one named not-measured, never a blanket "32/32".
- */
-const SGR_NOT_MEASURED: Record<string, string> = {
-  "sgr.overline": "cell.overline field not exposed by the headless model",
-}
-
 /** A headless model whose column cells are fixed: the probe reads the cells its fed fixture names. */
 function cellsModel(cells: readonly TableCell[]): HeadlessModel {
   return {
@@ -247,22 +239,13 @@ test("the harness replays every SGR capability deterministically (satisfaction i
 })
 
 // The bound satisfaction proof: every decided row reads "supported" from the cell state its claim
-// requires, and the harness refuses an inert cell. This is the whole-table proof the determinism replay
-// above cannot show on its own (2026-10-09 @adhoc/1 bounce + @dev/10 review).
+// requires. This is the table proof the determinism replay above cannot show on its own
+// (2026-10-09 @adhoc/1 bounce + @dev/10 review).
 test("every SGR contract row is satisfied by the headless cell state its claim requires", async () => {
-  const notMeasured = SGR_CONTRACT.filter((row) => SGR_NOT_MEASURED[row.id] !== undefined).map((row) => row.id)
-  expect(notMeasured).toEqual(["sgr.overline"])
   for (const row of SGR_CONTRACT) {
     const probe = sgrProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing SGR probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    if (SGR_NOT_MEASURED[row.id] !== undefined) {
-      // sgr.overline: the headless cell has no `overline` field, so the probe returns notTested - NOT support.
-      const skip = await regradeRow(probe, row, { headless: headlessContext(cellsModel([{ char: "X" }])) })
-      expect(skip.after, `${row.id} must not read a headless outcome`).toBeUndefined()
-      expect(skip.satisfies, `${row.id} must not be satisfied without an observable`).toBe(false)
-      continue
-    }
     const cells = SGR_SATISFACTION_CELLS[row.id]
     expect(cells, `no satisfaction cell state declared for ${row.id}`).toBeDefined()
     if (!cells) continue
@@ -270,14 +253,37 @@ test("every SGR contract row is satisfied by the headless cell state its claim r
     expect(graded.after, `${row.id} reads supported from its claim's cell state`).toBe("supported")
     expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
   }
-  // The table must name every decided row that HAS a headless observable, so a newly added SGR row
-  // cannot ride the contract unbound - and every row it omits must be declared not-measured.
-  const bound = SGR_CONTRACT.filter((row) => row.expected === "decided" && SGR_NOT_MEASURED[row.id] === undefined).map(
-    (row) => row.id,
-  )
-  expect(Object.keys(SGR_SATISFACTION_CELLS).sort()).toEqual(bound.sort())
+  // The table names EVERY decided row, so a newly added SGR row cannot ride the contract unbound.
+  const decided = SGR_CONTRACT.filter((row) => row.expected === "decided").map((row) => row.id)
+  expect(Object.keys(SGR_SATISFACTION_CELLS).sort()).toEqual(decided.sort())
 })
 
+test("a row reading an OPTIONAL cell field is notTested when the field is omitted, bound when present", async () => {
+  // sgr.overline is the one row whose claim reads an optional field. Present -> the same synthetic
+  // predicate seam the other 31 rows use; omitted -> notTested("no-semantic-observable"), never a
+  // false negative (@dev/10 2026-10-09: types.ts permits overline?:boolean, so the earlier "cannot be
+  // exposed headlessly" wording was wrong - the field is simply optional).
+  const row = SGR_CONTRACT.find((entry) => entry.id === "sgr.overline")
+  const probe = sgrProbes.find((entry) => entry.id === "sgr.overline")
+  expect(row, "the SGR contract names sgr.overline").toBeDefined()
+  expect(probe, "the SGR contract names a real sgr.overline probe").toBeDefined()
+  if (!row || !probe) return
+  const present = await regradeRow(probe, row, { headless: headlessContext(cellsModel([X({ overline: true })])) })
+  expect(present.after).toBe("supported")
+  expect(present.satisfies).toBe(true)
+  const omittedContext = headlessContext(cellsModel([{ char: "X" }]))
+  const omitted = await regradeRow(probe, row, { headless: omittedContext })
+  expect(omitted.after).toBeUndefined()
+  expect(omitted.satisfies).toBe(false)
+  expect(probe.termless?.(omittedContext).notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "cell.overline field not exposed",
+  })
+})
+
+// One negative assertion, on bold: the table above is the positive proof for all 32 rows; this only
+// pins that an inert cell is not satisfied. It is deliberately NOT a per-row negative suite, because
+// the other rows carry no speculative negative (@dev/10 2026-10-09).
 test("a decided SGR row reads unsatisfied from an inert cell", async () => {
   const row = SGR_CONTRACT.find((entry) => entry.id === "sgr.bold")
   const probe = sgrProbes.find((entry) => entry.id === "sgr.bold")
