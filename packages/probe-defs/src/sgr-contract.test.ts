@@ -70,25 +70,140 @@ const SGR_CONTRACT_SPEC: GroupContractSpec = {
 
 type InertCell = ReturnType<HeadlessModel["getCell"]>
 
+/** A neutral cell: no attribute, no colour. `underlineColor` is explicit so a reset comparison is measured. */
+const INERT_CELL: InertCell = {
+  char: " ",
+  bold: false,
+  dim: false,
+  italic: false,
+  underline: null,
+  underlineColor: null,
+  strikethrough: false,
+  inverse: false,
+  hidden: false,
+  blink: false,
+  fg: null,
+  bg: null,
+  wide: false,
+}
+
 function inertModel(cols = 40, cell: Partial<InertCell> = {}): HeadlessModel {
   return {
     cols,
     feed: () => {},
-    getCell: () => ({
-      char: " ",
-      bold: false,
-      dim: false,
-      italic: false,
-      underline: null,
-      strikethrough: false,
-      inverse: false,
-      hidden: false,
-      blink: false,
-      fg: null,
-      bg: null,
-      wide: false,
-      ...cell,
-    }),
+    getCell: () => ({ ...INERT_CELL, ...cell }),
+    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+  }
+}
+
+type TableCell = Partial<InertCell> & { char: string }
+
+/** A fixture X cell carrying only the attribute/colour the row's claim requires. */
+const X = (cell: Partial<InertCell> = {}): TableCell => ({ char: "X", ...cell })
+
+/**
+ * One required headless cell state per SGR row: the state the row's claim says the sequence produces.
+ * This is the satisfaction binding (the contract predicate and probe agree), not a claim that a real
+ * terminal emits it - that is the term/capture path. Column n is the n-th cell the probe reads.
+ * 2026-10-09 @adhoc/1 bounce + @dev/10 review: the old bold-only test plus a blanket "whole 32 rows"
+ * reference to helper-observations.test.ts was false (that file pins several rows, not all).
+ */
+const SGR_SATISFACTION_CELLS: Record<string, readonly TableCell[]> = {
+  // attributes
+  "sgr.bold": [X({ bold: true })],
+  "sgr.faint": [X({ dim: true })],
+  "sgr.italic": [X({ italic: true })],
+  "sgr.underline.single": [X({ underline: "single" })],
+  "sgr.underline.double": [X({ underline: "double" })],
+  "sgr.underline.curly": [X({ underline: "curly" })],
+  "sgr.underline.dotted": [X({ underline: "dotted" })],
+  "sgr.underline.dashed": [X({ underline: "dashed" })],
+  "sgr.blink": [X({ blink: true })],
+  "sgr.inverse": [X({ inverse: true })],
+  "sgr.hidden": [X({ hidden: true })],
+  "sgr.strikethrough": [X({ strikethrough: true })],
+  // full + selective resets; measuredReset reads the C (baseline), X (styled), Y (reset) cells
+  "sgr.reset": [{ char: "C" }, X({ bold: true, italic: true, underline: "single" }), { char: "Y" }],
+  "sgr.selective-reset.bold": [{ char: "C" }, X({ bold: true, dim: true, italic: true }), { char: "Y", italic: true }],
+  "sgr.selective-reset.italic": [{ char: "C" }, X({ bold: true, italic: true }), { char: "Y", bold: true }],
+  "sgr.selective-reset.underline": [{ char: "C" }, X({ bold: true, underline: "single" }), { char: "Y", bold: true }],
+  "sgr.selective-reset.inverse": [{ char: "C" }, X({ bold: true, inverse: true }), { char: "Y", bold: true }],
+  // named + default colours
+  "sgr.fg.standard": [{ char: "C" }, X({ fg: { r: 170, g: 0, b: 0 } }), { char: "Y", fg: { r: 0, g: 0, b: 170 } }],
+  "sgr.fg.bright": [{ char: "C" }, X({ fg: { r: 170, g: 0, b: 0 } }), { char: "Y", fg: { r: 0, g: 0, b: 170 } }],
+  "sgr.bg.standard": [{ char: "C" }, X({ bg: { r: 170, g: 0, b: 0 } }), { char: "Y", bg: { r: 0, g: 0, b: 170 } }],
+  "sgr.bg.bright": [{ char: "C" }, X({ bg: { r: 170, g: 0, b: 0 } }), { char: "Y", bg: { r: 0, g: 0, b: 170 } }],
+  "sgr.fg.default": [{ char: "C" }, X({ fg: { r: 170, g: 0, b: 0 } }), { char: "R" }],
+  "sgr.bg.default": [{ char: "C" }, X({ bg: { r: 0, g: 170, b: 0 } }), { char: "R" }],
+  // indexed + truecolor: C/A/B controls, X/Y targets
+  "sgr.fg.256": [
+    { char: "C" },
+    { char: "A", fg: { r: 95, g: 135, b: 175 } },
+    { char: "B", fg: { r: 215, g: 135, b: 95 } },
+    X({ fg: { r: 95, g: 135, b: 175 } }),
+    { char: "Y", fg: { r: 215, g: 135, b: 95 } },
+  ],
+  "sgr.bg.256": [
+    { char: "C" },
+    { char: "A", bg: { r: 95, g: 135, b: 175 } },
+    { char: "B", bg: { r: 215, g: 135, b: 95 } },
+    X({ bg: { r: 95, g: 135, b: 175 } }),
+    { char: "Y", bg: { r: 215, g: 135, b: 95 } },
+  ],
+  "sgr.fg.truecolor": [
+    { char: "C" },
+    { char: "A", fg: { r: 0, g: 0, b: 255 } },
+    { char: "B", fg: { r: 0, g: 255, b: 0 } },
+    X({ fg: { r: 255, g: 128, b: 0 } }),
+    { char: "Y", fg: { r: 17, g: 97, b: 201 } },
+  ],
+  "sgr.bg.truecolor": [
+    { char: "C" },
+    { char: "A", bg: { r: 0, g: 0, b: 255 } },
+    { char: "B", bg: { r: 0, g: 255, b: 0 } },
+    X({ bg: { r: 0, g: 255, b: 128 } }),
+    { char: "Y", bg: { r: 17, g: 97, b: 201 } },
+  ],
+  // underline colours: A/B controls, X/Y targets
+  "sgr.underline.color": [
+    { char: "A", underline: "single", fg: { r: 0, g: 0, b: 255 } },
+    { char: "B", underline: "single", fg: { r: 0, g: 255, b: 0 } },
+    X({ underline: "single", underlineColor: { r: 255, g: 0, b: 128 } }),
+  ],
+  "sgr.underline-color-rgb": [
+    { char: "A", underline: "single", fg: { r: 0, g: 0, b: 255 } },
+    { char: "B", underline: "single", fg: { r: 0, g: 255, b: 0 } },
+    X({ underline: "single", underlineColor: { r: 255, g: 0, b: 128 } }),
+  ],
+  "sgr.underline-color-indexed": [
+    { char: "A", underline: "single", fg: { r: 0, g: 0, b: 255 } },
+    X({ underline: "single", underlineColor: { r: 0, g: 255, b: 0 } }),
+    { char: "B", underline: "single", fg: { r: 0, g: 255, b: 0 } },
+    { char: "Y", underline: "single", underlineColor: { r: 0, g: 0, b: 255 } },
+  ],
+  "sgr.underline-color-reset": [
+    { char: "C", underline: "single" },
+    X({ underline: "single", underlineColor: { r: 255, g: 0, b: 128 } }),
+    { char: "Y", underline: "single" },
+  ],
+}
+
+/**
+ * Rows whose claim has no headless observable. sgr.overline reads `cell.overline`, a field the
+ * headless model does not expose, so the probe returns notTested("no-semantic-observable") - it is
+ * NOT MEASURED headlessly and is excluded from the satisfaction table. The claim is therefore 31 of
+ * 32 rows bound by the table plus this one named not-measured, never a blanket "32/32".
+ */
+const SGR_NOT_MEASURED: Record<string, string> = {
+  "sgr.overline": "cell.overline field not exposed by the headless model",
+}
+
+/** A headless model whose column cells are fixed: the probe reads the cells its fed fixture names. */
+function cellsModel(cells: readonly TableCell[]): HeadlessModel {
+  return {
+    cols: Math.max(40, cells.length),
+    feed: () => {},
+    getCell: (_row, col) => ({ ...INERT_CELL, ...cells[col] }),
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
   }
 }
@@ -113,10 +228,10 @@ test("the SGR contract names its focused tests, and every named file exists", ()
 })
 
 // Determinism only (2026-10-09 @dev/10 review): the inert model feeds nothing, so this replay can
-// prove the harness is deterministic, NOT that a decided row is satisfied. The satisfaction proof is
-// bound separately by helper-observations.test.ts (named in SGR_CONTRACT_SPEC.tests), which drives
-// each capability with the cell state its claim requires.
-test("the harness replays every SGR capability deterministically (satisfaction is bound by helper-observations.test.ts)", async () => {
+// prove the harness is deterministic, NOT that a decided row is satisfied. The satisfaction binding is
+// proven by SGR_SATISFACTION_CELLS below (one required cell state per row, driven through regradeRow);
+// helper-observations.test.ts additionally pins several rows against real parse paths.
+test("the harness replays every SGR capability deterministically (satisfaction is bound by the table test below)", async () => {
   for (const row of SGR_CONTRACT) {
     const probe = sgrProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing SGR probe ${row.id}`).toBeDefined()
@@ -131,20 +246,44 @@ test("the harness replays every SGR capability deterministically (satisfaction i
   }
 })
 
-// The bound satisfaction proof: the harness really can read a decided row as satisfied, and really
-// refuses to when the cell state does not support it. This is what the determinism replay above cannot
-// show on its own (the whole 32-row proof is helper-observations.test.ts).
-test("a decided SGR row reads satisfied from a supporting cell and unsatisfied from an inert one", async () => {
+// The bound satisfaction proof: every decided row reads "supported" from the cell state its claim
+// requires, and the harness refuses an inert cell. This is the whole-table proof the determinism replay
+// above cannot show on its own (2026-10-09 @adhoc/1 bounce + @dev/10 review).
+test("every SGR contract row is satisfied by the headless cell state its claim requires", async () => {
+  const notMeasured = SGR_CONTRACT.filter((row) => SGR_NOT_MEASURED[row.id] !== undefined).map((row) => row.id)
+  expect(notMeasured).toEqual(["sgr.overline"])
+  for (const row of SGR_CONTRACT) {
+    const probe = sgrProbes.find((entry) => entry.id === row.id)
+    expect(probe, `missing SGR probe ${row.id}`).toBeDefined()
+    if (!probe) continue
+    if (SGR_NOT_MEASURED[row.id] !== undefined) {
+      // sgr.overline: the headless cell has no `overline` field, so the probe returns notTested - NOT support.
+      const skip = await regradeRow(probe, row, { headless: headlessContext(cellsModel([{ char: "X" }])) })
+      expect(skip.after, `${row.id} must not read a headless outcome`).toBeUndefined()
+      expect(skip.satisfies, `${row.id} must not be satisfied without an observable`).toBe(false)
+      continue
+    }
+    const cells = SGR_SATISFACTION_CELLS[row.id]
+    expect(cells, `no satisfaction cell state declared for ${row.id}`).toBeDefined()
+    if (!cells) continue
+    const graded = await regradeRow(probe, row, { headless: headlessContext(cellsModel(cells)) })
+    expect(graded.after, `${row.id} reads supported from its claim's cell state`).toBe("supported")
+    expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
+  }
+  // The table must name every decided row that HAS a headless observable, so a newly added SGR row
+  // cannot ride the contract unbound - and every row it omits must be declared not-measured.
+  const bound = SGR_CONTRACT.filter((row) => row.expected === "decided" && SGR_NOT_MEASURED[row.id] === undefined).map(
+    (row) => row.id,
+  )
+  expect(Object.keys(SGR_SATISFACTION_CELLS).sort()).toEqual(bound.sort())
+})
+
+test("a decided SGR row reads unsatisfied from an inert cell", async () => {
   const row = SGR_CONTRACT.find((entry) => entry.id === "sgr.bold")
   const probe = sgrProbes.find((entry) => entry.id === "sgr.bold")
   expect(row, "the SGR contract names sgr.bold").toBeDefined()
   expect(probe, "the SGR contract names a real sgr.bold probe").toBeDefined()
   if (!row || !probe) return
-  const supported = await regradeRow(probe, row, {
-    headless: headlessContext(inertModel(40, { char: "X", bold: true })),
-  })
-  expect(supported.after).toBe("supported")
-  expect(supported.satisfies).toBe(true)
   const inert = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
   expect(inert.satisfies).toBe(false)
 })

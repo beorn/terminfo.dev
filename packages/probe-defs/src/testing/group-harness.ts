@@ -42,6 +42,20 @@ export interface GroupContractSpec {
   readonly rows: GroupContract
   /** Repo-relative paths of the focused test files that bind this group's observations. Named, never a glob. */
   readonly tests: readonly string[]
+  /**
+   * Named capabilities the group declares but cannot bind here — a catalog id with no probe definition
+   * in the frozen suite. They are carried so the contract NAMES them instead of silently dropping them
+   * (the NotTestedCoverageResult reason at contract scope; @cto 27832: every contract row binds).
+   */
+  readonly namedUnavailable?: readonly NamedUnavailable[]
+}
+
+/** A named capability the contract reports but cannot bind, with the reason (reuses the coverage reason). */
+export interface NamedUnavailable {
+  readonly id: string
+  readonly reason: "no-semantic-observable"
+  /** The specific observable the frozen suite cannot expose for this id. */
+  readonly noObservable: string
 }
 
 /**
@@ -60,13 +74,20 @@ export function missingContractTests(spec: GroupContractSpec, root: string): str
   return spec.tests.filter((path) => !existsSync(join(root, path))).sort()
 }
 
+/** One stored observation, keyed by featureId — the run's measured outcome, never a placeholder. */
+export interface StoredObservation {
+  readonly outcome: string
+  readonly note?: string
+}
+
 /** One stored run row, schema-v2, reduced to what a re-grade needs. */
 export interface GroupRow {
   readonly file: string
   readonly terminal: string
   readonly version: string
   readonly runId: string
-  readonly observation: { readonly outcome: string; readonly note?: string }
+  /** The run's stored observations by featureId. An unobserved id is ABSENT here, never planted as "unknown". */
+  readonly observations: Readonly<Record<string, StoredObservation>>
   readonly rawReplies: Readonly<Record<string, string>>
 }
 
@@ -131,13 +152,25 @@ export function loadGroupRows(
         observations?: Array<{ featureId: string; outcome: string; note?: string }>
         rawReplies?: Record<string, string>
       }
-      if (data.schemaVersion !== 2) continue
+      if (data.schemaVersion !== 2) {
+        excluded.push({
+          dir: source.dir,
+          path: join(contentDir, source.dir, name),
+          cause: `schemaVersion ${String(data.schemaVersion)} is not 2; the run was not loaded by name, not skipped in silence`,
+        })
+        continue
+      }
+      const observations: Record<string, StoredObservation> = {}
+      for (const item of data.observations ?? []) {
+        if (typeof item?.featureId !== "string" || item.featureId.length === 0) continue
+        observations[item.featureId] = { outcome: String(item.outcome), ...(item.note ? { note: item.note } : {}) }
+      }
       rows.push({
         file: `${source.dir}/${name}`,
         terminal: data.target?.id ?? "unknown",
         version: data.target?.version ?? "unknown",
         runId: data.runId ?? name,
-        observation: { outcome: "unknown", note: undefined },
+        observations,
         rawReplies: data.rawReplies ?? {},
       })
     }
@@ -145,16 +178,40 @@ export function loadGroupRows(
   return { rows, excluded }
 }
 
+/** The run's stored observation for a featureId, or undefined when the run did not observe it. */
+export function storedObservation(row: GroupRow, featureId: string): StoredObservation | undefined {
+  return row.observations[featureId]
+}
+
+/**
+ * The stored observation a re-grade REQUIRES. A missing featureId is a loud fault naming the file and
+ * the id (NO SILENT ERRORS), never an `unknown` placeholder a caller could mistake for a measurement.
+ */
+export function requireStoredObservation(row: GroupRow, featureId: string): StoredObservation {
+  const found = row.observations[featureId]
+  if (found === undefined) {
+    throw new Error(
+      `requireStoredObservation: ${row.file} carries no observation for ${featureId}; observed ids: ${Object.keys(row.observations).sort().join(", ") || "(none)"}`,
+    )
+  }
+  return found
+}
+
 /** Contract coverage: every probe id has a contract row, and no contract row names an unknown id. */
 export function contractGaps(
   probes: readonly ProbeDefinition[],
   contract: GroupContract,
-): { readonly uncovered: string[]; readonly unknown: string[] } {
+  namedUnavailable: readonly NamedUnavailable[] = [],
+): { readonly uncovered: string[]; readonly unknown: string[]; readonly misdeclared: string[] } {
   const probeIds = new Set(probes.map((entry) => entry.id))
   const contractIds = new Set(contract.map((entry) => entry.id))
+  const unavailableIds = new Set(namedUnavailable.map((entry) => entry.id))
   return {
     uncovered: [...probeIds].filter((id) => !contractIds.has(id)).sort(),
-    unknown: [...contractIds].filter((id) => !probeIds.has(id)).sort(),
+    // A contract row with no probe is unknown UNLESS it is explicitly named unavailable.
+    unknown: [...contractIds].filter((id) => !probeIds.has(id) && !unavailableIds.has(id)).sort(),
+    // A named-unavailable id must be absent from the probes and present in the contract, else it is a contradiction.
+    misdeclared: [...unavailableIds].filter((id) => probeIds.has(id) || !contractIds.has(id)).sort(),
   }
 }
 
