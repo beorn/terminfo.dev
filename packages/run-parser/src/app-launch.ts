@@ -7,6 +7,10 @@
  * type stripping before any checkout exists (@cto 2026-10-08, 28216). The two-file bootstrap cannot
  * resolve a workspace package, and a second copy of this parser is exactly the drift this extraction
  * exists to prevent - so this module imports ONLY node built-ins and type-only names.
+ *
+ * It also owns the ONE placeholder predicate (`PLACEHOLDER`), because both callers must refuse a
+ * digest nothing measured with the same rule (27874), and a second copy of that rule is the same
+ * drift this module exists to prevent.
  */
 import type { AppLaunchReceipt, DerivedSourceTreeArtifact } from "@terminfo/probe-defs"
 
@@ -18,6 +22,21 @@ function fail(path: string, message: string): never {
 }
 const asString = (value: unknown, path: string, name: string): string =>
   nonempty(value) ? value : fail(path, `missing ${name}`)
+
+/** One repeated character at any length - what a hand writes when nothing was measured. The apparatus
+ * derives a digest from real bytes, so a placeholder is refused BY NAME: admitting one is admitting a
+ * receipt nothing derived (27874). */
+export const PLACEHOLDER = /^(.)\1*$/
+
+/** A digest the apparatus derived from bytes: a sha256 AND carrying real entropy. */
+function measuredDigest(value: unknown, path: string, field: string): string {
+  const digest = String(value)
+  if (!/^[a-f0-9]{64}$/.test(digest)) fail(path, `invalid ${field}`)
+  if (PLACEHOLDER.test(digest)) {
+    fail(path, `${field} is a placeholder: one repeated character, so no bytes were measured`)
+  }
+  return digest
+}
 
 /**
  * A DERIVED source artifact is honest only when the receipt names the proof: the upstream source at
@@ -70,9 +89,7 @@ export function parseAppLaunchReceipt(
   if (!bundlePath.startsWith("/") || !executablePath.startsWith("/")) {
     fail(path, "appLaunch bundle and executable paths must be absolute")
   }
-  if (!/^[a-f0-9]{64}$/.test(String(value.executableSha256))) {
-    fail(path, "invalid appLaunch.executableSha256")
-  }
+  const executableSha256 = measuredDigest(value.executableSha256, path, "appLaunch.executableSha256")
   if (!object(value.sourceArtifact)) fail(path, "missing appLaunch.sourceArtifact")
   let sourceArtifact: AppLaunchReceipt["sourceArtifact"]
   if (value.sourceArtifact.kind === "sealed-macos-system-volume") {
@@ -112,10 +129,9 @@ export function parseAppLaunchReceipt(
     sourceArtifact = parseDerivedSourceTree(value.sourceArtifact, path, "appLaunch.sourceArtifact")
   } else if (value.sourceArtifact.kind === undefined) {
     const sourcePath = asString(value.sourceArtifact.path, path, "appLaunch.sourceArtifact.path")
-    if (!sourcePath.startsWith("/") || !/^[a-f0-9]{64}$/.test(String(value.sourceArtifact.sha256))) {
-      fail(path, "invalid appLaunch.sourceArtifact")
-    }
-    sourceArtifact = { path: sourcePath, sha256: value.sourceArtifact.sha256 as string }
+    if (!sourcePath.startsWith("/")) fail(path, "invalid appLaunch.sourceArtifact")
+    const sha256 = measuredDigest(value.sourceArtifact.sha256, path, "appLaunch.sourceArtifact.sha256")
+    sourceArtifact = { path: sourcePath, sha256 }
   } else {
     fail(path, "unknown appLaunch.sourceArtifact kind")
   }
@@ -124,7 +140,7 @@ export function parseAppLaunchReceipt(
     cfBundleShortVersionString,
     cfBundleVersion,
     executablePath,
-    executableSha256: value.executableSha256 as string,
+    executableSha256,
     sourceArtifact,
   }
 }

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
-import { parseAppLaunchReceipt } from "../../run-parser/src/app-launch.ts"
+import { PLACEHOLDER, parseAppLaunchReceipt } from "../../run-parser/src/app-launch.ts"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 
 /**
@@ -143,10 +143,6 @@ const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/
 const CLIPBOARD_PROFILES = ["default", "allow", "deny-read"] as const
 /** The architectures `docker inspect` reports for the container the launcher loads, and asserts. */
 const CONTAINER_ARCHES = ["amd64", "arm64"] as const
-/** One repeated character at any length. The apparatus derives these values from real bytes, so an
- * all-zero or all-'a' value is a placeholder: what a hand writes when nothing was measured. */
-const PLACEHOLDER = /^(.)\1*$/
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
