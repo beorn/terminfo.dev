@@ -3,12 +3,13 @@
  *
  * #28453 leaves the headless model to the group, so a group that needs a terminal supplies one. Two
  * groups needing the same terminal share ONE implementation rather than each reinventing the fake:
- * this surface really performs the operations the Erase, Reset and Text probes exercise - EL 0/1/2,
- * ED 0/1/2/3, ECH, DECSED with DECSCA protection, DECSTBM with a real scrollback count, SGR
- * attributes, RIS, DECSTR, DECALN, DECCKM, the text primitives (CR, BS, IND, NEL, RI and the
- * HT/HTS/TBC/CHT/CBT tab family) and grapheme-aware writing (a wide cluster claims two columns and a
- * combining mark rides its base) - so a row reads "supported" only when the probe's own expectation
- * agrees with a terminal that really does the thing.
+ * this surface really performs the operations the Erase, Reset, Text and Editing probes exercise -
+ * EL 0/1/2, ED 0/1/2/3, ECH, DECSED with DECSCA protection, DECSTBM with a real scrollback count,
+ * SGR attributes, RIS, DECSTR, DECALN, DECCKM, the text primitives (CR, BS, IND, NEL, RI and the
+ * HT/HTS/TBC/CHT/CBT tab family), grapheme-aware writing (a wide cluster claims two columns and a
+ * combining mark rides its base) and the editing family (ICH, DCH, IL, DL, REP, SL, SR, DECIC,
+ * DECDC, DECFRA, DECERA, DECSERA, DECCRA, DECCARA, DECRARA and the DECRQCRA reply) - so a row reads
+ * "supported" only when the probe's own expectation agrees with a terminal that really does the thing.
  *
  * `mutations` injects one named fault so a group can prove its binding is not a stamp: "el-noop"
  * makes EL inert (the Erase group's negative control) and "ris-noop" makes RIS inert (Reset's).
@@ -182,6 +183,50 @@ function clusterWidth(cluster: string): number {
   return isWide(base) ? 2 : 1
 }
 
+/** Apply SGR codes to an attribute set, the table `applySgr` and the rect attribute ops share. */
+function applyCodes(attributes: Attributes, codes: readonly number[]): Attributes {
+  let next = attributes
+  for (const code of codes) {
+    if (code === 0) next = NO_ATTRIBUTES
+    else if (code === 1) next = { ...next, bold: true }
+    else if (code === 2) next = { ...next, dim: true }
+    else if (code === 3) next = { ...next, italic: true }
+    else if (code === 5) next = { ...next, blink: true }
+    else if (code === 7) next = { ...next, inverse: true }
+    else if (code === 8) next = { ...next, hidden: true }
+    else if (code === 9) next = { ...next, strikethrough: true }
+    else if (code === 22) next = { ...next, bold: false, dim: false }
+    else if (code === 23) next = { ...next, italic: false }
+    else if (code === 25) next = { ...next, blink: false }
+    else if (code === 27) next = { ...next, inverse: false }
+    else if (code === 28) next = { ...next, hidden: false }
+    else if (code === 29) next = { ...next, strikethrough: false }
+    else if (code === 39) next = { ...next, fg: null }
+    else if (code === 49) next = { ...next, bg: null }
+    else if (code === 53) next = { ...next, overline: true }
+    else if (code === 55) next = { ...next, overline: false }
+    else if (code >= 40 && code <= 47) next = { ...next, bg: STANDARD_BG[code - 40] ?? null }
+    else if (code >= 30 && code <= 37) next = { ...next, fg: STANDARD_FG[code - 30] ?? null }
+  }
+  return next
+}
+
+/** Reverse (toggle) the listed attribute codes in a set — DECRARA's per-cell effect. */
+function reverseCodes(attributes: Attributes, codes: readonly number[]): Attributes {
+  let next = attributes
+  for (const code of codes) {
+    if (code === 1) next = { ...next, bold: !next.bold }
+    else if (code === 2) next = { ...next, dim: !next.dim }
+    else if (code === 3) next = { ...next, italic: !next.italic }
+    else if (code === 5) next = { ...next, blink: !next.blink }
+    else if (code === 7) next = { ...next, inverse: !next.inverse }
+    else if (code === 8) next = { ...next, hidden: !next.hidden }
+    else if (code === 9) next = { ...next, strikethrough: !next.strikethrough }
+    else if (code === 53) next = { ...next, overline: !next.overline }
+  }
+  return next
+}
+
 /** The cell shape `TermlessContext.getCell` returns. */
 export type SurfaceCellState = ReturnType<TermlessContext["getCell"]>
 
@@ -213,6 +258,10 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let protecting = false
   let applicationCursor = false
   let tabStops = defaultTabStops(cols)
+  let lastCluster = " "
+  let lastWidth = 1
+  /** Bytes the surface owes a caller in reply to a query (DECRQCRA), read back by feedCapture. */
+  let replies = ""
 
   const blankRow = (): SurfaceCell[] => Array.from({ length: cols }, () => blankCell(NO_ATTRIBUTES))
 
@@ -224,6 +273,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     regionBottom = rows - 1
     scrolled = 0
     tabStops = defaultTabStops(cols)
+    replies = ""
   }
   clear()
 
@@ -307,6 +357,161 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       }
     }
     cursorX += width
+    lastCluster = cluster
+    lastWidth = width
+  }
+
+  /** REP — repeat the immediately preceding graphic cluster at the cursor. */
+  const repeatChar = (count: number): void => {
+    for (let i = 0; i < Math.max(1, count); i++) writeCluster(lastCluster, lastWidth)
+  }
+
+  const clampRow = (row: number): number => (row < 0 ? 0 : row > rows - 1 ? rows - 1 : row)
+
+  /** The clamped inclusive cell rectangle a VT420 Ps;Pl;Pb;Pr area operation names. */
+  const rect = (params: readonly number[]): { top: number; left: number; bottom: number; right: number } => ({
+    top: clampRow((params[0] ?? 1) - 1),
+    left: clampCol((params[1] ?? 1) - 1),
+    bottom: clampRow((params[2] ?? rows) - 1),
+    right: clampCol((params[3] ?? cols) - 1),
+  })
+
+  const eachCellIn = (
+    params: readonly number[],
+    apply: (cell: SurfaceCell, row: number, col: number) => SurfaceCell | undefined,
+  ): void => {
+    const { top, left, bottom, right } = rect(params)
+    for (let row = top; row <= bottom; row++) {
+      for (let col = left; col <= right; col++) {
+        const current = grid[row]?.[col] ?? blankCell(NO_ATTRIBUTES)
+        const next = apply(current, row, col)
+        if (next && grid[row]) grid[row]![col] = next
+      }
+    }
+  }
+
+  /** ICH — insert blank cells at the cursor, shifting the rest of the row right. */
+  const insertChars = (count: number): void => {
+    if (mutations.has("ich-noop")) return
+    const row = grid[cursorY]
+    if (!row) return
+    row.splice(cursorX, 0, ...Array.from({ length: Math.max(1, count) }, () => blankCell(NO_ATTRIBUTES)))
+    row.length = cols
+  }
+
+  /** DCH — delete cells at the cursor, shifting the rest of the row left and blanking the tail. */
+  const deleteChars = (count: number): void => {
+    const row = grid[cursorY]
+    if (!row) return
+    row.splice(cursorX, Math.max(1, count))
+    while (row.length < cols) row.push(blankCell(NO_ATTRIBUTES))
+  }
+
+  /** IL — insert blank rows at the cursor inside the scrolling region, shifting rows down. */
+  const insertLines = (count: number): void => {
+    const bottom = Math.min(regionBottom, rows - 1)
+    for (let i = 0; i < Math.max(1, count); i++) {
+      grid.splice(cursorY, 0, blankRow())
+      grid.splice(bottom + 1, 1)
+    }
+  }
+
+  /** DL — delete rows at the cursor inside the scrolling region, shifting rows up. */
+  const deleteLines = (count: number): void => {
+    const bottom = Math.min(regionBottom, rows - 1)
+    for (let i = 0; i < Math.max(1, count); i++) {
+      grid.splice(cursorY, 1)
+      grid.splice(bottom, 0, blankRow())
+    }
+  }
+
+  /** SL — shift every screen column left by `count`, blanking the right edge. */
+  const shiftLeft = (count: number): void => {
+    for (const row of grid) {
+      row.splice(0, Math.max(1, count))
+      while (row.length < cols) row.push(blankCell(NO_ATTRIBUTES))
+    }
+  }
+
+  /** SR — shift every screen column right by `count`, blanking the left edge. */
+  const shiftRight = (count: number): void => {
+    const blanks = () => Array.from({ length: Math.max(1, count) }, () => blankCell(NO_ATTRIBUTES))
+    for (const row of grid) {
+      row.splice(0, 0, ...blanks())
+      row.length = cols
+    }
+  }
+
+  /** DECIC — insert blank columns at the cursor, shifting every row right. */
+  const insertColumns = (count: number): void => {
+    const blanks = () => Array.from({ length: Math.max(1, count) }, () => blankCell(NO_ATTRIBUTES))
+    for (const row of grid) {
+      row.splice(cursorX, 0, ...blanks())
+      row.length = cols
+    }
+  }
+
+  /** DECDC — delete columns at the cursor, shifting every row left and blanking the tail. */
+  const deleteColumns = (count: number): void => {
+    for (const row of grid) {
+      row.splice(cursorX, Math.max(1, count))
+      while (row.length < cols) row.push(blankCell(NO_ATTRIBUTES))
+    }
+  }
+
+  /** DECFRA — fill the rectangle with the named code point. */
+  const fillRect = (params: readonly number[]): void => {
+    const char = String.fromCodePoint(params[0] ?? 0)
+    eachCellIn(params.slice(1), () => ({ char, decscaProtected: false, ...NO_ATTRIBUTES }))
+  }
+
+  /** DECERA — blank the rectangle; DECSERA restricts that to unprotected cells. */
+  const blankRect = (params: readonly number[], selective: boolean): void => {
+    eachCellIn(params, (cell) =>
+      selective && cell.decscaProtected ? undefined : { char: " ", decscaProtected: false, ...NO_ATTRIBUTES },
+    )
+  }
+
+  /** DECCRA — copy the source rectangle to the destination top/left, source left intact. */
+  const copyRect = (params: readonly number[]): void => {
+    const source = rect(params)
+    const destinationTop = clampRow((params[5] ?? 1) - 1)
+    const destinationLeft = clampCol((params[6] ?? 1) - 1)
+    const copy: SurfaceCell[][] = []
+    for (let row = source.top; row <= source.bottom; row++) {
+      const line: SurfaceCell[] = []
+      for (let col = source.left; col <= source.right; col++) line.push(grid[row]?.[col] ?? blankCell(NO_ATTRIBUTES))
+      copy.push(line)
+    }
+    copy.forEach((line, rowOffset) => {
+      line.forEach((cell, colOffset) => {
+        const row = destinationTop + rowOffset
+        const col = destinationLeft + colOffset
+        if (grid[row] && col < cols) grid[row]![col] = { ...cell }
+      })
+    })
+  }
+
+  /** DECCARA / DECRARA — set or reverse the listed attributes across the rectangle. */
+  const changeRectAttributes = (params: readonly number[], reverse: boolean): void => {
+    const codes = params.slice(4)
+    eachCellIn(params, (cell) => ({
+      ...cell,
+      ...(reverse ? reverseCodes(cell, codes) : applyCodes(cell, codes)),
+    }))
+  }
+
+  /** DECRQCRA — frame the rectangle's checksum reply the way checksumResult reads it. */
+  const requestChecksum = (params: readonly number[]): void => {
+    const id = params[0] ?? 0
+    const { top, left, bottom, right } = rect(params.slice(2))
+    let total = 0
+    for (let row = top; row <= bottom; row++) {
+      for (let col = left; col <= right; col++) {
+        for (const char of cellAt(row, col).char) total = (total + char.charCodeAt(0)) & 0xffff
+      }
+    }
+    replies += `\x1bP${id}!~${total.toString(16).toUpperCase().padStart(4, "0")}\x1b\\`
   }
 
   const eraseLine = (mode: number): void => {
@@ -358,29 +563,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   }
 
   const applySgr = (params: readonly number[]): void => {
-    const codes = params.length === 0 ? [0] : params
-    for (const code of codes) {
-      if (code === 0) attributes = NO_ATTRIBUTES
-      else if (code === 1) attributes = { ...attributes, bold: true }
-      else if (code === 2) attributes = { ...attributes, dim: true }
-      else if (code === 3) attributes = { ...attributes, italic: true }
-      else if (code === 5) attributes = { ...attributes, blink: true }
-      else if (code === 7) attributes = { ...attributes, inverse: true }
-      else if (code === 8) attributes = { ...attributes, hidden: true }
-      else if (code === 9) attributes = { ...attributes, strikethrough: true }
-      else if (code === 22) attributes = { ...attributes, bold: false, dim: false }
-      else if (code === 23) attributes = { ...attributes, italic: false }
-      else if (code === 25) attributes = { ...attributes, blink: false }
-      else if (code === 27) attributes = { ...attributes, inverse: false }
-      else if (code === 28) attributes = { ...attributes, hidden: false }
-      else if (code === 29) attributes = { ...attributes, strikethrough: false }
-      else if (code === 39) attributes = { ...attributes, fg: null }
-      else if (code === 49) attributes = { ...attributes, bg: null }
-      else if (code === 53) attributes = { ...attributes, overline: true }
-      else if (code === 55) attributes = { ...attributes, overline: false }
-      else if (code >= 40 && code <= 47) attributes = { ...attributes, bg: STANDARD_BG[code - 40] ?? null }
-      else if (code >= 30 && code <= 37) attributes = { ...attributes, fg: STANDARD_FG[code - 30] ?? null }
-    }
+    attributes = applyCodes(attributes, params.length === 0 ? [0] : params)
   }
 
   const softReset = (): void => {
@@ -415,6 +598,30 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       if (final === "p") softReset()
       return
     }
+    if (intermediate === "$") {
+      if (final === "x") fillRect(params)
+      else if (final === "z") blankRect(params, false)
+      else if (final === "{") blankRect(params, true)
+      else if (final === "v") copyRect(params)
+      else if (final === "r") changeRectAttributes(params, false)
+      else if (final === "t") changeRectAttributes(params, true)
+      return
+    }
+    if (intermediate === "*") {
+      // DECSACE selects the attribute-change extent (no cell effect); DECRQCRA frames a checksum reply.
+      if (final === "y") requestChecksum(params)
+      return
+    }
+    if (intermediate === "'") {
+      if (final === "}") insertColumns(first === 0 ? 1 : first)
+      else if (final === "~") deleteColumns(first === 0 ? 1 : first)
+      return
+    }
+    if (intermediate === " ") {
+      if (final === "@") shiftLeft(first === 0 ? 1 : first)
+      else if (final === "A") shiftRight(first === 0 ? 1 : first)
+      return
+    }
     if (prefix === "?") {
       if (final === "h" && first === 1) applicationCursor = true
       else if (final === "l" && first === 1) applicationCursor = false
@@ -438,6 +645,21 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         return
       case "X":
         eraseChars(params[0] ?? 1)
+        return
+      case "@":
+        insertChars(first)
+        return
+      case "P":
+        deleteChars(first)
+        return
+      case "L":
+        insertLines(first)
+        return
+      case "M":
+        deleteLines(first)
+        return
+      case "b":
+        repeatChar(first)
         return
       case "I":
         for (let count = 0; count < Math.max(1, first); count++) horizontalTab()
@@ -539,6 +761,13 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   return {
     cols,
     feed,
+    feedCapture(text: string): string {
+      replies = ""
+      feed(text)
+      const framed = replies
+      replies = ""
+      return framed
+    },
     getCell(row: number, col: number): SurfaceCellState {
       const cell = cellAt(row, col)
       return {
