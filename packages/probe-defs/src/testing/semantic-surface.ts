@@ -3,9 +3,11 @@
  *
  * #28453 leaves the headless model to the group, so a group that needs a terminal supplies one. Two
  * groups needing the same terminal share ONE implementation rather than each reinventing the fake:
- * this surface really performs the operations the Erase and Reset probes exercise - EL 0/1/2, ED
- * 0/1/2/3, ECH, DECSED with DECSCA protection, DECSTBM with a real scrollback count, SGR attributes,
- * RIS, DECSTR, DECALN and DECCKM - so a row reads "supported" only when the probe's own expectation
+ * this surface really performs the operations the Erase, Reset and Text probes exercise - EL 0/1/2,
+ * ED 0/1/2/3, ECH, DECSED with DECSCA protection, DECSTBM with a real scrollback count, SGR
+ * attributes, RIS, DECSTR, DECALN, DECCKM, the text primitives (CR, BS, IND, NEL, RI and the
+ * HT/HTS/TBC/CHT/CBT tab family) and grapheme-aware writing (a wide cluster claims two columns and a
+ * combining mark rides its base) - so a row reads "supported" only when the probe's own expectation
  * agrees with a terminal that really does the thing.
  *
  * `mutations` injects one named fault so a group can prove its binding is not a stamp: "el-noop"
@@ -71,10 +73,113 @@ const NO_ATTRIBUTES: Attributes = {
 interface SurfaceCell extends Attributes {
   char: string
   decscaProtected: boolean
+  /** A two-column lead cell (CJK, emoji, ZWJ sequence or regional-indicator pair). */
+  wide?: boolean
 }
 
 function blankCell(attributes: Attributes): SurfaceCell {
   return { char: " ", decscaProtected: false, ...attributes }
+}
+
+/** Tab stops every eight columns from column nine, the conventional layout. */
+function defaultTabStops(cols: number): Set<number> {
+  const stops = new Set<number>()
+  for (let col = 8; col < cols; col += 8) stops.add(col)
+  return stops
+}
+
+const VS15 = 0xfe0e
+const VS16 = 0xfe0f
+const ZWJ = 0x200d
+
+function isCombining(code: number): boolean {
+  return (
+    (code >= 0x0300 && code <= 0x036f) ||
+    (code >= 0x1ab0 && code <= 0x1aff) ||
+    (code >= 0x1dc0 && code <= 0x1dff) ||
+    (code >= 0x20d0 && code <= 0x20ff) ||
+    (code >= 0xfe20 && code <= 0xfe2f)
+  )
+}
+
+function isRegionalIndicator(code: number): boolean {
+  return code >= 0x1f1e6 && code <= 0x1f1ff
+}
+
+/** East Asian Wide/Fullwidth and emoji, the code points that claim two columns. */
+function isWide(code: number): boolean {
+  return (
+    (code >= 0x1100 && code <= 0x115f) ||
+    (code >= 0x2e80 && code <= 0x303e) ||
+    (code >= 0x3041 && code <= 0x33ff) ||
+    (code >= 0x3400 && code <= 0x4dbf) ||
+    (code >= 0x4e00 && code <= 0x9fff) ||
+    (code >= 0xa000 && code <= 0xa4cf) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe30 && code <= 0xfe6f) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6) ||
+    (code >= 0x1f300 && code <= 0x1faff) ||
+    (code >= 0x20000 && code <= 0x3fffd)
+  )
+}
+
+/**
+ * The grapheme cluster beginning at `start`: a base code point plus every combining mark, VS15/VS16,
+ * ZWJ-continued scalar and second regional indicator that rides it. Decoding by code point, never by
+ * UTF-16 unit, is what keeps a supplementary-plane scalar whole (#28021 text.wide.*).
+ */
+function nextGrapheme(text: string, start: number): { cluster: string; length: number } {
+  let index = start
+  let cluster = ""
+  let first = true
+  let regionalCount = 0
+  let previousWasZwj = false
+  while (index < text.length) {
+    const code = text.codePointAt(index)
+    if (code === undefined) break
+    const size = code > 0xffff ? 2 : 1
+    if (first) {
+      cluster += String.fromCodePoint(code)
+      regionalCount = isRegionalIndicator(code) ? 1 : 0
+      first = false
+      index += size
+      continue
+    }
+    if (isCombining(code) || code === VS15 || code === VS16 || code === ZWJ) {
+      cluster += String.fromCodePoint(code)
+      previousWasZwj = code === ZWJ
+      index += size
+      continue
+    }
+    if (previousWasZwj) {
+      cluster += String.fromCodePoint(code)
+      previousWasZwj = false
+      index += size
+      continue
+    }
+    if (isRegionalIndicator(code) && regionalCount === 1) {
+      cluster += String.fromCodePoint(code)
+      regionalCount = 2
+      index += size
+      continue
+    }
+    break
+  }
+  return { cluster, length: index - start }
+}
+
+/** The measured column width of one cluster: emoji presentation, ZWJ and flag pairs are two. */
+function clusterWidth(cluster: string): number {
+  const codes = Array.from(cluster, (char) => char.codePointAt(0) ?? 0)
+  if (codes.length === 0) return 0
+  if (codes.includes(VS16)) return 2
+  if (codes.includes(ZWJ)) return 2
+  if (codes.length >= 2 && isRegionalIndicator(codes[0] ?? 0) && isRegionalIndicator(codes[1] ?? 0)) return 2
+  const base = codes[0] ?? 0
+  if (isCombining(base)) return 0
+  return isWide(base) ? 2 : 1
 }
 
 /** The cell shape `TermlessContext.getCell` returns. */
@@ -107,6 +212,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let attributes: Attributes = NO_ATTRIBUTES
   let protecting = false
   let applicationCursor = false
+  let tabStops = defaultTabStops(cols)
 
   const blankRow = (): SurfaceCell[] => Array.from({ length: cols }, () => blankCell(NO_ATTRIBUTES))
 
@@ -117,8 +223,23 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     regionTop = 0
     regionBottom = rows - 1
     scrolled = 0
+    tabStops = defaultTabStops(cols)
   }
   clear()
+
+  /** The next owned stop to the right, or the right margin when none remains (#28021 text.tab). */
+  const nextTabStop = (from: number): number => {
+    let best = -1
+    for (const stop of tabStops) if (stop > from && (best === -1 || stop < best)) best = stop
+    return best === -1 ? cols - 1 : best
+  }
+
+  /** The nearest owned stop to the left (#28021 text.cbt). */
+  const prevTabStop = (from: number): number => {
+    let best = -1
+    for (const stop of tabStops) if (stop < from && stop > best) best = stop
+    return best === -1 ? 0 : best
+  }
 
   const clampCol = (col: number): number => (col < 0 ? 0 : col > cols - 1 ? cols - 1 : col)
   const cellAt = (row: number, col: number): SurfaceCell => grid[row]?.[col] ?? blankCell(NO_ATTRIBUTES)
@@ -134,14 +255,58 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     cursorY += 1
   }
 
-  const put = (char: string): void => {
-    if (cursorX >= cols) {
+  /** HT — advance to the next owned tab stop. */
+  const horizontalTab = (): void => {
+    if (mutations.has("ht-noop")) return
+    cursorX = nextTabStop(cursorX)
+  }
+
+  /** HTS — own the current column as a tab stop. */
+  const setTabStop = (): void => {
+    tabStops.add(cursorX)
+  }
+
+  /** IND — one row down, column unchanged. */
+  const indexDown = (): void => {
+    lineFeed()
+  }
+
+  /** NEL — one row down and back to column one. */
+  const nextLine = (): void => {
+    lineFeed()
+    cursorX = 0
+  }
+
+  /** RI — one row up, scrolling the measured region down when already at its top. */
+  const reverseIndex = (): void => {
+    if (cursorY <= regionTop) {
+      grid.splice(regionBottom, 1)
+      grid.splice(regionTop, 0, blankRow())
+      return
+    }
+    cursorY -= 1
+  }
+
+  /**
+   * Write one grapheme cluster. A two-column cluster (CJK, an emoji presentation, a ZWJ sequence or
+   * a regional-indicator pair) claims its lead cell and leaves an empty continuation beside it, so a
+   * width probe reads the column the sentinel really landed in. A cluster that cannot fit wraps
+   * first, exactly as a plain write does.
+   */
+  const writeCluster = (cluster: string, width: number): void => {
+    if (width === 0) return
+    if (cursorX + width > cols) {
       cursorX = 0
       lineFeed()
     }
     const target = grid[cursorY]
-    if (target) target[cursorX] = { char, decscaProtected: protecting, ...attributes }
-    cursorX += 1
+    if (target) {
+      target[cursorX] = { char: cluster, decscaProtected: protecting, wide: width > 1, ...attributes }
+      if (width > 1 && cursorX + 1 < cols) {
+        target[cursorX + 1] = { char: "", decscaProtected: protecting, wide: false, ...attributes }
+      }
+    }
+    cursorX += width
   }
 
   const eraseLine = (mode: number): void => {
@@ -274,6 +439,16 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       case "X":
         eraseChars(params[0] ?? 1)
         return
+      case "I":
+        for (let count = 0; count < Math.max(1, first); count++) horizontalTab()
+        return
+      case "Z":
+        for (let count = 0; count < Math.max(1, first); count++) cursorX = prevTabStop(cursorX)
+        return
+      case "g":
+        if (first === 0) tabStops.delete(cursorX)
+        else if (first === 3) tabStops.clear()
+        return
       case "r":
         regionTop = clampCol((params[0] ?? 1) - 1)
         regionBottom = clampCol((params[1] ?? rows) - 1)
@@ -289,13 +464,12 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   const feed = (text: string): void => {
     let index = 0
     while (index < text.length) {
-      const char = text[index]
-      if (char === "\x1b") {
-        const rest = text.slice(index)
-        const escape = /^\x1b#8/u.exec(rest)
-        if (escape) {
+      const rest = text.slice(index)
+      if (rest.startsWith("\x1b")) {
+        const alignment = /^\x1b#8/u.exec(rest)
+        if (alignment) {
           decaln()
-          index += escape[0].length
+          index += alignment[0].length
           continue
         }
         if (rest.startsWith("\x1bc")) {
@@ -309,9 +483,33 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
           index += match[0].length
           continue
         }
+        // The single-character C1 escapes: HTS, IND, NEL and RI (#28021 text.hts/index/next-line/…).
+        const escape = rest[1]
+        if (escape === "H") {
+          setTabStop()
+          index += 2
+          continue
+        }
+        if (escape === "D") {
+          indexDown()
+          index += 2
+          continue
+        }
+        if (escape === "E") {
+          nextLine()
+          index += 2
+          continue
+        }
+        if (escape === "M") {
+          reverseIndex()
+          index += 2
+          continue
+        }
         index += 1
         continue
       }
+      const code = text.codePointAt(index) ?? 0
+      const char = String.fromCodePoint(code)
       if (char === "\r") {
         cursorX = 0
         index += 1
@@ -322,8 +520,19 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         index += 1
         continue
       }
-      put(char ?? " ")
-      index += 1
+      if (char === "\x08") {
+        if (!mutations.has("bs-noop")) cursorX = Math.max(0, cursorX - 1)
+        index += 1
+        continue
+      }
+      if (char === "\t") {
+        horizontalTab()
+        index += 1
+        continue
+      }
+      const grapheme = nextGrapheme(text, index)
+      writeCluster(grapheme.cluster, clusterWidth(grapheme.cluster))
+      index += grapheme.length
     }
   }
 
@@ -346,7 +555,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         overline: cell.overline,
         fg: cell.fg,
         bg: cell.bg,
-        wide: false,
+        wide: cell.wide === true,
       }
     },
     getCursor() {
