@@ -26,7 +26,7 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   }
 }
 
-function command(file: string, args: string[], input?: Buffer): Promise<Buffer> {
+export function command(file: string, args: string[], input?: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     let stdinError: Error | undefined
     const child = execFile(
@@ -67,7 +67,7 @@ function retain(directory: string, bytes: Buffer, extension: string): string {
 }
 
 /** Resolve the actual terminal ancestor, never a class label or newest window. */
-function kittyAncestor(executable: LiveExecutable): number {
+export function kittyAncestor(executable: LiveExecutable): number {
   let pid = process.pid
   for (let depth = 0; depth < 64 && pid > 1; depth++) {
     const path = realpathSync(`/proc/${pid}/exe`)

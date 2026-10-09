@@ -378,6 +378,12 @@ export interface ClipboardFixture {
   writeText(text: string): Promise<void>
 }
 
+/** OS-level XTEST key/click/wheel injection into the focused owned window. */
+export interface InputFixture {
+  injectKey(keys: string): Promise<void>
+  injectClick(button: 1 | 4 | 5): Promise<void>
+}
+
 export interface TermContext {
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>
@@ -391,6 +397,8 @@ export interface TermContext {
   withClipboardFixture?: (work: (fixture: ClipboardFixture) => Promise<ProbeResult>) => Promise<ProbeResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: Pick<ObservationFrame, "role" | "label">) => Promise<ObservationFrame>
+  /** Present only when an owned OS XTEST adapter is installed for this run. */
+  input?: InputFixture
   cols: number
   rows: number
 }

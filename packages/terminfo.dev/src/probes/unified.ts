@@ -8,6 +8,7 @@
 
 import {
   ALL_PROBES as PROBE_DEFS,
+  type InputFixture,
   type NotTestedCoverage,
   type Observation,
   type ObservationFrame,
@@ -214,6 +215,7 @@ export async function runProbeBatch(
   options: {
     ids?: string[]
     capture?: ProbeCapture
+    input?: InputFixture
     ownedTerminal?: OwnedTerminal
     captureRunId?: string
     out?: NodeJS.WriteStream
@@ -354,6 +356,7 @@ export async function runProbeBatch(
       context.withClipboardFixture = (work) =>
         clipboard.withClipboardFixture(work, (event) => clipboardEvents.push(event))
     }
+    if (options.input) context.input = options.input
     const capture = options.capture
     if (capture) {
       context.capture = async (checkpoint) => {
