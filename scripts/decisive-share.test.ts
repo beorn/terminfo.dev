@@ -13,9 +13,11 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
+import { join } from "node:path"
 import {
   type ContextCandidate,
   barRowForContext,
+  buildReport,
   decisiveShare,
   F2_MOVERS,
   formatBarRow,
@@ -54,6 +56,21 @@ function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate 
 }
 
 describe("release 1 decisive-count reader", () => {
+  it("reports the ratified Candidate 2 cohort without dropping overlaps or its unavailable scrollback ID", () => {
+    // The existing 52-ID reader cases cannot catch a named cohort being ignored or intersected
+    // with the frozen schedule, which would silently shrink the approved 125-ID denominator.
+    const args = { contentDir: join(import.meta.dirname, "..", "content"), cohort: "candidate2" as const }
+    const report = buildReport(args)
+    expect(report).toHaveProperty("candidate2.name", "candidate2")
+    expect(report).toHaveProperty("candidate2.frozenSuiteId", "a8bafe49cdd4")
+    expect(report).toHaveProperty(
+      "candidate2.measuredIds",
+      expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
+    )
+    expect(report).toHaveProperty("candidate2.measuredIds.length", 125)
+    expect(report).toHaveProperty("candidate2.unavailableIds", ["scrollback.viewport-hold-output"])
+  })
+
   it("splits a fixture run into decisive, inconclusive and named remainder buckets", () => {
     const share = decisiveShare(cells, IDS)
     expect(share.denominator).toBe(6)
