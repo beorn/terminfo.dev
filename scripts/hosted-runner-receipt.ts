@@ -165,7 +165,9 @@ function measureAppLaunch(): Record<string, unknown> {
     )
   }
   if (!executablePath.startsWith(`${bundlePath}/Contents/MacOS/`)) {
-    throw new Error(`Hosted receipt appLaunch: executable ${executablePath} is outside its resolved bundle ${bundlePath}`)
+    throw new Error(
+      `Hosted receipt appLaunch: executable ${executablePath} is outside its resolved bundle ${bundlePath}`,
+    )
   }
   let sourceArtifact: Record<string, unknown>
   if (appId === "terminal-app") {

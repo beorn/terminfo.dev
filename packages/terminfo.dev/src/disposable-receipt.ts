@@ -281,7 +281,8 @@ function assertGithubHostedRunner(value: Record<string, unknown>): {
   // A hosted macOS collection is an app collection the apparatus launched, so the launch receipt it
   // measured is validated here, by the ONE parser, and returned for the collector to copy verbatim
   // into origin.appLaunch (28216). A malformed block is refused by the parser, by name.
-  const appLaunch = value.appLaunch === undefined ? undefined : parseAppLaunchReceipt(value.appLaunch, "collector", "app", where)
+  const appLaunch =
+    value.appLaunch === undefined ? undefined : parseAppLaunchReceipt(value.appLaunch, "collector", "app", where)
   return { ...(appLaunch && { appLaunch }) }
 }
 
