@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-09T00:06:48Z",
+  "runId": "20e04a365583bb0e3db8e40d17889c34",
+  "preset": "current",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "kitty",
+    "version": "0.49.2",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/kovidgoyal/kitty/releases/download/v0.49.2/kitty-0.49.2-x86_64.txz",
+    "sri": "sha256-1XNhi5EenEYb1CG5bBPHTH8csvGsnDJ4GNT/hDZs9cY="
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev3/28216/linux-clean/20e04a365583bb0e3db8e40d17889c34/prep/runner-bundle.tar",
+    "sha256": "fa352f8712e6b97b3052721e5a8029deb212047548a5839a3c8b1ad9c59de866",
+    "narSha256": "sha256-houH7JoOQHsqr8bL4csSrgEfpPQbyTrPmYOpUvfpwCo=",
+    "frozenRunnerSha256": "a69cfb796f9cf8a16883bfb8754e6f1721318de6949c32e977ec27a0bb98ce92",
+    "buildReceiptSha256": "d9c3eeb31055cc3a7aab164497a6f960291011e00f9d5c166d9a3ec721ecc899",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "a8bafe49cdd4",
+      "collectorRevision": "944fadd8ed6c4aede71dc7974f4c3be1eb778e83",
+      "manifestSha256": "4cd7d1f916bf513248b6327a2077f354d013755e9e67d875f916b97d2ff9ddbe",
+      "bundleSha256": "80835b6ba2a6450af8fe2be683cf592645d89261e6ee775c0603243401206e7c"
+    },
+    "rootBunLockSha256": "ceb6277ac52f7a1c6a6675d7e3e0eae312880bd2cc6c5259f0e4b98bce943e5c"
+  },
+  "runtime": {
+    "imageId": "sha256:ea47194bcdf084da6733ef0810178f38e91492bf5d9ade7138193068a9da37e9",
+    "imageTarSha256": "472b1d7dd56c246e31900545cea2b23758eef04e7663c3e00033b79167d410e9",
+    "arch": "amd64",
+    "nixLockRevision": "ccd7db88387433a2c8cd50663c149de937d43767",
+    "sourceRevision": "944fadd8ed6c4aede71dc7974f4c3be1eb778e83",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "dd87f1cdc90e56c3ef88f6025aa6176d1981e5a9",
+    "suiteHash": "a8bafe49cdd4"
+  },
+  "status": "raw-unreviewed-history"
+}
