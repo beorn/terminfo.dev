@@ -58,6 +58,7 @@ afterAll(() => {
     else process.env[key] = value
   }
   vi.unstubAllGlobals()
+  // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; directory is this test's own mkdtemp scratch root
   rmSync(directory, { recursive: true, force: true })
 })
 

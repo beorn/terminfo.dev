@@ -111,6 +111,7 @@ test("same name and version with different installed bytes is refused", () => {
     expect(result.status, result.stderr).not.toBe(0)
     expect(result.stderr).toMatch(/disagrees with file: workspace/)
   } finally {
+    // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; tmp is this test's own mkdtemp scratch root
     rmSync(tmp, { recursive: true, force: true })
   }
 })

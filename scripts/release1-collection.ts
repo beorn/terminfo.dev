@@ -35,8 +35,13 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const ADMIT = "scripts/admit-run.ts"
 const CONTENT = join(ROOT, "content")
 
-/** How a Release 1 context is measured. Every value names an entry point that already exists. */
-export type CollectionRoute = "linux-container" | "macos-hosted" | "headless-termless"
+/**
+ * How a Release 1 context is measured. Every value names an entry point that already exists.
+ * "hosted-workflow" is the one value for every context a GitHub-hosted measurement workflow
+ * collects — macOS and Windows share it because the route names the collection METHOD, and the
+ * row's own `command` names which workflow runs: the platform belongs to the row, not the route.
+ */
+export type CollectionRoute = "linux-container" | "hosted-workflow" | "headless-termless"
 
 export interface CollectionContext {
   /** The context id, as the published row is keyed by. */
@@ -141,11 +146,15 @@ const macRow = (id: string): CollectionContext => ({
   id,
   os: "macos",
   kind: "app",
-  route: "macos-hosted",
+  route: "hosted-workflow",
+  // The workflow declares `on: workflow_dispatch:` with NO inputs, so a dispatch takes no -f:
+  // the printed `-f cli_version=<ver>` named a flag the workflow does not accept (and the
+  // "macos-terminal-measurement-artifacts" upload never existed — the matrix uploads four
+  // per-app artifacts named macos-<app>-<run-id>-<attempt>, macos-measurement.yml:289).
   command:
-    "gh workflow run macos-measurement.yml -f cli_version=<ver>, then bring the " +
-    "macos-terminal-measurement-artifacts upload back as runs (the v2 run conversion is 27910)",
-  requires: "27910 — the hosted-runner ownership receipt, without which the run is not admissible",
+    "gh workflow run macos-measurement.yml --repo beorn/terminfo.dev --ref main, then " +
+    "gh run download <run-id> --repo beorn/terminfo.dev for the four macos-<app>-<run-id>-<attempt> artifacts",
+  requires: null,
   sourceRun: null,
   uncollectable: null,
 })
@@ -162,8 +171,9 @@ const engineRow = (id: string): CollectionContext => ({
 })
 
 /**
- * The 11 desktop contexts the bar reads (#27909 `RELEASE_1_CONTEXTS`), plus a named Windows gap. The
- * five Linux rows carry the invocation read back from the committed run the ledger names.
+ * The 11 desktop contexts the bar reads (#27909 `RELEASE_1_CONTEXTS`), plus the Windows row the
+ * hosted workflow now measures. The five Linux rows carry the invocation read back from the
+ * committed run the ledger names.
  */
 export function release1DesktopContexts(ledger: LinuxLedger): readonly CollectionContext[] {
   return [
@@ -189,11 +199,18 @@ export function release1DesktopContexts(ledger: LinuxLedger): readonly Collectio
       id: "windows-terminal",
       os: "windows",
       kind: "app",
-      route: null,
-      command: null,
+      route: "hosted-workflow",
+      // Same shape as the macOS rows and read back from the workflow for the same reason:
+      // windows-measurement.yml declares `on: workflow_dispatch:` with no inputs, and it archives
+      // ONE artifact named win32-<app>-<run-id>-<attempt> (windows-measurement.yml:173).
+      command:
+        "gh workflow run windows-measurement.yml --repo beorn/terminfo.dev --ref main, then " +
+        "gh run download <run-id> --repo beorn/terminfo.dev for the win32-windows-terminal-<run-id>-<attempt> artifact",
       requires: null,
       sourceRun: null,
-      uncollectable: "no owner and no hosted workflow yet (27910 / @dev/agy-other)",
+      // No longer a gap: run 38074622083 collected windows-terminal 1.23.20211.0 at
+      // db5558cf8d6c through this workflow, admitted by scripts/admit-run.ts.
+      uncollectable: null,
     },
   ]
 }
