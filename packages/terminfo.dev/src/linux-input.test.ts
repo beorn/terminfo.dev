@@ -1,5 +1,5 @@
 /**
- * @failure XTEST injection targets a window with XSendEvent, skips focus, proceeds without XTEST, or hangs on windowfocus --sync.
+ * @failure XTEST injection targets a window with XSendEvent, skips focus, proceeds without XTEST, or hangs on xdotool --sync.
  * @level l2
  * @consumer Linux Kitty collector OS-level key/click/wheel injection
  * @reach fs-walk <fixture-only: inspect only the owned temporary xdotool log>
@@ -40,14 +40,14 @@ case "$1" in
     printf '%s\\n' "Your windowmanager claims not to support _NET_ACTIVE_WINDOW, so the attempt to activate the window was aborted." >&2
     exit 1
     ;;
-  windowfocus)
+  windowfocus|mousemove)
     if [ "$TEST_INPUT_FOCUS_HANG" = 1 ]; then
       for arg in "$@"; do
         if [ "$arg" = --sync ]; then sleep 30; exit 0; fi
       done
     fi
     ;;
-  mousemove|key|click|mousedown|mouseup) ;;
+  key|click|mousedown|mouseup) ;;
   *) exit 18 ;;
 esac`,
   )
@@ -126,6 +126,7 @@ test.runIf(process.platform === "linux")(
     const lines = argvLines(log)
     expect(lines.some((line) => line.startsWith("key "))).toBe(true)
     expect(lines).not.toContain("windowfocus --sync 42")
+    expect(lines.some((line) => line.includes("mousemove --sync"))).toBe(false)
   },
 )
 
@@ -138,7 +139,7 @@ test.runIf(process.platform === "linux")(
     const lines = argvLines(log)
     expect(lines).toContain("windowfocus 42")
     expect(lines).toContain("getwindowfocus")
-    expect(lines).toContain("mousemove --sync --window 42 400 300")
+    expect(lines).toContain("mousemove --window 42 400 300")
     expect(lines).toContain("key --window 0 --clearmodifiers ctrl+a")
     expect(lines.some((line) => line.startsWith("windowactivate"))).toBe(false)
     expect(lines.some((line) => line === "getactivewindow")).toBe(false)
@@ -168,9 +169,9 @@ test.runIf(process.platform === "linux")(
     await input.injectDrag!(1)
     const lines = argvLines(log)
     expect(lines).toContain("windowfocus 42")
-    expect(lines).toContain("mousemove --sync --window 42 400 300")
+    expect(lines).toContain("mousemove --window 42 400 300")
     expect(lines).toContain("mousedown --window 0 --clearmodifiers 1")
-    expect(lines).toContain("mousemove --sync --window 42 450 300")
+    expect(lines).toContain("mousemove --window 42 450 300")
     expect(lines).toContain("mouseup --window 0 --clearmodifiers 1")
     expect(lines.some((line) => /^mousedown /.test(line) && /--window 42/.test(line))).toBe(false)
     expect(lines.some((line) => /^mouseup /.test(line) && /--window 42/.test(line))).toBe(false)

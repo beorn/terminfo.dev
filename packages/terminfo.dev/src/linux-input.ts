@@ -31,8 +31,8 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
   async function prepare(): Promise<void> {
     // Xvfb has no EWMH WM: windowactivate/getactivewindow abort on _NET_ACTIVE_WINDOW.
     // windowfocus uses XSetInputFocus, which CURRENTWINDOW (--window 0) then follows.
-    // xterm on the collection image never completes windowfocus --sync (28550/28556).
-    // XSetInputFocus without --sync, then getwindowfocus, is the bound: inject cannot wait out a 10s execFile timeout.
+    // xterm on the collection image never completes xdotool --sync (28550/28556).
+    // XSetInputFocus then getwindowfocus, without --sync, is the bound: inject cannot wait out a 10s execFile timeout.
     await command("xdotool", ["windowfocus", ownedWindowId])
     const focused = (await command("xdotool", ["getwindowfocus"])).toString().trim()
     if (focused !== ownedWindowId) {
@@ -40,7 +40,7 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
         `XTEST inject requires the owned window ${ownedWindowId} to be focused; getwindowfocus is ${focused}`,
       )
     }
-    await command("xdotool", ["mousemove", "--sync", "--window", ownedWindowId, "400", "300"])
+    await command("xdotool", ["mousemove", "--window", ownedWindowId, "400", "300"])
   }
 
   return {
@@ -56,7 +56,7 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
     async injectDrag(button: 1) {
       await prepare()
       await command("xdotool", ["mousedown", "--window", "0", "--clearmodifiers", String(button)])
-      await command("xdotool", ["mousemove", "--sync", "--window", ownedWindowId, "450", "300"])
+      await command("xdotool", ["mousemove", "--window", ownedWindowId, "450", "300"])
       await command("xdotool", ["mouseup", "--window", "0", "--clearmodifiers", String(button)])
     },
   }
