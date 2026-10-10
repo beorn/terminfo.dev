@@ -378,10 +378,12 @@ export interface ClipboardFixture {
   writeText(text: string): Promise<void>
 }
 
-/** OS-level XTEST key/click/wheel injection into the focused owned window. */
+/** OS-level XTEST key/click/wheel/drag injection into the focused owned window. */
 export interface InputFixture {
   injectKey(keys: string): Promise<void>
   injectClick(button: 1 | 4 | 5): Promise<void>
+  /** Button-event (1002) motion. Absent adapters stay click-only. */
+  injectDrag?(button: 1): Promise<void>
 }
 
 export interface TermContext {

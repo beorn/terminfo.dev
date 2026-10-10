@@ -2,37 +2,6 @@ import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
 import { notTestedResult, probe } from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
 
-const absentEventNote = "No generated input event and encoded report were validated"
-
-/** A current parser mode is diagnostic context, not a mouse-event observation. */
-function mouseInputProbe(id: string, modeName: string): ProbeDefinition {
-  return probe(
-    id,
-    (ctx) => ({
-      pass: false,
-      response: JSON.stringify({ currentMode: ctx.getMode(modeName) === true }),
-      note: absentEventNote,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "legacy",
-        note: absentEventNote,
-      },
-    }),
-    () =>
-      Promise.resolve<ProbeResult>({
-        pass: false,
-        note: absentEventNote,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note: absentEventNote,
-        },
-      }),
-  )
-}
-
 export const inputProbes: ProbeDefinition[] = [
   probe("input.modify-other-keys", () => xtestCoverage("key injection"), modifyOtherKeys2, "interaction"),
 
@@ -45,7 +14,7 @@ export const inputProbes: ProbeDefinition[] = [
 
   probe("input.modify-other-keys-3", () => xtestCoverage("key injection"), modifyOtherKeys3, "interaction"),
 
-  mouseInputProbe("input.button-event-mouse", "mouseTracking"),
+  probe("input.button-event-mouse", () => xtestCoverage("click injection"), buttonEventMouse, "interaction"),
 
   probe("input.xtest-key", () => xtestCoverage("key injection"), xtestKey, "interaction"),
   probe("input.xtest-click", () => xtestCoverage("click injection"), xtestClick, "interaction"),
@@ -77,6 +46,8 @@ const X10_MOUSE_SET = "\x1b[?9h"
 const X10_MOUSE_RESET = "\x1b[?9l"
 const X10_OR_SGR_MOUSE = /\x1b\[(?:<\d+;\d+;\d+[Mm]|M[\s\S]{3})/
 const X10_MOUSE = /^\x1b\[M[\s\S]{3}/
+const BUTTON_EVENT_MOUSE_SET = "\x1b[?1002h"
+const BUTTON_EVENT_MOUSE_RESET = "\x1b[?1002l"
 
 function xtestCoverage(kind: string): ProbeResult {
   return notTestedResult(`OS-level XTEST ${kind}`, { input: false })
@@ -244,6 +215,17 @@ function isX10Mouse(report: string): boolean {
   return X10_MOUSE.test(report)
 }
 
+function sgrMouseButton(report: string): number | undefined {
+  const match = /^\x1b\[<(\d+);\d+;\d+[Mm]/.exec(report)
+  if (!match) return undefined
+  return Number(match[1])
+}
+
+function isButtonEventMotion(report: string): boolean {
+  const button = sgrMouseButton(report)
+  return button !== undefined && (button & 32) !== 0
+}
+
 async function urxvtMouse(ctx: TermContext): Promise<ProbeResult> {
   const input = ctx.input
   const readInput = ctx.readInput
@@ -300,6 +282,39 @@ async function x10Mouse(ctx: TermContext): Promise<ProbeResult> {
       return unsupportedInteraction("x10-mouse:1", expected, observed)
     } finally {
       ctx.write(X10_MOUSE_RESET)
+    }
+  })
+}
+
+async function buttonEventMouse(ctx: TermContext): Promise<ProbeResult> {
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!input || !readInput) return xtestCoverage("click injection")
+  const injectDrag = input.injectDrag
+  if (!injectDrag) return xtestCoverage("drag injection")
+  return withMouseModes(ctx, async () => {
+    const control = await deliveryControl(
+      () => input.injectClick(1),
+      readInput,
+      SGR_MOUSE,
+      "XTEST delivery control failed: click under 1000+1006 did not reach the app",
+    )
+    ctx.write(BUTTON_EVENT_MOUSE_SET)
+    try {
+      const report = (await readInput(SGR_MOUSE, 1000, () => injectDrag(1)))?.[0]
+      if (!report) {
+        throw new Error(
+          "XTEST 1002 button-event-mouse drag did not reach the app after a successful 1000+1006 delivery control",
+        )
+      }
+      const observed = { mode: "1002", control, report }
+      const expected = "OS XTEST drag report under 1002 as SGR motion (Pb+32) after 1000+1006 delivery control"
+      if (isButtonEventMotion(report)) {
+        return interactionResult("button-event-mouse:1", expected, observed)
+      }
+      return unsupportedInteraction("button-event-mouse:1", expected, observed)
+    } finally {
+      ctx.write(BUTTON_EVENT_MOUSE_RESET)
     }
   })
 }

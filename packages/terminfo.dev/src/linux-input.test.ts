@@ -40,7 +40,7 @@ case "$1" in
     printf '%s\\n' "Your windowmanager claims not to support _NET_ACTIVE_WINDOW, so the attempt to activate the window was aborted." >&2
     exit 1
     ;;
-  windowfocus|mousemove|key|click) ;;
+  windowfocus|mousemove|key|click|mousedown|mouseup) ;;
   *) exit 18 ;;
 esac`,
   )
@@ -132,5 +132,22 @@ test.runIf(process.platform === "linux")(
     expect(lines).toContain("click --window 0 --clearmodifiers 1")
     expect(lines).toContain("click --window 0 --clearmodifiers 4")
     expect(lines.some((line) => /^click /.test(line) && /--window 42/.test(line))).toBe(false)
+  },
+)
+
+test.runIf(process.platform === "linux")(
+  "injectDrag mousedowns, moves off the prepare cell, and mouseups through --window 0",
+  async () => {
+    const { log } = fixture()
+    const input = await createLinuxInput(liveExecutable())
+    await input.injectDrag!(1)
+    const lines = argvLines(log)
+    expect(lines).toContain("windowfocus --sync 42")
+    expect(lines).toContain("mousemove --sync --window 42 400 300")
+    expect(lines).toContain("mousedown --window 0 --clearmodifiers 1")
+    expect(lines).toContain("mousemove --sync --window 42 450 300")
+    expect(lines).toContain("mouseup --window 0 --clearmodifiers 1")
+    expect(lines.some((line) => /^mousedown /.test(line) && /--window 42/.test(line))).toBe(false)
+    expect(lines.some((line) => /^mouseup /.test(line) && /--window 42/.test(line))).toBe(false)
   },
 )

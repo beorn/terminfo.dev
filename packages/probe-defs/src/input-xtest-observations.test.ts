@@ -54,11 +54,17 @@ function term(overrides: Partial<TermContext> = {}): TermContext {
 }
 
 function inputAndRead(
-  script: { keys?: Record<string, string>; clicks?: Record<number, string>; clickReports?: string[] },
+  script: {
+    keys?: Record<string, string>
+    clicks?: Record<number, string>
+    clickReports?: string[]
+    dragReports?: string[]
+  },
   writes: string[] = [],
-): { ctx: TermContext; keys: string[]; clicks: number[] } {
+): { ctx: TermContext; keys: string[]; clicks: number[]; drags: number[] } {
   const keys: string[] = []
   const clicks: number[] = []
+  const drags: number[] = []
   const pending: string[] = []
   let listening = false
   const ctx = term({
@@ -82,6 +88,12 @@ function inputAndRead(
           if (reply !== undefined) pending.push(reply)
         }
       },
+      async injectDrag(button) {
+        if (!listening) throw new Error("XTEST inject before stdin listen")
+        drags.push(button)
+        const queued = script.dragReports?.[drags.length - 1]
+        if (queued !== undefined) pending.push(queued)
+      },
     },
     readInput: async (_pattern, _timeoutMs, inject) => {
       listening = true
@@ -95,7 +107,7 @@ function inputAndRead(
       }
     },
   })
-  return { ctx, keys, clicks }
+  return { ctx, keys, clicks, drags }
 }
 
 test.each(xtestIds)("%s is not tested without an OS XTEST adapter", async (id) => {
@@ -725,4 +737,123 @@ test("input.x10-mouse throws when the mode 9 click is silent after delivery cont
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?9h")
   expect(writes.join("")).toContain("\x1b[?9l")
+})
+
+test("input.button-event-mouse is not tested without an OS XTEST adapter", async () => {
+  const definition = probe("input.button-event-mouse")
+  const writes: string[] = []
+  const headless = definition.termless!({
+    cols: 80,
+    feed() {},
+    feedCapture() {
+      return ""
+    },
+    getCell: () => {
+      throw new Error("Unexpected getCell")
+    },
+    getCursor: () => {
+      throw new Error("Unexpected getCursor")
+    },
+    getMode: () => false,
+    getText: () => "",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset() {},
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "unknown",
+      extensions: new Set(),
+    },
+  })
+  expect(headless.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(headless.observation).toBeUndefined()
+
+  const result = await definition.term!(term({ write: (text) => writes.push(text) }))
+  expect(writes).toEqual([])
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(result.observation).toBeUndefined()
+})
+
+test("input.button-event-mouse is not tested when the adapter cannot drag", async () => {
+  const writes: string[] = []
+  const ctx = term({
+    write(text) {
+      writes.push(text)
+    },
+    input: { injectKey: async () => {}, injectClick: async () => {} },
+    readInput: async () => {
+      throw new Error("readInput should not run without injectDrag")
+    },
+  })
+  const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeResult
+  expect(writes).toEqual([])
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/drag|XTEST|OS-level/i),
+  })
+})
+
+test("input.button-event-mouse aborts when the 1000+1006 control click does not reach the app, and does not enable 1002", async () => {
+  const writes: string[] = []
+  const { ctx, clicks, drags } = inputAndRead({ clicks: {} }, writes)
+  await expect(probe("input.button-event-mouse").term!(ctx)).rejects.toThrow(/delivery control|1000\+1006/i)
+  expect(clicks).toEqual([1])
+  expect(drags).toEqual([])
+  expect(writes.join("")).toContain("\x1b[?1000h")
+  expect(writes.join("")).toContain("\x1b[?1006h")
+  expect(writes.join("")).not.toContain("\x1b[?1002h")
+  expect(writes.join("")).not.toContain("\x1b[?1002l")
+})
+
+test("input.button-event-mouse records supported interaction when 1002 reports SGR motion with Pb+32", async () => {
+  const writes: string[] = []
+  const control = "\x1b[<0;10;5M"
+  const report = "\x1b[<32;12;5M"
+  const { ctx, clicks, drags } = inputAndRead({ clickReports: [control], dragReports: [report] }, writes)
+  const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeResult
+  expect(clicks).toEqual([1])
+  expect(drags).toEqual([1])
+  expect(writes.join("")).toContain("\x1b[?1002h")
+  expect(writes.join("")).toContain("\x1b[?1002l")
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "button-event-mouse:1" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "1002", control, report })
+})
+
+test("input.button-event-mouse records unsupported interaction when 1002 still reports press-only SGR", async () => {
+  const writes: string[] = []
+  const sgr = "\x1b[<0;10;5M"
+  const { ctx, clicks, drags } = inputAndRead({ clickReports: [sgr], dragReports: [sgr] }, writes)
+  const result = (await probe("input.button-event-mouse").term!(ctx)) as ProbeResult
+  expect(clicks).toEqual([1])
+  expect(drags).toEqual([1])
+  expect(writes.join("")).toContain("\x1b[?1002h")
+  expect(writes.join("")).toContain("\x1b[?1002l")
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "button-event-mouse:1" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "1002", control: sgr, report: sgr })
+})
+
+test("input.button-event-mouse throws when the 1002 drag is silent after delivery control, and still resets 1002", async () => {
+  const writes: string[] = []
+  const { ctx, clicks, drags } = inputAndRead({ clickReports: ["\x1b[<0;10;5M"] }, writes)
+  await expect(probe("input.button-event-mouse").term!(ctx)).rejects.toThrow(/1002|button-event|silent/i)
+  expect(clicks).toEqual([1])
+  expect(drags).toEqual([1])
+  expect(writes.join("")).toContain("\x1b[?1002h")
+  expect(writes.join("")).toContain("\x1b[?1002l")
 })
