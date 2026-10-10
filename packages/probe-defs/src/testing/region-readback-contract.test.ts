@@ -173,7 +173,7 @@ const drive = async (mode: Mode) => {
   const probe = ALL_PROBES.find((candidate) => candidate.id === FEATURE)
   expect(probe, "the probe under test exists in ALL_PROBES").toBeDefined()
   const result = await probe!.term!(ctx)
-  return { result, trace, run: assemble(result, trace, frames) }
+  return { result, trace, frames, run: assemble(result, trace, frames) }
 }
 
 const parse = (run: unknown) =>
@@ -208,11 +208,18 @@ test("a byte-stable capture that decides nothing still seals an observation the 
  * observation happened to carry as frames, so a refusal that cites without frames looked
  * unwritable. The fixture now lists every captured frame, exactly as the collector does, and no
  * production code changed: with it, 4 passed.
+ *
+ * The assertions below are @cto's ruling sentence, made executable (0e40f3b1, amended): the
+ * unstable branch's run parses, its screenshotRef is the stability capture it took, and it carries
+ * no frames — no target frame is fabricated on a path that never reached one.
  */
 test("28584 shape C: a byte-unstable capture's pixels refusal still carries what it captured", async () => {
-  const { result, run } = await drive("unstable")
+  const { result, run, frames } = await drive("unstable")
+  const stabilityRefs = frames.filter((frame) => frame.label.includes("capture stability")).map((frame) => frame.ref)
+  expect(stabilityRefs.length).toBeGreaterThan(0)
   expect(result.observation?.evidence).toBe("pixels")
-  expect(result.observation?.screenshotRef).toBeDefined()
+  expect(stabilityRefs).toContain(result.observation?.screenshotRef)
+  expect(result.observation?.frames ?? []).toHaveLength(0)
   expect(() => parse(run)).not.toThrow()
 })
 
