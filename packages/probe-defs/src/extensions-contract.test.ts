@@ -337,7 +337,7 @@ function decidedSatisfactionContext(id: string) {
     return {
       headless: headlessContext({
         ...inertModel(),
-        feedCapture: () => DIRECT_QUERY_REPLIES[id],
+        feedCapture: () => DIRECT_QUERY_REPLIES[id] ?? "",
       }),
     }
   }
@@ -404,7 +404,7 @@ function decidedSatisfactionContext(id: string) {
     return {
       headless: headlessContext({
         ...inertModel(),
-        feedCapture: () => queue.shift() || "",
+        feedCapture: () => queue.shift() ?? "",
       }),
     }
   }
@@ -444,27 +444,18 @@ function decidedSatisfactionContext(id: string) {
   }
   if (id === "extensions.osc99-kitty-notify") {
     return {
-      term: {
-        write: () => {},
-        queryCursorPosition: async () => null,
-        measureRenderedWidth: async () => null,
-        query: async () => null,
-        queryWithSentinel: async () => null,
-        queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
-        queryMode: async () => null,
-        cols: 80,
-        rows: 24,
+      term: replayContext(new Map(), {
         queryWithSentinelOutcome: async (query: string, pattern: RegExp) => {
           const nonce = /i=([^:]+):/.exec(query)?.[1]
           const raw = `\x1b]99;i=${nonce}:p=?;p=title\x1b\\`
           return {
             match: pattern.exec(raw),
-            reason: "reply" as const,
+            reason: "reply",
             raw,
             rawBase64: Buffer.from(raw).toString("base64"),
           }
         },
-      },
+      }),
     }
   }
   throw new Error(`No satisfaction context configured for decided row ${id}`)
@@ -492,7 +483,7 @@ test("the extensions contract names its focused tests, and every named file exis
 test("the harness replays every extension capability deterministically", async () => {
   const headless = headlessContext(inertModel())
   const term = replayContext(new Map(), {
-    queryCursorPosition: async () => ({ x: 0, y: 0 }),
+    queryCursorPosition: async () => ({ row: 0, col: 0 }),
   })
 
   for (const row of EXTENSIONS_CONTRACT) {
@@ -529,7 +520,7 @@ test("every inconclusive extension contract row evaluates to inconclusive under 
   expect(inconclusiveRows).toHaveLength(37)
 
   const term = replayContext(new Map(), {
-    queryCursorPosition: async () => ({ x: 0, y: 0 }),
+    queryCursorPosition: async () => ({ row: 0, col: 0 }),
     write: () => {},
     capture: async () => ({ role: "control", label: "test", capturedAt: 1, ref: "sha256:0" }),
   })
