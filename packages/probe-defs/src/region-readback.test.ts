@@ -12,6 +12,7 @@
 import { expect, test } from "vitest"
 import {
   captureRegionReadbackDecision,
+  captureRegionVerdict,
   type CellRegion,
   type PixelGeometry,
   type RegionCapture,
@@ -297,4 +298,66 @@ test("every capture carries the terminal's own pixel report, and witness reads u
     expect(["1,1,1,8", SENTINEL_CELL]).toContain(key(region))
   }
   expect(fake.requests.filter(({ region }) => key(region) !== SENTINEL_CELL)).toHaveLength(3)
+})
+
+// The raw-run contract requires a citation (child 28582, @cto b12b71b2): evidence "pixels" is
+// refused unless the observation carries a screenshotRef, and evidence "none" is refused unless its
+// trace is zero-byte. A query already written is therefore NOT "none", and a branch that captured
+// must cite the capture.
+
+test("a pixel query answered with a sentinel reports query evidence, not a zero-byte refusal", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  const ctx: TermContext = {
+    ...fake.ctx,
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "sentinel", raw: "\x1b[c", rawBase64: "" }),
+    capture: async (request) => ({
+      role: request.role,
+      label: request.label,
+      capturedAt: 1,
+      ref: `sha256:${"a".repeat(64)}`,
+    }),
+  }
+  const geometry = spec()
+  const result = await captureRegionVerdict(ctx, "editing.delete-chars", {
+    region: geometry.region,
+    sentinel: geometry.sentinel,
+    cursorRow: geometry.cursorRow,
+    seed: geometry.seed,
+    edit: geometry.edit,
+    expected: geometry.expected,
+    timeoutMs: geometry.timeoutMs,
+    pollMs: geometry.pollMs,
+    minRows: geometry.minRows,
+    minCols: geometry.minCols,
+  })
+  if (!result?.observation) throw new Error("expected a decided result carrying an observation")
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.evidence).toBe("query")
+  expect(result.observation.note).toContain("CSI 16 t")
+})
+
+test("an unstable capture cites the capture it took, so the run stays writable", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }), unstable: true })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.evidence).toBe("pixels")
+  expect(result.observation.screenshotRef).toBeDefined()
+})
+
+test("a degenerate seed-equals-expected run cites the frames it took", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "same" })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.evidence).toBe("pixels")
+  expect(result.observation.screenshotRef).toBeDefined()
+  expect(result.observation.frames).toHaveLength(6)
+})
+
+test("a paint-witness timeout cites the capture it took, so the run stays writable", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: "never", regionDigest: () => "seed" })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.reason).toBe("timeout")
+  expect(result.observation.evidence).toBe("pixels")
+  expect(result.observation.screenshotRef).toBeDefined()
 })
