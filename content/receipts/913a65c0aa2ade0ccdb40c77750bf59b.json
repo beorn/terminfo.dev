@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "db7043ae1413af11e06551fac6e614df",
+  "collectedAt": "2026-10-10T22:36:09.201Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "macos-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/task/dev3-splus1-freeze",
+    "githubRunId": "38092011186",
+    "githubRunAttempt": "1",
+    "job": "measure-macos",
+    "jobId": "114330189977"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000045888",
+    "os": "macOS",
+    "arch": "ARM64",
+    "imageOS": "macos26",
+    "imageVersion": "20260907.0351.1",
+    "trackingId": "github_9d070e87-30d5-4aeb-aa09-7c47b5ea7fcf"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "504d18689f1218b5f3c86f2e5080aa923a3ede38216999b79c29c0d81bec19ce",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "8ee72a8b6b0773f42281c097234b512a5d3eeda74dc246c5656e8ec1dfa01695"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "504d18689f1218b5f3c86f2e5080aa923a3ede38216999b79c29c0d81bec19ce",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "8ee72a8b6b0773f42281c097234b512a5d3eeda74dc246c5656e8ec1dfa01695"
+    }
+  },
+  "appLaunch": {
+    "bundlePath": "/System/Applications/Utilities/Terminal.app",
+    "cfBundleShortVersionString": "2.15",
+    "cfBundleVersion": "470.2",
+    "executablePath": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+    "executableSha256": "c5f23927d33d886d3a3e39b4ef76381b1971a9cc74523f7ebf5e60affaf8fa8b",
+    "sourceArtifact": {
+      "kind": "sealed-macos-system-volume",
+      "macOSBuild": "25G83",
+      "snapshotUUID": "4BA28550-50CA-4170-8F57-FA5A3B86D564",
+      "snapshotName": "com.apple.os.update-60587424F5399FC05D957DF05B4D2F65543462495C77AEF520F790FBB57CB212",
+      "sealed": true,
+      "codeSignature": {
+        "identifier": "com.apple.Terminal",
+        "cdHash": "113489a0a7a509813484c5e5be854fa5f55a6553",
+        "strictVerified": true
+      }
+    }
+  }
+}
