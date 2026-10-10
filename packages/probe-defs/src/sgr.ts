@@ -1,10 +1,39 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
-import { parserStateResult, sgrProbe, sgrCaptureFrames, sgrCaptureTooSmall, probe } from "./helpers.ts"
+import {
+  parserStateResult,
+  sgrProbe,
+  sgrCaptureFrames,
+  sgrCaptureTooSmall,
+  sgrReadbackDecision,
+  type SgrReadback,
+  probe,
+} from "./helpers.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
 function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): boolean {
   return a.r === b.r && a.g === b.g && a.b === b.b
+}
+
+/**
+ * Prefer the terminal's own DECRQSS SGR report over the pixel/cursor fallback path. A terminal that
+ * answers decides the claim structurally; one that stays silent keeps the probe's existing evidence.
+ */
+function sgrTermReadback(
+  id: string,
+  sequence: string,
+  readback: SgrReadback,
+  fallback: (ctx: TermContext) => ProbeResult | Promise<ProbeResult>,
+): (ctx: TermContext) => Promise<ProbeResult> {
+  return async (ctx) => {
+    // The capture fixture guard refuses before any bytes on a measured small terminal, so the
+    // readback must not emit its own sequences ahead of it.
+    if (ctx.capture) {
+      const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
+      if (refusal) return refusal
+    }
+    return (await sgrReadbackDecision(ctx, id, sequence, readback)) ?? fallback(ctx)
+  }
 }
 
 /** A cursor reply proves consumption of the SGR sequence, never the visual attribute. */
@@ -110,7 +139,9 @@ async function consumedSgrReset(
 
 function rgbUnderlineProbe(id: string): ProbeDefinition {
   const sequence = "\x1b[4m\x1b[58;2;255;0;128m"
-  const original = sgrProbe(id, sequence, () => null)
+  // DECRQSS proves the terminal reports SGR 4 and 58 active; the termless path still calibrates the
+  // exact color against default-color controls.
+  const original = sgrProbe(id, sequence, () => null, undefined, { require: [4, 58] })
   return {
     ...original,
     termless(ctx) {
@@ -156,6 +187,9 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
 
 type ResetAttribute = "bold" | "dim" | "italic" | "underline" | "inverse"
 type ResetCell = ReturnType<TermlessContext["getCell"]>
+
+/** DECRQSS parameter code reported while each resettable attribute is active. */
+const RESET_ATTRIBUTE_CODE: Record<ResetAttribute, number> = { bold: 1, dim: 2, italic: 3, underline: 4, inverse: 7 }
 
 function measuredAttribute(cell: ResetCell, attribute: ResetAttribute): boolean | null {
   const value: unknown = cell[attribute]
@@ -253,7 +287,15 @@ function resetProbe(
     ...probe(
       id,
       (ctx) => measuredReset(ctx, id, setup, reset, set, preserve),
-      (ctx) => consumedResetSgr(ctx, id, setup, reset),
+      sgrTermReadback(
+        id,
+        setup + reset,
+        {
+          require: preserve.map((attribute) => RESET_ATTRIBUTE_CODE[attribute]),
+          forbid: set.map((attribute) => RESET_ATTRIBUTE_CODE[attribute]),
+        },
+        (ctx) => consumedResetSgr(ctx, id, setup, reset),
+      ),
       "consumed",
     ),
     termNeedsGeometry: true,
@@ -299,7 +341,7 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
           "Baseline, theme colors, or color readback were indistinguishable",
         )
       },
-      (ctx) => consumedSgr(ctx, id, first),
+      sgrTermReadback(id, first, { require: [firstCode] }, (ctx) => consumedSgr(ctx, id, first)),
       "consumed",
     ),
     termNeedsGeometry: true,
@@ -346,7 +388,7 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
           "RGB reference was not calibrated, or the backend may use a custom indexed palette",
         )
       },
-      (ctx) => consumedSgr(ctx, id, `\x1b[${sgr};5;67m`),
+      sgrTermReadback(id, `\x1b[${sgr};5;67m`, { require: [sgr] }, (ctx) => consumedSgr(ctx, id, `\x1b[${sgr};5;67m`)),
       "consumed",
     ),
     termNeedsGeometry: true,
@@ -400,7 +442,9 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         if (a && b && !sameRgb(a, b)) return parserStateResult(false, expected, state)
         return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
       },
-      (ctx) => consumedSgr(ctx, id, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`),
+      sgrTermReadback(id, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`, { require: [sgr] }, (ctx) =>
+        consumedSgr(ctx, id, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`),
+      ),
       "consumed",
     ),
     termNeedsGeometry: true,
@@ -432,7 +476,9 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
-      (ctx) => consumedSgrReset(ctx, id, `\x1b[${setup}m`, `\x1b[${reset}m`),
+      sgrTermReadback(id, `\x1b[${setup}m\x1b[${reset}m`, { require: [reset], forbid: [setup] }, (ctx) =>
+        consumedSgrReset(ctx, id, `\x1b[${setup}m`, `\x1b[${reset}m`),
+      ),
       "consumed",
     ),
     termNeedsGeometry: true,
@@ -445,33 +491,43 @@ export const sgrProbes: ProbeDefinition[] = [
 
   sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold === true, undefined, { require: [1] }),
 
-  sgrProbe("sgr.faint", "\x1b[2m", (cell) => cell.dim === true),
+  sgrProbe("sgr.faint", "\x1b[2m", (cell) => cell.dim === true, undefined, { require: [2] }),
 
-  sgrProbe("sgr.italic", "\x1b[3m", (cell) => cell.italic === true),
+  sgrProbe("sgr.italic", "\x1b[3m", (cell) => cell.italic === true, undefined, { require: [3] }),
 
-  sgrProbe("sgr.underline.single", "\x1b[4m", (cell) => !!cell.underline),
+  sgrProbe("sgr.underline.single", "\x1b[4m", (cell) => !!cell.underline, undefined, { require: [4] }),
 
-  sgrProbe("sgr.underline.double", "\x1b[21m", (cell) => cell.underline === "double"),
+  sgrProbe("sgr.underline.double", "\x1b[21m", (cell) => cell.underline === "double", undefined, { require: [21] }),
 
-  sgrProbe("sgr.underline.curly", "\x1b[4:3m", (cell) => cell.underline === "curly"),
+  sgrProbe("sgr.underline.curly", "\x1b[4:3m", (cell) => cell.underline === "curly", undefined, {
+    require: [4],
+    requireTokens: ["4:3"],
+  }),
 
-  sgrProbe("sgr.underline.dotted", "\x1b[4:4m", (cell) => cell.underline === "dotted"),
+  sgrProbe("sgr.underline.dotted", "\x1b[4:4m", (cell) => cell.underline === "dotted", undefined, {
+    require: [4],
+    requireTokens: ["4:4"],
+  }),
 
-  sgrProbe("sgr.underline.dashed", "\x1b[4:5m", (cell) => cell.underline === "dashed"),
+  sgrProbe("sgr.underline.dashed", "\x1b[4:5m", (cell) => cell.underline === "dashed", undefined, {
+    require: [4],
+    requireTokens: ["4:5"],
+  }),
 
-  sgrProbe("sgr.blink", "\x1b[5m", (cell) => cell.blink === true),
+  sgrProbe("sgr.blink", "\x1b[5m", (cell) => cell.blink === true, undefined, { require: [5] }),
 
-  sgrProbe("sgr.inverse", "\x1b[7m", (cell) => cell.inverse === true),
+  sgrProbe("sgr.inverse", "\x1b[7m", (cell) => cell.inverse === true, undefined, { require: [7] }),
 
-  sgrProbe("sgr.hidden", "\x1b[8m", (cell) => cell.hidden === true),
+  sgrProbe("sgr.hidden", "\x1b[8m", (cell) => cell.hidden === true, undefined, { require: [8] }),
 
-  sgrProbe("sgr.strikethrough", "\x1b[9m", (cell) => cell.strikethrough === true),
+  sgrProbe("sgr.strikethrough", "\x1b[9m", (cell) => cell.strikethrough === true, undefined, { require: [9] }),
 
   sgrProbe(
     "sgr.overline",
     "\x1b[53m",
     (cell) => (cell.overline === undefined ? null : cell.overline === true),
     (cell) => (cell.overline === undefined ? "cell.overline field not exposed" : null),
+    { require: [53] },
   ),
 
   // ── Underline color ──
@@ -531,7 +587,9 @@ export const sgrProbes: ProbeDefinition[] = [
         }
         return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
       },
-      (ctx) => consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m"),
+      sgrTermReadback("sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m", { require: [4, 58] }, (ctx) =>
+        consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m"),
+      ),
       "consumed",
     ),
     termNeedsGeometry: true,
@@ -581,7 +639,13 @@ export const sgrProbes: ProbeDefinition[] = [
         }
         return parserStateResult(sameRgb(baseline.underlineColor, after.underlineColor), expected, state)
       },
-      (ctx) => consumedSgrReset(ctx, "sgr.underline-color-reset", "\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m"),
+      sgrTermReadback(
+        "sgr.underline-color-reset",
+        "\x1b[4m\x1b[58;2;255;0;128m\x1b[59m",
+        { require: [4], forbid: [58] },
+        (ctx) =>
+          consumedSgrReset(ctx, "sgr.underline-color-reset", "\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m"),
+      ),
       "consumed",
     ),
     termNeedsGeometry: true,
