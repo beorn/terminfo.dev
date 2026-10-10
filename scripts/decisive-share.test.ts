@@ -502,6 +502,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       writeFileSync(join(dir, "categories.json"), "[]")
       expect(() => loadCategories(dir)).toThrow(/expected a category catalog object/)
     } finally {
+      // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; dir is this test's own mkdtemp scratch root
       rmSync(dir, { recursive: true })
     }
   })
