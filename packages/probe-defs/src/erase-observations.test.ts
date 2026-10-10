@@ -699,7 +699,7 @@ test("erase.screen.scrollback is not tested when wheel-up does not change the ca
   const { ctx, keys, clicks, writes } = scrollbackApp({ wheelMoves: false })
   const result = await byId("erase.screen.scrollback").term(ctx)
   expect(keys).toEqual(["a"])
-  expect(clicks).toEqual([4])
+  expect(clicks).toEqual([4, 5])
   expect(writes.join("")).not.toContain("\x1b[3J")
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
@@ -711,7 +711,7 @@ test("erase.screen.scrollback is not tested when wheel-up does not change the ca
 test("erase.screen.scrollback is not tested when wheel-down does not restore the bottom", async () => {
   const { ctx, clicks } = scrollbackApp({ restore: false })
   const result = await byId("erase.screen.scrollback").term(ctx)
-  expect(clicks).toEqual([4, 5])
+  expect(clicks).toEqual([4, 5, 5])
   expect(result.notTested).toEqual({
     reason: "no-semantic-observable",
     noObservable: expect.stringMatching(/wheel-down|restore|bottom/i),
@@ -723,7 +723,7 @@ test("erase.screen.scrollback records unsupported when history remains after ED3
   const { ctx, keys, clicks, writes } = scrollbackApp({ clears: false })
   const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeResult
   expect(keys).toEqual(["a"])
-  expect(clicks).toEqual([4, 5, 4])
+  expect(clicks).toEqual([4, 5, 4, 5])
   expect(writes.join("")).toContain("\x1b[3J")
   expect(writes.join("")).not.toMatch(/\x1b\[\?100[027]h/)
   expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
@@ -736,7 +736,7 @@ test("erase.screen.scrollback records supported when wheel-up after ED3 stays on
   const { ctx, keys, clicks, writes } = scrollbackApp({ clears: true })
   const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeResult
   expect(keys).toEqual(["a"])
-  expect(clicks).toEqual([4, 5, 4])
+  expect(clicks).toEqual([4, 5, 4, 5])
   expect(writes.join("")).toContain("\x1b[3J")
   expect(writes.join("")).not.toMatch(/\x1b\[\?100[027]h/)
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
@@ -747,14 +747,26 @@ test("erase.screen.scrollback records supported when wheel-up after ED3 stays on
 })
 
 test("erase.screen.scrollback stays inconclusive when post-ED3 wheel-up matches neither history nor the erased frame", async () => {
-  const { ctx } = scrollbackApp({ clears: true, afterRef: OTHER_REF })
+  const { ctx, clicks } = scrollbackApp({ clears: true, afterRef: OTHER_REF })
   const result = await byId("erase.screen.scrollback").term(ctx)
+  expect(clicks).toEqual([4, 5, 4, 5])
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
     evidence: "pixels",
   })
   expect(result.notTested).toBeUndefined()
+})
+
+test("erase.screen.scrollback surfaces a finally wheel-down failure", async () => {
+  const { ctx, clicks } = scrollbackApp({ clears: true })
+  const inject = ctx.input!.injectClick
+  ctx.input!.injectClick = async (button) => {
+    await inject.call(ctx.input, button)
+    if (clicks.length === 4) throw new Error("finally wheel-down failed")
+  }
+  await expect(byId("erase.screen.scrollback").term(ctx)).rejects.toThrow(/finally wheel-down failed/)
+  expect(clicks).toEqual([4, 5, 4, 5])
 })
 
 test("background erase measures a blank target with its calibrated background", () => {

@@ -423,6 +423,7 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
       },
     }
   } finally {
+    await input.injectClick(5)
     ctx.write("\x1b[0m\x1b[2J\x1b[H")
   }
 }
