@@ -194,6 +194,11 @@ test("a byte-stable capture that decides nothing still seals an observation the 
  * pixels with no screenshotRef and no frames. That is shape C of @cto b12b71b2 and it is 28584.
  * This test asserts the post-fix contract, so it must stay red until 28584 lands — the marker comes
  * off with that fix, not before.
+ *
+ * Measured 2026-10-10 on 28582's heads (terminfo 03a9fa6e): the region-readback fix flips shape B
+ * alone — this file was 2 passed | 1 expected fail | 1 failed ("Expect test to fail" on shape B).
+ * Shape C is still red after that fix, so its marker stays until C's own cure lands; do not remove
+ * it in the same commit as B's.
  */
 test.fails("28584 shape C: a byte-unstable capture's pixels refusal still carries what it captured", async () => {
   const { result, run } = await drive("unstable")
@@ -204,9 +209,11 @@ test.fails("28584 shape C: a byte-unstable capture's pixels refusal still carrie
 
 /**
  * The sentinel reply to CSI 16 t: the geometry query writes bytes and then reports evidence "none",
- * which the zero-byte rule refuses. That is shape B of @cto b12b71b2 and it is 28584, same marker.
+ * which the zero-byte rule refuses. That is shape B of @cto b12b71b2 and it is 28584, cured by the
+ * region-readback fix in 28582 (terminfo 03a9fa6e), so the marker came off here: measured at that
+ * head, this file is 3 passed | 1 expected fail (shape C) with the marker removed.
  */
-test.fails("28584 shape B: a sentinel geometry refusal reports query, not none", async () => {
+test("28584 shape B: a sentinel geometry refusal reports query, not none", async () => {
   const { result, run, trace } = await drive("sentinel")
   expect(result.observation?.evidence).toBe("query")
   expect(trace.queries.length).toBeGreaterThan(0)
