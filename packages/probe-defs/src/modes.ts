@@ -1,5 +1,6 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank, queryAnsiMode } from "./helpers.ts"
+import { applicationKeypad } from "./input.ts"
 
 /** Refuse a modes capture fixture before any bytes when the measured geometry is too small. */
 function captureRefusal(ctx: TermContext, minRows: number, minCols: number, feature: string): ProbeResult | undefined {
@@ -625,7 +626,7 @@ export const modesProbes: ProbeDefinition[] = [
     return notTestedResult("mouse movement", { mode: pass })
   }),
 
-  // Application keypad
+  // Application keypad: DECKPAM then KP_5 encoding (SS3 u vs 5)
   probe(
     "modes.application-keypad",
     (ctx) => {
@@ -635,16 +636,8 @@ export const modesProbes: ProbeDefinition[] = [
       const off = ctx.getMode("applicationKeypad") === false
       return notTestedResult("keypad input", { on, off })
     },
-    () =>
-      Promise.resolve({
-        pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note: "Keypad mode left unchanged; this probe does not measure keypad input encoding",
-        },
-      }),
+    applicationKeypad,
+    "interaction",
   ),
 
   // Left/right margin mode

@@ -63,6 +63,10 @@ const MODIFY_OTHER_KEYS_RESET = "\x1b[>4;0m"
 const MODIFY_OTHER_KEYS_REPORT = /\t|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
 const MODIFY_OTHER_KEYS_3_REPORT = /\x1b\[(?:27;\d+;\d+~|\d+;\d+u)|i/
 const MODIFY_OTHER_KEYS_ENCODING = /\x1b\[(?:27;\d+;105~|105;\d+u)/
+const DECKPAM = "\x1b="
+const DECKPNM = "\x1b>"
+const APPLICATION_KEYPAD_REPORT = /\x1bOu|5/
+const APPLICATION_KEYPAD_ENCODING = /\x1bOu/
 
 function xtestCoverage(kind: string): ProbeResult {
   return notTestedResult(`OS-level XTEST ${kind}`, { input: false })
@@ -152,6 +156,33 @@ async function modifyOtherKeys3(ctx: TermContext): Promise<ProbeResult> {
     }
     return unsupportedInteraction("modify-other-keys-3:i", expected, observed)
   })
+}
+
+export async function applicationKeypad(ctx: TermContext): Promise<ProbeResult> {
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!input || !readInput) return xtestCoverage("key injection")
+  const control = await deliveryControl(
+    () => input.injectKey("a"),
+    readInput,
+    PLAIN_A,
+    "XTEST delivery control failed: plain a did not reach the app",
+  )
+  ctx.write(DECKPAM)
+  try {
+    const report = (await readInput(APPLICATION_KEYPAD_REPORT, 1000, () => input.injectKey("KP_5")))?.[0]
+    if (!report) {
+      throw new Error("XTEST application keypad KP_5 did not reach the app after a successful delivery control")
+    }
+    const observed = { mode: "application-keypad", control, report }
+    const expected = "OS XTEST KP_5 report under DECKPAM after plain-a delivery control"
+    if (APPLICATION_KEYPAD_ENCODING.test(report)) {
+      return interactionResult("application-keypad:KP_5", expected, observed)
+    }
+    return unsupportedInteraction("application-keypad:KP_5", expected, observed)
+  } finally {
+    ctx.write(DECKPNM)
+  }
 }
 
 async function xtestKey(ctx: TermContext): Promise<ProbeResult> {

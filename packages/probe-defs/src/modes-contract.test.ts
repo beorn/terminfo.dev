@@ -45,8 +45,8 @@ const MODES_CONTRACT: GroupContract = [
   { id: "modes.mouse-all", expected: "decided", claim: "DECRPM 1003 recognizes all-motion mouse" },
   {
     id: "modes.application-keypad",
-    expected: "inconclusive",
-    claim: "Application keypad needs generated key events",
+    expected: "decided",
+    claim: "Application keypad: ESC = then KP_5 reports SS3 u after plain-a delivery control; bare 5 is unsupported",
   },
   {
     id: "modes.left-right-margin",
@@ -112,11 +112,26 @@ const MODES_CONTRACT_SPEC: GroupContractSpec = {
     "packages/probe-defs/src/modes-contract.test.ts",
     "packages/probe-defs/src/modes-observations.test.ts",
     "packages/probe-defs/src/modes-geometry.test.ts",
+    "packages/probe-defs/src/input-xtest-observations.test.ts",
   ],
 }
 
 function modeQueryContext(state: "set" | "reset" | "unknown" | null) {
   return replayContext(new Map(), { queryMode: async () => state })
+}
+
+function modesTermContext(id: string) {
+  if (id === "modes.application-keypad") {
+    return replayContext(new Map(), {
+      input: { injectKey: async () => {}, injectClick: async () => {} },
+      readInput: async (pattern: RegExp) => {
+        if (pattern.test("a")) return ["a"]
+        if (pattern.test("\x1bOu")) return ["\x1bOu"]
+        return null
+      },
+    })
+  }
+  return modeQueryContext("set")
 }
 
 test("the Modes contract covers every Modes capability and names none unknown", () => {
@@ -139,8 +154,8 @@ test("the Modes contract names its focused tests, and every named file exists", 
 })
 
 test("the harness replays every Modes capability deterministically through DECRPM replay", async () => {
-  const term = modeQueryContext("set")
   for (const row of MODES_CONTRACT) {
+    const term = modesTermContext(row.id)
     const probe = modesProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Modes probe ${row.id}`).toBeDefined()
     if (!probe) continue
@@ -154,8 +169,8 @@ test("the harness replays every Modes capability deterministically through DECRP
 })
 
 test("every Modes contract row is satisfied by the DECRPM replay its claim requires", async () => {
-  const term = modeQueryContext("set")
   for (const row of MODES_CONTRACT) {
+    const term = modesTermContext(row.id)
     const probe = modesProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Modes probe ${row.id}`).toBeDefined()
     if (!probe) continue

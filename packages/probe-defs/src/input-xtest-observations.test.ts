@@ -6,6 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
+import { modesProbes } from "./modes.ts"
 import type { ProbeResult, TermContext } from "./types.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
@@ -13,6 +14,12 @@ const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] a
 function probe(id: string) {
   const definition = inputProbes.find((candidate) => candidate.id === id)
   if (!definition?.term || !definition.termless) throw new Error(`Missing input callbacks for ${id}`)
+  return definition
+}
+
+function modeProbe(id: string) {
+  const definition = modesProbes.find((candidate) => candidate.id === id)
+  if (!definition?.term || !definition.termless) throw new Error(`Missing modes callbacks for ${id}`)
   return definition
 }
 
@@ -370,4 +377,60 @@ test("input.modify-other-keys-3 throws when unmodified i is silent after deliver
   expect(keys).toEqual(["a", "i"])
   expect(writes.join("")).toContain("\x1b[>4;3m")
   expect(writes.join("")).toContain("\x1b[>4;0m")
+})
+
+test("modes.application-keypad is not tested without an OS XTEST adapter", async () => {
+  const definition = modeProbe("modes.application-keypad")
+  const writes: string[] = []
+  const result = await definition.term!(term({ write: (text) => writes.push(text) }))
+  expect(writes).toEqual([])
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(result.observation).toBeUndefined()
+})
+
+test("modes.application-keypad aborts when plain a does not reach the app, does not enable DECKPAM, and does not inject KP_5", async () => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: {} }, writes)
+  await expect(modeProbe("modes.application-keypad").term!(ctx)).rejects.toThrow(/delivery control|plain a/i)
+  expect(keys).toEqual(["a"])
+  expect(writes.join("")).not.toContain("\x1b=")
+  expect(writes.join("")).not.toContain("\x1b>")
+})
+
+test("modes.application-keypad records supported interaction for KP_5 as SS3 u", async () => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: { a: "a", KP_5: "\x1bOu" } }, writes)
+  const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeResult
+  expect(keys).toEqual(["a", "KP_5"])
+  expect(writes.join("")).toContain("\x1b=")
+  expect(writes.join("")).toContain("\x1b>")
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "application-keypad:KP_5" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "application-keypad", control: "a", report: "\x1bOu" })
+})
+
+test("modes.application-keypad records unsupported interaction when KP_5 still reports 5", async () => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: { a: "a", KP_5: "5" } }, writes)
+  const result = (await modeProbe("modes.application-keypad").term!(ctx)) as ProbeResult
+  expect(keys).toEqual(["a", "KP_5"])
+  expect(writes.join("")).toContain("\x1b=")
+  expect(writes.join("")).toContain("\x1b>")
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "application-keypad:KP_5" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "application-keypad", control: "a", report: "5" })
+})
+
+test("modes.application-keypad throws when KP_5 is silent after delivery control, and still resets DECKPNM", async () => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: { a: "a" } }, writes)
+  await expect(modeProbe("modes.application-keypad").term!(ctx)).rejects.toThrow(/KP_5|keypad|silent/i)
+  expect(keys).toEqual(["a", "KP_5"])
+  expect(writes.join("")).toContain("\x1b=")
+  expect(writes.join("")).toContain("\x1b>")
 })

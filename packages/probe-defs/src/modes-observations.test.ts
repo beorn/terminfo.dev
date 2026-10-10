@@ -146,12 +146,7 @@ test("IRM does not grade output when the seed was not measured", () => {
 })
 
 test("unmeasured app modes leave prior state untouched instead of toggling it for CPR", async () => {
-  for (const id of [
-    "modes.application-keypad",
-    "modes.left-right-margin",
-    "modes.altscreen-47",
-    "modes.altscreen-1047",
-  ]) {
+  for (const id of ["modes.left-right-margin", "modes.altscreen-47", "modes.altscreen-1047"]) {
     const definition = modesProbes.find((item) => item.id === id)
     if (!definition?.term) throw new Error(`Missing ${id} app callback`)
     if (id === "modes.altscreen-1047") expect(definition.termObservationEvidence).toBe("query")
