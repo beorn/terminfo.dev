@@ -65,8 +65,13 @@ function find(id: string): ProbeDefinition {
   return definition
 }
 
+/** Rows whose collector path decides from the owned window's cells instead of the pixel frames. */
+const READBACK_IDS = new Set(["editing.delete-chars"])
+
 test("every editing capture probe records a pre-edit control and a post-edit target", async () => {
   for (const id of CAPTURE_IDS) {
+    // The readback-governed row is asserted on its own below: it no longer takes the pixel path.
+    if (READBACK_IDS.has(id)) continue
     const { context, writes, frames } = captureContext(24, 80)
     const result = await find(id).term!(context)
     expect(result.observation, id).toMatchObject({
@@ -90,6 +95,87 @@ test("every editing capture probe records a pre-edit control and a post-edit tar
     expect(response.region.rows, id).toBeGreaterThanOrEqual(1)
     expect(response.region.cols, id).toBeGreaterThanOrEqual(1)
   }
+})
+
+/**
+ * A window whose cells are readable: CSI 16 t and CSI 14 t answer the terminal's own pixel report,
+ * the witness cell shows the last glyph written, and the compared cells never move — so the row
+ * reaches the decision and its spec, without claiming any capability.
+ */
+function readbackCaptureContext(rows: number, cols: number) {
+  const writes: string[] = []
+  const requests: Array<{ region: { top: number; left: number; bottom: number; right: number }; label: string }> = []
+  const frames: ObservationFrame[] = []
+  let reads = 0
+  const sentinel = "3,1,3,1"
+  const key = (region: { top: number; left: number; bottom: number; right: number }) =>
+    `${region.top},${region.left},${region.bottom},${region.right}`
+  const context: TermContext = {
+    rows,
+    cols,
+    write: (sequence) => writes.push(sequence),
+    queryCursorPosition: async () => ({ row: 2, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    async queryWithSentinelOutcome(sequence) {
+      if (sequence === "\x1b[16t") {
+        return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply", raw: "", rawBase64: "" }
+      }
+      if (sequence === "\x1b[14t") {
+        return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+      }
+      return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+    },
+    queryMode: async () => null,
+  }
+  context.capture = async (request) => {
+    reads += 1
+    const region = request.cells!
+    requests.push({ region, label: request.label })
+    const frame: ObservationFrame = {
+      role: request.role,
+      label: request.label,
+      capturedAt: reads,
+      ref: `sha256:${String(reads).repeat(64)}`,
+    }
+    frames.push(frame)
+    const witnessWrite = writes.filter((entry) => /^\x1b\[\d+;\d+H.$/.test(entry)).at(-1)
+    const content = key(region) === sentinel ? (witnessWrite?.slice(-1) ?? "") : "unmoving"
+    return { ...frame, regionDigest: `sha256:${key(region)}|${content}`, pixelsDigest: `sha256:frame|${content}` }
+  }
+  return { context, writes, requests, frames }
+}
+
+test("the readback-governed row hands the decision its own region and the terminal's pixel report", async () => {
+  const { context, requests } = readbackCaptureContext(24, 80)
+  const result = await find("editing.delete-chars").term!(context)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(String(result.observation?.note)).toContain("seed frame and the expected frame read the same cells")
+  const compared = requests.filter(({ region }) => region.right !== region.left || region.bottom !== region.top)
+  expect(compared.map(({ region }) => region)).toEqual([
+    { top: 1, left: 1, bottom: 1, right: 8 },
+    { top: 1, left: 1, bottom: 1, right: 8 },
+    { top: 1, left: 1, bottom: 1, right: 8 },
+  ])
+  expect(compared.map(({ label }) => label)).toEqual([
+    "editing.delete-chars: pre-edit seed",
+    "editing.delete-chars: post-sequence target",
+    "editing.delete-chars: expected frame",
+  ])
+})
+
+test("the readback-governed row refuses by name when the terminal cannot report its pixel geometry", async () => {
+  const { context, frames } = captureContext(24, 80)
+  const result = await find("editing.delete-chars").term!(context)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(String(result.observation?.note)).toContain("CSI 16 t")
+  expect(frames).toEqual([])
 })
 
 test("an undersized terminal refuses an editing capture before writing", async () => {

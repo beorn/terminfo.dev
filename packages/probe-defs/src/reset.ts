@@ -1,5 +1,34 @@
 import type { ProbeDefinition } from "./types.ts"
+import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import { parserStateResult, probe, sgrCaptureFrames, sgrCaptureTooSmall, sgrReadbackDecision } from "./helpers.ts"
+
+/**
+ * The cell-aligned readback for DECALN. The compared region is rows 2-3 and never row 1: DECALN
+ * homes the cursor there itself, and a cursor row is excluded from every compared region. Both
+ * frames park the cursor on the last row and the witness cell sits on row 4. The expected frame is a
+ * full grid of E written PLAINLY in the same run, which is exactly what ESC # 8 should leave behind.
+ */
+function decalnReadback(rows: number, cols: number): Omit<RegionReadback, "pixelGeometry"> | null {
+  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 5 || cols < 9) return null
+  const park = `\x1b[${rows};1H`
+  const screen = (line: string): string => {
+    let writes = "\x1b[0m\x1b[2J\x1b[H"
+    for (let row = 1; row <= rows; row++) writes += `\x1b[${row};1H${line}`
+    return `${writes}${park}`
+  }
+  return {
+    region: { top: 2, left: 1, bottom: 3, right: 8 },
+    sentinel: { row: 4, col: 1 },
+    cursorRow: rows,
+    seed: screen("AB".repeat(Math.ceil(cols / 2)).slice(0, cols)),
+    edit: `\x1b#8${park}`,
+    expected: screen("E".repeat(cols)),
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: 5,
+    minCols: 9,
+  }
+}
 
 export const resetProbes: ProbeDefinition[] = [
   {
@@ -240,6 +269,12 @@ export const resetProbes: ProbeDefinition[] = [
         const rows = ctx.rows
         const cols = ctx.cols
         const capture = ctx.capture
+        const readback = decalnReadback(rows, cols)
+        if (readback) {
+          // The verdict path owns this row wherever the run can map cells onto its own window.
+          const verdict = await captureRegionVerdict(ctx, "reset.decaln", readback)
+          if (verdict) return verdict
+        }
         if (!capture || !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 2 || cols < 2) {
           const note = `DECALN pixel fixture needs capture and measured 2x2 geometry; measured ${rows}x${cols}`
           return {

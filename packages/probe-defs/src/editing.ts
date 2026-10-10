@@ -1,4 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
+import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import {
   parserStateResult,
   probe,
@@ -174,6 +175,31 @@ const EDITING_CAPTURE_SPECS: Record<string, EditingCaptureSpec> = {
   },
 }
 
+/**
+ * The cell-aligned readback for the DCH row. The compared region is the edited row itself, the
+ * cursor is parked on row 2 by the fixture and by the edit's own tail so it is outside the region,
+ * and the witness cell sits on row 3. The expected frame is the post-edit row written PLAINLY in
+ * the same run: DCH at column 3 deletes C and shifts the survivors left, so cells 1-8 read
+ * ABDEZQH and a blank.
+ */
+const DELETE_CHARS_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 8 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEZQH\x1b[2;1H",
+  edit: "\x1b[1;3H\x1b[1P\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABDEZQH \x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 9,
+}
+
+/** Rows whose collector path can decide from the owned window's cells, with the same helper. */
+const EDITING_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
+  "editing.delete-chars": DELETE_CHARS_READBACK,
+}
+
 async function editCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
   const spec = EDITING_CAPTURE_SPECS[id]
   if (!spec) throw new Error(`no editing capture spec for ${id}`)
@@ -190,6 +216,13 @@ async function editCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
         note: `Editing capture needs at least ${needRows}x${needCols}, measured ${rows}x${cols}`,
       },
     }
+  }
+  const readback = EDITING_READBACK_SPECS[id]
+  if (readback) {
+    // The verdict path owns this row wherever the run can map cells onto its own window; a context
+    // that cannot report its geometry gets a named refusal, not the ungraded pixel path.
+    const verdict = await captureRegionVerdict(ctx, id, readback)
+    if (verdict) return verdict
   }
   ctx.write("\x1b[0m\x1b[2J")
   try {
