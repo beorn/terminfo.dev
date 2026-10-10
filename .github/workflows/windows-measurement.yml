@@ -126,6 +126,16 @@ jobs:
             Start-Sleep -Seconds 1
           }
 
+          # The owned terminal reads TERMINFO_RUN_ID and refuses an empty launch id (owned-terminal.ts).
+          # The id only exists once the launched step emitted the receipt, so it is read here, after the
+          # readiness wait and before the collector (27917: hosted runs never set it).
+          \$env:TERMINFO_RUN_ID = (Get-Content -Raw "$WIN_OUT\\host-measured.json" | ConvertFrom-Json).runId
+          if ([string]::IsNullOrWhiteSpace(\$env:TERMINFO_RUN_ID)) {
+            Set-Content -Path "$WIN_OUT\\collector.log" -Value "Receipt has no launch run ID; collection refused"
+            Set-Content -Path "$WIN_OUT\\collector-exit" -Value "1"
+            exit 1
+          }
+
           & terminfo test --output "$WIN_OUT\\run.json" *>&1 | Out-File -FilePath "$WIN_OUT\\collector.log" -Encoding utf8
           \$exitCode = \$LASTEXITCODE
           if (\$null -eq \$exitCode) { \$exitCode = 0 }

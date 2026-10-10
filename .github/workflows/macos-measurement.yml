@@ -129,6 +129,16 @@ jobs:
             if [ "\$attempts" -ge 180 ]; then echo "Receipt self-parse never succeeded; collection refused" >&2; exit 1; fi
             sleep 1
           done
+          # The owned Darwin terminal arms read TERMINFO_RUN_ID and refuse an empty launch id
+          # (owned-terminal.ts). The id only exists once the launched step emitted the receipt, so it is
+          # read here, after the readiness wait and before the collector (27917: hosted runs never set it).
+          TERMINFO_RUN_ID="\$(jq -er .runId "$OUT/host-measured.json")" || {
+            echo "Receipt has no launch run ID; collection refused" >&2
+            echo "Receipt has no launch run ID; collection refused" > "$OUT/collector.log"
+            printf '1\n' > "$OUT/collector-exit"
+            exit 1
+          }
+          export TERMINFO_RUN_ID
           "$COLLECTOR" test --output "$OUT/run.json" > "$OUT/collector.log" 2>&1
           status=\$?
           printf '%s\n' "\$status" > "$OUT/collector-exit"
