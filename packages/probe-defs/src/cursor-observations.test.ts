@@ -199,7 +199,11 @@ test("cursor shape without style readback and reverse-wrap CPR remain ungraded",
   expect(shape.assertions).toBeUndefined()
 
   const appShape = await byId("cursor.shape").term!(app({ row: 1, col: 1 }))
-  expect(appShape.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+  expect(appShape.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "no-response",
+    evidence: "query",
+  })
   expect(appShape.assertions).toBeUndefined()
 
   const reverse = await byId("cursor.reverse-wrap").term!(app({ row: 1, col: 80 }))
