@@ -28,6 +28,12 @@ interface Harness {
   ctx: TermContext
   /** Exactly the adapter's trace shape: the bytes this run wrote, asked and saw. */
   trace: { writes: string[]; queries: unknown[]; events: unknown[] }
+  /**
+   * Every frame the capture adapter handed back, in order. The collector registers a run screenshot
+   * ref for each of these (probes/unified.ts:377), whether or not the observation later cites them
+   * as frames, so a run document assembled here must list them the same way.
+   */
+  frames: ObservationFrame[]
 }
 
 function sentinelOutcome(sequence: string, mode: Mode): unknown {
@@ -47,6 +53,7 @@ function sentinelOutcome(sequence: string, mode: Mode): unknown {
  */
 function harness(mode: Mode): Harness {
   const trace: Harness["trace"] = { writes: [], queries: [], events: [] }
+  const frames: ObservationFrame[] = []
   let captures = 0
   let measured = 0
   let witnessVersion = 0
@@ -78,7 +85,7 @@ function harness(mode: Mode): Harness {
             : digest(mode === "deciding" ? "region:expected" : "region:unrelated")
       pixelsDigest = digest(`window:step-${step}`)
     }
-    return {
+    const frame: ObservationFrame = {
       role: request.role,
       label: request.label,
       capturedAt: captures,
@@ -86,6 +93,8 @@ function harness(mode: Mode): Harness {
       regionDigest,
       pixelsDigest,
     }
+    frames.push(frame)
+    return frame
   }
 
   const timed = async (sequence: string) => {
@@ -113,7 +122,7 @@ function harness(mode: Mode): Harness {
     queryMode: async () => null,
     capture,
   }
-  return { ctx, trace }
+  return { ctx, trace, frames }
 }
 
 /**
@@ -121,13 +130,12 @@ function harness(mode: Mode): Harness {
  * adapter adds at collection time and the probe cannot know: every observation and assertion
  * carries its own rawReplyRef, and the run lists every frame ref it captured.
  */
-function assemble(result: ProbeResult, trace: Harness["trace"]) {
+function assemble(result: ProbeResult, trace: Harness["trace"], frames: ObservationFrame[]) {
   const observation = {
     featureId: FEATURE,
     ...result.observation,
     rawReplyRef: FEATURE,
   }
-  const frames = (observation as { frames?: ObservationFrame[] }).frames ?? []
   return {
     schemaVersion: 2,
     runId: `region-readback-contract-${FEATURE}`,
@@ -161,11 +169,11 @@ function assemble(result: ProbeResult, trace: Harness["trace"]) {
 }
 
 const drive = async (mode: Mode) => {
-  const { ctx, trace } = harness(mode)
+  const { ctx, trace, frames } = harness(mode)
   const probe = ALL_PROBES.find((candidate) => candidate.id === FEATURE)
   expect(probe, "the probe under test exists in ALL_PROBES").toBeDefined()
   const result = await probe!.term!(ctx)
-  return { result, trace, run: assemble(result, trace) }
+  return { result, trace, frames, run: assemble(result, trace, frames) }
 }
 
 const parse = (run: unknown) =>
@@ -191,22 +199,37 @@ test("a byte-stable capture that decides nothing still seals an observation the 
 
 /**
  * The collector's own refusal path: the two stability captures disagree, so region-readback returns
- * pixels with no screenshotRef and no frames. That is shape C of @cto b12b71b2 and it is 28584.
- * This test asserts the post-fix contract, so it must stay red until 28584 lands — the marker comes
- * off with that fix, not before.
+ * inconclusive pixels that cite the capture they took. That is shape C of @cto b12b71b2 and it is
+ * 28584, cured by the region-readback fix in 28582 (terminfo 03a9fa6e).
+ *
+ * Measured 2026-10-10: on that fix alone this test still failed, but not in the product — it failed
+ * at `parse(run)` with "screenshotRef … is absent from run". The collector registers a screenshot
+ * ref for EVERY capture result (probes/unified.ts:377); `assemble()` here listed only the refs the
+ * observation happened to carry as frames, so a refusal that cites without frames looked
+ * unwritable. The fixture now lists every captured frame, exactly as the collector does, and no
+ * production code changed: with it, 4 passed.
+ *
+ * The assertions below are @cto's ruling sentence, made executable (0e40f3b1, amended): the
+ * unstable branch's run parses, its screenshotRef is the stability capture it took, and it carries
+ * no frames — no target frame is fabricated on a path that never reached one.
  */
-test.fails("28584 shape C: a byte-unstable capture's pixels refusal still carries what it captured", async () => {
-  const { result, run } = await drive("unstable")
+test("28584 shape C: a byte-unstable capture's pixels refusal still carries what it captured", async () => {
+  const { result, run, frames } = await drive("unstable")
+  const stabilityRefs = frames.filter((frame) => frame.label.includes("capture stability")).map((frame) => frame.ref)
+  expect(stabilityRefs.length).toBeGreaterThan(0)
   expect(result.observation?.evidence).toBe("pixels")
-  expect(result.observation?.screenshotRef).toBeDefined()
+  expect(stabilityRefs).toContain(result.observation?.screenshotRef)
+  expect(result.observation?.frames ?? []).toHaveLength(0)
   expect(() => parse(run)).not.toThrow()
 })
 
 /**
  * The sentinel reply to CSI 16 t: the geometry query writes bytes and then reports evidence "none",
- * which the zero-byte rule refuses. That is shape B of @cto b12b71b2 and it is 28584, same marker.
+ * which the zero-byte rule refuses. That is shape B of @cto b12b71b2 and it is 28584, cured by the
+ * region-readback fix in 28582 (terminfo 03a9fa6e), so the marker came off here: measured at that
+ * head, this file is 3 passed | 1 expected fail (shape C) with the marker removed.
  */
-test.fails("28584 shape B: a sentinel geometry refusal reports query, not none", async () => {
+test("28584 shape B: a sentinel geometry refusal reports query, not none", async () => {
   const { result, run, trace } = await drive("sentinel")
   expect(result.observation?.evidence).toBe("query")
   expect(trace.queries.length).toBeGreaterThan(0)
