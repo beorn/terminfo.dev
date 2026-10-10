@@ -8,7 +8,7 @@ next: false
 import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
-import { barOverMeasured, barVerdict, includedTierOneIds, isStaleSuite, staleCaption } from '../data/release-scope.ts'
+import { barOverMeasured, barVerdict, includedTierOneIds, isStaleRelation, staleCaption } from '../data/release-scope.ts'
 const { params } = useData()
 const p = params.value
 
@@ -23,7 +23,7 @@ const namedNotTested = computed(() => selectedRun.value?.notTestedCoverage?.name
 const measuredBar = computed(() => barOverMeasured(selectedRun.value?.cells ?? {}, data.releaseScope.measuredIds))
 const includedIds = includedTierOneIds(data.releaseScope.measuredIds)
 const measuredVerdict = computed(() => barVerdict(barOverMeasured(selectedRun.value?.cells ?? {}, includedIds)))
-const stale = computed(() => selectedRun.value ? isStaleSuite(selectedRun.value.suiteFreshness) : false)
+const stale = computed(() => selectedRun.value ? isStaleRelation(selectedRun.value.suiteRelation) : false)
 const staleText = computed(() => selectedRun.value ? staleCaption(selectedRun.value.measuredAt) : '')
 function runLabel(run) {
   return `${run.target.version} · ${run.target.os || 'OS not recorded'} · ${run.target.permissions || 'No permission override recorded'} · ${run.sha256.slice(0, 8)}`
@@ -158,6 +158,7 @@ const breadcrumbParent = (() => {
 <div v-if="!isHistorical && selectedRun" class="score-card">
   <h2 class="results-heading">Feature support</h2>
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
+  <p v-if="data.suiteMove.treeMovedPastRelease" class="stale-line">The tree has moved past the release suite; a new collection would mint {{ data.suiteMove.treeSuiteId }}.</p>
   <p class="selected-run">{{ p.terminalName }} {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
   <p class="score-detail">Recorded suite: {{ selectedRun.suiteFreshness }} · {{ selectedRun.suite.observed }}/{{ selectedRun.suite.expected ?? '?' }} results recorded. A recorded result does not mean its check ran. Results from different suites are not directly comparable.</p>
   <div v-if="runs.length > 1" class="run-picker">

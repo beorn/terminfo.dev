@@ -378,6 +378,7 @@ export function generateApi(outDir?: string): {
     | "suiteId"
     | "probeHash"
     | "suiteFreshness"
+    | "suiteRelation"
     | "suite"
     | "sourceRevision"
     | "sha256"
@@ -390,8 +391,19 @@ export function generateApi(outDir?: string): {
     const prior = runDocuments.get(url)
     if (prior && !prior.equals(bytes)) throw new Error(`Conflicting run document ${url}`)
     runDocuments.set(url, bytes)
-    const { runId, target, measuredAt, suiteId, probeHash, suiteFreshness, suite, sourceRevision, sha256, counts } =
-      version
+    const {
+      runId,
+      target,
+      measuredAt,
+      suiteId,
+      probeHash,
+      suiteFreshness,
+      suiteRelation,
+      suite,
+      sourceRevision,
+      sha256,
+      counts,
+    } = version
     return {
       runId,
       target,
@@ -399,6 +411,7 @@ export function generateApi(outDir?: string): {
       suiteId,
       probeHash,
       suiteFreshness,
+      suiteRelation,
       suite,
       sourceRevision,
       sha256,

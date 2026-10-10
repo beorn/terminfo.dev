@@ -45,6 +45,12 @@ const cells = {
 }
 
 function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate {
+  const suiteFreshness = overrides.suiteFreshness ?? "current suite"
+  const suiteRelation = suiteFreshness.startsWith("older")
+    ? "older"
+    : suiteFreshness.startsWith("partial")
+      ? "partial"
+      : "tree"
   return {
     key: "app:alacritty@[linux]",
     kind: "app",
@@ -55,7 +61,8 @@ function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate 
     version: "0.17.0",
     measuredAt: "2026-10-07T04:42:46.018Z",
     suiteId: "c6ec4ee8f580",
-    suiteFreshness: "current suite",
+    suiteFreshness,
+    suiteRelation,
     cells,
     ...overrides,
   }

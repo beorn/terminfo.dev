@@ -15,7 +15,8 @@ import {
   barOverMeasured,
   coverageSentence,
   supportedShare,
-  isStaleSuite,
+  isStaleRelation,
+  treeMovedPastRelease,
   staleCaption,
   tierLine,
 } from "../docs/data/release-scope.ts"
@@ -97,9 +98,14 @@ describe("release 1 measurement scope", () => {
       "62 of 270 features (tier 1), measured per terminal; next tiers in progress · measured October 4, 2026",
     )
     expect(staleCaption("2026-10-04T17:46:58Z")).toBe("not re-measured since October 4, 2026")
-    expect(isStaleSuite("current suite")).toBe(false)
-    expect(isStaleSuite("older suite (256 probes)")).toBe(true)
-    expect(isStaleSuite("partial (10 of 256 probes)")).toBe(true)
+    expect(isStaleRelation("release")).toBe(false)
+    expect(isStaleRelation("tree")).toBe(false)
+    expect(isStaleRelation("older")).toBe(true)
+    expect(isStaleRelation("partial")).toBe(true)
+    // One banner only when the live tree has actually moved past the release suite.
+    expect(treeMovedPastRelease("21739d9e768f", "a8bafe49cdd4")).toBe(true)
+    expect(treeMovedPastRelease("a8bafe49cdd4", "a8bafe49cdd4")).toBe(false)
+    expect(treeMovedPastRelease("a8bafe49cdd4", null)).toBe(false)
   })
 
   it("does not let supported outcomes outside the 62 fill the bar", () => {
@@ -184,7 +190,7 @@ describe("release 1 measurement scope", () => {
     expect(terminal).toContain("measuredBar.inconclusive")
     expect(terminal).toContain("measuredBar.untested")
     const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
-    expect(loader).toContain("isStaleSuite")
+    expect(loader).toContain("isStaleRelation")
     expect(loader).toContain("staleCaption")
     expect(loader).toContain("releaseStale")
     expect(loader).toContain("releaseShares[key] = supportedShare(")

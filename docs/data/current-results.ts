@@ -8,6 +8,7 @@ import {
   type SelectedProjection,
   type SelectedVersion,
 } from "./selected-results.ts"
+import { loadFeatureCohort } from "./load-release-scope.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
 
 export interface DefaultContextReview {
@@ -115,8 +116,25 @@ function compatibilityKey(kind: TargetKind, id: string, catalog: CatalogKeys): s
 }
 
 export function loadCurrentResults(contentDir: string, options: { artifactDir?: string } = {}): CurrentResults {
-  const projection = loadSelectedResults(contentDir, probeHash(), options)
+  const projection = loadSelectedResults(contentDir, probeHash(), {
+    ...options,
+    releaseSuiteId: releaseSuiteIdFor(contentDir),
+  })
   return { projection }
+}
+
+/**
+ * The release suite this content pins, read through the ONE candidate-2 declaration loader (28450).
+ * Returns null when no declaration is present; a present-but-malformed declaration throws loudly.
+ */
+function releaseSuiteIdFor(contentDir: string): string | null {
+  const declarationPath = join(contentDir, "release-scope-candidate2.json")
+  if (!existsSync(declarationPath)) return null
+  const featuresPath = join(contentDir, "features.json")
+  const catalog = existsSync(featuresPath)
+    ? (parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8")) as Record<string, { name: string }>)
+    : {}
+  return loadFeatureCohort({ catalog, declarationPath }).frozenSuiteId
 }
 
 /**
