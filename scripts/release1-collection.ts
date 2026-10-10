@@ -24,7 +24,7 @@
  * the receipt producer and `scripts/admit-run.ts`'s admission rules; no deploy.
  */
 import { spawnSync } from "node:child_process"
-import { readFileSync, readdirSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
@@ -479,6 +479,20 @@ function readRun(path: string): ProducedRun {
   }
 }
 
+/**
+ * A Linux container row is unusable without the host-composed run-receipt.json the launcher
+ * writes only after attach returns. Measured #28552: a completed kitty batch (v2-run.json
+ * present) left no receipt when attach hit SIGTERM, and the other contexts in the same pass
+ * could still admit. Name the context; do not read a missing receipt as "no run".
+ */
+export function requireLinuxRunReceipt(runPath: string, run: ProducedRun): void {
+  if (run.target?.kind !== "app" || run.target?.os !== "linux") return
+  const receipt = join(dirname(runPath), "run-receipt.json")
+  if (!existsSync(receipt)) {
+    throw new Error(`${contextOf(run)}: missing run-receipt.json next to ${runPath}`)
+  }
+}
+
 function planLines(census: readonly CollectionContext[]): string[] {
   const lines = census.map((entry) => {
     const state = entry.uncollectable !== null ? `UNCOLLECTABLE — ${entry.uncollectable}` : entry.command
@@ -562,6 +576,7 @@ if (import.meta.main) {
     const produced: ProducedRun[] = []
     for (const path of runs) {
       const run = readRun(path)
+      requireLinuxRunReceipt(path, run)
       const refusal = refusalForProducedRun(run, preAdmissionRefusalOptions(frozenSuite))
       if (refusal !== null) {
         throw new Error(`Refusing ${refusal.context} (${refusal.kind}): ${refusal.detail}`)

@@ -25,7 +25,7 @@ npx terminfo.dev detect         # Check what terminal was detected
 npx terminfo.dev --version      # Record the CLI version
 ```
 
-For inline `test --json` or `test --output`, stdin must be an interactive terminal; probe controls go to `/dev/tty`, separate from the raw JSON. `--output` refuses an existing file. A draft does not create a GitHub issue or grant publication consent.
+For inline `test --json` or `test --output`, stdin must be an interactive terminal. With `--json` the raw JSON goes to stdout, so probe controls go to `/dev/tty`, separate from it; with `--output` the JSON goes to a file, so the probe controls use stdout — the terminal you launched the CLI in, which is the device a hosted owned-terminal receipt verifies. `--output` refuses an existing file. A draft does not create a GitHub issue or grant publication consent.
 
 In an ordinary terminal, the CLI can run reviewed query checks. Checks that change terminal state require a verified disposable test environment. Without one, the CLI records them as **inconclusive (policy-refused)** before those checks write anything; it does not report them as unsupported. You do not need to loosen terminal permissions. Default clipboard access stays off.
 

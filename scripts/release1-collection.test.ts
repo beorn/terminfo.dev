@@ -15,7 +15,8 @@
  */
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { existsSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
 import { RELEASE_1_CONTEXTS } from "./decisive-share.ts"
 import {
@@ -26,6 +27,7 @@ import {
   presetFor,
   release1Census,
   refusalForProducedRun,
+  requireLinuxRunReceipt,
   uncoveredContexts,
   type LinuxLedger,
   type ProducedRun,
@@ -305,5 +307,43 @@ describe("release 1 frozen-suite pre-flight", () => {
   it("refuses a tree whose own suite is not the frozen suite", () => {
     expect(() => assertFrozenSuite("currentsuite", "frozen01")).toThrow(/not the frozen suite frozen01/)
     expect(() => assertFrozenSuite("frozen01", "frozen01")).not.toThrow()
+  })
+})
+
+/**
+ * @failure --admit would silently skip a linux app context whose launcher left v2-run.json but no
+ *   sibling run-receipt.json, so a truncated kitty batch can still enter the census.
+ * @level l2 — temp-dir fixtures next to a produced-run path; no real container.
+ * @consumer scripts/release1-collection.ts requireLinuxRunReceipt (#28552)
+ */
+describe("linux run-receipt.json per context (#28552)", () => {
+  it("names the linux context when the launcher left no run-receipt.json beside the v2 run", () => {
+    const raw = mkdtempSync(join(tmpdir(), "terminfo-28552-receipt-"))
+    const runPath = join(raw, "v2-run.json")
+    writeFileSync(runPath, "{}\n")
+    try {
+      expect(() =>
+        requireLinuxRunReceipt(runPath, cleanRun({ target: { kind: "app", id: "kitty", os: "linux" } })),
+      ).toThrow(/kitty\/linux: missing run-receipt\.json/)
+    } finally {
+      rmSync(raw, { recursive: true, force: true })
+    }
+  })
+
+  it("passes when the sibling run-receipt.json exists, and ignores a non-linux row", () => {
+    const raw = mkdtempSync(join(tmpdir(), "terminfo-28552-receipt-ok-"))
+    const runPath = join(raw, "v2-run.json")
+    writeFileSync(runPath, "{}\n")
+    writeFileSync(join(raw, "run-receipt.json"), "{}\n")
+    try {
+      expect(() =>
+        requireLinuxRunReceipt(runPath, cleanRun({ target: { kind: "app", id: "kitty", os: "linux" } })),
+      ).not.toThrow()
+      expect(() =>
+        requireLinuxRunReceipt(runPath, cleanRun({ target: { kind: "app", id: "kitty", os: "macos" } })),
+      ).not.toThrow()
+    } finally {
+      rmSync(raw, { recursive: true, force: true })
+    }
   })
 })
