@@ -1406,7 +1406,7 @@ it("keeps today's graceful absence row when no capture callback is installed", a
       outcome: "inconclusive",
       reason: "insufficient-evidence",
       evidence: "none",
-      note: "No cursor pixel readback for shape",
+      note: "DECRQSS cursor-style report unanswered; no pixel readback for shape",
     },
   ])
   expect(batch.ungradedDiagnostics).toEqual({})

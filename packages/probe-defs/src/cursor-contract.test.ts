@@ -15,10 +15,12 @@ import {
   missingContractTests,
   regradeCommand,
   regradeRow,
+  replayContext,
   satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
   type HeadlessModel,
+  type StoredQuery,
 } from "./testing/group-harness.ts"
 
 /** The 22 Cursor capabilities of 28018's Cursor row; ids drawn from cursor.ts, claims are the contract. */
@@ -372,6 +374,28 @@ test("cursor.shape is inconclusive when style readback is omitted, bound when pr
     reason: "insufficient-evidence",
     evidence: "parser-state",
   })
+})
+
+test("cursor.shape's app arm decides from the terminal's DECRQSS cursor-style report", async () => {
+  const row = CURSOR_CONTRACT.find((entry) => entry.id === "cursor.shape")
+  const probe = cursorProbes.find((entry) => entry.id === "cursor.shape")
+  expect(row, "the Cursor contract names cursor.shape").toBeDefined()
+  expect(probe, "the Cursor contract names a real cursor.shape probe").toBeDefined()
+  if (!row || !probe) return
+  const styleQuery = "\x1bP$q q\x1b\\"
+  const withReply = (raw: string) =>
+    replayContext(
+      new Map<string, StoredQuery>([[styleQuery, { sequence: styleQuery, match: null, reason: "reply", raw }]]),
+    )
+  const beam = await regradeRow(probe, row, { term: withReply("\x1bP1$r6 q\x1b\\") })
+  expect(beam.after, "a DECRQSS report of style 6 decides cursor.shape").toBe("supported")
+  expect(beam.satisfies).toBe(true)
+  const block = await regradeRow(probe, row, { term: withReply("\x1bP1$r2 q\x1b\\") })
+  expect(block.after, "a DECRQSS report of a non-beam style is a decided unsupported").toBe("unsupported")
+  expect(block.satisfies).toBe(true)
+  const silent = await regradeRow(probe, row, { term: replayContext(new Map()) })
+  expect(silent.after, "an unanswered DECRQSS report is inconclusive, never a negative").toBe("inconclusive")
+  expect(silent.satisfies).toBe(false)
 })
 
 test("a decided Cursor row is unsatisfied when the origin control does not hold", async () => {

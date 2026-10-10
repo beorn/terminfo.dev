@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
-import { cursorProbe, parserStateResult, probe } from "./helpers.ts"
+import { cursorProbe, cursorStyleReadbackDecision, parserStateResult, probe } from "./helpers.ts"
 
 function headlessPosition(ctx: TermlessContext, row: number, col: number): ProbeResult {
   const cursor = ctx.getCursor()
@@ -256,6 +256,10 @@ export const cursorProbes: ProbeDefinition[] = [
   },
 
   // DECSCUSR — cursor shape
+  // The setting is reportable through DECRQSS `$ q SP q` (the DECSCUSR selector), the same readback
+  // class as device.decrqss's SGR (`$ q m`) and DECSTBM (`$ q r`) replies. A pixel pair of the
+  // default and bar cursors cannot decide the shape without independent review, so the app arm asks
+  // the terminal for its own report first and only falls back to the pixel pair when it stays silent.
   {
     ...probe(
       "cursor.shape",
@@ -270,8 +274,12 @@ export const cursorProbes: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
+        const decided = await cursorStyleReadbackDecision(ctx, "\x1b[6 q", 6)
+        if (decided) return decided
+        // The terminal's own DECRQSS cursor-style report was silent: keep the pixel control/target
+        // pair as the fallback evidence, which a reviewer resolves by eye.
         if (!ctx.capture) {
-          const note = "No cursor pixel readback for shape"
+          const note = "DECRQSS cursor-style report unanswered; no pixel readback for shape"
           return {
             pass: false,
             note,
@@ -298,7 +306,7 @@ export const cursorProbes: ProbeDefinition[] = [
               evidence: "pixels",
               screenshotRef: target.ref,
               frames: [control, target],
-              note: "Cursor pixels captured; shape difference requires review",
+              note: "DECRQSS cursor-style report unanswered; cursor pixels captured, shape difference requires review",
             },
           }
         } finally {
