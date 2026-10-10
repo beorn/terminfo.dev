@@ -310,6 +310,12 @@ describe("release 1 frozen-suite pre-flight", () => {
   })
 })
 
+/**
+ * @failure --admit would silently skip a linux app context whose launcher left v2-run.json but no
+ *   sibling run-receipt.json, so a truncated kitty batch can still enter the census.
+ * @level l2 — temp-dir fixtures next to a produced-run path; no real container.
+ * @consumer scripts/release1-collection.ts requireLinuxRunReceipt (#28552)
+ */
 describe("linux run-receipt.json per context (#28552)", () => {
   it("names the linux context when the launcher left no run-receipt.json beside the v2 run", () => {
     const raw = mkdtempSync(join(tmpdir(), "terminfo-28552-receipt-"))

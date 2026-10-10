@@ -378,6 +378,13 @@ describe("private finite launch arguments", () => {
   })
 })
 
+/**
+ * @failure cleanup's unbounded wait lets a SIGTERM-ignoring child (kitty / bun collector) keep the
+ *   container alive until host `timeout 180 docker start --attach` SIGTERMs it, so a finished batch
+ *   is refused as exit 143.
+ * @level l1 — sources the launcher and SIGKILLs an owned sleep that traps TERM.
+ * @consumer scripts/linux-container-run.sh stop_owned_processes (#28552)
+ */
 describe("owned process stop does not wait out the attach budget (#28552)", () => {
   it("SIGKILLs a child that ignores SIGTERM and returns before the 180 s attach budget", () => {
     const result = spawnSync(
@@ -412,6 +419,12 @@ echo ELAPSED_MS=$elapsed_ms
   })
 })
 
+/**
+ * @failure host attach exit 143 discards observed.json + container-receipt.json + v2-run.json that
+ *   the completed batch already wrote, so a 7.5 s kitty run is unusable.
+ * @level l1 — sources completed_batch_survives_attach_timeout against owned temp receipts.
+ * @consumer scripts/linux-container-run.sh host attach failure branch (#28552)
+ */
 describe("completed batch survives attach SIGTERM (#28552)", () => {
   it("treats exit 143 as a completed run only when the three batch receipts are present", () => {
     const raw = join(dir, "raw")
