@@ -451,6 +451,71 @@ test("modes.application-keypad throws when KP_5 is silent after delivery control
   expect(writes.join("")).toContain("\x1b>")
 })
 
+test("modes.alt-scroll-1007 is not tested without an OS XTEST adapter", async () => {
+  const definition = modeProbe("modes.alt-scroll-1007")
+  const writes: string[] = []
+  const result = await definition.term!(term({ write: (text) => writes.push(text) }))
+  expect(writes).toEqual([])
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level|wheel/i),
+  })
+  expect(result.observation).toBeUndefined()
+})
+
+test("modes.alt-scroll-1007 aborts when the 1000+1006 control click does not reach the app, and does not enable 1007", async () => {
+  const writes: string[] = []
+  const { ctx, clicks } = inputAndRead({ clicks: {} }, writes)
+  await expect(modeProbe("modes.alt-scroll-1007").term!(ctx)).rejects.toThrow(/delivery control|1000\+1006/i)
+  expect(clicks).toEqual([1])
+  expect(writes.join("")).toContain("\x1b[?1000h")
+  expect(writes.join("")).toContain("\x1b[?1006h")
+  expect(writes.join("")).not.toContain("\x1b[?1007h")
+  expect(writes.join("")).not.toContain("\x1b[?1049h")
+})
+
+test("modes.alt-scroll-1007 records supported interaction when wheel under 1007 reports CSI A", async () => {
+  const writes: string[] = []
+  const control = "\x1b[<0;10;5M"
+  const report = "\x1b[A"
+  const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
+  const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeResult
+  expect(clicks).toEqual([1, 4])
+  expect(writes.join("")).toContain("\x1b[?1049h")
+  expect(writes.join("")).toContain("\x1b[?1007h")
+  expect(writes.join("")).toContain("\x1b[?1007l")
+  expect(writes.join("")).toContain("\x1b[?1049l")
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "alt-scroll-1007:4" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "1007", control, report })
+})
+
+test("modes.alt-scroll-1007 records unsupported interaction when wheel under 1007 still reports SGR", async () => {
+  const writes: string[] = []
+  const control = "\x1b[<0;10;5M"
+  const report = "\x1b[<64;10;5M"
+  const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
+  const result = (await modeProbe("modes.alt-scroll-1007").term!(ctx)) as ProbeResult
+  expect(clicks).toEqual([1, 4])
+  expect(writes.join("")).toContain("\x1b[?1007h")
+  expect(writes.join("")).toContain("\x1b[?1007l")
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "alt-scroll-1007:4" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "1007", control, report })
+})
+
+test("modes.alt-scroll-1007 throws when the 1007 wheel is silent after delivery control, and still resets 1007", async () => {
+  const writes: string[] = []
+  const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M"] }, writes)
+  await expect(modeProbe("modes.alt-scroll-1007").term!(ctx)).rejects.toThrow(/1007|alt-scroll|silent/i)
+  expect(clicks).toEqual([1, 4])
+  expect(writes.join("")).toContain("\x1b[?1007h")
+  expect(writes.join("")).toContain("\x1b[?1007l")
+  expect(writes.join("")).toContain("\x1b[?1049l")
+})
+
 test("input.pixel-mouse is not tested without an OS XTEST adapter", async () => {
   const definition = probe("input.pixel-mouse")
   const writes: string[] = []

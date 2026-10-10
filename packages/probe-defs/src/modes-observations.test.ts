@@ -34,7 +34,6 @@ function captureContext(rows: number, cols: number, writes: string[], frames: Ob
 }
 
 const modes = [
-  { id: "modes.alt-scroll-1007", number: 1007 },
   { id: "modes.utf8-mouse-1005", number: 1005 },
   { id: "modes.deccolm", number: 3 },
   { id: "modes.decsclm", number: 4 },

@@ -68,7 +68,12 @@ const MODES_CONTRACT: GroupContract = [
     expected: "inconclusive",
     claim: "Alt-screen 1048 cursor save/restore needs pixel review",
   },
-  { id: "modes.alt-scroll-1007", expected: "decided", claim: "DECRPM 1007 recognizes alternate-scroll" },
+  {
+    id: "modes.alt-scroll-1007",
+    expected: "decided",
+    claim:
+      "Alt-scroll 1007: wheel-4 reports CSI A after 1000+1006 click delivery control on alt-screen; remaining SGR is unsupported",
+  },
   { id: "modes.utf8-mouse-1005", expected: "decided", claim: "DECRPM 1005 recognizes UTF-8 mouse" },
   { id: "modes.deccolm", expected: "decided", claim: "DECRPM 3 recognizes 132-column mode" },
   { id: "modes.decsclm", expected: "decided", claim: "DECRPM 4 recognizes smooth-scroll mode" },
@@ -127,6 +132,18 @@ function modesTermContext(id: string) {
       readInput: async (pattern: RegExp) => {
         if (pattern.test("a")) return ["a"]
         if (pattern.test("\x1bOu")) return ["\x1bOu"]
+        return null
+      },
+    })
+  }
+  if (id === "modes.alt-scroll-1007") {
+    let callCount = 0
+    return replayContext(new Map(), {
+      input: { injectKey: async () => {}, injectClick: async () => {} },
+      readInput: async (pattern: RegExp) => {
+        callCount += 1
+        const report = callCount % 2 === 1 ? "\x1b[<0;10;5M" : "\x1b[A"
+        if (pattern.test(report)) return [report]
         return null
       },
     })

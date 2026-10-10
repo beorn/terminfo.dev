@@ -48,6 +48,12 @@ const X10_OR_SGR_MOUSE = /\x1b\[(?:<\d+;\d+;\d+[Mm]|M[\s\S]{3})/
 const X10_MOUSE = /^\x1b\[M[\s\S]{3}/
 const BUTTON_EVENT_MOUSE_SET = "\x1b[?1002h"
 const BUTTON_EVENT_MOUSE_RESET = "\x1b[?1002l"
+const ALT_SCREEN_SET = "\x1b[?1049h"
+const ALT_SCREEN_RESET = "\x1b[?1049l"
+const ALT_SCROLL_SET = "\x1b[?1007h"
+const ALT_SCROLL_RESET = "\x1b[?1007l"
+const ALT_SCROLL_OR_SGR = /\x1b(?:\[(?:<\d+;\d+;\d+[Mm]|[AB])|O[AB])/
+const ALT_SCROLL_ENCODING = /\x1b(?:\[[AB]|O[AB])/
 
 function xtestCoverage(kind: string): ProbeResult {
   return notTestedResult(`OS-level XTEST ${kind}`, { input: false })
@@ -163,6 +169,35 @@ export async function applicationKeypad(ctx: TermContext): Promise<ProbeResult> 
     return unsupportedInteraction("application-keypad:KP_5", expected, observed)
   } finally {
     ctx.write(DECKPNM)
+  }
+}
+
+export async function altScroll1007(ctx: TermContext): Promise<ProbeResult> {
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!input || !readInput) return xtestCoverage("wheel injection")
+  const control = await withMouseModes(ctx, async () =>
+    deliveryControl(
+      () => input.injectClick(1),
+      readInput,
+      SGR_MOUSE,
+      "XTEST delivery control failed: click under 1000+1006 did not reach the app",
+    ),
+  )
+  ctx.write(ALT_SCREEN_SET + ALT_SCROLL_SET)
+  try {
+    const report = (await readInput(ALT_SCROLL_OR_SGR, 1000, () => input.injectClick(4)))?.[0]
+    if (!report) {
+      throw new Error("XTEST 1007 alt-scroll wheel did not reach the app after a successful 1000+1006 delivery control")
+    }
+    const observed = { mode: "1007", control, report }
+    const expected = "OS XTEST wheel-4 report under 1007 as CSI A after 1000+1006 delivery control on alt-screen"
+    if (ALT_SCROLL_ENCODING.test(report)) {
+      return interactionResult("alt-scroll-1007:4", expected, observed)
+    }
+    return unsupportedInteraction("alt-scroll-1007:4", expected, observed)
+  } finally {
+    ctx.write(ALT_SCROLL_RESET + ALT_SCREEN_RESET)
   }
 }
 
