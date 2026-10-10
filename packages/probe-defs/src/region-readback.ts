@@ -83,6 +83,11 @@ export interface RegionReadback {
   minCols?: number
 }
 
+/**
+ * A stand-in geometry for the bounds-only check that runs before the terminal is queried: the
+ * pixel report is validated separately, and this value never reaches a capture request.
+ */
+const PENDING_GEOMETRY: PixelGeometry = { cellWidth: 1, cellHeight: 1, textWidth: 1, textHeight: 1 }
 const DEFAULT_TIMEOUT_MS = 5000
 const DEFAULT_POLL_MS = 250
 
@@ -96,8 +101,18 @@ function witnessGlyph(step: number): string {
   return WITNESS_GLYPHS[step % WITNESS_GLYPHS.length] ?? "0"
 }
 
-function inconclusive(id: string, note: string, reason: "timeout" | "insufficient-evidence"): ProbeResult {
-  return { pass: false, observation: { outcome: "inconclusive", reason, evidence: "pixels", note } }
+function inconclusive(
+  id: string,
+  note: string,
+  reason: "timeout" | "insufficient-evidence",
+  evidence: "pixels" | "none" = "pixels",
+): ProbeResult {
+  return { pass: false, observation: { outcome: "inconclusive", reason, evidence, note } }
+}
+
+/** A refusal taken before any byte: the collector declined to measure, so it is not pixel evidence. */
+function refused(id: string, note: string): ProbeResult {
+  return inconclusive(id, note, "insufficient-evidence", "none")
 }
 
 function positive(value: number): boolean {
@@ -109,10 +124,9 @@ function regionRefusal(id: string, spec: RegionReadback, rows: number, cols: num
   const minRows = spec.minRows ?? 1
   const minCols = spec.minCols ?? 1
   if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < minCols) {
-    return inconclusive(
+    return refused(
       id,
       `${id}: capture-region readback needs a measured grid of at least ${minRows}x${minCols}; measured ${rows}x${cols}`,
-      "insufficient-evidence",
     )
   }
   const geometry = spec.pixelGeometry
@@ -122,39 +136,29 @@ function regionRefusal(id: string, spec: RegionReadback, rows: number, cols: num
     !positive(geometry.textWidth) ||
     !positive(geometry.textHeight)
   ) {
-    return inconclusive(
+    return refused(
       id,
       `${id}: capture-region readback needs the terminal's own positive pixel report (cell size and text area); got ${JSON.stringify(geometry)}`,
-      "insufficient-evidence",
     )
   }
   const { region, sentinel, cursorRow } = spec
   const edges = [region.top, region.left, region.bottom, region.right]
   if (edges.some((value) => !Number.isSafeInteger(value)) || !Number.isSafeInteger(cursorRow)) {
-    return inconclusive(id, `${id}: capture-region readback needs integer cell edges`, "insufficient-evidence")
+    return refused(id, `${id}: capture-region readback needs integer cell edges`)
   }
   if (region.top < 1 || region.left < 1 || region.bottom < region.top || region.right < region.left) {
-    return inconclusive(
-      id,
-      `${id}: compared region ${JSON.stringify(region)} is not a non-empty rectangle inside the grid`,
-      "insufficient-evidence",
-    )
+    return refused(id, `${id}: compared region ${JSON.stringify(region)} is not a non-empty rectangle inside the grid`)
   }
   if (region.bottom > rows || region.right > cols) {
-    return inconclusive(
-      id,
-      `${id}: compared region ${JSON.stringify(region)} leaves the measured ${rows}x${cols} grid`,
-      "insufficient-evidence",
-    )
+    return refused(id, `${id}: compared region ${JSON.stringify(region)} leaves the measured ${rows}x${cols} grid`)
   }
   if (!Number.isSafeInteger(sentinel.row) || !Number.isSafeInteger(sentinel.col)) {
-    return inconclusive(id, `${id}: paint witness needs integer cell coordinates`, "insufficient-evidence")
+    return refused(id, `${id}: paint witness needs integer cell coordinates`)
   }
   if (sentinel.row < 1 || sentinel.col < 1 || sentinel.row > rows || sentinel.col > cols) {
-    return inconclusive(
+    return refused(
       id,
       `${id}: paint witness cell ${sentinel.row},${sentinel.col} leaves the measured ${rows}x${cols} grid`,
-      "insufficient-evidence",
     )
   }
   const sentinelInside =
@@ -163,28 +167,19 @@ function regionRefusal(id: string, spec: RegionReadback, rows: number, cols: num
     sentinel.col >= region.left &&
     sentinel.col <= region.right
   if (sentinelInside) {
-    return inconclusive(
+    return refused(
       id,
       `${id}: paint witness cell ${sentinel.row},${sentinel.col} lies inside compared region ${JSON.stringify(region)}`,
-      "insufficient-evidence",
     )
   }
   if (cursorRow < 1 || cursorRow > rows) {
-    return inconclusive(
-      id,
-      `${id}: cursor row ${cursorRow} leaves the measured ${rows}x${cols} grid`,
-      "insufficient-evidence",
-    )
+    return refused(id, `${id}: cursor row ${cursorRow} leaves the measured ${rows}x${cols} grid`)
   }
   if (region.top <= cursorRow && cursorRow <= region.bottom) {
-    return inconclusive(
-      id,
-      `${id}: compared region ${JSON.stringify(region)} includes the cursor row ${cursorRow}`,
-      "insufficient-evidence",
-    )
+    return refused(id, `${id}: compared region ${JSON.stringify(region)} includes the cursor row ${cursorRow}`)
   }
   if (sentinel.row === cursorRow) {
-    return inconclusive(id, `${id}: paint witness cell shares the cursor row ${cursorRow}`, "insufficient-evidence")
+    return refused(id, `${id}: paint witness cell shares the cursor row ${cursorRow}`)
   }
   return undefined
 }
@@ -232,6 +227,59 @@ async function awaitPaintWitness(options: {
 
 function witnessed(result: { witness: RegionCapture } | ProbeResult): result is { witness: RegionCapture } {
   return "witness" in result
+}
+
+/**
+ * The terminal's own pixel report: CSI 16 t (cell size in pixels) and CSI 14 t (text area in
+ * pixels). A context that answers neither cannot map cells onto the captured window at all, and
+ * says so BY NAME instead of falling back to a window width divided by a column count.
+ */
+export async function queryPixelGeometry(ctx: TermContext): Promise<{ geometry: PixelGeometry } | { missing: string }> {
+  const cell = await ctx.queryWithSentinelOutcome("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/)
+  if (cell.reason !== "reply") {
+    return { missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cell.reason}` }
+  }
+  const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
+  if (text.reason !== "reply") {
+    return { missing: `the terminal answered CSI 14 t (text area in pixels) with ${text.reason}` }
+  }
+  const geometry: PixelGeometry = {
+    cellHeight: Number(cell.match?.[1]),
+    cellWidth: Number(cell.match?.[2]),
+    textHeight: Number(text.match?.[1]),
+    textWidth: Number(text.match?.[2]),
+  }
+  if (
+    !positive(geometry.cellWidth) ||
+    !positive(geometry.cellHeight) ||
+    !positive(geometry.textWidth) ||
+    !positive(geometry.textHeight)
+  ) {
+    return { missing: `the terminal's pixel report did not parse as positive numbers: ${JSON.stringify(geometry)}` }
+  }
+  return { geometry }
+}
+
+/**
+ * The whole region decision for one row, or null when this run has no owned capture. The pixel
+ * report is queried here, once, and a context that cannot report its own geometry is inconclusive
+ * BY NAME before any byte: a missing report is never a capability verdict.
+ */
+export async function captureRegionVerdict(
+  ctx: TermContext,
+  id: string,
+  spec: Omit<RegionReadback, "pixelGeometry">,
+): Promise<ProbeResult | null> {
+  const read = collectorRegionRead(ctx)
+  if (!read) return null
+  // Geometry first: an undersized terminal is refused before a single query byte.
+  const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols)
+  if (bounds) return bounds
+  const reported = await queryPixelGeometry(ctx)
+  if ("missing" in reported) {
+    return refused(id, `${id}: ${reported.missing}, so this run cannot map cells onto the captured window`)
+  }
+  return captureRegionReadbackDecision(ctx, id, { ...spec, pixelGeometry: reported.geometry }, read)
 }
 
 /**
@@ -288,8 +336,7 @@ export async function captureRegionReadbackDecision(
         "insufficient-evidence",
       )
     }
-    for (let index = 0; index < steps.length; index++) {
-      const step = steps[index]!
+    for (const [index, step] of steps.entries()) {
       ctx.write(step.writes)
       ctx.write(park)
       // The baseline is read after this step's frame paints, before its witness glyph is written.
@@ -321,7 +368,12 @@ export async function captureRegionReadbackDecision(
       digests.push(measured.regionDigest)
       frames.push(measured.frame)
     }
-    const [seed, after, expected] = digests
+    const seed = digests[0]
+    const after = digests[1]
+    const expected = digests[2]
+    if (seed === undefined || after === undefined || expected === undefined) {
+      throw new Error(`${id}: the capture-region decision reached the verdict with ${digests.length} of 3 digests`)
+    }
     const observed = JSON.stringify({
       region: spec.region,
       sentinel: spec.sentinel,

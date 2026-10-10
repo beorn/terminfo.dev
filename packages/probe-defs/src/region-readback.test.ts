@@ -18,7 +18,7 @@ import {
   type RegionRead,
   type RegionReadback,
 } from "./region-readback.ts"
-import type { ObservationFrame, ProbeResult, TermContext } from "./types.ts"
+import type { CaptureCells, CapturePixelGeometry, MeasuredProbeResult, ObservationFrame, TermContext } from "./types.ts"
 
 const SEED = "\x1b[1;1Hseed"
 const EDIT = "\x1b[1;3H\x1b[1P"
@@ -144,10 +144,10 @@ function ownedWindow(options: {
   return { ctx, read, writes, timeline, requests }
 }
 
-async function decide(fake: Fake, overrides: Partial<RegionReadback> = {}): Promise<ProbeResult> {
+async function decide(fake: Fake, overrides: Partial<RegionReadback> = {}): Promise<MeasuredProbeResult> {
   const result = await captureRegionReadbackDecision(fake.ctx, "editing.delete-chars", spec(overrides), fake.read)
-  if (!result) throw new Error("expected a decided result")
-  return result
+  if (!result?.observation) throw new Error("expected a decided result carrying an observation")
+  return result as MeasuredProbeResult
 }
 
 /** The reads that compared the region; every other read is a witness or a baseline on one cell. */
@@ -280,7 +280,9 @@ test("an undersized measured grid refuses before any byte", async () => {
 
 test("a terminal that answered neither pixel report refuses before any byte", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
-  const result = await decide(fake, { pixelGeometry: { cellWidth: 0, cellHeight: 16, textWidth: 640, textHeight: 384 } })
+  const result = await decide(fake, {
+    pixelGeometry: { cellWidth: 0, cellHeight: 16, textWidth: 640, textHeight: 384 },
+  })
   expect(result.observation.note).toContain("needs the terminal's own positive pixel report")
   expect(fake.writes).toEqual([])
 })

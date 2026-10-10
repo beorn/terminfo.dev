@@ -7,6 +7,9 @@ export type {
   TerminalQueryOutcome,
   ClipboardFixture,
   InputFixture,
+  CaptureCells,
+  CapturePixelGeometry,
+  CaptureRequest,
 } from "./types.ts"
 export {
   OBSERVATION_OUTCOMES,
@@ -36,6 +39,17 @@ export type {
   Interpretation,
 } from "./types.ts"
 export { sgrProbe, cursorProbe, decrpmModeProbe, isBlank, readHyperlinkMetadata, probe } from "./helpers.ts"
+export {
+  captureRegionReadbackDecision,
+  captureRegionVerdict,
+  collectorRegionRead,
+  queryPixelGeometry,
+  type CellRegion,
+  type PixelGeometry,
+  type RegionCapture,
+  type RegionRead,
+  type RegionReadback,
+} from "./region-readback.ts"
 
 import { sgrProbes } from "./sgr.ts"
 import { cursorProbes } from "./cursor.ts"
