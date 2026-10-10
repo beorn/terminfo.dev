@@ -7,6 +7,10 @@
  * @testonly none
  */
 import { spawnSync } from "node:child_process"
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { expect, test } from "vitest"
 
 const identityHref = new URL("./headless-identity.ts", import.meta.url).href
@@ -72,4 +76,41 @@ test("a package whose bun.lock entry is not a matching registry tuple is still r
   const result = runRegistryIntegrity("vt100.js", "0.7.1")
   expect(result.status).not.toBe(0)
   expect(result.stderr).toMatch(/Installed vt100\.js@0\.7\.1 has no matching registry integrity in root bun\.lock/)
+})
+
+/**
+ * @failure file: identity accepted same name/version with different installed bytes, so a stale
+ *   .bun copy could carry workspace provenance (chief ee266575 / review2 821d3bef).
+ * @level l2
+ * @consumer packages/probes/headless-identity.ts fileLinkIntegrity (28548)
+ * @reach fs-walk vendor/vterm/packages/vt100
+ * @testonly fileLinkIntegrity: mismatch case imports the binder because swapping the live .bun
+ *   install would poison sibling identity tests
+ */
+test("same name and version with different installed bytes is refused", () => {
+  const workspace = fileURLToPath(new URL("../../../vterm/packages/vt100", import.meta.url))
+  const tmp = mkdtempSync(join(tmpdir(), "28548-mismatch-"))
+  const installed = join(tmp, "installed")
+  try {
+    cpSync(workspace, installed, { recursive: true })
+    const target = join(installed, "src", "index.ts")
+    writeFileSync(target, `${readFileSync(target, "utf8")}\n// mismatched-install-bytes\n`)
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `import { fileLinkIntegrity } from ${JSON.stringify(identityHref)};
+         fileLinkIntegrity(
+           { path: ${JSON.stringify(target)}, directory: ${JSON.stringify(installed)}, version: "0.7.1" },
+           ${JSON.stringify(workspace)},
+           "vt100.js",
+         )`,
+      ],
+      { encoding: "utf8" },
+    )
+    expect(result.status, result.stderr).not.toBe(0)
+    expect(result.stderr).toMatch(/disagrees with file: workspace/)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
 })

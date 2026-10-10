@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { readFileSync, realpathSync } from "node:fs"
+import { readFileSync, readdirSync, realpathSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { HeadlessRuntimeIdentity } from "@terminfo/probe-defs"
@@ -99,6 +99,64 @@ function fileLinkWorkspace(name: string): string | undefined {
     throw new Error(`file: ${name} at ${workspace} is outside owned Termless/vterm checkouts`)
   }
   return workspace
+}
+
+function listPackageFiles(directory: string): string[] {
+  const out: string[] = []
+  const walk = (relativeDir: string) => {
+    const entries = readdirSync(join(directory, relativeDir), { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name === "node_modules" || entry.name === ".git") continue
+      const rel = relativeDir ? `${relativeDir}/${entry.name}` : entry.name
+      if (entry.isDirectory()) walk(rel)
+      else if (entry.isFile()) out.push(rel)
+    }
+  }
+  walk("")
+  return out.sort()
+}
+
+function installedBytesMustMatchWorkspace(installedDir: string, workspace: string, specifier: string): void {
+  const files = listPackageFiles(installedDir)
+  if (files.length === 0) throw new Error(`Installed ${specifier} at ${installedDir} has no files to bind`)
+  for (const rel of files) {
+    const installedPath = join(installedDir, rel)
+    const workspacePath = join(workspace, rel)
+    let workspaceBytes: Buffer
+    try {
+      workspaceBytes = readFileSync(workspacePath)
+    } catch (cause) {
+      throw new Error(`Installed ${specifier} file ${rel} is not in file: workspace ${workspace}`, { cause })
+    }
+    if (sha256(readFileSync(installedPath)) !== sha256(workspaceBytes)) {
+      throw new Error(
+        `Installed ${specifier} at ${installedPath} disagrees with file: workspace source at ${workspacePath}`,
+      )
+    }
+  }
+}
+
+/** Bind a bun file: install to the owned workspace. Name/version agreement is not enough. */
+export function fileLinkIntegrity(
+  upstream: { path: string; directory: string; version: string },
+  workspace: string,
+  specifier: string,
+): ReturnType<typeof sourceIntegrity> {
+  const manifest: unknown = JSON.parse(readFileSync(join(workspace, "package.json"), "utf8"))
+  if (!record(manifest) || manifest.name !== specifier || typeof manifest.version !== "string") {
+    throw new Error(`file: workspace ${workspace} is not package ${specifier}`)
+  }
+  if (manifest.version !== upstream.version) {
+    throw new Error(
+      `Installed ${specifier}@${upstream.version} disagrees with file: workspace version ${manifest.version} at ${workspace}`,
+    )
+  }
+  installedBytesMustMatchWorkspace(upstream.directory, workspace, specifier)
+  const resolvedRel = relative(upstream.directory, upstream.path)
+  if (resolvedRel.startsWith("..") || resolvedRel.startsWith("/")) {
+    throw new Error(`Resolved ${specifier} at ${upstream.path} is outside its installed package ${upstream.directory}`)
+  }
+  return sourceIntegrity(join(workspace, "package.json"), workspace)
 }
 
 function sourceIntegrity(
@@ -291,16 +349,7 @@ export async function headlessRuntimeIdentity(
     }
     const workspace = fileLinkWorkspace(upstreamSpecifier)
     if (!workspace) return registryIntegrity(upstreamSpecifier, upstream.version)
-    const manifest: unknown = JSON.parse(readFileSync(join(workspace, "package.json"), "utf8"))
-    if (!record(manifest) || manifest.name !== upstreamSpecifier || typeof manifest.version !== "string") {
-      throw new Error(`file: workspace ${workspace} is not package ${upstreamSpecifier}`)
-    }
-    if (manifest.version !== upstream.version) {
-      throw new Error(
-        `Installed ${upstreamSpecifier}@${upstream.version} disagrees with file: workspace version ${manifest.version} at ${workspace}`,
-      )
-    }
-    return sourceIntegrity(join(workspace, "package.json"), workspace)
+    return fileLinkIntegrity(upstream, workspace, upstreamSpecifier)
   })()
   const base = {
     kind: "js" as const,
