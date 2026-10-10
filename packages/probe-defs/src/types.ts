@@ -89,6 +89,51 @@ export interface ObservationFrame {
   label: string
   /** Original capture bytes, such as XWD; retained with the raw run receipt. */
   sourceRef?: string
+  /**
+   * Raw-pixel digest of the cell-aligned region named by the request's `cells`, taken in-run from
+   * the same buffer as `pixelsDigest`. Present exactly when the request named cells.
+   */
+  regionDigest?: string
+  /**
+   * Raw-pixel digest of the whole captured window, over raw pixel bytes at a fixed depth and
+   * colorspace — never the encoded container, whose text chunks differ between identical frames.
+   * It separates "the frame moved while the witness cell stood still" from "nothing moved at all".
+   */
+  pixelsDigest?: string
+}
+
+/** A cell-aligned region in the run's measured grid: 1-based and inclusive on all four edges. */
+export interface CaptureCells {
+  top: number
+  left: number
+  bottom: number
+  right: number
+}
+
+/**
+ * The terminal's own pixel report, as numbers: CSI 16 t (cell size) and CSI 14 t (text area in
+ * pixels). Cells are mapped to an absolute rectangle from these, never from a window width divided
+ * by a column count.
+ */
+export interface CapturePixelGeometry {
+  cellWidth: number
+  cellHeight: number
+  textWidth: number
+  textHeight: number
+}
+
+/**
+ * A capture checkpoint. `cells` asks the collector to digest one cell-aligned region of the same
+ * capture; `ref`, `sourceRef`, `capturedAt` and `label` keep their shape either way, so a request
+ * without `cells` is byte for byte the previous path.
+ */
+export interface CaptureRequest {
+  role: ObservationFrame["role"]
+  label: string
+  /** The region to digest, in cells. `pixelGeometry` is required with it. */
+  cells?: CaptureCells
+  /** The terminal's own pixel report, required alongside `cells`. */
+  pixelGeometry?: CapturePixelGeometry
 }
 
 export interface ProbeTarget {
@@ -398,7 +443,7 @@ export interface TermContext {
   /** An owned Linux collector installs this only after verifying the launch receipt. */
   withClipboardFixture?: (work: (fixture: ClipboardFixture) => Promise<ProbeResult>) => Promise<ProbeResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
-  capture?: (request: Pick<ObservationFrame, "role" | "label">) => Promise<ObservationFrame>
+  capture?: (request: CaptureRequest) => Promise<ObservationFrame>
   /** Present only when an owned OS XTEST adapter is installed for this run. */
   input?: InputFixture
   /** Read unsolicited stdin. `inject` runs after the stdin listener is attached. */

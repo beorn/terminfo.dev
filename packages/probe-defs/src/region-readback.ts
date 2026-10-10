@@ -20,26 +20,10 @@
  * into an absolute rectangle by the collector, so digests are comparable only within one run, which
  * is the whole claim.
  */
-import type { ObservationFrame, ProbeResult, TermContext } from "./types.ts"
+import type { CaptureCells, CapturePixelGeometry, ObservationFrame, ProbeResult, TermContext } from "./types.ts"
 
-/** A cell-aligned region in the run's measured grid: 1-based and inclusive on all four edges. */
-export interface CellRegion {
-  top: number
-  left: number
-  bottom: number
-  right: number
-}
-
-/**
- * The terminal's OWN pixel report, as numbers: CSI 16 t (cell size) and CSI 14 t (text area).
- * Cell-to-pixel arithmetic uses these, never a window width divided by a column count.
- */
-export interface PixelGeometry {
-  cellWidth: number
-  cellHeight: number
-  textWidth: number
-  textHeight: number
-}
+export type CellRegion = CaptureCells
+export type PixelGeometry = CapturePixelGeometry
 
 /** One capture checkpoint's cell-aligned read, from a run whose capture adapter is installed. */
 export interface RegionCapture {
@@ -56,6 +40,25 @@ export type RegionRead = (request: {
   region: CellRegion
   pixelGeometry: PixelGeometry
 }) => Promise<RegionCapture>
+
+/**
+ * The collector-backed reader for a run whose capture adapter is installed, or null when this run
+ * has no owned capture at all. A frame that came back without a digest is a collector bug, not a
+ * measurement, so it raises instead of quietly degrading the verdict.
+ */
+export function collectorRegionRead(ctx: TermContext): RegionRead | null {
+  const capture = ctx.capture
+  if (!capture) return null
+  return async ({ role, label, region, pixelGeometry }) => {
+    const frame = await capture({ role, label, cells: region, pixelGeometry })
+    if (frame.regionDigest === undefined || frame.pixelsDigest === undefined) {
+      throw new Error(
+        `${label}: the capture adapter returned no raw-pixel digest for the requested cells (regionDigest ${String(frame.regionDigest)}, pixelsDigest ${String(frame.pixelsDigest)})`,
+      )
+    }
+    return { regionDigest: frame.regionDigest, pixelsDigest: frame.pixelsDigest, frame }
+  }
+}
 
 export interface RegionReadback {
   /** The cells the verdict compares. The witness cell and the cursor row lie outside it. */
