@@ -1303,6 +1303,19 @@ export const textProbes: ProbeDefinition[] = [
         }
         try {
           installTabFixture(ctx.feed)
+          const start = ctx.getCursor()
+          if (start.y !== 0 || start.x !== 0) {
+            return {
+              pass: false,
+              response: JSON.stringify({ start }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "parser-state",
+                note: "CHT starting position was not row 1, column 1",
+              },
+            }
+          }
           ctx.feed("\x1b[2I")
           const cursor = ctx.getCursor()
           return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "parser-state")
@@ -1324,6 +1337,19 @@ export const textProbes: ProbeDefinition[] = [
         }
         try {
           installTabFixture(ctx.write)
+          const start = await ctx.queryCursorPosition()
+          if (!start || start.row !== 1 || start.col !== 1) {
+            return {
+              pass: false,
+              response: JSON.stringify({ start }),
+              observation: {
+                outcome: "inconclusive",
+                reason: start ? "insufficient-evidence" : "no-response",
+                evidence: "behavior",
+                note: "CHT starting position was not measured at row 1, column 1",
+              },
+            }
+          }
           ctx.write("\x1b[2I")
           return tabPositionResult(await ctx.queryCursorPosition(), 17, "behavior")
         } finally {
@@ -1356,7 +1382,21 @@ export const textProbes: ProbeDefinition[] = [
         }
         try {
           installTabFixture(ctx.feed)
-          ctx.feed("\x1b[1;21H\x1b[Z")
+          ctx.feed("\x1b[1;21H")
+          const start = ctx.getCursor()
+          if (start.y !== 0 || start.x !== 20) {
+            return {
+              pass: false,
+              response: JSON.stringify({ start }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "parser-state",
+                note: "CBT starting position was not row 1, column 21",
+              },
+            }
+          }
+          ctx.feed("\x1b[Z")
           const cursor = ctx.getCursor()
           return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "parser-state")
         } finally {
@@ -1377,7 +1417,21 @@ export const textProbes: ProbeDefinition[] = [
         }
         try {
           installTabFixture(ctx.write)
-          ctx.write("\x1b[1;21H\x1b[Z")
+          ctx.write("\x1b[1;21H")
+          const start = await ctx.queryCursorPosition()
+          if (!start || start.row !== 1 || start.col !== 21) {
+            return {
+              pass: false,
+              response: JSON.stringify({ start }),
+              observation: {
+                outcome: "inconclusive",
+                reason: start ? "insufficient-evidence" : "no-response",
+                evidence: "behavior",
+                note: "CBT starting position was not measured at row 1, column 21",
+              },
+            }
+          }
+          ctx.write("\x1b[Z")
           return tabPositionResult(await ctx.queryCursorPosition(), 17, "behavior")
         } finally {
           restoreDefaultTabs(ctx.write, ctx.cols)

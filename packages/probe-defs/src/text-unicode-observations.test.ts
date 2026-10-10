@@ -154,7 +154,7 @@ test("app cursor motion needs a measured start while cell-only text stays ungrad
 
 // Model the DEC right-margin fallback and a broken stationary fallback independently
 // of the probe, while preserving old-stop calibration and cleanup evidence.
-function tabTerminal(ignoreClear = false, stationaryFallback = false) {
+function tabTerminal(ignoreClear = false, stationaryFallback = false, ignoreTarget = false) {
   let col = 1
   const stops = new Set(Array.from({ length: 10 }, (_, index) => 9 + index * 8))
   const writes: string[] = []
@@ -165,7 +165,7 @@ function tabTerminal(ignoreClear = false, stationaryFallback = false) {
     },
     write(sequence: string) {
       writes.push(sequence)
-      for (const match of sequence.matchAll(/\x1b\[(\d+);(\d+)H|\x1b\[(\d+)g|\x1bH|\t/g)) {
+      for (const match of sequence.matchAll(/\x1b\[(\d+);(\d+)H|\x1b\[(\d+)g|\x1bH|\t|\x1b\[(\d*)[IZ]/g)) {
         if (match[1] && match[2]) col = Number(match[2])
         else if (match[3] === "3") {
           if (!ignoreClear) stops.clear()
@@ -173,6 +173,13 @@ function tabTerminal(ignoreClear = false, stationaryFallback = false) {
           stops.add(col)
         } else if (match[0] === "\t") {
           col = [...stops].filter((stop) => stop > col).sort((a, b) => a - b)[0] ?? (stationaryFallback ? col : 80)
+        } else if (!ignoreTarget) {
+          for (let count = Number(match[4] || 1); count > 0; count -= 1) {
+            const backward = match[0].endsWith("Z")
+            col = backward
+              ? ([...stops].filter((stop) => stop < col).sort((a, b) => b - a)[0] ?? 1)
+              : ([...stops].filter((stop) => stop > col).sort((a, b) => a - b)[0] ?? 80)
+          }
         }
       }
     },
@@ -267,34 +274,58 @@ test("TBC leaves failed setup, narrow geometry and absent or malformed cursor ev
   expect(missing.writes.at(-1)).toContain("\x1b[1;73H\x1bH")
 })
 
-test("CHT and CBT establish tab stops independent of inherited terminal state", async () => {
-  for (const [id, expectedCol] of [
-    ["text.cht", 17],
-    ["text.cbt", 17],
-  ] as const) {
-    const writes: string[] = []
-    const result = await byId(id).term(
-      app({
-        write(value) {
-          writes.push(value)
-        },
-        queryCursorPosition: async () => ({ row: 1, col: expectedCol }),
-      }),
-    )
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
-    expect(result.assertions).toMatchObject([{ kind: "positive", observed: expect.stringContaining("17") }])
-    expect(writes.join("")).toContain("\x1b[3g")
-    expect(writes.join("")).toContain("\x1bH")
-    expect(writes.at(-1)).toContain("\x1bH")
-    const ignored = await byId(id).term(
-      app({ queryCursorPosition: async () => ({ row: 1, col: id === "text.cht" ? 1 : 21 }) }),
-    )
-    expect(ignored.observation).toMatchObject({ outcome: "unsupported", evidence: "behavior" })
+test.each([
+  ["text.cht", "app"],
+  ["text.cht", "headless"],
+  ["text.cbt", "app"],
+  ["text.cbt", "headless"],
+])("%s %s qualifies setup before grading its owned tab target", async (id, mode) => {
+  const probe = byId(id)
+  const target = id === "text.cht" ? "\x1b[2I" : "\x1b[Z"
+  const run = (terminal: ReturnType<typeof tabTerminal>, constant?: number) =>
+    mode === "app"
+      ? probe.term(
+          app({ write: terminal.write, queryCursorPosition: async () => ({ row: 1, col: constant ?? terminal.col }) }),
+        )
+      : probe.termless(
+          headless({
+            feed: terminal.write,
+            getCursor: () => ({ x: (constant ?? terminal.col) - 1, y: 0, visible: true, style: null }),
+          }),
+        )
+
+  // A constant target reply used to pass despite never establishing the distinct starting position.
+  for (const constant of [17, 4]) {
+    const terminal = tabTerminal()
+    const unqualified = await run(terminal, constant)
+    expect(unqualified.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(unqualified.assertions).toBeUndefined()
+    expect(terminal.writes.join("")).not.toContain(target)
+    expect(terminal.writes.at(-1)).toContain("\x1bH")
   }
-  expect((await byId("text.cht").term(app({ cols: 12 }))).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-  })
+  for (const ignored of [false, true]) {
+    const terminal = tabTerminal(false, false, ignored)
+    const result = await run(terminal)
+    expect(result.observation).toMatchObject({
+      outcome: ignored ? "unsupported" : "supported",
+      evidence: mode === "app" ? "behavior" : "parser-state",
+    })
+    expect(result.assertions).toMatchObject([{ kind: ignored ? "negative" : "positive" }])
+    expect(terminal.writes.join("")).toContain(target)
+    expect(terminal.writes.at(-1)).toContain("\x1bH")
+  }
+  if (mode === "app") {
+    const terminal = tabTerminal()
+    const missing = await probe.term(app({ write: terminal.write }))
+    expect(missing.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+    expect(missing.assertions).toBeUndefined()
+    expect(terminal.writes.join("")).not.toContain(target)
+    expect(terminal.writes.at(-1)).toContain("\x1bH")
+    expect((await probe.term(app({ cols: 12 }))).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+    })
+  }
 })
 
 test("headless HTS restores tab stops within the initialized grid width", () => {
