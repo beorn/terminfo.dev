@@ -9,7 +9,6 @@ import { inputProbes } from "./input.ts"
 import type { TermContext, TermlessContext } from "./types.ts"
 
 const eventInputIds = [
-  "input.modify-other-keys",
   "input.modify-other-keys-3",
   "input.pixel-mouse",
   "input.urxvt-mouse",

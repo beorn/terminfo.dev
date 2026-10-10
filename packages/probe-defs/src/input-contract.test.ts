@@ -25,15 +25,17 @@ import {
 
 /**
  * The 11 input protocol capabilities (10 defined in input.ts + 1 catalog-only in features.json).
- * Input event probes currently evaluate to "inconclusive" pending #28452 OS-level injection apparatus;
+ * input.modify-other-keys grades through OS XTEST after CSI >4;2m (ctrl+i vs Tab);
  * input.csi-u negotiates Kitty keyboard protocol flag 1;
+ * remaining catalog mouse/key-3 event probes stay inconclusive pending their regrade;
  * input.xtest-key, input.xtest-click, and input.xtest-wheel execute OS-level injection with same-run delivery control.
  */
 const INPUT_CONTRACT: GroupContract = [
   {
     id: "input.modify-other-keys",
-    expected: "inconclusive",
-    claim: "modifyOtherKeys: requires generated input events and encoded reports",
+    expected: "decided",
+    claim:
+      "modifyOtherKeys: CSI >4;2m then ctrl+i reports CSI 27;5;105~ or 105;5u after plain-a delivery control; Tab is unsupported",
   },
   { id: "input.csi-u", expected: "decided", claim: "CSI u: Kitty keyboard protocol flag 1 enables disambiguate mode" },
   {
@@ -127,6 +129,18 @@ function inputModel(csiUAnswered = false): HeadlessModel {
 }
 
 function inputSatisfactionContext(id: string): { readonly headless?: TermlessContext; readonly term?: TermContext } {
+  if (id === "input.modify-other-keys") {
+    return {
+      term: replayContext(new Map(), {
+        input: { injectKey: async () => {}, injectClick: async () => {} },
+        readInput: async (pattern) => {
+          if (pattern.test("a")) return ["a"]
+          if (pattern.test("\x1b[27;5;105~")) return ["\x1b[27;5;105~"]
+          return null
+        },
+      }),
+    }
+  }
   if (id === "input.xtest-key") {
     return {
       term: replayContext(new Map(), {
@@ -237,4 +251,19 @@ test("input.xtest-key reads unsatisfied when delivery control fails", async () =
     }),
   }
   await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control/i)
+})
+
+test("input.modify-other-keys reads unsatisfied when delivery control fails", async () => {
+  const row = INPUT_CONTRACT.find((entry) => entry.id === "input.modify-other-keys")
+  const probe = inputProbes.find((entry) => entry.id === "input.modify-other-keys")
+  expect(row).toBeDefined()
+  expect(probe).toBeDefined()
+  if (!row || !probe) return
+  const failingContext = {
+    term: replayContext(new Map(), {
+      input: { injectKey: async () => {}, injectClick: async () => {} },
+      readInput: async () => null,
+    }),
+  }
+  await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control|plain a/i)
 })

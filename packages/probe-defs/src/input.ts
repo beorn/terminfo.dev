@@ -34,31 +34,7 @@ function mouseInputProbe(id: string, modeName: string): ProbeDefinition {
 }
 
 export const inputProbes: ProbeDefinition[] = [
-  probe(
-    "input.modify-other-keys",
-    (ctx) => ({
-      pass: false,
-      response: JSON.stringify({ declaredModifyOtherKeys: ctx.capabilities.extensions.has("modifyOtherKeys") }),
-      note: absentEventNote,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "legacy",
-        note: absentEventNote,
-      },
-    }),
-    () =>
-      Promise.resolve<ProbeResult>({
-        pass: false,
-        note: absentEventNote,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note: absentEventNote,
-        },
-      }),
-  ),
+  probe("input.modify-other-keys", () => xtestCoverage("key injection"), modifyOtherKeys2, "interaction"),
 
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
@@ -106,6 +82,10 @@ const MOUSE_RESET = "\x1b[?1000l\x1b[?1006l"
 const PLAIN_A = /^a/
 const MODIFIED_KEY = /\x01|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
 const SGR_MOUSE = /\x1b\[<\d+;\d+;\d+[Mm]/
+const MODIFY_OTHER_KEYS_2 = "\x1b[>4;2m"
+const MODIFY_OTHER_KEYS_RESET = "\x1b[>4;0m"
+const MODIFY_OTHER_KEYS_REPORT = /\t|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
+const MODIFY_OTHER_KEYS_ENCODING = /\x1b\[(?:27;\d+;105~|105;\d+u)/
 
 function xtestCoverage(kind: string): ProbeResult {
   return notTestedResult(`OS-level XTEST ${kind}`, { input: false })
@@ -129,6 +109,48 @@ function interactionResult(action: string, expected: string, observed: Record<st
     observation: { outcome: "supported", evidence: "interaction" },
     assertions: [{ kind: "positive", expected, observed: JSON.stringify(observed), action }],
   }
+}
+
+function unsupportedInteraction(action: string, expected: string, observed: Record<string, unknown>): ProbeResult {
+  return {
+    pass: false,
+    response: JSON.stringify(observed),
+    observation: { outcome: "unsupported", evidence: "interaction" },
+    assertions: [{ kind: "negative", expected, observed: JSON.stringify(observed), action }],
+  }
+}
+
+async function withModifyOtherKeys<T>(ctx: TermContext, work: () => Promise<T>): Promise<T> {
+  ctx.write(MODIFY_OTHER_KEYS_2)
+  try {
+    return await work()
+  } finally {
+    ctx.write(MODIFY_OTHER_KEYS_RESET)
+  }
+}
+
+async function modifyOtherKeys2(ctx: TermContext): Promise<ProbeResult> {
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!input || !readInput) return xtestCoverage("key injection")
+  return withModifyOtherKeys(ctx, async () => {
+    const control = await deliveryControl(
+      () => input.injectKey("a"),
+      readInput,
+      PLAIN_A,
+      "XTEST delivery control failed: plain a did not reach the app",
+    )
+    const report = (await readInput(MODIFY_OTHER_KEYS_REPORT, 1000, () => input.injectKey("ctrl+i")))?.[0]
+    if (!report) {
+      throw new Error("XTEST modifyOtherKeys ctrl+i did not reach the app after a successful delivery control")
+    }
+    const observed = { mode: "modifyOtherKeys-2", control, report }
+    const expected = "OS XTEST ctrl+i report under modifyOtherKeys 2 after plain-a delivery control"
+    if (MODIFY_OTHER_KEYS_ENCODING.test(report)) {
+      return interactionResult("modify-other-keys:ctrl+i", expected, observed)
+    }
+    return unsupportedInteraction("modify-other-keys:ctrl+i", expected, observed)
+  })
 }
 
 async function xtestKey(ctx: TermContext): Promise<ProbeResult> {

@@ -1,7 +1,7 @@
 /**
- * @failure XTEST probes publish unsupported, skip same-run delivery control, or omit interaction action.
+ * @failure XTEST or catalog input probes publish unsupported, skip same-run delivery control, omit interaction action, or grade Tab as a throw.
  * @level l0
- * @consumer App collector OS-level key/click/wheel injection observations.
+ * @consumer App collector OS-level key/click/wheel injection and modifyOtherKeys observations.
  * @testonly none
  */
 import { expect, test } from "vitest"
@@ -10,9 +10,9 @@ import type { ProbeResult, TermContext } from "./types.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
 
-function probe(id: (typeof xtestIds)[number]) {
+function probe(id: string) {
   const definition = inputProbes.find((candidate) => candidate.id === id)
-  if (!definition?.term || !definition.termless) throw new Error(`Missing XTEST callbacks for ${id}`)
+  if (!definition?.term || !definition.termless) throw new Error(`Missing input callbacks for ${id}`)
   return definition
 }
 
@@ -181,4 +181,98 @@ test("input.xtest-wheel records interaction under 1000+1006 after a control clic
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-wheel:4" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1000+1006", control: "\x1b[<0;10;10M", report: "\x1b[<64;10;10M" })
+})
+
+test("input.modify-other-keys is not tested without an OS XTEST adapter", async () => {
+  const definition = probe("input.modify-other-keys")
+  const writes: string[] = []
+  const headless = definition.termless!({
+    cols: 80,
+    feed() {},
+    feedCapture() {
+      return ""
+    },
+    getCell: () => {
+      throw new Error("Unexpected getCell")
+    },
+    getCursor: () => {
+      throw new Error("Unexpected getCursor")
+    },
+    getMode: () => false,
+    getText: () => "",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset() {},
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "unknown",
+      extensions: new Set(["modifyOtherKeys"]),
+    },
+  })
+  expect(headless.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(headless.observation).toBeUndefined()
+
+  const result = await definition.term!(term({ write: (text) => writes.push(text) }))
+  expect(writes).toEqual([])
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(result.observation).toBeUndefined()
+})
+
+test("input.modify-other-keys aborts when plain a does not reach the app, and does not inject ctrl+i", async () => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: {} }, writes)
+  await expect(probe("input.modify-other-keys").term!(ctx)).rejects.toThrow(/delivery control|plain a/i)
+  expect(keys).toEqual(["a"])
+  expect(writes.join("")).toContain("\x1b[>4;2m")
+  expect(writes.join("")).toContain("\x1b[>4;0m")
+})
+
+test.each([
+  ["\x1b[27;5;105~", "xterm CSI 27;5;105~"],
+  ["\x1b[105;5u", "CSI u 105;5u"],
+] as const)("input.modify-other-keys records supported interaction for %s", async (report, label) => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+i": report } }, writes)
+  const result = (await probe("input.modify-other-keys").term!(ctx)) as ProbeResult
+  expect(keys).toEqual(["a", "ctrl+i"])
+  expect(writes.join("")).toContain("\x1b[>4;2m")
+  expect(writes.join("")).toContain("\x1b[>4;0m")
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "modify-other-keys:ctrl+i" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed, label).toMatchObject({ mode: "modifyOtherKeys-2", control: "a", report })
+})
+
+test("input.modify-other-keys records unsupported interaction when ctrl+i still reports Tab", async () => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+i": "\t" } }, writes)
+  const result = (await probe("input.modify-other-keys").term!(ctx)) as ProbeResult
+  expect(keys).toEqual(["a", "ctrl+i"])
+  expect(writes.join("")).toContain("\x1b[>4;2m")
+  expect(writes.join("")).toContain("\x1b[>4;0m")
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "modify-other-keys:ctrl+i" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "modifyOtherKeys-2", control: "a", report: "\t" })
+})
+
+test("input.modify-other-keys throws when ctrl+i is silent after delivery control, and still resets the mode", async () => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: { a: "a" } }, writes)
+  await expect(probe("input.modify-other-keys").term!(ctx)).rejects.toThrow(/ctrl\+i|modifyOtherKeys|silent/i)
+  expect(keys).toEqual(["a", "ctrl+i"])
+  expect(writes.join("")).toContain("\x1b[>4;2m")
+  expect(writes.join("")).toContain("\x1b[>4;0m")
 })

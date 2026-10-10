@@ -869,8 +869,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "modifyOtherKeys (CSI > 4 ; Pv m) enables extended key reporting that distinguishes modified key combinations that would otherwise be ambiguous. At level 2, keys like Ctrl+I are reported distinctly from Tab, and Ctrl+M from Enter.\n\nmodifyOtherKeys is xterm's opt-in path for less ambiguous keyboard reporting. It predates the Kitty keyboard protocol and is still relevant because many applications learned to parse it first. The tradeoff is compatibility: once enabled, key sequences change shape, so applications must enable it deliberately and restore terminal state on exit.",
-    "probe": "Inconclusive until controlled modified-key events are generated and their encoded reports checked. Backend declarations remain diagnostic context.",
-    "probeStatus": "unprobed"
+    "probe": "Enable modifyOtherKeys 2 (CSI > 4 ; 2 m), confirm XTEST delivery with plain a, then inject ctrl+i. CSI 27;5;105~ or CSI 105;5u is supported; Tab means the mode was ignored (unsupported). Missing OS XTEST adapter is not tested. Reset with CSI > 4 ; 0 m."
   },
   "input.csi-u": {
     "name": "CSI u Key Encoding",
