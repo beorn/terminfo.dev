@@ -122,6 +122,51 @@ export async function queryAnsiMode(ctx: TermContext, modeNumber: number): Promi
 }
 
 /**
+ * DECRQSS `$ q SP q` — the terminal's own DECSCUSR cursor-style setting. A complete
+ * `DCS 1 $ r <Ps> SP q ST` reply yields `<Ps>`; a timeout, a DA1 sentinel, or a `DCS 0 $ r ST`
+ * "request not recognized" reply all return null. A missing readback is never a negative.
+ */
+export async function queryCursorStyle(ctx: TermContext): Promise<number | null> {
+  const outcome = await ctx.queryWithSentinelOutcome("\x1bP$q q\x1b\\", /\x1bP1\$r([0-9]+) q\x1b\\/)
+  if (outcome.reason !== "reply") return null
+  const payload = outcome.match?.[1]
+  if (payload === undefined) return null
+  const ps = Number(payload)
+  return Number.isInteger(ps) ? ps : null
+}
+
+/**
+ * Decide a DECSCUSR shape claim from the terminal's own DECRQSS report when it answers, and return
+ * null when it stays silent so the caller keeps its existing (pixel) evidence path. A missing
+ * readback is never a negative.
+ */
+export async function cursorStyleReadbackDecision(
+  ctx: TermContext,
+  sequence: string,
+  expected: number,
+): Promise<ProbeResult | null> {
+  ctx.write(sequence)
+  try {
+    const ps = await queryCursorStyle(ctx)
+    if (ps === null) return null
+    const pass = ps === expected
+    return {
+      pass,
+      observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+      assertions: [
+        {
+          kind: pass ? "positive" : "negative",
+          expected: `DECRQSS reports cursor style ${expected} after ${sequence}`,
+          observed: String(ps),
+        },
+      ],
+    }
+  } finally {
+    ctx.write("\x1b[0 q")
+  }
+}
+
+/**
  * The terminal's own DECRQSS report may spell a style as a colon sub-parameter of the code we
  * require: measured, kitty-0.49.2 reports SGR 21 (doubly underlined) as `4:2`, and `4:1` is the
  * single underline `4` spelled out. Fold those equivalences into the reported codes so the
