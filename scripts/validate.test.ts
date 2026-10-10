@@ -17,6 +17,10 @@ test("validation inventories v2 targets and refuses malformed probe data with it
     mkdirSync(join(root, "scripts"))
     copyFileSync(join(source, "scripts", "validate.ts"), join(root, "scripts", "validate.ts"))
     symlinkSync(join(source, "packages"), join(root, "packages"), "dir")
+    // validate.ts reads the category catalog through docs/data/categories.ts, so the sandbox must
+    // expose docs/ (and node_modules/ for its @terminfo/run-parser import), as consumer-parity does.
+    symlinkSync(join(source, "docs"), join(root, "docs"), "dir")
+    symlinkSync(join(source, "node_modules"), join(root, "node_modules"), "dir")
     for (const dir of ["probes-apps", "probes-libs", "probes-mux"]) {
       mkdirSync(join(root, "content", dir), { recursive: true })
     }

@@ -40,6 +40,7 @@ import {
   type DefaultContextReview,
 } from "../docs/data/current-results.ts"
 import { loadReleaseScope, loadFeatureCohort, type FeatureCohort } from "../docs/data/load-release-scope.ts"
+import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
   barOverMeasured,
   d3Verdict,
@@ -436,10 +437,116 @@ export function buildReport(args: {
   return report
 }
 
-function remainderLine(remainder: readonly RemainderRow[]): string {
-  if (remainder.length === 0) return "    remainder    0 rows"
+/**
+ * One cohort category: its key, display label, catalog order, and the cohort ids that belong to it.
+ * Membership is the feature id's first dot-segment — the site's own invariant (scripts/validate.ts
+ * refuses a prefix that is not a categories.json key) — and categories.json is the ONE owner of the
+ * label and order. The partition is checked, not trusted: an unknown prefix throws rather than
+ * silently dropping a capability from every category denominator.
+ */
+export interface CohortCategory {
+  key: string
+  label: string
+  order: number
+  ids: string[]
+}
+
+/** Partition a cohort's measured ids into their categories, returned in categories.json order. */
+export function cohortCategories(
+  measuredIds: readonly string[],
+  categories: Record<string, CategoryMeta>,
+): CohortCategory[] {
+  const byKey = new Map<string, string[]>()
+  for (const id of measuredIds) {
+    const key = id.split(".")[0] ?? ""
+    const meta = categories[key]
+    if (!meta) {
+      throw new Error(`feature id "${id}" has prefix "${key}", which is not a category in categories.json`)
+    }
+    const list = byKey.get(key)
+    if (list) list.push(id)
+    else byKey.set(key, [id])
+  }
+  const grouped = [...byKey.entries()].map(([key, ids]) => ({
+    key,
+    label: categories[key]?.label ?? key,
+    order: categories[key]?.order ?? 0,
+    ids,
+  }))
+  const assigned = grouped.reduce((count, category) => count + category.ids.length, 0)
+  if (assigned !== measuredIds.length) {
+    throw new Error(`category partition covered ${assigned} ids, not the cohort's ${measuredIds.length}`)
+  }
+  grouped.sort((left, right) => left.order - right.order)
+  return grouped
+}
+
+/** One category's decisive share over its own ids, at the same D3 bar as the cohort. */
+export interface CategoryShare {
+  category: CohortCategory
+  share: DecisiveShare
+}
+
+/** The per-category decisive shares of a run's cells, one per category, in catalog order. */
+export function categoryShares(cells: ShareCells, categories: readonly CohortCategory[]): CategoryShare[] {
+  return categories.map((category) => ({ category, share: decisiveShare(cells, category.ids) }))
+}
+
+/** The block header printed under each measured context's aggregate lines. */
+export const CATEGORY_BLOCK_HEADER =
+  "CATEGORIES OF THE 125 — D3 bar per category: >=90% pass, >=70% with gaps, else fail"
+
+/**
+ * One category line — the fraction beside the label, the D3 label (not the full verdict text, so the
+ * fraction is not printed a third time) — plus its named remainder, indented beneath.
+ */
+export function formatCategoryRow(category: CohortCategory, share: DecisiveShare, labelWidth: number): string[] {
+  if (share.denominator !== category.ids.length) {
+    throw new Error(
+      `category ${category.key} share denominator ${share.denominator} does not match its ${category.ids.length} cohort ids`,
+    )
+  }
+  return [
+    `    ${category.label.padEnd(labelWidth)}  ${share.decisive}/${share.denominator} = ${share.decisivePct}% · ${share.verdict.label}`,
+    remainderLine(share.remainder, "      "),
+  ]
+}
+
+/**
+ * Every printed line for one candidate-2 bar row: the aggregate decisive/inconclusive lines and the
+ * whole-cohort remainder, then — only for a MEASURED context — the per-category block. A context with
+ * no selected run (or a run on the wrong suite) prints its reason and NO category lines, because there
+ * is no run to measure.
+ */
+export function formatCohortRow(
+  row: CohortBarRow,
+  categories: readonly CohortCategory[],
+  labelWidth: number,
+): string[] {
+  const lines = [`${row.context.terminalId}/${row.context.os}`]
+  if ("run" in row) {
+    lines.push(`  run ${row.run.runId} · suite ${row.run.suiteId} · selected by ${row.selection} · ${row.run.key}`)
+  }
+  if (!row.measured) {
+    lines.push(`  not measured — ${row.reason}`)
+    return lines
+  }
+  lines.push(
+    `  decisive/125 ${row.share.decisive}/125 = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}`,
+    `  inconclusive/125 ${row.share.inconclusive}/125 = ${row.share.inconclusivePct}%`,
+    remainderLine(row.share.remainder),
+    `  ${CATEGORY_BLOCK_HEADER}`,
+  )
+  for (const { category, share } of categoryShares(row.run.cells, categories)) {
+    lines.push(...formatCategoryRow(category, share, labelWidth))
+  }
+  return lines
+}
+
+function remainderLine(remainder: readonly RemainderRow[], indent = "    "): string {
+  if (remainder.length === 0) return `${indent}remainder    0 rows`
   const named = remainder.map((entry) => `${entry.featureId} (${entry.bucket})`).join(", ")
-  return `    remainder    ${remainder.length} rows: ${named}`
+  return `${indent}remainder    ${remainder.length} rows: ${named}`
 }
 
 export function formatBarRow(row: BarRow): string[] {
@@ -500,22 +607,13 @@ function main(): void {
     console.log(
       `unavailable in required app schedule (retained in denominator): ${cohort.unavailableIds.join(", ") || "none"}`,
     )
+    const categories = cohortCategories(cohort.measuredIds, loadCategories(contentDir))
+    const labelWidth = Math.max(...categories.map((category) => category.label.length))
     console.log("BAR ROWS — the site's selected run per Release 1 (terminal, os) context")
     for (const row of cohort.barRows.filter(
       (row) => !terminalIds.length || terminalIds.includes(row.context.terminalId),
     )) {
-      console.log(`${row.context.terminalId}/${row.context.os}`)
-      if ("run" in row) {
-        console.log(`  run ${row.run.runId} · suite ${row.run.suiteId} · selected by ${row.selection} · ${row.run.key}`)
-      }
-      if (!row.measured) console.log(`  not measured — ${row.reason}`)
-      else {
-        console.log(
-          `  decisive/125 ${row.share.decisive}/125 = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}`,
-        )
-        console.log(`  inconclusive/125 ${row.share.inconclusive}/125 = ${row.share.inconclusivePct}%`)
-        console.log(remainderLine(row.share.remainder))
-      }
+      for (const line of formatCohortRow(row, categories, labelWidth)) console.log(line)
     }
     console.log(`ADMITTED RUNS — every admitted schema-v2 app run in ${report.searched}`)
     for (const row of cohort.admittedRuns) {

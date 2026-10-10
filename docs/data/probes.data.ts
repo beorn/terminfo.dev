@@ -13,6 +13,7 @@ import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
+import { loadCategories } from "./categories.ts"
 import { loadReleaseScope } from "./load-release-scope.ts"
 import {
   barOverMeasured,
@@ -188,13 +189,9 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
 }
 
 function loadCategoryLabels(): Record<string, string> {
-  const path = join(__dirname, "..", "..", "content", "categories.json")
-  const raw = parseJsonStrict(path, readFileSync(path, "utf-8"))
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`${path}: expected category catalog object`)
-  }
+  // The category catalog is read through its one owner, docs/data/categories.ts.
   return Object.fromEntries(
-    Object.entries(raw as Record<string, { label: string }>).map(([id, value]) => [id, value.label]),
+    Object.entries(loadCategories(join(__dirname, "..", "..", "content"))).map(([id, value]) => [id, value.label]),
   )
 }
 

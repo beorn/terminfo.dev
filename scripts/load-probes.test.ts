@@ -99,7 +99,7 @@ test.each(["terminals", "annotations", "categories"] as const)(
           ? { kitty: { label: "Kitty fixture", slug: "kitty-fixture" } }
           : name === "annotations"
             ? { "kitty:sgr.bold": { note: "fixture" } }
-            : { sgr: { label: "Styles" } }
+            : { sgr: { label: "Styles", order: 1, description: "styles fixture" } }
       writeFileSync(path, JSON.stringify(valid))
       const data = loadFullProbes()
       if (name === "terminals") expect(data.meta).toMatchObject(valid)
