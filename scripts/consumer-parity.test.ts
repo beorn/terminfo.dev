@@ -213,6 +213,7 @@ it("analysis rejects malformed required catalogs before replacing its output", (
       "frameworks",
       "glossary",
       "annotations",
+      "release-scope-candidate2",
     ]) {
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
@@ -266,6 +267,7 @@ it("analysis validation refuses stale live values and key drift but labels histo
       "frameworks",
       "glossary",
       "annotations",
+      "release-scope-candidate2",
     ]) {
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
