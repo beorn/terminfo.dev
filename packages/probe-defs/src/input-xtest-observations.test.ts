@@ -140,16 +140,15 @@ test("input.xtest-key aborts when plain a does not reach the app, and does not i
   expect(keys).toEqual(["a"])
 })
 
-test("input.xtest-key records interaction after plain-a control then ctrl+shift+a", async () => {
+test("input.xtest-key records interaction after plain-a control then ctrl+a", async () => {
   const writes: string[] = []
-  const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+shift+a": "\x1b[27;6;65~" } }, writes)
+  const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": "\x01" } }, writes)
   const result = (await probe("input.xtest-key").term!(ctx)) as ProbeResult
-  expect(keys).toEqual(["a", "ctrl+shift+a"])
-  expect(writes.some((text) => text.includes("\x1b[>4;2m"))).toBe(true)
+  expect(keys).toEqual(["a", "ctrl+a"])
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-key:ctrl+shift+a" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-key:ctrl+a" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
-  expect(observed).toMatchObject({ control: "a", report: "\x1b[27;6;65~" })
+  expect(observed).toMatchObject({ control: "a", report: "\x01" })
 })
 
 test("input.xtest-click records interaction under 1000+1006 after a same-run control click", async () => {

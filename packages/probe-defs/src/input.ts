@@ -101,12 +101,10 @@ export const inputProbes: ProbeDefinition[] = [
   probe("input.xtest-wheel", () => xtestCoverage("wheel injection"), xtestWheel, "interaction"),
 ]
 
-const MODIFY_OTHER_KEYS_SET = "\x1b[>4;2m"
-const MODIFY_OTHER_KEYS_RESET = "\x1b[>4;0m"
 const MOUSE_SET = "\x1b[?1000h\x1b[?1006h"
 const MOUSE_RESET = "\x1b[?1000l\x1b[?1006l"
 const PLAIN_A = /^a/
-const MODIFIED_KEY = /\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
+const MODIFIED_KEY = /\x01|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
 const SGR_MOUSE = /\x1b\[<\d+;\d+;\d+[Mm]/
 
 function xtestCoverage(kind: string): ProbeResult {
@@ -143,19 +141,14 @@ async function xtestKey(ctx: TermContext): Promise<ProbeResult> {
     PLAIN_A,
     "XTEST delivery control failed: plain a did not reach the app",
   )
-  ctx.write(MODIFY_OTHER_KEYS_SET)
-  try {
-    const report = (await readInput(MODIFIED_KEY, 1000, () => input.injectKey("ctrl+shift+a")))?.[0]
-    if (!report) {
-      throw new Error("XTEST modified key did not reach the app after a successful delivery control")
-    }
-    return interactionResult("xtest-key:ctrl+shift+a", "OS XTEST ctrl+shift+a report after plain-a delivery control", {
-      control,
-      report,
-    })
-  } finally {
-    ctx.write(MODIFY_OTHER_KEYS_RESET)
+  const report = (await readInput(MODIFIED_KEY, 1000, () => input.injectKey("ctrl+a")))?.[0]
+  if (!report) {
+    throw new Error("XTEST modified key did not reach the app after a successful delivery control")
   }
+  return interactionResult("xtest-key:ctrl+a", "OS XTEST ctrl+a report after plain-a delivery control", {
+    control,
+    report,
+  })
 }
 
 async function withMouseModes<T>(ctx: TermContext, work: () => Promise<T>): Promise<T> {
