@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "c0c52e8abbe5d690db147b17f454a9ac",
+  "collectedAt": "2026-10-10T22:36:25.552Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "macos-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/task/dev3-splus1-freeze",
+    "githubRunId": "38092011186",
+    "githubRunAttempt": "1",
+    "job": "measure-macos",
+    "jobId": "114330190011"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000045889",
+    "os": "macOS",
+    "arch": "ARM64",
+    "imageOS": "macos26",
+    "imageVersion": "20260907.0351.1",
+    "trackingId": "github_8eeebea9-3794-493c-9980-e343f99b82ff"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "5118d56d81c73b76be76dd7632e9a3f88027d01f56f912d058c2fb239ec79b53",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "0601706b4a4447e0f835f47dade41b1061d6f8129010ae25b7c43c22730b02aa"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "5118d56d81c73b76be76dd7632e9a3f88027d01f56f912d058c2fb239ec79b53",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "0601706b4a4447e0f835f47dade41b1061d6f8129010ae25b7c43c22730b02aa"
+    }
+  },
+  "appLaunch": {
+    "bundlePath": "/Applications/Alacritty.app",
+    "cfBundleShortVersionString": "0.17.0",
+    "cfBundleVersion": "1",
+    "executablePath": "/Applications/Alacritty.app/Contents/MacOS/alacritty",
+    "executableSha256": "444055799f1211d6adbe9f18ab2660c57155de4f0e88d42458d6ae4fb539dcda",
+    "sourceArtifact": {
+      "path": "/Users/runner/work/_temp/Alacritty.dmg",
+      "sha256": "ad8d7de35fb38e43184776cac6dfee05ca325caa0b6639a06a55e54e4b026620"
+    }
+  }
+}

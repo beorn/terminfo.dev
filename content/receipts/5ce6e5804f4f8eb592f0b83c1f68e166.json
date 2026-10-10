@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "5a08acf0a9027e3520f8404e13033e83",
+  "collectedAt": "2026-10-10T22:36:40.325Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "windows-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/windows-measurement.yml@refs/heads/task/dev3-splus1-freeze",
+    "githubRunId": "38092012981",
+    "githubRunAttempt": "1",
+    "job": "measure-windows",
+    "jobId": "114330194946"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000045890",
+    "os": "Windows",
+    "arch": "X64",
+    "imageOS": "win25-vs2026",
+    "imageVersion": "20260925.250.1",
+    "trackingId": "github_87322619-4334-45a1-a58b-d4ea2efd3f43"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "11fd00be7583b19c0f5446bf703c5bc480fc2d3086168ab8e31c9ace1a7973e6",
+      "productUuidSha256": "b8f1c7911f6b2dbda131e97291b519aa1e5aceac6dad324192f5fb9f325157a9",
+      "bootIdSha256": "646827053a516d9b87e4aca87034da572ee1f956767b668ecff3646c8f69fb87"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "11fd00be7583b19c0f5446bf703c5bc480fc2d3086168ab8e31c9ace1a7973e6",
+      "productUuidSha256": "b8f1c7911f6b2dbda131e97291b519aa1e5aceac6dad324192f5fb9f325157a9",
+      "bootIdSha256": "646827053a516d9b87e4aca87034da572ee1f956767b668ecff3646c8f69fb87"
+    }
+  }
+}
