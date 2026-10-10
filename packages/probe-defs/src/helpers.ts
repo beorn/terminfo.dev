@@ -323,6 +323,19 @@ export function sgrProbe(
       )
     },
     async term(ctx) {
+      const rows = ctx.rows
+      const cols = ctx.cols
+      if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 1 || cols < 2) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "none",
+            note: `SGR fixture needs at least 1x2, measured ${rows}x${cols}`,
+          },
+        }
+      }
       if (readback) {
         // The capture fixture guard refuses before any bytes on a measured small terminal, so the
         // readback must not emit its own sequences ahead of it.
@@ -349,19 +362,6 @@ export function sgrProbe(
           )
         } finally {
           ctx.write("\x1b[0m")
-        }
-      }
-      const rows = ctx.rows
-      const cols = ctx.cols
-      if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 1 || cols < 2) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "none",
-            note: `SGR fixture needs at least 1x2, measured ${rows}x${cols}`,
-          },
         }
       }
       ctx.write("\x1b[1;1H\x1b[2K") // clear line
