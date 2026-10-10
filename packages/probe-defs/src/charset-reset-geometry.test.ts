@@ -14,7 +14,7 @@ afterEach(() => vi.useRealTimers())
 const fixtures = [
   ["charsets.dec-special", 1, 2],
   ["charsets.utf8", 1, 2],
-  ["charsets.g0-g1-switching", 1, 2],
+  ["charsets.g0-g1-switching", 1, 3],
   ["charsets.dec-line-drawing", 1, 7],
   ["reset.sgr", 1, 2],
   ["reset.ris", 5, 5],
@@ -87,6 +87,12 @@ test("fixed charset and reset fixtures require valid measured room before any by
         evidence: "consumed",
         note: expect.stringContaining("Cursor movement does not verify charset glyph rendering"),
       })
+      if (id === "charsets.g0-g1-switching") {
+        // This app path must exercise G1 through SO and restore G0 through SI; a G0-only
+        // designation cannot collect evidence about switching, even when the result is inconclusive.
+        expect(events.join("")).toContain("\x1b)0")
+        expect(events.join("")).toContain("l\x0el\x0fl")
+      }
     } else if (id === "reset.ris") {
       const events: string[] = []
       const valid = await definition.term(

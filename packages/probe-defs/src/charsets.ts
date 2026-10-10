@@ -391,21 +391,21 @@ export const charsetsProbes: ProbeDefinition[] = [
             ctx.write("\x1b[0m\x0f\x1b(B\x1b)B")
           }
         }
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 3) {
           return {
             pass: false,
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "none",
-              note: `Charset fixture needs at least 1x2, measured ${ctx.rows}x${ctx.cols}`,
+              note: `Charset fixture needs at least 1x3, measured ${ctx.rows}x${ctx.cols}`,
             },
           }
         }
         ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b(0") // DEC Special Graphics
-        ctx.write("l") // ┌
-        ctx.write("\x1b(B") // back to ASCII
+        ctx.write("\x0f\x1b(B\x1b)0") // G0 ASCII, G1 DEC Special Graphics
+        ctx.write("l\x0el\x0fl") // G0 l, SO-selected G1 ┌, SI-selected G0 l
+        ctx.write("\x1b)B") // normalize the owned G1 designation
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
           return {
