@@ -1,5 +1,5 @@
 /**
- * @failure XTEST injection targets a window with XSendEvent, skips focus, or proceeds without XTEST.
+ * @failure XTEST injection targets a window with XSendEvent, skips focus, proceeds without XTEST, or hangs on windowfocus --sync.
  * @level l2
  * @consumer Linux Kitty collector OS-level key/click/wheel injection
  * @reach fs-walk <fixture-only: inspect only the owned temporary xdotool log>
@@ -40,7 +40,14 @@ case "$1" in
     printf '%s\\n' "Your windowmanager claims not to support _NET_ACTIVE_WINDOW, so the attempt to activate the window was aborted." >&2
     exit 1
     ;;
-  windowfocus|mousemove|key|click|mousedown|mouseup) ;;
+  windowfocus)
+    if [ "$TEST_INPUT_FOCUS_HANG" = 1 ]; then
+      for arg in "$@"; do
+        if [ "$arg" = --sync ]; then sleep 30; exit 0; fi
+      done
+    fi
+    ;;
+  mousemove|key|click|mousedown|mouseup) ;;
   *) exit 18 ;;
 esac`,
   )
@@ -57,6 +64,7 @@ if [ "$TEST_INPUT_XTEST" != "0" ]; then printf '    XTEST\\n'; fi`,
   process.env.TEST_INPUT_VISIBLE_WINDOWS = "543 42"
   process.env.TEST_INPUT_ACTIVE_WINDOW = "42"
   process.env.TEST_INPUT_XTEST = "1"
+  process.env.TEST_INPUT_FOCUS_HANG = "0"
   return { directory, log }
 }
 
@@ -82,6 +90,7 @@ afterEach(() => {
     "TEST_INPUT_VISIBLE_WINDOWS",
     "TEST_INPUT_ACTIVE_WINDOW",
     "TEST_INPUT_XTEST",
+    "TEST_INPUT_FOCUS_HANG",
   ]) {
     delete process.env[key]
   }
@@ -105,13 +114,29 @@ test.runIf(process.platform === "linux")(
 )
 
 test.runIf(process.platform === "linux")(
+  "injectKey does not wait out a windowfocus --sync that never confirms",
+  { timeout: 15_000 },
+  async () => {
+    const { log } = fixture()
+    process.env.TEST_INPUT_FOCUS_HANG = "1"
+    const input = await createLinuxInput(liveExecutable())
+    const started = Date.now()
+    await input.injectKey("a")
+    expect(Date.now() - started).toBeLessThan(2_000)
+    const lines = argvLines(log)
+    expect(lines.some((line) => line.startsWith("key "))).toBe(true)
+    expect(lines).not.toContain("windowfocus --sync 42")
+  },
+)
+
+test.runIf(process.platform === "linux")(
   "injectKey focuses the owned window with XSetInputFocus, never EWMH activate, then keys through --window 0 with --clearmodifiers",
   async () => {
     const { log } = fixture()
     const input = await createLinuxInput(liveExecutable())
     await input.injectKey("ctrl+a")
     const lines = argvLines(log)
-    expect(lines).toContain("windowfocus --sync 42")
+    expect(lines).toContain("windowfocus 42")
     expect(lines).toContain("getwindowfocus")
     expect(lines).toContain("mousemove --sync --window 42 400 300")
     expect(lines).toContain("key --window 0 --clearmodifiers ctrl+a")
@@ -142,7 +167,7 @@ test.runIf(process.platform === "linux")(
     const input = await createLinuxInput(liveExecutable())
     await input.injectDrag!(1)
     const lines = argvLines(log)
-    expect(lines).toContain("windowfocus --sync 42")
+    expect(lines).toContain("windowfocus 42")
     expect(lines).toContain("mousemove --sync --window 42 400 300")
     expect(lines).toContain("mousedown --window 0 --clearmodifiers 1")
     expect(lines).toContain("mousemove --sync --window 42 450 300")

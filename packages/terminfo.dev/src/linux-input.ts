@@ -31,7 +31,9 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
   async function prepare(): Promise<void> {
     // Xvfb has no EWMH WM: windowactivate/getactivewindow abort on _NET_ACTIVE_WINDOW.
     // windowfocus uses XSetInputFocus, which CURRENTWINDOW (--window 0) then follows.
-    await command("xdotool", ["windowfocus", "--sync", ownedWindowId])
+    // xterm on the collection image never completes windowfocus --sync (28550/28556).
+    // XSetInputFocus without --sync, then getwindowfocus, is the bound: inject cannot wait out a 10s execFile timeout.
+    await command("xdotool", ["windowfocus", ownedWindowId])
     const focused = (await command("xdotool", ["getwindowfocus"])).toString().trim()
     if (focused !== ownedWindowId) {
       throw new Error(
