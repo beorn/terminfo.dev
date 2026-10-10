@@ -29,11 +29,13 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
   const ownedWindowId: string = windowId
 
   async function prepare(): Promise<void> {
-    await command("xdotool", ["windowactivate", "--sync", ownedWindowId])
-    const active = (await command("xdotool", ["getactivewindow"])).toString().trim()
-    if (active !== ownedWindowId) {
+    // Xvfb has no EWMH WM: windowactivate/getactivewindow abort on _NET_ACTIVE_WINDOW.
+    // windowfocus uses XSetInputFocus, which CURRENTWINDOW (--window 0) then follows.
+    await command("xdotool", ["windowfocus", "--sync", ownedWindowId])
+    const focused = (await command("xdotool", ["getwindowfocus"])).toString().trim()
+    if (focused !== ownedWindowId) {
       throw new Error(
-        `XTEST inject requires the owned window ${ownedWindowId} to be focused; getactivewindow is ${active}`,
+        `XTEST inject requires the owned window ${ownedWindowId} to be focused; getwindowfocus is ${focused}`,
       )
     }
   }

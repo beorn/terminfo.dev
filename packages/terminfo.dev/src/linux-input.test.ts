@@ -35,8 +35,12 @@ case "$1" in
     else printf '%s\\n' "$TEST_INPUT_VISIBLE_WINDOWS"; fi
     ;;
   getwindowpid) printf '%s\\n' "$TEST_INPUT_OWNER_PID" ;;
-  getactivewindow) printf '%s\\n' "$TEST_INPUT_ACTIVE_WINDOW" ;;
-  windowactivate|key|click) ;;
+  getwindowfocus) printf '%s\\n' "$TEST_INPUT_ACTIVE_WINDOW" ;;
+  getactivewindow|windowactivate)
+    printf '%s\\n' "Your windowmanager claims not to support _NET_ACTIVE_WINDOW, so the attempt to activate the window was aborted." >&2
+    exit 1
+    ;;
+  windowfocus|key|click) ;;
   *) exit 18 ;;
 esac`,
   )
@@ -90,26 +94,28 @@ test.runIf(process.platform === "linux")("createLinuxInput refuses when xdpyinfo
 })
 
 test.runIf(process.platform === "linux")(
-  "injectKey refuses when getactivewindow is not the owned window, and does not send a key",
+  "injectKey refuses when getwindowfocus is not the owned window, and does not send a key",
   async () => {
     const { log } = fixture()
     const input = await createLinuxInput(liveExecutable())
     process.env.TEST_INPUT_ACTIVE_WINDOW = "99"
-    await expect(input.injectKey("a")).rejects.toThrow(/focused|getactivewindow|owned window/)
+    await expect(input.injectKey("a")).rejects.toThrow(/focused|getwindowfocus|owned window/)
     expect(argvLines(log).some((line) => line.startsWith("key "))).toBe(false)
   },
 )
 
 test.runIf(process.platform === "linux")(
-  "injectKey activates the owned window, asserts focus, then keys through --window 0 with --clearmodifiers",
+  "injectKey focuses the owned window with XSetInputFocus, never EWMH activate, then keys through --window 0 with --clearmodifiers",
   async () => {
     const { log } = fixture()
     const input = await createLinuxInput(liveExecutable())
     await input.injectKey("ctrl+shift+a")
     const lines = argvLines(log)
-    expect(lines).toContain("windowactivate --sync 42")
-    expect(lines).toContain("getactivewindow")
+    expect(lines).toContain("windowfocus --sync 42")
+    expect(lines).toContain("getwindowfocus")
     expect(lines).toContain("key --window 0 --clearmodifiers ctrl+shift+a")
+    expect(lines.some((line) => line.startsWith("windowactivate"))).toBe(false)
+    expect(lines.some((line) => line === "getactivewindow")).toBe(false)
     expect(lines.some((line) => /^key /.test(line) && /--window 42/.test(line))).toBe(false)
   },
 )
