@@ -1,0 +1,57 @@
+/**
+ * @failure Locally linked vt100.js/vt220.js/vterm.js resolve into bun's .bun store, so identity
+ *   falls through to registryIntegrity and every vterm-family collect dies before a run exists.
+ * @level l1
+ * @consumer packages/probes/headless-identity.ts (28548)
+ * @testonly none
+ */
+import { spawnSync } from "node:child_process"
+import { expect, test } from "vitest"
+
+const identityHref = new URL("./headless-identity.ts", import.meta.url).href
+
+function runIdentity(name: string, pkg: string) {
+  return spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `import { headlessRuntimeIdentity } from ${JSON.stringify(identityHref)};
+       const id = await headlessRuntimeIdentity(${JSON.stringify(name)}, ${JSON.stringify(pkg)}, "js");
+       process.stdout.write(JSON.stringify({ ok: true, integrityKind: id.integrity.kind, engineVersion: id.engineVersion }))`,
+    ],
+    { encoding: "utf8" },
+  )
+}
+
+function runRegistryIntegrity(name: string, version: string) {
+  return spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `import { registryIntegrity } from ${JSON.stringify(identityHref)};
+       registryIntegrity(${JSON.stringify(name)}, ${JSON.stringify(version)})`,
+    ],
+    { encoding: "utf8" },
+  )
+}
+
+for (const [name, pkg] of [
+  ["vt100", "@termless/vt100"],
+  ["vt220", "@termless/vt220"],
+  ["vterm", "@termless/vterm"],
+] as const) {
+  test(`a locally linked ${name}.js engine is source provenance, not a registry tuple`, () => {
+    const result = runIdentity(name, pkg)
+    expect(result.stderr, result.stderr).not.toMatch(/no matching registry integrity/)
+    expect(result.status, result.stderr).toBe(0)
+    const body = JSON.parse(result.stdout) as { ok: boolean; integrityKind: string }
+    expect(body.ok).toBe(true)
+    expect(body.integrityKind).toBe("source")
+  })
+}
+
+test("a package whose bun.lock entry is not a matching registry tuple is still refused", () => {
+  const result = runRegistryIntegrity("vt100.js", "0.7.1")
+  expect(result.status).not.toBe(0)
+  expect(result.stderr).toMatch(/Installed vt100\.js@0\.7\.1 has no matching registry integrity in root bun\.lock/)
+})

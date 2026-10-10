@@ -64,10 +64,20 @@ function resolvedPackage(specifier: string, importer: string): { path: string; d
   }
 }
 
-function registryIntegrity(name: string, version: string): { kind: "registry"; lockIntegrity: string } {
+function readLock(): Record<string, unknown> {
   const lock: unknown = Bun.JSONC.parse(readFileSync(join(CODE_ROOT, "bun.lock"), "utf8"))
   if (!record(lock) || !record(lock.packages)) throw new Error("Root bun.lock has no packages map")
-  const entry = lock.packages[name]
+  return lock
+}
+
+function lockPackages(): Record<string, unknown> {
+  const packages = readLock().packages
+  if (!record(packages)) throw new Error("Root bun.lock has no packages map")
+  return packages
+}
+
+export function registryIntegrity(name: string, version: string): { kind: "registry"; lockIntegrity: string } {
+  const entry = lockPackages()[name]
   if (
     !Array.isArray(entry) ||
     entry[0] !== `${name}@${version}` ||
@@ -77,6 +87,18 @@ function registryIntegrity(name: string, version: string): { kind: "registry"; l
     throw new Error(`Installed ${name}@${version} has no matching registry integrity in root bun.lock`)
   }
   return { kind: "registry", lockIntegrity: entry[3] }
+}
+
+/** bun's file: install materializes the package under node_modules/.bun; map that back via overrides. */
+function fileLinkWorkspace(name: string): string | undefined {
+  const override = readLock().overrides
+  const entry = record(override) ? override[name] : undefined
+  if (typeof entry !== "string" || !entry.startsWith("file:")) return undefined
+  const workspace = realpathSync(resolve(CODE_ROOT, entry.slice("file:".length)))
+  if (!inside(workspace, VTERM_ROOT) && !inside(workspace, TERMLESS_ROOT)) {
+    throw new Error(`file: ${name} at ${workspace} is outside owned Termless/vterm checkouts`)
+  }
+  return workspace
 }
 
 function sourceIntegrity(
@@ -263,10 +285,23 @@ export async function headlessRuntimeIdentity(
   const upstreamSpecifier = name === "libvterm" ? adapterSpecifier : UPSTREAM_PACKAGES[name]
   if (!upstreamSpecifier) throw new Error(`No upstream package identity for ${name}`)
   const upstream = name === "libvterm" ? adapter : resolvedPackage(upstreamSpecifier, adapter.path)
-  const integrity =
-    inside(upstream.path, TERMLESS_ROOT) || inside(upstream.path, VTERM_ROOT)
-      ? sourceIntegrity(upstream.path, upstream.directory)
-      : registryIntegrity(upstreamSpecifier, upstream.version)
+  const integrity = (() => {
+    if (inside(upstream.path, TERMLESS_ROOT) || inside(upstream.path, VTERM_ROOT)) {
+      return sourceIntegrity(upstream.path, upstream.directory)
+    }
+    const workspace = fileLinkWorkspace(upstreamSpecifier)
+    if (!workspace) return registryIntegrity(upstreamSpecifier, upstream.version)
+    const manifest: unknown = JSON.parse(readFileSync(join(workspace, "package.json"), "utf8"))
+    if (!record(manifest) || manifest.name !== upstreamSpecifier || typeof manifest.version !== "string") {
+      throw new Error(`file: workspace ${workspace} is not package ${upstreamSpecifier}`)
+    }
+    if (manifest.version !== upstream.version) {
+      throw new Error(
+        `Installed ${upstreamSpecifier}@${upstream.version} disagrees with file: workspace version ${manifest.version} at ${workspace}`,
+      )
+    }
+    return sourceIntegrity(join(workspace, "package.json"), workspace)
+  })()
   const base = {
     kind: "js" as const,
     adapterVersion: adapter.version,
