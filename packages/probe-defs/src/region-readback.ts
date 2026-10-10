@@ -18,7 +18,9 @@
  * painted plainly in the same run — each behind its own witness, with the cursor hidden (DECTCEM)
  * across all of them. Cell coordinates arrive from the terminal's own pixel report and are turned
  * into an absolute rectangle by the collector, so digests are comparable only within one run, which
- * is the whole claim.
+ * is the whole claim. That same symmetry is why the rectangle's alignment needs no separate proof: an
+ * offset rectangle reads the same pixels in all three frames, so the worst a wrong one can do is
+ * miss the edited cells and leave seed and expected equal — inconclusive BY NAME, never a verdict.
  */
 import type { CaptureCells, CapturePixelGeometry, ObservationFrame, ProbeResult, TermContext } from "./types.ts"
 
