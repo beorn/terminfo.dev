@@ -44,13 +44,13 @@ const SCROLLBACK_CONTRACT: GroupContract = [
   { id: "scrollback.scroll-down", expected: "decided", claim: "SD inserts a blank row above the measured marker" },
   {
     id: "scrollback.set-region",
-    expected: "inconclusive",
-    claim: "Cursor position alone does not measure the scrolling region",
+    expected: "decided",
+    claim: "DECSTBM sets the region: a marker on the requested top row scrolls out while the row above it stays",
   },
   {
     id: "scrollback.alt-screen",
-    expected: "inconclusive",
-    claim: "Mode metadata does not measure preserved scrollback",
+    expected: "decided",
+    claim: "ESC[?1049h swaps to a separate alt grid and ESC[?1049l restores the measured main grid",
   },
   {
     id: "scrollback.decstbm",
@@ -59,8 +59,8 @@ const SCROLLBACK_CONTRACT: GroupContract = [
   },
   {
     id: "scrollback.decstbm-reset",
-    expected: "inconclusive",
-    claim: "Scrollback growth does not prove the earlier region was active before reset",
+    expected: "decided",
+    claim: "After ESC[r the full screen scrolls into history where an active region's bottom row does not",
   },
   { id: "scrollback.viewport-hold-output", expected: "not-tested", claim: "The viewport holds on output" },
 ]
@@ -137,7 +137,8 @@ test("every probe-backed Scrollback row reads the outcome its contract requires"
     expect(graded.after, `${row.id} reads ${required} from a surface implementing its claim`).toBe(required)
     expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
   }
-  // The two by-design inconclusive rows and the reset row are the ONLY rows the group cannot decide.
+  // Every probe-backed row is decided as of the 2026-10-10 denominator correction (#28459): the three
+  // rows that once read inconclusive now decide from the measured grid or the measured history count.
   const decided = SCROLLBACK_CONTRACT.filter((row) => row.expected === "decided").map((row) => row.id)
   expect(decided).toEqual([
     "scrollback.accumulate",
@@ -145,7 +146,14 @@ test("every probe-backed Scrollback row reads the outcome its contract requires"
     "scrollback.scroll-up",
     "scrollback.reverse-index",
     "scrollback.scroll-down",
+    "scrollback.set-region",
+    "scrollback.alt-screen",
     "scrollback.decstbm",
+    "scrollback.decstbm-reset",
+  ])
+  // The catalog-only tenth row is the ONLY one that stays out of the denominator.
+  expect(SCROLLBACK_CONTRACT.filter((row) => row.expected !== "decided").map((row) => row.id)).toEqual([
+    "scrollback.viewport-hold-output",
   ])
 })
 

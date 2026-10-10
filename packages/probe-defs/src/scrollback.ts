@@ -480,15 +480,32 @@ export const scrollbackProbes: ProbeDefinition[] = [
     ...probe(
       "scrollback.set-region",
       (ctx) => {
-        ctx.feed("\x1b[5;10r")
-        const cursor = ctx.getCursor()
-        ctx.feed("\x1b[r") // reset
-        return parserStateResult(
-          null,
-          "DECSTBM constrains scrolling to the requested region",
-          { cursor },
-          "Cursor position alone does not measure the scrolling region",
-        )
+        const rows = ctx.getScrollback().screenLines
+        if (!validSize(rows, 10) || !validSize(ctx.cols, 3)) {
+          return {
+            pass: false,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+          }
+        }
+        const readRow = (row: number) => Array.from({ length: 3 }, (_, col) => ctx.getCell(row, col).char).join("")
+        const expected =
+          "DECSTBM sets the region: a marker on the requested top row scrolls out while the row above it stays"
+        ctx.feed("\x1b[H\x1b[2J")
+        ctx.feed("\x1b[4;1HAAA") // row 4, one above the requested region top
+        ctx.feed("\x1b[5;1HTTT") // row 5, the requested region top
+        const before = { above: readRow(3), top: readRow(4) }
+        try {
+          ctx.feed("\x1b[5;10r")
+          ctx.feed("\x1b[10;1H\n") // LF at the region bottom: only rows 5-10 may move
+          const after = { above: readRow(3), top: readRow(4) }
+          const state = { before, after }
+          if (before.above !== "AAA" || before.top !== "TTT") {
+            return parserStateResult(null, expected, state, "Region-top markers were not measured")
+          }
+          return parserStateResult(after.above === "AAA" && after.top !== "TTT", expected, state)
+        } finally {
+          ctx.feed("\x1b[r")
+        }
       },
       async (ctx) => {
         const capture = ctx.capture
@@ -563,14 +580,39 @@ export const scrollbackProbes: ProbeDefinition[] = [
     ...probe(
       "scrollback.alt-screen",
       (ctx) => {
-        ctx.feed("NORMAL")
-        ctx.feed("\x1b[?1049h")
-        return parserStateResult(
-          null,
-          "Alt screen preserves normal scrollback",
-          { mode: ctx.getMode("altScreen") },
-          "Mode metadata does not measure preserved scrollback",
-        )
+        const marker = "MAIN_SCREEN_MARKER"
+        const rows = ctx.getScrollback().screenLines
+        if (!validSize(rows, 2) || !validSize(ctx.cols, marker.length)) {
+          return {
+            pass: false,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+          }
+        }
+        const readRow = (row: number) =>
+          Array.from({ length: marker.length }, (_, col) => ctx.getCell(row, col).char).join("")
+        const expected = "ESC[?1049h swaps to a separate alt grid and ESC[?1049l restores the measured main grid"
+        ctx.feed("\x1b[H\x1b[2J")
+        ctx.feed(marker)
+        const main = readRow(0)
+        const modeBefore = ctx.getMode("altScreen")
+        try {
+          ctx.feed("\x1b[?1049h")
+          const alt = readRow(0)
+          const modeAlt = ctx.getMode("altScreen")
+          ctx.feed("\x1b[2;1HALT_SCREEN")
+          ctx.feed("\x1b[?1049l")
+          const restored = readRow(0)
+          const modeAfter = ctx.getMode("altScreen")
+          const state = { main, modeBefore, alt, modeAlt, restored, modeAfter }
+          if (main !== marker) {
+            return parserStateResult(null, expected, state, "Main-screen marker was not measured")
+          }
+          // The grid is the semantic observable; the mode reads are recorded beside it, never used to
+          // stand in for the separation itself.
+          return parserStateResult(alt !== marker && restored === marker, expected, state)
+        } finally {
+          ctx.feed("\x1b[?1049l")
+        }
       },
       async (ctx) => {
         const capture = ctx.capture
@@ -769,21 +811,36 @@ export const scrollbackProbes: ProbeDefinition[] = [
             observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
           }
         }
-        // Set a scroll region
-        ctx.feed("\x1b[5;10r")
-        // Reset it
-        ctx.feed("\x1b[r")
-        // Write enough lines to fill the screen + overflow
-        ctx.feed("\x1b[H")
-        for (let i = 0; i < rows + 10; i++) ctx.feed(`line-${i}\r\n`)
-        // If region was properly reset, scrollback should accumulate
-        const scroll = ctx.getScrollback()
-        return parserStateResult(
-          null,
-          "Reset DECSTBM permits full-screen scrolling into history",
-          { baseline, scroll },
-          "Scrollback growth does not prove the earlier region was active before reset",
-        )
+        const expected = "After ESC[r the full screen scrolls into history where an active region's bottom row does not"
+        const overflow = (): void => {
+          ctx.feed("\x1b[H")
+          for (let i = 0; i < rows + 10; i++) ctx.feed(`line-${i}\r\n`)
+        }
+        try {
+          // Control: a region is set and then ESC[r clears it, so the same overflow reaches history.
+          ctx.feed("\x1b[5;10r")
+          ctx.feed("\x1b[r")
+          overflow()
+          const afterReset = ctx.getScrollback()
+          // Pair: the identical body with the region still active, so the overflow stays inside rows 5-10.
+          ctx.feed("\x1b[5;10r")
+          overflow()
+          const regionActive = ctx.getScrollback()
+          const state = { baseline, afterReset, regionActive }
+          const resetGrowth = afterReset.totalLines - baseline.totalLines
+          const activeGrowth = regionActive.totalLines - afterReset.totalLines
+          if (resetGrowth <= 0) {
+            return parserStateResult(
+              null,
+              expected,
+              state,
+              "Full-screen overflow grew no history; cannot attribute the reset",
+            )
+          }
+          return parserStateResult(activeGrowth < resetGrowth, expected, state)
+        } finally {
+          ctx.feed("\x1b[r")
+        }
       },
       async (ctx) => {
         const capture = ctx.capture
