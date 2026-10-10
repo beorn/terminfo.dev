@@ -76,26 +76,26 @@ describe("release 1 measurement scope", () => {
     declarationPath: join(root, "content", "release-scope.json"),
   })
 
-  it("declares 62 of 270 features as tier 1 query/reply", () => {
-    expect(scope.catalogCount).toBe(270)
+  it("declares 62 of 273 features as tier 1 query/reply", () => {
+    expect(scope.catalogCount).toBe(273)
     expect(scope.measuredCount).toBe(62)
-    expect(scope.unmeasured).toHaveLength(208)
+    expect(scope.unmeasured).toHaveLength(211)
     expect(scope.tier).toBe(1)
     expect(scope.method).toBe("query/reply")
-    expect(tierLine(scope)).toBe("62 of 270 features (tier 1), measured per terminal; next tiers in progress")
+    expect(tierLine(scope)).toBe("62 of 273 features (tier 1), measured per terminal; next tiers in progress")
   })
 
   it("names every unmeasured catalog feature as not measured in this release", () => {
     const measured = new Set(scope.measuredIds)
     expect(scope.unmeasured.every((row) => catalog[row.id] && !measured.has(row.id))).toBe(true)
-    expect(new Set(scope.unmeasured.map((row) => row.id)).size).toBe(208)
+    expect(new Set(scope.unmeasured.map((row) => row.id)).size).toBe(211)
     expect(scope.unmeasured.every((row) => row.status === "not measured in this release")).toBe(true)
     expect(scope.unmeasured.every((row) => row.name.length > 0)).toBe(true)
   })
 
   it("dates the tier line and records a stale measurement as not re-measured since that date", () => {
     expect(tierLine(scope, { measuredAt: "2026-10-04T17:46:58Z" })).toBe(
-      "62 of 270 features (tier 1), measured per terminal; next tiers in progress · measured October 4, 2026",
+      "62 of 273 features (tier 1), measured per terminal; next tiers in progress · measured October 4, 2026",
     )
     expect(staleCaption("2026-10-04T17:46:58Z")).toBe("not re-measured since October 4, 2026")
     expect(isStaleRelation("release")).toBe(false)
@@ -198,7 +198,7 @@ describe("release 1 measurement scope", () => {
     expect(helper).not.toMatch(/from ["']node:fs["']/)
   })
 
-  it("names the 208 unmeasured features on every terminal page, including pages with no selected run", () => {
+  it("names the 211 unmeasured features on every terminal page, including pages with no selected run", () => {
     const terminal = readFileSync(join(root, "docs", "terminals", "[id].md"), "utf8")
     const unmeasuredStart = terminal.indexOf('class="unmeasured"')
     const scoreCardStart = terminal.indexOf('v-if="!isHistorical && selectedRun"')

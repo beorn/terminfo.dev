@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { spawnSync } from "node:child_process"
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test } from "vitest"
@@ -41,6 +41,22 @@ test("validation inventories v2 targets and refuses malformed probe data with it
     expect(baseline.stdout).not.toContain('Terminal "libvterm" (libvterm (Neovim fork)) has no probe data files')
     expect(baseline.stdout).toContain("With probe data: 1")
     expect(baseline.stdout).toContain("Without probe data: 25")
+
+    // A probe definition with no catalog row blocks deploy: admission rejects every assertion that
+    // names it, so a missing row is an error, not a warning (27917: the omitted input.xtest-* rows).
+    const featuresPath = join(root, "content", "features.json")
+    const featuresRaw = readFileSync(featuresPath, "utf8")
+    const catalog = JSON.parse(featuresRaw) as Record<string, unknown>
+    const missingProbeId = "input.modify-other-keys"
+    writeFileSync(
+      featuresPath,
+      JSON.stringify(Object.fromEntries(Object.entries(catalog).filter(([id]) => id !== missingProbeId)), null, 2),
+    )
+    const missingRow = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
+    expect(missingRow.error).toBeUndefined()
+    expect(missingRow.status, missingRow.stdout + missingRow.stderr).toBe(1)
+    expect(missingRow.stdout).toContain(`Probe definition "${missingProbeId}" has no features.json catalog row`)
+    writeFileSync(featuresPath, featuresRaw)
 
     writeFileSync(v2Path, JSON.stringify({ ...v2Probe, target: { kind: "headless", id: "unknown-backend" } }))
     const unknownV2 = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })

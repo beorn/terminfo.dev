@@ -2223,6 +2223,33 @@
     "probe": "Confirm XTEST delivery with plain a, then enable modifyOtherKeys 3 (CSI > 4 ; 3 m) and inject unmodified i. CSI 27;1;105~ or CSI 105;1u is supported; bare i means the mode was ignored (unsupported). Missing OS XTEST adapter is not tested. Reset with CSI > 4 ; 0 m.",
     "baseline": "rich"
   },
+  "input.xtest-click": {
+    "name": "OS XTEST: button-1 click injection",
+    "slug": "xtest-click",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "OS-level XTEST click injection presses a real mouse button inside the terminal window, so the terminal's own mouse-tracking path produces the report rather than the probe synthesizing one. The probe enables modes 1000 and 1006, performs a control click and requires an SGR mouse report, then repeats the click and records the report from the same run.\n\nBecause the click is a genuine platform event, it only works where the harness holds an input adapter; elsewhere the capability is reported not tested. Testing click delivery under 1000+1006 is the prerequisite for grading the richer mouse encodings, which each replace the report shape only after a control click has proved the path itself works.",
+    "probe": "Enable 1000+1006, click button 1 as the delivery control, then click again and require the SGR report (CSI &lt; btn;x;y M/m). A missing OS XTEST adapter is not tested; a delivery-control failure is an error, never a negative."
+  },
+  "input.xtest-key": {
+    "name": "OS XTEST: ctrl+a key injection",
+    "slug": "xtest-key",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "OS-level XTEST key injection delivers a real key press into the terminal's own input path instead of feeding the parser a synthetic escape sequence, so it measures the terminal's genuine keyboard handling. The probe first injects plain <code>a</code> as a delivery control, then injects <code>ctrl+a</code> and records the forwarded report; a control failure is an error rather than a negative result.\n\nXTEST needs a platform input adapter: a Linux X server in the container fixture, or the native owner assertion for Terminal.app. Without an adapter the capability is reported not tested, so an absent harness is never recorded as missing support. This is the groundwork for grading modified-key encodings, like modifyOtherKeys, against real key events.",
+    "probe": "Confirm XTEST delivery with plain <code>a</code> as the control, then inject <code>ctrl+a</code> and require a modified-key report (CSI 27;1;97~, CSI 97;5u, or the raw ctrl-A byte). A missing OS XTEST adapter is not tested; a delivery-control failure is an error, never a negative."
+  },
+  "input.xtest-wheel": {
+    "name": "OS XTEST: wheel injection",
+    "slug": "xtest-wheel",
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
+    "tags": ["xterm-extensions"],
+    "baseline": "rich",
+    "body": "OS-level XTEST wheel injection scrolls a real wheel notch inside the terminal window, so the button-4 and button-5 reports come from the terminal's own input path. The probe enables modes 1000 and 1006, performs a control click and requires an SGR mouse report, then injects a wheel-up notch and records the report from the same run.\n\nThe control click matters: wheel reporting rides the same mouse-tracking modes as clicks, so a wheel report only means something once a plain click has proved delivery through those modes. As with the other XTEST probes, a missing input adapter is reported as not tested rather than as a negative result.",
+    "probe": "Enable 1000+1006, click button 1 as the delivery control, then inject a wheel-up notch and require the resulting SGR button-4 report. A missing OS XTEST adapter is not tested; a delivery-control failure is an error, never a negative."
+  },
   "extensions.kitty-keyboard.disambiguate": {
     "name": "Kitty keyboard: DISAMBIGUATE (flag 1)",
     "slug": "kitty-keyboard-disambiguate",
