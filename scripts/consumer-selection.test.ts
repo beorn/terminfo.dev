@@ -467,6 +467,7 @@ describe("consumer selection", () => {
       expect(rows.get("xterm")?.contextKey).toBe("app:xterm")
       expect(rows.get("xterm")?.selected.target.kind).toBe("app")
     } finally {
+      // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; content is this test's own mkdtemp scratch root
       rmSync(content, { recursive: true, force: true })
     }
   })
