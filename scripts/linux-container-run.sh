@@ -59,6 +59,52 @@ compose_receipt() {
   mv "$output.partial" "$output"
 }
 
+# SIGTERM, then SIGKILL after TERMINFO_STOP_GRACE_SEC (default 2). Unbounded `wait` after kill
+# is what kept a completed kitty batch inside the 180 s attach budget (#28552): one owned
+# process ignored TERM (kitten __atexit__ / collector) and attach died 143 with receipts on
+# disk. Never raise the attach budget to paper over a hang.
+stop_owned_processes() {
+  local grace=${TERMINFO_STOP_GRACE_SEC:-2}
+  local pid still tenths=0 limit
+  limit=$((grace * 10))
+  for pid in "$@"; do
+    [[ -n "${pid:-}" ]] || continue
+    kill -0 "$pid" 2>/dev/null || continue
+    kill "$pid" 2>/dev/null || true
+  done
+  while ((tenths < limit)); do
+    still=0
+    for pid in "$@"; do
+      [[ -n "${pid:-}" ]] || continue
+      if kill -0 "$pid" 2>/dev/null; then
+        still=1
+        break
+      fi
+    done
+    ((still == 0)) && return 0
+    sleep 0.1
+    tenths=$((tenths + 1))
+  done
+  for pid in "$@"; do
+    [[ -n "${pid:-}" ]] || continue
+    kill -0 "$pid" 2>/dev/null || continue
+    kill -KILL "$pid" 2>/dev/null || true
+  done
+  for pid in "$@"; do
+    [[ -n "${pid:-}" ]] || continue
+    wait "$pid" 2>/dev/null || true
+  done
+  return 0
+}
+
+# Host attach is `timeout 180 docker start --attach`. 143 is SIGTERM of that budget. A completed
+# batch already wrote observed.json + container-receipt.json + v2-run.json; refusing those is
+# how #28552 discarded a 7.5 s kitty run. Other non-zero exits still fail.
+completed_batch_survives_attach_timeout() {
+  local exit_code=$1 raw=$2
+  [[ "$exit_code" == 143 && -f "$raw/observed.json" && -f "$raw/container-receipt.json" && -f "$raw/v2-run.json" ]]
+}
+
 # A producer receipt is read by the host before any container starts. When a non-fast-forward
 # compose lands a suite nobody declared, the build stays green and the receipt carries that state,
 # so the FIRST sentence here must NAME the suite rather than read as a malformed receipt (27864 C);
@@ -313,20 +359,11 @@ if [[ "${1:-}" == "--inside" ]]; then
   xvfb_pid=
   helper_pid=
   daemon_pid=
+  collector_pid=
   cleanup() {
     local status=$?
     trap - EXIT
-    for owned_pid in "$daemon_pid" "$helper_pid" "$xvfb_pid"; do
-      if [[ -n "$owned_pid" ]] && kill -0 "$owned_pid" 2>/dev/null; then
-        if ! kill "$owned_pid"; then
-          echo "Could not stop owned process $owned_pid" >&2
-          status=1
-        fi
-        if ! wait "$owned_pid"; then
-          echo "Owned process $owned_pid exited after termination" >&2
-        fi
-      fi
-    done
+    stop_owned_processes "$daemon_pid" "$helper_pid" "$xvfb_pid" "$collector_pid"
     exit "$status"
   }
   trap cleanup EXIT
@@ -916,9 +953,13 @@ cmp -s "$raw/host-measured.json" "$prep/receipt/host-measured.json" || {
   echo "Container rewrote the host-measured receipt; run invalid" >&2; exit 2;
 }
 if [[ "$exit_code" != 0 || ! -f "$raw/observed.json" ]]; then
-  echo "Container failed (exit $exit_code); raw artifacts preserved at $run_dir" >&2
-  cat "$prep/container-stderr.log" >&2
-  exit 2
+  if completed_batch_survives_attach_timeout "$exit_code" "$raw"; then
+    echo "Container attach budget ended (exit 143) after a completed batch; judging from retained receipts at $run_dir" >&2
+  else
+    echo "Container failed (exit $exit_code); raw artifacts preserved at $run_dir" >&2
+    cat "$prep/container-stderr.log" >&2
+    exit 2
+  fi
 fi
 [[ -r "$raw/container-receipt.json" ]] || {
   echo "Container exited without its runtime receipt; run invalid" >&2; exit 2;

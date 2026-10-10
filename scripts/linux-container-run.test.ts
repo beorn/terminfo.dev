@@ -378,6 +378,69 @@ describe("private finite launch arguments", () => {
   })
 })
 
+describe("owned process stop does not wait out the attach budget (#28552)", () => {
+  it("SIGKILLs a child that ignores SIGTERM and returns before the 180 s attach budget", () => {
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `source "$1"
+set -euo pipefail
+bash -c 'trap "" TERM; exec sleep 30' &
+pid=$!
+start=$(date +%s%N)
+TERMINFO_STOP_GRACE_SEC=1 stop_owned_processes "$pid"
+elapsed_ms=$(( ( $(date +%s%N) - start ) / 1000000 ))
+if kill -0 "$pid" 2>/dev/null; then
+  echo STILL_ALIVE
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  exit 2
+fi
+echo DEAD
+echo ELAPSED_MS=$elapsed_ms
+[[ "$elapsed_ms" -lt 5000 ]]
+`,
+        "_",
+        launcher,
+      ],
+      { encoding: "utf8", timeout: 8_000 },
+    )
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("DEAD")
+    expect(result.stdout).not.toContain("STILL_ALIVE")
+  })
+})
+
+describe("completed batch survives attach SIGTERM (#28552)", () => {
+  it("treats exit 143 as a completed run only when the three batch receipts are present", () => {
+    const raw = join(dir, "raw")
+    mkdirSync(raw)
+    writeFileSync(join(raw, "observed.json"), "{}\n")
+    writeFileSync(join(raw, "container-receipt.json"), "{}\n")
+    writeFileSync(join(raw, "v2-run.json"), "{}\n")
+    const completed = spawnSync(
+      "bash",
+      ["-c", 'source "$1"; completed_batch_survives_attach_timeout 143 "$2"', "_", launcher, raw],
+      { encoding: "utf8" },
+    )
+    expect(completed.status).toBe(0)
+    const other = spawnSync(
+      "bash",
+      ["-c", 'source "$1"; completed_batch_survives_attach_timeout 1 "$2"', "_", launcher, raw],
+      { encoding: "utf8" },
+    )
+    expect(other.status).not.toBe(0)
+    rmSync(join(raw, "observed.json"))
+    const missing = spawnSync(
+      "bash",
+      ["-c", 'source "$1"; completed_batch_survives_attach_timeout 143 "$2"', "_", launcher, raw],
+      { encoding: "utf8" },
+    )
+    expect(missing.status).not.toBe(0)
+  })
+})
+
 describe("in-image source archive proof", () => {
   it("refuses a wrong declared flat hash for either proof kind through one comparison", () => {
     // A matching real run can never exercise a mismatch, so it is proven here: the derived kind and
