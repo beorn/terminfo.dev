@@ -23,9 +23,9 @@ import {
 } from "./testing/group-harness.ts"
 
 /**
- * The 79 extension capabilities (77 defined in extensions.ts + 2 catalog-only in features.json).
- * 40 protocol queries are decided in real terminal runs; 37 unasserted/state probes evaluate to
- * inconclusive pending external apparatus or capture; 2 catalog capabilities lack probe definitions.
+ * The 79 extension capabilities (78 defined in extensions.ts + 1 catalog-only in features.json).
+ * 41 protocol queries are decided in real terminal runs; 37 unasserted/state probes evaluate to
+ * inconclusive pending external apparatus or capture; 1 catalog capability lacks a probe definition.
  */
 const EXTENSIONS_CONTRACT: GroupContract = [
   { id: "extensions.truecolor", expected: "inconclusive", claim: "24-bit truecolor: ESC [ 38;2;R;G;B m" },
@@ -243,8 +243,9 @@ const EXTENSIONS_CONTRACT: GroupContract = [
   },
   {
     id: "extensions.clipboard-paste",
-    expected: "not-tested",
-    claim: "System clipboard paste: catalog-only capability with no probe definition in suite",
+    expected: "decided",
+    claim:
+      "clipboard-paste: owned clipboard nonce then shift+Insert reports CSI 200~nonce201~ after plain-a delivery control and 2004; raw nonce is unsupported",
   },
   {
     id: "extensions.font-ligatures",
@@ -267,11 +268,6 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
     "packages/probe-defs/src/extensions-qualification.test.ts",
   ],
   namedUnavailable: [
-    {
-      id: "extensions.clipboard-paste",
-      reason: "no-semantic-observable",
-      noObservable: "catalog capability has no probe definition in frozen suite",
-    },
     {
       id: "extensions.font-ligatures",
       reason: "no-semantic-observable",
@@ -458,6 +454,28 @@ function decidedSatisfactionContext(id: string) {
       }),
     }
   }
+  if (id === "extensions.clipboard-paste") {
+    let nonce = ""
+    let callCount = 0
+    return {
+      term: replayContext(new Map(), {
+        input: { injectKey: async () => {}, injectClick: async () => {} },
+        withClipboardFixture: async (work) =>
+          work({
+            readText: async () => nonce,
+            writeText: async (text) => {
+              nonce = text
+            },
+          }),
+        readInput: async (pattern: RegExp) => {
+          callCount += 1
+          const report = callCount % 2 === 1 ? "a" : `\x1b[200~${nonce}\x1b[201~`
+          if (pattern.test(report)) return [report]
+          return null
+        },
+      }),
+    }
+  }
   throw new Error(`No satisfaction context configured for decided row ${id}`)
 }
 
@@ -466,7 +484,7 @@ test("the extensions contract covers every extension capability and names none u
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
   expect(gaps.misdeclared).toEqual([])
-  expect(extensionsProbes).toHaveLength(77)
+  expect(extensionsProbes).toHaveLength(78)
   expect(EXTENSIONS_CONTRACT).toHaveLength(79)
 })
 
@@ -502,7 +520,7 @@ test("the harness replays every extension capability deterministically", async (
 
 test("every decided extension contract row is satisfied by its required protocol response", async () => {
   const decidedRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "decided")
-  expect(decidedRows).toHaveLength(40)
+  expect(decidedRows).toHaveLength(41)
 
   for (const row of decidedRows) {
     const probe = extensionsProbes.find((p) => p.id === row.id)

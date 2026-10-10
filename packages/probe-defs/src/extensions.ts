@@ -1239,6 +1239,66 @@ async function liveClipboardProbe(ctx: TermContext, kind: "write" | "read" | "ro
   })
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+/** OS clipboard → app via shift+Insert. Distinct from OSC 52 (app → clipboard) and DECRPM 2004. */
+async function clipboardPaste(ctx: TermContext): Promise<ProbeResult> {
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!input || !readInput) return notTestedResult("OS-level XTEST paste injection", { input: false })
+  if (!ctx.withClipboardFixture) return notTestedResult("owned disposable clipboard paste", { clipboard: false })
+  return ctx.withClipboardFixture(async (fixture) => {
+    const control = (await readInput(/^a/, 1000, () => input.injectKey("a")))?.[0]
+    if (!control) throw new Error("XTEST delivery control failed: plain a did not reach the app")
+    const nonce = `terminfo-paste-${randomUUID()}`
+    await fixture.writeText(nonce)
+    ctx.write("\x1b[?2004h")
+    try {
+      const arrival = new RegExp(`\\x1b\\[200~[\\s\\S]*?\\x1b\\[201~|${escapeRegex(nonce)}`)
+      const report = (await readInput(arrival, 1000, () => input.injectKey("shift+Insert")))?.[0]
+      if (!report) {
+        throw new Error("XTEST clipboard paste shift+Insert did not reach the app after a successful delivery control")
+      }
+      const observed = { mode: "clipboard-paste", control, report }
+      const expected =
+        "OS XTEST shift+Insert paste of clipboard nonce as CSI 200~nonce201~ after plain-a delivery control"
+      const encoding = new RegExp(`\\x1b\\[200~${escapeRegex(nonce)}\\x1b\\[201~`)
+      if (encoding.test(report)) {
+        return {
+          pass: true,
+          response: JSON.stringify(observed),
+          observation: { outcome: "supported" as const, evidence: "interaction" as const },
+          assertions: [
+            {
+              kind: "positive" as const,
+              expected,
+              observed: JSON.stringify(observed),
+              action: "clipboard-paste:shift+Insert",
+            },
+          ],
+        }
+      }
+      return {
+        pass: false,
+        response: JSON.stringify(observed),
+        observation: { outcome: "unsupported" as const, evidence: "interaction" as const },
+        assertions: [
+          {
+            kind: "negative" as const,
+            expected,
+            observed: JSON.stringify(observed),
+            action: "clipboard-paste:shift+Insert",
+          },
+        ],
+      }
+    } finally {
+      ctx.write("\x1b[?2004l")
+    }
+  })
+}
+
 export const extensionsProbes: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
   {
@@ -1641,6 +1701,13 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe("extensions.osc52-read", headlessClipboardRoundtrip, (ctx) => liveClipboardProbe(ctx, "read"), "query"),
     termlessObservationEvidence: "query",
   },
+
+  probe(
+    "extensions.clipboard-paste",
+    () => notTestedResult("OS-level XTEST paste injection", { input: false }),
+    clipboardPaste,
+    "interaction",
+  ),
 
   // OSC 10 — foreground color query
   oscColorQueryProbe("extensions.osc10-fg-color", 10),
