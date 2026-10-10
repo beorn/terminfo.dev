@@ -28,6 +28,7 @@ import {
  * input.modify-other-keys grades through OS XTEST after CSI >4;2m (ctrl+i vs Tab);
  * input.modify-other-keys-3 grades unmodified i after CSI >4;3m with delivery control before enable;
  * input.csi-u negotiates Kitty keyboard protocol flag 1;
+ * input.pixel-mouse grades SGR pixel coords under 1016 after a 1000+1006 cell control;
  * remaining catalog mouse event probes stay inconclusive pending their regrade;
  * input.xtest-key, input.xtest-click, and input.xtest-wheel execute OS-level injection with same-run delivery control.
  */
@@ -41,8 +42,9 @@ const INPUT_CONTRACT: GroupContract = [
   { id: "input.csi-u", expected: "decided", claim: "CSI u: Kitty keyboard protocol flag 1 enables disambiguate mode" },
   {
     id: "input.pixel-mouse",
-    expected: "inconclusive",
-    claim: "pixel-mouse: SGR pixel mouse mode 1016 requires generated mouse events",
+    expected: "decided",
+    claim:
+      "pixel-mouse: CSI ? 1016 then click reports SGR pixel coords distinct from the 1000+1006 cell control; same cell coords is unsupported",
   },
   {
     id: "input.urxvt-mouse",
@@ -167,6 +169,18 @@ function inputSatisfactionContext(id: string): { readonly headless?: TermlessCon
       }),
     }
   }
+  if (id === "input.pixel-mouse") {
+    let callCount = 0
+    return {
+      term: replayContext(new Map(), {
+        input: { injectKey: async () => {}, injectClick: async () => {} },
+        readInput: async () => {
+          callCount++
+          return callCount % 2 === 1 ? ["\x1b[<0;10;5M"] : ["\x1b[<0;160;80M"]
+        },
+      }),
+    }
+  }
   if (id === "input.xtest-click") {
     return {
       term: replayContext(new Map(), {
@@ -280,6 +294,21 @@ test("input.modify-other-keys reads unsatisfied when delivery control fails", as
     }),
   }
   await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control|plain a/i)
+})
+
+test("input.pixel-mouse reads unsatisfied when delivery control fails", async () => {
+  const row = INPUT_CONTRACT.find((entry) => entry.id === "input.pixel-mouse")
+  const probe = inputProbes.find((entry) => entry.id === "input.pixel-mouse")
+  expect(row).toBeDefined()
+  expect(probe).toBeDefined()
+  if (!row || !probe) return
+  const failingContext = {
+    term: replayContext(new Map(), {
+      input: { injectKey: async () => {}, injectClick: async () => {} },
+      readInput: async () => null,
+    }),
+  }
+  await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control|1000\+1006/i)
 })
 
 test("input.modify-other-keys-3 reads unsatisfied when delivery control fails", async () => {

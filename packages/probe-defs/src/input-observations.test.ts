@@ -8,7 +8,7 @@ import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
 import type { TermContext, TermlessContext } from "./types.ts"
 
-const eventInputIds = ["input.pixel-mouse", "input.urxvt-mouse", "input.x10-mouse", "input.button-event-mouse"] as const
+const eventInputIds = ["input.urxvt-mouse", "input.x10-mouse", "input.button-event-mouse"] as const
 
 function headless(declared: boolean, fed: string[]): TermlessContext {
   const unexpected = (method: string): never => {

@@ -54,7 +54,7 @@ function term(overrides: Partial<TermContext> = {}): TermContext {
 }
 
 function inputAndRead(
-  script: { keys?: Record<string, string>; clicks?: Record<number, string> },
+  script: { keys?: Record<string, string>; clicks?: Record<number, string>; clickReports?: string[] },
   writes: string[] = [],
 ): { ctx: TermContext; keys: string[]; clicks: number[] } {
   const keys: string[] = []
@@ -75,8 +75,12 @@ function inputAndRead(
       async injectClick(button) {
         if (!listening) throw new Error("XTEST inject before stdin listen")
         clicks.push(button)
-        const reply = script.clicks?.[button]
-        if (reply !== undefined) pending.push(reply)
+        const queued = script.clickReports?.[clicks.length - 1]
+        if (queued !== undefined) pending.push(queued)
+        else {
+          const reply = script.clicks?.[button]
+          if (reply !== undefined) pending.push(reply)
+        }
       },
     },
     readInput: async (_pattern, _timeoutMs, inject) => {
@@ -433,4 +437,100 @@ test("modes.application-keypad throws when KP_5 is silent after delivery control
   expect(keys).toEqual(["a", "KP_5"])
   expect(writes.join("")).toContain("\x1b=")
   expect(writes.join("")).toContain("\x1b>")
+})
+
+test("input.pixel-mouse is not tested without an OS XTEST adapter", async () => {
+  const definition = probe("input.pixel-mouse")
+  const writes: string[] = []
+  const headless = definition.termless!({
+    cols: 80,
+    feed() {},
+    feedCapture() {
+      return ""
+    },
+    getCell: () => {
+      throw new Error("Unexpected getCell")
+    },
+    getCursor: () => {
+      throw new Error("Unexpected getCursor")
+    },
+    getMode: () => false,
+    getText: () => "",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset() {},
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "unknown",
+      extensions: new Set(),
+    },
+  })
+  expect(headless.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(headless.observation).toBeUndefined()
+
+  const result = await definition.term!(term({ write: (text) => writes.push(text) }))
+  expect(writes).toEqual([])
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(result.observation).toBeUndefined()
+})
+
+test("input.pixel-mouse aborts when the 1000+1006 control click does not reach the app, and does not enable 1016", async () => {
+  const writes: string[] = []
+  const { ctx, clicks } = inputAndRead({ clicks: {} }, writes)
+  await expect(probe("input.pixel-mouse").term!(ctx)).rejects.toThrow(/delivery control|1000\+1006/i)
+  expect(clicks).toEqual([1])
+  expect(writes.join("")).toContain("\x1b[?1000h")
+  expect(writes.join("")).toContain("\x1b[?1006h")
+  expect(writes.join("")).not.toContain("\x1b[?1016h")
+  expect(writes.join("")).not.toContain("\x1b[?1016l")
+})
+
+test("input.pixel-mouse records supported interaction when 1016 reports pixel coords distinct from the cell control", async () => {
+  const writes: string[] = []
+  const control = "\x1b[<0;10;5M"
+  const report = "\x1b[<0;160;80M"
+  const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
+  const result = (await probe("input.pixel-mouse").term!(ctx)) as ProbeResult
+  expect(clicks).toEqual([1, 1])
+  expect(writes.join("")).toContain("\x1b[?1016h")
+  expect(writes.join("")).toContain("\x1b[?1016l")
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "pixel-mouse:1" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "1016", control, report })
+})
+
+test("input.pixel-mouse records unsupported interaction when 1016 still reports the same cell coords", async () => {
+  const writes: string[] = []
+  const cell = "\x1b[<0;10;5M"
+  const { ctx, clicks } = inputAndRead({ clickReports: [cell, cell] }, writes)
+  const result = (await probe("input.pixel-mouse").term!(ctx)) as ProbeResult
+  expect(clicks).toEqual([1, 1])
+  expect(writes.join("")).toContain("\x1b[?1016h")
+  expect(writes.join("")).toContain("\x1b[?1016l")
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "pixel-mouse:1" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "1016", control: cell, report: cell })
+})
+
+test("input.pixel-mouse throws when the 1016 click is silent after delivery control, and still resets 1016", async () => {
+  const writes: string[] = []
+  const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M"] }, writes)
+  await expect(probe("input.pixel-mouse").term!(ctx)).rejects.toThrow(/1016|pixel-mouse|silent/i)
+  expect(clicks).toEqual([1, 1])
+  expect(writes.join("")).toContain("\x1b[?1016h")
+  expect(writes.join("")).toContain("\x1b[?1016l")
 })
