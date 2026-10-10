@@ -123,6 +123,28 @@ export function frameUnavailableCapture(): ProbeCapture {
   }
 }
 
+type OwnedTerminalKind = "linux" | "terminalApp" | "darwinHosted"
+
+/** Linux collections export both the clipboard receipt and TERMINFO_DISPOSABLE_RECEIPT; clipboard wins. */
+function ownedTerminalKind(input: {
+  clipboardReceipt: string | undefined
+  hostedDarwinReceipt: string | undefined
+  terminalAppOwner: unknown
+  platform: NodeJS.Platform
+}): OwnedTerminalKind | undefined {
+  const { clipboardReceipt, hostedDarwinReceipt, terminalAppOwner, platform } = input
+  if (clipboardReceipt && terminalAppOwner) {
+    throw new Error("Collection cannot have both Linux and Terminal.app owners")
+  }
+  if (terminalAppOwner && hostedDarwinReceipt && platform === "darwin") {
+    throw new Error("Collection cannot have both Terminal.app and hosted Darwin owners")
+  }
+  if (clipboardReceipt) return "linux"
+  if (terminalAppOwner) return "terminalApp"
+  if (platform === "darwin" && hostedDarwinReceipt) return "darwinHosted"
+  return undefined
+}
+
 /** The same source-tree collector powers daemon and inline CLI entry points. */
 export async function collectProbeRun(
   options: {
@@ -167,31 +189,30 @@ export async function collectProbeRun(
   }
   let ownedTerminal: OwnedTerminal | undefined
   const hostedDarwinReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
-  if (clipboardReceipt && options.terminalAppOwner) {
-    throw new Error("Collection cannot have both Linux and Terminal.app owners")
-  }
-  if (clipboardReceipt && hostedDarwinReceipt) {
-    throw new Error("Collection cannot have both Linux and hosted Darwin owners")
-  }
-  if (options.terminalAppOwner && hostedDarwinReceipt && process.platform === "darwin") {
-    throw new Error("Collection cannot have both Terminal.app and hosted Darwin owners")
-  }
-  if (clipboardReceipt) {
-    if (!executable) throw new Error("Owned clipboard receipt lacks measured executable")
+  const kind = ownedTerminalKind({
+    clipboardReceipt,
+    hostedDarwinReceipt,
+    terminalAppOwner: options.terminalAppOwner,
+    platform: process.platform,
+  })
+  if (kind === "linux") {
+    if (!clipboardReceipt || !executable) throw new Error("Owned clipboard receipt lacks measured executable")
     ownedTerminal = await createOwnedTerminal({
       captureRunId,
       out,
       expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
       linux: { receiptPath: clipboardReceipt, executable },
     })
-  } else if (options.terminalAppOwner) {
+  } else if (kind === "terminalApp") {
+    if (!options.terminalAppOwner) throw new Error("Owned Terminal.app collection lacks owner assertion")
     ownedTerminal = await createOwnedTerminal({
       captureRunId,
       out,
       expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
       terminalApp: options.terminalAppOwner,
     })
-  } else if (process.platform === "darwin" && hostedDarwinReceipt) {
+  } else if (kind === "darwinHosted") {
+    if (!hostedDarwinReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
     ownedTerminal = await createOwnedTerminal({
       captureRunId,
       out,

@@ -1342,8 +1342,11 @@ it("retains same-callback control and target frames without declaring visual sup
     { featureId: "sgr.underline.curly", role: "control" },
     { featureId: "sgr.underline.curly", role: "target" },
   ])
-  expect(checkpoints[0]?.writes).not.toContain("\x1b[4:3m")
-  expect(checkpoints[1]?.writes).toContain("\x1b[4:3m")
+  // The DECRQSS readback attempt writes the styled sequence to set the state it queries, so assert
+  // on the rendered sample: the control frame renders it unstyled, the target frame styled.
+  const styledSample = "\x1b[4:3mAaBb 0123456789 - terminal text"
+  expect(checkpoints[0]?.writes).not.toContain(styledSample)
+  expect(checkpoints[1]?.writes).toContain(styledSample)
   expect(batch.screenshotRefs).toEqual(frames.map(({ ref }) => ref))
   expect(batch.observations).toEqual([
     expect.objectContaining({

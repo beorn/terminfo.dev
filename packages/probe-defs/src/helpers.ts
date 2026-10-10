@@ -72,29 +72,36 @@ export function unmeasuredCellResult(position: { row: number; col: number } | nu
   }
 }
 
-/** SGR parameter codes a DECRQSS reply must carry (and, for a reset, must not). */
+/**
+ * SGR parameters a DECRQSS reply must carry (and, for a reset, must not), plus exact tokens.
+ * `require`/`forbid` match a parameter's leading code; `requireTokens` distinguishes the
+ * sub-parameter families that share a code, such as the underline styles under 4 (`4:3`).
+ */
 export interface SgrReadback {
   require: readonly number[]
   forbid?: readonly number[]
+  requireTokens?: readonly string[]
 }
 
 /**
- * DECRQSS `$ q m` — the SGR parameters the terminal itself reports as active.
+ * DECRQSS `$ q m` — the SGR parameter tokens the terminal itself reports as active, sub-parameters
+ * preserved (`4:3`, `58:2:255:0:128`).
  * A complete `DCS 1 $ r <Ps> m ST` reply is parsed; a timeout, a DA1 sentinel, or a
  * `DCS 0 $ r ST` "request not recognized" reply all return null. A missing readback is
  * never a negative.
  */
-export async function querySgrState(ctx: TermContext): Promise<number[] | null> {
+export async function querySgrState(ctx: TermContext): Promise<string[] | null> {
   const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP1\$r([0-9;:]*)m\x1b\\/)
   if (outcome.reason !== "reply") return null
   const payload = outcome.match?.[1]
   if (payload === undefined) return null
   if (payload === "") return []
-  return payload
-    .split(";")
-    .filter((part) => part !== "")
-    .map((part) => Number(part.split(":")[0]))
-    .filter((code) => Number.isInteger(code))
+  return payload.split(";").filter((part) => part !== "")
+}
+
+/** The leading code of a DECRQSS parameter token (`4:3` -> 4). */
+function leadingSgrCode(token: string): number {
+  return Number(token.split(":")[0])
 }
 
 /**
@@ -114,12 +121,31 @@ export async function queryAnsiMode(ctx: TermContext, modeNumber: number): Promi
   return null
 }
 
+/**
+ * The terminal's own DECRQSS report may spell a style as a colon sub-parameter of the code we
+ * require: measured, kitty-0.49.2 reports SGR 21 (doubly underlined) as `4:2`, and `4:1` is the
+ * single underline `4` spelled out. Fold those equivalences into the reported codes so the
+ * terminal's chosen encoding cannot decide the claim.
+ */
+const SGR_CODE_ALIASES: Readonly<Record<string, number>> = { "4:1": 4, "4:2": 21 }
+
 /** Decide an SGR claim from the terminal own DECRQSS report. */
-export function sgrReadbackResult(id: string, sequence: string, state: number[], readback: SgrReadback): ProbeResult {
-  const required = readback.require.every((code) => state.includes(code))
-  const forbidden = readback.forbid?.some((code) => state.includes(code)) ?? false
-  const ok = required && !forbidden
+export function sgrReadbackResult(
+  id: string,
+  sequence: string,
+  state: readonly string[],
+  readback: SgrReadback,
+): ProbeResult {
+  const codes = state.flatMap((token) => {
+    const alias = SGR_CODE_ALIASES[token]
+    return alias === undefined ? [leadingSgrCode(token)] : [leadingSgrCode(token), alias]
+  })
+  const required = readback.require.every((code) => codes.includes(code))
+  const forbidden = readback.forbid?.some((code) => codes.includes(code)) ?? false
+  const tokensRequired = readback.requireTokens?.every((token) => state.includes(token)) ?? true
+  const ok = required && !forbidden && tokensRequired
   const observed = state.length === 0 ? "0" : state.join(";")
+  const expected = [...readback.require.map(String), ...(readback.requireTokens ?? [])].join(";")
   return {
     pass: ok,
     response: JSON.stringify({ sgr: observed }),
@@ -127,11 +153,33 @@ export function sgrReadbackResult(id: string, sequence: string, state: number[],
     assertions: [
       {
         kind: ok ? "positive" : "negative",
-        expected: `${id}: DECRQSS reports ${readback.require.join(";")} after ${sequence}`,
+        expected: `${id}: DECRQSS reports ${expected} after ${sequence}`,
         observed,
       },
     ],
   }
+}
+
+/**
+ * Decide an SGR claim from the terminal's own DECRQSS report when it answers, and return null when
+ * it stays silent so the caller keeps its existing (capture or cursor) evidence path. A missing
+ * readback is never a negative.
+ */
+export async function sgrReadbackDecision(
+  ctx: TermContext,
+  id: string,
+  sequence: string,
+  readback: SgrReadback,
+): Promise<ProbeResult | null> {
+  ctx.write("\x1b[0m")
+  ctx.write(sequence)
+  let state: string[] | null
+  try {
+    state = await querySgrState(ctx)
+  } finally {
+    ctx.write("\x1b[0m")
+  }
+  return state === null ? null : sgrReadbackResult(id, sequence, state, readback)
 }
 
 /**
@@ -231,27 +279,14 @@ export function sgrProbe(
     },
     async term(ctx) {
       if (readback) {
-        ctx.write("\x1b[0m")
-        ctx.write(sequence)
-        let state: number[] | null
-        try {
-          state = await querySgrState(ctx)
-        } finally {
-          ctx.write("\x1b[0m")
+        // The capture fixture guard refuses before any bytes on a measured small terminal, so the
+        // readback must not emit its own sequences ahead of it.
+        if (ctx.capture) {
+          const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
+          if (refusal) return refusal
         }
-        if (state === null) {
-          return {
-            pass: false,
-            note: "No complete DECRQSS SGR reply",
-            observation: {
-              outcome: "inconclusive",
-              reason: "no-response",
-              evidence: "query",
-              note: "DECRQSS $ q m returned no complete SGR state; no readback decision",
-            },
-          }
-        }
-        return sgrReadbackResult(id, sequence, state, readback)
+        const decided = await sgrReadbackDecision(ctx, id, sequence, readback)
+        if (decided) return decided
       }
       if (ctx.capture) {
         const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")

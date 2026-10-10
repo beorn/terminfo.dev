@@ -295,8 +295,12 @@ test("SGR reset capture fixtures share the 3x34 guard and render an underlined d
     expect(ok.observation?.frames, id).toHaveLength(2)
     expect(writes.length, id).toBeGreaterThanOrEqual(2)
     if (id === "sgr.underline-color-reset") {
-      expect(writes[0], id).toBe("\x1b[0m\x1b[2J\x1b[3;3H\x1b[4mXXYY")
-      expect(writes[1], id).toContain("\x1b[58;2;255;0;128m")
+      // The DECRQSS readback writes its probe sequences first on a silent terminal; the capture
+      // fixture follows. Locate the fixture runs rather than pinning their indices.
+      const control = writes.find((write) => write.endsWith("\x1b[4mXXYY"))
+      const target = writes.find((write) => write.includes("\x1b[58;2;255;0;128m"))
+      expect(control, id).toBe("\x1b[0m\x1b[2J\x1b[3;3H\x1b[4mXXYY")
+      expect(target, id).toContain("\x1b[58;2;255;0;128m")
     }
   }
 })
