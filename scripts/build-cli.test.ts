@@ -135,6 +135,22 @@ it("stays green on a composed tree and hands the launcher a receipt it refuses b
     expect(gate.status).toBe(2)
     expect(gate.stderr).toContain(`Suite ${receipt.probeHash} is undeclared on this checkout`)
     expect(gate.stderr).not.toContain("Invalid CLI producer receipt")
+
+    // Hosted macOS/Windows workflows smoke-check the npm-installed bin (`terminfo --version`)
+    // after build-cli. That launcher is terminfo.mjs, not linux-container-run.sh. An undeclared
+    // receipt uses manifestSha256: null; treating that as "invalid fields" is the 28533 hosted
+    // collect die at install (macos-measurement #30 on eeef831). The clone is HEAD; copy the
+    // working-tree launcher so this assertion covers the uncommitted bin.
+    copyFileSync(
+      join(REPO_ROOT, "packages/terminfo.dev/bin/terminfo.mjs"),
+      join(fixture, "packages/terminfo.dev/bin/terminfo.mjs"),
+    )
+    const hosted = spawnSync(process.execPath, [join(fixture, "packages/terminfo.dev/bin/terminfo.mjs"), "--version"], {
+      encoding: "utf8",
+    })
+    expect(hosted.status).not.toBe(0)
+    expect(hosted.stderr).toContain(`Suite ${receipt.probeHash} is undeclared on this checkout`)
+    expect(hosted.stderr).not.toMatch(/invalid fields/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
