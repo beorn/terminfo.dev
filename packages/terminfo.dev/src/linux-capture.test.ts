@@ -50,7 +50,7 @@ function fixture() {
     if [ "${"$"}TEST_CAPTURE_FAIL" = owner ]; then printf 'owner lookup failed\\n' >&2; exit 17; fi
     printf '%s\\n' "$TEST_CAPTURE_OWNER_PID"
     ;;
-  getwindowgeometry) printf 'X=0\\nY=0\\nWIDTH=640\\nHEIGHT=480\\n' ;;
+  getwindowgeometry) printf 'X=0\\nY=0\\nWIDTH=%s\\nHEIGHT=%s\\n' "\${TEST_CAPTURE_WIDTH:-640}" "\${TEST_CAPTURE_HEIGHT:-480}" ;;
   *) exit 18 ;;
 esac`,
   )
@@ -67,6 +67,25 @@ printf 'xwd-window-%s' "$2"`,
     `if [ "$1" = -version ]; then printf 'ImageMagick test\\n'; exit 0; fi
 cat > "$TEST_CAPTURE_STDIN"
 if [ "${"$"}TEST_CAPTURE_FAIL" = conversion ]; then printf 'conversion failed\\n' >&2; exit 19; fi
+rgba=
+crop=
+for arg; do
+  [ "\$arg" = "rgba:-" ] && rgba=1
+  case "\$arg" in
+    *x*+*) crop=\$arg ;;
+  esac
+done
+if [ -n "\$rgba" ]; then
+  if [ -n "\$crop" ]; then
+    w=\${crop%%x*}
+    rest=\${crop#*x}
+    h=\${rest%%+*}
+    head -c "\$((w * h * 4))" /dev/zero
+  else
+    head -c "\$(( \${TEST_CAPTURE_WIDTH:-640} * \${TEST_CAPTURE_HEIGHT:-480} * 4 ))" /dev/zero
+  fi
+  exit 0
+fi
 cat "$TEST_CAPTURE_PNG"`,
   )
   process.env.PATH = `${directory}:${originalPath ?? ""}`
@@ -104,6 +123,8 @@ afterEach(() => {
     "TEST_CAPTURE_STDIN",
     "TEST_CAPTURE_PNG",
     "TEST_CAPTURE_FAIL",
+    "TEST_CAPTURE_WIDTH",
+    "TEST_CAPTURE_HEIGHT",
   ]) {
     delete process.env[key]
   }
@@ -250,3 +271,26 @@ test("the window's own pixel size comes from the measured geometry, and a missin
   })
   expect(() => windowPixels("WINDOW=4194317\nX=0\nY=0\nSCREEN=0\n")).toThrow(/pixel size/)
 })
+
+test.runIf(process.platform === "linux")(
+  "a 1304x814 window yields a whole-window pixelsDigest of 4245824 rgba bytes (#28580)",
+  async () => {
+    // xterm 411 measured 1304x814; 3145728 is 1024x768x4 (the old Xvfb screen), not a 3 MiB
+    // execFile cap. command() already admits 32 MiB, so the collector must hash the full frame.
+    const { directory, release } = fixture()
+    process.env.TEST_CAPTURE_WIDTH = "1304"
+    process.env.TEST_CAPTURE_HEIGHT = "814"
+    writeFileSync(release, "continue")
+    const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    const result = await capture({
+      featureId: "editing.delete-chars",
+      role: "target",
+      label: "xterm window",
+      cells: { top: 1, left: 1, bottom: 1, right: 1 },
+      pixelGeometry: { cellWidth: 8, cellHeight: 16, textWidth: 800, textHeight: 480 },
+    })
+    expect(result.frame.pixelsDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
+    const expected = Buffer.alloc(1304 * 814 * 4)
+    expect(result.frame.pixelsDigest).toBe(`sha256:${createHash("sha256").update(expected).digest("hex")}`)
+  },
+)
