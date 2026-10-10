@@ -117,7 +117,7 @@ function appWrapper(cols: number): TermContext {
   }
 }
 
-function appGoto(rows: number, cols: number, opts: { noClamp?: boolean } = {}): TermContext {
+function appGoto(rows: number, cols: number, opts: { noClamp?: boolean; ignoreCud?: boolean } = {}): TermContext {
   const base = app({ row: 1, col: 1 })
   let row = 1
   let col = 1
@@ -133,8 +133,10 @@ function appGoto(rows: number, cols: number, opts: { noClamp?: boolean } = {}): 
       }
       const cud = /^\u001b\[(\d+)B$/.exec(sequence)
       if (cud) {
-        row += Number(cud[1])
-        if (!opts.noClamp && row > rows) row = rows
+        if (!opts.ignoreCud) {
+          row += Number(cud[1])
+          if (!opts.noClamp && row > rows) row = rows
+        }
         return
       }
       for (const ch of sequence) {
@@ -778,13 +780,29 @@ test("position report grades a text-induced cursor advance, not just a CUP echo"
   expect(result.assertions).toMatchObject([{ kind: "positive" }])
   const constant = await byId("cursor.position-report").term!(app({ row: 3, col: 6 }))
   expect(constant.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+
+  const minimum = appReporter()
+  minimum.rows = 3
+  minimum.cols = 6
+  expect((await byId("cursor.position-report").term!(minimum)).observation).toMatchObject({ outcome: "supported" })
+  const narrow = appReporter()
+  narrow.rows = 3
+  narrow.cols = 5
+  const writes: string[] = []
+  narrow.write = (sequence) => writes.push(sequence)
+  expect((await byId("cursor.position-report").term!(narrow)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(writes).toEqual([])
 })
 
 test("remaining app cursor fixtures refuse undersized geometry without writing", async () => {
   const fixtures = [
     ["cursor.horizontal-absolute", 3, 15],
     ["cursor.next-line", 4, 5],
-    ["cursor.position-report", 3, 5],
+    ["cursor.position-report", 3, 6],
     ["cursor.ansi-save", 10, 15],
     ["cursor.ansi-restore", 12, 18],
     ["cursor.save-restore", 10, 10],
@@ -874,15 +892,28 @@ test("app CUD grades against a newline-measured bottom and refuses an unqualifie
   const replies = [
     { row: 1, col: 1 },
     { row: 1001, col: 1 },
+    { row: 1, col: 1 },
     { row: 1001, col: 1 },
   ]
   context.queryCursorPosition = async () => replies.shift() ?? null
   const result = await probe.term!(context)
-  expect(writes).toEqual(["\x1b[1;1H", "\r\n".repeat(1000), "\x1b[1002B"])
+  expect(writes).toEqual(["\x1b[1;1H", "\r\n".repeat(1000), "\x1b[1;1H", "\x1b[1002B"])
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
 
   const unqualified = await probe.term!(app({ row: 4, col: 1 }))
   expect(unqualified.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  for (const home of [null, { row: 24, col: 1 }]) {
+    const context = app(null)
+    const replies = [{ row: 1, col: 1 }, { row: 24, col: 1 }, home]
+    const writes: string[] = []
+    context.queryCursorPosition = async () => replies.shift() ?? null
+    context.write = (sequence) => writes.push(sequence)
+    expect((await probe.term!(context)).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: home ? "insufficient-evidence" : "no-response",
+    })
+    expect(writes).toEqual(["\x1b[1;1H", "\r\n".repeat(23), "\x1b[1;1H"])
+  }
 })
 
 test("app CUD positive and clamp controls", async () => {
@@ -893,6 +924,9 @@ test("app CUD positive and clamp controls", async () => {
   const noClamp = await probe.term!(appGoto(24, 80, { noClamp: true }))
   expect(noClamp.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
   expect(noClamp.assertions).toMatchObject([{ kind: "negative" }])
+  const inert = await probe.term!(appGoto(24, 80, { ignoreCud: true }))
+  expect(inert.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(inert.assertions).toMatchObject([{ kind: "negative" }])
 })
 
 test("app CUP refuses nonfinite geometry before a feature write", async () => {

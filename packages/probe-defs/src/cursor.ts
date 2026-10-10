@@ -364,14 +364,14 @@ export const cursorProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
+        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 6) {
           return {
             pass: false,
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "none",
-              note: "cursor.position-report fixture needs at least 3x5 measured cells",
+              note: "cursor.position-report fixture needs at least 3x6 measured cells",
             },
           }
         }
@@ -898,6 +898,12 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!bottom) return inconclusive()
         if (bottom.row !== rows || bottom.col !== 1) {
           return inconclusive("Newline-induced bottom was not reported at " + rows + ";1")
+        }
+        ctx.write("\x1b[1;1H")
+        const beforeTarget = await ask("before-target")
+        if (!beforeTarget) return inconclusive()
+        if (beforeTarget.row !== 1 || beforeTarget.col !== 1) {
+          return inconclusive("CUD return-home control did not reach 1;1")
         }
         const target = Math.max(999, rows + 1)
         ctx.write("\x1b[" + target + "B") // move past the measured bottom
