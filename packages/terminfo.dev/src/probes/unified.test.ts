@@ -1391,7 +1391,9 @@ it("records a FrameUnavailable capture as a named collector error, never invente
 })
 
 // The stub is installed only on a controlled-Linux run with no capture directory. Everywhere else
-// no capture callback exists at all, and these rows keep deciding exactly as they do today (27875).
+// no capture callback exists at all, and the row stays a graceful absence — but its label is the
+// honest one: the DECSCUSR set and the DECRQSS query are written before the probe gives up, so the
+// silence is query/no-response, never none (8753a5e2, implementing @cto 05101f84; supersedes 27875).
 it("keeps today's graceful absence row when no capture callback is installed", async () => {
   verifiedBatchFixture()
   process.stdout.write = (() => true) as typeof process.stdout.write
@@ -1404,8 +1406,8 @@ it("keeps today's graceful absence row when no capture callback is installed", a
     {
       featureId: "cursor.shape",
       outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+      reason: "no-response",
+      evidence: "query",
       note: "DECRQSS cursor-style report unanswered; no pixel readback for shape",
     },
   ])

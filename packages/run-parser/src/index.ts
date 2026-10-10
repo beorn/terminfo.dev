@@ -263,12 +263,24 @@ export function parseObservationFrames(
     if (sourceRef !== undefined && !screenshotDigest(sourceRef)) {
       fail(path, `invalid frame sourceRef ${index} for ${featureId}`)
     }
+    // The raw-pixel and cell-aligned digests are the frame's own measurement: an in-run verdict on
+    // pixels is recomputable only while they survive the parse, so they are carried, not dropped.
+    const regionDigest = entry.regionDigest
+    if (regionDigest !== undefined && !screenshotDigest(regionDigest)) {
+      fail(path, `invalid frame regionDigest ${index} for ${featureId}`)
+    }
+    const pixelsDigest = entry.pixelsDigest
+    if (pixelsDigest !== undefined && !screenshotDigest(pixelsDigest)) {
+      fail(path, `invalid frame pixelsDigest ${index} for ${featureId}`)
+    }
     return {
       role: entry.role as ObservationFrame["role"],
       ref,
       capturedAt: entry.capturedAt,
       label,
       ...(sourceRef && { sourceRef }),
+      ...(regionDigest && { regionDigest }),
+      ...(pixelsDigest && { pixelsDigest }),
     }
   })
   const targets = frames.filter((frame) => frame.role === "target")
@@ -306,8 +318,18 @@ function parseObservation(
   if (value.evidence === "none" && value.frames !== undefined) {
     fail(path, `none evidence for ${featureId} cannot carry frames`)
   }
-  if (value.evidence === "pixels" && (value.outcome === "supported" || value.outcome === "unsupported")) {
-    fail(path, `collector pixels for ${featureId} must remain inconclusive until reviewed Interpretation`)
+  // A pixels verdict is allowed only as a decided frame pair. Equality of retained digests is a
+  // measurement, so it belongs in the raw run; a lone screenshotRef is still a pixel the collector
+  // cannot decide, and it keeps the old refusal. Bounds, roles and capturedAt are enforced below.
+  if (
+    value.evidence === "pixels" &&
+    (value.outcome === "supported" || value.outcome === "unsupported") &&
+    value.frames === undefined
+  ) {
+    fail(
+      path,
+      `pixels verdict for ${featureId} requires control and target frames; a lone screenshotRef stays inconclusive`,
+    )
   }
   const rawReplyRef =
     value.rawReplyRef === undefined ? undefined : asString(value.rawReplyRef, path, `rawReplyRef for ${featureId}`)
@@ -343,7 +365,53 @@ function parseObservation(
   if (frames) observation.frames = frames
   if (value.note !== undefined) observation.note = asString(value.note, path, `note for ${featureId}`)
   validateObservation(observation, path, rawReplies, assertions)
+  // A pixels verdict the collector decided in-run is a measurement, so the run alone must be able
+  // to recompute it: its own assertion, bound like every other measuring evidence, and every digest
+  // that assertion cites is a frame's ref or cell-aligned regionDigest. A reviewed Interpretation is
+  // exempt — its evidence is the frame pair itself, checked by its own validator.
+  if (
+    observation.evidence === "pixels" &&
+    (observation.outcome === "supported" || observation.outcome === "unsupported")
+  ) {
+    requireCitedFrameDigests(observation, boundAssertion(observation, path, assertions), path)
+  }
   return observation
+}
+
+/** The run's own conclusive assertion for an observation, bound by rawReplyRef like every measurement. */
+function boundAssertion(observation: Observation, path: string, assertions: readonly ProbeAssertion[]): ProbeAssertion {
+  const { featureId, outcome, rawReplyRef } = observation
+  const kind = outcome === "supported" ? "positive" : "negative"
+  const assertion = assertions.find(
+    (entry) =>
+      entry.featureId === featureId &&
+      entry.kind === kind &&
+      nonempty(rawReplyRef) &&
+      entry.rawReplyRef === rawReplyRef,
+  )
+  if (!assertion) fail(path, `${featureId} lacks bound ${kind} assertion`)
+  if (!nonempty(assertion.expected) || !nonempty(assertion.observed)) {
+    fail(path, `${featureId} assertion requires expected and observed evidence`)
+  }
+  return assertion
+}
+
+/** Keeps a pixels verdict recomputable: every digest it cites is a frame's ref or cell-aligned regionDigest, and it cites one. */
+function requireCitedFrameDigests(observation: Observation, assertion: ProbeAssertion, path: string): void {
+  const { featureId } = observation
+  const frames = observation.frames ?? []
+  const cited = assertion.observed.match(/sha256:[0-9a-f]{64}/g) ?? []
+  if (cited.length === 0) {
+    fail(path, `pixels verdict for ${featureId} must cite the frame digest it decided on`)
+  }
+  for (const digest of cited) {
+    if (!frames.some((frame) => frame.ref === digest || frame.regionDigest === digest)) {
+      fail(
+        path,
+        `pixels verdict for ${featureId} cites ${digest}, which is not the ref or regionDigest of a frame in this observation`,
+      )
+    }
+  }
 }
 
 export function validateObservation(
@@ -390,19 +458,11 @@ export function validateObservation(
     }
   }
   if (outcome !== "supported" && outcome !== "unsupported") return
+  // A pixels observation reaching this validator is a reviewed Interpretation: its evidence is the
+  // frame pair, not an assertion in the run, and selected-results checks those frames itself. The
+  // raw-run path enforces the recomputability of the collector's own pixels verdicts in parseObservation.
   if (evidence === "pixels") return
-  const kind = outcome === "supported" ? "positive" : "negative"
-  const assertion = assertions.find(
-    (entry) =>
-      entry.featureId === featureId &&
-      entry.kind === kind &&
-      nonempty(rawReplyRef) &&
-      entry.rawReplyRef === rawReplyRef,
-  )
-  if (!assertion) fail(path, `${featureId} lacks bound ${kind} assertion`)
-  if (!nonempty(assertion.expected) || !nonempty(assertion.observed)) {
-    fail(path, `${featureId} assertion requires expected and observed evidence`)
-  }
+  const assertion = boundAssertion(observation, path, assertions)
   if (evidence === "parser-state" || evidence === "interaction") {
     const state = parseJsonStrict(`${path}: ${featureId} state snapshot`, assertion.observed)
     if (!object(state) || Object.keys(state).length === 0) fail(path, `${featureId} requires an actual state snapshot`)
