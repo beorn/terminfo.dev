@@ -116,8 +116,12 @@ describe("release 1 collection census", () => {
   it("names every context that has no route instead of dropping it", () => {
     const all = census()
     const windows = all.find((entry) => entry.id === "windows-terminal")
-    expect(windows?.route).toBeNull()
-    expect(windows?.uncollectable).toMatch(/no owner and no hosted workflow/)
+    // Windows is collectable: windows-measurement.yml is a hosted workflow that produced an
+    // admissible row at db5558cf8d6c (run 38074622083), so the old "no owner and no hosted
+    // workflow yet" gap is gone and the row carries a route and its dispatch command.
+    expect(windows?.route).toBe("hosted-workflow")
+    expect(windows?.command).toMatch(/gh workflow run windows-measurement\.yml --repo beorn\/terminfo\.dev --ref main/)
+    expect(windows?.uncollectable).toBeNull()
     for (const entry of all) {
       if (entry.route === null) expect(entry.uncollectable).not.toBeNull()
       else expect(entry.command).toBeTruthy()
@@ -133,7 +137,7 @@ describe("release 1 collection census", () => {
     expect(kitty?.command).toBeNull()
     expect(kitty?.uncollectable).toMatch(/ships as measured \(27928\)/)
     for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty"]) {
-      expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("macos-hosted")
+      expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
   })
 
@@ -142,7 +146,7 @@ describe("release 1 collection census", () => {
     const uncovered = uncoveredContexts(all, [cleanRun()])
     expect(uncovered).toHaveLength(21)
     expect(uncovered.find((entry) => entry.context.id === "windows-terminal")?.reason).toMatch(
-      /no owner and no hosted workflow/,
+      /no run produced by the hosted-workflow route/,
     )
     expect(uncovered.find((entry) => entry.context.id === "kitty")?.reason).toMatch(/linux-container/)
     // A produced run carries the os it was MEASURED on: an app its own, a headless engine the host's.
