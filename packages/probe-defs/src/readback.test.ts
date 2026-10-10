@@ -7,11 +7,12 @@
 import { expect, test } from "vitest"
 import { cursorProbes } from "./cursor.ts"
 import { modesProbes } from "./modes.ts"
+import { resetProbes } from "./reset.ts"
 import { sgrProbes } from "./sgr.ts"
 import type { TermContext, TerminalQueryOutcome } from "./types.ts"
 
 function termProbe(id: string): (ctx: TermContext) => Promise<import("./types.ts").ProbeResult> {
-  const probe = [...sgrProbes, ...cursorProbes, ...modesProbes].find((value) => value.id === id)
+  const probe = [...sgrProbes, ...cursorProbes, ...modesProbes, ...resetProbes].find((value) => value.id === id)
   if (!probe?.term) throw new Error(`missing term callback for ${id}`)
   return probe.term
 }
@@ -33,8 +34,14 @@ function kittyContext(answer: boolean): TermContext {
     cols: 80,
     capture: async ({ role, label }) => ({ role, label, capturedAt: 1, ref: `frame-${role}` }),
     write(bytes) {
-      if (bytes.includes("\x1b[0m")) sgr = []
-      if (bytes.includes("\x1b[1m")) sgr = [1]
+      for (const match of bytes.matchAll(/\x1b\[([0-9;]*)m/g)) {
+        const params = (match[1] ?? "")
+          .split(";")
+          .filter((part) => part !== "")
+          .map(Number)
+        // A real SGR state: 0 (or a bare CSI m) clears, any other parameter accumulates.
+        sgr = params.length === 0 || params.includes(0) ? [] : [...new Set([...sgr, ...params])]
+      }
       if (bytes.includes("\x1b[?25h")) visible = true
       if (bytes.includes("\x1b[?25l")) visible = false
       if (bytes.includes("\x1b[4h")) irm = true
@@ -117,4 +124,53 @@ test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => 
   expect(result.pass).toBe(true)
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
   expect(result.response).toContain("0;22;1")
+})
+
+/**
+ * reset.sgr is an SGR-state claim, so the terminal's own DECRQSS report decides it (the shared
+ * sgrReadbackDecision shape sgr.reset binds from sgr.ts) and no pixel review is needed: after
+ * the setup and the reset the terminal reports no style code.
+ */
+test("reset.sgr is decided supported when the terminal reports no styles after the reset", async () => {
+  const ctx = kittyContext(true)
+  const result = await termProbe("reset.sgr")(ctx)
+  expect(result.pass).toBe(true)
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
+})
+
+test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
+  const ctx = kittyContext(true)
+  // What Kitty's normalized list reports after the reset: explicit negation codes, no 1/3/7.
+  const payload = "0;22;23;24;27"
+  ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (!sequence.startsWith("\x1bP$qm")) return timeout()
+    return { match: [`\x1bP1$r${payload}m\x1b\\`, payload], reason: "reply", raw: "", rawBase64: "" }
+  }
+  const result = await termProbe("reset.sgr")(ctx)
+  expect(result.pass).toBe(true)
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.response).toContain(payload)
+})
+
+test("reset.sgr is a negative when the terminal keeps reporting the styles after the reset", async () => {
+  const ctx = kittyContext(true)
+  ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (!sequence.startsWith("\x1bP$qm")) return timeout()
+    return { match: ["\x1bP1$r1;3;7m\x1b\\", "1;3;7"], reason: "reply", raw: "", rawBase64: "" }
+  }
+  const result = await termProbe("reset.sgr")(ctx)
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+})
+
+test("reset.sgr stays inconclusive and never negative when the terminal never answers DECRQSS", async () => {
+  const result = await termProbe("reset.sgr")(kittyContext(false))
+  expect(result.pass).toBe(false)
+  expect(result.observation?.outcome).toBe("inconclusive")
+  expect(result.observation?.outcome).not.toBe("unsupported")
+  // The capture path is retained for a terminal that answers nothing, so the silent case keeps
+  // today's reviewable pixel frames instead of losing them.
+  expect(result.observation).toMatchObject({ evidence: "pixels" })
 })

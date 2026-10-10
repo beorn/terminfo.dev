@@ -26,6 +26,7 @@ function app(
   cols: number,
   events: string[],
   cursorResponses: ReadonlyArray<{ row: number; col: number } | null> = [{ row: 1, col: 2 }],
+  decrqss: "unexpected" | "silent" = "unexpected",
 ): TermContext {
   let cursorIndex = 0
   const unexpected = (name: string): never => {
@@ -45,7 +46,12 @@ function app(
     query: async () => unexpected("query"),
     queryWithSentinel: async () => unexpected("queryWithSentinel"),
     queryOutcome: async () => unexpected("queryOutcome"),
-    queryWithSentinelOutcome: async () => unexpected("queryWithSentinelOutcome"),
+    queryWithSentinelOutcome: async () => {
+      // "silent" models a terminal that never answers DECRQSS: reset.sgr then leaves the fixture
+      // untouched and keeps its capture path, which is what this file's pixel tests assert.
+      if (decrqss === "silent") return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+      return unexpected("queryWithSentinelOutcome")
+    },
     queryMode: async () => {
       events.push("mode")
       return null
@@ -106,7 +112,9 @@ test("fixed charset and reset fixtures require valid measured room before any by
       expect(events).toEqual(["\x1b[5;5H", "CPR", "\x1bc", "CPR"])
     } else {
       const events: string[] = []
-      const valid = await definition.term(app(minRows, minCols, events, []))
+      // reset.sgr asks the terminal's own DECRQSS for its SGR state first; this fixture models a
+      // terminal that never answers it, so the probe keeps its CPR path unchanged.
+      const valid = await definition.term(app(minRows, minCols, events, [], "silent"))
       expect(valid.observation, id).toMatchObject({
         outcome: "inconclusive",
         reason: "no-response",
@@ -276,7 +284,7 @@ test("reset.sgr capture renders a styled control and a reset target instead of c
   const definition = resetProbes.find((probe) => probe.id === "reset.sgr")
   if (!definition?.term) throw new Error("missing app reset.sgr callback")
   const events: string[] = []
-  const context = app(3, 34, events)
+  const context = app(3, 34, events, [{ row: 1, col: 2 }], "silent")
   const frames: ObservationFrame[] = []
   context.capture = async ({ role, label }) => {
     const frame = {
@@ -289,9 +297,13 @@ test("reset.sgr capture renders a styled control and a reset target instead of c
     return frame
   }
   const result = await definition.term(context)
-  expect(events[0]).toContain("\x1b[1;3;7mX")
-  expect(events[0]).not.toContain("Y")
-  expect(events[1]).toContain("\x1b[1;3;7mX\x1b[0mY")
+  // The shared DECRQSS readback writes its own reset and setup before it queries, and this fixture
+  // answers nothing, so the two capture writes follow them: select the pair by their content.
+  const control = events.find((event) => event.includes("\x1b[1;3;7mX"))
+  const target = events.find((event) => event.includes("\x1b[1;3;7mX\x1b[0mY"))
+  expect(control).toBeDefined()
+  expect(control).not.toContain("Y")
+  expect(target).toBeDefined()
   expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
   expect(result.pass).toBe(false)
   expect(result.observation).toMatchObject({

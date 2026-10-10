@@ -1,5 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { parserStateResult, probe, sgrCaptureFrames, sgrCaptureTooSmall } from "./helpers.ts"
+import { parserStateResult, probe, sgrCaptureFrames, sgrCaptureTooSmall, sgrReadbackDecision } from "./helpers.ts"
 
 export const resetProbes: ProbeDefinition[] = [
   {
@@ -17,9 +17,23 @@ export const resetProbes: ProbeDefinition[] = [
         return parserStateResult(!after.bold && !after.italic && !after.inverse, expected, state)
       },
       async (ctx) => {
+        // The shared DECRQSS readback decides this SGR-state claim structurally wherever the
+        // terminal answers — sgr.reset binds the same shape from sgr.ts — and a terminal that
+        // stays silent keeps the capture/cursor evidence below, so a missing readback is never a
+        // negative. Both guards run first: an invalid or undersized terminal is never written to
+        // or queried.
+        const captureRefusal = ctx.capture ? sgrCaptureTooSmall(ctx, "reset.sgr") : undefined
+        if (captureRefusal) return captureRefusal
+        const measuredRoom =
+          Number.isSafeInteger(ctx.rows) && Number.isSafeInteger(ctx.cols) && ctx.rows >= 1 && ctx.cols >= 2
+        if (measuredRoom) {
+          const readback = await sgrReadbackDecision(ctx, "reset.sgr", "\x1b[1;3;7m\x1b[0m", {
+            require: [],
+            forbid: [1, 3, 7],
+          })
+          if (readback) return readback
+        }
         if (ctx.capture) {
-          const refusal = sgrCaptureTooSmall(ctx, "reset.sgr")
-          if (refusal) return refusal
           try {
             return await sgrCaptureFrames(
               ctx,
@@ -33,7 +47,7 @@ export const resetProbes: ProbeDefinition[] = [
             ctx.write("\x1b[0m")
           }
         }
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
+        if (!measuredRoom) {
           return {
             pass: false,
             observation: {
