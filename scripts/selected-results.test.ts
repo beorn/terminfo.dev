@@ -1544,8 +1544,10 @@ describe("selected results", () => {
         },
       ],
     })
+    // @cto b12b71b2: a lone screenshotRef is not a decided verdict. Pixels are admitted in a raw
+    // run only as a frame pair whose own assertion cites the digest it decided on.
     expect(() => parseRun("pixels-unreviewed.json", JSON.stringify(prematureSupport), catalog)).toThrow(
-      /collector pixels.*reviewed Interpretation/,
+      /requires control and target frames/,
     )
     const captureError = run("pixels-capture-error", {
       probeHash: "pixels",
