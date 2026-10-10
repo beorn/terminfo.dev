@@ -1,6 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { closeSync, constants, fstatSync, openSync, readFileSync, statSync, type BigIntStats } from "node:fs"
 import { isatty, WriteStream } from "node:tty"
+import { readDisposableReceipt } from "./disposable-receipt.ts"
 import type { LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
@@ -94,11 +95,91 @@ type LinuxBinding = {
 }
 type DarwinBinding = {
   platform: "darwin"
-  selectedFd: 1
+  selectedFd: number
   controllingTty: string
   tabTty: string
   inputDevice: Device
   outputDevice: Device
+}
+
+export type HostedDarwinAppId = "terminal-app" | "iterm2" | "ghostty" | "alacritty"
+export type HostedDarwinApp = { id: HostedDarwinAppId; comm: string }
+export type AncestryRow = { pid: number; ppid: number; comm: string }
+
+const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
+  Terminal: { id: "terminal-app", comm: "Terminal" },
+  iTerm2: { id: "iterm2", comm: "iTerm2" },
+  ghostty: { id: "ghostty", comm: "ghostty" },
+  alacritty: { id: "alacritty", comm: "alacritty" },
+  Alacritty: { id: "alacritty", comm: "alacritty" },
+}
+const HOSTED_DARWIN_COMMS = new Set(["Terminal", "iTerm2", "ghostty", "alacritty"])
+
+/** macOS `ps -o comm=` prints a full executable path; match and stop on the last segment. */
+function hostedDarwinCommBase(comm: string): string {
+  const trimmed = comm.trim()
+  const slash = trimmed.lastIndexOf("/")
+  return slash === -1 ? trimmed : trimmed.slice(slash + 1)
+}
+
+/** Map a github-hosted-runner appLaunch.executablePath to the four hosted Mac apps. */
+export function hostedDarwinAppFromExecutablePath(executablePath: string): HostedDarwinApp {
+  const base = executablePath.split("/").pop() ?? ""
+  const app = HOSTED_DARWIN_EXECUTABLE[base]
+  if (!app) {
+    throw new Error(
+      `Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty: ${JSON.stringify(executablePath)}`,
+    )
+  }
+  return app
+}
+
+/** Grant-time process identity: the probe's ancestry must reach the receipt's app, never a different terminal. */
+export function requireHostedDarwinAppAncestor(expectedComm: string, rows: AncestryRow[]): AncestryRow {
+  const other = rows.find((row) => {
+    const base = hostedDarwinCommBase(row.comm)
+    return HOSTED_DARWIN_COMMS.has(base) && base !== expectedComm
+  })
+  if (other) {
+    throw new Error(
+      `Hosted Darwin ancestry reached ${other.comm} (pid ${other.pid}) while the receipt names ${expectedComm}`,
+    )
+  }
+  const named = rows.find((row) => hostedDarwinCommBase(row.comm) === expectedComm)
+  if (!named) {
+    const found = [...rows]
+      .reverse()
+      .map((row) => `${row.comm} (pid ${row.pid})`)
+      .join(", ")
+    throw new Error(`Hosted Darwin ancestry never reached ${expectedComm}; found ${found}`)
+  }
+  return named
+}
+
+function readProcessAncestry(startPid: number): AncestryRow[] {
+  const rows: AncestryRow[] = []
+  const seen = new Set<number>()
+  let pid = startPid
+  while (pid > 0 && !seen.has(pid)) {
+    seen.add(pid)
+    const line = execFileSync("/bin/ps", ["-p", String(pid), "-o", "pid=", "-o", "ppid=", "-o", "comm="], {
+      encoding: "utf8",
+      timeout: 1000,
+      maxBuffer: 256,
+    }).trim()
+    const match = /^(\d+)\s+(\d+)\s+(.+)$/.exec(line)
+    const pidText = match?.[1]
+    const ppidText = match?.[2]
+    const comm = match?.[3]
+    if (!pidText || !ppidText || comm === undefined) {
+      throw new Error(`Hosted Darwin ancestry ps parse failed for pid ${pid}: ${JSON.stringify(line)}`)
+    }
+    const row = { pid: Number(pidText), ppid: Number(ppidText), comm: comm.trim() }
+    rows.push(row)
+    if (hostedDarwinCommBase(row.comm) === "launchd" || row.pid === 1 || row.ppid === 0 || row.ppid === row.pid) break
+    pid = row.ppid
+  }
+  return rows
 }
 type OutputBinding = LinuxBinding | DarwinBinding
 
@@ -185,6 +266,35 @@ function darwinOutput(out: NodeJS.WriteStream, assertion: TerminalAppOwnerAssert
     throw new Error("Terminal.app input, selected stdout and asserted tab PTY device identities differ")
   }
   return { platform: "darwin", selectedFd: 1, controllingTty, tabTty: assertion.tabTty, inputDevice, outputDevice }
+}
+
+/** Hosted Darwin PTY bind: fd0, selected out, and ps-tty are one device. Never calls darwinOutput. */
+function darwinHostedOutput(out: NodeJS.WriteStream): DarwinBinding {
+  if (process.platform !== "darwin") throw new Error("Owned Darwin hosted terminal requires Darwin")
+  const fd = selectedFd(out)
+  const controllingTty = execFileSync("/bin/ps", ["-p", String(process.pid), "-o", "tty="], {
+    encoding: "utf8",
+    timeout: 1000,
+    maxBuffer: 256,
+  }).trim()
+  if (!/^tty[a-zA-Z0-9._-]+$/.test(controllingTty)) {
+    throw new Error(`Hosted Darwin worker has no valid controlling TTY: ${JSON.stringify(controllingTty)}`)
+  }
+  const ttyPath = `/dev/${controllingTty}`
+  const inputDevice = device(fstatSync(0, { bigint: true }))
+  const outputDevice = device(fstatSync(fd, { bigint: true }))
+  const ttyDevice = device(statSync(ttyPath, { bigint: true }))
+  if (!sameDevice(inputDevice, outputDevice) || !sameDevice(outputDevice, ttyDevice)) {
+    throw new Error("Hosted Darwin input, selected output and controlling TTY device identities differ")
+  }
+  return {
+    platform: "darwin",
+    selectedFd: fd,
+    controllingTty,
+    tabTty: ttyPath,
+    inputDevice,
+    outputDevice,
+  }
 }
 
 const geometrySource = (binding: OutputBinding): OwnedTerminal["geometrySource"] =>
@@ -299,16 +409,22 @@ export async function createOwnedTerminal(options: {
   expectedLaunchRunId: string
   linux?: { receiptPath: string; executable: LiveExecutable }
   terminalApp?: TerminalAppOwnerAssertion
+  darwinHosted?: { receiptPath: string }
 }): Promise<OwnedTerminal> {
-  const { captureRunId, out, expectedLaunchRunId, linux, terminalApp } = options
+  const { captureRunId, out, expectedLaunchRunId, linux, terminalApp, darwinHosted } = options
   if (!/^[0-9a-f]{32}$/.test(captureRunId)) throw new Error("Invalid capture run ID for owned terminal")
   if (!/^[0-9a-f]{32}$/.test(expectedLaunchRunId)) throw new Error("Invalid launch run ID for owned terminal")
-  if (Boolean(linux) === Boolean(terminalApp)) throw new Error("Owned terminal requires exactly one platform receipt")
+  const armCount = [linux, terminalApp, darwinHosted].filter(Boolean).length
+  if (armCount !== 1) throw new Error("Owned terminal requires exactly one platform receipt")
   let binding: OutputBinding
+  let hostedApp: HostedDarwinApp | undefined
+  let hostedAncestor: AncestryRow | undefined
+  let hostedReceiptSha256: string | undefined
+  let hostedPid1Comm: string | undefined
   if (linux) {
     if (process.platform !== "linux") throw new Error("Owned Linux fixture requires Linux")
     binding = linuxOutput(out)
-  } else {
+  } else if (terminalApp) {
     if (process.platform !== "darwin") throw new Error("Terminal.app owner requires Darwin")
     const assertion = parseTerminalAppOwner(terminalApp)
     if (
@@ -319,6 +435,29 @@ export async function createOwnedTerminal(options: {
       throw new Error("Terminal.app owner assertion differs from this worker launch run or PID")
     }
     binding = darwinOutput(out, assertion)
+  } else {
+    if (!darwinHosted) throw new Error("Owned terminal requires exactly one platform receipt")
+    if (process.platform !== "darwin") throw new Error("Owned Darwin hosted terminal requires Darwin")
+    const receipt = readDisposableReceipt(darwinHosted.receiptPath)
+    if (receipt.kind !== "github-hosted-runner") {
+      throw new Error(
+        `Owned Darwin hosted terminal requires a github-hosted-runner receipt, not ${JSON.stringify(receipt.kind)}`,
+      )
+    }
+    const executablePath = receipt.appLaunch?.executablePath
+    if (!executablePath) {
+      throw new Error("Hosted Darwin github-hosted-runner receipt names no appLaunch executable")
+    }
+    hostedApp = hostedDarwinAppFromExecutablePath(executablePath)
+    binding = darwinHostedOutput(out)
+    hostedAncestor = requireHostedDarwinAppAncestor(hostedApp.comm, readProcessAncestry(process.pid))
+    hostedReceiptSha256 = receipt.sha256
+    hostedPid1Comm = execFileSync("/bin/ps", ["-p", "1", "-o", "comm="], {
+      encoding: "utf8",
+      timeout: 1000,
+      maxBuffer: 256,
+    }).trim()
+    process.stderr.write(`Hosted Darwin measured ps -p 1 -o comm=: ${JSON.stringify(hostedPid1Comm)}\n`)
   }
   let clipboard: LinuxClipboardAdapter | undefined
   try {
@@ -333,6 +472,15 @@ export async function createOwnedTerminal(options: {
         ownerAssertion: parseTerminalAppOwner(terminalApp),
         ownerAssertionSource: "authenticated-admin-request",
       }),
+      ...(hostedApp && {
+        darwinHosted: {
+          appId: hostedApp.id,
+          ancestor: hostedAncestor,
+          receiptKind: "github-hosted-runner",
+          receiptSha256: hostedReceiptSha256,
+          pid1Comm: hostedPid1Comm,
+        },
+      }),
     })
     const owner: OwnedTerminal = {
       geometryAtGrant,
@@ -341,8 +489,11 @@ export async function createOwnedTerminal(options: {
       ...(clipboard && { clipboard }),
       async readGeometry() {
         if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned geometry read has no live bound capture")
-        const current =
-          binding.platform === "linux" ? linuxOutput(out) : darwinOutput(out, parseTerminalAppOwner(terminalApp))
+        const current = linux
+          ? linuxOutput(out)
+          : terminalApp
+            ? darwinOutput(out, parseTerminalAppOwner(terminalApp))
+            : darwinHostedOutput(out)
         if (
           current.platform !== binding.platform ||
           current.selectedFd !== binding.selectedFd ||
