@@ -9,6 +9,7 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { verifyTerminalIdentity } from "../packages/terminfo.dev/src/identity-guard.ts"
+import { ALL_PROBES } from "../packages/probe-defs/src/index.ts"
 import { loadCategories } from "../docs/data/categories.ts"
 
 // ---------------------------------------------------------------------------
@@ -468,6 +469,21 @@ for (const { backendName } of probeFiles) {
       `Probe terminal identity guards: ${verifiedCount} verified, ${uncheckedCount} unchecked (missing replies or no rule)`,
     )
   }
+}
+
+// 4g. Every probe definition has a features.json catalog row
+{
+  let found = false
+  const missing = new Set<string>()
+  for (const { id } of ALL_PROBES) {
+    if (!featureIds.has(id)) missing.add(id)
+  }
+  for (const id of [...missing].sort()) {
+    error(`Probe definition "${id}" has no features.json catalog row (its assertions cannot pass run admission)`)
+    errors++
+    found = true
+  }
+  if (!found) info(`All ${ALL_PROBES.length} probe definitions have catalog rows`)
 }
 
 // ---------------------------------------------------------------------------
