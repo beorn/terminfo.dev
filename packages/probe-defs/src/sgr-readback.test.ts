@@ -109,6 +109,31 @@ test.each([
   expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
 })
 
+// The reset/default probes are falsified by the SETUP code still being active, which is a positive
+// report rather than an omission: SGR 39/49 clear the color rather than setting a code of their own.
+test.each([
+  ["sgr.fg.default", "0;31"],
+  ["sgr.bg.default", "0;42"],
+  ["sgr.selective-reset.bold", "0;1;2;3"],
+  ["sgr.selective-reset.underline", "0;1;4"],
+  ["sgr.underline-color-reset", "0;4;58"],
+] as const)("%s is unsupported when DECRQSS still reports the setup it should have cleared (%s)", async (id, reply) => {
+  const { ctx } = sgrReadbackContext(reply)
+  const result = await sgrTerm(id)(ctx)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+})
+
+// Measured in-tree replies that a per-code match would misgrade.
+test.each([
+  ["sgr.underline.double", "0;4:2"],
+  ["sgr.fg.default", "0"],
+  ["sgr.bg.default", "0"],
+] as const)("%s is supported on the measured %s reply", async (id, reply) => {
+  const { ctx } = sgrReadbackContext(reply)
+  const result = await sgrTerm(id)(ctx)
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+})
+
 test.each(DECIDED.map(([id]) => id))("%s stays inconclusive, never negative, when DECRQSS is silent", async (id) => {
   const { ctx } = sgrReadbackContext(null)
   const result = await sgrTerm(id)(ctx)

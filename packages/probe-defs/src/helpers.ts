@@ -121,6 +121,14 @@ export async function queryAnsiMode(ctx: TermContext, modeNumber: number): Promi
   return null
 }
 
+/**
+ * The terminal's own DECRQSS report may spell a style as a colon sub-parameter of the code we
+ * require: measured, kitty-0.49.2 reports SGR 21 (doubly underlined) as `4:2`, and `4:1` is the
+ * single underline `4` spelled out. Fold those equivalences into the reported codes so the
+ * terminal's chosen encoding cannot decide the claim.
+ */
+const SGR_CODE_ALIASES: Readonly<Record<string, number>> = { "4:1": 4, "4:2": 21 }
+
 /** Decide an SGR claim from the terminal own DECRQSS report. */
 export function sgrReadbackResult(
   id: string,
@@ -128,7 +136,10 @@ export function sgrReadbackResult(
   state: readonly string[],
   readback: SgrReadback,
 ): ProbeResult {
-  const codes = state.map(leadingSgrCode)
+  const codes = state.flatMap((token) => {
+    const alias = SGR_CODE_ALIASES[token]
+    return alias === undefined ? [leadingSgrCode(token)] : [leadingSgrCode(token), alias]
+  })
   const required = readback.require.every((code) => codes.includes(code))
   const forbidden = readback.forbid?.some((code) => codes.includes(code)) ?? false
   const tokensRequired = readback.requireTokens?.every((token) => state.includes(token)) ?? true
@@ -169,22 +180,6 @@ export async function sgrReadbackDecision(
     ctx.write("\x1b[0m")
   }
   return state === null ? null : sgrReadbackResult(id, sequence, state, readback)
-}
-
-/**
- * Give a probe a DECRQSS SGR readback that runs before its existing term evidence path. A terminal
- * that answers decides the claim structurally; one that stays silent keeps the probe's own path.
- */
-export function withSgrReadback(def: ProbeDefinition, sequence: string, readback: SgrReadback): ProbeDefinition {
-  const term = def.term
-  if (!term) return def
-  return {
-    ...def,
-    async term(ctx) {
-      const decided = await sgrReadbackDecision(ctx, def.id, sequence, readback)
-      return decided ?? term(ctx)
-    },
-  }
 }
 
 /**

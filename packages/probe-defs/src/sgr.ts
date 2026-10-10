@@ -476,7 +476,7 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
-      sgrTermReadback(id, `\x1b[${setup}m\x1b[${reset}m`, { require: [reset], forbid: [setup] }, (ctx) =>
+      sgrTermReadback(id, `\x1b[${setup}m\x1b[${reset}m`, { require: [], forbid: [setup] }, (ctx) =>
         consumedSgrReset(ctx, id, `\x1b[${setup}m`, `\x1b[${reset}m`),
       ),
       "consumed",
