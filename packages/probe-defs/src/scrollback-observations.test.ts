@@ -48,6 +48,50 @@ function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
   }
 }
 
+/**
+ * @failure RI/SD is reported supported when a blank top row comes from losing the seeded rows.
+ * @level l0
+ * @consumer Headless Scrollback observations used by the support tables.
+ * @testonly none
+ */
+test.each([
+  ["scrollback.reverse-index", ["A", "B", "C"], "\x1b[H\x1bM"],
+  ["scrollback.scroll-down", ["LINE1", "LINE2", "LINE3"], "\x1b[T"],
+] as const)("%s requires preserved markers after inserting a blank row", (id, markers, target) => {
+  const probe = scrollbackProbes.find((item) => item.id === id)
+  if (!probe?.termless) throw new Error(`Missing ${id} headless callback`)
+  for (const [effect, outcome] of [
+    ["shift", "supported"],
+    ["noop", "unsupported"],
+    ["clear-screen", "inconclusive"],
+    ["lost-marker", "inconclusive"],
+    ["missing-seed", "inconclusive"],
+  ] as const) {
+    let cells: string[] = [" ", " ", " ", " "]
+    const result = probe.termless(
+      headless({
+        cols: 5,
+        getScrollback: () => ({ viewportOffset: 0, totalLines: 4, screenLines: 4 }),
+        feed: (sequence) => {
+          if (sequence === markers.join("\r\n")) {
+            cells = [...markers, " "]
+            if (effect === "missing-seed") cells[1] = "?"
+          }
+          if (sequence === target) {
+            if (effect === "shift" || effect === "lost-marker") cells = [" ", ...markers]
+            if (effect === "lost-marker") cells[3] = "?"
+            if (effect === "clear-screen") cells = [" ", " ", " ", " "]
+          }
+        },
+        getCell: (row, col) => ({ char: cells[row]?.[col] ?? " " }) as ReturnType<TermlessContext["getCell"]>,
+      }),
+    )
+    expect(result.observation, effect).toMatchObject({ outcome, evidence: "parser-state" })
+    if (outcome === "inconclusive") expect(result.assertions, effect).toBeUndefined()
+    else expect(result.assertions, effect).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
+  }
+})
+
 test("accumulate uses measured rows and does not infer 24 after CSI silence", async () => {
   const probe = scrollbackProbes.find((entry) => entry.id === "scrollback.accumulate")
   if (!probe?.term) throw new Error("missing scrollback.accumulate app callback")

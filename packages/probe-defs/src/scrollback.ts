@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { probe, isBlank, parserStateResult } from "./helpers.ts"
 
 function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeResult | undefined {
@@ -16,6 +16,43 @@ function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeResult | u
 
 function validSize(value: number, minimum: number): boolean {
   return Number.isSafeInteger(value) && value >= minimum
+}
+
+function insertedRowResult(
+  ctx: TermlessContext,
+  markers: readonly [string, string, string],
+  sequence: string,
+): ProbeResult {
+  const cols = Math.max(...markers.map((marker) => marker.length))
+  if (!validSize(ctx.getScrollback().screenLines, 4) || !validSize(ctx.cols, cols)) {
+    return {
+      pass: false,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+    }
+  }
+  const readRows = () =>
+    Array.from({ length: 4 }, (_, row) => Array.from({ length: cols }, (_, col) => ctx.getCell(row, col).char).join(""))
+  const expected = "A blank top row is inserted and all three measured marker rows move down one row"
+  ctx.feed("\x1b[H")
+  ctx.feed(markers.join("\r\n"))
+  const before = readRows()
+  if (!markers.every((marker, row) => before[row] === marker)) {
+    return parserStateResult(null, expected, { before }, "Seed marker rows were not measured")
+  }
+  ctx.feed(sequence)
+  const after = readRows()
+  const shifted =
+    Array.from({ length: cols }, (_, col) => ctx.getCell(0, col).char).every(isBlank) &&
+    markers.every((marker, row) => after[row + 1] === marker)
+  const unchanged = before.every((row, index) => after[index] === row)
+  return parserStateResult(
+    shifted ? true : unchanged ? false : null,
+    expected,
+    { before, after },
+    shifted || unchanged
+      ? undefined
+      : "Marker rows were lost or did not move together; cannot attribute a blank-row insertion",
+  )
 }
 
 export const scrollbackProbes: ProbeDefinition[] = [
@@ -312,18 +349,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
   {
     ...probe(
       "scrollback.reverse-index",
-      (ctx) => {
-        ctx.feed("A\r\nB\r\nC")
-        const before = ctx.getCell(0, 0)
-        ctx.feed("\x1b[H\x1bM")
-        const after = ctx.getCell(0, 0)
-        return parserStateResult(
-          before.char === "A" ? isBlank(after.char) : null,
-          "RI inserts a blank row above the measured A marker",
-          { before, after },
-          before.char === "A" ? undefined : "A marker was not measured before reverse index",
-        )
-      },
+      (ctx) => insertedRowResult(ctx, ["A", "B", "C"], "\x1b[H\x1bM"),
       async (ctx) => {
         const capture = ctx.capture
         if (capture) {
@@ -388,18 +414,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
   {
     ...probe(
       "scrollback.scroll-down",
-      (ctx) => {
-        ctx.feed("LINE1\r\nLINE2\r\nLINE3")
-        const before = ctx.getCell(0, 0)
-        ctx.feed("\x1b[T")
-        const after = ctx.getCell(0, 0)
-        return parserStateResult(
-          before.char === "L" ? isBlank(after.char) : null,
-          "SD inserts a blank row above the measured LINE marker",
-          { before, after },
-          before.char === "L" ? undefined : "LINE marker was not measured before scroll down",
-        )
-      },
+      (ctx) => insertedRowResult(ctx, ["LINE1", "LINE2", "LINE3"], "\x1b[T"),
       async (ctx) => {
         const capture = ctx.capture
         if (capture) {
