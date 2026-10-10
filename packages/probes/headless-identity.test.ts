@@ -1,8 +1,9 @@
 /**
  * @failure Locally linked vt100.js/vt220.js/vterm.js resolve into bun's .bun store, so identity
  *   falls through to registryIntegrity and every vterm-family collect dies before a run exists.
- * @level l1
+ * @level l2
  * @consumer packages/probes/headless-identity.ts (28548)
+ * @reach fs-walk bun.lock vendor/vterm/packages/vt100 vendor/vterm/packages/vt220 vendor/vterm/packages/vterm
  * @testonly none
  */
 import { spawnSync } from "node:child_process"
@@ -35,6 +36,15 @@ function runRegistryIntegrity(name: string, version: string) {
   )
 }
 
+/**
+ * @failure bun's file: install of vt100.js/vt220.js/vterm.js lands under node_modules/.bun, so
+ *   identity used to throw "no matching registry integrity" and every vterm-family collect died
+ *   before a run existed.
+ * @level l2
+ * @consumer packages/probes/headless-identity.ts file: override arm (28548)
+ * @reach fs-walk bun.lock vendor/vterm/packages/vt100 vendor/vterm/packages/vt220 vendor/vterm/packages/vterm
+ * @testonly none
+ */
 for (const [name, pkg] of [
   ["vt100", "@termless/vt100"],
   ["vt220", "@termless/vt220"],
@@ -50,6 +60,14 @@ for (const [name, pkg] of [
   })
 }
 
+/**
+ * @failure A name whose bun.lock entry is not a registry tuple must still be refused loudly; the
+ *   file: arm must not weaken that check.
+ * @level l2
+ * @consumer packages/probes/headless-identity.ts registryIntegrity (28548)
+ * @reach fs-walk bun.lock
+ * @testonly registryIntegrity: refuse case imports the helper because identity no longer takes that path for the file: linked engines
+ */
 test("a package whose bun.lock entry is not a matching registry tuple is still refused", () => {
   const result = runRegistryIntegrity("vt100.js", "0.7.1")
   expect(result.status).not.toBe(0)
