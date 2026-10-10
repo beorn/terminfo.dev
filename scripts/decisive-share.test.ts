@@ -21,7 +21,7 @@ import { parseSuiteManifest } from "@terminfo/run-parser"
 import {
   type ContextCandidate,
   type CohortBarRow,
-  CATEGORY_BLOCK_HEADER,
+  categoryBlockHeader,
   barRowForContext,
   buildReport,
   categoryShares,
@@ -127,7 +127,12 @@ describe("release 1 decisive-count reader", () => {
       tier62Ids: IDS,
       tier52Ids: IDS,
     })
-    const result = cohortRowForSelected(row, { name: "candidate2", frozenSuiteId: "a8bafe49cdd4", measuredIds: IDS })
+    const result = cohortRowForSelected(row, {
+      name: "candidate2",
+      frozenSuiteId: "a8bafe49cdd4",
+      measuredIds: IDS,
+      decidableIds: IDS,
+    })
     expect(result).toMatchObject({
       measured: false,
       run: { runId: "selected-new", suiteId: "new-suite" },
@@ -138,7 +143,7 @@ describe("release 1 decisive-count reader", () => {
 
   it("grades all 125 frozen IDs through D3 rounding and preserves missing or ambiguous selection", () => {
     const ids = Array.from({ length: 125 }, (_, i) => `classic.${i}`)
-    const cohort = { name: "candidate2" as const, frozenSuiteId: "a8bafe49cdd4", measuredIds: ids }
+    const cohort = { name: "candidate2" as const, frozenSuiteId: "a8bafe49cdd4", measuredIds: ids, decidableIds: ids }
     const frozen = candidate({
       suiteId: cohort.frozenSuiteId,
       cells: Object.fromEntries(ids.slice(0, 112).map((id) => [id, { outcome: "supported", conclusive: true }])),
@@ -184,6 +189,8 @@ describe("release 1 decisive-count reader", () => {
     expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
     for (const row of report.candidate2.admittedRuns) {
       expect(row.measured).toBe(row.run.suiteId === "a8bafe49cdd4")
+      // The RELEASE share is the operator's D3 over the ratified cohort (125); only the per-category
+      // block divides over the decidable basis (@chief 2026-10-10T15:56Z).
       if (row.measured) expect(row.share.denominator).toBe(125)
       else {
         expect(row).not.toHaveProperty("share")
@@ -444,12 +451,15 @@ describe("per-category decisive share (28018 AC2)", () => {
   const contentDir = join(import.meta.dirname, "..", "content")
   const catalog = loadCategories(contentDir)
 
-  it("partitions the real 125 cohort into the nine categories.json categories, in catalog order", () => {
+  it("partitions the real decidable cohort into the nine categories.json categories, in catalog order", () => {
     // The reader must NOT drop or double-count a class: the nine categories are the site's own
-    // categories.json keys, and the derived counts are the bead's 32/22/20/17/11/5/4/4/10 partition.
+    // categories.json keys, partitioned over the decidable basis (Scrollback loses its one
+    // unavailable id), so the derived counts are 32/22/20/11/17/9/5/4/4 = 124.
     const report = buildReport({ contentDir, cohort: "candidate2" })
     if (!report.candidate2) throw new Error("Candidate 2 report absent")
-    const categories = cohortCategories(report.candidate2.measuredIds, catalog)
+    expect(report.candidate2.measuredIds.length).toBe(125)
+    expect(report.candidate2.decidableIds.length).toBe(124)
+    const categories = cohortCategories(report.candidate2.decidableIds, catalog)
     expect(categories.map((category) => category.key)).toEqual([
       "sgr",
       "cursor",
@@ -461,7 +471,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       "charsets",
       "unicode",
     ])
-    expect(categories.map((category) => category.ids.length)).toEqual([32, 22, 20, 11, 17, 10, 5, 4, 4])
+    expect(categories.map((category) => category.ids.length)).toEqual([32, 22, 20, 11, 17, 9, 5, 4, 4])
     expect(categories.map((category) => category.label)).toEqual([
       "SGR (Text Styling)",
       "Cursor",
@@ -475,8 +485,8 @@ describe("per-category decisive share (28018 AC2)", () => {
     ])
     // The union is exactly the cohort: no id falls in two categories, and none is left out.
     const assigned = categories.flatMap((category) => category.ids)
-    expect(assigned.length).toBe(125)
-    expect(new Set(assigned).size).toBe(125)
+    expect(assigned.length).toBe(124)
+    expect(new Set(assigned).size).toBe(124)
   }, 15_000)
 
   it("refuses a feature id whose prefix is not a categories.json key instead of dropping it", () => {
@@ -559,7 +569,11 @@ describe("per-category decisive share (28018 AC2)", () => {
       share: decisiveShare(cells, ["sgr.a"]),
     }
     const measuredLines = formatCohortRow(measured, categories, labelWidth)
-    expect(measuredLines.some((line) => line.includes(CATEGORY_BLOCK_HEADER))).toBe(true)
+    expect(
+      measuredLines.some(
+        (line) => line.includes("CATEGORIES OF THE") && line.includes("with a probe in required suite"),
+      ),
+    ).toBe(true)
     expect(measuredLines.some((line) => line.includes("SGR (Text Styling)"))).toBe(true)
     const absent: CohortBarRow = {
       context: { terminalId: "windows-terminal", os: "windows" },
@@ -567,19 +581,106 @@ describe("per-category decisive share (28018 AC2)", () => {
       reason: "not measured — no selected run",
     }
     const absentLines = formatCohortRow(absent, categories, labelWidth)
-    expect(absentLines.some((line) => line.includes(CATEGORY_BLOCK_HEADER))).toBe(false)
+    expect(absentLines.some((line) => line.includes("CATEGORIES OF THE"))).toBe(false)
     expect(absentLines.join("\n")).toContain("not measured")
   })
 
   it("names the block 'categories' and never 'group' — features.json already owns 'group'", () => {
     // The guard is on the block's OWN header and label, not on remainder feature ids, so a future
     // feature id containing "group" cannot fail it (the @cto note).
-    expect(CATEGORY_BLOCK_HEADER).toContain("CATEGORIES OF THE 125")
-    expect(CATEGORY_BLOCK_HEADER.toLowerCase()).not.toContain("group")
+    const header = categoryBlockHeader(125, 124, "a8bafe49cdd4")
+    expect(header).toContain("CATEGORIES OF THE 125")
+    expect(header.toLowerCase()).not.toContain("group")
     const categories = cohortCategories(["sgr.a"], catalog)
     const cells = { "sgr.a": { outcome: "supported", conclusive: true } }
     const printed = formatCategoryRow(categories[0]!, decisiveShare(cells, ["sgr.a"]), 19)
     expect(printed[0]).toContain("SGR (Text Styling)")
     expect(printed[0]!.toLowerCase()).not.toContain("group")
   })
+
+  it("names the unavailable id beside each fraction — the release line stays /125, the category line is /9", () => {
+    const report = buildReport({ contentDir, cohort: "candidate2" })
+    if (!report.candidate2) throw new Error("Candidate 2 report absent")
+    // The ratified cohort is still 125; the decidable basis is 124 and names its one absent id.
+    expect(report.candidate2.measuredIds).toHaveLength(125)
+    expect(report.candidate2.decidableIds).toHaveLength(124)
+    expect(report.candidate2.unavailableIds).toEqual(["scrollback.viewport-hold-output"])
+    expect(report.candidate2.decidableIds).not.toContain("scrollback.viewport-hold-output")
+
+    const categories = cohortCategories(report.candidate2.decidableIds, catalog)
+    const labelWidth = Math.max(...categories.map((category) => category.label.length))
+    const row = report.candidate2.barRows.find(
+      (entry) =>
+        "run" in entry && entry.measured && entry.context.terminalId === "kitty" && entry.context.os === "linux",
+    )
+    if (!row || !("run" in row) || !row.measured) throw new Error("kitty/linux measured row absent")
+    const printed = formatCohortRow(row, categories, labelWidth, report.candidate2.unavailableIds)
+    const text = printed.join("\n")
+
+    // The RELEASE line keeps the operator's D3 denominator — the cohort size — and names the id beside it.
+    const releaseDenominator = report.candidate2.measuredIds.length
+    expect(
+      printed.some(
+        (line) =>
+          line.includes(`decisive/${releaseDenominator} `) &&
+          line.includes(`/${releaseDenominator} = `) &&
+          line.includes("(unavailable: scrollback.viewport-hold-output)"),
+      ),
+    ).toBe(true)
+    expect(printed.some((line) => line.includes(`inconclusive/${releaseDenominator}`))).toBe(true)
+    // The release basis retains the id, so its remainder still names the one untested row; the category
+    // block, on the decidable basis, has no remainder row at all.
+    expect(printed.filter((line) => line.includes("remainder"))).toEqual([
+      "    remainder    1 rows: scrollback.viewport-hold-output (untested)",
+      ...categories.map(() => "      remainder    0 rows"),
+    ])
+    // The block header states the basis ONCE (the 125 cohort, the 124 decidable).
+    expect(
+      printed.some(
+        (line) =>
+          line.includes("CATEGORIES OF THE 125") &&
+          line.includes("n = 124 cohort ids with a probe in required suite a8bafe49cdd4"),
+      ),
+    ).toBe(true)
+    // The Scrollback category divides by its DECIDABLE count and names the tenth beside them.
+    const scrollback = categories.find((category) => category.key === "scrollback")
+    if (!scrollback) throw new Error("scrollback category absent")
+    expect(scrollback.ids.length).toBeLessThan(releaseDenominator)
+    expect(
+      printed.some(
+        (line) =>
+          line.includes("Scrollback") &&
+          line.includes(`0/${scrollback.ids.length} = 0% · fail`) &&
+          line.includes("(unavailable: scrollback.viewport-hold-output)"),
+      ),
+    ).toBe(true)
+    // The two RELEASE lines (decisive, inconclusive) are the only cohort-size fractions; every category
+    // line divides over its own decidable ids.
+    expect(text.match(new RegExp(`\\d+/${releaseDenominator} =`, "g"))?.length).toBe(2)
+  }, 15_000)
+
+  it("moves no verdict label on today's runs — the only row the basis moves is Scrollback's denominator", () => {
+    const report = buildReport({ contentDir, cohort: "candidate2" })
+    if (!report.candidate2) throw new Error("Candidate 2 report absent")
+    const unavailable = new Set(report.candidate2.unavailableIds)
+    // Partition the FULL ratified cohort, so "before" is the retained-in-denominator basis.
+    const categories = cohortCategories(report.candidate2.measuredIds, catalog)
+    let flips = 0
+    for (const row of report.candidate2.barRows) {
+      if (!("run" in row) || !row.measured) continue
+      for (const category of categories) {
+        const before = decisiveShare(row.run.cells, category.ids)
+        const after = decisiveShare(
+          row.run.cells,
+          category.ids.filter((id) => !unavailable.has(id)),
+        )
+        if (before.verdict.label !== after.verdict.label) flips++
+        if (category.key === "scrollback") {
+          expect(before.denominator).toBe(10)
+          expect(after.denominator).toBe(9)
+        }
+      }
+    }
+    expect(flips).toBe(0)
+  }, 20_000)
 })

@@ -86,3 +86,6 @@ export {
   charsetsProbes,
   unicodeProbes,
 }
+
+export { splitDecidableBasis } from "./decidable-basis.ts"
+export type { DecidableBasis } from "./decidable-basis.ts"

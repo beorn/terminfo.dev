@@ -18,6 +18,7 @@ import {
   type TermlessContext,
   type TerminalQueryOutcome,
 } from "../types.ts"
+import { splitDecidableBasis } from "../decidable-basis.ts"
 
 /** One capability's contract: the id, the outcome it must read when its controls hold, and its claim. */
 export interface ContractRow {
@@ -197,21 +198,34 @@ export function requireStoredObservation(row: GroupRow, featureId: string): Stor
   return found
 }
 
-/** Contract coverage: every probe id has a contract row, and no contract row names an unknown id. */
+/**
+ * Contract coverage: every probe id has a contract row, and no contract row names an unknown id.
+ *
+ * The decidable basis is the ONE `splitDecidableBasis` call (@cto 2026-10-10T15:49Z): a contract row
+ * the schedule does not cover is `unknown` (red) UNLESS the spec explicitly annotates it in
+ * `namedUnavailable`; the annotation is a checked note, never the predicate. The annotation is checked
+ * the other way too — a named id the schedule DOES cover, or one outside the contract, is
+ * `misdeclared`. There is no second copy of the set difference in this file.
+ */
 export function contractGaps(
   probes: readonly ProbeDefinition[],
   contract: GroupContract,
   namedUnavailable: readonly NamedUnavailable[] = [],
 ): { readonly uncovered: string[]; readonly unknown: string[]; readonly misdeclared: string[] } {
   const probeIds = new Set(probes.map((entry) => entry.id))
-  const contractIds = new Set(contract.map((entry) => entry.id))
-  const unavailableIds = new Set(namedUnavailable.map((entry) => entry.id))
+  const contractIds = contract.map((entry) => entry.id)
+  const contractIdSet = new Set(contractIds)
+  const { unavailableIds } = splitDecidableBasis(contractIds, [...probeIds])
+  const annotated = new Set(namedUnavailable.map((entry) => entry.id))
   return {
-    uncovered: [...probeIds].filter((id) => !contractIds.has(id)).sort(),
-    // A contract row with no probe is unknown UNLESS it is explicitly named unavailable.
-    unknown: [...contractIds].filter((id) => !probeIds.has(id) && !unavailableIds.has(id)).sort(),
+    uncovered: [...probeIds].filter((id) => !contractIdSet.has(id)).sort(),
+    // A contract row the schedule does not cover is red UNLESS it is explicitly annotated.
+    unknown: unavailableIds.filter((id) => !annotated.has(id)).sort(),
     // A named-unavailable id must be absent from the probes and present in the contract, else it is a contradiction.
-    misdeclared: [...unavailableIds].filter((id) => probeIds.has(id) || !contractIds.has(id)).sort(),
+    misdeclared: namedUnavailable
+      .filter((entry) => !unavailableIds.includes(entry.id) || !contractIdSet.has(entry.id))
+      .map((entry) => entry.id)
+      .sort(),
   }
 }
 
