@@ -357,6 +357,25 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     cursorY += 1
   }
 
+  /**
+   * SU — scroll the region up by N, blanking the vacated bottom rows. A full-screen region retains
+   * the lines that leave the top as scrollback history; an interior region loses them (the measured
+   * control the scrollback.scroll-up probe asserts with `totalLines === screenLines`).
+   */
+  const scrollUp = (count: number): void => {
+    const n = Math.min(count, regionBottom - regionTop + 1)
+    grid.splice(regionTop, n)
+    for (let i = 0; i < n; i++) grid.splice(regionBottom, 0, blankRow())
+    if (regionTop === 0 && regionBottom === rows - 1) scrolled += n
+  }
+
+  /** SD — scroll the region down by N, blanking the vacated top rows; history is unchanged. */
+  const scrollDown = (count: number): void => {
+    const n = Math.min(count, regionBottom - regionTop + 1)
+    grid.splice(regionBottom - n + 1, n)
+    for (let i = 0; i < n; i++) grid.splice(regionTop, 0, blankRow())
+  }
+
   /** HT — advance to the next owned tab stop. */
   const horizontalTab = (): void => {
     if (mutations.has("ht-noop")) return
@@ -712,6 +731,12 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         return
       case "M":
         deleteLines(first)
+        return
+      case "S":
+        scrollUp(first === 0 ? 1 : first)
+        return
+      case "T":
+        scrollDown(first === 0 ? 1 : first)
         return
       case "b":
         repeatChar(first)
