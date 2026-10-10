@@ -13,6 +13,7 @@ import {
   queryOutcome,
   queryWithSentinel,
   queryWithSentinelOutcome,
+  readResponse,
   sentinelGraceMs,
   withRawMode,
   withTTYOperation,
@@ -105,6 +106,10 @@ describe("TTY transaction replies", () => {
       return true
     }) as typeof process.stdout.write
     expect(await query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).toMatchObject(["\x1b[12;34R", "12", "34"])
+  })
+
+  it("captures stdin emitted during inject, which inject-then-listen would drop", async () => {
+    expect(await readResponse(/^a/, 50, async () => reply("a"))).toEqual(["a"])
   })
 
   it("retains exact synchronous reply bytes across UTF-8 chunk boundaries", async () => {

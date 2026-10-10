@@ -178,8 +178,16 @@ function matchResponse(
   })
 }
 
-export function readResponse(pattern: RegExp, timeoutMs: number): Promise<string[] | null> {
-  return withTTYOperation(async () => (await matchResponse(pattern, timeoutMs)).match)
+export function readResponse(
+  pattern: RegExp,
+  timeoutMs: number,
+  inject?: () => Promise<void>,
+): Promise<string[] | null> {
+  return withTTYOperation(async () => {
+    const outcome = matchResponse(pattern, timeoutMs)
+    if (inject) await inject()
+    return (await outcome).match
+  })
 }
 
 /**

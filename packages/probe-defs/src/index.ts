@@ -6,6 +6,7 @@ export type {
   TermContext,
   TerminalQueryOutcome,
   ClipboardFixture,
+  InputFixture,
 } from "./types.ts"
 export {
   OBSERVATION_OUTCOMES,

@@ -331,7 +331,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   }
   trap cleanup EXIT
 
-  Xvfb -displayfd 3 -screen 0 1024x768x24 +extension GLX +render -noreset -nolisten tcp \
+  Xvfb -displayfd 3 -screen 0 1024x768x24 +extension GLX +extension XTEST +render -noreset -nolisten tcp \
     3>"$HOME/display-number" >/out/xvfb.log 2>&1 &
   xvfb_pid=$!
   for _ in $(seq 1 100); do
@@ -345,6 +345,10 @@ if [[ "${1:-}" == "--inside" ]]; then
   export DISPLAY=":$display_number"
   export XDG_CACHE_HOME="$HOME/.cache"
   xdpyinfo > /out/xdpyinfo.txt
+  grep -Eiq '(^|[[:space:]])XTEST([[:space:]]|$)' /out/xdpyinfo.txt || {
+    echo "DISPLAY lacks the XTEST extension; start Xvfb with +extension XTEST" >&2
+    exit 2
+  }
   glxinfo -B > /out/glxinfo.txt
   grep -Eiq 'llvmpipe' /out/glxinfo.txt || {
     echo "GL renderer is not llvmpipe; run invalid" >&2
