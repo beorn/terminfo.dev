@@ -23,7 +23,7 @@ import {
 export interface ContractRow {
   readonly id: string
   /** "decided" = a pass/fail is required; an explicit outcome = exactly that observation. */
-  readonly expected: ObservationOutcome | "decided"
+  readonly expected: ObservationOutcome | "decided" | "not-tested"
   /** The one-line claim the focused test binds (#27832: every contract row binds a focused test). */
   readonly claim: string
 }

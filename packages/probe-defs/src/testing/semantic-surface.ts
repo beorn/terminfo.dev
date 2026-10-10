@@ -3,16 +3,20 @@
  *
  * #28453 leaves the headless model to the group, so a group that needs a terminal supplies one. Two
  * groups needing the same terminal share ONE implementation rather than each reinventing the fake:
- * this surface really performs the operations the Erase, Reset, Text and Editing probes exercise -
- * EL 0/1/2, ED 0/1/2/3, ECH, DECSED with DECSCA protection, DECSTBM with a real scrollback count,
- * SGR attributes, RIS, DECSTR, DECALN, DECCKM, the text primitives (CR, BS, IND, NEL, RI and the
- * HT/HTS/TBC/CHT/CBT tab family), grapheme-aware writing (a wide cluster claims two columns and a
- * combining mark rides its base) and the editing family (ICH, DCH, IL, DL, REP, SL, SR, DECIC,
- * DECDC, DECFRA, DECERA, DECSERA, DECCRA, DECCARA, DECRARA and the DECRQCRA reply) - so a row reads
- * "supported" only when the probe's own expectation agrees with a terminal that really does the thing.
+ * this surface really performs the operations the Erase, Reset, Text, Editing, Character Sets and
+ * Unicode probes exercise - EL 0/1/2, ED 0/1/2/3, ECH, DECSED with DECSCA protection, DECSTBM with a
+ * real scrollback count, SGR attributes, RIS, DECSTR, DECALN, DECCKM, the text primitives (CR, BS,
+ * IND, NEL, RI and the HT/HTS/TBC/CHT/CBT tab family), grapheme-aware writing (a wide cluster claims
+ * two columns and a combining mark rides its base), the character-set family (SI/SO selecting G0/G1,
+ * ESC ( and ESC ) designation and the DEC Special Graphics mapping) and the editing family (ICH, DCH,
+ * IL, DL, REP, SL, SR, DECIC, DECDC, DECFRA, DECERA, DECSERA, DECCRA, DECCARA, DECRARA and the
+ * DECRQCRA reply) - so a row reads "supported" only when the probe's own expectation agrees with a
+ * terminal that really does the thing.
  *
  * `mutations` injects one named fault so a group can prove its binding is not a stamp: "el-noop"
- * makes EL inert (the Erase group's negative control) and "ris-noop" makes RIS inert (Reset's).
+ * makes EL inert (the Erase group's negative control), "ris-noop" makes RIS inert (Reset's),
+ * "charset-noop" leaves a G0/G1 designation unmapped (Character Sets'), and "ht-noop" freezes HT
+ * (Unicode's tab-stops control).
  *
  * @fakes @terminfo/probe-defs
  */
@@ -124,6 +128,48 @@ function isWide(code: number): boolean {
     (code >= 0x1f300 && code <= 0x1faff) ||
     (code >= 0x20000 && code <= 0x3fffd)
   )
+}
+
+/** The character set a G0 or G1 designation selects. */
+type CharsetSet = "ascii" | "dec-special"
+
+/**
+ * The DEC Special Graphics set: the ASCII 0x60-0x7e range maps to the VT100 line-drawing glyphs, so a
+ * `charsets.dec-special` or `charsets.dec-line-drawing` row can measure the codepoint a designation
+ * really produced (q is U+2500, l is U+250C, and so on) rather than a glyph's pixels.
+ */
+const DEC_SPECIAL_GRAPHICS: Readonly<Record<string, string>> = {
+  "`": "\u25c6",
+  a: "\u2592",
+  b: "\u2409",
+  c: "\u240c",
+  d: "\u240d",
+  e: "\u240a",
+  f: "\u00b0",
+  g: "\u00b1",
+  h: "\u2424",
+  i: "\u240b",
+  j: "\u2518",
+  k: "\u2510",
+  l: "\u250c",
+  m: "\u2514",
+  n: "\u253c",
+  o: "\u23ba",
+  p: "\u23bb",
+  q: "\u2500",
+  r: "\u23bc",
+  s: "\u23bd",
+  t: "\u251c",
+  u: "\u2524",
+  v: "\u2534",
+  w: "\u252c",
+  x: "\u2502",
+  y: "\u2264",
+  z: "\u2265",
+  "{": "\u03c0",
+  "|": "\u2260",
+  "}": "\u00a3",
+  "~": "\u00b7",
 }
 
 /**
@@ -258,6 +304,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let protecting = false
   let applicationCursor = false
   let tabStops = defaultTabStops(cols)
+  let charsetG0: CharsetSet = "ascii"
+  let charsetG1: CharsetSet = "ascii"
+  let activeCharset: "g0" | "g1" = "g0"
   let lastCluster = " "
   let lastWidth = 1
   /** Bytes the surface owes a caller in reply to a query (DECRQCRA), read back by feedCapture. */
@@ -273,6 +322,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     regionBottom = rows - 1
     scrolled = 0
     tabStops = defaultTabStops(cols)
+    charsetG0 = "ascii"
+    charsetG1 = "ascii"
+    activeCharset = "g0"
     replies = ""
   }
   clear()
@@ -303,6 +355,25 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       return
     }
     cursorY += 1
+  }
+
+  /**
+   * SU — scroll the region up by N, blanking the vacated bottom rows. A full-screen region retains
+   * the lines that leave the top as scrollback history; an interior region loses them (the measured
+   * control the scrollback.scroll-up probe asserts with `totalLines === screenLines`).
+   */
+  const scrollUp = (count: number): void => {
+    const n = Math.min(count, regionBottom - regionTop + 1)
+    grid.splice(regionTop, n)
+    for (let i = 0; i < n; i++) grid.splice(regionBottom, 0, blankRow())
+    if (regionTop === 0 && regionBottom === rows - 1) scrolled += n
+  }
+
+  /** SD — scroll the region down by N, blanking the vacated top rows; history is unchanged. */
+  const scrollDown = (count: number): void => {
+    const n = Math.min(count, regionBottom - regionTop + 1)
+    grid.splice(regionBottom - n + 1, n)
+    for (let i = 0; i < n; i++) grid.splice(regionTop, 0, blankRow())
   }
 
   /** HT — advance to the next owned tab stop. */
@@ -570,6 +641,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     applicationCursor = false
     attributes = NO_ATTRIBUTES
     protecting = false
+    charsetG0 = "ascii"
+    charsetG1 = "ascii"
+    activeCharset = "g0"
   }
 
   const ris = (): void => {
@@ -658,6 +732,12 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       case "M":
         deleteLines(first)
         return
+      case "S":
+        scrollUp(first === 0 ? 1 : first)
+        return
+      case "T":
+        scrollDown(first === 0 ? 1 : first)
+        return
       case "b":
         repeatChar(first)
         return
@@ -727,6 +807,16 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
           index += 2
           continue
         }
+        // The two-byte designations: ESC ( sets G0 and ESC ) sets G1. "0" is DEC Special Graphics;
+        // every other final (B is US-ASCII) is treated as ASCII. #28025 charsets.* measure the result.
+        if ((escape === "(" || escape === ")") && rest.length >= 3) {
+          const designation = rest[2]
+          const set: CharsetSet = designation === "0" && !mutations.has("charset-noop") ? "dec-special" : "ascii"
+          if (escape === "(") charsetG0 = set
+          else charsetG1 = set
+          index += 3
+          continue
+        }
         index += 1
         continue
       }
@@ -749,6 +839,24 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       }
       if (char === "\t") {
         horizontalTab()
+        index += 1
+        continue
+      }
+      // SI selects G0 and SO selects G1; a graphic character then renders through the selected set.
+      if (char === "\x0f") {
+        activeCharset = "g0"
+        index += 1
+        continue
+      }
+      if (char === "\x0e") {
+        activeCharset = "g1"
+        index += 1
+        continue
+      }
+      const activeSet = activeCharset === "g0" ? charsetG0 : charsetG1
+      const mapped = activeSet === "dec-special" ? DEC_SPECIAL_GRAPHICS[char] : undefined
+      if (mapped !== undefined) {
+        writeCluster(mapped, 1)
         index += 1
         continue
       }

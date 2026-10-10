@@ -27,6 +27,7 @@ import { COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.
 import { withRawMode, drainStdin, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
+import { createLinuxInput } from "./linux-input.ts"
 import {
   createOwnedTerminal,
   parseTerminalAppOwner,
@@ -151,9 +152,11 @@ export async function collectProbeRun(
     throw new Error("Controlled Linux collection lacks measured executable")
   }
   let capture: ProbeCapture | undefined
+  let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
   if (captureDirectory) {
     if (!executable) throw new Error("Configured Linux capture lacks measured executable")
     capture = await createLinuxCapture(captureDirectory, executable)
+    input = await createLinuxInput(executable)
   } else if (provenancePath) {
     // A controlled Linux run with no capture directory cannot make a frame, so a probe that needs
     // one must fail BY NAME in its own result instead of reaching an absent callback (27875).
@@ -235,6 +238,7 @@ export async function collectProbeRun(
         // The run's own target, from the launched app: the receipt is bound to this before any write.
         target: { kind: "app", id: terminal.name, os: terminal.os },
         ...(capture && { capture }),
+        ...(input && { input }),
         ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),
       })

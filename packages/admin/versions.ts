@@ -20,6 +20,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/linux-clipboard.ts",
   "packages/terminfo.dev/src/owned-terminal.ts",
   "packages/terminfo.dev/src/linux-capture.ts",
+  "packages/terminfo.dev/src/linux-input.ts",
   "packages/terminfo.dev/src/serve.ts",
   "packages/terminfo.dev/src/detect.ts",
   "packages/terminfo.dev/src/identity-guard.ts",
