@@ -139,7 +139,11 @@ jobs:
             exit 1
           }
           export TERMINFO_RUN_ID
-          "$COLLECTOR" test --output "$OUT/run.json" > "$OUT/collector.log" 2>&1
+          # stdout MUST stay on this terminal: the collector writes every probe query to
+          # process.stdout, and the owned-terminal arm binds fd0, stdout and the controlling tty as
+          # one PTY. Redirecting stdout to the log made that binding impossible and failed every
+          # hosted macOS job at collect (27917; cause b7580050 / 28533). Only stderr is logged.
+          "$COLLECTOR" test --output "$OUT/run.json" 2> "$OUT/collector.log"
           status=\$?
           printf '%s\n' "\$status" > "$OUT/collector-exit"
           SCRIPT

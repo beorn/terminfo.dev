@@ -32,3 +32,26 @@ test("hosted measurement workflows export the launch run id inside the collector
   expect(winExportAt, "Windows workflow sets TERMINFO_RUN_ID").toBeGreaterThan(winReadyAt)
   expect(winCollectorAt, "Windows workflow invokes the collector").toBeGreaterThan(winExportAt)
 })
+
+/**
+ * @failure The macOS workflow redirects the collector's stdout into collector.log, so the collector
+ *   loses the terminal: serve.ts writes every probe query to process.stdout, and the darwinHosted arm
+ *   binds fd0, stdout and the controlling tty as one PTY, so a redirected stdout makes that binding
+ *   impossible and every hosted macOS job dies at collect with "Owned output is not a real TTY
+ *   stream" or "Hosted Darwin input, selected output and controlling TTY device identities differ".
+ * @level l2
+ * @consumer The GitHub-hosted macOS measurement collector (27917 / cause b7580050, 28533).
+ * @reach fs-walk .github/workflows/macos-measurement.yml
+ * @testonly none
+ */
+test("the macOS collector keeps stdout on the terminal and sends only stderr to the log", () => {
+  const macos = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
+  const line = macos.split("\n").find((candidate) => candidate.includes('"$COLLECTOR" test')) ?? ""
+  expect(line, "the macOS collector launch line exists").not.toBe("")
+  // A stdout redirect is the defect: the collector's probe queries go to stdout, and the owned-terminal
+  // arm verifies stdout is the same PTY as fd0 and the ps tty. Only stderr may go to collector.log.
+  expect(line, "stdout must stay on the terminal, never redirected to collector.log").not.toMatch(
+    /(^|[^0-9])>\s*"\$OUT\/collector\.log"/,
+  )
+  expect(line, "stderr still reaches the collector.log artifact").toMatch(/\b2>\s*"\$OUT\/collector\.log"/)
+})
