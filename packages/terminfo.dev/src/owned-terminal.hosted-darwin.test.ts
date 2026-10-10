@@ -18,6 +18,7 @@ import {
 const digest = (seed: string) => createHash("sha256").update(seed).digest("hex")
 const directories: string[] = []
 afterEach(() => {
+  // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; each path is this test's own mkdtemp scratch root
   for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true })
 })
 

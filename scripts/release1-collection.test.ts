@@ -326,6 +326,7 @@ describe("linux run-receipt.json per context (#28552)", () => {
         requireLinuxRunReceipt(runPath, cleanRun({ target: { kind: "app", id: "kitty", os: "linux" } })),
       ).toThrow(/kitty\/linux: missing run-receipt\.json/)
     } finally {
+      // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; raw is this test's own mkdtemp scratch root
       rmSync(raw, { recursive: true, force: true })
     }
   })
@@ -343,6 +344,7 @@ describe("linux run-receipt.json per context (#28552)", () => {
         requireLinuxRunReceipt(runPath, cleanRun({ target: { kind: "app", id: "kitty", os: "macos" } })),
       ).not.toThrow()
     } finally {
+      // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; raw is this test's own mkdtemp scratch root
       rmSync(raw, { recursive: true, force: true })
     }
   })
