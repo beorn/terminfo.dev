@@ -222,7 +222,7 @@ describe("release 1 decisive-count reader", () => {
     const args = { contentDir: join(import.meta.dirname, "..", "content"), cohort: "candidate2" as const }
     const report = buildReport(args)
     expect(report).toHaveProperty("candidate2.name", "candidate2")
-    expect(report).toHaveProperty("candidate2.frozenSuiteId", "db5558cf8d6c")
+    expect(report).toHaveProperty("candidate2.frozenSuiteId", "452ac343b55d")
     expect(report).toHaveProperty(
       "candidate2.measuredIds",
       expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
@@ -243,13 +243,13 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
     for (const row of report.candidate2.admittedRuns) {
-      expect(row.measured).toBe(row.run.suiteId === "db5558cf8d6c")
+      expect(row.measured).toBe(row.run.suiteId === "452ac343b55d")
       // The RELEASE share is the operator's D3 over the ratified cohort (125); only the per-category
       // block divides over the decidable basis (@chief 2026-10-10T15:56Z).
       if (row.measured) expect(row.share.denominator).toBe(125)
       else {
         expect(row).not.toHaveProperty("share")
-        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required db5558cf8d6c`)
+        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required 452ac343b55d`)
       }
     }
   })
@@ -701,7 +701,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       printed.some(
         (line) =>
           line.includes("CATEGORIES OF THE 125") &&
-          line.includes("n = 124 cohort ids with a probe in required suite db5558cf8d6c"),
+          line.includes("n = 124 cohort ids with a probe in required suite 452ac343b55d"),
       ),
     ).toBe(true)
     // The Scrollback category divides by its DECIDABLE count and names the tenth beside them.
