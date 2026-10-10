@@ -276,3 +276,98 @@ test("input.modify-other-keys throws when ctrl+i is silent after delivery contro
   expect(writes.join("")).toContain("\x1b[>4;2m")
   expect(writes.join("")).toContain("\x1b[>4;0m")
 })
+
+test("input.modify-other-keys-3 is not tested without an OS XTEST adapter", async () => {
+  const definition = probe("input.modify-other-keys-3")
+  const writes: string[] = []
+  const headless = definition.termless!({
+    cols: 80,
+    feed() {},
+    feedCapture() {
+      return ""
+    },
+    getCell: () => {
+      throw new Error("Unexpected getCell")
+    },
+    getCursor: () => {
+      throw new Error("Unexpected getCursor")
+    },
+    getMode: () => false,
+    getText: () => "",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset() {},
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "unknown",
+      extensions: new Set(["modifyOtherKeys"]),
+    },
+  })
+  expect(headless.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(headless.observation).toBeUndefined()
+
+  const result = await definition.term!(term({ write: (text) => writes.push(text) }))
+  expect(writes).toEqual([])
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(result.observation).toBeUndefined()
+})
+
+test("input.modify-other-keys-3 aborts when plain a does not reach the app, does not enable mode 3, and does not inject i", async () => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: {} }, writes)
+  await expect(probe("input.modify-other-keys-3").term!(ctx)).rejects.toThrow(/delivery control|plain a/i)
+  expect(keys).toEqual(["a"])
+  expect(writes.join("")).not.toContain("\x1b[>4;3m")
+  expect(writes.join("")).not.toContain("\x1b[>4;2m")
+})
+
+test.each([
+  ["\x1b[27;1;105~", "xterm CSI 27;1;105~"],
+  ["\x1b[105;1u", "CSI u 105;1u"],
+] as const)("input.modify-other-keys-3 records supported interaction for unmodified i as %s", async (report, label) => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: { a: "a", i: report } }, writes)
+  const result = (await probe("input.modify-other-keys-3").term!(ctx)) as ProbeResult
+  expect(keys).toEqual(["a", "i"])
+  expect(writes.join("")).toContain("\x1b[>4;3m")
+  expect(writes.join("")).toContain("\x1b[>4;0m")
+  expect(writes.join("")).not.toContain("\x1b[>4;2m")
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "modify-other-keys-3:i" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed, label).toMatchObject({ mode: "modifyOtherKeys-3", control: "a", report })
+})
+
+test("input.modify-other-keys-3 records unsupported interaction when unmodified i still reports i", async () => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: { a: "a", i: "i" } }, writes)
+  const result = (await probe("input.modify-other-keys-3").term!(ctx)) as ProbeResult
+  expect(keys).toEqual(["a", "i"])
+  expect(writes.join("")).toContain("\x1b[>4;3m")
+  expect(writes.join("")).toContain("\x1b[>4;0m")
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "modify-other-keys-3:i" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "modifyOtherKeys-3", control: "a", report: "i" })
+})
+
+test("input.modify-other-keys-3 throws when unmodified i is silent after delivery control, and still resets the mode", async () => {
+  const writes: string[] = []
+  const { ctx, keys } = inputAndRead({ keys: { a: "a" } }, writes)
+  await expect(probe("input.modify-other-keys-3").term!(ctx)).rejects.toThrow(/unmodified i|modifyOtherKeys|silent/i)
+  expect(keys).toEqual(["a", "i"])
+  expect(writes.join("")).toContain("\x1b[>4;3m")
+  expect(writes.join("")).toContain("\x1b[>4;0m")
+})

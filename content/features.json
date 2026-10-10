@@ -2220,8 +2220,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["xterm-extensions"],
     "body": "xterm's modifyOtherKeys mode 3 (patch 398, April 2025) makes ALL keyboard input — including unmodified keys — send escape sequences. Mode 2 only affects modified keys (Ctrl+X, Alt+X), while mode 3 extends this to every keypress. The sequence is <code>CSI > 4 ; 3 m</code>.\n\nMode 3 also extends modifier encoding to cursor-keys, function-keys, keypad-keys, modifier-keys, and special-keys, with subparameters in XTMODKEYS for selective modifier masking. This provides applications with unambiguous key identification similar to the kitty keyboard protocol, but using xterm's native encoding.",
-    "probe": "Inconclusive until controlled key events distinguish mode 3 from mode 2 and their reports are checked. Terminal responsiveness does not establish key encoding.",
-    "probeStatus": "unprobed",
+    "probe": "Confirm XTEST delivery with plain a, then enable modifyOtherKeys 3 (CSI > 4 ; 3 m) and inject unmodified i. CSI 27;1;105~ or CSI 105;1u is supported; bare i means the mode was ignored (unsupported). Missing OS XTEST adapter is not tested. Reset with CSI > 4 ; 0 m.",
     "baseline": "rich"
   },
   "extensions.kitty-keyboard.disambiguate": {

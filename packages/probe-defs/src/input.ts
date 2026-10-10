@@ -43,32 +43,7 @@ export const inputProbes: ProbeDefinition[] = [
   mouseInputProbe("input.urxvt-mouse", "mouseTracking"),
   mouseInputProbe("input.x10-mouse", "mouseTracking"),
 
-  // Mode 3 cannot be distinguished from mode 2 by this declared capability.
-  probe(
-    "input.modify-other-keys-3",
-    (ctx) => ({
-      pass: false,
-      response: JSON.stringify({ declaredModifyOtherKeys: ctx.capabilities.extensions.has("modifyOtherKeys") }),
-      note: absentEventNote,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "legacy",
-        note: absentEventNote,
-      },
-    }),
-    () =>
-      Promise.resolve<ProbeResult>({
-        pass: false,
-        note: absentEventNote,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note: absentEventNote,
-        },
-      }),
-  ),
+  probe("input.modify-other-keys-3", () => xtestCoverage("key injection"), modifyOtherKeys3, "interaction"),
 
   mouseInputProbe("input.button-event-mouse", "mouseTracking"),
 
@@ -83,8 +58,10 @@ const PLAIN_A = /^a/
 const MODIFIED_KEY = /\x01|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
 const SGR_MOUSE = /\x1b\[<\d+;\d+;\d+[Mm]/
 const MODIFY_OTHER_KEYS_2 = "\x1b[>4;2m"
+const MODIFY_OTHER_KEYS_3 = "\x1b[>4;3m"
 const MODIFY_OTHER_KEYS_RESET = "\x1b[>4;0m"
 const MODIFY_OTHER_KEYS_REPORT = /\t|\x1b\[(?:27;\d+;\d+~|\d+;\d+u)/
+const MODIFY_OTHER_KEYS_3_REPORT = /\x1b\[(?:27;\d+;\d+~|\d+;\d+u)|i/
 const MODIFY_OTHER_KEYS_ENCODING = /\x1b\[(?:27;\d+;105~|105;\d+u)/
 
 function xtestCoverage(kind: string): ProbeResult {
@@ -120,8 +97,8 @@ function unsupportedInteraction(action: string, expected: string, observed: Reco
   }
 }
 
-async function withModifyOtherKeys<T>(ctx: TermContext, work: () => Promise<T>): Promise<T> {
-  ctx.write(MODIFY_OTHER_KEYS_2)
+async function withModifyOtherKeys<T>(ctx: TermContext, enable: string, work: () => Promise<T>): Promise<T> {
+  ctx.write(enable)
   try {
     return await work()
   } finally {
@@ -133,7 +110,7 @@ async function modifyOtherKeys2(ctx: TermContext): Promise<ProbeResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("key injection")
-  return withModifyOtherKeys(ctx, async () => {
+  return withModifyOtherKeys(ctx, MODIFY_OTHER_KEYS_2, async () => {
     const control = await deliveryControl(
       () => input.injectKey("a"),
       readInput,
@@ -150,6 +127,30 @@ async function modifyOtherKeys2(ctx: TermContext): Promise<ProbeResult> {
       return interactionResult("modify-other-keys:ctrl+i", expected, observed)
     }
     return unsupportedInteraction("modify-other-keys:ctrl+i", expected, observed)
+  })
+}
+
+async function modifyOtherKeys3(ctx: TermContext): Promise<ProbeResult> {
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!input || !readInput) return xtestCoverage("key injection")
+  const control = await deliveryControl(
+    () => input.injectKey("a"),
+    readInput,
+    PLAIN_A,
+    "XTEST delivery control failed: plain a did not reach the app",
+  )
+  return withModifyOtherKeys(ctx, MODIFY_OTHER_KEYS_3, async () => {
+    const report = (await readInput(MODIFY_OTHER_KEYS_3_REPORT, 1000, () => input.injectKey("i")))?.[0]
+    if (!report) {
+      throw new Error("XTEST modifyOtherKeys unmodified i did not reach the app after a successful delivery control")
+    }
+    const observed = { mode: "modifyOtherKeys-3", control, report }
+    const expected = "OS XTEST unmodified i report under modifyOtherKeys 3 after plain-a delivery control"
+    if (MODIFY_OTHER_KEYS_ENCODING.test(report)) {
+      return interactionResult("modify-other-keys-3:i", expected, observed)
+    }
+    return unsupportedInteraction("modify-other-keys-3:i", expected, observed)
   })
 }
 
