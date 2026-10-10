@@ -630,3 +630,99 @@ test("input.urxvt-mouse throws when the 1015 click is silent after delivery cont
   expect(writes.join("")).toContain("\x1b[?1015h")
   expect(writes.join("")).toContain("\x1b[?1015l")
 })
+
+test("input.x10-mouse is not tested without an OS XTEST adapter", async () => {
+  const definition = probe("input.x10-mouse")
+  const writes: string[] = []
+  const headless = definition.termless!({
+    cols: 80,
+    feed() {},
+    feedCapture() {
+      return ""
+    },
+    getCell: () => {
+      throw new Error("Unexpected getCell")
+    },
+    getCursor: () => {
+      throw new Error("Unexpected getCursor")
+    },
+    getMode: () => false,
+    getText: () => "",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset() {},
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "unknown",
+      extensions: new Set(),
+    },
+  })
+  expect(headless.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(headless.observation).toBeUndefined()
+
+  const result = await definition.term!(term({ write: (text) => writes.push(text) }))
+  expect(writes).toEqual([])
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringMatching(/XTEST|OS-level/i),
+  })
+  expect(result.observation).toBeUndefined()
+})
+
+test("input.x10-mouse aborts when the 1000+1006 control click does not reach the app, and does not enable 9", async () => {
+  const writes: string[] = []
+  const { ctx, clicks } = inputAndRead({ clicks: {} }, writes)
+  await expect(probe("input.x10-mouse").term!(ctx)).rejects.toThrow(/delivery control|1000\+1006/i)
+  expect(clicks).toEqual([1])
+  expect(writes.join("")).toContain("\x1b[?1000h")
+  expect(writes.join("")).toContain("\x1b[?1006h")
+  expect(writes.join("")).not.toContain("\x1b[?9h")
+  expect(writes.join("")).not.toContain("\x1b[?9l")
+})
+
+test("input.x10-mouse records supported interaction when mode 9 reports CSI M plus three bytes", async () => {
+  const writes: string[] = []
+  const control = "\x1b[<0;10;5M"
+  const report = "\x1b[M\x20\x2a\x25"
+  const { ctx, clicks } = inputAndRead({ clickReports: [control, report] }, writes)
+  const result = (await probe("input.x10-mouse").term!(ctx)) as ProbeResult
+  expect(clicks).toEqual([1, 1])
+  expect(writes.join("")).toContain("\x1b[?9h")
+  expect(writes.join("")).toContain("\x1b[?9l")
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "x10-mouse:1" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "9", control, report })
+})
+
+test("input.x10-mouse records unsupported interaction when mode 9 still reports SGR with <", async () => {
+  const writes: string[] = []
+  const sgr = "\x1b[<0;10;5M"
+  const { ctx, clicks } = inputAndRead({ clickReports: [sgr, sgr] }, writes)
+  const result = (await probe("input.x10-mouse").term!(ctx)) as ProbeResult
+  expect(clicks).toEqual([1, 1])
+  expect(writes.join("")).toContain("\x1b[?9h")
+  expect(writes.join("")).toContain("\x1b[?9l")
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "x10-mouse:1" })
+  const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
+  expect(observed).toMatchObject({ mode: "9", control: sgr, report: sgr })
+})
+
+test("input.x10-mouse throws when the mode 9 click is silent after delivery control, and still resets 9", async () => {
+  const writes: string[] = []
+  const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M"] }, writes)
+  await expect(probe("input.x10-mouse").term!(ctx)).rejects.toThrow(/9|x10-mouse|silent/i)
+  expect(clicks).toEqual([1, 1])
+  expect(writes.join("")).toContain("\x1b[?9h")
+  expect(writes.join("")).toContain("\x1b[?9l")
+})
