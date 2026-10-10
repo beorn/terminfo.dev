@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "89e2350608b475047b16e9775613ad69",
+  "collectedAt": "2026-10-10T19:21:20.581Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "macos-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/main",
+    "githubRunId": "38079416552",
+    "githubRunAttempt": "1",
+    "job": "measure-macos",
+    "jobId": "114293063202"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000045873",
+    "os": "macOS",
+    "arch": "ARM64",
+    "imageOS": "macos26",
+    "imageVersion": "20260907.0351.1",
+    "trackingId": "github_c4108914-c879-48d6-837c-5d629b248fe9"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "e1ef4767f79c6d86c6024abe93e182456a22214773283025e1759e9c4a9790b1",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "39cb540cfe2692c3fcf3eaf024122cbc2f89f7a99d3cea20bb82171d122b04b7"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "e1ef4767f79c6d86c6024abe93e182456a22214773283025e1759e9c4a9790b1",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "39cb540cfe2692c3fcf3eaf024122cbc2f89f7a99d3cea20bb82171d122b04b7"
+    }
+  },
+  "appLaunch": {
+    "bundlePath": "/Applications/Ghostty.app",
+    "cfBundleShortVersionString": "1.3.1",
+    "cfBundleVersion": "15212",
+    "executablePath": "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+    "executableSha256": "3460be6d0c80504ffafe0dbb06f60cb1e8fb680a564a97a1aa5b95b48b8e30ac",
+    "sourceArtifact": {
+      "path": "/Users/runner/Library/Caches/Homebrew/downloads/8fe2cba53d068b28af123ef9f642165e92b509fefc34c94bd9d1bd0c5dd21a94--Ghostty.dmg",
+      "sha256": "18cff2b0a6cee90eead9c7d3064e808a252a40baf214aa752c1ecb793b8f5f69"
+    }
+  }
+}
