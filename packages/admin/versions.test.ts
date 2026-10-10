@@ -40,6 +40,7 @@ test("suite identity changes with executable collection, ownership, capture and 
     "packages/terminfo.dev/src/linux-clipboard.ts",
     "packages/terminfo.dev/src/owned-terminal.ts",
     "packages/terminfo.dev/src/linux-capture.ts",
+    "packages/terminfo.dev/src/linux-input.ts",
     "packages/terminfo.dev/src/serve.ts",
     "packages/terminfo.dev/src/detect.ts",
     "packages/terminfo.dev/src/identity-guard.ts",
@@ -49,10 +50,12 @@ test("suite identity changes with executable collection, ownership, capture and 
   }
   changed.file = ""
   const snapshot = probeSuiteSnapshot()
-  expect(snapshot.probes.app).toHaveLength(256)
-  expect(snapshot.probes.headless).toHaveLength(245)
+  expect(snapshot.probes.app).toHaveLength(259)
+  expect(snapshot.probes.headless).toHaveLength(248)
   expect(snapshot.probes.mux).toEqual(snapshot.probes.app)
   expect(snapshot.probes.app).toContain("extensions.kitty-keyboard")
+  expect(snapshot.probes.app).toContain("input.xtest-key")
   expect(snapshot.probes.app).toEqual([...snapshot.probes.app].sort())
   expect(snapshot.sourcePaths).toContain("packages/terminfo.dev/src/tty.ts")
+  expect(snapshot.sourcePaths).toContain("packages/terminfo.dev/src/linux-input.ts")
 })
