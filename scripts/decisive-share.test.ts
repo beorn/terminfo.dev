@@ -84,16 +84,20 @@ describe("release 1 decisive-count reader", () => {
       writeFileSync(features, readFileSync(join(real, "features.json")))
       const declaration = join(contentDir, "release-scope-candidate2.json")
       expect(load).toThrow(declaration)
-      writeFileSync(declaration, readFileSync(join(real, "release-scope-candidate2.json")))
-      const manifest = join(contentDir, "suites", "a8bafe49cdd4.json")
+      const realDeclaration = readFileSync(join(real, "release-scope-candidate2.json"), "utf8")
+      const requiredSuite = (JSON.parse(realDeclaration) as { frozenSuiteId: string }).frozenSuiteId
+      writeFileSync(declaration, realDeclaration)
+      // The required manifest is the declaration's own frozenSuiteId, so this test tracks the
+      // declaration instead of hardcoding a suite id that a later move would silently stale (28467).
+      const manifest = join(contentDir, "suites", `${requiredSuite}.json`)
       expect(load).toThrow(manifest)
       mkdirSync(join(contentDir, "suites"))
       writeFileSync(manifest, "{}")
       expect(load).toThrow(manifest)
-      const realManifest = join(real, "suites", "a8bafe49cdd4.json")
+      const realManifest = join(real, "suites", `${requiredSuite}.json`)
       const raw = parseSuiteManifest(realManifest, readFileSync(realManifest, "utf8"))
       writeFileSync(manifest, JSON.stringify({ ...raw, probeHash: "wrong-suite" }))
-      expect(load).toThrow(/probeHash wrong-suite does not match required a8bafe49cdd4/)
+      expect(load).toThrow(new RegExp(`probeHash wrong-suite does not match required ${requiredSuite}`))
       expect(load).toThrow(manifest)
     } finally {
       rmSync(contentDir, { recursive: true })
@@ -141,6 +145,57 @@ describe("release 1 decisive-count reader", () => {
     expect(result).not.toHaveProperty("share")
   })
 
+  it("grades a suite-S run and keeps a historical H run ineligible once the declaration moves (28467)", () => {
+    // 28467 AC1: the declaration's frozenSuiteId is the live suite-S tree hash, so a run on suite-S
+    // grades over the ratified 125 while a run still on the historical H suite is named ineligible —
+    // history never substitutes for the selected run.
+    const cohort = {
+      name: "candidate2" as const,
+      frozenSuiteId: "db5558cf8d6c",
+      measuredIds: IDS,
+      decidableIds: IDS,
+    }
+    const context = { terminalId: "alacritty", os: "linux" }
+    const successor = barRowForContext({
+      context,
+      candidates: [candidate({ suiteId: "db5558cf8d6c", runId: "suite-s-run" })],
+      tier62Ids: IDS,
+      tier52Ids: IDS,
+    })
+    expect(cohortRowForSelected(successor, cohort)).toMatchObject({
+      measured: true,
+      run: { runId: "suite-s-run", suiteId: "db5558cf8d6c" },
+      share: { denominator: IDS.length },
+    })
+    const historical = barRowForContext({
+      context,
+      candidates: [candidate({ suiteId: "a8bafe49cdd4", runId: "historical-h-run" })],
+      tier62Ids: IDS,
+      tier52Ids: IDS,
+    })
+    expect(cohortRowForSelected(historical, cohort)).toMatchObject({
+      measured: false,
+      run: { runId: "historical-h-run", suiteId: "a8bafe49cdd4" },
+      reason: "ineligible: selected run on suite a8bafe49cdd4, required db5558cf8d6c",
+    })
+  })
+
+  it("keeps the historical H suite manifest byte-identical while the declaration points at suite-S", () => {
+    // 28467 AC2/AC5: the move is one declaration field — the H manifest and the successor manifest are
+    // both immutable evidence, so a byte-identical H manifest proves the transition dropped no history.
+    const contentDir = join(import.meta.dirname, "..", "content")
+    const historical = readFileSync(join(contentDir, "suites", "a8bafe49cdd4.json"))
+    expect(createHash("sha256").update(historical).digest("hex")).toBe(
+      "4cd7d1f916bf513248b6327a2077f354d013755e9e67d875f916b97d2ff9ddbe",
+    )
+    // AC4: the successor schedule still carries no probe for the viewport-hold id, so the decidable
+    // basis keeps naming it unavailable rather than silently shrinking into a denominator.
+    const successorPath = join(contentDir, "suites", "db5558cf8d6c.json")
+    const successor = parseSuiteManifest(successorPath, readFileSync(successorPath, "utf8"))
+    expect(successor.probeHash).toBe("db5558cf8d6c")
+    expect(successor.probes.app).not.toContain("scrollback.viewport-hold-output")
+  })
+
   it("grades all 125 frozen IDs through D3 rounding and preserves missing or ambiguous selection", () => {
     const ids = Array.from({ length: 125 }, (_, i) => `classic.${i}`)
     const cohort = { name: "candidate2" as const, frozenSuiteId: "a8bafe49cdd4", measuredIds: ids, decidableIds: ids }
@@ -167,7 +222,7 @@ describe("release 1 decisive-count reader", () => {
     const args = { contentDir: join(import.meta.dirname, "..", "content"), cohort: "candidate2" as const }
     const report = buildReport(args)
     expect(report).toHaveProperty("candidate2.name", "candidate2")
-    expect(report).toHaveProperty("candidate2.frozenSuiteId", "a8bafe49cdd4")
+    expect(report).toHaveProperty("candidate2.frozenSuiteId", "db5558cf8d6c")
     expect(report).toHaveProperty(
       "candidate2.measuredIds",
       expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
@@ -188,13 +243,13 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
     for (const row of report.candidate2.admittedRuns) {
-      expect(row.measured).toBe(row.run.suiteId === "a8bafe49cdd4")
+      expect(row.measured).toBe(row.run.suiteId === "db5558cf8d6c")
       // The RELEASE share is the operator's D3 over the ratified cohort (125); only the per-category
       // block divides over the decidable basis (@chief 2026-10-10T15:56Z).
       if (row.measured) expect(row.share.denominator).toBe(125)
       else {
         expect(row).not.toHaveProperty("share")
-        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required a8bafe49cdd4`)
+        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required db5558cf8d6c`)
       }
     }
   })
@@ -629,18 +684,24 @@ describe("per-category decisive share (28018 AC2)", () => {
       ),
     ).toBe(true)
     expect(printed.some((line) => line.includes(`inconclusive/${releaseDenominator}`))).toBe(true)
-    // The release basis retains the id, so its remainder still names the one untested row; the category
-    // block, on the decidable basis, has no remainder row at all.
+    // The release basis retains the id, so its remainder still names it; the category block, on the
+    // decidable basis, has already removed it from Scrollback. The selected suite-S run also records a
+    // not-tested erase row, which is exactly what a remainder row reports, so erase keeps one row
+    // instead of the all-empty remainders the H-era run produced.
     expect(printed.filter((line) => line.includes("remainder"))).toEqual([
-      "    remainder    1 rows: scrollback.viewport-hold-output (untested)",
-      ...categories.map(() => "      remainder    0 rows"),
+      "    remainder    2 rows: erase.screen.scrollback (untested), scrollback.viewport-hold-output (untested)",
+      ...categories.map((category) =>
+        category.key === "erase"
+          ? "      remainder    1 rows: erase.screen.scrollback (untested)"
+          : "      remainder    0 rows",
+      ),
     ])
     // The block header states the basis ONCE (the 125 cohort, the 124 decidable).
     expect(
       printed.some(
         (line) =>
           line.includes("CATEGORIES OF THE 125") &&
-          line.includes("n = 124 cohort ids with a probe in required suite a8bafe49cdd4"),
+          line.includes("n = 124 cohort ids with a probe in required suite db5558cf8d6c"),
       ),
     ).toBe(true)
     // The Scrollback category divides by its DECIDABLE count and names the tenth beside them.
