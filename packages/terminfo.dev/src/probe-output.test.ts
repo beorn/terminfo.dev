@@ -21,7 +21,7 @@ describe("probeOutputStream — the collector's probe terminal (#28553)", () => 
     expect(opener).not.toHaveBeenCalled()
     expect(out).toBe(stdout)
     // The arm's selectedFd refuses a stream with no numeric fd; the process's own stdout has one.
-    expect(typeof out?.fd).toBe("number")
+    expect(typeof (out as { fd?: unknown } | undefined)?.fd).toBe("number")
   })
 
   it("falls back to the controlling terminal when --output is given but stdout is not a terminal", () => {
