@@ -490,10 +490,27 @@ export const eraseProbes: ProbeDefinition[] = [
       (ctx) => {
         const expected = "EL erases X while preserving its measured non-default background"
         try {
+          ctx.feed("\x1b[0m\x1b[1;1HX\x1b[1;1H")
+          const baseline = ctx.getCell(0, 0)
+          if (baseline.char !== "X" || baseline.bg === undefined) {
+            return parserStateResult(null, expected, { baseline }, "Default-background X setup was not measured")
+          }
           ctx.feed("\x1b[42m\x1b[1;1HXXXXX\x1b[1;1H")
           const before = ctx.getCell(0, 0)
-          if (before.char !== "X" || before.bg == null) {
-            return parserStateResult(null, expected, { before }, "Colored X setup was not measured")
+          if (
+            before.char !== "X" ||
+            before.bg == null ||
+            (baseline.bg !== null &&
+              before.bg.r === baseline.bg.r &&
+              before.bg.g === baseline.bg.g &&
+              before.bg.b === baseline.bg.b)
+          ) {
+            return parserStateResult(
+              null,
+              expected,
+              { baseline, before },
+              "Non-default colored X setup was not measured",
+            )
           }
           ctx.feed("\x1b[K")
           const after = ctx.getCell(0, 0)
@@ -506,7 +523,7 @@ export const eraseProbes: ProbeDefinition[] = [
                   after.bg?.b === before.bg.b
               : null,
             expected,
-            { before, after },
+            { baseline, before, after },
             measured ? undefined : "Erased cell background metadata unavailable",
           )
         } finally {

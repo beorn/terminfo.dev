@@ -565,23 +565,42 @@ test("scrollback erase requires existing history and measured removal", () => {
 })
 
 test("background erase measures a blank target with its calibrated background", () => {
-  for (const [char, background, expected] of [
-    [" ", true, "supported"],
-    ["X", true, "unsupported"],
-    [" ", false, "inconclusive"],
+  const black = { r: 0, g: 0, b: 0 }
+  const color = { r: 130, g: 20, b: 70 }
+  // Constant RGB metadata cannot establish that SGR changed the default background.
+  for (const [baseline, colored, char, afterBg, seed, expected, target] of [
+    [black, black, " ", black, "X", "inconclusive", false],
+    [null, null, " ", null, "X", "inconclusive", false],
+    [undefined, color, " ", color, "X", "inconclusive", false],
+    [null, color, " ", color, "?", "inconclusive", false],
+    [null, color, " ", color, "X", "supported", true],
+    [black, color, " ", color, "X", "supported", true],
+    [null, color, "X", color, "X", "unsupported", true],
+    [null, color, " ", null, "X", "inconclusive", true],
   ] as const) {
     const base = headless("ABCDE")
     let erased = false
+    let coloring = false
+    const writes: string[] = []
     const result = byId("erase.el-with-attrs").termless({
       ...base,
       feed(bytes) {
+        writes.push(bytes)
+        if (bytes.includes("\x1b[42m")) coloring = true
         if (bytes === "\x1b[K") erased = true
       },
       getCell(row, col) {
-        return { ...base.getCell(row, col), char: erased ? char : "X", bg: background ? { r: 0, g: 180, b: 0 } : null }
+        return {
+          ...base.getCell(row, col),
+          char: erased ? char : coloring ? "X" : seed,
+          bg: (erased ? afterBg : coloring ? colored : baseline) as ReturnType<TermlessContext["getCell"]>["bg"],
+        }
       },
     })
     expect(result.observation).toMatchObject({ outcome: expected, evidence: "parser-state" })
+    expect(writes.includes("\x1b[K")).toBe(target)
+    if (expected === "inconclusive") expect(result.assertions).toBeUndefined()
+    expect(writes.at(-1)).toBe("\x1b[0m")
   }
 })
 
