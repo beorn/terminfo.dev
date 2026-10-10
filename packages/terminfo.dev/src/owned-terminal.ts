@@ -115,6 +115,13 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
 }
 const HOSTED_DARWIN_COMMS = new Set(["Terminal", "iTerm2", "ghostty", "alacritty"])
 
+/** macOS `ps -o comm=` prints a full executable path; match and stop on the last segment. */
+function hostedDarwinCommBase(comm: string): string {
+  const trimmed = comm.trim()
+  const slash = trimmed.lastIndexOf("/")
+  return slash === -1 ? trimmed : trimmed.slice(slash + 1)
+}
+
 /** Map a github-hosted-runner appLaunch.executablePath to the four hosted Mac apps. */
 export function hostedDarwinAppFromExecutablePath(executablePath: string): HostedDarwinApp {
   const base = executablePath.split("/").pop() ?? ""
@@ -129,13 +136,16 @@ export function hostedDarwinAppFromExecutablePath(executablePath: string): Hoste
 
 /** Grant-time process identity: the probe's ancestry must reach the receipt's app, never a different terminal. */
 export function requireHostedDarwinAppAncestor(expectedComm: string, rows: AncestryRow[]): AncestryRow {
-  const other = rows.find((row) => HOSTED_DARWIN_COMMS.has(row.comm) && row.comm !== expectedComm)
+  const other = rows.find((row) => {
+    const base = hostedDarwinCommBase(row.comm)
+    return HOSTED_DARWIN_COMMS.has(base) && base !== expectedComm
+  })
   if (other) {
     throw new Error(
       `Hosted Darwin ancestry reached ${other.comm} (pid ${other.pid}) while the receipt names ${expectedComm}`,
     )
   }
-  const named = rows.find((row) => row.comm === expectedComm)
+  const named = rows.find((row) => hostedDarwinCommBase(row.comm) === expectedComm)
   if (!named) {
     const found = [...rows]
       .reverse()
@@ -166,7 +176,7 @@ function readProcessAncestry(startPid: number): AncestryRow[] {
     }
     const row = { pid: Number(pidText), ppid: Number(ppidText), comm: comm.trim() }
     rows.push(row)
-    if (row.comm === "launchd" || row.pid === 1 || row.ppid === 0 || row.ppid === row.pid) break
+    if (hostedDarwinCommBase(row.comm) === "launchd" || row.pid === 1 || row.ppid === 0 || row.ppid === row.pid) break
     pid = row.ppid
   }
   return rows
@@ -410,6 +420,7 @@ export async function createOwnedTerminal(options: {
   let hostedApp: HostedDarwinApp | undefined
   let hostedAncestor: AncestryRow | undefined
   let hostedReceiptSha256: string | undefined
+  let hostedPid1Comm: string | undefined
   if (linux) {
     if (process.platform !== "linux") throw new Error("Owned Linux fixture requires Linux")
     binding = linuxOutput(out)
@@ -441,6 +452,12 @@ export async function createOwnedTerminal(options: {
     binding = darwinHostedOutput(out)
     hostedAncestor = requireHostedDarwinAppAncestor(hostedApp.comm, readProcessAncestry(process.pid))
     hostedReceiptSha256 = receipt.sha256
+    hostedPid1Comm = execFileSync("/bin/ps", ["-p", "1", "-o", "comm="], {
+      encoding: "utf8",
+      timeout: 1000,
+      maxBuffer: 256,
+    }).trim()
+    process.stderr.write(`Hosted Darwin measured ps -p 1 -o comm=: ${JSON.stringify(hostedPid1Comm)}\n`)
   }
   let clipboard: LinuxClipboardAdapter | undefined
   try {
@@ -461,6 +478,7 @@ export async function createOwnedTerminal(options: {
           ancestor: hostedAncestor,
           receiptKind: "github-hosted-runner",
           receiptSha256: hostedReceiptSha256,
+          pid1Comm: hostedPid1Comm,
         },
       }),
     })

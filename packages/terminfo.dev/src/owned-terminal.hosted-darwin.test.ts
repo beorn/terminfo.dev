@@ -78,6 +78,24 @@ test("requireHostedDarwinAppAncestor accepts the named app and refuses a wrong a
   )
 })
 
+test("requireHostedDarwinAppAncestor binds macOS-style full-path comms and keeps the raw path in refusals", () => {
+  const macos = [
+    { pid: 1, ppid: 0, comm: "/sbin/launchd" },
+    { pid: 80, ppid: 1, comm: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" },
+    { pid: 100, ppid: 80, comm: "/bin/zsh" },
+  ]
+  expect(requireHostedDarwinAppAncestor("Terminal", macos)).toEqual(macos[1])
+
+  const wrong = [
+    { pid: 1, ppid: 0, comm: "/sbin/launchd" },
+    { pid: 90, ppid: 1, comm: "/Applications/Ghostty.app/Contents/MacOS/ghostty" },
+    { pid: 100, ppid: 90, comm: "/bin/zsh" },
+  ]
+  expect(() => requireHostedDarwinAppAncestor("iTerm2", wrong)).toThrow(
+    /Hosted Darwin ancestry reached \/Applications\/Ghostty\.app\/Contents\/MacOS\/ghostty \(pid 90\) while the receipt names iTerm2/,
+  )
+})
+
 test("darwinHosted is a third XOR arm: linux plus darwinHosted is refused", async () => {
   await expect(
     createOwnedTerminal({
