@@ -234,6 +234,9 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
     if (after !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
     const sourceRef = retain(directory, original, "xwd")
     const ref = retain(directory, png, "png")
+    // The retained file names are the bare digests; a ref carries the "sha256:" scheme prefix.
+    const xwdStem = sourceRef.replace(/^sha256:/, "")
+    const pngStem = ref.replace(/^sha256:/, "")
     // Raw pixels at one depth and colorspace, never the encoded container: the png encoder writes a
     // date text chunk, so two identical frames differ as bytes. Taken only when cells are asked
     // for, so a request without cells is byte for byte the previous path.
@@ -279,7 +282,12 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
         rectangle,
         rawCommand: ["magick", ...rawCommand],
         cropCommand: ["magick", ...cropCommand],
-        reproduce: `magick <sourceRef>.xwd -crop ${rectangle.width}x${rectangle.height}+${rectangle.x}+${rectangle.y} +repage -depth 8 rgba:- | sha256sum`,
+        // Retained artifacts by their real names: the capture directory writes <sha256>.<ext>.
+        // Both digests are over DECODED pixels, so either retained file reproduces them, and the
+        // png is lossless: its date text chunk changes the container's bytes, never the pixels.
+        retained: { png: `${pngStem}.png`, xwd: `${xwdStem}.xwd` },
+        reproduceWhole: `magick ${pngStem}.png -depth 8 rgba:- | sha256sum`,
+        reproduceRegion: `magick ${pngStem}.png -crop ${rectangle.width}x${rectangle.height}+${rectangle.x}+${rectangle.y} +repage -depth 8 rgba:- | sha256sum`,
       }
     }
     return {
