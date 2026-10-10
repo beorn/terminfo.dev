@@ -84,16 +84,10 @@
     "slug": "windows",
     "tagline": "Windows terminals, editor-integrated terminals, and the ConPTY layer.",
     "description": "Windows terminal behavior includes both terminal applications and the Windows pseudo-console layer that hosts command-line applications. terminfo.dev tracks available Windows terminals separately from current app-probe evidence so platform pages do not imply unmeasured scores.",
-    "appTerminalIds": ["warp", "cursor", "com.microsoft.VSCode", "alacritty", "wezterm"],
+    "appTerminalIds": ["warp", "cursor", "com.microsoft.VSCode", "alacritty", "wezterm", "windows-terminal"],
     "parserBackendIds": ["vterm", "vt100", "xtermjs"],
     "multiplexerIds": [],
     "untrackedTerminals": [
-      {
-        "label": "Windows Terminal",
-        "url": "https://github.com/microsoft/terminal",
-        "type": "app terminal",
-        "note": "Microsoft's modern Windows terminal application; not yet represented by terminfo.dev probe files."
-      },
       {
         "label": "ConPTY",
         "url": "https://devblogs.microsoft.com/commandline/windows-command-line-introducing-the-windows-pseudo-console-conpty/",

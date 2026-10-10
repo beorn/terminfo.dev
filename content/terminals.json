@@ -271,5 +271,15 @@
     "body": "<p><strong>xterm.js</strong> is the most widely deployed terminal emulator in the world. It powers the integrated terminal in <a href=\"/terminals/vs-code\" class=\"hover-link\">VS Code</a>, <a href=\"/terminals/cursor\" class=\"hover-link\">Cursor</a>, and thousands of web-based terminals, cloud IDEs, and development tools. If you've used a terminal in a browser, you've almost certainly used xterm.js.</p><p>Originally a port of the xterm X11 terminal to JavaScript, xterm.js has evolved into a mature, GPU-accelerated terminal renderer with Canvas and WebGL backends. It supports truecolor, Unicode, mouse tracking, bracketed paste, and link detection.</p><p>VS Code pioneered <strong>shell integration</strong> via the OSC 633 protocol using xterm.js, enabling command decorations, run-recent-command, and sticky scroll. The xterm.js headless package (<code>@xterm/headless</code>) provides the parser without rendering — used by Termless as a backend.</p>",
     "headlessBackends": ["xtermjs"],
     "platforms": ["macos", "linux", "windows"]
+  },
+  "windows-terminal": {
+    "label": "Windows Terminal",
+    "slug": "windows-terminal",
+    "kind": "app",
+    "url": "https://learn.microsoft.com/en-us/windows/terminal/",
+    "repo": "https://github.com/microsoft/terminal",
+    "description": "Microsoft's modern Windows terminal application, built on the ConPTY pseudo-console.",
+    "body": "<p><strong>Windows Terminal</strong> is Microsoft's default terminal application for Windows, open-sourced in 2019 and shipped with Windows 11. It is a tabbed, GPU-accelerated host that can run PowerShell, Command Prompt, WSL distributions and any other console application side by side.</p><p>Unlike the terminal applications measured elsewhere on this site, Windows Terminal does not answer an XTVERSION identity query; its identity is confirmed instead from the hosted runner's own launch receipt, which records the installed package version and the launched executable path and hash.</p><p>It renders through the Windows pseudo-console layer, <strong>ConPTY</strong>, which hosts command-line applications and is a platform API rather than a terminal in its own right.</p>",
+    "platforms": ["windows"]
   }
 }
