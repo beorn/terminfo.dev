@@ -567,7 +567,7 @@ export const deviceProbes: ProbeDefinition[] = [
     id: "device.xtgetxres",
     // "termName" is encoded as two hex digits per character, per XTGETXRES.
     query: "\x1bP+Q7465726d4e616d65\x1b\\",
-    valid: /\x1bP1\+R7465726d4e616d65=[0-9A-Fa-f]+\x1b\\/i,
+    valid: /\x1bP1\+R7465726d4e616d65=(?:[0-9A-Fa-f]{2})+\x1b\\/i,
     refusal: /\x1bP0\+R7465726d4e616d65\x1b\\/i,
     // The contract asks exactly one name, so a status-0 refusal is this probe's measured answer.
     refusalDecisive: true,

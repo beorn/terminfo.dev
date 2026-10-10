@@ -596,12 +596,17 @@ describe("device contracts without prior coverage", () => {
       expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
       expect(result.assertions).toMatchObject([{ kind: "negative", observed: refusal }])
     }
-    // A missing ST, or a status-1 frame with no value, is malformed rather than absent.
-    for (const raw of ["\x1bP1+r7465726d4e616d65", "\x1bP1+r7465726d4e616d65=\x1b\\"]) {
-      expect(probe.headless(headless(raw)).observation).toMatchObject({
-        outcome: "inconclusive",
-        reason: "invalid-reply",
-      })
+    // XTGETXRES encodes two hex digits per character: missing ST, empty and odd-length values are malformed.
+    for (const raw of [
+      "\x1bP1+r7465726d4e616d65",
+      "\x1bP1+r7465726d4e616d65=\x1b\\",
+      "\x1bP1+R7465726d4e616d65=7\x1b\\",
+      "\x1bP1+r7465726d4e616d65=787\x1b\\",
+    ]) {
+      for (const result of [probe.headless(headless(raw)), await probe.terminal(app(raw))]) {
+        expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+        expect(result.assertions).toBeUndefined()
+      }
     }
   })
 
