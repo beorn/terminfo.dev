@@ -283,7 +283,7 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query", note },
           }
         }
         const control = await ctx.capture({ role: "control", label: "Default cursor shape" })
