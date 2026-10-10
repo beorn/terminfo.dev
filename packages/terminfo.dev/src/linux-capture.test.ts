@@ -19,7 +19,7 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { createLinuxCapture } from "./linux-capture.ts"
+import { cellRectangle, createLinuxCapture, windowPixels } from "./linux-capture.ts"
 
 const temporary: string[] = []
 const originalPath = process.env.PATH
@@ -199,3 +199,54 @@ test.runIf(process.platform === "linux")(
     )
   },
 )
+
+test("cells map to window pixels from the terminal's own report", () => {
+  // The text area sits inside the measured window; cells count from its own top-left corner.
+  expect(
+    cellRectangle({
+      cells: { top: 2, left: 3, bottom: 2, right: 4 },
+      pixelGeometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 256 },
+      windowWidth: 800,
+      windowHeight: 600,
+    }),
+  ).toEqual({ x: 96, y: 188, width: 16, height: 16 })
+})
+
+test("a fractional text-area inset lands on a whole pixel", () => {
+  // 800 - 793 leaves an odd inset: half of it rounds, rather than truncating a column width.
+  expect(
+    cellRectangle({
+      cells: { top: 1, left: 1, bottom: 1, right: 8 },
+      pixelGeometry: { cellWidth: 13, cellHeight: 25, textWidth: 793, textHeight: 600 },
+      windowWidth: 800,
+      windowHeight: 600,
+    }),
+  ).toEqual({ x: 4, y: 0, width: 104, height: 25 })
+})
+
+test("a rectangle that leaves the window is loud, never clipped", () => {
+  expect(() =>
+    cellRectangle({
+      cells: { top: 1, left: 1, bottom: 1, right: 100 },
+      pixelGeometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 256 },
+      windowWidth: 800,
+      windowHeight: 600,
+    }),
+  ).toThrow(/leaves the measured 800x600 window/)
+  expect(() =>
+    cellRectangle({
+      cells: { top: 1, left: 1, bottom: 1, right: 2 },
+      pixelGeometry: { cellWidth: 0, cellHeight: 16, textWidth: 640, textHeight: 256 },
+      windowWidth: 800,
+      windowHeight: 600,
+    }),
+  ).toThrow(/empty or negative region/)
+})
+
+test("the window's own pixel size comes from the measured geometry, and a missing one is loud", () => {
+  expect(windowPixels("WINDOW=4194317\nX=0\nY=0\nWIDTH=800\nHEIGHT=600\nSCREEN=0\n")).toEqual({
+    width: 800,
+    height: 600,
+  })
+  expect(() => windowPixels("WINDOW=4194317\nX=0\nY=0\nSCREEN=0\n")).toThrow(/pixel size/)
+})

@@ -8,6 +8,8 @@
 
 import {
   ALL_PROBES as PROBE_DEFS,
+  type CaptureCells,
+  type CapturePixelGeometry,
   type InputFixture,
   type NotTestedCoverage,
   type Observation,
@@ -139,6 +141,10 @@ export type ProbeCapture = (checkpoint: {
   featureId: string
   role: ObservationFrame["role"]
   label: string
+  /** The cell-aligned region to digest; the collector maps it to window pixels itself. */
+  cells?: CaptureCells
+  /** The terminal's own pixel report, required alongside `cells`. */
+  pixelGeometry?: CapturePixelGeometry
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
 export interface GeometryCorroboration {

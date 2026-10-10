@@ -66,6 +66,88 @@ function retain(directory: string, bytes: Buffer, extension: string): string {
   return `sha256:${hash}`
 }
 
+/** One cell-aligned rectangle in the captured window's own pixels. */
+export interface CaptureRectangle {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * Map a cell-aligned region to an absolute rectangle from the terminal's OWN pixel report plus the
+ * window's measured geometry, and from nothing else: a window width divided by a column count is a
+ * guess, and this rectangle decides pixels. A rectangle that leaves the window is a loud error, not
+ * a clipped crop, because a clipped crop would silently compare the wrong cells.
+ */
+export function cellRectangle(input: {
+  cells: { top: number; left: number; bottom: number; right: number }
+  pixelGeometry: { cellWidth: number; cellHeight: number; textWidth: number; textHeight: number }
+  windowWidth: number
+  windowHeight: number
+}): CaptureRectangle {
+  const { cells, pixelGeometry: geometry, windowWidth, windowHeight } = input
+  const numbers = [
+    cells.top,
+    cells.left,
+    cells.bottom,
+    cells.right,
+    geometry.cellWidth,
+    geometry.cellHeight,
+    windowWidth,
+    windowHeight,
+  ]
+  if (numbers.some((value) => !Number.isSafeInteger(value))) {
+    throw new Error(`Capture cells-to-pixels mapping needs integers; got ${JSON.stringify(numbers)}`)
+  }
+  if (
+    cells.top < 1 ||
+    cells.left < 1 ||
+    cells.bottom < cells.top ||
+    cells.right < cells.left ||
+    geometry.cellWidth < 1 ||
+    geometry.cellHeight < 1
+  ) {
+    throw new Error(`Capture cells-to-pixels mapping got an empty or negative region ${JSON.stringify(input)}`)
+  }
+  // The text area sits inside the window; its offsets are whatever the window has left over.
+  const textLeft = Math.round((windowWidth - geometry.textWidth) / 2)
+  const textTop = Math.round((windowHeight - geometry.textHeight) / 2)
+  const rectangle: CaptureRectangle = {
+    x: textLeft + (cells.left - 1) * geometry.cellWidth,
+    y: textTop + (cells.top - 1) * geometry.cellHeight,
+    width: (cells.right - cells.left + 1) * geometry.cellWidth,
+    height: (cells.bottom - cells.top + 1) * geometry.cellHeight,
+  }
+  if (
+    rectangle.x < 0 ||
+    rectangle.y < 0 ||
+    rectangle.x + rectangle.width > windowWidth ||
+    rectangle.y + rectangle.height > windowHeight
+  ) {
+    throw new Error(
+      `Capture rectangle ${JSON.stringify(rectangle)} leaves the measured ${windowWidth}x${windowHeight} window for cells ${JSON.stringify(cells)}`,
+    )
+  }
+  return rectangle
+}
+
+/** The window's own pixel size, parsed from xdotool getwindowgeometry --shell. */
+export function windowPixels(geometry: string): { width: number; height: number } {
+  const width = /^WIDTH=(\d+)$/m.exec(geometry)?.[1]
+  const height = /^HEIGHT=(\d+)$/m.exec(geometry)?.[1]
+  const parsed = { width: Number(width), height: Number(height) }
+  if (
+    !Number.isSafeInteger(parsed.width) ||
+    !Number.isSafeInteger(parsed.height) ||
+    parsed.width < 1 ||
+    parsed.height < 1
+  ) {
+    throw new Error(`Cannot read the captured window's pixel size out of ${JSON.stringify(geometry)}`)
+  }
+  return parsed
+}
+
 /** Resolve the actual terminal ancestor, never a class label or newest window. */
 export function kittyAncestor(executable: LiveExecutable): number {
   let pid = process.pid
@@ -132,7 +214,8 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const converter = (await command("magick", ["-version"])).toString().trim()
   const geometry = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
-  return async ({ featureId, role, label }) => {
+  const rawCommand = ["xwd:-", "-depth", "8", "rgba:-"]
+  return async ({ featureId, role, label, cells, pixelGeometry }) => {
     // Static-frame settling is recorded; callbacks own any temporal schedule.
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 150)
@@ -151,8 +234,63 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
     if (after !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
     const sourceRef = retain(directory, original, "xwd")
     const ref = retain(directory, png, "png")
+    // Raw pixels at one depth and colorspace, never the encoded container: the png encoder writes a
+    // date text chunk, so two identical frames differ as bytes. Taken only when cells are asked
+    // for, so a request without cells is byte for byte the previous path.
+    let pixelsDigest: string | undefined
+    let regionDigest: string | undefined
+    let regionTrace: Record<string, unknown> = {}
+    if (cells !== undefined || pixelGeometry !== undefined) {
+      if (cells === undefined || pixelGeometry === undefined) {
+        throw new Error(
+          `Capture ${featureId} was asked for a cell-aligned digest without both cells and the terminal's pixel report`,
+        )
+      }
+      const window = windowPixels(geometry)
+      const rectangle = cellRectangle({ cells, pixelGeometry, windowWidth: window.width, windowHeight: window.height })
+      const rgba = await command("magick", rawCommand, original)
+      const expected = window.width * window.height * 4
+      if (rgba.length !== expected) {
+        throw new Error(
+          `Raw capture for ${featureId} is ${rgba.length} bytes; ${window.width}x${window.height} at depth 8 rgba is ${expected}`,
+        )
+      }
+      pixelsDigest = `sha256:${digest(rgba)}`
+      const cropCommand = [
+        "xwd:-",
+        "-crop",
+        `${rectangle.width}x${rectangle.height}+${rectangle.x}+${rectangle.y}`,
+        "+repage",
+        "-depth",
+        "8",
+        "rgba:-",
+      ]
+      const cropped = await command("magick", cropCommand, original)
+      const cropExpected = rectangle.width * rectangle.height * 4
+      if (cropped.length !== cropExpected) {
+        throw new Error(
+          `Cropped capture for ${featureId} is ${cropped.length} bytes; ${JSON.stringify(rectangle)} at depth 8 rgba is ${cropExpected}`,
+        )
+      }
+      regionDigest = `sha256:${digest(cropped)}`
+      regionTrace = {
+        cells,
+        pixelGeometry,
+        rectangle,
+        rawCommand: ["magick", ...rawCommand],
+        cropCommand: ["magick", ...cropCommand],
+        reproduce: `magick <sourceRef>.xwd -crop ${rectangle.width}x${rectangle.height}+${rectangle.x}+${rectangle.y} +repage -depth 8 rgba:- | sha256sum`,
+      }
+    }
     return {
-      frame: { role, label, capturedAt, ref, sourceRef },
+      frame: {
+        role,
+        label,
+        capturedAt,
+        ref,
+        sourceRef,
+        ...(regionDigest !== undefined && pixelsDigest !== undefined ? { regionDigest, pixelsDigest } : {}),
+      },
       trace: {
         featureId,
         collectorPid: process.pid,
@@ -162,6 +300,7 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
         geometry,
         converter,
         settleMs: 150,
+        ...regionTrace,
       },
     }
   }
