@@ -47,8 +47,9 @@ import {
   F2_MOVERS,
   INCLUDED_TIER1_COUNT,
   includedTierOneIds,
-  isStaleSuite,
+  isStaleRelation,
   type D3Verdict,
+  type SuiteRelation,
 } from "../docs/data/release-scope.ts"
 
 // The included-52 set and the D3 verdict rule are ONE owner, in docs/data/release-scope.ts, so the
@@ -189,6 +190,7 @@ export interface ContextCandidate {
   measuredAt: string
   suiteId: string
   suiteFreshness: string
+  suiteRelation: SuiteRelation
   cells: ShareCells
 }
 
@@ -247,7 +249,7 @@ export function pickContextRun(
     const chosen = candidates.find((candidate) => candidate.key === reviewed.contextKey)
     if (chosen) return { run: chosen, selection: "reviewed default-context row" }
   }
-  const current = candidates.filter((candidate) => !isStaleSuite(candidate.suiteFreshness))
+  const current = candidates.filter((candidate) => !isStaleRelation(candidate.suiteRelation))
   const considered = current.length > 0 ? current : candidates
   const [only] = considered
   if (considered.length === 1 && only) return { run: only, selection: "only current" }
@@ -305,6 +307,7 @@ function candidateFromSelected(key: string, selected: SelectedVersion): ContextC
     measuredAt: selected.measuredAt,
     suiteId: selected.suiteId,
     suiteFreshness: selected.suiteFreshness,
+    suiteRelation: selected.suiteRelation,
     cells: selected.cells,
   }
 }

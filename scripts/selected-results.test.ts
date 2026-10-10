@@ -16,6 +16,7 @@ import {
   readVerifiedScreenshot,
 } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
+import { isStaleRelation } from "../docs/data/release-scope.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
@@ -39,6 +40,9 @@ const manifests = new Map([
   ["pixels", manifest("pixels", ["extensions.graphics"])],
   ["query", manifest("query", ["extensions.query"])],
   ["with-diagnostic", manifest("with-diagnostic", ["extensions.graphics", "extensions.query", "cursor.position"])],
+  ["a8bafe49cdd4", manifest("a8bafe49cdd4")],
+  ["21739d9e768f", manifest("21739d9e768f")],
+  ["9918f283121a", manifest("9918f283121a")],
 ])
 const parseRun = (path: string, source: string, catalogIds: readonly string[]) =>
   parseRunSource(path, source, catalogIds, manifests)
@@ -417,6 +421,35 @@ describe("selected results", () => {
       {},
     )
   })
+  it("names the release suite and the tree suite separately, and never labels a release-suite run older", () => {
+    const releaseSuiteId = "a8bafe49cdd4"
+    const liveTree = "21739d9e768f"
+    const labelOf = (probeHash: string) => {
+      const parsed = parseRun("labelled.json", JSON.stringify(run("labelled", { probeHash })), catalog)
+      const projection = projectResults([parsed], [reviewFor(parsed)], catalog, {
+        currentProbeHash: liveTree,
+        releaseSuiteId,
+      })
+      return (
+        projection.current["app:kitty"] ?? projection.versions["app:kitty"]?.[0] ?? projection.history["app:kitty"]?.[0]
+      )
+    }
+    const onRelease = labelOf(releaseSuiteId)
+    expect(onRelease?.suiteFreshness).toBe(`release suite ${releaseSuiteId}`)
+    expect(onRelease?.suiteRelation).toBe("release")
+    expect(isStaleRelation(onRelease!.suiteRelation)).toBe(false)
+
+    const onTree = labelOf(liveTree)
+    expect(onTree?.suiteFreshness).toBe(`tree suite ${liveTree}`)
+    expect(onTree?.suiteRelation).toBe("tree")
+    expect(isStaleRelation(onTree!.suiteRelation)).toBe(false)
+
+    const onOther = labelOf("9918f283121a")
+    expect(onOther?.suiteFreshness).toMatch(/^older suite \(\d+ probes\)$/)
+    expect(onOther?.suiteRelation).toBe("older")
+    expect(isStaleRelation(onOther!.suiteRelation)).toBe(true)
+  })
+
   it("verifies screenshot bytes without writing and refuses missing, modified, or non-PNG artifacts", () => {
     const content = temporaryContent()
     const png = Buffer.from(
@@ -908,7 +941,15 @@ describe("selected results", () => {
     })
     if (!selected) throw new Error("expected admitted kitty run")
     const published = publicResults(
-      { current: { "app:kitty": selected }, versions: {}, history: {}, exclusions: [] },
+      {
+        current: { "app:kitty": selected },
+        versions: {},
+        history: {},
+        exclusions: [],
+        releaseSuiteId: null,
+        treeSuiteId: "current",
+        treeMovedPastRelease: false,
+      },
       new Map(),
     ).projection.current["app:kitty"]
     expect(published?.identityAdmission).toEqual(selected.identityAdmission)
@@ -2066,7 +2107,7 @@ describe("named not-tested coverage partition", () => {
       remainder: 0,
     })
     expect(selected?.suite).toMatchObject({ observed: 3, expected: 3, complete: true, namedNotTested: 1 })
-    expect(selected?.suiteFreshness).toBe("current suite")
+    expect(selected?.suiteFreshness).toBe("tree suite with-diagnostic")
   })
 
   it("keeps an unrecorded remainder unnamed and reports the suite as partial", () => {

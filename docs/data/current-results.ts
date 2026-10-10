@@ -8,6 +8,7 @@ import {
   type SelectedProjection,
   type SelectedVersion,
 } from "./selected-results.ts"
+import { loadFeatureCohort } from "./load-release-scope.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
 
 export interface DefaultContextReview {
@@ -115,8 +116,30 @@ function compatibilityKey(kind: TargetKind, id: string, catalog: CatalogKeys): s
 }
 
 export function loadCurrentResults(contentDir: string, options: { artifactDir?: string } = {}): CurrentResults {
-  const projection = loadSelectedResults(contentDir, probeHash(), options)
+  const projection = loadSelectedResults(contentDir, probeHash(), {
+    ...options,
+    releaseSuiteId: releaseSuiteIdFor(contentDir),
+  })
   return { projection }
+}
+
+/**
+ * The release suite this content pins, read through the ONE candidate-2 declaration loader (28450).
+ * The declaration is REQUIRED: without it every run measured on the release suite would be relabelled
+ * "older suite" and the tree-move banner would vanish, which is the silent fallback this reader exists
+ * to prevent. An absent declaration is named here; a present-but-malformed one throws from the loader.
+ */
+function releaseSuiteIdFor(contentDir: string): string {
+  const declarationPath = join(contentDir, "release-scope-candidate2.json")
+  if (!existsSync(declarationPath)) {
+    throw new Error(
+      `${declarationPath}: the Release 1 measurement declaration is required to name the release suite; ` +
+        'without it every run on that suite is relabelled "older suite" and the tree-move banner is suppressed',
+    )
+  }
+  const featuresPath = join(contentDir, "features.json")
+  const catalog = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8")) as Record<string, { name: string }>
+  return loadFeatureCohort({ catalog, declarationPath }).frozenSuiteId
 }
 
 /**

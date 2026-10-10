@@ -43,6 +43,10 @@ test("report renders reviewed outcomes and missing cells without promoting legac
       JSON.stringify(Object.fromEntries(fixtureFeatures.map((id) => [id, {}]))),
     )
     writeFileSync(
+      join(root, "content", "release-scope-candidate2.json"),
+      JSON.stringify({ name: "candidate2", frozenSuiteId: snapshot.probeHash, featureIds: ["cursor.position"] }),
+    )
+    writeFileSync(
       join(root, "content", "suites", `${snapshot.probeHash}.json`),
       JSON.stringify({
         probeHash: snapshot.probeHash,

@@ -19,7 +19,7 @@ import {
   coverageSentence,
   d3Verdict,
   includedTierOneIds,
-  isStaleSuite,
+  isStaleRelation,
   staleCaption,
   supportedShare,
   tierLine,
@@ -104,6 +104,8 @@ export interface ProbeData {
   releaseVerdicts: Record<string, D3Verdict>
   /** Default-run stale caption when suiteFreshness is not current; null when current. */
   releaseStale: Record<string, string | null>
+  /** The two suite facts, and whether the live tree has moved past the release suite (one banner when it has). */
+  suiteMove: { treeSuiteId: string; releaseSuiteId: string | null; treeMovedPastRelease: boolean }
 }
 
 interface FeatureMeta {
@@ -328,7 +330,7 @@ export function loadFullProbes(): ProbeData {
     releaseShares[key] = supportedShare(bar)
     const includedBar = barOverMeasured(selected.cells, includedIds)
     if (includedBar.denominator > 0) releaseVerdicts[key] = d3Verdict(includedBar.conclusive, includedBar.denominator)
-    releaseStale[key] = isStaleSuite(selected.suiteFreshness) ? staleCaption(selected.measuredAt) : null
+    releaseStale[key] = isStaleRelation(selected.suiteRelation) ? staleCaption(selected.measuredAt) : null
   }
   const result: ProbeData = {
     backends,
@@ -352,6 +354,11 @@ export function loadFullProbes(): ProbeData {
     releaseShares,
     releaseVerdicts,
     releaseStale,
+    suiteMove: {
+      treeSuiteId: projection.treeSuiteId,
+      releaseSuiteId: projection.releaseSuiteId,
+      treeMovedPastRelease: projection.treeMovedPastRelease,
+    },
   }
   computeBaselines(result)
   return result

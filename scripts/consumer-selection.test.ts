@@ -127,6 +127,10 @@ describe("consumer selection", () => {
       writeCatalog(join(root, "content"))
       writeFileSync(join(root, "content", "features.json"), '{"sgr.bold":{"name":"Bold"}}')
       writeFileSync(
+        join(root, "content", "release-scope-candidate2.json"),
+        '{"name":"candidate2","frozenSuiteId":"deadbeefcafe","featureIds":["sgr.bold"]}',
+      )
+      writeFileSync(
         join(root, "content", "probes-apps", "kitty-0.46.2-linux.json"),
         JSON.stringify({
           backend: "kitty",
@@ -332,9 +336,24 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-malformed-selection-"))
     try {
       writeFileSync(join(content, "features.json"), '{"sgr.bold":{"name":"Bold"}}')
+      writeFileSync(
+        join(content, "release-scope-candidate2.json"),
+        '{"name":"candidate2","frozenSuiteId":"deadbeefcafe","featureIds":["sgr.bold"]}',
+      )
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(content, dir))
       writeFileSync(join(content, "probes-apps", "bad.json"), "{")
       expect(() => loadCurrentResults(content)).toThrow(/bad\.json: invalid JSON/)
+    } finally {
+      rmSync(content, { recursive: true, force: true })
+    }
+  })
+
+  it("fails loudly when the required release declaration is missing", () => {
+    const content = mkdtempSync(join(tmpdir(), "terminfo-missing-declaration-"))
+    try {
+      writeFileSync(join(content, "features.json"), '{"sgr.bold":{"name":"Bold"}}')
+      for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(content, dir))
+      expect(() => loadCurrentResults(content)).toThrow(/release-scope-candidate2\.json/)
     } finally {
       rmSync(content, { recursive: true, force: true })
     }

@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
+import { treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
 import {
   type Interpretation,
   type Observation,
@@ -76,6 +77,8 @@ export interface SelectedVersion {
   suiteId: string
   probeHash: string | null
   suiteFreshness: string
+  /** The machine fact behind `suiteFreshness`: which suite this run matched (release | tree | older | partial). */
+  suiteRelation: SuiteRelation
   suite: { observed: number; expected: number | null; complete: boolean; namedNotTested: number }
   sourceRevision: string | null
   sha256: string
@@ -111,6 +114,12 @@ export interface SelectedProjection {
   /** Includes every valid raw run, even ones excluded from selection. */
   history: Record<string, SelectedVersion[]>
   exclusions: Array<{ runId: string; path: string; reason: string }>
+  /** The release suite this projection was labelled against, or null when no release declaration pins one. */
+  releaseSuiteId: string | null
+  /** The live tree suite the site was built from. */
+  treeSuiteId: string
+  /** True when the tree has moved past the release suite; the site prints ONE banner when it is. */
+  treeMovedPastRelease: boolean
 }
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -474,6 +483,7 @@ function projectRun(
   interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
   currentProbeHash: string,
+  releaseSuiteId: string | null,
 ): SelectedVersion {
   const cells: Record<string, SelectedCell> = {}
   const correctedFeatures = new Set<string>()
@@ -626,12 +636,22 @@ function projectRun(
   const remainder = catalogIds.length - tested - namedCount
   if (remainder < 0) throw new Error(`not-tested partition exceeds catalog for ${run.runId}`)
   const suiteObserved = run.observations.length + namedCount
-  const suiteFreshness =
+  const suiteRelation: SuiteRelation =
     !run.legacy && !run.suiteComplete
+      ? "partial"
+      : run.suiteComplete && run.probeHash !== null && releaseSuiteId !== null && run.probeHash === releaseSuiteId
+        ? "release"
+        : run.suiteComplete && run.probeHash !== null && run.probeHash === currentProbeHash
+          ? "tree"
+          : "older"
+  const suiteFreshness =
+    suiteRelation === "partial"
       ? `partial (${suiteObserved} of ${run.suiteProbeCount} probes)`
-      : run.probeHash === currentProbeHash && run.suiteComplete
-        ? "current suite"
-        : `older suite (${suiteObserved} probes)${run.probeHash ? "" : "; missing probeHash"}`
+      : suiteRelation === "release"
+        ? `release suite ${releaseSuiteId}`
+        : suiteRelation === "tree"
+          ? `tree suite ${currentProbeHash}`
+          : `older suite (${suiteObserved} probes)${run.probeHash ? "" : "; missing probeHash"}`
   const identityAdmission = identityMatch(run)
   return {
     runId: run.runId,
@@ -640,6 +660,7 @@ function projectRun(
     suiteId: run.suiteId,
     probeHash: run.probeHash,
     suiteFreshness,
+    suiteRelation,
     suite: {
       observed: suiteObserved,
       expected: run.suiteProbeCount,
@@ -712,9 +733,10 @@ export function projectResults(
   runs: readonly LoadedRun[],
   interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
-  policy: { currentProbeHash: string },
+  policy: { currentProbeHash: string; releaseSuiteId?: string | null },
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
+  const releaseSuiteId = policy.releaseSuiteId ?? null
   const ids = new Set<string>()
   const byRunId = new Map<string, LoadedRun>()
   for (const run of runs) {
@@ -766,7 +788,7 @@ export function projectResults(
   for (const run of runs) {
     const key = keyFor(run)
     history[key] ??= []
-    history[key].push(projectRun(run, active, catalogIds, policy.currentProbeHash))
+    history[key].push(projectRun(run, active, catalogIds, policy.currentProbeHash, releaseSuiteId))
     const reviewed = active.some(
       (entry) => entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.reviewed,
     )
@@ -800,13 +822,21 @@ export function projectResults(
       })
       const chosen = choices[0]
       if (!chosen) throw new Error(`missing chosen run for ${key} ${version}`)
-      versions[key].push(projectRun(chosen, active, catalogIds, policy.currentProbeHash))
+      versions[key].push(projectRun(chosen, active, catalogIds, policy.currentProbeHash, releaseSuiteId))
     }
     const selected = versions[key][0]
     if (!selected) throw new Error(`missing selected version for ${key}`)
     current[key] = selected
   }
-  return { current, versions, history, exclusions }
+  return {
+    current,
+    versions,
+    history,
+    exclusions,
+    releaseSuiteId,
+    treeSuiteId: policy.currentProbeHash,
+    treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
+  }
 }
 
 /** Read only the exact PNG bytes named by a digest-backed screenshot reference. */
@@ -829,7 +859,7 @@ export function readVerifiedScreenshot(contentDir: string, ref: string, sourcePa
 export function loadSelectedResults(
   contentDir: string,
   currentProbeHash: string,
-  _options: { artifactDir?: string } = {},
+  options: { artifactDir?: string; releaseSuiteId?: string | null } = {},
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
@@ -870,5 +900,8 @@ export function loadSelectedResults(
   const interpretations = existsSync(interpretationsPath)
     ? parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalog)
     : []
-  return projectResults(runs, interpretations, catalog, { currentProbeHash })
+  return projectResults(runs, interpretations, catalog, {
+    currentProbeHash,
+    releaseSuiteId: options.releaseSuiteId ?? null,
+  })
 }

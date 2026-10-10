@@ -41,8 +41,23 @@ export function staleCaption(measuredAt: string): string {
   return `not re-measured since ${utcDate(measuredAt)}`
 }
 
-export function isStaleSuite(suiteFreshness: string): boolean {
-  return !suiteFreshness.startsWith("current")
+/**
+ * Which suite a run was measured on, relative to the two facts the site must never conflate:
+ * the RELEASE suite (the scope's `frozenSuiteId`) and the live TREE suite (`probeHash()` at build time).
+ */
+export type SuiteRelation = "release" | "tree" | "older" | "partial"
+
+/**
+ * A run measured on the release suite or on the live tree suite is current; "older" and "partial" are
+ * stale. This is the ONE staleness fact — never re-derive it by re-parsing the display label.
+ */
+export function isStaleRelation(relation: SuiteRelation): boolean {
+  return relation === "older" || relation === "partial"
+}
+
+/** True when the live tree has moved past the release suite, so a banner must say so (one, not two). */
+export function treeMovedPastRelease(treeSuiteId: string | null, releaseSuiteId: string | null): boolean {
+  return Boolean(treeSuiteId) && Boolean(releaseSuiteId) && treeSuiteId !== releaseSuiteId
 }
 
 export function barOverMeasured(

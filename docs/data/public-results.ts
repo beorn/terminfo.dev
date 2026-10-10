@@ -160,6 +160,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     suiteId: version.suiteId,
     probeHash: version.probeHash,
     suiteFreshness: version.suiteFreshness,
+    suiteRelation: version.suiteRelation,
     suite: {
       observed: version.suite.observed,
       expected: version.suite.expected,
