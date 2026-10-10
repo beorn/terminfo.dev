@@ -127,9 +127,19 @@ test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => 
 })
 
 /**
+ * @failure reset.sgr is graded from something other than the terminal's own DECRQSS report: a
+ *   missing reply is turned into a negative, or a terminal that keeps reporting 1/3/7 after the
+ *   reset is still graded supported.
+ * @level l1
+ * @consumer reset.sgr app-arm decision (Reset group 28024), through the shared sgrReadbackDecision
+ *   shape that sgr.reset binds from sgr.ts.
+ * @testonly none
+ *
  * reset.sgr is an SGR-state claim, so the terminal's own DECRQSS report decides it (the shared
  * sgrReadbackDecision shape sgr.reset binds from sgr.ts) and no pixel review is needed: after
- * the setup and the reset the terminal reports no style code.
+ * the setup and the reset the terminal reports no style code. Covers the four cases below: the
+ * plain supported report, Kitty's normalized negation-list report, a retained 1/3/7 report
+ * (negative), and a silent terminal (inconclusive, never negative).
  */
 test("reset.sgr is decided supported when the terminal reports no styles after the reset", async () => {
   const ctx = kittyContext(true)
