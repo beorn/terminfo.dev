@@ -7,6 +7,8 @@
 import { expect, test } from "vitest"
 import { scrollbackProbes } from "./scrollback.ts"
 import type { ObservationFrame, TermContext, TermlessContext } from "./types.ts"
+import { headlessContext } from "./testing/group-harness.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
   return {
@@ -424,17 +426,22 @@ test("DECSTBM retains support when only the inner marker scrolls", () => {
   expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
 })
 
-test("DECSTBM reset does not qualify when earlier region confinement was not established", () => {
+test("DECSTBM reset declines when the region-active control grows just as much", () => {
   const probe = scrollbackProbes.find((item) => item.id === "scrollback.decstbm-reset")
   if (!probe?.termless) throw new Error("missing decstbm-reset callback")
+  const totals = [12, 40, 80]
   let reads = 0
   const result = probe.termless(
     headless({
-      getScrollback: () => ({ viewportOffset: 0, screenLines: 12, totalLines: reads++ === 0 ? 12 : 40 }),
+      // Every body grows, and the region-active body grows MORE than the reset body, so the growth is
+      // not attributable to ESC[r at all. This replaces the earlier inconclusive expectation: the probe
+      // now carries that with-and-without-reset control itself, and a control that does not separate
+      // reads unsupported rather than unproven.
+      getScrollback: () => ({ viewportOffset: 0, screenLines: 12, totalLines: totals[reads++] ?? 80 }),
     }),
   )
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
-  expect(result.assertions).toBeUndefined()
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(result.assertions).toMatchObject([{ kind: "negative" }])
 })
 
 test("alternate-screen entry write failure still sends the exit sequence", async () => {
@@ -562,4 +569,34 @@ test("scrollback capture fixtures record control and target frames with honest, 
   const setSmall = captureApp(12, 5)
   expect((await setRegion.term!(setSmall.context)).observation).toMatchObject({ evidence: "none" })
   expect(setSmall.writes).toEqual([])
+})
+
+/**
+ * @failure A Scrollback row the group cannot decide reads inconclusive from a surface that really
+ *   implements the operation its claim names, so a probe gap is reported as terminal undecidability.
+ * @level l1
+ * @consumer 28459 denominator correction (2026-10-10); the three ids @chief moved into the denominator.
+ * @testonly none
+ */
+test.each(["scrollback.set-region", "scrollback.alt-screen", "scrollback.decstbm-reset"] as const)(
+  "%s decides supported against a surface that really implements its claim",
+  (id) => {
+    const probe = scrollbackProbes.find((item) => item.id === id)
+    if (!probe?.termless) throw new Error(`Missing ${id} headless callback`)
+    const result = probe.termless(headlessContext(createSemanticSurface()))
+    expect(result.observation?.outcome, id).toBe("supported")
+    // A decided row carries its assertion, never a bare outcome.
+    expect(result.assertions ?? [], id).not.toEqual([])
+  },
+)
+
+test.each([
+  ["scrollback.set-region", "scrollregion-noop"],
+  ["scrollback.decstbm-reset", "scrollregion-noop"],
+  ["scrollback.alt-screen", "altscreen-noop"],
+] as const)("%s reads unsupported when the surface ignores exactly that operation", (id, mutation) => {
+  const probe = scrollbackProbes.find((item) => item.id === id)
+  if (!probe?.termless) throw new Error(`Missing ${id} headless callback`)
+  const result = probe.termless(headlessContext(createSemanticSurface({ mutations: [mutation] })))
+  expect(result.observation?.outcome, `${id} under ${mutation}`).toBe("unsupported")
 })
