@@ -40,7 +40,7 @@ export const inputProbes: ProbeDefinition[] = [
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
 
   probe("input.pixel-mouse", () => xtestCoverage("click injection"), pixelMouse, "interaction"),
-  mouseInputProbe("input.urxvt-mouse", "mouseTracking"),
+  probe("input.urxvt-mouse", () => xtestCoverage("click injection"), urxvtMouse, "interaction"),
   mouseInputProbe("input.x10-mouse", "mouseTracking"),
 
   probe("input.modify-other-keys-3", () => xtestCoverage("key injection"), modifyOtherKeys3, "interaction"),
@@ -69,6 +69,10 @@ const APPLICATION_KEYPAD_REPORT = /\x1bOu|5/
 const APPLICATION_KEYPAD_ENCODING = /\x1bOu/
 const PIXEL_MOUSE_SET = "\x1b[?1016h"
 const PIXEL_MOUSE_RESET = "\x1b[?1016l"
+const URXVT_MOUSE_SET = "\x1b[?1015h"
+const URXVT_MOUSE_RESET = "\x1b[?1015l"
+const URXVT_OR_SGR_MOUSE = /\x1b\[(?:<\d+;\d+;\d+[Mm]|\d+;\d+;\d+M)/
+const URXVT_MOUSE = /^\x1b\[\d+;\d+;\d+M/
 
 function xtestCoverage(kind: string): ProbeResult {
   return notTestedResult(`OS-level XTEST ${kind}`, { input: false })
@@ -226,6 +230,41 @@ function pixelCoordsDistinct(control: string, report: string): boolean {
   const cell = sgrMouseCoords(control)
   const pixel = sgrMouseCoords(report)
   return cell !== undefined && pixel !== undefined && (pixel.x !== cell.x || pixel.y !== cell.y)
+}
+
+function isUrxvtMouse(report: string): boolean {
+  return URXVT_MOUSE.test(report)
+}
+
+async function urxvtMouse(ctx: TermContext): Promise<ProbeResult> {
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!input || !readInput) return xtestCoverage("click injection")
+  return withMouseModes(ctx, async () => {
+    const control = await deliveryControl(
+      () => input.injectClick(1),
+      readInput,
+      SGR_MOUSE,
+      "XTEST delivery control failed: click under 1000+1006 did not reach the app",
+    )
+    ctx.write(URXVT_MOUSE_SET)
+    try {
+      const report = (await readInput(URXVT_OR_SGR_MOUSE, 1000, () => input.injectClick(1)))?.[0]
+      if (!report) {
+        throw new Error(
+          "XTEST 1015 urxvt-mouse click did not reach the app after a successful 1000+1006 delivery control",
+        )
+      }
+      const observed = { mode: "1015", control, report }
+      const expected = "OS XTEST click report under 1015 as CSI btn;x;yM without < after 1000+1006 delivery control"
+      if (isUrxvtMouse(report)) {
+        return interactionResult("urxvt-mouse:1", expected, observed)
+      }
+      return unsupportedInteraction("urxvt-mouse:1", expected, observed)
+    } finally {
+      ctx.write(URXVT_MOUSE_RESET)
+    }
+  })
 }
 
 async function pixelMouse(ctx: TermContext): Promise<ProbeResult> {

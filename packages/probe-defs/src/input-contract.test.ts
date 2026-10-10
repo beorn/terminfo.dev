@@ -29,6 +29,7 @@ import {
  * input.modify-other-keys-3 grades unmodified i after CSI >4;3m with delivery control before enable;
  * input.csi-u negotiates Kitty keyboard protocol flag 1;
  * input.pixel-mouse grades SGR pixel coords under 1016 after a 1000+1006 cell control;
+ * input.urxvt-mouse grades CSI btn;x;yM under 1015 after a 1000+1006 SGR control;
  * remaining catalog mouse event probes stay inconclusive pending their regrade;
  * input.xtest-key, input.xtest-click, and input.xtest-wheel execute OS-level injection with same-run delivery control.
  */
@@ -48,8 +49,9 @@ const INPUT_CONTRACT: GroupContract = [
   },
   {
     id: "input.urxvt-mouse",
-    expected: "inconclusive",
-    claim: "urxvt-mouse: rxvt mouse mode 1015 requires generated mouse events",
+    expected: "decided",
+    claim:
+      "urxvt-mouse: CSI ? 1015 then click reports CSI btn;x;yM without < after the 1000+1006 SGR control; SGR after 1015 is unsupported",
   },
   {
     id: "input.x10-mouse",
@@ -181,6 +183,18 @@ function inputSatisfactionContext(id: string): { readonly headless?: TermlessCon
       }),
     }
   }
+  if (id === "input.urxvt-mouse") {
+    let callCount = 0
+    return {
+      term: replayContext(new Map(), {
+        input: { injectKey: async () => {}, injectClick: async () => {} },
+        readInput: async () => {
+          callCount++
+          return callCount % 2 === 1 ? ["\x1b[<0;10;5M"] : ["\x1b[0;10;5M"]
+        },
+      }),
+    }
+  }
   if (id === "input.xtest-click") {
     return {
       term: replayContext(new Map(), {
@@ -299,6 +313,21 @@ test("input.modify-other-keys reads unsatisfied when delivery control fails", as
 test("input.pixel-mouse reads unsatisfied when delivery control fails", async () => {
   const row = INPUT_CONTRACT.find((entry) => entry.id === "input.pixel-mouse")
   const probe = inputProbes.find((entry) => entry.id === "input.pixel-mouse")
+  expect(row).toBeDefined()
+  expect(probe).toBeDefined()
+  if (!row || !probe) return
+  const failingContext = {
+    term: replayContext(new Map(), {
+      input: { injectKey: async () => {}, injectClick: async () => {} },
+      readInput: async () => null,
+    }),
+  }
+  await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control|1000\+1006/i)
+})
+
+test("input.urxvt-mouse reads unsatisfied when delivery control fails", async () => {
+  const row = INPUT_CONTRACT.find((entry) => entry.id === "input.urxvt-mouse")
+  const probe = inputProbes.find((entry) => entry.id === "input.urxvt-mouse")
   expect(row).toBeDefined()
   expect(probe).toBeDefined()
   if (!row || !probe) return
