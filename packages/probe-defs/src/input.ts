@@ -119,8 +119,7 @@ async function deliveryControl(
   pattern: RegExp,
   message: string,
 ): Promise<string> {
-  await inject()
-  const report = (await read(pattern, 1000))?.[0]
+  const report = (await read(pattern, 1000, inject))?.[0]
   if (!report) throw new Error(message)
   return report
 }
@@ -146,8 +145,7 @@ async function xtestKey(ctx: TermContext): Promise<ProbeResult> {
   )
   ctx.write(MODIFY_OTHER_KEYS_SET)
   try {
-    await input.injectKey("ctrl+shift+a")
-    const report = (await readInput(MODIFIED_KEY, 1000))?.[0]
+    const report = (await readInput(MODIFIED_KEY, 1000, () => input.injectKey("ctrl+shift+a")))?.[0]
     if (!report) {
       throw new Error("XTEST modified key did not reach the app after a successful delivery control")
     }
@@ -180,8 +178,7 @@ async function xtestClick(ctx: TermContext): Promise<ProbeResult> {
       SGR_MOUSE,
       "XTEST delivery control failed: click under 1000+1006 did not reach the app",
     )
-    await input.injectClick(1)
-    const report = (await readInput(SGR_MOUSE, 1000))?.[0]
+    const report = (await readInput(SGR_MOUSE, 1000, () => input.injectClick(1)))?.[0]
     if (!report) {
       throw new Error("XTEST click did not reach the app after a successful 1000+1006 delivery control")
     }
@@ -204,8 +201,7 @@ async function xtestWheel(ctx: TermContext): Promise<ProbeResult> {
       SGR_MOUSE,
       "XTEST delivery control failed: click under 1000+1006 did not reach the app",
     )
-    await input.injectClick(4)
-    const report = (await readInput(SGR_MOUSE, 1000))?.[0]
+    const report = (await readInput(SGR_MOUSE, 1000, () => input.injectClick(4)))?.[0]
     if (!report) {
       throw new Error("XTEST wheel did not reach the app after a successful 1000+1006 delivery control")
     }

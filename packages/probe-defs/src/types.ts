@@ -399,8 +399,8 @@ export interface TermContext {
   capture?: (request: Pick<ObservationFrame, "role" | "label">) => Promise<ObservationFrame>
   /** Present only when an owned OS XTEST adapter is installed for this run. */
   input?: InputFixture
-  /** Read unsolicited stdin after OS-level injection. Present on the live collector. */
-  readInput?: (pattern: RegExp, timeoutMs?: number) => Promise<string[] | null>
+  /** Read unsolicited stdin. `inject` runs after the stdin listener is attached. */
+  readInput?: (pattern: RegExp, timeoutMs?: number, inject?: () => Promise<void>) => Promise<string[] | null>
   cols: number
   rows: number
 }

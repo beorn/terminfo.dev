@@ -38,6 +38,7 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
         `XTEST inject requires the owned window ${ownedWindowId} to be focused; getwindowfocus is ${focused}`,
       )
     }
+    await command("xdotool", ["mousemove", "--sync", "--window", ownedWindowId, "400", "300"])
   }
 
   return {

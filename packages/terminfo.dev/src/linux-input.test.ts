@@ -40,7 +40,7 @@ case "$1" in
     printf '%s\\n' "Your windowmanager claims not to support _NET_ACTIVE_WINDOW, so the attempt to activate the window was aborted." >&2
     exit 1
     ;;
-  windowfocus|key|click) ;;
+  windowfocus|mousemove|key|click) ;;
   *) exit 18 ;;
 esac`,
   )
@@ -113,6 +113,7 @@ test.runIf(process.platform === "linux")(
     const lines = argvLines(log)
     expect(lines).toContain("windowfocus --sync 42")
     expect(lines).toContain("getwindowfocus")
+    expect(lines).toContain("mousemove --sync --window 42 400 300")
     expect(lines).toContain("key --window 0 --clearmodifiers ctrl+shift+a")
     expect(lines.some((line) => line.startsWith("windowactivate"))).toBe(false)
     expect(lines.some((line) => line === "getactivewindow")).toBe(false)

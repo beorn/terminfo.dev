@@ -106,7 +106,7 @@ function createTermContext({
     queryWithSentinel,
     queryWithSentinelOutcome,
     queryMode,
-    readInput: (pattern, timeoutMs = 1000) => readResponse(pattern, timeoutMs),
+    readInput: (pattern, timeoutMs = 1000, inject) => readResponse(pattern, timeoutMs, inject),
     get cols() {
       return size().cols
     },

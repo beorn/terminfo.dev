@@ -53,25 +53,35 @@ function inputAndRead(
   const keys: string[] = []
   const clicks: number[] = []
   const pending: string[] = []
+  let listening = false
   const ctx = term({
     write(text) {
       writes.push(text)
     },
     input: {
       async injectKey(key) {
+        if (!listening) throw new Error("XTEST inject before stdin listen")
         keys.push(key)
         const reply = script.keys?.[key]
         if (reply !== undefined) pending.push(reply)
       },
       async injectClick(button) {
+        if (!listening) throw new Error("XTEST inject before stdin listen")
         clicks.push(button)
         const reply = script.clicks?.[button]
         if (reply !== undefined) pending.push(reply)
       },
     },
-    readInput: async () => {
-      const next = pending.shift()
-      return next === undefined ? null : [next]
+    readInput: async (_pattern, _timeoutMs, inject) => {
+      listening = true
+      try {
+        if (!inject) throw new Error("readInput requires the inject callback so stdin is already listening")
+        await inject()
+        const next = pending.shift()
+        return next === undefined ? null : [next]
+      } finally {
+        listening = false
+      }
     },
   })
   return { ctx, keys, clicks }
