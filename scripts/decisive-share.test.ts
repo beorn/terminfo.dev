@@ -45,12 +45,6 @@ const cells = {
 }
 
 function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate {
-  const suiteFreshness = overrides.suiteFreshness ?? "current suite"
-  const suiteRelation = suiteFreshness.startsWith("older")
-    ? "older"
-    : suiteFreshness.startsWith("partial")
-      ? "partial"
-      : "tree"
   return {
     key: "app:alacritty@[linux]",
     kind: "app",
@@ -61,8 +55,10 @@ function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate 
     version: "0.17.0",
     measuredAt: "2026-10-07T04:42:46.018Z",
     suiteId: "c6ec4ee8f580",
-    suiteFreshness,
-    suiteRelation,
+    // The label is display text; the relation is the machine fact. A fixture that means "older" says
+    // so through overrides — never by re-parsing the label the change removed.
+    suiteFreshness: "tree suite 21739d9e768f",
+    suiteRelation: "tree",
     cells,
     ...overrides,
   }
@@ -114,6 +110,7 @@ describe("release 1 decisive-count reader", () => {
     const frozen = candidate({
       suiteId: "a8bafe49cdd4",
       suiteFreshness: "older suite (256 probes)",
+      suiteRelation: "older",
       runId: "frozen-history",
     })
     const newer = candidate({ key: "app:alacritty@new", suiteId: "new-suite", runId: "selected-new" })
@@ -278,6 +275,7 @@ describe("release 1 decisive-count reader", () => {
       key: "config-none-old-suite",
       suiteId: "e81b6548c1c7",
       suiteFreshness: "older suite (1 probes)",
+      suiteRelation: "older",
     })
     const currentDefault = candidate({ key: "nix-store-kitty", suiteId: "4482b8eb5823" })
     const currentOverride = candidate({
@@ -304,8 +302,8 @@ describe("release 1 decisive-count reader", () => {
     const second = candidate({ key: "current-b" })
     expect(pickContextRun([first, second])).toEqual({ ambiguous: ["current-a", "current-b"] })
 
-    const staleA = candidate({ key: "stale-a", suiteFreshness: "older suite (1 probes)" })
-    const staleB = candidate({ key: "stale-b", suiteFreshness: "older suite (1 probes)" })
+    const staleA = candidate({ key: "stale-a", suiteFreshness: "older suite (1 probes)", suiteRelation: "older" })
+    const staleB = candidate({ key: "stale-b", suiteFreshness: "older suite (1 probes)", suiteRelation: "older" })
     // No current-suite candidate at all: the fallbacks see the whole set, exactly as before.
     expect(pickContextRun([staleA, staleB])).toEqual({ ambiguous: ["stale-a", "stale-b"] })
     expect(pickContextRun([staleA])).toEqual({ run: staleA, selection: "only current" })

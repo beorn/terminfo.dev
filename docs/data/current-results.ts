@@ -138,9 +138,7 @@ function releaseSuiteIdFor(contentDir: string): string {
     )
   }
   const featuresPath = join(contentDir, "features.json")
-  const catalog = existsSync(featuresPath)
-    ? (parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8")) as Record<string, { name: string }>)
-    : {}
+  const catalog = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8")) as Record<string, { name: string }>
   return loadFeatureCohort({ catalog, declarationPath }).frozenSuiteId
 }
 
