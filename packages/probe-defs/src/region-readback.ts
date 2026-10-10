@@ -103,16 +103,36 @@ function witnessGlyph(step: number): string {
   return WITNESS_GLYPHS[step % WITNESS_GLYPHS.length] ?? "0"
 }
 
+/**
+ * An inconclusive result plus, when the branch took captures, the citation that names them. The
+ * raw-run contract refuses evidence "pixels" unless the observation carries a screenshotRef, so a
+ * branch that captured and cites nothing is unwritable: the citation is part of the measurement.
+ */
 function inconclusive(
   id: string,
   note: string,
   reason: "timeout" | "insufficient-evidence",
-  evidence: "pixels" | "none" = "pixels",
+  evidence: "pixels" | "none" | "query" = "pixels",
+  citation?: { screenshotRef?: string; frames?: ObservationFrame[] },
 ): ProbeResult {
-  return { pass: false, observation: { outcome: "inconclusive", reason, evidence, note } }
+  return {
+    pass: false,
+    observation: {
+      outcome: "inconclusive",
+      reason,
+      evidence,
+      note,
+      ...(citation?.screenshotRef === undefined ? {} : { screenshotRef: citation.screenshotRef }),
+      ...(citation?.frames === undefined ? {} : { frames: citation.frames }),
+    },
+  }
 }
 
-/** A refusal taken before any byte: the collector declined to measure, so it is not pixel evidence. */
+/**
+ * A refusal taken before any byte: the collector declined to measure, so it is not pixel evidence.
+ * Evidence "none" must carry a zero-byte trace, so a branch that has already queried is never this
+ * shape — it reports evidence "query" instead (see captureRegionVerdict).
+ */
 function refused(id: string, note: string): ProbeResult {
   return inconclusive(id, note, "insufficient-evidence", "none")
 }
@@ -219,6 +239,8 @@ async function awaitPaintWitness(options: {
           ? `${id}: paint witnessed outside the sentinel region after ${label} within ${timeoutMs} ms; the frame moved while witness cell ${witnessCell.top},${witnessCell.left} stood still, so the cells-to-pixels geometry is wrong for this context`
           : `${id}: no paint witness within ${timeoutMs} ms after ${label}; the terminal left the witness cell unpainted, so this run cannot separate a painted frame from a stale one`,
         "timeout",
+        "pixels",
+        { screenshotRef: painted.frame.ref },
       )
     }
     await new Promise<void>((resolve) => {
@@ -263,9 +285,11 @@ export async function queryPixelGeometry(ctx: TermContext): Promise<{ geometry: 
 }
 
 /**
- * The whole region decision for one row, or null when this run has no owned capture. The pixel
- * report is queried here, once, and a context that cannot report its own geometry is inconclusive
- * BY NAME before any byte: a missing report is never a capability verdict.
+ * The whole region decision for one row, or null when this run has no owned capture. Bounds are
+ * refused before any byte; then the terminal's own pixel report is queried here, once. A terminal
+ * that answers those queries with something unusable is inconclusive BY NAME with evidence "query"
+ * — the query bytes are already written, so it is not the zero-byte "none" shape, and a missing
+ * report is never a capability verdict.
  */
 export async function captureRegionVerdict(
   ctx: TermContext,
@@ -279,7 +303,12 @@ export async function captureRegionVerdict(
   if (bounds) return bounds
   const reported = await queryPixelGeometry(ctx)
   if ("missing" in reported) {
-    return refused(id, `${id}: ${reported.missing}, so this run cannot map cells onto the captured window`)
+    return inconclusive(
+      id,
+      `${id}: ${reported.missing}, so this run cannot map cells onto the captured window`,
+      "insufficient-evidence",
+      "query",
+    )
   }
   return captureRegionReadbackDecision(ctx, id, { ...spec, pixelGeometry: reported.geometry }, read)
 }
@@ -336,6 +365,9 @@ export async function captureRegionReadbackDecision(
         id,
         `${id}: two captures of one static frame were not byte-stable (${stableA.regionDigest}/${stableA.pixelsDigest} then ${stableB.regionDigest}/${stableB.pixelsDigest})`,
         "insufficient-evidence",
+        // No step has run yet, so no target frame exists: the citation is the stability read's ref.
+        "pixels",
+        { screenshotRef: stableB.frame.ref },
       )
     }
     for (const [index, step] of steps.entries()) {
@@ -390,6 +422,8 @@ export async function captureRegionReadbackDecision(
         id,
         `${id}: the seed frame and the expected frame read the same cells, so this run cannot separate them`,
         "insufficient-evidence",
+        "pixels",
+        { screenshotRef: frames[3]?.ref, frames },
       )
     }
     const supported = after === expected

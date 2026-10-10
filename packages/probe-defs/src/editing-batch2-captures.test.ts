@@ -172,7 +172,9 @@ test("the readback-governed row refuses by name when the terminal cannot report 
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "none",
+    // Shape B of 28582: the pixel-report queries were already written, so this is not the
+    // zero-byte "none" refusal — it is a query that came back unusable.
+    evidence: "query",
   })
   expect(String(result.observation?.note)).toContain("CSI 16 t")
   expect(frames).toEqual([])
