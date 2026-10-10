@@ -16,7 +16,8 @@
  * `mutations` injects one named fault so a group can prove its binding is not a stamp: "el-noop"
  * makes EL inert (the Erase group's negative control), "ris-noop" makes RIS inert (Reset's),
  * "charset-noop" leaves a G0/G1 designation unmapped (Character Sets'), and "ht-noop" freezes HT
- * (Unicode's tab-stops control).
+ * (Unicode's tab-stops control). Scrollback adds "scrollregion-noop" (DECSTBM set and reset inert)
+ * and "altscreen-noop" (ESC[?1049h/l inert) so its three newly decided rows prove their binding.
  *
  * @fakes @terminfo/probe-defs
  */
@@ -303,6 +304,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   let attributes: Attributes = NO_ATTRIBUTES
   let protecting = false
   let applicationCursor = false
+  let altScreen = false
+  let savedGrid: SurfaceCell[][] | null = null
+  let savedCursor: readonly [number, number] = [0, 0]
   let tabStops = defaultTabStops(cols)
   let charsetG0: CharsetSet = "ascii"
   let charsetG1: CharsetSet = "ascii"
@@ -321,6 +325,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     regionTop = 0
     regionBottom = rows - 1
     scrolled = 0
+    altScreen = false
+    savedGrid = null
     tabStops = defaultTabStops(cols)
     charsetG0 = "ascii"
     charsetG1 = "ascii"
@@ -351,7 +357,10 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     if (cursorY >= regionBottom) {
       grid.splice(regionTop, 1)
       grid.splice(regionBottom, 0, blankRow())
-      scrolled += 1
+      // History accounting follows scrollUp: only a full-screen region pushes the line that leaves
+      // the top into scrollback; an interior region discards it. Without this the DECSTBM reset row
+      // could not be decided by a with-and-without-reset control pair on totalLines.
+      if (regionTop === 0 && regionBottom === rows - 1) scrolled += 1
       return
     }
     cursorY += 1
@@ -699,7 +708,28 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     if (prefix === "?") {
       if (final === "h" && first === 1) applicationCursor = true
       else if (final === "l" && first === 1) applicationCursor = false
-      else if (final === "J") selectiveErase()
+      else if (first === 1049 && (final === "h" || final === "l") && !mutations.has("altscreen-noop")) {
+        // 1049 is save-cursor plus a swap to the alternate grid on set, and a swap back plus cursor
+        // restore on reset. The grid swap is what a probe reads; the alternate screen's own history
+        // stays a backend question, so history accounting is deliberately unchanged here.
+        if (final === "h" && !altScreen) {
+          savedGrid = grid
+          savedCursor = [cursorX, cursorY]
+          grid = Array.from({ length: rows }, blankRow)
+          cursorX = 0
+          cursorY = 0
+          altScreen = true
+        } else if (final === "l" && altScreen) {
+          // Fail loud rather than silently ignoring an exit with no saved grid: that pairing is
+          // impossible (set installs savedGrid before altScreen), so it is a surface bug, not a state.
+          if (!savedGrid) throw new Error("semantic-surface: 1049l with no saved grid")
+          grid = savedGrid
+          savedGrid = null
+          cursorX = savedCursor[0]
+          cursorY = savedCursor[1]
+          altScreen = false
+        }
+      } else if (final === "J") selectiveErase()
       return
     }
     switch (final) {
@@ -752,8 +782,10 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         else if (first === 3) tabStops.clear()
         return
       case "r":
-        regionTop = clampCol((params[0] ?? 1) - 1)
-        regionBottom = clampCol((params[1] ?? rows) - 1)
+        if (!mutations.has("scrollregion-noop")) {
+          regionTop = clampCol((params[0] ?? 1) - 1)
+          regionBottom = clampCol((params[1] ?? rows) - 1)
+        }
         return
       case "m":
         applySgr(params)
@@ -912,7 +944,9 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
         .join("\n")
     },
     getMode(mode: string) {
-      return mode === "applicationCursor" ? applicationCursor : false
+      if (mode === "applicationCursor") return applicationCursor
+      if (mode === "altScreen") return altScreen
+      return false
     },
     reset() {
       softReset()
