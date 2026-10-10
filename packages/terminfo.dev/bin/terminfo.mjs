@@ -26,13 +26,21 @@ try {
   console.error(`CLI bundle receipt invalid: ${error instanceof Error ? error.message : String(error)}`)
   process.exit(1)
 }
-if (
-  receipt?.schemaVersion !== 1 ||
-  !/^[0-9a-f]{12}$/.test(receipt.probeHash) ||
-  !/^[0-9a-f]{40}$/.test(receipt.collectorRevision) ||
-  !/^[0-9a-f]{64}$/.test(receipt.manifestSha256) ||
-  !/^[0-9a-f]{64}$/.test(receipt.bundleSha256)
-) {
+const hex = (value, length) => typeof value === "string" && new RegExp(`^[0-9a-f]{${length}}$`).test(value)
+const declared =
+  receipt?.schemaVersion === 1 &&
+  hex(receipt.probeHash, 12) &&
+  hex(receipt.collectorRevision, 40) &&
+  hex(receipt.manifestSha256, 64) &&
+  hex(receipt.bundleSha256, 64)
+const undeclared =
+  receipt?.schemaVersion === 1 &&
+  receipt.suiteState === "undeclared" &&
+  receipt.manifestSha256 === null &&
+  hex(receipt.probeHash, 12) &&
+  hex(receipt.collectorRevision, 40) &&
+  hex(receipt.bundleSha256, 64)
+if (!declared && !undeclared) {
   console.error(`CLI bundle receipt has invalid fields: ${receiptPath}`)
   process.exit(1)
 }
@@ -40,6 +48,10 @@ if (
 const actualBundleSha256 = createHash("sha256").update(readFileSync(entry)).digest("hex")
 if (actualBundleSha256 !== receipt.bundleSha256) {
   console.error(`CLI bundle SHA256 digest mismatch: ${entry}`)
+  process.exit(1)
+}
+if (undeclared) {
+  console.error(`Suite ${receipt.probeHash} is undeclared on this checkout`)
   process.exit(1)
 }
 
