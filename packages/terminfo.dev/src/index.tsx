@@ -29,7 +29,7 @@ import { ALL_PROBES } from "./probes/unified.ts"
 import { DetectView } from "./views/DetectView.tsx"
 import { decodeCollectorRun } from "@terminfo/run-parser"
 import { createDraft } from "./submit.ts"
-import { openControllingTTY } from "./tty.ts"
+import { probeOutputStream } from "./probe-output.ts"
 
 /** Collect the same explicit v2 run as the daemon endpoint. */
 async function runProbes(out?: NodeJS.WriteStream) {
@@ -131,12 +131,14 @@ program
       }
 
       // Default: collect an unreviewed v2 run in this terminal.
-      const out = opts.json || opts.output ? openControllingTTY() : undefined
+      const out = probeOutputStream(opts)
       let collected: Awaited<ReturnType<typeof runProbes>>
       try {
         collected = await runProbes(out)
       } finally {
-        if (out) {
+        // Only close a stream we opened: when --output probes this process's own stdout, ending it
+        // would close the terminal we were launched in.
+        if (out && out !== process.stdout) {
           await new Promise<void>((resolve) => {
             out.end(resolve)
           })
