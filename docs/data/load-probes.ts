@@ -9,6 +9,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadFullProbes } from "./probes.data"
 import type { ProbeData } from "./probes.data"
+import { loadCategories } from "./categories.ts"
 import { generateAnalysis } from "../../scripts/generate-analysis.ts"
 
 export type { ProbeData }
@@ -105,16 +106,11 @@ export function terminalSlug(name: string, meta: ProbeData["meta"]): string {
   return label.replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "")
 }
 
-function loadCategories(): Record<string, { label: string; order: number; description: string }> {
-  const path = join(__dirname, "..", "..", "content", "categories.json")
-  return JSON.parse(readFileSync(path, "utf-8")) as Record<
-    string,
-    { label: string; order: number; description: string }
-  >
-}
+// The category catalog is read through its one owner, docs/data/categories.ts.
+const categoryCatalog = loadCategories(join(__dirname, "..", "..", "content"))
 
 export const categoryLabels: Record<string, string> = Object.fromEntries(
-  Object.entries(loadCategories()).map(([k, v]) => [k, v.label]),
+  Object.entries(categoryCatalog).map(([k, v]) => [k, v.label]),
 )
 
 export function catLabel(cat: string): string {
@@ -122,7 +118,7 @@ export function catLabel(cat: string): string {
 }
 
 export const categoryDescriptions: Record<string, string> = Object.fromEntries(
-  Object.entries(loadCategories()).map(([k, v]) => [k, v.description]),
+  Object.entries(categoryCatalog).map(([k, v]) => [k, v.description]),
 )
 
 function loadStandards(): Record<string, { label: string; url: string; description: string; body?: string }> {

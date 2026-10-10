@@ -20,9 +20,15 @@ import { createHash } from "node:crypto"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import {
   type ContextCandidate,
+  type CohortBarRow,
+  CATEGORY_BLOCK_HEADER,
   barRowForContext,
   buildReport,
+  categoryShares,
+  cohortCategories,
   cohortRowForSelected,
+  formatCategoryRow,
+  formatCohortRow,
   parseReaderArgs,
   decisiveShare,
   F2_MOVERS,
@@ -33,6 +39,7 @@ import {
   includedTierOneIds,
 } from "./decisive-share.ts"
 import { d3Verdict } from "../docs/data/release-scope.ts"
+import { loadCategories } from "../docs/data/categories.ts"
 
 const IDS = ["a.supported", "b.supported", "c.unsupported", "d.inconclusive", "e.error", "f.missing"]
 
@@ -430,5 +437,149 @@ describe("release 1 decisive-count reader", () => {
     expect(printed).toContain("verdict         pass · 4/4")
     // The 62 line is context only: it differs from the 52 and does not decide the verdict.
     expect(printed).toContain("context/62      decisive 4/6 = 67%")
+  })
+})
+
+describe("per-category decisive share (28018 AC2)", () => {
+  const contentDir = join(import.meta.dirname, "..", "content")
+  const catalog = loadCategories(contentDir)
+
+  it("partitions the real 125 cohort into the nine categories.json categories, in catalog order", () => {
+    // The reader must NOT drop or double-count a class: the nine categories are the site's own
+    // categories.json keys, and the derived counts are the bead's 32/22/20/17/11/5/4/4/10 partition.
+    const report = buildReport({ contentDir, cohort: "candidate2" })
+    if (!report.candidate2) throw new Error("Candidate 2 report absent")
+    const categories = cohortCategories(report.candidate2.measuredIds, catalog)
+    expect(categories.map((category) => category.key)).toEqual([
+      "sgr",
+      "cursor",
+      "text",
+      "erase",
+      "editing",
+      "scrollback",
+      "reset",
+      "charsets",
+      "unicode",
+    ])
+    expect(categories.map((category) => category.ids.length)).toEqual([32, 22, 20, 11, 17, 10, 5, 4, 4])
+    expect(categories.map((category) => category.label)).toEqual([
+      "SGR (Text Styling)",
+      "Cursor",
+      "Text",
+      "Erase",
+      "Editing",
+      "Scrollback",
+      "Reset",
+      "Character Sets",
+      "Unicode",
+    ])
+    // The union is exactly the cohort: no id falls in two categories, and none is left out.
+    const assigned = categories.flatMap((category) => category.ids)
+    expect(assigned.length).toBe(125)
+    expect(new Set(assigned).size).toBe(125)
+  }, 15_000)
+
+  it("refuses a feature id whose prefix is not a categories.json key instead of dropping it", () => {
+    expect(() => cohortCategories(["sgr.bold", "bogus.x"], catalog)).toThrow(/prefix "bogus"/)
+  })
+
+  it("loads the category catalog through the one typed loader and refuses a malformed catalog", () => {
+    const dir = mkdtempSync(join(tmpdir(), "categories-loader-"))
+    try {
+      expect(() => loadCategories(join(dir, "absent"))).toThrow(/Missing required category catalog/)
+      writeFileSync(join(dir, "categories.json"), JSON.stringify({ sgr: { order: 1, description: "x" } }))
+      expect(() => loadCategories(dir)).toThrow(/category "sgr" is missing a label/)
+      writeFileSync(join(dir, "categories.json"), "[]")
+      expect(() => loadCategories(dir)).toThrow(/expected a category catalog object/)
+    } finally {
+      rmSync(dir, { recursive: true })
+    }
+  })
+
+  it("prints one line per category — the fraction beside the label — with the remainder named beneath", () => {
+    const categories = cohortCategories(["sgr.a", "sgr.b", "cursor.a", "erase.a"], catalog)
+    expect(categories.map((category) => category.key)).toEqual(["sgr", "cursor", "erase"])
+    const cells = {
+      "sgr.a": { outcome: "supported", conclusive: true },
+      "sgr.b": { outcome: "inconclusive" },
+      "cursor.a": { outcome: "supported", conclusive: true },
+      "erase.a": { outcome: "error" },
+    }
+    const labelWidth = Math.max(...categories.map((category) => category.label.length))
+    const shares = categoryShares(cells, categories)
+    const sgr = shares.find((entry) => entry.category.key === "sgr")
+    if (!sgr) throw new Error("sgr share absent")
+    expect(sgr.share).toMatchObject({ denominator: 2, decisive: 1, verdict: { label: "fail" } })
+    const printed = formatCategoryRow(sgr.category, sgr.share, labelWidth).join("\n")
+    expect(printed).toContain("SGR (Text Styling)")
+    expect(printed).toContain("1/2 = 50% · fail")
+    expect(printed).not.toContain("fail · 1/2")
+    const erase = shares.find((entry) => entry.category.key === "erase")
+    if (!erase) throw new Error("erase share absent")
+    expect(erase.share.remainder).toEqual([{ featureId: "erase.a", bucket: "error" }])
+    expect(formatCategoryRow(erase.category, erase.share, labelWidth).join("\n")).toContain(
+      "remainder    1 rows: erase.a (error)",
+    )
+  })
+
+  it("keeps each category's remainder disjoint — an error in one category never bleeds into another", () => {
+    const categories = cohortCategories(["sgr.a", "cursor.a", "cursor.b"], catalog)
+    const cells = { "sgr.a": { outcome: "error" }, "cursor.a": { outcome: "supported", conclusive: true } }
+    const shares = categoryShares(cells, categories)
+    const sgr = shares.find((entry) => entry.category.key === "sgr")
+    const cursor = shares.find((entry) => entry.category.key === "cursor")
+    if (!sgr || !cursor) throw new Error("category share absent")
+    expect(sgr.share.remainder.map((row) => row.featureId)).toEqual(["sgr.a"])
+    // cursor.b has no cell: untested, and it belongs to cursor, not sgr.
+    expect(cursor.share.remainder.map((row) => row.featureId)).toEqual(["cursor.b"])
+  })
+
+  it("grades categories independently: a context passes overall while one of its categories fails", () => {
+    const ids = [...Array.from({ length: 9 }, (_, index) => `sgr.${index}`), "cursor.0"]
+    const categories = cohortCategories(ids, catalog)
+    const cells = Object.fromEntries([
+      ...Array.from({ length: 9 }, (_, index) => [`sgr.${index}`, { outcome: "supported", conclusive: true }]),
+      ["cursor.0", { outcome: "error" }],
+    ])
+    expect(decisiveShare(cells, ids)).toMatchObject({ denominator: 10, decisive: 9, verdict: { label: "pass" } })
+    const shares = categoryShares(cells, categories)
+    expect(shares.find((entry) => entry.category.key === "sgr")?.share.verdict.label).toBe("pass")
+    expect(shares.find((entry) => entry.category.key === "cursor")?.share.verdict.label).toBe("fail")
+  })
+
+  it("emits the per-category block for a measured context and none for a not-measured one", () => {
+    const categories = cohortCategories(["sgr.a"], catalog)
+    const labelWidth = Math.max(...categories.map((category) => category.label.length))
+    const cells = { "sgr.a": { outcome: "supported", conclusive: true } }
+    const measured: CohortBarRow = {
+      context: { terminalId: "kitty", os: "linux" },
+      selection: "only current",
+      measured: true,
+      run: candidate({ cells }),
+      share: decisiveShare(cells, ["sgr.a"]),
+    }
+    const measuredLines = formatCohortRow(measured, categories, labelWidth)
+    expect(measuredLines.some((line) => line.includes(CATEGORY_BLOCK_HEADER))).toBe(true)
+    expect(measuredLines.some((line) => line.includes("SGR (Text Styling)"))).toBe(true)
+    const absent: CohortBarRow = {
+      context: { terminalId: "windows-terminal", os: "windows" },
+      measured: false,
+      reason: "not measured — no selected run",
+    }
+    const absentLines = formatCohortRow(absent, categories, labelWidth)
+    expect(absentLines.some((line) => line.includes(CATEGORY_BLOCK_HEADER))).toBe(false)
+    expect(absentLines.join("\n")).toContain("not measured")
+  })
+
+  it("names the block 'categories' and never 'group' — features.json already owns 'group'", () => {
+    // The guard is on the block's OWN header and label, not on remainder feature ids, so a future
+    // feature id containing "group" cannot fail it (the @cto note).
+    expect(CATEGORY_BLOCK_HEADER).toContain("CATEGORIES OF THE 125")
+    expect(CATEGORY_BLOCK_HEADER.toLowerCase()).not.toContain("group")
+    const categories = cohortCategories(["sgr.a"], catalog)
+    const cells = { "sgr.a": { outcome: "supported", conclusive: true } }
+    const printed = formatCategoryRow(categories[0]!, decisiveShare(cells, ["sgr.a"]), 19)
+    expect(printed[0]).toContain("SGR (Text Styling)")
+    expect(printed[0]!.toLowerCase()).not.toContain("group")
   })
 })

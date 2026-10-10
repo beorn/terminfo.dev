@@ -1,5 +1,12 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
-import { probe, isBlank, parserStateResult, unmeasuredCellResult, selectiveEraseResult } from "./helpers.ts"
+import {
+  probe,
+  isBlank,
+  parserStateResult,
+  unmeasuredCellResult,
+  selectiveEraseResult,
+  notTestedResult,
+} from "./helpers.ts"
 
 type ErasedCell = string | null
 
@@ -291,6 +298,136 @@ async function captureEraseFixture(
   }
 }
 
+const SCROLLBACK_ED3_EXPECTED =
+  "ED3 removes captured history: wheel-up after ED3 no longer shows the pre-ED3 history frame"
+
+/**
+ * App ED3 cannot read history as cells. Compose existing XTEST wheel + capture:
+ * prove history is observable, then grade whether ED3 removes it.
+ * Never enable mouse tracking — that would steal the wheel into stdin.
+ */
+async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
+  if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
+    return {
+      pass: false,
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+        note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
+      },
+    }
+  }
+  const capture = ctx.capture
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!capture || !input || !readInput) {
+    return notTestedResult("OS-level scrollback dump or XTEST wheel+capture", {
+      capture: Boolean(capture),
+      input: Boolean(input),
+      readInput: Boolean(readInput),
+    })
+  }
+
+  const control = (await readInput(/^a/, 1000, () => input.injectKey("a")))?.[0]
+  if (!control) throw new Error("XTEST delivery control failed: plain a did not reach the app")
+
+  try {
+    const mark = Math.min(ctx.cols, 40)
+    ctx.write("\x1b[2J\x1b[H")
+    ctx.write(`${"H".repeat(mark)}\r\n`.repeat(ctx.rows + 2))
+    ctx.write("B".repeat(mark))
+    const bottom = await capture({ role: "control", label: "Bottom of seeded buffer" })
+    await input.injectClick(4)
+    const history = await capture({ role: "control", label: "After wheel-up before ED3" })
+    if (history.ref === bottom.ref) {
+      return notTestedResult("wheel-up did not change captured pixels; cannot observe history", {
+        control,
+        bottom,
+        history,
+      })
+    }
+    await input.injectClick(5)
+    const restored = await capture({ role: "control", label: "After wheel-down before ED3" })
+    if (restored.ref !== bottom.ref) {
+      return notTestedResult("wheel-down did not restore the bottom frame; cannot return from history", {
+        control,
+        bottom,
+        history,
+        restored,
+      })
+    }
+    ctx.write("\x1b[3J")
+    const erased = await capture({ role: "control", label: "After ED3 at bottom" })
+    await input.injectClick(4)
+    const after = await capture({ role: "target", label: "After ED3 then wheel-up" })
+    const observed = {
+      control,
+      bottom: bottom.ref,
+      history: history.ref,
+      restored: restored.ref,
+      erased: erased.ref,
+      after: after.ref,
+    }
+    const frames = [bottom, history, restored, erased, after]
+    if (after.ref === history.ref) {
+      return {
+        pass: false,
+        response: JSON.stringify(observed),
+        observation: {
+          outcome: "unsupported",
+          evidence: "pixels",
+          screenshotRef: after.ref,
+          frames,
+        },
+        assertions: [
+          {
+            kind: "negative",
+            expected: SCROLLBACK_ED3_EXPECTED,
+            observed: JSON.stringify(observed),
+            action: "erase.screen.scrollback:ed3",
+          },
+        ],
+      }
+    }
+    if (after.ref === erased.ref) {
+      return {
+        pass: true,
+        response: JSON.stringify(observed),
+        observation: {
+          outcome: "supported",
+          evidence: "pixels",
+          screenshotRef: after.ref,
+          frames,
+        },
+        assertions: [
+          {
+            kind: "positive",
+            expected: SCROLLBACK_ED3_EXPECTED,
+            observed: JSON.stringify(observed),
+            action: "erase.screen.scrollback:ed3",
+          },
+        ],
+      }
+    }
+    return {
+      pass: false,
+      response: JSON.stringify(observed),
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        screenshotRef: after.ref,
+        frames,
+        note: "Post-ED3 wheel-up matched neither the history frame nor the post-ED3 bottom",
+      },
+    }
+  } finally {
+    await input.injectClick(5)
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
 export const eraseProbes: ProbeDefinition[] = [
   {
     ...probe(
@@ -385,23 +522,7 @@ export const eraseProbes: ProbeDefinition[] = [
           measured ? undefined : "Scrollback readback or geometry changed unexpectedly",
         )
       },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[5;5H") // Move to known position
-        ctx.write("\x1b[3J") // ED 3 — erase scrollback
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
+      scrollbackEraseApp,
     ),
     termNeedsGeometry: true,
   },

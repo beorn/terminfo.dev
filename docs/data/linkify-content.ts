@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { createLinkifier } from "vitepress-enrich"
+import { loadCategories } from "./categories.ts"
 
 interface GlossaryEntity {
   term: string
@@ -156,7 +157,7 @@ export function loadTerminfoEntities(options: TerminfoEntitiesOptions = {}): Glo
     pushEntity(entities, entry.label, `/${id}`, summarize(entry.description, entry.label ?? id), tooltipOnlyHrefs, 3)
   }
 
-  const categories = readContentJson<LabeledEntry>("categories.json")
+  const categories = loadCategories(contentDir)
   for (const [id, entry] of Object.entries(categories)) {
     pushEntity(entities, entry.label, `/${id}`, summarize(entry.description, entry.label ?? id), tooltipOnlyHrefs, 4)
   }

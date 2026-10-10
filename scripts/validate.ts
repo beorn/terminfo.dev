@@ -9,6 +9,7 @@
 import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { verifyTerminalIdentity } from "../packages/terminfo.dev/src/identity-guard.ts"
+import { loadCategories } from "../docs/data/categories.ts"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -75,10 +76,7 @@ const standards = loadJson(join(contentDir, "standards.json")) as Record<
   { label: string; [key: string]: unknown }
 >
 
-const categories = loadJson(join(contentDir, "categories.json")) as Record<
-  string,
-  { label: string; order: number; [key: string]: unknown }
->
+const categories = loadCategories(contentDir)
 
 const terminals = loadJson(join(contentDir, "terminals.json")) as Record<
   string,

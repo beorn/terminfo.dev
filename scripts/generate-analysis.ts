@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -51,12 +52,6 @@ interface TerminalMeta {
   cpu?: string
   significance?: string
   repo?: string
-}
-
-interface CategoryMeta {
-  label: string
-  order: number
-  description: string
 }
 
 interface StandardMeta {
@@ -139,10 +134,6 @@ function loadTerminals(): Record<string, TerminalMeta> {
     assert(typeof term.slug === "string", `Terminal '${id}' missing slug`)
   }
   return raw
-}
-
-function loadCategories(): Record<string, CategoryMeta> {
-  return loadJson<Record<string, CategoryMeta>>(join(contentDir, "categories.json"), "category metadata")
 }
 
 function loadStandards(): Record<string, StandardMeta> {
@@ -1187,7 +1178,7 @@ function escapeHtmlAttr(s: string): string {
 function loadAllData() {
   const features = loadFeatures()
   const terminals = loadTerminals()
-  const categories = loadCategories()
+  const categories = loadCategories(contentDir)
   const standards = loadStandards()
   const baselines = loadBaselines()
   const annotations = loadAnnotations()
