@@ -50,8 +50,8 @@ test("suite identity changes with executable collection, ownership, capture and 
   }
   changed.file = ""
   const snapshot = probeSuiteSnapshot()
-  expect(snapshot.probes.app).toHaveLength(259)
-  expect(snapshot.probes.headless).toHaveLength(248)
+  expect(snapshot.probes.app).toHaveLength(260)
+  expect(snapshot.probes.headless).toHaveLength(249)
   expect(snapshot.probes.mux).toEqual(snapshot.probes.app)
   expect(snapshot.probes.app).toContain("extensions.kitty-keyboard")
   expect(snapshot.probes.app).toContain("input.xtest-key")
