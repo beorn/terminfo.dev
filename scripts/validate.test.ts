@@ -36,7 +36,7 @@ test("validation inventories v2 targets and refuses malformed probe data with it
     expect(baseline.stdout).toContain("Legacy annotation coverage: 0/0")
     expect(baseline.stdout).not.toContain('Terminal "libvterm" (libvterm (Neovim fork)) has no probe data files')
     expect(baseline.stdout).toContain("With probe data: 1")
-    expect(baseline.stdout).toContain("Without probe data: 24")
+    expect(baseline.stdout).toContain("Without probe data: 25")
 
     writeFileSync(v2Path, JSON.stringify({ ...v2Probe, target: { kind: "headless", id: "unknown-backend" } }))
     const unknownV2 = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
