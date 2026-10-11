@@ -318,14 +318,10 @@ describe("consumer selection", () => {
         expect(analysis["baseline/core"]?.analysis).toContain("awaiting verified measurements")
       }
       expect(terminalPaths.paths().some((page) => page.params.id === "kitty")).toBe(true)
-      expect(warnings).toContainEqual(expect.stringContaining("historical analysis snapshot is not current evidence"))
-      expect(
-        warnings.every(
-          (message) =>
-            message.includes("historical analysis snapshot is not current evidence") ||
-            message.includes("no reviewed current conclusive results"),
-        ),
-      ).toBe(true)
+      expect(warnings.some((message) => message.includes("historical analysis snapshot is not current evidence"))).toBe(
+        false,
+      )
+      expect(warnings.every((message) => message.includes("no reviewed current conclusive results"))).toBe(true)
     } finally {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })
