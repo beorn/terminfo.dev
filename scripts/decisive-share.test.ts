@@ -137,6 +137,8 @@ describe("release 1 decisive-count reader", () => {
       name: "candidate2",
       frozenSuiteId: "a8bafe49cdd4",
       measuredIds: IDS,
+      scoredIds: IDS,
+      libraryOnlyIds: [],
       decidableIds: IDS,
     })
     expect(result).toMatchObject({
@@ -155,6 +157,8 @@ describe("release 1 decisive-count reader", () => {
       name: "candidate2" as const,
       frozenSuiteId: "db5558cf8d6c",
       measuredIds: IDS,
+      scoredIds: IDS,
+      libraryOnlyIds: [],
       decidableIds: IDS,
     }
     const context = { terminalId: "alacritty", os: "linux" }
@@ -200,7 +204,14 @@ describe("release 1 decisive-count reader", () => {
 
   it("grades all 125 frozen IDs through D3 rounding and preserves missing or ambiguous selection", () => {
     const ids = Array.from({ length: 125 }, (_, i) => `classic.${i}`)
-    const cohort = { name: "candidate2" as const, frozenSuiteId: "a8bafe49cdd4", measuredIds: ids, decidableIds: ids }
+    const cohort = {
+      name: "candidate2" as const,
+      frozenSuiteId: "a8bafe49cdd4",
+      measuredIds: ids,
+      scoredIds: ids,
+      libraryOnlyIds: [],
+      decidableIds: ids,
+    }
     const frozen = candidate({
       suiteId: cohort.frozenSuiteId,
       cells: Object.fromEntries(ids.slice(0, 112).map((id) => [id, { outcome: "supported", conclusive: true }])),
@@ -246,9 +257,10 @@ describe("release 1 decisive-count reader", () => {
     expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
     for (const row of report.candidate2.admittedRuns) {
       expect(row.measured).toBe(row.run.suiteId === "f8771563588b")
-      // The RELEASE share is the operator's D3 over the ratified cohort (125); only the per-category
-      // block divides over the decidable basis (@chief 2026-10-10T15:56Z).
-      if (row.measured) expect(row.share.denominator).toBe(125)
+      // The RELEASE share is the operator's D3 over the ratified cohort (125) MINUS the app-unobservable
+      // rows the @chief option-B ruling moved out (three here, so 122); only the per-category block
+      // divides over the decidable basis (@chief 2026-10-10T15:56Z).
+      if (row.measured) expect(row.share.denominator).toBe(122)
       else {
         expect(row).not.toHaveProperty("share")
         expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required f8771563588b`)
@@ -513,11 +525,12 @@ describe("per-category decisive share (28018 AC2)", () => {
   it("partitions the real decidable cohort into the nine categories.json categories, in catalog order", () => {
     // The reader must NOT drop or double-count a class: the nine categories are the site's own
     // categories.json keys, partitioned over the decidable basis (Scrollback loses its one
-    // unavailable id), so the derived counts are 32/22/20/11/17/9/5/4/4 = 124.
+    // unavailable id and its two library-only rows, Reset its one library-only row), so the derived
+    // counts are 32/22/20/11/17/7/4/4/4 = 121.
     const report = buildReport({ contentDir, cohort: "candidate2" })
     if (!report.candidate2) throw new Error("Candidate 2 report absent")
     expect(report.candidate2.measuredIds.length).toBe(125)
-    expect(report.candidate2.decidableIds.length).toBe(124)
+    expect(report.candidate2.decidableIds.length).toBe(121)
     const categories = cohortCategories(report.candidate2.decidableIds, catalog)
     expect(categories.map((category) => category.key)).toEqual([
       "sgr",
@@ -530,7 +543,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       "charsets",
       "unicode",
     ])
-    expect(categories.map((category) => category.ids.length)).toEqual([32, 22, 20, 11, 17, 9, 5, 4, 4])
+    expect(categories.map((category) => category.ids.length)).toEqual([32, 22, 20, 11, 17, 7, 4, 4, 4])
     expect(categories.map((category) => category.label)).toEqual([
       "SGR (Text Styling)",
       "Cursor",
@@ -544,8 +557,8 @@ describe("per-category decisive share (28018 AC2)", () => {
     ])
     // The union is exactly the cohort: no id falls in two categories, and none is left out.
     const assigned = categories.flatMap((category) => category.ids)
-    expect(assigned.length).toBe(124)
-    expect(new Set(assigned).size).toBe(124)
+    expect(assigned.length).toBe(121)
+    expect(new Set(assigned).size).toBe(121)
   }, 15_000)
 
   it("refuses a feature id whose prefix is not a categories.json key instead of dropping it", () => {
@@ -658,13 +671,19 @@ describe("per-category decisive share (28018 AC2)", () => {
     expect(printed[0]!.toLowerCase()).not.toContain("group")
   })
 
-  it("names the unavailable id beside each fraction — the release line stays /125, the category line is /9", () => {
+  it("names the unavailable id beside each fraction — the release line stays /122, the category line is /7", () => {
     const report = buildReport({ contentDir, cohort: "candidate2" })
     if (!report.candidate2) throw new Error("Candidate 2 report absent")
-    // The ratified cohort is still 125; the decidable basis is 124 and names its one absent id.
+    // The ratified cohort is still 125; the decidable basis is 121 and names its one unavailable id
+    // and the three library-only rows the @chief option-B ruling moved out of the app denominator.
     expect(report.candidate2.measuredIds).toHaveLength(125)
-    expect(report.candidate2.decidableIds).toHaveLength(124)
+    expect(report.candidate2.decidableIds).toHaveLength(121)
     expect(report.candidate2.unavailableIds).toEqual(["scrollback.viewport-hold-output"])
+    expect(report.candidate2.libraryOnlyIds).toEqual([
+      "reset.method",
+      "scrollback.accumulate",
+      "scrollback.total-lines",
+    ])
     expect(report.candidate2.decidableIds).not.toContain("scrollback.viewport-hold-output")
 
     const categories = cohortCategories(report.candidate2.decidableIds, catalog)
@@ -678,17 +697,26 @@ describe("per-category decisive share (28018 AC2)", () => {
     )
     if (!row || !row.measured || !("run" in row)) throw new Error("kitty/linux measured bar row absent")
     expect(row.run.suiteId).toBe("f8771563588b")
-    const printed = formatCohortRow(row, categories, labelWidth, report.candidate2.unavailableIds)
+    const printed = formatCohortRow(
+      row,
+      categories,
+      labelWidth,
+      report.candidate2.unavailableIds,
+      report.candidate2.libraryOnlyIds,
+    )
     const text = printed.join("\n")
 
-    // The RELEASE line keeps the operator's D3 denominator — the cohort size — and names the id beside it.
-    const releaseDenominator = report.candidate2.measuredIds.length
+    // The RELEASE line keeps the operator's D3 denominator — the app-observable cohort size — and
+    // names the unavailable id and the library-only rows beside it.
+    const releaseDenominator = report.candidate2.scoredIds.length
     expect(
       printed.some(
         (line) =>
           line.includes(`decisive/${releaseDenominator} `) &&
           line.includes(`/${releaseDenominator} = `) &&
-          line.includes("(unavailable: scrollback.viewport-hold-output)"),
+          line.includes(
+            "(unavailable: scrollback.viewport-hold-output; library-only: reset.method, scrollback.accumulate, scrollback.total-lines)",
+          ),
       ),
     ).toBe(true)
     expect(printed.some((line) => line.includes(`inconclusive/${releaseDenominator}`))).toBe(true)
@@ -704,15 +732,16 @@ describe("per-category decisive share (28018 AC2)", () => {
           : "      remainder    0 rows",
       ),
     ])
-    // The block header states the basis ONCE (the 125 cohort, the 124 decidable).
+    // The block header states the basis ONCE (the 125 ratified cohort, the 121 decidable).
     expect(
       printed.some(
         (line) =>
           line.includes("CATEGORIES OF THE 125") &&
-          line.includes("n = 124 cohort ids with a probe in required suite f8771563588b"),
+          line.includes("n = 121 cohort ids with a probe in required suite f8771563588b and app-observable") &&
+          line.includes("; 3 rows are library-only and not scored in apps"),
       ),
     ).toBe(true)
-    // The Scrollback category divides by its DECIDABLE count and names the tenth beside them.
+    // The Scrollback category divides by its DECIDABLE count and names its moved rows beside it.
     const scrollback = categories.find((category) => category.key === "scrollback")
     if (!scrollback) throw new Error("scrollback category absent")
     expect(scrollback.ids.length).toBeLessThan(releaseDenominator)
@@ -720,8 +749,10 @@ describe("per-category decisive share (28018 AC2)", () => {
       printed.some(
         (line) =>
           line.includes("Scrollback") &&
-          line.includes(`4/${scrollback.ids.length} = 44% · fail`) &&
-          line.includes("(unavailable: scrollback.viewport-hold-output)"),
+          line.includes(`4/${scrollback.ids.length} = 57% · fail`) &&
+          line.includes(
+            "(unavailable: scrollback.viewport-hold-output; library-only: scrollback.accumulate, scrollback.total-lines)",
+          ),
       ),
     ).toBe(true)
     // The two RELEASE lines (decisive, inconclusive) are the only cohort-size fractions; every category

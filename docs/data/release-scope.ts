@@ -10,6 +10,15 @@ export interface ReleaseScope {
   tier: number
   method: string
   measuredIds: string[]
+  /**
+   * The declared ids an APP run can decide: `measuredIds` minus the app-unobservable rows. This is
+   * the denominator every decisive share is scored over, so a row whose decider is the parser
+   * surface only (see `@terminfo/probe-defs` `APP_UNOBSERVABLE_ROWS`) never reads as a terminal
+   * undecidability.
+   */
+  scoredIds: string[]
+  /** The declared rows an app run cannot decide, in declaration order, named and never scored. */
+  libraryOnlyIds: string[]
   measuredCount: number
   catalogCount: number
   unmeasured: ReleaseFeature[]

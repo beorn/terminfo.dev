@@ -1,6 +1,7 @@
 /** Node-only loader for the Release 1 measurement declaration. */
 import { readFileSync } from "node:fs"
 import { parseJsonStrict } from "@terminfo/run-parser"
+import { splitAppObservable } from "@terminfo/probe-defs"
 import type { ReleaseFeature, ReleaseScope } from "./release-scope.ts"
 
 interface ReleaseDeclaration {
@@ -32,6 +33,10 @@ export interface FeatureCohort {
   name: "candidate2"
   frozenSuiteId: string
   measuredIds: string[]
+  /** The cohort ids an APP run can decide, in cohort order — the scored denominator. */
+  scoredIds: string[]
+  /** The cohort rows an app run cannot decide, in cohort order, named and never scored. */
+  libraryOnlyIds: string[]
 }
 
 export function loadFeatureCohort(args: {
@@ -51,10 +56,14 @@ export function loadFeatureCohort(args: {
       `${args.declarationPath}: expected { name: "candidate2", frozenSuiteId: nonempty string, featureIds: nonempty array }`,
     )
   }
+  const measuredIds = validateFeatureIds(raw.featureIds, args.catalog, args.declarationPath)
+  const { scoredIds, libraryOnlyIds } = splitAppObservable(measuredIds)
   return {
     name: raw.name,
     frozenSuiteId: raw.frozenSuiteId,
-    measuredIds: validateFeatureIds(raw.featureIds, args.catalog, args.declarationPath),
+    measuredIds,
+    scoredIds: [...scoredIds],
+    libraryOnlyIds: [...libraryOnlyIds],
   }
 }
 
@@ -73,6 +82,7 @@ export function loadReleaseScope(args: {
   }
   const declaration = raw as unknown as ReleaseDeclaration
   const measuredIds = validateFeatureIds(declaration.featureIds, args.catalog, args.declarationPath)
+  const { scoredIds, libraryOnlyIds } = splitAppObservable(measuredIds)
   const catalogIds = Object.keys(args.catalog)
   const measured = new Set(measuredIds)
   const unmeasured = catalogIds
@@ -91,6 +101,8 @@ export function loadReleaseScope(args: {
     tier: declaration.tier,
     method: declaration.method,
     measuredIds,
+    scoredIds: [...scoredIds],
+    libraryOnlyIds: [...libraryOnlyIds],
     measuredCount: measuredIds.length,
     catalogCount: catalogIds.length,
     unmeasured,

@@ -162,9 +162,9 @@ describe("release 1 measurement scope", () => {
     expect(home).toContain("data.releaseVerdicts[backendName]")
     expect(home).toContain("verdict.text")
     expect(terminal).toContain("barVerdict(barOverMeasured(")
-    expect(terminal).toContain("includedTierOneIds(data.releaseScope.measuredIds)")
+    expect(terminal).toContain("includedTierOneIds(data.releaseScope.scoredIds)")
     expect(terminal).toContain("measuredVerdict.text")
-    expect(loader).toContain("includedTierOneIds(release.measuredIds)")
+    expect(loader).toContain("includedTierOneIds(release.scoredIds)")
     expect(loader).toContain("releaseVerdicts[key] = d3Verdict(")
   })
 

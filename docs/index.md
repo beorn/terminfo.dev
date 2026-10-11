@@ -229,6 +229,7 @@ function backendTooltip(name, version) {
 <div class="problem-summary">
   <p>Does your terminal support truecolor, modern keyboard protocols, or image rendering? Real data from automated tests (<a href="https://termless.dev">Termless</a>) and <a href="/contribute">user contributions</a>.</p>
   <p class="tier-line">{{ data.releaseScope.line }}</p>
+  <p v-if="data.releaseScope.libraryOnlyIds.length" class="tier-line">{{ data.releaseScope.libraryOnlyIds.length }} {{ data.releaseScope.libraryOnlyIds.length === 1 ? 'row is' : 'rows are' }} library-only and not scored in apps: {{ data.releaseScope.libraryOnlyIds.join(', ') }}.</p>
   <details class="unmeasured">
     <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
     <ul>
