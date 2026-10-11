@@ -1243,7 +1243,7 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
-/** OS clipboard → app via shift+Insert. Distinct from OSC 52 (app → clipboard) and DECRPM 2004. */
+/** OS clipboard → app via ctrl+shift+v. Distinct from OSC 52 (app → clipboard) and DECRPM 2004. */
 async function clipboardPaste(ctx: TermContext): Promise<ProbeResult> {
   const input = ctx.input
   const readInput = ctx.readInput
