@@ -1,0 +1,73 @@
+/**
+ * @failure A site build run from a read-only hab landing writes into the landing's own checkout, or `TERMINFO_SITE_OUT_DIR` changes the paths of an unset build.
+ * @level l2
+ * @consumer The terminfo-site resident's landed serve and `bun run build`.
+ * @testonly none
+ */
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { spawnSync } from "node:child_process"
+import { describe, expect, it } from "vitest"
+import { siteAnalysisPath, siteCacheDir, siteDistDir, siteOutRoot } from "./site-out.ts"
+
+const repoRoot = join(import.meta.dirname, "..")
+
+it("resolves the historical in-tree paths when TERMINFO_SITE_OUT_DIR is unset", () => {
+  const env: NodeJS.ProcessEnv = {}
+  expect(siteOutRoot(env)).toBeUndefined()
+  expect(siteDistDir(repoRoot, env)).toBe(join(repoRoot, "docs", ".vitepress", "dist"))
+  expect(siteCacheDir(env)).toBeUndefined()
+  expect(siteAnalysisPath(repoRoot, env)).toBe(join(repoRoot, "content", "analysis.json"))
+})
+
+it("roots every build write under TERMINFO_SITE_OUT_DIR when it is set", () => {
+  const env: NodeJS.ProcessEnv = { TERMINFO_SITE_OUT_DIR: "/var/terminfo-site" }
+  expect(siteOutRoot(env)).toBe("/var/terminfo-site")
+  expect(siteDistDir(repoRoot, env)).toBe(join("/var/terminfo-site", "dist"))
+  expect(siteCacheDir(env)).toBe(join("/var/terminfo-site", "cache"))
+  expect(siteAnalysisPath(repoRoot, env)).toBe(join("/var/terminfo-site", "content", "analysis.json"))
+})
+
+it("analysis generation writes under the override and leaves the source tree alone", () => {
+  // 28268 AC4: a landing is write-once, so the analysis step must not write content/analysis.json in its checkout.
+  const out = mkdtempSync(join(tmpdir(), "terminfo-site-out-"))
+  const writeRoot = join(out, "state-root")
+  try {
+    const sourceRoot = join(import.meta.dirname, "..")
+    mkdirSync(join(out, "scripts"))
+    mkdirSync(join(out, "content"))
+    for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(out, "content", dir))
+    for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
+    for (const name of [
+      "features",
+      "terminals",
+      "categories",
+      "standards",
+      "baselines",
+      "frameworks",
+      "glossary",
+      "annotations",
+      "release-scope-candidate2",
+    ]) {
+      cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
+    }
+    for (const name of ["generate-analysis.ts", "site-out.ts"]) {
+      cpSync(join(sourceRoot, "scripts", name), join(out, "scripts", name))
+    }
+    const result = spawnSync(process.execPath, [join(out, "scripts", "generate-analysis.ts")], {
+      cwd: out,
+      encoding: "utf8",
+      timeout: 30_000,
+      env: { ...process.env, TERMINFO_SITE_OUT_DIR: writeRoot },
+    })
+    expect(result.error).toBeUndefined()
+    expect(result.status, result.stderr).toBe(0)
+    const redirected = join(writeRoot, "content", "analysis.json")
+    expect(existsSync(redirected)).toBe(true)
+    expect(existsSync(join(out, "content", "analysis.json"))).toBe(false)
+    expect(JSON.parse(readFileSync(redirected, "utf8"))).toHaveProperty("terminals/kitty")
+  } finally {
+    rmSync(out, { recursive: true, force: true })
+  }
+})

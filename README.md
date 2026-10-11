@@ -44,6 +44,7 @@ The package scripts run the relevant local checks:
 ```bash
 bun run validate                  # structural validation + trusted suite-manifest check
 bun run build                     # trusted suite-manifest check + VitePress site/API build
+bun run landed-serve              # build-if-needed, then serve this checkout's own revision (terminfo-site)
 bun run analysis:validate         # check generated commentary against selected data
 bun scripts/check-404s.ts         # built-site internal links
 bun scripts/check-private-leak.ts # built-site private-content scan

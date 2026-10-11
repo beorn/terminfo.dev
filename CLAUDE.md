@@ -150,6 +150,7 @@ bun install                 # Install dependencies
 bun run dev                 # Local dev server (VitePress)
 bun run build               # Build static site (250+ pages) + emits API/badges into docs/.vitepress/dist/
 bun run preview             # Preview built site
+bun run landed-serve        # Build only if the output is not this checkout's revision, then serve it read-only
 
 # Periodic refresh (see /terminfo-update skill)
 bun run update --full       # Full refresh: discover → probe → validate → build
@@ -270,6 +271,10 @@ git add -A && git commit && git push     # 5. Deploy
 
 `bun run build` regenerates `content/analysis.json` from probe data and fails if generation fails.
 Do not commit that file.
+
+`TERMINFO_SITE_OUT_DIR` roots every write of a build — the VitePress output, its cache and `content/analysis.json`
+— under that one directory instead of the source tree, so `bun scripts/landed-serve.ts` (the `terminfo-site`
+resident's command) can build from a read-only hab landing. Unset, every path is exactly as before.
 
 **Annotations are required for failures.** If probes produce new failures, `bun terminfo probe`
 will exit with an error listing unannotated failures. Add explanations to

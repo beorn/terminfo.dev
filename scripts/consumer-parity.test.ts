@@ -204,6 +204,7 @@ it("analysis rejects malformed required catalogs before replacing its output", (
     for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
     const script = join(out, "scripts", "generate-analysis.ts")
     cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
+    cpSync(join(import.meta.dirname, "site-out.ts"), join(out, "scripts", "site-out.ts"))
     for (const name of [
       "features",
       "terminals",
@@ -258,6 +259,7 @@ it("analysis validation refuses stale live values and key drift but labels histo
     for (const dir of ["docs", "node_modules"]) symlinkSync(join(sourceRoot, dir), join(out, dir), "dir")
     const script = join(out, "scripts", "generate-analysis.ts")
     cpSync(join(import.meta.dirname, "generate-analysis.ts"), script)
+    cpSync(join(import.meta.dirname, "site-out.ts"), join(out, "scripts", "site-out.ts"))
     for (const name of [
       "features",
       "terminals",

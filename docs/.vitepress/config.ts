@@ -4,6 +4,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
 import { buildStamp, createBuildMetadata } from "../../scripts/build-metadata"
+import { siteCacheDir, siteDistDir } from "../../scripts/site-out"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
 
 function stripHtml(html: string): string {
@@ -379,6 +380,10 @@ export default defineConfig({
   title: "Terminfo.dev",
   description: "Can your terminal do that? Feature support tables for terminal emulators.",
   cleanUrls: true,
+  // 28268 AC4: `TERMINFO_SITE_OUT_DIR` moves the build output and the incremental cache out of the source tree so a
+  // build can run from a read-only hab landing; unset, VitePress's own defaults are used unchanged.
+  outDir: siteDistDir(join(docsDir, "..")),
+  cacheDir: siteCacheDir(),
   vite: {
     server: {
       allowedHosts: [".ts.net"],

@@ -11,13 +11,14 @@
  *   bun scripts/generate-analysis.ts --dry-run    # Print what would be generated
  *   bun scripts/generate-analysis.ts --validate   # Validate existing against data
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs"
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
+import { siteAnalysisPath } from "./site-out.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -1350,7 +1351,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const analysis = generateAnalysis()
     const result = analysis
 
-    const outputPath = join(contentDir, "analysis.json")
+    const outputPath = siteAnalysisPath(root)
     const entryCount = Object.keys(analysis).length
     const terminalCount = Object.keys(analysis).filter((k) => k.startsWith("terminals/")).length
     const baselineCount = Object.keys(analysis).filter((k) => k.startsWith("baseline/")).length
@@ -1439,6 +1440,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
 
     // Write output
+    mkdirSync(dirname(outputPath), { recursive: true })
     writeFileSync(outputPath, JSON.stringify(result, null, 2) + "\n")
     console.log(`Generated ${outputPath}`)
     console.log(
