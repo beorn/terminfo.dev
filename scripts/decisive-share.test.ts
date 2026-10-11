@@ -37,6 +37,8 @@ import {
   pickContextRun,
   INCLUDED_TIER1_COUNT,
   includedTierOneIds,
+  formatRefusedRun,
+  refusedRunsSection,
 } from "./decisive-share.ts"
 import { d3Verdict } from "../docs/data/release-scope.ts"
 import { loadCategories } from "../docs/data/categories.ts"
@@ -667,17 +669,21 @@ describe("per-category decisive share (28018 AC2)", () => {
 
     const categories = cohortCategories(report.candidate2.decidableIds, catalog)
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
-    // 28467 follow-up: site selection still holds the 267a kitty/linux run, so the bar row is
-    // ineligible. The measured suite-S row is the admitted 95ea kitty/linux census.
-    const admitted = report.candidate2.admittedRuns.find(
-      (entry) =>
-        entry.measured &&
-        entry.run.terminalId === "kitty" &&
-        entry.run.os === "linux" &&
-        entry.run.suiteId === "95ea5328dd25",
+    // The kitty/linux run on the required suite (d3c5c6a0, 95ea5328dd25) is REFUSED by the site as
+    // native-provenance-dirty, so it is named under SITE-EXCLUDED RUNS, never under ADMITTED RUNS
+    // (28018). This test exercises the cohort row FORMATTER, so it builds the measured row from that
+    // run's own cells — the row a clean re-collection would produce.
+    const refused = report.candidate2.refusedRuns.find(
+      (entry) => entry.run.terminalId === "kitty" && entry.run.os === "linux" && entry.run.suiteId === "95ea5328dd25",
     )
-    if (!admitted || !admitted.measured) throw new Error("kitty/linux 95ea admitted row absent")
-    const row = { ...admitted, context: { terminalId: "kitty", os: "linux" }, selection: "only current" as const }
+    if (!refused) throw new Error("kitty/linux 95ea run absent")
+    const row: CohortBarRow = {
+      run: refused.run,
+      measured: true,
+      share: decisiveShare(refused.run.cells, report.candidate2.measuredIds),
+      context: { terminalId: "kitty", os: "linux" },
+      selection: "only current",
+    }
     const printed = formatCohortRow(row, categories, labelWidth, report.candidate2.unavailableIds)
     const text = printed.join("\n")
 
@@ -752,5 +758,101 @@ describe("per-category decisive share (28018 AC2)", () => {
       }
     }
     expect(flips).toBe(0)
+  }, 20_000)
+})
+
+describe("the reader separates admitted runs from the site's refusals (28018)", () => {
+  const contentDir = join(import.meta.dirname, "..", "content")
+
+  it("lists only runs the site admits, and names a refused run with the gate's own reason", () => {
+    // d3c5c6a0 carries provenance.runtime.cleanTree=false and 6993f2ac is suite-incomplete, so the ONE
+    // admission gate refuses both — they must never print under ADMITTED RUNS.
+    const nativeProvenanceDirty = "d3c5c6a0bd41012bcb54abe044d9c5c3"
+    const suiteIncomplete = "6993f2ac0b1831e525d12c95ab5e8bbe"
+    const report = buildReport({ contentDir, cohort: "candidate2" })
+    if (!report.candidate2) throw new Error("Candidate 2 report absent")
+    const admitted = report.candidate2.admittedRuns.map((row) => row.run.runId)
+    expect(admitted).not.toContain(nativeProvenanceDirty)
+    expect(admitted).not.toContain(suiteIncomplete)
+    // An admitted run the bar does not select stays visible by run id (the section's whole purpose).
+    expect(admitted).toContain("08add735cbbccf6f87373c7e77d2cf47")
+    const refused = new Map(report.candidate2.refusedRuns.map((row) => [row.run.runId, row.reason]))
+    expect(refused.get(nativeProvenanceDirty)).toBe("native-provenance-dirty")
+    expect(refused.get(suiteIncomplete)).toBe("suite-incomplete")
+    expect(report.refusedRuns.map((row) => row.run.runId)).toEqual(
+      expect.arrayContaining([nativeProvenanceDirty, suiteIncomplete]),
+    )
+  }, 20_000)
+
+  it("prints the refusals under their own header, and states an empty list instead of omitting it", () => {
+    const empty = refusedRunsSection([]).join("\n")
+    expect(empty).toContain("SITE-EXCLUDED RUNS")
+    // The empty state is SCOPED to what this reader measures. "the site admits every run document it
+    // read" would be a false universal claim: the projection refuses plenty this reader never names.
+    expect(empty).toContain("none — no app run this reader measures is refused")
+    expect(empty).not.toMatch(/every run document/i)
+    const printed = refusedRunsSection([
+      {
+        run: candidate({ runId: "x", terminalId: "kitty", os: "linux", suiteId: "267a5d166f08" }),
+        reason: "native-provenance-dirty",
+      },
+    ])
+    expect(printed[0]).toContain("SITE-EXCLUDED RUNS")
+    // The section names its own, narrower population: it is the app runs this reader measures, not
+    // the header's wider "rejected" count, and a reader must not reconcile the two as one number.
+    expect(printed[0]).toContain("every app run this reader measures")
+    expect(printed.join("\n")).toContain(
+      "kitty 0.17.0 linux x · suite 267a5d166f08 · excluded: native-provenance-dirty",
+    )
+  })
+
+  it("states an empty refusal list as scoped to this reader, never as the site admitting everything", () => {
+    // The reviewer's shape (28018 peer review, @dev/review2): a projection with ZERO app runs can still
+    // refuse documents this reader never names, because the projection reads probes-libs and
+    // probes-mux too. The empty line must be scoped or it asserts a universal admission that is false.
+    const contentDir = mkdtempSync(join(tmpdir(), "reader-empty-refusals-"))
+    const real = join(import.meta.dirname, "..", "content")
+    try {
+      for (const name of [
+        "features.json",
+        "terminals.json",
+        "release-scope.json",
+        "release-scope-candidate2.json",
+        "default-contexts.json",
+      ]) {
+        writeFileSync(join(contentDir, name), readFileSync(join(real, name)))
+      }
+      const requiredSuite = (
+        JSON.parse(readFileSync(join(real, "release-scope-candidate2.json"), "utf8")) as { frozenSuiteId: string }
+      ).frozenSuiteId
+      mkdirSync(join(contentDir, "suites"))
+      writeFileSync(
+        join(contentDir, "suites", `${requiredSuite}.json`),
+        readFileSync(join(real, "suites", `${requiredSuite}.json`)),
+      )
+      for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
+      // One real lib run the projection refuses: a NON-app document, so this reader must not name it
+      // here, while still not claiming the site admitted it.
+      const libDoc = "alacritty-0.26.0-linux-4aab714c-77d4-4f71-ba28-266d98c4fa25.json"
+      const libRun = JSON.parse(readFileSync(join(real, "probes-libs", libDoc), "utf8")) as { suiteId: string }
+      writeFileSync(join(contentDir, "probes-libs", libDoc), readFileSync(join(real, "probes-libs", libDoc)))
+      // The lib run's own suite manifest: parseRun refuses a suite it cannot resolve, so the fixture
+      // carries the manifest and the run stays refused for its incomplete probe set, not for a
+      // missing manifest.
+      writeFileSync(
+        join(contentDir, "suites", `${libRun.suiteId}.json`),
+        readFileSync(join(real, "suites", `${libRun.suiteId}.json`)),
+      )
+
+      const report = buildReport({ contentDir, cohort: "candidate2" })
+      expect(report.admittedRuns).toEqual([])
+      expect(report.refusedRuns).toEqual([])
+      expect(report.rejected).toBeGreaterThan(0)
+      const printed = refusedRunsSection(report.refusedRuns).join("\n")
+      expect(printed).toContain("none — no app run this reader measures is refused")
+      expect(printed).not.toMatch(/admits every|every run document/i)
+    } finally {
+      rmSync(contentDir, { recursive: true })
+    }
   }, 20_000)
 })

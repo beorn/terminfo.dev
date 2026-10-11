@@ -18,9 +18,14 @@
  *     naming the contexts, and neither is ever 0%. The header names the Release 1 exceptions once
  *     with their ruling ids - ruled by name, not excluded by this reader, so a named row still
  *     prints its own FAIL/PASS on the bar.
- *  2. ADMITTED RUNS — one line per admitted schema-v2 run under content/probes-apps, labelled
+ *  2. ADMITTED RUNS — one line per run the site ADMITS under content/probes-apps, labelled
  *     `<terminal id> <version> <os> <runId>` with decisive/62 and decisive/52, so the Release 1 Linux
  *     runs and any admitted-but-unselected run stay visible by run id without polluting the bar rows.
+ *     SITE-EXCLUDED RUNS — every app run THIS READER measures that the site REFUSES, each named
+ *     with the ONE admission gate's own reason, beside the admitted list and never folded into it;
+ *     an empty list prints "none" rather than omitting the section. The section is SCOPED to the app
+ *     runs read here, so its count is not the header's wider "rejected" count of every document the
+ *     projection refused.
  *
  * It never touches content/terminals.json, collectors/probe-defs, the launcher, or any admitted run
  * document. It writes nothing. Bucket math is barOverMeasured's, not a second copy.
@@ -326,11 +331,28 @@ function candidateFromSelected(key: string, selected: SelectedVersion): ContextC
   }
 }
 
+/** A run document the site refused, with the ONE admission gate's own reason (projection.exclusions). */
+export interface RefusedRun {
+  run: ContextCandidate
+  reason: string
+}
+
+/** The one run order every list in this reader uses: terminal, os, newest first, then run id. */
+function byRunIdOrder(left: ContextCandidate, right: ContextCandidate): number {
+  return (
+    left.terminalId.localeCompare(right.terminalId) ||
+    left.os.localeCompare(right.os) ||
+    right.measuredAt.localeCompare(left.measuredAt) ||
+    left.runId.localeCompare(right.runId)
+  )
+}
+
 export interface Report {
   tier62Ids: string[]
   tier52Ids: string[]
   barRows: BarRow[]
   admittedRuns: ContextCandidate[]
+  refusedRuns: RefusedRun[]
   legacySkipped: number
   rejected: number
   searched: string
@@ -339,6 +361,7 @@ export interface Report {
     unavailableIds: string[]
     barRows: CohortBarRow[]
     admittedRuns: CohortRun[]
+    refusedRuns: RefusedRun[]
   }
 }
 
@@ -409,7 +432,12 @@ export function buildReport(args: {
   const projection = loadCurrentResults(args.contentDir).projection
   const current = Object.entries(projection.current).map(([key, selected]) => candidateFromSelected(key, selected))
   const reviewed = loadDefaultContextPolicy(args.contentDir)
+  // The ONE admission gate decides membership: a run the projection put in `exclusions` was refused
+  // by admitRun(), so it is named as a refusal WITH that reason and never listed as admitted. Nothing
+  // is re-decided here, so the reader can never disagree with the site about the same run document.
+  const refusals = new Map(projection.exclusions.map((entry) => [entry.runId, entry.reason]))
   const admitted: ContextCandidate[] = []
+  const refused: RefusedRun[] = []
   let legacySkipped = 0
   for (const [key, list] of Object.entries(projection.history)) {
     for (const selected of list) {
@@ -421,16 +449,15 @@ export function buildReport(args: {
         continue
       }
       const candidate = candidateFromSelected(key, selected)
-      admitted.push(candidate)
+      // Membership, not truthiness: `undefined` is the only thing that means "the projection did not
+      // refuse this run". A falsy-but-present reason must never be read as an admission.
+      const reason = refusals.get(selected.runId)
+      if (reason === undefined) admitted.push(candidate)
+      else refused.push({ run: candidate, reason })
     }
   }
-  admitted.sort(
-    (left, right) =>
-      left.terminalId.localeCompare(right.terminalId) ||
-      left.os.localeCompare(right.os) ||
-      right.measuredAt.localeCompare(left.measuredAt) ||
-      left.runId.localeCompare(right.runId),
-  )
+  admitted.sort(byRunIdOrder)
+  refused.sort((left, right) => byRunIdOrder(left.run, right.run))
   const tier62Ids = tierOneIds(args.contentDir)
   const tier52Ids = includedTierOneIds(tier62Ids)
   const contexts = args.contexts ?? RELEASE_1_CONTEXTS
@@ -451,6 +478,7 @@ export function buildReport(args: {
     tier52Ids,
     barRows,
     admittedRuns: admitted,
+    refusedRuns: refused,
     legacySkipped,
     rejected: projection.exclusions.length,
     searched: join(args.contentDir, "probes-apps"),
@@ -462,6 +490,7 @@ export function buildReport(args: {
       unavailableIds,
       barRows: barRows.map((row) => cohortRowForSelected(row, cohort)),
       admittedRuns: admitted.map((run) => cohortRun(run, cohort, "admitted")),
+      refusedRuns: refused,
     }
   }
   return report
@@ -636,6 +665,34 @@ export function formatAdmittedRun(run: ContextCandidate, shares: ContextShares):
   )
 }
 
+/** One refused run: the same identity columns as an admitted row, then the gate's own reason. */
+export function formatRefusedRun(run: ContextCandidate, reason: string): string {
+  return (
+    `${run.terminalId} ${run.version || "version not recorded"} ${run.os || "os not recorded"} ${run.runId} · ` +
+    `suite ${run.suiteId} · excluded: ${reason}`
+  )
+}
+
+/**
+ * The refusals as their own section. A run document the site refuses is never folded into the admitted
+ * list, and the section is never omitted when it is empty: "none" tells a reader the site refused
+ * nothing, which an absent section cannot.
+ */
+export function refusedRunsSection(runs: readonly RefusedRun[]): string[] {
+  const lines = [
+    "SITE-EXCLUDED RUNS — every app run this reader measures that the site REFUSES, with the admission gate's own reason",
+  ]
+  if (runs.length === 0) {
+    // Scoped, like the heading: this list covers the app runs this reader measures, so it must not
+    // claim the site admitted EVERY document it read — the projection refuses plenty this reader
+    // never names.
+    lines.push("  none — no app run this reader measures is refused")
+    return lines
+  }
+  for (const entry of runs) lines.push(`  ${formatRefusedRun(entry.run, entry.reason)}`)
+  return lines
+}
+
 export function parseReaderArgs(args: string[]): { cohort: "candidate1" | "candidate2"; terminalIds: string[] } {
   const { values, positionals: terminalIds } = parseArgs({
     args,
@@ -672,7 +729,7 @@ function main(): void {
     )) {
       for (const line of formatCohortRow(row, categories, labelWidth, cohort.unavailableIds)) console.log(line)
     }
-    console.log(`ADMITTED RUNS — every admitted schema-v2 app run in ${report.searched}`)
+    console.log(`ADMITTED RUNS — every schema-v2 app run the site admits in ${report.searched}`)
     for (const row of cohort.admittedRuns) {
       console.log(
         `  ${row.run.terminalId} ${row.run.version} ${row.run.os} ${row.run.runId} · suite ${row.run.suiteId} · ` +
@@ -681,6 +738,7 @@ function main(): void {
             : row.reason),
       )
     }
+    for (const line of refusedRunsSection(cohort.refusedRuns)) console.log(line)
     return
   }
   const contexts = terminalIds.length
@@ -704,7 +762,7 @@ function main(): void {
     for (const line of formatBarRow(row)) console.log(line)
     console.log("")
   }
-  console.log(`ADMITTED RUNS — every admitted schema-v2 app run in ${report.searched}`)
+  console.log(`ADMITTED RUNS — every schema-v2 app run the site admits in ${report.searched}`)
   for (const run of report.admittedRuns) {
     console.log(
       `  ${formatAdmittedRun(run, {
@@ -713,6 +771,7 @@ function main(): void {
       })}`,
     )
   }
+  for (const line of refusedRunsSection(report.refusedRuns)) console.log(line)
 }
 
 if (import.meta.main) main()
