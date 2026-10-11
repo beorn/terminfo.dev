@@ -44,7 +44,7 @@ A PNG generated from a Termless cell grid illustrates the headless state; it is 
 
 For example, [Kitty's keyboard query](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#detection-of-support-for-this-protocol) reports protocol state; key-event encoding needs input tests. A [graphics query](https://sw.kovidgoyal.net/kitty/graphics-protocol/#querying-support-and-available-transmission-mediums) and an actual image capture answer different questions. The [xterm control-sequence reference](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) defines many of the replies used by these probes.
 
-**No reply is inconclusive.** A feature may be unsupported, blocked by a multiplexer or permission, queried incorrectly, or slower than the collection deadline. A policy refusal is also inconclusive, but means the check was deliberately not run in this environment. An explicit negative reply or failed behavioral assertion is stronger evidence. A collection error describes the test run; it is not a terminal failure.
+**No reply is inconclusive.** A feature may be unsupported, blocked by a multiplexer or permission, queried incorrectly, or slower than the collection deadline. Policy-refused is also inconclusive. The record says whether the collector skipped the check or a reviewed interpretation attributes an observed result to the test's permission policy. A terminal reply alone does not establish the cause. An explicit negative reply or failed behavioral assertion is stronger evidence. A collection error describes the test run; it is not a terminal failure.
 
 ## Reading results
 
