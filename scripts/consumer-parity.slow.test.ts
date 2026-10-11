@@ -2,6 +2,7 @@
  * @failure Consumers disagree about admitted runs, unscoped annotations leak into commentary, or malformed metadata silently omits analysis sections.
  * @level l2
  * @consumer Site matrix, terminal paths, v1/v2 API and generated analysis.
+ * @reach fs-walk vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-libs/*.json vendor/terminfo.dev/content/probes-mux/*.json
  * @testonly none
  */
 import { describe, expect, it, vi } from "vitest"
@@ -193,6 +194,159 @@ import categoryPaths from "../docs/[id].paths.ts"
 import featurePaths from "../docs/[category]/[id].paths.ts"
 import { generateApi, assertDeploymentLimits } from "./generate-api.ts"
 import { generateAnalysis } from "./generate-analysis.ts"
+
+it("keeps the retained corpus consistent across unmocked site, API and analysis consumers", () => {
+  // Fixtures above replace selection. Only real retained inputs expose admission/default-context drift.
+  // A separate process uses the existing consumers without inheriting this module's vi.mock registry.
+  const root = join(import.meta.dirname, "..")
+  const out = mkdtempSync(join(tmpdir(), "terminfo-retained-parity-"))
+  const entry = (path: string) => JSON.stringify(join(root, path))
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--eval",
+        `
+      import assert from "node:assert/strict";
+      import { createHash } from "node:crypto";
+      import { readFileSync, readdirSync } from "node:fs";
+      import { join } from "node:path";
+      import { loadCurrentResults, compatibilityTargets } from ${entry("docs/data/current-results.ts")};
+      import { loadFullProbes } from ${entry("docs/data/probes.data.ts")};
+      import probesLoader from ${entry("docs/data/probes.data.ts")};
+      import terminalPaths from ${entry("docs/terminals/[id].paths.ts")};
+      import { generateApi } from ${entry("scripts/generate-api.ts")};
+      import { generateAnalysis } from ${entry("scripts/generate-analysis.ts")};
+      const started = performance.now();
+      const content = ${JSON.stringify(join(root, "content"))};
+      const out = ${JSON.stringify(out)};
+      // Each real loader retains the whole corpus; reclaim prior temporary parse objects between consumers.
+      const { projection } = loadCurrentResults(content);
+      Bun.gc(true);
+      const compatibility = compatibilityTargets(projection, content);
+      assert.ok(Object.keys(projection.current).length > 0, "retained corpus needs an exact current context");
+      assert.ok(compatibility.size > 0, "retained corpus needs a compatibility target");
+      const site = loadFullProbes();
+      Bun.gc(true);
+      const matrix = probesLoader.load();
+      Bun.gc(true);
+      const pages = terminalPaths.paths();
+      Bun.gc(true);
+      const analyses = generateAnalysis();
+      Bun.gc(true);
+      generateApi(out);
+      Bun.gc(true);
+      const v1 = JSON.parse(readFileSync(join(out, "api/v1/data.json"), "utf8"));
+      const v2 = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8"));
+      const keys = (value) => Object.keys(value).sort();
+      const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+      const raw = new Map();
+      for (const dir of ["probes-apps", "probes-libs", "probes-mux"]) {
+        for (const file of readdirSync(join(content, dir)).filter((name) => name.endsWith(".json"))) {
+          const bytes = readFileSync(join(content, dir, file));
+          raw.set(digest(bytes), bytes);
+        }
+      }
+      assert.deepEqual(keys(site.selected.current), keys(projection.current), "site exact contexts");
+      assert.deepEqual(keys(v2.current), keys(projection.current), "v2 exact contexts");
+      assert.deepEqual(keys(site.selectedByBackend), [...compatibility.keys()].sort(), "site compatibility membership");
+      assert.deepEqual(matrix.selectedByBackend, site.selectedByBackend, "matrix uses the full site selection");
+      assert.deepEqual(matrix.stats, site.stats, "matrix conclusive denominators");
+      const fields = ["runId", "target", "measuredAt", "suiteId", "probeHash", "suiteFreshness",
+        "suiteRelation", "suite", "sourceRevision", "sha256", "counts", "notTestedCoverage"];
+      for (const [context, selected] of Object.entries(projection.current)) {
+        for (const field of fields) assert.deepEqual(site.selected.current[context][field], selected[field], context + ": " + field);
+      }
+      const referenced = new Set();
+      for (const group of ["current", "versions", "history"]) {
+        assert.deepEqual(keys(v2[group]), keys(site.selected[group]), group + " membership");
+        for (const [context, value] of Object.entries(site.selected[group])) {
+          const versions = group === "current" ? [value] : value;
+          const refs = group === "current" ? [v2[group][context]] : v2[group][context];
+          assert.equal(refs.length, versions.length, context + " version count");
+          for (const [index, version] of versions.entries()) {
+            const ref = refs[index];
+            for (const field of fields.filter((name) => name !== "notTestedCoverage"))
+              assert.deepEqual(ref[field], version[field], group + " " + context + ": " + field);
+            const bytes = readFileSync(join(out, ref.url.slice(1)));
+            assert.equal(digest(bytes), ref.documentSha256, "generated run document digest");
+            assert.deepEqual(JSON.parse(bytes.toString()), version, "site/v2 run observations and provenance");
+            assert.ok(raw.has(version.sha256), "referenced immutable raw run " + version.sha256);
+            referenced.add(version.sha256);
+          }
+        }
+      }
+      assert.deepEqual(v2.exclusions, site.selected.exclusions, "exclusions remain exclusions");
+      const v1Keys = [];
+      const analysisDigests = [];
+      for (const [key, {contextKey, selected}] of compatibility) {
+        assert.equal(site.selectedByBackend[key].contextKey, contextKey, key + " reviewed context");
+        assert.equal(site.selectedByBackend[key].selected.sha256, selected.sha256, key + " selected digest");
+        const counts = selected.counts;
+        assert.deepEqual({total: matrix.stats[key].total, yes: matrix.stats[key].yes, no: matrix.stats[key].no},
+          {total: counts.conclusive, yes: counts.supported, no: counts.unsupported}, key + " named site counts");
+        const page = pages.find(({params}) => params.backendId === key && params.historical === "false");
+        assert.ok(page, key + " current terminal route");
+        for (const [field, expected] of Object.entries({runSha256: selected.sha256, generated: selected.measuredAt,
+          suiteFreshness: selected.suiteFreshness, total: String(counts.conclusive), yes: String(counts.supported),
+          no: String(counts.unsupported), terminalType: selected.target.kind}))
+          assert.equal(page.params[field], expected, key + " route " + field);
+        if (counts.conclusive > 0) {
+          analysisDigests.push(selected.sha256);
+          const analysis = Object.entries(analyses).find(([path, entry]) => path.startsWith("terminals/") && entry.runSha256 === selected.sha256)?.[1];
+          assert.ok(analysis, key + " current analysis");
+          assert.equal(analysis.measuredAt, selected.measuredAt, key + " analysis time");
+          for (const field of ["conclusive", "supported", "unsupported"])
+            assert.equal(analysis.counts[field], counts[field], key + " analysis " + field);
+        }
+        if (counts.conclusive === 0 || selected.target.kind === "mux") {
+          assert.equal(v1.terminals[key], undefined, key + " documented v1 omission");
+          assert.equal(v1.results[key], undefined, key + " documented v1 omission");
+          assert.equal(v1.methodology.contexts[key], undefined, key + " documented v1 omission");
+          continue;
+        }
+        v1Keys.push(key);
+        assert.equal(v1.methodology.contexts[key].contextKey, contextKey, key + " v1 context");
+        assert.equal(v1.methodology.contexts[key].runSha256, selected.sha256, key + " v1 digest");
+        assert.deepEqual(v1.terminals[key].score, {total: counts.conclusive, pass: counts.supported,
+          pct: Math.round(counts.supported / counts.conclusive * 100)}, key + " v1 conclusive denominator");
+        assert.deepEqual(v1.results[key], Object.fromEntries(Object.entries(selected.v1).map(([id, supported]) => [id, supported ? "yes" : "no"])), key + " lossy v1 values");
+      }
+      assert.deepEqual(keys(v1.terminals), v1Keys.sort(), "v1 membership");
+      assert.deepEqual(keys(v1.results), v1Keys, "v1 result membership");
+      assert.deepEqual(keys(v1.methodology.contexts), v1Keys, "v1 methodology membership");
+      assert.deepEqual(Object.entries(analyses).filter(([path, entry]) => path.startsWith("terminals/") && entry.runSha256)
+        .map(([,entry]) => entry.runSha256).sort(), analysisDigests.sort(), "current analysis membership");
+      for (const [kind, id] of [["app", "kitty"], ["headless", "kitty"], ["headless", "xtermjs"]])
+        assert.ok(Object.values(projection.current).some((run) => run.target.kind === kind && run.target.id === id), kind + ":" + id + " distinct retained context");
+      console.log(JSON.stringify({exactContexts: keys(projection.current).length, compatibilityTargets: compatibility.size,
+        referencedRuns: referenced.size, muxContexts: Object.values(projection.current).filter((run) => run.target.kind === "mux").length,
+        milliseconds: performance.now() - started}));
+    `,
+      ],
+      { cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 2 * 1024 * 1024 },
+    )
+    expect(result.error).toBeUndefined()
+    expect(result.status, result.stderr).toBe(0)
+    // Missing conclusive measurements are expected and remain open, including real tmux/screen proof.
+    expect(
+      result.stderr
+        .split("\n")
+        .filter(Boolean)
+        .every((line) => /^Warning: Terminal '.+' has no reviewed current conclusive results$/.test(line)),
+    ).toBe(true)
+    const receipt = JSON.parse(result.stdout) as {
+      exactContexts: number
+      compatibilityTargets: number
+      referencedRuns: number
+    }
+    expect(receipt.exactContexts).toBeGreaterThan(0)
+    expect(receipt.compatibilityTargets).toBeGreaterThan(0)
+    expect(receipt.referencedRuns).toBeGreaterThan(0)
+  } finally {
+    rmSync(out, { recursive: true, force: true })
+  }
+}, 65_000)
 
 it("analysis rejects malformed required catalogs before replacing its output", () => {
   const out = mkdtempSync(join(tmpdir(), "terminfo-analysis-metadata-"))
