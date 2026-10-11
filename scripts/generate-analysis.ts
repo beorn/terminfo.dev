@@ -4,7 +4,7 @@
  *
  * Reads measured probe results + curated editorial content,
  * cross-validates everything, computes stats, generates analysis text,
- * and writes content/analysis.json.
+ * and writes derived content/analysis.json (gitignored; bun run build writes it).
  *
  * Usage:
  *   bun scripts/generate-analysis.ts              # Generate analysis.json
@@ -1348,10 +1348,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   try {
     const analysis = generateAnalysis()
-    const result = {
-      $generated: new Date().toISOString(),
-      ...analysis,
-    }
+    const result = analysis
 
     const outputPath = join(contentDir, "analysis.json")
     const entryCount = Object.keys(analysis).length

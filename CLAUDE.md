@@ -131,7 +131,6 @@ against the live snapshot when this tree's suite is declared.
 | `categories.json`  | Category metadata: label, order, description                      | ~13     |
 | `annotations.json` | Result overrides: backend:feature notes explaining failures       | ~88     |
 | `baselines.json`   | Baseline tier metadata: label, emoji, color, description          | 4       |
-| `analysis.json`    | AI-generated commentary per page (regenerate with `bun analysis`) | ~43     |
 
 ### Derived: Build-Time Computation
 
@@ -142,7 +141,7 @@ against the live snapshot when this tree's suite is declared.
 - Feature groupings by category and tag
 - Backend metadata (merged from content/terminals.json + @termless/core manifest)
 
-`docs/data/load-probes.ts` — shared helpers: slugs, labels, tag resolution.
+`docs/data/load-probes.ts` — shared helpers: slugs, labels, tag resolution. `content/analysis.json` is derived at `bun run build` (and `bun analysis`); it is not tracked.
 
 ## Commands
 
@@ -212,8 +211,8 @@ bun terminfo probe here --json            # Machine-readable output
 #### Analysis
 
 ```bash
-bun analysis                              # Regenerate content/analysis.json from current probe data
-bun analysis:validate                     # Validate existing analysis against current data
+bun analysis                              # Write derived content/analysis.json (also the first step of bun run build)
+bun analysis:validate                     # Compare a local analysis.json against regenerated canonical values
 bun analysis --dry-run                    # Preview without writing
 ```
 
@@ -265,14 +264,12 @@ When probe data changes (new terminals, new features, updated results):
 bun terminfo probe termless --all        # 1. Run headless probes
 bun terminfo probe app --all             # 2. Run app probes (or probe server --all)
 bun terminfo probe mux --all             # 3. Run multiplexer probes
-bun analysis                             # 4. Regenerate analysis commentary
-bun run build                            # 5. Build site + emit API/badges into ignored docs/.vitepress/dist/
-git add -A && git commit && git push     # 6. Deploy
+bun run build                            # 4. Generate analysis.json, then build site + emit API/badges into ignored docs/.vitepress/dist/
+git add -A && git commit && git push     # 5. Deploy
 ```
 
-**Only run `bun analysis` when probe data changed.** It reads result files and generates
-template-based commentary with real numbers. The build just uses whatever `analysis.json`
-exists — it doesn't regenerate automatically.
+`bun run build` regenerates `content/analysis.json` from probe data and fails if generation fails.
+Do not commit that file.
 
 **Annotations are required for failures.** If probes produce new failures, `bun terminfo probe`
 will exit with an error listing unannotated failures. Add explanations to
