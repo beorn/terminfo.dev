@@ -17,8 +17,14 @@ import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs"
 import { build } from "vitepress"
-import { installRenderPhaseHook, peakBreachMessage, peakCeilingBytes, startPeakGuard } from "./build-peak-guard.ts"
-import { siteTempDir } from "./site-out.ts"
+import {
+  installRenderPhaseHook,
+  invalidateBuildStamp,
+  peakBreachMessage,
+  peakCeilingBytes,
+  startPeakGuard,
+} from "./build-peak-guard.ts"
+import { siteDistDir, siteTempDir } from "./site-out.ts"
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const tempDir = siteTempDir()
@@ -63,7 +69,15 @@ const ceilingBytes = peakCeilingBytes()
 const guard = startPeakGuard({
   ceilingBytes,
   onBreach(breach) {
+    // The build's own buildEnd may already have stamped the dist; a stamp left behind is a dist the NEXT start would
+    // serve without rebuilding. Remove it, so a breached output is never served (28662 AC3).
+    const invalidated = invalidateBuildStamp(siteDistDir(repoRoot))
     console.error(peakBreachMessage({ ...breach, ceilingBytes }))
+    console.error(
+      invalidated.length === 0
+        ? "site-build: the breach came before any served stamp existed; nothing to invalidate"
+        : `site-build: removed the served stamp (${invalidated.join(", ")}), so this output is never served`,
+    )
     // The build owns a scratch root, not the served dist: a half-built output is never served, because landed-serve
     // refuses the output of a failed build and the health probe keeps answering `starting` until it is rebuilt.
     process.exit(1)

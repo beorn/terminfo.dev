@@ -5,9 +5,13 @@
  * @testonly none
  */
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   DEFAULT_PEAK_CEILING_BYTES,
   PEAK_CEILING_ENV,
+  invalidateBuildStamp,
   peakBreachMessage,
   peakCeilingBytes,
   installRenderPhaseHook,
@@ -144,5 +148,25 @@ describe("installRenderPhaseHook", () => {
     expect(config.transformHtml).toBe(own)
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toMatch(/stays `bundles`/)
+  })
+})
+
+describe("invalidateBuildStamp", () => {
+  it("removes both served stamps, so a breached output cannot be served by a later start", () => {
+    const dist = mkdtempSync(join(tmpdir(), "peak-guard-dist-"))
+    try {
+      mkdirSync(join(dist, "api", "v1"), { recursive: true })
+      writeFileSync(join(dist, "build.json"), "{}\n")
+      writeFileSync(join(dist, "api", "v1", "build.json"), "{}\n")
+      expect(invalidateBuildStamp(dist).sort()).toEqual(["api/v1/build.json", "build.json"])
+      expect(existsSync(join(dist, "build.json"))).toBe(false)
+      expect(existsSync(join(dist, "api", "v1", "build.json"))).toBe(false)
+      // A breach before the build wrote any stamp removes nothing, and does not throw.
+      expect(invalidateBuildStamp(dist)).toEqual([])
+    } finally {
+      // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
+      // unavailable; `dist` is this test's own mkdtemp scratch root
+      rmSync(dist, { recursive: true, force: true })
+    }
   })
 })

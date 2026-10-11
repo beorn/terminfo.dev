@@ -11,6 +11,9 @@
  * The ceiling is a declared value with an environment override, so a test can drive it below the ceiling's real
  * magnitude; an override that is not a positive byte count is refused loudly rather than ignored.
  */
+import { existsSync, rmSync } from "node:fs"
+import { join } from "node:path"
+
 export const DEFAULT_PEAK_CEILING_BYTES = 13 * 1024 ** 3
 export const PEAK_CEILING_ENV = "TERMINFO_SITE_PEAK_CEILING_BYTES"
 export const DEFAULT_SAMPLE_MS = 500
@@ -152,4 +155,27 @@ export function installRenderPhaseHook(
     return
   }
   warn("site-build: the site config defines transformHtml; the peak guard's phase stays `bundles` for the render")
+}
+
+/**
+ * Remove the served build stamps, so no later start can serve the output of a build that breached the ceiling.
+ *
+ * `landed-serve` calls a dist current when its own `/build.json` names this checkout's revision, and the stamp is
+ * written by the build's `buildEnd` — near the END of the build. A breach after that point would otherwise leave a
+ * complete, stamped dist that the next start (a restart-at-promotion, or the restart after the readiness failure)
+ * happily serves: the very silent swap this guard exists to prevent. Removing the stamp makes that start rebuild.
+ *
+ * Absent stamps are not an error: a breach before `buildEnd` has nothing to remove, and the dist carries no proof of
+ * freshness either way. Returns the stamps it removed, for the failure line.
+ */
+export function invalidateBuildStamp(distDir: string): string[] {
+  const removed: string[] = []
+  for (const relative of ["build.json", join("api", "v1", "build.json")]) {
+    const path = join(distDir, relative)
+    if (existsSync(path)) {
+      rmSync(path, { force: true })
+      removed.push(relative)
+    }
+  }
+  return removed
 }
