@@ -1020,47 +1020,52 @@ test("app cursor hide refuses invalid geometry or absent capture before fixture 
   expect((await byId("cursor.hide").term!(context)).observation?.evidence).toBe("none")
 })
 
-test("cup-scroll-region capture marks physical rows while the relative CPR stays ungraded", async () => {
+test("cup-scroll-region capture refuses before painting when the grid or the pixel report cannot decide", async () => {
   const probe = byId("cursor.cup-scroll-region")
-  const writes: string[] = []
-  const frames: Array<{ role: string; label: string; capturedAt: number; ref: string }> = []
-  const context = {
+  // The verdict reads the physical row the region top lands on, witnessed on row 1, so the spec's
+  // floor is 16x3; below it the refusal is a zero-byte "none" and no marker fixture is painted.
+  const short: string[] = []
+  const tiny = {
     ...app({ row: 5, col: 1 }),
     rows: 15,
     cols: 6,
-    write: (sequence: string) => writes.push(sequence),
-    capture: async ({ role, label }: { role: "control" | "target"; label: string }) => {
-      const frame = {
-        role,
-        label,
-        capturedAt: frames.length + 1,
-        ref: `sha256:${String(frames.length + 1).repeat(64)}`,
-      }
-      frames.push(frame)
-      return frame
-    },
+    write: (sequence: string) => short.push(sequence),
+    capture: async ({ role, label }: { role: "control" | "target"; label: string }) => ({
+      role,
+      label,
+      capturedAt: 1,
+      ref: "never",
+    }),
   } as TermContext
-  const result = await probe.term!(context)
-  expect(writes).toContain("\x1b[5;15r")
-  expect(writes).toContain("\x1b[?6h")
-  expect(writes.slice(-3)).toEqual(["\x1b[?6l", "\x1b[r", "\x1b[0m\x1b[2J\x1b[H"])
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
-  expect(JSON.parse(result.response ?? "")).toMatchObject({
-    region: "5-15",
-    cursorMarkers: ["1;1", "11;1"],
-    relativeCpr: { row: 5, col: 1 },
-    control: "Physical row markers R01/R05/R15 with no DECOM or scroll region",
-    target: "DECOM region rows 5-15: marker < at CUP 1;1 and > at CUP 11;1",
+  expect((await probe.term!(tiny)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
   })
-  expect(result.pass).toBe(false)
+  expect(short).toEqual([])
+  // At the floor with a capture adapter but no pixel report the verdict has already queried and
+  // cannot map cells onto the window: a named "query" refusal, still no paint.
+  const unpainted: string[] = []
+  const noReport = {
+    ...app({ row: 5, col: 1 }),
+    rows: 16,
+    cols: 6,
+    write: (sequence: string) => unpainted.push(sequence),
+    capture: async ({ role, label }: { role: "control" | "target"; label: string }) => ({
+      role,
+      label,
+      capturedAt: 1,
+      ref: "never",
+    }),
+  } as TermContext
+  const result = await probe.term!(noReport)
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "pixels",
-    frames,
-    screenshotRef: frames[1]?.ref,
+    evidence: "query",
   })
-  expect(result.assertions).toBeUndefined()
+  expect(String(result.observation?.note)).toContain("CSI 16 t")
+  expect(unpainted).toEqual([])
 })
 
 test("cup-scroll-region capture refuses a narrow terminal before any bytes", async () => {

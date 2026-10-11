@@ -55,12 +55,14 @@ function harness(mode: Mode): Harness {
   let captures = 0
   let measured = 0
   let witnessVersion = 0
-  const witnessCell = { top: 3, left: 1, bottom: 3, right: 1 }
+  // Every compared region in this suite spans more than one cell, so a single-cell request is
+  // always the reserved paint witness: the stability pair, a baseline, or the glyph read itself.
+  // Deriving the cell from the request keeps this harness valid for any spec's sentinel, not only
+  // the row-3-column-1 sentinel the first two specs happened to use.
   const isWitness = (request: CaptureRequest) =>
-    request.cells?.top === witnessCell.top &&
-    request.cells?.left === witnessCell.left &&
-    request.cells?.bottom === witnessCell.bottom &&
-    request.cells?.right === witnessCell.right
+    request.cells !== undefined &&
+    request.cells.top === request.cells.bottom &&
+    request.cells.left === request.cells.right
 
   const capture = async (request: CaptureRequest): Promise<ObservationFrame> => {
     captures += 1
@@ -108,7 +110,7 @@ function harness(mode: Mode): Harness {
     write(text) {
       trace.writes.push(text)
       // The witness glyph is the only write that repaints the terminal in this model.
-      if (/^\u001b\[3;1H[0-9]$/.test(text)) witnessVersion += 1
+      if (/^\u001b\[\d+;\d+H[0-9]$/.test(text)) witnessVersion += 1
     },
     queryCursorPosition: async () => null,
     measureRenderedWidth: async () => null,
@@ -272,3 +274,61 @@ test("charsets.dec-special deciding capture readback seals a pixels verdict the 
   const loaded = parse(run, feature)
   expect(loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
 })
+
+/**
+ * 28450 slice C: every remaining region-readback row must decide the same way through the same
+ * harness. A capture adapter that repaints the witness cell and reads the seed, the target and the
+ * plain expected frame seals a pixels verdict the raw-run contract admits. Each id is listed BY
+ * NAME, so a row that loses its spec or its wiring fails here rather than as a silently smaller
+ * count in a census taken later.
+ */
+const SLICE_C_READBACK_IDS = [
+  "editing.insert-chars",
+  "editing.insert-lines",
+  "editing.delete-lines",
+  "editing.repeat-char",
+  "editing.decfra",
+  "editing.decera",
+  "editing.decsera",
+  "editing.deccra",
+  "editing.deccara",
+  "editing.decrara",
+  "editing.sl",
+  "editing.sr",
+  "editing.decic",
+  "editing.decdc",
+  "erase.line.right",
+  "erase.line.left",
+  "erase.line.all",
+  "erase.screen.below",
+  "erase.screen.above",
+  "erase.screen.all",
+  "erase.selective",
+  "erase.el-with-attrs",
+  "erase.ed-scroll-region",
+  "charsets.utf8",
+  "charsets.g0-g1-switching",
+  "charsets.dec-line-drawing",
+  "text.overwrite",
+  "text.reverse-index-scroll",
+  "cursor.cup-scroll-region",
+  "scrollback.reverse-index",
+  "scrollback.scroll-up",
+  "scrollback.scroll-down",
+  "scrollback.set-region",
+]
+
+for (const feature of SLICE_C_READBACK_IDS) {
+  test(`${feature}: a deciding capture readback seals a pixels verdict the raw-run contract admits`, async () => {
+    const { result, run } = await drive("deciding", feature)
+    expect(result.observation?.outcome, feature).toBe("supported")
+    expect(result.observation?.evidence, feature).toBe("pixels")
+    expect(result.observation?.frames?.length ?? 0, feature).toBeGreaterThanOrEqual(2)
+    expect(() => parse(run, feature), feature).not.toThrow()
+    const loaded = parse(run, feature)
+    expect(
+      loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined),
+      feature,
+    ).toBe(true)
+  })
+}

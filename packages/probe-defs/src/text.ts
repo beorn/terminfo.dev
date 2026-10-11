@@ -1,5 +1,38 @@
 import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { isBlank, parserStateResult, probe, unmeasuredCellResult } from "./helpers.ts"
+import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+
+/**
+ * The measured readback for the two text rows that capture an owned window. Same three-frame shape
+ * as the editing specs: seed, the sequence applied on top of it, and the frame it must leave,
+ * written PLAINLY in the same run, so the app path decides from its own cells.
+ */
+const TEXT_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
+  "text.overwrite": {
+    region: { top: 1, left: 1, bottom: 1, right: 2 },
+    sentinel: { row: 3, col: 1 },
+    cursorRow: 2,
+    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAB\x1b[2;1H",
+    edit: "\x1b[1;2HX\x1b[2;1H",
+    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAX\x1b[2;1H",
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: 3,
+    minCols: 3,
+  },
+  "text.reverse-index-scroll": {
+    region: { top: 1, left: 1, bottom: 2, right: 7 },
+    sentinel: { row: 7, col: 1 },
+    cursorRow: 6,
+    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;5r\x1b[1;1HMARKER\x1b[6;1H",
+    edit: "\x1b[1;1H\x1bM\x1b[r\x1b[6;1H",
+    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[2;1HMARKER\x1b[6;1H",
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: 8,
+    minCols: 8,
+  },
+}
 
 /** Each tab probe owns its stops; the app runner supplies a disposable terminal fixture. */
 function installTabFixture(write: (sequence: string) => void): void {
@@ -758,6 +791,11 @@ export const textProbes: ProbeDefinition[] = [
         if (capture) {
           const refusal = tooSmall(ctx, 1, 3)
           if (refusal) return refusal
+          const readback = TEXT_READBACK_SPECS["text.overwrite"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "text.overwrite", readback)
+            if (verdict) return verdict
+          }
           try {
             ctx.write("\x1b[0m\x1b[1;1H\x1b[2K")
             ctx.write("AB")
@@ -1066,6 +1104,11 @@ export const textProbes: ProbeDefinition[] = [
         if (capture) {
           const refusal = tooSmall(ctx, 10, 7)
           if (refusal) return refusal
+          const readback = TEXT_READBACK_SPECS["text.reverse-index-scroll"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "text.reverse-index-scroll", readback)
+            if (verdict) return verdict
+          }
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
             ctx.write("\x1b[3;10r") // scroll region rows 3-10

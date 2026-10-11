@@ -1,5 +1,24 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { cursorProbe, cursorStyleReadbackDecision, parserStateResult, probe } from "./helpers.ts"
+import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+
+/**
+ * CUP inside a DECSTBM region with DECOM on is region-relative, so the marker must land on the
+ * physical row the region starts at. This is a painted glyph on a physical row, not CPR: CPR stays
+ * region-relative under DECOM and cannot place the cell. Same three-frame shape as the editing specs.
+ */
+const CURSOR_CUP_SCROLL_REGION_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 5, left: 1, bottom: 5, right: 2 },
+  sentinel: { row: 1, col: 1 },
+  cursorRow: 16,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[16;1H",
+  edit: "\x1b[5;15r\x1b[?6h\x1b[1;1H<\x1b[?6l\x1b[r\x1b[16;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[5;1H<\x1b[16;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 16,
+  minCols: 3,
+}
 
 function headlessPosition(ctx: TermlessContext, row: number, col: number): ProbeResult {
   const cursor = ctx.getCursor()
@@ -995,6 +1014,8 @@ export const cursorProbes: ProbeDefinition[] = [
           }
         }
         if (ctx.capture) {
+          const verdict = await captureRegionVerdict(ctx, "cursor.cup-scroll-region", CURSOR_CUP_SCROLL_REGION_READBACK)
+          if (verdict) return verdict
           try {
             // Control: label physical rows 1, 5 and 15 with no scroll region or origin mode, and
             // reset DECOM and margins explicitly so a carried-in mode cannot contaminate the control.

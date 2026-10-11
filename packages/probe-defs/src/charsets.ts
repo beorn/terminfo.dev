@@ -16,6 +16,56 @@ const DEC_SPECIAL_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   minCols: 6,
 }
 
+/**
+ * The measured readback for the remaining charset rows: the same three-frame shape as
+ * DEC_SPECIAL_READBACK, with the expected frame written PLAINLY in the same run. The claims match
+ * the termless fixtures beside the probes, so the app and parser-state paths grade one effect.
+ */
+const UTF8_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 5 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1HAxy?Z\x1b[2;1H",
+  edit: "\x1b[1;2H\u00e9\x1b[1;3H\u4e16\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1HA\u00e9\u4e16Z\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 6,
+}
+
+const G0_G1_SWITCHING_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 5 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1HAlllZ\x1b[2;1H",
+  edit: "\x1b[1;2H\x1b(B\x1b)0l\x0el\x0fl\x0f\x1b(B\x1b)B\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1HAl\u250clZ\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 6,
+}
+
+const DEC_LINE_DRAWING_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 7 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1Hjklmqxj\x1b[2;1H",
+  edit: "\x1b[1;1H\x1b(0jklmqx\x1b(B\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1H\u2518\u2510\u250c\u2514\u2500\u2502j\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 8,
+}
+
+const CHARSET_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
+  "charsets.utf8": UTF8_READBACK,
+  "charsets.g0-g1-switching": G0_G1_SWITCHING_READBACK,
+  "charsets.dec-line-drawing": DEC_LINE_DRAWING_READBACK,
+}
+
 export const charsetsProbes: ProbeDefinition[] = [
   {
     ...probe(
@@ -221,6 +271,11 @@ export const charsetsProbes: ProbeDefinition[] = [
               },
             }
           }
+          const readback = CHARSET_READBACK_SPECS["charsets.utf8"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "charsets.utf8", readback)
+            if (verdict) return verdict
+          }
           try {
             ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
             // A??Z puts the right flank on col 4, outside the two-cell U+4E16 sample at cols 2-3,
@@ -367,6 +422,11 @@ export const charsetsProbes: ProbeDefinition[] = [
               },
             }
           }
+          const readback = CHARSET_READBACK_SPECS["charsets.g0-g1-switching"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "charsets.g0-g1-switching", readback)
+            if (verdict) return verdict
+          }
           try {
             ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
             ctx.write("\x1b[1;1H     \x1b[1;1HAlllZ")
@@ -508,6 +568,11 @@ export const charsetsProbes: ProbeDefinition[] = [
                 note: `Charset capture fixture needs at least 4x7, measured ${rows}x${cols}`,
               },
             }
+          }
+          const readback = CHARSET_READBACK_SPECS["charsets.dec-line-drawing"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "charsets.dec-line-drawing", readback)
+            if (verdict) return verdict
           }
           try {
             ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")

@@ -195,9 +195,212 @@ const DELETE_CHARS_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   minCols: 9,
 }
 
+/**
+ * The measured readback for the remaining editing rows. Each spec has the same three-frame shape as
+ * DELETE_CHARS_READBACK: a seed frame, the sequence applied on top of it, and the frame that
+ * sequence must leave, written PLAINLY in the same run. The expected frame restates the claim the
+ * termless fixture beside the probe already asserts, so both paths grade the same effect; a
+ * terminal whose edit lands anywhere else reads inconclusive BY NAME, never unsupported.
+ */
+const INSERT_CHARS_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 9 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEZQH\x1b[2;1H",
+  edit: "\x1b[1;3H\x1b[1@\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAB CDEZQH\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 10,
+}
+
+const INSERT_LINES_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 4, right: 5 },
+  sentinel: { row: 6, col: 1 },
+  cursorRow: 5,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD\x1b[5;1H",
+  edit: "\x1b[2;1H\x1b[1L\x1b[5;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAAAAA\x1b[2;1H     \x1b[3;1HBBBBB\x1b[4;1HCCCCC\x1b[5;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 6,
+  minCols: 6,
+}
+
+const DELETE_LINES_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 4, right: 5 },
+  sentinel: { row: 6, col: 1 },
+  cursorRow: 5,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD\x1b[5;1H",
+  edit: "\x1b[2;1H\x1b[1M\x1b[5;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAAAAA\x1b[2;1HCCCCC\x1b[3;1HDDDDD\x1b[4;1H     \x1b[5;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 6,
+  minCols: 6,
+}
+
+const REPEAT_CHAR_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 6 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAX   Z\x1b[2;1H",
+  edit: "\x1b[1;2HX\x1b[3b\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAXXXXZ\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 7,
+}
+
+const DECFRA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 3, right: 6 },
+  sentinel: { row: 5, col: 1 },
+  cursorRow: 4,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW\x1b[4;1H",
+  edit: "\x1b[1;1H\x1b[88;1;1;3;5$x\x1b[4;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HXXXXXZ\x1b[2;1HXXXXXY\x1b[3;1HXXXXXW\x1b[4;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 5,
+  minCols: 7,
+}
+
+const DECERA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 3, right: 6 },
+  sentinel: { row: 5, col: 1 },
+  cursorRow: 4,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccX\x1b[4;1H",
+  edit: "\x1b[1;1H\x1b[1;1;3;5$z\x1b[4;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H     Z\x1b[2;1H     Y\x1b[3;1H     X\x1b[4;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 5,
+  minCols: 7,
+}
+
+const DECSERA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 6 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: '\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[1"qP\x1b[0"qABCDZ\x1b[2;1H',
+  edit: "\x1b[1;1H\x1b[1;1;1;5${\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HP    Z\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 7,
+}
+
+const DECCRA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 5, left: 10, bottom: 6, right: 14 },
+  sentinel: { row: 8, col: 1 },
+  cursorRow: 7,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDE\x1b[2;1HFGHIJ\x1b[5;1H.........12345\x1b[6;1H.........67890\x1b[7;1H",
+  edit: "\x1b[1;1H\x1b[1;1;2;5;1;5;10$v\x1b[7;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[5;10HABCDE\x1b[6;10HFGHIJ\x1b[7;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 8,
+  minCols: 15,
+}
+
+const DECCARA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 5 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HaaaaaZ\x1b[2;1H",
+  edit: "\x1b[1;1H\x1b[1;1;1;5;7$r\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[7maaaaa\x1b[0mZ\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 7,
+}
+
+const DECRARA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 5 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[7maaaaa\x1b[0mZ\x1b[2;1H",
+  edit: "\x1b[1;1H\x1b[1;1;1;5;7$t\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HaaaaaZ\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 7,
+}
+
+const SL_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 2, right: 9 },
+  sentinel: { row: 4, col: 1 },
+  cursorRow: 3,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR\x1b[3;1H",
+  edit: "\x1b[1;1H\x1b[2 @\x1b[3;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HCDEFGHI  \x1b[2;1HLMNOPQR  \x1b[3;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 5,
+  minCols: 10,
+}
+
+const SR_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 2, right: 9 },
+  sentinel: { row: 4, col: 1 },
+  cursorRow: 3,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR\x1b[3;1H",
+  edit: "\x1b[1;1H\x1b[2 A\x1b[3;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H  ABCDEFG\x1b[2;1H  JKLMNOP\x1b[3;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 5,
+  minCols: 10,
+}
+
+const DECIC_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 3, right: 8 },
+  sentinel: { row: 5, col: 1 },
+  cursorRow: 4,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEFGH\x1b[2;1HIJKLMNOP\x1b[3;1HQRSTUVWX\x1b[4;1H",
+  edit: "\x1b[2;3H\x1b[2'}\x1b[4;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAB  CDEF\x1b[2;1HIJ  KLMN\x1b[3;1HQR  STUV\x1b[4;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 6,
+  minCols: 9,
+}
+
+const DECDC_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 3, right: 8 },
+  sentinel: { row: 5, col: 1 },
+  cursorRow: 4,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEFGHIJ\x1b[2;1HIJKLMNOPQR\x1b[3;1HQRSTUVWXab\x1b[4;1H",
+  edit: "\x1b[2;3H\x1b[2'~\x1b[4;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABEFGHIJ\x1b[2;1HIJMNOPQR\x1b[3;1HQRUVWXab\x1b[4;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 6,
+  minCols: 12,
+}
+
 /** Rows whose collector path can decide from the owned window's cells, with the same helper. */
 const EDITING_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
+  "editing.insert-chars": INSERT_CHARS_READBACK,
   "editing.delete-chars": DELETE_CHARS_READBACK,
+  "editing.insert-lines": INSERT_LINES_READBACK,
+  "editing.delete-lines": DELETE_LINES_READBACK,
+  "editing.repeat-char": REPEAT_CHAR_READBACK,
+  "editing.decfra": DECFRA_READBACK,
+  "editing.decera": DECERA_READBACK,
+  "editing.decsera": DECSERA_READBACK,
+  "editing.deccra": DECCRA_READBACK,
+  "editing.deccara": DECCARA_READBACK,
+  "editing.decrara": DECRARA_READBACK,
+  "editing.sl": SL_READBACK,
+  "editing.sr": SR_READBACK,
+  "editing.decic": DECIC_READBACK,
+  "editing.decdc": DECDC_READBACK,
 }
 
 async function editCapture(ctx: TermContext, id: string): Promise<ProbeResult> {

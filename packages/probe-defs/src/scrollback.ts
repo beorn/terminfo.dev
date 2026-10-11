@@ -1,5 +1,63 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { probe, isBlank, parserStateResult } from "./helpers.ts"
+import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+
+/**
+ * The measured readback for the scrollback rows the VIEWPORT can actually see. Same three-frame
+ * shape as the editing specs: seed, the sequence applied on top of it, and the frame it must
+ * leave, written PLAINLY in the same run. History-buffer cells that leave the window are not in
+ * any of these regions; they stay named unavailable, never graded as a terminal failure.
+ */
+const SCROLLBACK_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
+  "scrollback.reverse-index": {
+    region: { top: 1, left: 1, bottom: 3, right: 1 },
+    sentinel: { row: 5, col: 1 },
+    cursorRow: 6,
+    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC\x1b[6;1H",
+    edit: "\x1b[H\x1bM\x1b[6;1H",
+    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[2;1HA\x1b[3;1HB\x1b[6;1H",
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: 7,
+    minCols: 2,
+  },
+  "scrollback.scroll-up": {
+    region: { top: 2, left: 1, bottom: 4, right: 1 },
+    sentinel: { row: 7, col: 1 },
+    cursorRow: 6,
+    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC\x1b[4;1HD\x1b[5;1HE\x1b[2;4r\x1b[6;1H",
+    edit: "\x1b[2;1H\x1b[S\x1b[r\x1b[6;1H",
+    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HA\x1b[2;1HC\x1b[3;1HD\x1b[5;1HE\x1b[6;1H",
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: 8,
+    minCols: 2,
+  },
+  "scrollback.scroll-down": {
+    region: { top: 1, left: 1, bottom: 3, right: 5 },
+    sentinel: { row: 6, col: 1 },
+    cursorRow: 5,
+    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HLINE1\x1b[2;1HLINE2\x1b[3;1HLINE3\x1b[5;1H",
+    edit: "\x1b[H\x1b[T\x1b[5;1H",
+    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[2;1HLINE1\x1b[3;1HLINE2\x1b[5;1H",
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: 7,
+    minCols: 6,
+  },
+  "scrollback.set-region": {
+    region: { top: 1, left: 1, bottom: 7, right: 1 },
+    sentinel: { row: 12, col: 1 },
+    cursorRow: 11,
+    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HFIXED\x1b[5;1HA\x1b[6;1HB\x1b[7;1HC\x1b[11;1H",
+    edit: "\x1b[5;10r\x1b[10;1H\n\x1b[r\x1b[11;1H",
+    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HFIXED\x1b[5;1HB\x1b[6;1HC\x1b[11;1H",
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: 13,
+    minCols: 2,
+  },
+}
 
 function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeResult | undefined {
   if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
@@ -285,6 +343,11 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (capture) {
           const refusal = tooSmall(ctx, 5, 3)
           if (refusal) return refusal
+          const readback = SCROLLBACK_READBACK_SPECS["scrollback.scroll-up"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "scrollback.scroll-up", readback)
+            if (verdict) return verdict
+          }
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
             for (const [row, marker] of ["A", "B", "C", "D", "E"].entries()) {
@@ -355,6 +418,11 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (capture) {
           const refusal = tooSmall(ctx, 3, 3)
           if (refusal) return refusal
+          const readback = SCROLLBACK_READBACK_SPECS["scrollback.reverse-index"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "scrollback.reverse-index", readback)
+            if (verdict) return verdict
+          }
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
             ctx.write("A\r\nB\r\nC")
@@ -420,6 +488,11 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (capture) {
           const refusal = tooSmall(ctx, 3, 5)
           if (refusal) return refusal
+          const readback = SCROLLBACK_READBACK_SPECS["scrollback.scroll-down"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "scrollback.scroll-down", readback)
+            if (verdict) return verdict
+          }
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
             ctx.write("LINE1\r\nLINE2\r\nLINE3")
@@ -512,6 +585,11 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (capture) {
           const refusal = tooSmall(ctx, 10, 6)
           if (refusal) return refusal
+          const readback = SCROLLBACK_READBACK_SPECS["scrollback.set-region"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "scrollback.set-region", readback)
+            if (verdict) return verdict
+          }
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
             ctx.write("\x1b[1;1HFIXED")

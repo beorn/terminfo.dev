@@ -65,35 +65,24 @@ function find(id: string): ProbeDefinition {
   return definition
 }
 
-/** Rows whose collector path decides from the owned window's cells instead of the pixel frames. */
-const READBACK_IDS = new Set(["editing.delete-chars"])
-
-test("every editing capture probe records a pre-edit control and a post-edit target", async () => {
+/**
+ * 28450 slice C moved every editing capture row onto the region verdict, so the ungraded
+ * pre-edit-control/post-edit-target pixel pair is no longer reachable for any of them. The decision
+ * itself is asserted per id by `region-readback-contract.test.ts`; what stays unique to this file is
+ * the guard behaviour, asserted below.
+ */
+test("every editing capture row asks the terminal's pixel report before painting", async () => {
   for (const id of CAPTURE_IDS) {
-    // The readback-governed row is asserted on its own below: it no longer takes the pixel path.
-    if (READBACK_IDS.has(id)) continue
     const { context, writes, frames } = captureContext(24, 80)
     const result = await find(id).term!(context)
     expect(result.observation, id).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "pixels",
+      evidence: "query",
     })
-    expect(
-      frames.map(({ role }) => role),
-      id,
-    ).toEqual(["control", "target"])
-    expect(frames[0]?.label, id).toContain("pre-edit seed")
-    expect(frames[0]?.label, id).toContain(id)
-    expect(frames[1]?.label, id).toBe(id)
-    expect(writes[0], id).toBe("\x1b[0m\x1b[2J")
-    expect(writes.length, id).toBeGreaterThanOrEqual(3)
-    expect(result.observation?.frames, id).toHaveLength(2)
-    const response = JSON.parse(String(result.response)) as {
-      region: { row: number; col: number; rows: number; cols: number }
-    }
-    expect(response.region.rows, id).toBeGreaterThanOrEqual(1)
-    expect(response.region.cols, id).toBeGreaterThanOrEqual(1)
+    expect(String(result.observation?.note), id).toContain("CSI 16 t")
+    expect(frames, id).toEqual([])
+    expect(writes, id).toEqual([])
   }
 })
 
@@ -195,7 +184,7 @@ test("an undersized terminal refuses an editing capture before writing", async (
 })
 
 test("a seed at the very edge refuses so it cannot wrap or scroll the captured region", async () => {
-  // insert-chars draws eight columns on one row; the guard's margin requires 2x10.
+  // insert-chars paints a nine-column row with the witness on row 3, so the spec's floor is 3x10.
   const tight = captureContext(1, 8)
   expect((await find("editing.insert-chars").term!(tight.context)).observation).toMatchObject({
     outcome: "inconclusive",
@@ -204,9 +193,22 @@ test("a seed at the very edge refuses so it cannot wrap or scroll the captured r
   })
   expect(tight.writes).toEqual([])
   const margins = captureContext(2, 10)
-  const result = await find("editing.insert-chars").term!(margins.context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
-  expect(margins.frames.map(({ role }) => role)).toEqual(["control", "target"])
+  const refused = await find("editing.insert-chars").term!(margins.context)
+  expect(refused.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(margins.writes).toEqual([])
+  expect(margins.frames).toEqual([])
+  // Exactly the spec's floor opens the guards: the row moves on to the pixel report, no paint yet.
+  const fit = captureContext(3, 10)
+  expect((await find("editing.insert-chars").term!(fit.context)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+  expect(fit.frames).toEqual([])
 })
 
 test("the capture set covers the cell-edit probes and leaves non-cell probes untouched", () => {

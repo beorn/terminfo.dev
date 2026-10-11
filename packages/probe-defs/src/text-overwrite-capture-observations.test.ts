@@ -42,19 +42,20 @@ function find(id: string) {
   return definition.term
 }
 
-test("text.overwrite captures the AB and AX fixtures as control and target frames", async () => {
+test("text.overwrite asks the terminal's pixel report before painting its overwrite fixture", async () => {
   const { context, writes, frames } = captureApp()
   const result = await find("text.overwrite")(context)
+  // The region verdict owns this row now: with no answer to CSI 16 t the cells cannot be mapped
+  // onto the owned window, so the probe refuses BY NAME and never paints the AB/AX fixture.
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "pixels",
+    evidence: "query",
   })
+  expect(String(result.observation?.note)).toContain("CSI 16 t")
   expect(result.assertions).toBeUndefined()
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
-  expect(writes.some((write) => write.includes("AB"))).toBe(true)
-  expect(writes.some((write) => write.includes("\x1b[1;2H"))).toBe(true)
-  expect(writes.some((write) => write.includes("X"))).toBe(true)
+  expect(frames).toEqual([])
+  expect(writes).toEqual([])
 })
 
 test("text.cr never captures; it keeps the CR cursor-query decision", async () => {

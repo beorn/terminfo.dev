@@ -447,11 +447,13 @@ test("DECALN refuses invalid geometry and absent capture without writes", async 
   expect(events).toEqual([])
 })
 
-test("charsets.utf8 keeps the Z flank outside the two-cell glyph and reports both occupied cells", async () => {
+test("charsets.utf8 asks the terminal's pixel report before painting its two-cell glyph fixture", async () => {
   const definition = charsetsProbes.find((probe) => probe.id === "charsets.utf8")
   if (!definition?.term) throw new Error("missing app charsets.utf8 callback")
   const events: string[] = []
-  const context = app(4, 6, events)
+  // "silent" models a terminal that answers no query: with no CSI 16 t reply the region verdict
+  // cannot map cells onto the owned window, so it refuses BY NAME and never paints the A??Z fixture.
+  const context = app(4, 6, events, [{ row: 1, col: 2 }], "silent")
   const frames: ObservationFrame[] = []
   context.capture = async ({ role, label }) => {
     const frame = { role, label, capturedAt: frames.length + 1, ref: `sha256:${String(frames.length + 1).repeat(64)}` }
@@ -459,15 +461,12 @@ test("charsets.utf8 keeps the Z flank outside the two-cell glyph and reports bot
     return frame
   }
   const result = await definition.term(context)
-  expect(events).toContain("\x1b[1;1H     \x1b[1;1HA??Z")
-  expect(events).toContain("\x1b[2;1H     \x1b[2;1HA??Z")
-  const response = JSON.parse(String(result.response)) as { sampleCells: { row: number; col: number }[] }
-  expect(response.sampleCells).toEqual([
-    { row: 1, col: 2 },
-    { row: 2, col: 2 },
-    { row: 2, col: 3 },
-  ])
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
-  expect(frames[1]?.label).toContain("cols 2-3")
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+  expect(String(result.observation?.note)).toContain("CSI 16 t")
+  expect(frames).toEqual([])
+  expect(events).toEqual([])
 })

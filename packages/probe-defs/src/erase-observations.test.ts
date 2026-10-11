@@ -13,15 +13,6 @@ import type { ProbeResult, TermContext, TermlessContext } from "./types.ts"
 const ids = ["erase.line.right", "erase.line.left", "erase.line.all", "erase.character"] as const
 const screenIds = ["erase.screen.below", "erase.screen.above", "erase.screen.all"] as const
 const capturedIds = ["erase.line.right", "erase.line.left", "erase.line.all", ...screenIds] as const
-const capturedCases = [
-  ["erase.line.right", "\x1b[0K", "row 1 AB___; row 2 KEEP!"],
-  ["erase.line.left", "\x1b[1K", "row 1 ___DE; row 2 KEEP!"],
-  ["erase.line.all", "\x1b[2K", "row 1 _____; row 2 KEEP!"],
-  ["erase.screen.below", "\x1b[0J", "top AAAAA; middle BB___; bottom _____"],
-  ["erase.screen.above", "\x1b[1J", "top _____; middle ___BB; bottom CCCCC"],
-  ["erase.screen.all", "\x1b[2J", "top/middle/bottom _____"],
-] as const
-
 function byId(id: string) {
   const probe = eraseProbes.find((item) => item.id === id)
   if (!probe?.termless || !probe.term) throw new Error(`missing erase callbacks for ${id}`)
@@ -143,20 +134,36 @@ function app(position: { row: number; col: number } | null): TermContext {
   }
 }
 
+/** The same fixture, but the terminal answers its own pixel report — the verdict's prerequisite. */
+function appWithPixelReport(position: { row: number; col: number } | null): TermContext {
+  return {
+    ...app(position),
+    async queryWithSentinelOutcome(sequence) {
+      if (sequence === "\x1b[16t") {
+        return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply", raw: "", rawBase64: "" }
+      }
+      if (sequence === "\x1b[14t") {
+        return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+      }
+      return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+    },
+  }
+}
+
 // Existing cell assertions exercise full-size fixtures; they cannot catch app
 // writes that wrap or clamp before an undersized fixture has been declined.
 test.each([
-  ["erase.line.right", 2, 6],
-  ["erase.line.left", 2, 6],
-  ["erase.line.all", 2, 6],
-  ["erase.screen.below", 3, 6],
-  ["erase.screen.above", 3, 6],
-  ["erase.screen.all", 3, 6],
+  ["erase.line.right", 5, 6],
+  ["erase.line.left", 5, 6],
+  ["erase.line.all", 5, 6],
+  ["erase.screen.below", 6, 6],
+  ["erase.screen.above", 6, 6],
+  ["erase.screen.all", 6, 6],
   ["erase.screen.scrollback", 5, 5],
   ["erase.character", 3, 6],
-  ["erase.selective", 1, 6],
-  ["erase.el-with-attrs", 1, 6],
-  ["erase.ed-scroll-region", 10, 10],
+  ["erase.selective", 3, 7],
+  ["erase.el-with-attrs", 3, 6],
+  ["erase.ed-scroll-region", 10, 6],
 ] as const)("%s declines undersized app fixtures before any terminal I/O", async (id, rows, cols) => {
   const probe = byId(id)
   for (const [measuredRows, measuredCols] of [
@@ -202,20 +209,17 @@ test.each([
     expect(result.observation).toBeUndefined()
     return
   }
-  if (id === "erase.character") {
-    // 28638: region-readback queries CSI 16 t before any paint; a silent geometry reply is query, not none.
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "query",
-    })
-    expect(String(result.observation?.note)).toContain("CSI 16 t")
-    expect(result.observation?.outcome).not.toBe("supported")
-    return
-  }
-  expect(writes.length).toBeGreaterThan(0)
-  expect(result.observation?.evidence).not.toBe("none")
+  // Every remaining erase row now decides from the owned window with the region verdict: a capture
+  // adapter with no CSI 16 t reply cannot map cells onto the window, so the probe refuses BY NAME
+  // and never paints the ungraded fixture (28638 precedent for erase.character).
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+  expect(String(result.observation?.note)).toContain("CSI 16 t")
   expect(result.observation?.outcome).not.toBe("supported")
+  expect(writes).toEqual([])
 })
 
 test.each([
@@ -242,74 +246,10 @@ test.each([
   expect(writes.at(-1)).toBe(restore)
 })
 
-// A CPR reply cannot prove erasure. The app fixture must retain its seeded
-// control, blank comparator, and target even when independent pixel review is pending.
-// Ordinary-space controls must stay blank even if the tested erase family is ignored.
-test.each(capturedCases)(
-  "%s captures a qualified erase fixture without grading pixels",
-  async (id, erase, expected) => {
-    const writes: string[] = []
-    const captures: Array<{ role: string; label: string; capturedAt: number; ref: string; writeCount: number }> = []
-    const result = await byId(id).term!({
-      ...app({ row: 1, col: 3 }),
-      write: (sequence) => writes.push(sequence),
-      capture: async ({ role, label }) => {
-        const frame = {
-          role,
-          label,
-          capturedAt: captures.length + 1,
-          ref: `sha256:${String(captures.length + 1).padStart(64, "0")}`,
-        }
-        captures.push({ ...frame, writeCount: writes.length })
-        return frame
-      },
-    })
-    expect(captures.map(({ role }) => role)).toEqual(["control", "control", "target"])
-    expect(captures.map(({ label }) => label.toLowerCase())).toEqual([
-      expect.stringContaining("blank"),
-      expect.stringContaining("before"),
-      expect.stringContaining("after"),
-    ])
-    const line = id.startsWith("erase.line")
-    const seed = line ? "\x1b[1;1HABCDE\x1b[2;1HKEEP!" : "\x1b[1;1HAAAAA\x1b[12;1HBBBBB\x1b[24;1HCCCCC"
-    const eraseAt = line ? "\x1b[1;3H" : "\x1b[12;3H"
-    const safeCursor = line ? "\x1b[2;6H" : "\x1b[24;6H"
-    const seedIndex = writes.indexOf(seed)
-    const eraseAtIndex = writes.indexOf(eraseAt)
-    const eraseIndex = writes.indexOf(erase)
-    const blankWrites = writes.slice(0, captures[0]!.writeCount).join("")
-    expect(blankWrites).toMatch(/^\x1b\[0m/)
-    for (let row = 1; row <= 24; row++) {
-      expect(blankWrites, `blank row ${row}`).toContain(`\x1b[${row};1H${" ".repeat(80)}`)
-    }
-    expect(writes.slice(0, eraseIndex).join("")).not.toMatch(/\x1b\[[0-9;?]*[JKX]/)
-    expect(captures.map(({ writeCount }) => writes[writeCount - 1])).toEqual([safeCursor, safeCursor, safeCursor])
-    expect(seedIndex).toBeGreaterThanOrEqual(captures[0]!.writeCount)
-    expect(seedIndex).toBeLessThan(captures[1]!.writeCount)
-    expect(eraseAtIndex).toBeGreaterThanOrEqual(captures[1]!.writeCount)
-    expect(eraseAtIndex).toBeLessThan(eraseIndex)
-    expect(eraseIndex).toBeLessThan(captures[2]!.writeCount)
-    expect(writes.at(-1)).toContain("\x1b[2J")
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "pixels",
-    })
-    const refs = captures.map(({ ref }) => ref)
-    expect(new Set(refs).size).toBe(3)
-    expect(result.observation?.frames?.map(({ ref }) => ref)).toEqual(refs)
-    expect(result.observation?.screenshotRef).toBe(refs[2])
-    const response = JSON.parse(result.response ?? "null") as {
-      blank?: { ref: string }
-      before?: { ref: string }
-      target?: { ref: string }
-    } | null
-    expect([response?.blank?.ref, response?.before?.ref, response?.target?.ref]).toEqual(refs)
-    expect(result.assertions).toMatchObject([
-      { kind: "positive", expected: expect.stringContaining(expected), note: expect.stringContaining("capture-only") },
-    ])
-  },
-)
+// 28450 slice C: the erase rows are decided by the region verdict from the owned window's cells,
+// so the old blank-comparator/seed/target pixel fixture is unreachable. The refusals that remain
+// reachable are asserted here (undersized above, absent capture below, geometry-missing), and the
+// decision itself per id by region-readback-contract.test.ts.
 
 test.each(capturedIds)("%s declines absent capture before writing", async (id) => {
   const writes: string[] = []
@@ -320,39 +260,32 @@ test.each(capturedIds)("%s declines absent capture before writing", async (id) =
 })
 
 test.each(["erase.line.right", "erase.screen.below"] as const)(
-  "%s cleans its disposable fixture after capture failure",
+  "%s restores the cursor and clears the screen when the verdict capture throws",
   async (id) => {
     const writes: string[] = []
     const failure = new Error("owned capture failed")
     let count = 0
     await expect(
       byId(id).term!({
-        ...app({ row: 1, col: 3 }),
+        ...appWithPixelReport({ row: 1, col: 3 }),
         write: (sequence) => writes.push(sequence),
         capture: async ({ role, label }) => {
           count++
           if (count === 2) throw failure
-          return { role, label, capturedAt: count, ref: `sha256:${String(count).padStart(64, "0")}` }
+          return {
+            role,
+            label,
+            capturedAt: count,
+            ref: `sha256:${String(count).padStart(64, "0")}`,
+            regionDigest: `sha256:region-${count}`,
+            pixelsDigest: `sha256:pixels-${count}`,
+          }
         },
       }),
     ).rejects.toBe(failure)
     expect(writes.at(-1)).toContain("\x1b[2J")
   },
 )
-
-// At the minimum accepted height, all three ED sentinel rows must stay distinct.
-test("three-row ED fixture places its middle sentinel between top and bottom", async () => {
-  const writes: string[] = []
-  await byId("erase.screen.below").term!({
-    ...app({ row: 2, col: 3 }),
-    rows: 3,
-    cols: 6,
-    write: (sequence) => writes.push(sequence),
-    capture: async ({ role, label }) => ({ role, label, capturedAt: 1, ref: `sha256:${"1".repeat(64)}` }),
-  })
-  expect(writes).toContain("\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC")
-  expect(writes).toContain("\x1b[2;3H")
-})
 
 test.each([
   ["erase.line.right", "AB   ", "A    ", "  CDE"],
@@ -869,50 +802,4 @@ test("headless erase fixtures require measured rows and columns before writes", 
       expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     }
   }
-})
-
-test.each([
-  ["erase.selective", "\x1b[?2J", "P survives"],
-  ["erase.el-with-attrs", "\x1b[K", "green background"],
-  ["erase.ed-scroll-region", "\x1b[J", "KEEP!"],
-] as const)("%s records its seeded control and post-erase target pixels", async (id, sequence, expectation) => {
-  const definition = byId(id)
-  if (!definition.term) throw new Error(`Missing app callback for ${id}`)
-  const region = id === "erase.ed-scroll-region"
-  const writes: string[] = []
-  const frames: Array<{ role: string; label: string; capturedAt: number; ref: string }> = []
-  const result = await definition.term({
-    ...app({ row: 1, col: 1 }),
-    rows: region ? 24 : 6,
-    cols: region ? 80 : 20,
-    write: (bytes) => writes.push(bytes),
-    capture: async ({ role, label }) => {
-      const frame = {
-        role,
-        label,
-        capturedAt: frames.length + 1,
-        ref: `sha256:${String(frames.length + 1).repeat(64)}`,
-      }
-      frames.push(frame)
-      return frame
-    },
-  })
-  expect(
-    writes.some((entry) => entry.includes(sequence)),
-    id,
-  ).toBe(true)
-  expect(
-    frames.map(({ role }) => role),
-    id,
-  ).toEqual(["control", "target"])
-  expect(result.pass, id).toBe(false)
-  expect(result.observation, id).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "pixels",
-    frames,
-    note: expect.stringContaining("independent review"),
-  })
-  expect(result.assertions, id).toBeUndefined()
-  expect(result.observation?.note, id).toContain(expectation)
 })

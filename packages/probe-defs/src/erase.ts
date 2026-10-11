@@ -23,8 +23,126 @@ const ERASE_CHARACTER_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   minCols: 6,
 }
 
+/**
+ * The measured readback for the remaining erase rows. Each spec restates, as bytes, the expected
+ * frame the ungraded `captureEraseFixture` label already names, so the collector decides from its
+ * own window instead of asking a reviewer to compare two screenshots. Rows that survive an erase
+ * are inside the compared region, so an over-wide erase is unsupported rather than invisible.
+ */
+const ERASE_LINE_FIXTURE = {
+  region: { top: 1, left: 1, bottom: 2, right: 5 },
+  sentinel: { row: 4, col: 1 },
+  cursorRow: 3,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDE\x1b[2;1HKEEP!\x1b[3;1H",
+  editAt: "\x1b[1;3H",
+  expectedPrefix: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H",
+  expectedSuffix: "\x1b[2;1HKEEP!\x1b[3;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 5,
+  minCols: 6,
+}
+
+const ERASE_LINE_RIGHT_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  ...ERASE_LINE_FIXTURE,
+  edit: `${ERASE_LINE_FIXTURE.editAt}\x1b[0K\x1b[3;1H`,
+  expected: `${ERASE_LINE_FIXTURE.expectedPrefix}AB   ${ERASE_LINE_FIXTURE.expectedSuffix}`,
+}
+
+const ERASE_LINE_LEFT_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  ...ERASE_LINE_FIXTURE,
+  edit: `${ERASE_LINE_FIXTURE.editAt}\x1b[1K\x1b[3;1H`,
+  expected: `${ERASE_LINE_FIXTURE.expectedPrefix}   DE${ERASE_LINE_FIXTURE.expectedSuffix}`,
+}
+
+const ERASE_LINE_ALL_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  ...ERASE_LINE_FIXTURE,
+  edit: `${ERASE_LINE_FIXTURE.editAt}\x1b[2K\x1b[3;1H`,
+  expected: `${ERASE_LINE_FIXTURE.expectedPrefix}     ${ERASE_LINE_FIXTURE.expectedSuffix}`,
+}
+
+const ERASE_SCREEN_FIXTURE = {
+  region: { top: 1, left: 1, bottom: 3, right: 5 },
+  sentinel: { row: 5, col: 1 },
+  cursorRow: 4,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1H",
+  editAt: "\x1b[2;3H",
+  expectedPrefix: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H",
+  expectedSuffix: "\x1b[4;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 6,
+  minCols: 6,
+}
+
+const ERASE_SCREEN_BELOW_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  ...ERASE_SCREEN_FIXTURE,
+  edit: `${ERASE_SCREEN_FIXTURE.editAt}\x1b[0J\x1b[4;1H`,
+  expected: `${ERASE_SCREEN_FIXTURE.expectedPrefix}AAAAA\x1b[2;1HBB   \x1b[3;1H     \x1b[4;1H`,
+}
+
+const ERASE_SCREEN_ABOVE_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  ...ERASE_SCREEN_FIXTURE,
+  edit: `${ERASE_SCREEN_FIXTURE.editAt}\x1b[1J\x1b[4;1H`,
+  expected: `${ERASE_SCREEN_FIXTURE.expectedPrefix}     \x1b[2;1H   BB\x1b[3;1HCCCCC\x1b[4;1H`,
+}
+
+const ERASE_SCREEN_ALL_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  ...ERASE_SCREEN_FIXTURE,
+  edit: `${ERASE_SCREEN_FIXTURE.editAt}\x1b[2J\x1b[4;1H`,
+  expected: `${ERASE_SCREEN_FIXTURE.expectedPrefix}\x1b[4;1H`,
+}
+
+const ERASE_SELECTIVE_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 6 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: '\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[1"qP\x1b[0"qABCDE\x1b[2;1H',
+  edit: "\x1b[1;1H\x1b[?2J\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HP     \x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 7,
+}
+
+const ERASE_EL_WITH_ATTRS_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 5 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[42mXXXXX\x1b[0m\x1b[2;1H",
+  edit: "\x1b[1;1H\x1b[42m\x1b[0K\x1b[0m\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[42m     \x1b[0m\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 6,
+}
+
+const ERASE_ED_SCROLL_REGION_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 3, right: 5 },
+  sentinel: { row: 5, col: 1 },
+  cursorRow: 4,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HKEEP!\x1b[3;1HERASE\x1b[4;1H",
+  edit: "\x1b[3;10r\x1b[3;1H\x1b[J\x1b[r\x1b[4;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HKEEP!\x1b[4;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 10,
+  minCols: 6,
+}
+
 const ERASE_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
   "erase.character": ERASE_CHARACTER_READBACK,
+  "erase.line.right": ERASE_LINE_RIGHT_READBACK,
+  "erase.line.left": ERASE_LINE_LEFT_READBACK,
+  "erase.line.all": ERASE_LINE_ALL_READBACK,
+  "erase.screen.below": ERASE_SCREEN_BELOW_READBACK,
+  "erase.screen.above": ERASE_SCREEN_ABOVE_READBACK,
+  "erase.screen.all": ERASE_SCREEN_ALL_READBACK,
+  "erase.selective": ERASE_SELECTIVE_READBACK,
+  "erase.el-with-attrs": ERASE_EL_WITH_ATTRS_READBACK,
+  "erase.ed-scroll-region": ERASE_ED_SCROLL_REGION_READBACK,
 }
 
 type ErasedCell = string | null
@@ -249,10 +367,18 @@ async function eraseSequenceCapture(
 /** Capture an owned app's erase effect without interpreting its pixels. */
 async function captureEraseFixture(
   ctx: TermContext,
+  id: string,
   kind: "line" | "screen",
   sequence: string,
   expected: string,
 ): Promise<ProbeResult> {
+  const readback = ERASE_READBACK_SPECS[id]
+  if (readback) {
+    // The verdict path owns this row wherever the run can map cells onto its own window; a context
+    // that cannot report its geometry gets a named refusal, not the ungraded pixel path.
+    const verdict = await captureRegionVerdict(ctx, id, readback)
+    if (verdict) return verdict
+  }
   const rows = ctx.rows
   const cols = ctx.cols
   const minRows = kind === "line" ? 2 : 3
@@ -452,7 +578,7 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.line.right",
       (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[K", ["A", "B", "blank", "blank", "blank"], false, 2),
-      (ctx) => captureEraseFixture(ctx, "line", "\x1b[0K", "row 1 AB___; row 2 KEEP!"),
+      (ctx) => captureEraseFixture(ctx, "erase.line.right", "line", "\x1b[0K", "row 1 AB___; row 2 KEEP!"),
     ),
     termNeedsGeometry: true,
 
@@ -463,7 +589,7 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.line.left",
       (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[1K", ["blank", "blank", "blank", "D", "E"], false, 2),
-      (ctx) => captureEraseFixture(ctx, "line", "\x1b[1K", "row 1 ___DE; row 2 KEEP!"),
+      (ctx) => captureEraseFixture(ctx, "erase.line.left", "line", "\x1b[1K", "row 1 ___DE; row 2 KEEP!"),
     ),
     termNeedsGeometry: true,
 
@@ -475,7 +601,7 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.line.all",
       (ctx) =>
         eraseRowResult(ctx, "ABCDE\r\nKEEP!\x1b[1;3H", "\x1b[2K", ["blank", "blank", "blank", "blank", "blank"], true),
-      (ctx) => captureEraseFixture(ctx, "line", "\x1b[2K", "row 1 _____; row 2 KEEP!"),
+      (ctx) => captureEraseFixture(ctx, "erase.line.all", "line", "\x1b[2K", "row 1 _____; row 2 KEEP!"),
     ),
     termNeedsGeometry: true,
 
@@ -486,7 +612,8 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.screen.below",
       (ctx) => eraseScreenResult(ctx, "\x1b[0J", ["AAAAA", "BB   ", "     "]),
-      (ctx) => captureEraseFixture(ctx, "screen", "\x1b[0J", "top AAAAA; middle BB___; bottom _____"),
+      (ctx) =>
+        captureEraseFixture(ctx, "erase.screen.below", "screen", "\x1b[0J", "top AAAAA; middle BB___; bottom _____"),
     ),
     termNeedsGeometry: true,
 
@@ -497,7 +624,8 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.screen.above",
       (ctx) => eraseScreenResult(ctx, "\x1b[1J", ["     ", "   BB", "CCCCC"]),
-      (ctx) => captureEraseFixture(ctx, "screen", "\x1b[1J", "top _____; middle ___BB; bottom CCCCC"),
+      (ctx) =>
+        captureEraseFixture(ctx, "erase.screen.above", "screen", "\x1b[1J", "top _____; middle ___BB; bottom CCCCC"),
     ),
     termNeedsGeometry: true,
 
@@ -508,7 +636,7 @@ export const eraseProbes: ProbeDefinition[] = [
     ...probe(
       "erase.screen.all",
       (ctx) => eraseScreenResult(ctx, "\x1b[2J", ["     ", "     ", "     "]),
-      (ctx) => captureEraseFixture(ctx, "screen", "\x1b[2J", "top/middle/bottom _____"),
+      (ctx) => captureEraseFixture(ctx, "erase.screen.all", "screen", "\x1b[2J", "top/middle/bottom _____"),
     ),
     termNeedsGeometry: true,
 
@@ -596,6 +724,11 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.selective",
       (ctx) => selectiveEraseResult(ctx, "\x1b[?2J", false),
       async (ctx) => {
+        const readback = ERASE_READBACK_SPECS["erase.selective"]
+        if (readback) {
+          const verdict = await captureRegionVerdict(ctx, "erase.selective", readback)
+          if (verdict) return verdict
+        }
         const viaCapture = await eraseSequenceCapture(
           ctx,
           1,
@@ -676,6 +809,11 @@ export const eraseProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        const readback = ERASE_READBACK_SPECS["erase.el-with-attrs"]
+        if (readback) {
+          const verdict = await captureRegionVerdict(ctx, "erase.el-with-attrs", readback)
+          if (verdict) return verdict
+        }
         const viaCapture = await eraseSequenceCapture(
           ctx,
           1,
@@ -750,6 +888,11 @@ export const eraseProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        const readback = ERASE_READBACK_SPECS["erase.ed-scroll-region"]
+        if (readback) {
+          const verdict = await captureRegionVerdict(ctx, "erase.ed-scroll-region", readback)
+          if (verdict) return verdict
+        }
         const viaCapture = await eraseSequenceCapture(
           ctx,
           10,
