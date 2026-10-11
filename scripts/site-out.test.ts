@@ -78,6 +78,8 @@ it("analysis generation writes under the override and leaves the source tree alo
     expect(existsSync(join(out, "content", "analysis.json"))).toBe(false)
     expect(JSON.parse(readFileSync(redirected, "utf8"))).toHaveProperty("terminals/kitty")
   } finally {
+    // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
+    // unavailable; `out` is this test's own mkdtemp scratch root
     rmSync(out, { recursive: true, force: true })
   }
 })
@@ -108,6 +110,8 @@ it("the rebuild marker names the target revision and clears only via the returne
     // Clearing twice is a no-op, never a throw: the caller may exit between the two.
     expect(() => clear?.()).not.toThrow()
   } finally {
+    // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
+    // unavailable; `root` is this test's own mkdtemp scratch root
     rmSync(root, { recursive: true, force: true })
   }
 })
