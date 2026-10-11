@@ -46,12 +46,23 @@ export function selectiveEraseResult(ctx: TermlessContext, sequence: string, rec
     }
     ctx.feed(sequence)
     const after = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col).char)
-    const controlsValid = after[0] === "P" && (!rectangular || after[5] === "Z")
+    if (after[0] !== "P") {
+      // The DECSCA-protected P is the row's discriminator: an erase that takes it ignored the
+      // protection the claim rests on, a measured negative (@chief 2026-10-11T22:58Z). Reporting
+      // "cannot attribute" here would name the one shape the claim is about as unmeasured.
+      return parserStateResult(
+        false,
+        expected,
+        { before, after },
+        "The DECSCA-protected P was erased: protection ignored",
+      )
+    }
+    const outsideControl = !rectangular || after[5] === "Z"
     return parserStateResult(
-      controlsValid ? after.slice(1, rectangular ? 5 : 6).every(isBlank) : null,
+      outsideControl ? after.slice(1, rectangular ? 5 : 6).every(isBlank) : null,
       expected,
       { before, after },
-      controlsValid ? undefined : "Protection or outside-rectangle control failed; cannot attribute selective erase",
+      outsideControl ? undefined : "Outside-rectangle control failed; cannot attribute selective erase",
     )
   } finally {
     ctx.feed('\x1b[0"q')

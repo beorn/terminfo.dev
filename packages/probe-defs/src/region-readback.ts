@@ -9,13 +9,16 @@
  * landing in a cell outside every compared region witnesses that every byte written before it — the
  * edit included — is on screen.
  *
- * The decision is digest EQUALITY and nothing else: after equals expected and differs from seed is
- * supported, after equals seed behind a proven paint is unsupported, anything else is inconclusive
- * BY NAME. No tolerance, no similarity, no glyph reading. A missing paint witness, a capture that
- * is not byte-stable, or a paint seen outside the sentinel region is never a negative.
+ * The decision is digest EQUALITY and nothing else: after equals expected is supported; after equals
+ * seed (the sequence left the screen untouched) or equals the row's `ignored` frame (the sequence ran
+ * while dropping the one attribute the row claims) is unsupported behind a proven paint; anything
+ * else is inconclusive BY NAME. No tolerance, no similarity, no glyph reading. A missing paint
+ * witness, a capture that is not byte-stable, or a paint seen outside the sentinel region is never a
+ * negative.
  *
- * The verdict compares three captures of ONE run — seed, post-sequence, and the expected frame
- * painted plainly in the same run — each behind its own witness, with the cursor hidden (DECTCEM)
+ * The verdict compares three or four captures of ONE run — seed, post-sequence, the expected frame,
+ * and, when the row names one, the ignored-attribute frame, all painted plainly in the same run —
+ * each behind its own witness, with the cursor hidden (DECTCEM)
  * across all of them. Cell coordinates arrive from the terminal's own pixel report and are turned
  * into an absolute rectangle by the collector, so digests are comparable only within one run, which
  * is the whole claim. That same symmetry is why the rectangle's alignment needs no separate proof: an
@@ -75,6 +78,13 @@ export interface RegionReadback {
   edit: string
   /** Writes that paint the expected frame plainly, in this same run. */
   expected: string
+  /**
+   * Writes that paint the frame the sequence would leave if it IGNORED the one attribute its row
+   * claims — a DECSCA-protected cell erased, an EL that drops the current background. An after-frame
+   * equal to it is a measured NEGATIVE like `seed`, not an unnamed `inconclusive`: the row's own
+   * discriminator is the whole point. Absent when the row's sequence has no attribute to ignore.
+   */
+  ignored?: string
   /** The terminal's own pixel report, carried into every capture request. */
   pixelGeometry: PixelGeometry
   /** Bound on one paint witness, in ms. A timeout is inconclusive by name, never unsupported. */
@@ -340,6 +350,9 @@ export async function captureRegionReadbackDecision(
     { role: "control" as const, label: `${id}: pre-edit seed`, writes: spec.seed },
     { role: "target" as const, label: `${id}: post-sequence target`, writes: `${spec.seed}${spec.edit}` },
     { role: "control" as const, label: `${id}: expected frame`, writes: spec.expected },
+    ...(spec.ignored === undefined
+      ? []
+      : [{ role: "control" as const, label: `${id}: ignored-attribute frame`, writes: spec.ignored }]),
   ]
   const frames: ObservationFrame[] = []
   const digests: string[] = []
@@ -405,8 +418,16 @@ export async function captureRegionReadbackDecision(
     const seed = digests[0]
     const after = digests[1]
     const expected = digests[2]
-    if (seed === undefined || after === undefined || expected === undefined) {
-      throw new Error(`${id}: the capture-region decision reached the verdict with ${digests.length} of 3 digests`)
+    const ignored = spec.ignored === undefined ? undefined : digests[3]
+    if (
+      seed === undefined ||
+      after === undefined ||
+      expected === undefined ||
+      (spec.ignored !== undefined && ignored === undefined)
+    ) {
+      throw new Error(
+        `${id}: the capture-region decision reached the verdict with ${digests.length} of ${steps.length} digests`,
+      )
     }
     const observed = JSON.stringify({
       region: spec.region,
@@ -416,6 +437,7 @@ export async function captureRegionReadbackDecision(
       seed,
       after,
       expected,
+      ...(ignored !== undefined && { ignored }),
     })
     if (seed === expected) {
       return inconclusive(
@@ -426,8 +448,20 @@ export async function captureRegionReadbackDecision(
         { screenshotRef: frames[3]?.ref, frames },
       )
     }
+    if (ignored !== undefined && ignored === expected) {
+      return inconclusive(
+        id,
+        `${id}: the ignored-attribute frame and the expected frame read the same cells, so this run cannot separate them`,
+        "insufficient-evidence",
+        "pixels",
+        { screenshotRef: frames[3]?.ref, frames },
+      )
+    }
     const supported = after === expected
-    const unsupported = after === seed
+    // A frame equal to `seed` is the sequence leaving the screen untouched; a frame equal to
+    // `ignored` is the sequence running while dropping the attribute the row claims. Both are
+    // measured negatives of the same claim, so both read `unsupported`, never `inconclusive`.
+    const unsupported = after === seed || (ignored !== undefined && after === ignored)
     if (!supported && !unsupported) {
       return {
         pass: false,
@@ -438,7 +472,7 @@ export async function captureRegionReadbackDecision(
           evidence: "pixels",
           screenshotRef: frames[3]?.ref,
           frames,
-          note: `${id}: the post-sequence region matched neither the seed frame nor the expected frame`,
+          note: `${id}: the post-sequence region matched none of the compared frames (${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`,
         },
       }
     }

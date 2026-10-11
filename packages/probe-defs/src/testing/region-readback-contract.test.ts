@@ -19,8 +19,9 @@ const manifest: ProbeSuiteManifest = {
   generatedAt: "2026-10-10T22:00:00.000Z",
   probes: { app: [FEATURE], headless: [], mux: [] },
 }
-/** The three capture behaviours the collector must survive, plus the geometry refusal. */
-type Mode = "deciding" | "stable" | "unstable" | "sentinel"
+/** The three capture behaviours the collector must survive, plus the geometry refusal and a run
+ *  whose target equals the row's ignored-attribute frame. */
+type Mode = "deciding" | "stable" | "unstable" | "sentinel" | "ignored-attribute"
 
 interface Harness {
   ctx: TermContext
@@ -78,11 +79,19 @@ function harness(mode: Mode): Harness {
       const step = measured
       measured += 1
       regionDigest =
-        step === 2
-          ? digest("region:expected")
-          : step === 0
-            ? digest("region:seed")
-            : digest(mode === "deciding" ? "region:expected" : "region:unrelated")
+        step === 3
+          ? digest("region:ignored")
+          : step === 2
+            ? digest("region:expected")
+            : step === 0
+              ? digest("region:seed")
+              : digest(
+                  mode === "deciding"
+                    ? "region:expected"
+                    : mode === "ignored-attribute"
+                      ? "region:ignored"
+                      : "region:unrelated",
+                )
       pixelsDigest = digest(`window:step-${step}`)
     }
     const frame: ObservationFrame = {
@@ -274,6 +283,21 @@ test("charsets.dec-special deciding capture readback seals a pixels verdict the 
   const loaded = parse(run, feature)
   expect(loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
 })
+
+/**
+ * @chief 2026-10-11T22:58Z: a selective erase that takes the DECSCA-protected cell, or an EL that
+ * drops the current background, is a measured NEGATIVE rather than an unnamed unknown. Both rows
+ * now name that frame, so a target equal to it must seal "unsupported" — and still be admissible.
+ */
+for (const feature of ["erase.selective", "erase.el-with-attrs"] as const) {
+  test(`${feature}: a target that drops the row's discriminating attribute seals unsupported`, async () => {
+    const { result, run } = await drive("ignored-attribute", feature)
+    expect(result.observation?.outcome, feature).toBe("unsupported")
+    expect(result.observation?.evidence, feature).toBe("pixels")
+    expect(result.assertions?.[0]?.kind, feature).toBe("negative")
+    expect(() => parse(run, feature), feature).not.toThrow()
+  })
+}
 
 /**
  * 28450 slice C: every remaining region-readback row must decide the same way through the same

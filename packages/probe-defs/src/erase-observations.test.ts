@@ -6,8 +6,10 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { createHash } from "node:crypto"
 import { eraseProbes } from "./erase.ts"
 import { editingProbes } from "./editing.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ProbeResult, TermContext, TermlessContext } from "./types.ts"
 
 const ids = ["erase.line.right", "erase.line.left", "erase.line.all", "erase.character"] as const
@@ -461,8 +463,9 @@ test("uncaptured app erases keep cursor-only evidence inconclusive", async () =>
   }
 })
 
-// Selective erase needs both an erased target and a surviving protected cell;
-// an unchanged screen or ordinary erase cannot establish selective behavior.
+// Selective erase needs both an erased target and a surviving protected cell. An unchanged screen,
+// or an erase that takes the protected cell with it, is a measured negative rather than an
+// unmeasured one (@chief 2026-10-11T22:58Z): the second is precisely the shape the claim is about.
 test("selective erasure observes protected cells and the unprotected target", () => {
   for (const [id, sequence, success] of [
     ["erase.selective", "\x1b[?2J", "P     "],
@@ -473,7 +476,7 @@ test("selective erasure observes protected cells and the unprotected target", ()
     for (const [after, expected] of [
       [success, "supported"],
       ["PABCDZ", "unsupported"],
-      ["      ", "inconclusive"],
+      ["      ", "unsupported"],
     ]) {
       const base = headless("ABCDE")
       let erased = false
@@ -716,7 +719,10 @@ test("erase.screen.scrollback surfaces a finally wheel-down failure", async () =
 test("background erase measures a blank target with its calibrated background", () => {
   const black = { r: 0, g: 0, b: 0 }
   const color = { r: 130, g: 20, b: 70 }
-  // Constant RGB metadata cannot establish that SGR changed the default background.
+  // Constant RGB metadata cannot establish that SGR changed the default background. The erased
+  // cell's background is judged on its own (@chief 2026-10-11T22:58Z): the current colour is
+  // supported, the default (or none) is a measured negative, and only an unread background is
+  // unmeasured.
   for (const [baseline, colored, char, afterBg, seed, expected, target] of [
     [black, black, " ", black, "X", "inconclusive", false],
     [null, null, " ", null, "X", "inconclusive", false],
@@ -725,7 +731,8 @@ test("background erase measures a blank target with its calibrated background", 
     [null, color, " ", color, "X", "supported", true],
     [black, color, " ", color, "X", "supported", true],
     [null, color, "X", color, "X", "unsupported", true],
-    [null, color, " ", null, "X", "inconclusive", true],
+    [null, color, " ", null, "X", "unsupported", true],
+    [null, color, " ", undefined, "X", "inconclusive", true],
   ] as const) {
     const base = headless("ABCDE")
     let erased = false
@@ -802,4 +809,86 @@ test("headless erase fixtures require measured rows and columns before writes", 
       expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     }
   }
+})
+
+/**
+ * An owned app whose capture reads the semantic surface's OWN cells, so the region verdict decides
+ * from what the surface really painted. A blank cell and a painted space read the same (the oracle
+ * compares pixels), and the digest carries each cell's background so a background row can tell the
+ * current colour from the default.
+ */
+function regionReadbackApp(rows: number, cols: number, mutations: readonly string[] = []) {
+  const surface = createSemanticSurface({ rows, cols, mutations })
+  const writes: string[] = []
+  let reads = 0
+  const digest = (cells: { top: number; left: number; bottom: number; right: number }): string => {
+    let text = ""
+    for (let row = cells.top; row <= cells.bottom; row++) {
+      for (let col = cells.left; col <= cells.right; col++) {
+        const cell = surface.getCell(row - 1, col - 1)
+        const glyph = cell.char === "" || cell.char == null || cell.char === " " ? "_" : cell.char
+        text += `${glyph}|${cell.bg ? `${cell.bg.r},${cell.bg.g},${cell.bg.b}` : "default"};`
+      }
+    }
+    return text
+  }
+  const context: TermContext = {
+    rows,
+    cols,
+    write: (bytes) => {
+      writes.push(bytes)
+      surface.feed(bytes)
+    },
+    queryCursorPosition: async () => null,
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    async queryWithSentinelOutcome(sequence) {
+      if (sequence === "\x1b[16t")
+        return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply", raw: "", rawBase64: "" }
+      if (sequence === "\x1b[14t")
+        return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+      return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+    },
+    queryMode: async () => null,
+    capture: async ({ role, label, cells }) => {
+      reads += 1
+      const regionDigest = digest(cells ?? { top: 1, left: 1, bottom: rows, right: cols })
+      return {
+        role,
+        label,
+        capturedAt: reads,
+        ref: `sha256:${createHash("sha256")
+          .update(`${label}|${String(reads)}|${regionDigest}`)
+          .digest("hex")}`,
+        regionDigest,
+        pixelsDigest: digest({ top: 1, left: 1, bottom: rows, right: cols }),
+      }
+    },
+  }
+  return { context, writes }
+}
+
+// @chief 2026-10-11T22:58Z: an after-frame that takes the DECSCA-protected P, or an EL that drops
+// the current background, is a measured NEGATIVE, not an unnamed unknown. The app path is the one a
+// real run is scored on, so both rows must read "unsupported" there, not "inconclusive".
+test("the selective erase row names a protection-ignoring surface unsupported, not inconclusive", async () => {
+  const conforming = await byId("erase.selective").term(regionReadbackApp(6, 10).context)
+  expect(conforming.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+
+  const dropping = await byId("erase.selective").term(regionReadbackApp(6, 10, ["decsca-noop"]).context)
+  expect(dropping.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
+  expect(dropping.assertions?.[0]?.kind).toBe("negative")
+})
+
+test("the EL-with-attrs row names an erase that drops the current background unsupported", async () => {
+  const conforming = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10).context)
+  expect(conforming.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+
+  const inert = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10, ["el-noop"]).context)
+  expect(inert.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
+
+  const noBackground = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10, ["el-default-bg"]).context)
+  expect(noBackground.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
 })

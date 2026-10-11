@@ -210,7 +210,71 @@ test("an edit that matches neither the seed nor the expected frame is inconclusi
   const result = await decide(fake)
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.reason).toBe("insufficient-evidence")
-  expect(result.observation.note).toContain("matched neither the seed frame nor the expected frame")
+  expect(result.observation.note).toContain("matched none of the compared frames (seed, expected)")
+})
+
+// A spec whose four compared planes each paint a distinct frame, so a run can be told apart by the
+// plane it showed. The optional fourth plane is the frame the sequence would leave if it ignored
+// the one attribute its row claims (a DECSCA-protected cell erased, an EL that drops the current
+// background); an after-frame equal to it must read a measured negative, not an unnamed unknown.
+const PLANES = {
+  seed: "\x1b[1;1HAAA",
+  edit: "\x1b[1;2H\x1b[1P",
+  expected: "\x1b[1;1HBBB",
+  ignored: "\x1b[1;1HCCC",
+} as const
+const PLANE_SPEC = { seed: PLANES.seed, edit: PLANES.edit, expected: PLANES.expected, ignored: PLANES.ignored }
+
+/** The frame the terminal shows: whichever plane was painted LAST, with `applied` for the target. */
+function planePainter(applied: string, ignoredReadsAs?: string): Painter {
+  return (writes) => {
+    const joined = writes.join("")
+    if (ignoredReadsAs !== undefined && joined.includes(PLANES.ignored)) return ignoredReadsAs
+    const planes: Array<[string, string]> = [
+      ["ignored", PLANES.ignored],
+      ["expected", PLANES.expected],
+      ["target", PLANES.seed + PLANES.edit],
+      ["seed", PLANES.seed],
+    ]
+    let label = "seed"
+    let at = -1
+    for (const [candidate, token] of planes) {
+      const found = joined.lastIndexOf(token)
+      if (found > at) {
+        label = candidate
+        at = found
+      }
+    }
+    return label === "target" ? applied : label
+  }
+}
+
+test("an ignored-attribute plane names the attribute-dropping run unsupported, behind a proven paint", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("ignored") })
+  const result = await decide(fake, PLANE_SPEC)
+  expect(result.observation.outcome).toBe("unsupported")
+  expect(result.assertions?.[0]?.kind).toBe("negative")
+  expect(result.observation.frames).toHaveLength(8)
+  expect(regionReads(fake).map(({ label }) => label)).toEqual([
+    "editing.delete-chars: pre-edit seed",
+    "editing.delete-chars: post-sequence target",
+    "editing.delete-chars: expected frame",
+    "editing.delete-chars: ignored-attribute frame",
+  ])
+})
+
+test("a run that cannot separate the ignored plane from the expected plane is inconclusive by name", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("other", "expected") })
+  const result = await decide(fake, PLANE_SPEC)
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.note).toContain("ignored-attribute frame and the expected frame read the same cells")
+})
+
+test("a spec with no ignored plane keeps its three-plane verdict", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("supported")
+  expect(result.observation.frames).toHaveLength(6)
 })
 
 test("a degenerate run whose seed frame reads as its expected frame is inconclusive by name", async () => {

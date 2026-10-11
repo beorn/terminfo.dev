@@ -18,6 +18,9 @@
  * "charset-noop" leaves a G0/G1 designation unmapped (Character Sets'), and "ht-noop" freezes HT
  * (Unicode's tab-stops control). Scrollback adds "scrollregion-noop" (DECSTBM set and reset inert)
  * and "altscreen-noop" (ESC[?1049h/l inert) so its three newly decided rows prove their binding.
+ * Erase's two attribute rows add "decsca-noop" (a selective erase takes the protected cell too) and
+ * "el-default-bg" (EL drops the current background), the frames @chief ruled are measured negatives
+ * rather than unnamed unknowns (2026-10-11T22:58Z).
  *
  * @fakes @terminfo/probe-defs
  */
@@ -601,7 +604,12 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     const to = mode === 1 ? cursorX : cols - 1
     for (let col = from; col <= to && col < cols; col++) {
       const existing = row[col] ?? blankCell(NO_ATTRIBUTES)
-      row[col] = { char: " ", decscaProtected: existing.decscaProtected, ...NO_ATTRIBUTES, bg: attributes.bg }
+      row[col] = {
+        char: " ",
+        decscaProtected: existing.decscaProtected,
+        ...NO_ATTRIBUTES,
+        bg: mutations.has("el-default-bg") ? null : attributes.bg,
+      }
     }
   }
 
@@ -674,7 +682,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     const params = paramsRaw === "" ? [] : paramsRaw.split(";").map((raw) => (raw === "" ? 0 : Number(raw)))
     const first = params[0] ?? 0
     if (intermediate === '"' && final === "q") {
-      protecting = first !== 0
+      protecting = first !== 0 && !mutations.has("decsca-noop")
       return
     }
     if (intermediate === "!") {

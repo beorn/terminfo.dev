@@ -100,6 +100,9 @@ const ERASE_SELECTIVE_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   seed: '\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[1"qP\x1b[0"qABCDE\x1b[2;1H',
   edit: "\x1b[1;1H\x1b[?2J\x1b[2;1H",
   expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HP     \x1b[2;1H",
+  // A selective erase that drops the DECSCA protection erases the protected P too: the row's whole
+  // claim is that it survives, so that frame is a measured negative (@chief 2026-10-11T22:58Z).
+  ignored: "\x1b[0m\x1b[2J\x1b[H\x1b[2;1H",
   timeoutMs: 5000,
   pollMs: 250,
   minRows: 3,
@@ -113,6 +116,9 @@ const ERASE_EL_WITH_ATTRS_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[42mXXXXX\x1b[0m\x1b[2;1H",
   edit: "\x1b[1;1H\x1b[42m\x1b[0K\x1b[0m\x1b[2;1H",
   expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[42m     \x1b[0m\x1b[2;1H",
+  // An EL that does not carry the current background onto the erased cells drops back to the
+  // default: the row's claim is the current background, so that frame is a measured negative.
+  ignored: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H     \x1b[0m\x1b[2;1H",
   timeoutMs: 5000,
   pollMs: 250,
   minRows: 3,
@@ -792,9 +798,12 @@ export const eraseProbes: ProbeDefinition[] = [
           }
           ctx.feed("\x1b[K")
           const after = ctx.getCell(0, 0)
-          const measured = typeof after.char === "string" && after.bg != null
+          // The claim is that the erased cells take the CURRENT background. A cell whose background
+          // is unavailable cannot be judged; one reporting any other value — the default, or none —
+          // has not carried it, and that is a measured negative (@chief 2026-10-11T22:58Z).
+          const measurable = typeof after.char === "string" && after.bg !== undefined
           return parserStateResult(
-            measured
+            measurable
               ? isBlank(after.char) &&
                   after.bg?.r === before.bg.r &&
                   after.bg?.g === before.bg.g &&
@@ -802,7 +811,7 @@ export const eraseProbes: ProbeDefinition[] = [
               : null,
             expected,
             { baseline, before, after },
-            measured ? undefined : "Erased cell background metadata unavailable",
+            measurable ? undefined : "Erased cell background metadata unavailable",
           )
         } finally {
           ctx.feed("\x1b[0m")
