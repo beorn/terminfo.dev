@@ -18,7 +18,10 @@ export const DEFAULT_PEAK_CEILING_BYTES = 13 * 1024 ** 3
 export const PEAK_CEILING_ENV = "TERMINFO_SITE_PEAK_CEILING_BYTES"
 export const DEFAULT_SAMPLE_MS = 500
 
-/** The declared ceiling, or the environment's override. A malformed override is refused, never ignored. */
+/**
+ * The declared ceiling, or the environment's override. An unset or blank override means the declared default; a
+ * malformed one is refused, never ignored.
+ */
 export function peakCeilingBytes(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env[PEAK_CEILING_ENV]?.trim()
   if (raw === undefined || raw === "") return DEFAULT_PEAK_CEILING_BYTES
@@ -129,8 +132,14 @@ export function startPeakGuard(options: PeakGuardOptions): PeakGuard {
     stop(): void {
       if (stopped) return
       clearInterval(timer)
-      measure()
+      const now = measure()
       stopped = true
+      // The resident set barely falls during a build, so the FINAL sample is usually the peak of the whole run. A
+      // ceiling checked only on the interval would let that sample pass: the build would print `done` and exit 0 while
+      // over its ceiling. Check it here too, so no caller can forget.
+      if (now > options.ceilingBytes) {
+        options.onBreach({ bytes: now, peakBytes: peak, phase, elapsedMs: Date.now() - started })
+      }
     },
   }
 }

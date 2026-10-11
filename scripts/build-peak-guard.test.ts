@@ -84,6 +84,24 @@ describe("startPeakGuard", () => {
     expect(onBreach).not.toHaveBeenCalled()
   })
 
+  it("breaches on the final sample, so a build whose last sample is over the ceiling still fails", async () => {
+    vi.useFakeTimers()
+    const onBreach = vi.fn()
+    let rss = 900
+    const guard = startPeakGuard({ ceilingBytes: 1000, rss: () => rss, onBreach })
+    await vi.advanceTimersByTimeAsync(1000)
+    // No tick ever saw a breach; the stop sample does, and the resident set barely falls during a build, so this is
+    // the usual place a real breach shows up.
+    expect(onBreach).not.toHaveBeenCalled()
+    rss = 1300
+    guard.stop()
+    expect(onBreach).toHaveBeenCalledTimes(1)
+    expect(onBreach.mock.calls[0]?.[0]).toMatchObject({ bytes: 1300, peakBytes: 1300, phase: "startup" })
+    expect(guard.peakBytes()).toBe(1300)
+    guard.stop()
+    expect(onBreach).toHaveBeenCalledTimes(1)
+  })
+
   it("reports which phase held the largest high-water", async () => {
     vi.useFakeTimers()
     let rss = 100

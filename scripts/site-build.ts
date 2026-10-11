@@ -103,9 +103,9 @@ try {
   })
   guard.phase("emit")
 } catch (error) {
+  console.error(error instanceof Error ? (error.stack ?? error.message) : error)
   guard.stop()
   reportPeak("FAILED")
-  console.error(error instanceof Error ? (error.stack ?? error.message) : error)
   process.exit(1)
 }
 guard.stop()
