@@ -222,7 +222,7 @@ describe("release 1 decisive-count reader", () => {
     const args = { contentDir: join(import.meta.dirname, "..", "content"), cohort: "candidate2" as const }
     const report = buildReport(args)
     expect(report).toHaveProperty("candidate2.name", "candidate2")
-    expect(report).toHaveProperty("candidate2.frozenSuiteId", "267a5d166f08")
+    expect(report).toHaveProperty("candidate2.frozenSuiteId", "95ea5328dd25")
     expect(report).toHaveProperty(
       "candidate2.measuredIds",
       expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
@@ -243,13 +243,13 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
     for (const row of report.candidate2.admittedRuns) {
-      expect(row.measured).toBe(row.run.suiteId === "267a5d166f08")
+      expect(row.measured).toBe(row.run.suiteId === "95ea5328dd25")
       // The RELEASE share is the operator's D3 over the ratified cohort (125); only the per-category
       // block divides over the decidable basis (@chief 2026-10-10T15:56Z).
       if (row.measured) expect(row.share.denominator).toBe(125)
       else {
         expect(row).not.toHaveProperty("share")
-        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required 267a5d166f08`)
+        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required 95ea5328dd25`)
       }
     }
   })
@@ -667,11 +667,17 @@ describe("per-category decisive share (28018 AC2)", () => {
 
     const categories = cohortCategories(report.candidate2.decidableIds, catalog)
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
-    const row = report.candidate2.barRows.find(
+    // 28467 follow-up: site selection still holds the 267a kitty/linux run, so the bar row is
+    // ineligible. The measured suite-S row is the admitted 95ea kitty/linux census.
+    const admitted = report.candidate2.admittedRuns.find(
       (entry) =>
-        "run" in entry && entry.measured && entry.context.terminalId === "kitty" && entry.context.os === "linux",
+        entry.measured &&
+        entry.run.terminalId === "kitty" &&
+        entry.run.os === "linux" &&
+        entry.run.suiteId === "95ea5328dd25",
     )
-    if (!row || !("run" in row) || !row.measured) throw new Error("kitty/linux measured row absent")
+    if (!admitted || !admitted.measured) throw new Error("kitty/linux 95ea admitted row absent")
+    const row = { ...admitted, context: { terminalId: "kitty", os: "linux" }, selection: "only current" as const }
     const printed = formatCohortRow(row, categories, labelWidth, report.candidate2.unavailableIds)
     const text = printed.join("\n")
 
@@ -703,7 +709,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       printed.some(
         (line) =>
           line.includes("CATEGORIES OF THE 125") &&
-          line.includes("n = 124 cohort ids with a probe in required suite 267a5d166f08"),
+          line.includes("n = 124 cohort ids with a probe in required suite 95ea5328dd25"),
       ),
     ).toBe(true)
     // The Scrollback category divides by its DECIDABLE count and names the tenth beside them.
