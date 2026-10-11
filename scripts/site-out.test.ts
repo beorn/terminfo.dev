@@ -115,3 +115,27 @@ it("the rebuild marker names the target revision and clears only via the returne
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+it("writes the marker into a state root that does not exist yet (first start, 28268 AC4)", () => {
+  // The unit's FIRST start writes the marker before the first build, and nothing creates the state root
+  // (/hh/var/terminfo-site did not exist). A missing root must not throw ENOENT here, or the unit restart-loops
+  // before it ever builds (@cto 0dc097ac).
+  const parent = mkdtempSync(join(tmpdir(), "terminfo-site-marker-absent-"))
+  const root = join(parent, "not-yet-created")
+  try {
+    expect(existsSync(root)).toBe(false)
+    const clear = writeSiteRebuildMarker("b".repeat(40), { TERMINFO_SITE_OUT_DIR: root })
+    const path = join(root, "rebuild.json")
+    expect(existsSync(path)).toBe(true)
+    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+      schema: "terminfo-site-rebuild/1",
+      target: "b".repeat(40),
+    })
+    clear?.()
+    expect(existsSync(path)).toBe(false)
+  } finally {
+    // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is
+    // unavailable; `parent` is this test's own mkdtemp scratch root
+    rmSync(parent, { recursive: true, force: true })
+  }
+})

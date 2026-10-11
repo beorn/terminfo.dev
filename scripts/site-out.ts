@@ -9,8 +9,8 @@
  * With `TERMINFO_SITE_OUT_DIR` set, all three move under that one directory and the checkout stays write-once.
  * With it unset, every path is exactly what it was before this module existed, so an unset build is byte-identical.
  */
-import { rmSync, writeFileSync } from "node:fs"
-import { resolve } from "node:path"
+import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { dirname, resolve } from "node:path"
 
 /** The one write-root override. `undefined` means "the historical, in-tree paths". */
 export function siteOutRoot(env: NodeJS.ProcessEnv = process.env): string | undefined {
@@ -65,6 +65,10 @@ export function siteRebuildMarkerPath(env: NodeJS.ProcessEnv = process.env): str
 export function writeSiteRebuildMarker(target: string, env: NodeJS.ProcessEnv = process.env): (() => void) | undefined {
   const path = siteRebuildMarkerPath(env)
   if (path === undefined) return undefined
+  // The state root is not guaranteed to exist: a unit's first start writes the marker BEFORE the first build, and
+  // nothing else creates /hh/var/terminfo-site. Without this the first run throws ENOENT in the write below — before
+  // any build — and the unit restart-loops (@cto 0dc097ac, measured: the directory did not exist).
+  mkdirSync(dirname(path), { recursive: true })
   writeFileSync(
     path,
     `${JSON.stringify({ schema: "terminfo-site-rebuild/1", target, startedAt: new Date().toISOString() })}\n`,
