@@ -542,3 +542,20 @@ describe("Xvfb screen fits the launched xterm window (#28580)", () => {
     expect(Number(match[2])).toBeGreaterThanOrEqual(814)
   })
 })
+
+/**
+ * @failure split 120s curl / 180s attach budgets kill slow-but-complete groups (ghostty 140.6s,
+ *   xterm 157.9s curl-28; wezterm attach-killed at 177s) so Candidate 2 rows go missing.
+ * @level l1 — reads the launcher's declared probe-batch timeout.
+ * @consumer scripts/linux-container-run.sh PROBE_BATCH_TIMEOUT_SECONDS (@dev/3 51326e54)
+ */
+describe("declared probe-batch timeout is one value for curl and host attach", () => {
+  it("uses PROBE_BATCH_TIMEOUT_SECONDS=600 for both curl --max-time and docker start --attach", () => {
+    const source = readFileSync(launcher, "utf8")
+    expect(source).toMatch(/^PROBE_BATCH_TIMEOUT_SECONDS=600$/m)
+    expect(source).toMatch(/curl [^\n]*--max-time "\$PROBE_BATCH_TIMEOUT_SECONDS"/)
+    expect(source).toMatch(/timeout "\$PROBE_BATCH_TIMEOUT_SECONDS" docker start --attach/)
+    expect(source).not.toMatch(/--max-time 120\b/)
+    expect(source).not.toMatch(/timeout 180 docker start --attach/)
+  })
+})

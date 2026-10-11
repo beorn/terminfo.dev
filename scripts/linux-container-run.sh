@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Declared probe-batch budget (seconds). Curl /probe and host `docker start --attach`
+# share this value for every linux group. @dev/3 ruling 51326e54 (2026-10-11):
+# 120s curl was the artefact (ghostty 140.6s, xterm 157.9s completed under 600);
+# 180s attach SIGTERM'd wezterm at 177s before classify. Do not split these.
+PROBE_BATCH_TIMEOUT_SECONDS=600
+
 # The same file is copied into the content-addressed runner input and serves
 # as the container entry point. This is execution tooling, not a probe engine.
 compose_receipt() {
@@ -97,7 +103,7 @@ stop_owned_processes() {
   return 0
 }
 
-# Host attach is `timeout 180 docker start --attach`. 143 is SIGTERM of that budget. A completed
+# Host attach is `timeout "$PROBE_BATCH_TIMEOUT_SECONDS" docker start --attach`. 143 is SIGTERM of that budget. A completed
 # batch already wrote observed.json + container-receipt.json + v2-run.json; refusing those is
 # how #28552 discarded a 7.5 s kitty run. Other non-zero exits still fail.
 completed_batch_survives_attach_timeout() {
@@ -536,7 +542,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     }' > "$TERMINFO_RUNTIME_PROVENANCE"
   date -u +%FT%TZ > /out/batch-wall-start.txt
   batch_status=0
-  curl --fail-with-body --silent --show-error --max-time 120 --output /out/v2-run.json \
+  curl --fail-with-body --silent --show-error --max-time "$PROBE_BATCH_TIMEOUT_SECONDS" --output /out/v2-run.json \
     --write-out '%{time_total}\n' \
     -H "Authorization: Bearer $token" "http://127.0.0.1:$port/probe" > /out/batch-elapsed-seconds.txt || batch_status=$?
   date -u +%FT%TZ > /out/batch-wall-end.txt
@@ -933,7 +939,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "TERMINFO_DISPOSABLE_RECEIPT=/receipt/host-measured.json" \
   "$image_id")
 echo "$container_id" > "$prep/container-id.txt"
-if ! timeout 180 docker start --attach "$container_id" > "$prep/container-stdout.log" 2>"$prep/container-stderr.log"; then
+if ! timeout "$PROBE_BATCH_TIMEOUT_SECONDS" docker start --attach "$container_id" > "$prep/container-stdout.log" 2>"$prep/container-stderr.log"; then
   if [[ "$(docker inspect "$container_id" --format '{{.State.Running}}')" == true ]]; then
     if ! docker stop --time 5 "$container_id" > "$prep/stop.txt" 2>&1; then
       echo "Could not stop owned container $container_id; see $prep/stop.txt" >&2
