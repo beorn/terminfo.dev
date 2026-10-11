@@ -31,9 +31,9 @@
  * document. It writes nothing. Bucket math is barOverMeasured's, not a second copy.
  *
  * Usage: bun scripts/decisive-share.ts [--cohort candidate1|candidate2] [terminal-id ...]
- * Candidate 1 is the default. Candidate 2 keeps all 125 classics on frozen suite 95ea5328dd25.
+ * Candidate 1 is the default. Candidate 2 keeps all 125 classics on frozen suite f8771563588b.
  * When live selection moves past it, bar rows are ineligible: selected run on suite X, required
- * 95ea5328dd25. The 125 verdict then lives only in admitted history for that suite's runs.
+ * f8771563588b. The 125 verdict then lives only in admitted history for that suite's runs.
  */
 import { readFileSync } from "node:fs"
 import { join } from "node:path"

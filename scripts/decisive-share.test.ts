@@ -224,7 +224,7 @@ describe("release 1 decisive-count reader", () => {
     const args = { contentDir: join(import.meta.dirname, "..", "content"), cohort: "candidate2" as const }
     const report = buildReport(args)
     expect(report).toHaveProperty("candidate2.name", "candidate2")
-    expect(report).toHaveProperty("candidate2.frozenSuiteId", "95ea5328dd25")
+    expect(report).toHaveProperty("candidate2.frozenSuiteId", "f8771563588b")
     expect(report).toHaveProperty(
       "candidate2.measuredIds",
       expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
@@ -245,13 +245,13 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
     for (const row of report.candidate2.admittedRuns) {
-      expect(row.measured).toBe(row.run.suiteId === "95ea5328dd25")
+      expect(row.measured).toBe(row.run.suiteId === "f8771563588b")
       // The RELEASE share is the operator's D3 over the ratified cohort (125); only the per-category
       // block divides over the decidable basis (@chief 2026-10-10T15:56Z).
       if (row.measured) expect(row.share.denominator).toBe(125)
       else {
         expect(row).not.toHaveProperty("share")
-        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required 95ea5328dd25`)
+        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required f8771563588b`)
       }
     }
   })
@@ -669,21 +669,15 @@ describe("per-category decisive share (28018 AC2)", () => {
 
     const categories = cohortCategories(report.candidate2.decidableIds, catalog)
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
-    // The kitty/linux run on the required suite (d3c5c6a0, 95ea5328dd25) is REFUSED by the site as
-    // native-provenance-dirty, so it is named under SITE-EXCLUDED RUNS, never under ADMITTED RUNS
-    // (28018). This test exercises the cohort row FORMATTER, so it builds the measured row from that
-    // run's own cells — the row a clean re-collection would produce.
-    const refused = report.candidate2.refusedRuns.find(
-      (entry) => entry.run.terminalId === "kitty" && entry.run.os === "linux" && entry.run.suiteId === "95ea5328dd25",
+    // 28450 Shape B: the required suite is now f8771563588b, and the site SELECTS the admitted
+    // kitty/linux run on it as the current row — so the row is real. The 28018-era construction built
+    // this from the refused 95ea run; that run is no longer the required suite's, so it would print
+    // the wrong suite in the block header.
+    const row = report.candidate2.barRows.find(
+      (entry) => entry.measured && entry.context.terminalId === "kitty" && entry.context.os === "linux",
     )
-    if (!refused) throw new Error("kitty/linux 95ea run absent")
-    const row: CohortBarRow = {
-      run: refused.run,
-      measured: true,
-      share: decisiveShare(refused.run.cells, report.candidate2.measuredIds),
-      context: { terminalId: "kitty", os: "linux" },
-      selection: "only current",
-    }
+    if (!row || !row.measured || !("run" in row)) throw new Error("kitty/linux measured bar row absent")
+    expect(row.run.suiteId).toBe("f8771563588b")
     const printed = formatCohortRow(row, categories, labelWidth, report.candidate2.unavailableIds)
     const text = printed.join("\n")
 
@@ -715,7 +709,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       printed.some(
         (line) =>
           line.includes("CATEGORIES OF THE 125") &&
-          line.includes("n = 124 cohort ids with a probe in required suite 95ea5328dd25"),
+          line.includes("n = 124 cohort ids with a probe in required suite f8771563588b"),
       ),
     ).toBe(true)
     // The Scrollback category divides by its DECIDABLE count and names the tenth beside them.
@@ -726,7 +720,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       printed.some(
         (line) =>
           line.includes("Scrollback") &&
-          line.includes(`0/${scrollback.ids.length} = 0% · fail`) &&
+          line.includes(`4/${scrollback.ids.length} = 44% · fail`) &&
           line.includes("(unavailable: scrollback.viewport-hold-output)"),
       ),
     ).toBe(true)
