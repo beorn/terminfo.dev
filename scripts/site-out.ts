@@ -29,6 +29,15 @@ export function siteCacheDir(env: NodeJS.ProcessEnv = process.env): string | und
   return root ? resolve(root, "cache") : undefined
 }
 
+/**
+ * VitePress's SSR scratch directory. VitePress hardcodes it at `<site root>/.temp` and has no config field for it,
+ * so `scripts/site-build.ts` overrides the resolved value through the build hook.
+ */
+export function siteTempDir(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const root = siteOutRoot(env)
+  return root ? resolve(root, "temp") : undefined
+}
+
 /** Derived analysis snapshot: `content/analysis.json`, or `<TERMINFO_SITE_OUT_DIR>/content/analysis.json`. */
 export function siteAnalysisPath(repoRoot: string, env: NodeJS.ProcessEnv = process.env): string {
   const root = siteOutRoot(env)

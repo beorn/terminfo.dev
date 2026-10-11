@@ -9,7 +9,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawnSync } from "node:child_process"
 import { describe, expect, it } from "vitest"
-import { siteAnalysisPath, siteCacheDir, siteDistDir, siteOutRoot } from "./site-out.ts"
+import { siteAnalysisPath, siteCacheDir, siteDistDir, siteOutRoot, siteTempDir } from "./site-out.ts"
 
 const repoRoot = join(import.meta.dirname, "..")
 
@@ -18,6 +18,7 @@ it("resolves the historical in-tree paths when TERMINFO_SITE_OUT_DIR is unset", 
   expect(siteOutRoot(env)).toBeUndefined()
   expect(siteDistDir(repoRoot, env)).toBe(join(repoRoot, "docs", ".vitepress", "dist"))
   expect(siteCacheDir(env)).toBeUndefined()
+  expect(siteTempDir(env)).toBeUndefined()
   expect(siteAnalysisPath(repoRoot, env)).toBe(join(repoRoot, "content", "analysis.json"))
 })
 
@@ -26,6 +27,7 @@ it("roots every build write under TERMINFO_SITE_OUT_DIR when it is set", () => {
   expect(siteOutRoot(env)).toBe("/var/terminfo-site")
   expect(siteDistDir(repoRoot, env)).toBe(join("/var/terminfo-site", "dist"))
   expect(siteCacheDir(env)).toBe(join("/var/terminfo-site", "cache"))
+  expect(siteTempDir(env)).toBe(join("/var/terminfo-site", "temp"))
   expect(siteAnalysisPath(repoRoot, env)).toBe(join("/var/terminfo-site", "content", "analysis.json"))
 })
 
