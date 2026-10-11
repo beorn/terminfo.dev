@@ -277,6 +277,11 @@ it("analysis validation refuses stale live values and key drift but labels histo
     expect(generated.status, generated.stderr).toBe(0)
     const outputPath = join(out, "content", "analysis.json")
     const original = readFileSync(outputPath, "utf8")
+    // AC4: a wall-clock $generated stamp made two runs of the same inputs differ.
+    const generatedAgain = run([])
+    expect(generatedAgain.status, generatedAgain.stderr).toBe(0)
+    expect(readFileSync(outputPath, "utf8")).toBe(original)
+    expect(JSON.parse(original)).not.toHaveProperty("$generated")
     const isFixtureObject = (value: unknown): value is Record<string, unknown> =>
       value !== null && typeof value === "object" && !Array.isArray(value)
     const parseFixture = (): Record<string, unknown> => {
@@ -701,14 +706,10 @@ describe("selected-run consumer parity", () => {
       expect(analyses.cursor?.analysis).toContain("awaiting verified measurements")
       expect(analyses.vt220?.analysis).toContain("awaiting verified measurements")
       expect(analyses["baseline/modern"]?.analysis).toContain("awaiting verified measurements")
-      expect(warnings).toContainEqual(expect.stringContaining("historical analysis snapshot is not current evidence"))
-      expect(
-        warnings.every(
-          (message) =>
-            message.includes("historical analysis snapshot is not current evidence") ||
-            message.includes("no reviewed current conclusive results"),
-        ),
-      ).toBe(true)
+      expect(warnings.some((message) => message.includes("historical analysis snapshot is not current evidence"))).toBe(
+        false,
+      )
+      expect(warnings.every((message) => message.includes("no reviewed current conclusive results"))).toBe(true)
     } finally {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })

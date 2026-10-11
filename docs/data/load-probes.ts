@@ -4,7 +4,7 @@
  * Loads data from probes.data.ts at build time and provides
  * helper functions for slug generation and category labels.
  */
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadFullProbes } from "./probes.data"
@@ -160,13 +160,9 @@ export interface AnalysisEntry {
 
 let _analysisCached: Record<string, AnalysisEntry> | null = null
 
-/** Regenerate analysis from the same selected runs as the matrix. The checked-in snapshot is historical. */
+/** Generate analysis from the same selected runs as the matrix. Never reads a snapshot file. */
 export function loadAnalysis(): Record<string, AnalysisEntry> {
-  if (!_analysisCached) {
-    const path = join(__dirname, "..", "..", "content", "analysis.json")
-    if (existsSync(path)) console.warn(`${path}: historical analysis snapshot is not current evidence; regenerating`)
-    _analysisCached = generateAnalysis()
-  }
+  if (!_analysisCached) _analysisCached = generateAnalysis()
   if (!_analysisCached) throw new Error("Analysis failed to initialize")
   return _analysisCached
 }
