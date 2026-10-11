@@ -8,11 +8,16 @@
  * the SSR build there, so an otherwise write-once build still mutates the checkout it runs from — fatal in a hab
  * landing, where that write would land in the landing it is serving. `TERMINFO_SITE_OUT_DIR` (see `./site-out.ts`)
  * moves it under `<out>/temp`; unset, VitePress's own default is used unchanged.
+ *
+ * It also enforces the build's resident-memory ceiling (28662 AC3): an in-process guard samples the resident set and
+ * fails the build LOUDLY the moment it passes `TERMINFO_SITE_PEAK_CEILING_BYTES` (default 13 GiB, the declared value),
+ * naming the peak and the phase. See `./build-peak-guard.ts` for why a silent continue is not an option here.
  */
 import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs"
 import { build } from "vitepress"
+import { installRenderPhaseHook, peakBreachMessage, peakCeilingBytes, startPeakGuard } from "./build-peak-guard.ts"
 import { siteTempDir } from "./site-out.ts"
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
@@ -54,13 +59,40 @@ if (tempDir !== undefined) {
   if (relative(repoRoot, scratchParent).startsWith("..")) linkIncludes(repoRoot, scratchParent)
 }
 
+const ceilingBytes = peakCeilingBytes()
+const guard = startPeakGuard({
+  ceilingBytes,
+  onBreach(breach) {
+    console.error(peakBreachMessage({ ...breach, ceilingBytes }))
+    // The build owns a scratch root, not the served dist: a half-built output is never served, because landed-serve
+    // refuses the output of a failed build and the health probe keeps answering `starting` until it is rebuilt.
+    process.exit(1)
+  },
+})
+
+/** One line, whatever the outcome: the peak this build measured against its ceiling, so the unit's log carries it. */
+function reportPeak(status: string): void {
+  const where = guard.peakPhase()
+  console.log(
+    `site-build: ${status} — peak resident ${(guard.peakBytes() / 1024 ** 3).toFixed(2)} GB ` +
+      `(ceiling ${(ceilingBytes / 1024 ** 3).toFixed(2)} GB; largest in ${where?.label ?? "no phase named"})`,
+  )
+}
+
 try {
   await build(join(repoRoot, "docs"), {
     onAfterConfigResolve(siteConfig) {
       if (tempDir !== undefined) siteConfig.tempDir = tempDir
+      guard.phase("bundles")
+      installRenderPhaseHook(siteConfig, guard)
     },
   })
+  guard.phase("emit")
 } catch (error) {
+  guard.stop()
+  reportPeak("FAILED")
   console.error(error instanceof Error ? (error.stack ?? error.message) : error)
   process.exit(1)
 }
+guard.stop()
+reportPeak("done")
