@@ -19,7 +19,7 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { cellRectangle, createLinuxCapture, windowPixels } from "./linux-capture.ts"
+import { capturePixels, cellRectangle, createLinuxCapture, screenPixels, windowPixels } from "./linux-capture.ts"
 
 const temporary: string[] = []
 const originalPath = process.env.PATH
@@ -50,7 +50,7 @@ function fixture() {
     if [ "${"$"}TEST_CAPTURE_FAIL" = owner ]; then printf 'owner lookup failed\\n' >&2; exit 17; fi
     printf '%s\\n' "$TEST_CAPTURE_OWNER_PID"
     ;;
-  getwindowgeometry) printf 'X=0\\nY=0\\nWIDTH=640\\nHEIGHT=480\\n' ;;
+  getwindowgeometry) printf 'X=0\\nY=0\\nWIDTH=%s\\nHEIGHT=%s\\n' "\${TEST_CAPTURE_WIDTH:-640}" "\${TEST_CAPTURE_HEIGHT:-480}" ;;
   *) exit 18 ;;
 esac`,
   )
@@ -59,14 +59,66 @@ esac`,
     `printf started > "$TEST_CAPTURE_STARTED"
 while [ ! -e "$TEST_CAPTURE_RELEASE" ]; do sleep 0.01; done
 printf finished > "$TEST_CAPTURE_FINISHED"
-printf 'xwd-window-%s' "$2"`,
+id=
+nobdrs=0
+prev=
+for arg; do
+  if [ "\$prev" = -id ]; then id=\$arg; fi
+  if [ "\$arg" = -nobdrs ]; then nobdrs=1; fi
+  prev=\$arg
+done
+w=\${TEST_CAPTURE_WIDTH:-640}
+h=\${TEST_CAPTURE_HEIGHT:-480}
+if [ "\$nobdrs" != 1 ]; then
+  w=\$((w + 2))
+  h=\$((h + 2))
+fi
+printf '%sx%s' "\$w" "\$h" > "$TEST_CAPTURE_XWD_SIZE"
+printf 'xwd-window-%s' "\$id"`,
   )
-  executable(join(directory, "xdpyinfo"), `printf 'root window id: 0x21f\\n'`)
+  executable(
+    join(directory, "xdpyinfo"),
+    `printf 'root window id: 0x21f\\n  dimensions:    %sx%s pixels\\n' "\${TEST_CAPTURE_SCREEN_WIDTH:-1920}" "\${TEST_CAPTURE_SCREEN_HEIGHT:-1080}"`,
+  )
   executable(
     join(directory, "magick"),
     `if [ "$1" = -version ]; then printf 'ImageMagick test\\n'; exit 0; fi
 cat > "$TEST_CAPTURE_STDIN"
 if [ "${"$"}TEST_CAPTURE_FAIL" = conversion ]; then printf 'conversion failed\\n' >&2; exit 19; fi
+rgba=
+crop=
+identify=
+for arg; do
+  [ "\$arg" = "rgba:-" ] && rgba=1
+  [ "\$arg" = "info:" ] && identify=1
+  case "\$arg" in
+    *x*+*) crop=\$arg ;;
+  esac
+done
+size=\${TEST_CAPTURE_FORCE_CAPTURE:-}
+if [ -z "\$size" ] && [ -f "$TEST_CAPTURE_XWD_SIZE" ]; then
+  size=\$(cat "$TEST_CAPTURE_XWD_SIZE")
+fi
+if [ -z "\$size" ]; then
+  size="\${TEST_CAPTURE_WIDTH:-640}x\${TEST_CAPTURE_HEIGHT:-480}"
+fi
+if [ -n "\$identify" ]; then
+  printf '%s' "\$size"
+  exit 0
+fi
+if [ -n "\$rgba" ]; then
+  if [ -n "\$crop" ]; then
+    w=\${crop%%x*}
+    rest=\${crop#*x}
+    h=\${rest%%+*}
+    head -c "\$((w * h * 4))" /dev/zero
+  else
+    w=\${size%%x*}
+    h=\${size#*x}
+    head -c "\$((w * h * 4))" /dev/zero
+  fi
+  exit 0
+fi
 cat "$TEST_CAPTURE_PNG"`,
   )
   process.env.PATH = `${directory}:${originalPath ?? ""}`
@@ -80,6 +132,7 @@ cat "$TEST_CAPTURE_PNG"`,
   process.env.TEST_CAPTURE_STDIN = stdin
   process.env.TEST_CAPTURE_PNG = png
   process.env.TEST_CAPTURE_FAIL = ""
+  process.env.TEST_CAPTURE_XWD_SIZE = join(directory, "xwd-size")
   return { directory, started, finished, release, stdin }
 }
 
@@ -104,6 +157,12 @@ afterEach(() => {
     "TEST_CAPTURE_STDIN",
     "TEST_CAPTURE_PNG",
     "TEST_CAPTURE_FAIL",
+    "TEST_CAPTURE_WIDTH",
+    "TEST_CAPTURE_HEIGHT",
+    "TEST_CAPTURE_SCREEN_WIDTH",
+    "TEST_CAPTURE_SCREEN_HEIGHT",
+    "TEST_CAPTURE_FORCE_CAPTURE",
+    "TEST_CAPTURE_XWD_SIZE",
   ]) {
     delete process.env[key]
   }
@@ -249,4 +308,75 @@ test("the window's own pixel size comes from the measured geometry, and a missin
     height: 600,
   })
   expect(() => windowPixels("WINDOW=4194317\nX=0\nY=0\nSCREEN=0\n")).toThrow(/pixel size/)
+})
+
+test("the screen's pixel size comes from xdpyinfo, and a missing one is loud", () => {
+  expect(screenPixels("screen #0:\n  dimensions:    1920x1080 pixels (508x285 millimeters)\n")).toEqual({
+    width: 1920,
+    height: 1080,
+  })
+  expect(() => screenPixels("root window id: 0x21f\n")).toThrow(/screen/)
+})
+
+test("the capture's pixel size comes from magick identify, and a missing one is loud", () => {
+  expect(capturePixels("1306x816")).toEqual({ width: 1306, height: 816 })
+  expect(capturePixels("1306x816\n")).toEqual({ width: 1306, height: 816 })
+  expect(() => capturePixels("xwd:- XWD 8-bit\n")).toThrow(/capture/)
+})
+
+test.runIf(process.platform === "linux")(
+  "a 1304x814 window yields a whole-window pixelsDigest of 4245824 rgba bytes (#28580)",
+  async () => {
+    // xterm 411 measured 1304x814; 3145728 is 1024x768x4 (the old Xvfb screen), not a 3 MiB
+    // execFile cap. command() already admits 32 MiB, so the collector must hash the full frame.
+    // The fixture xwd adds a 1px border unless -nobdrs is passed (#28590); this row is that
+    // contract: capture dimensions match the xdotool client area.
+    const { directory, release } = fixture()
+    process.env.TEST_CAPTURE_WIDTH = "1304"
+    process.env.TEST_CAPTURE_HEIGHT = "814"
+    writeFileSync(release, "continue")
+    const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    const result = await capture({
+      featureId: "editing.delete-chars",
+      role: "target",
+      label: "xterm window",
+      cells: { top: 1, left: 1, bottom: 1, right: 1 },
+      pixelGeometry: { cellWidth: 8, cellHeight: 16, textWidth: 800, textHeight: 480 },
+    })
+    expect(result.frame.pixelsDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
+    const expected = Buffer.alloc(1304 * 814 * 4)
+    expect(result.frame.pixelsDigest).toBe(`sha256:${createHash("sha256").update(expected).digest("hex")}`)
+  },
+)
+
+test.runIf(process.platform === "linux")("window 1304x814 on a 1024x768 screen names the clip (#28590)", async () => {
+  // 3145728 was 1024x768x4. Naming the screen vs the window is what stops the next
+  // diagnosis from chasing execFile maxBuffer.
+  const { directory } = fixture()
+  process.env.TEST_CAPTURE_WIDTH = "1304"
+  process.env.TEST_CAPTURE_HEIGHT = "814"
+  process.env.TEST_CAPTURE_SCREEN_WIDTH = "1024"
+  process.env.TEST_CAPTURE_SCREEN_HEIGHT = "768"
+  await expect(createLinuxCapture(join(directory, "frames"), liveExecutable())).rejects.toThrow(
+    "window 1304x814 exceeds the 1024x768 screen",
+  )
+})
+
+test.runIf(process.platform === "linux")("capture 1306x816 vs window 1304x814 names both sizes (#28590)", async () => {
+  // xterm 411 after the Xvfb grow: xwd included a 1px border, 4262784 vs 4245824.
+  const { directory, release } = fixture()
+  process.env.TEST_CAPTURE_WIDTH = "1304"
+  process.env.TEST_CAPTURE_HEIGHT = "814"
+  process.env.TEST_CAPTURE_FORCE_CAPTURE = "1306x816"
+  writeFileSync(release, "continue")
+  const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+  await expect(
+    capture({
+      featureId: "editing.delete-chars",
+      role: "target",
+      label: "xterm window",
+      cells: { top: 1, left: 1, bottom: 1, right: 1 },
+      pixelGeometry: { cellWidth: 8, cellHeight: 16, textWidth: 800, textHeight: 480 },
+    }),
+  ).rejects.toThrow("capture 1306x816 differs from window 1304x814 (border included?)")
 })

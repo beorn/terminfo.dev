@@ -524,3 +524,21 @@ describe("cli producer receipt gate", () => {
     expect(result.stderr).toContain("Invalid CLI producer receipt")
   })
 })
+
+/**
+ * @failure xterm 411's 1304x814 window is larger than the Xvfb screen, so whole-window rgba is
+ *   the screen (1024x768x4 = 3145728 bytes) and the collector errors instead of grading.
+ * @level l1 — reads the launcher's Xvfb -screen geometry, the production display size.
+ * @consumer scripts/linux-container-run.sh Xvfb screen vs launched xterm window (#28580)
+ */
+describe("Xvfb screen fits the launched xterm window (#28580)", () => {
+  it("is large enough that a 1304x814 window is fully on-screen", () => {
+    // xterm 411 -fs 16 -geometry 100x30 measured 1304x814 on the S+1 tree. 1024x768 clips xwd
+    // to exactly 3145728 bytes (1024*768*4), which 28580 read as a 3 MiB capture buffer.
+    const source = readFileSync(launcher, "utf8")
+    const match = /Xvfb\b[^\n]*-screen 0 (\d+)x(\d+)x(\d+)/.exec(source)
+    if (!match) throw new Error("Xvfb -screen geometry not found in scripts/linux-container-run.sh")
+    expect(Number(match[1])).toBeGreaterThanOrEqual(1304)
+    expect(Number(match[2])).toBeGreaterThanOrEqual(814)
+  })
+})

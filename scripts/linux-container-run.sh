@@ -368,7 +368,9 @@ if [[ "${1:-}" == "--inside" ]]; then
   }
   trap cleanup EXIT
 
-  Xvfb -displayfd 3 -screen 0 1024x768x24 +extension GLX +extension XTEST +render -noreset -nolisten tcp \
+  # xterm 411 -fs 16 -geometry 100x30 measures 1304x814. 1024x768 clips xwd to
+  # 1024x768x4 = 3145728 bytes, which 28580 read as a 3 MiB capture buffer.
+  Xvfb -displayfd 3 -screen 0 1920x1080x24 +extension GLX +extension XTEST +render -noreset -nolisten tcp \
     3>"$HOME/display-number" >/out/xvfb.log 2>&1 &
   xvfb_pid=$!
   for _ in $(seq 1 100); do

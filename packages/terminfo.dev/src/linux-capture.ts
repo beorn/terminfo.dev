@@ -148,6 +148,36 @@ export function windowPixels(geometry: string): { width: number; height: number 
   return parsed
 }
 
+/** The DISPLAY screen's pixel size, parsed from xdpyinfo. */
+export function screenPixels(display: string): { width: number; height: number } {
+  const match = /dimensions:\s+(\d+)x(\d+)\s+pixels/.exec(display)
+  const parsed = { width: Number(match?.[1]), height: Number(match?.[2]) }
+  if (
+    !Number.isSafeInteger(parsed.width) ||
+    !Number.isSafeInteger(parsed.height) ||
+    parsed.width < 1 ||
+    parsed.height < 1
+  ) {
+    throw new Error(`Cannot read the DISPLAY screen's pixel size out of ${JSON.stringify(display)}`)
+  }
+  return parsed
+}
+
+/** The captured image's pixel size, parsed from `magick xwd:- -format '%wx%h' info:`. */
+export function capturePixels(identify: string): { width: number; height: number } {
+  const match = /^(\d+)x(\d+)\s*$/.exec(identify)
+  const parsed = { width: Number(match?.[1]), height: Number(match?.[2]) }
+  if (
+    !Number.isSafeInteger(parsed.width) ||
+    !Number.isSafeInteger(parsed.height) ||
+    parsed.width < 1 ||
+    parsed.height < 1
+  ) {
+    throw new Error(`Cannot read the captured image's pixel size out of ${JSON.stringify(identify)}`)
+  }
+  return parsed
+}
+
 /** Resolve the actual terminal ancestor, never a class label or newest window. */
 export function kittyAncestor(executable: LiveExecutable): number {
   let pid = process.pid
@@ -214,6 +244,11 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const converter = (await command("magick", ["-version"])).toString().trim()
   const geometry = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
+  const window = windowPixels(geometry)
+  const screen = screenPixels(display)
+  if (window.width > screen.width || window.height > screen.height) {
+    throw new Error(`window ${window.width}x${window.height} exceeds the ${screen.width}x${screen.height} screen`)
+  }
   const rawCommand = ["xwd:-", "-depth", "8", "rgba:-"]
   return async ({ featureId, role, label, cells, pixelGeometry }) => {
     // Static-frame settling is recorded; callbacks own any temporal schedule.
@@ -223,7 +258,7 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
     await assertOwned()
     const before = (await command("xdotool", ["getwindowgeometry", "--shell", windowId])).toString()
     if (before !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
-    const original = await command("xwd", ["-id", windowId, "-silent"])
+    const original = await command("xwd", ["-id", windowId, "-nobdrs", "-silent"])
     const capturedAt = Date.now()
     const png = await command("magick", ["xwd:-", "png:-"], original)
     if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
@@ -249,11 +284,18 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
           `Capture ${featureId} was asked for a cell-aligned digest without both cells and the terminal's pixel report`,
         )
       }
-      const window = windowPixels(geometry)
       const rectangle = cellRectangle({ cells, pixelGeometry, windowWidth: window.width, windowHeight: window.height })
       const rgba = await command("magick", rawCommand, original)
       const expected = window.width * window.height * 4
       if (rgba.length !== expected) {
+        const captured = capturePixels(
+          (await command("magick", ["xwd:-", "-format", "%wx%h", "info:"], original)).toString(),
+        )
+        if (captured.width !== window.width || captured.height !== window.height) {
+          throw new Error(
+            `capture ${captured.width}x${captured.height} differs from window ${window.width}x${window.height} (border included?)`,
+          )
+        }
         throw new Error(
           `Raw capture for ${featureId} is ${rgba.length} bytes; ${window.width}x${window.height} at depth 8 rgba is ${expected}`,
         )
