@@ -315,11 +315,12 @@ export function loadFullProbes(): ProbeData {
   const releaseShares: Record<string, string> = {}
   const releaseVerdicts: Record<string, D3Verdict> = {}
   const releaseStale: Record<string, string | null> = {}
-  // The verdict is over the INCLUDED 52, not the declared 62: the ten F2 movers are excluded by
-  // contract and never counted (docs/data/release-scope.ts owns the list and the D3 rule).
-  const includedIds = includedTierOneIds(release.measuredIds)
+  // The bar and the verdict are over the app denominator, never the declared 62: the ten F2 movers
+  // are excluded by contract and the app-unobservable rows by construction, since no app run can
+  // decide them (docs/data/release-scope.ts and @terminfo/probe-defs own both lists and the D3 rule).
+  const includedIds = includedTierOneIds(release.scoredIds)
   for (const [key, { selected }] of byTarget) {
-    const bar = barOverMeasured(selected.cells, release.measuredIds)
+    const bar = barOverMeasured(selected.cells, release.scoredIds)
     if (bar.denominator && coverageSentence(bar) === "No selected run") {
       throw new Error(`release bar ${key} has a denominator but no coverage sentence`)
     }
