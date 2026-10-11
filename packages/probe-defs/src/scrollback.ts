@@ -58,18 +58,22 @@ const SCROLLBACK_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeome
     minCols: 2,
   },
   "scrollback.alt-screen": {
-    // Row 1 only: the edit's ALT_SCREEN lands on row 2, outside the compared region, so an
-    // ignored 1049 leaves row 1 exactly as the seed left it — a named unsupported, not a shrug.
-    region: { top: 1, left: 1, bottom: 1, right: 18 },
-    sentinel: { row: 2, col: 1 },
+    // Rows 1-2, one frame, three behaviours. The edit enters the alt grid, paints the SAME marker on
+    // row 2 there, leaves with 1049l, and scrolls up. On a surface that really left the alt grid the
+    // restored row 1 marker is scrolled off and row 2 is blank — the seed marker never reappears. A
+    // surface that ignored 1049h (or 1049l) still has the edit's row-2 marker, and the scroll lifts it
+    // onto row 1, reproducing the seed frame exactly. So the entry and the restore are both read back,
+    // and ignoring either one reads the seed, never the expected frame.
+    region: { top: 1, left: 1, bottom: 2, right: 18 },
+    sentinel: { row: 4, col: 1 },
     cursorRow: 3,
-    seed: "\x1b[0m\x1b[2J\x1b[HMAIN_SCREEN_MARKER",
-    edit: "\x1b[?1049h\x1b[2;1HALT_SCREEN",
+    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HMAIN_SCREEN_MARKER",
+    edit: "\x1b[?1049h\x1b[2;1HMAIN_SCREEN_MARKER\x1b[?1049l\x1b[S",
     expected: "\x1b[0m\x1b[2J\x1b[H",
     timeoutMs: 5000,
     pollMs: 250,
     minRows: 4,
-    minCols: 20,
+    minCols: 19,
   },
   "scrollback.decstbm": {
     // Rows 1-5: row 3 changes from A to B only when the region confines the scroll. A terminal that
@@ -86,13 +90,17 @@ const SCROLLBACK_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeome
     minCols: 8,
   },
   "scrollback.decstbm-reset": {
-    // Rows 1-2: an honoured ESC[r makes the region the full screen, so CSI S lifts row 3's A onto row
-    // 2. A terminal still holding rows 3-6 scrolls nothing above row 3, leaving the seed frame.
+    // Rows 1-2: the edit sets a rows 4-6 scroll region, scrolls once inside it, resets with ESC[r, and
+    // scrolls again. Only a surface that honoured the reset scrolls the FULL screen the second time,
+    // lifting row 3's A onto row 2 — the expected frame. A surface still holding rows 4-6 scrolls that
+    // region twice, and a surface that ignored DECSTBM scrolls the full screen twice; the first scroll
+    // leaves row 3's A where it is and the second carries it to row 1, so both ignored shapes reproduce
+    // the seed frame and neither can be mistaken for a working reset.
     region: { top: 1, left: 1, bottom: 2, right: 1 },
     sentinel: { row: 8, col: 1 },
     cursorRow: 6,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HFIXED\x1b[3;1HA",
-    edit: "\x1b[3;6r\x1b[r\x1b[S",
+    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HA\x1b[3;1HA",
+    edit: "\x1b[4;6r\x1b[S\x1b[r\x1b[S",
     expected: "\x1b[r\x1b[0m\x1b[2J\x1b[H\x1b[2;1HA",
     timeoutMs: 5000,
     pollMs: 250,
@@ -743,8 +751,9 @@ export const scrollbackProbes: ProbeDefinition[] = [
           if (readback) {
             const verdict = await captureRegionVerdict(ctx, "scrollback.alt-screen", readback)
             if (verdict) {
-              // The decision's last frame is painted while the alt grid is active; leave it the way the
-              // capture-only finally block used to, before any later probe shares this terminal.
+              // The last frame may sit in the alt grid on a surface that ignores 1049l; leave the main
+              // grid active and clean, exactly as the capture-only finally block did, before any later
+              // probe shares this terminal.
               ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
               return verdict
             }

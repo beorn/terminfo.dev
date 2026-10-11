@@ -359,6 +359,7 @@ export interface Report {
   candidate2?: ScorableCohort & {
     decidableIds: string[]
     unavailableIds: string[]
+    libraryOnlyIds: string[]
     barRows: CohortBarRow[]
     admittedRuns: CohortRun[]
     refusedRuns: RefusedRun[]
@@ -366,10 +367,12 @@ export interface Report {
 }
 
 /**
- * The cohort reduced to what a decisive share is scored over: the ratified `measuredIds` (which stay
- * the full 125, pinned by SHA in the reader's test) AND the decidable basis `splitDecidableBasis`
- * derives from the required suite's schedule. The share divides over `decidableIds`; the ids the
- * schedule does not cover are named beside the fraction, never inside a denominator.
+ * The cohort reduced to what a decisive share is scored over. The ratified `measuredIds` stay the full
+ * 125 (pinned by SHA in the reader's test); the share divides over `scoredIds` — the ratified ids an
+ * APP run can decide, which is `measuredIds` minus the app-unobservable rows — and the per-category
+ * block divides over `decidableIds`, the scored ids the required suite's schedule also covers. Two
+ * lists stay OUT of every denominator and are named beside each fraction: the ids the schedule does
+ * not cover (`unavailableIds`) and the rows no app run can decide (`libraryOnlyIds`).
  */
 export type ScorableCohort = FeatureCohort & { readonly decidableIds: readonly string[] }
 
@@ -387,11 +390,12 @@ function cohortRun(run: ContextCandidate, cohort: ScorableCohort, role: "selecte
       reason: `ineligible: ${role} run on suite ${run.suiteId}, required ${cohort.frozenSuiteId}`,
     }
   }
-  // The RELEASE line is the operator's D3 bar over the ratified cohort (`measuredIds`, the 125): an id
-  // leaves the 125 only on an operator ruling, and an id with no probe in the required suite counts as
-  // NOT decisive there and is named beside the fraction — the gap is in the suite, not in the cohort
-  // (@cto 2026-10-10T15:59Z). Only the per-category block divides over the decidable basis.
-  return { run, measured: true, share: decisiveShare(run.cells, cohort.measuredIds) }
+  // The RELEASE line is the operator's D3 bar over the ratified cohort (`measuredIds`, the 125) with
+  // the app-unobservable rows removed: an id leaves the 125 only on an operator ruling (@chief option
+  // B, 2026-10-11), and it leaves as a NAMED row, never silently. An id with no probe in the required
+  // suite counts as NOT decisive there and is named beside the fraction — the gap is in the suite, not
+  // in the cohort (@cto 2026-10-10T15:59Z). Only the per-category block divides over the decidable basis.
+  return { run, measured: true, share: decisiveShare(run.cells, cohort.scoredIds) }
 }
 
 /** Eligibility follows the site's completed selection; history never replaces the selected run. */
@@ -411,6 +415,7 @@ export function buildReport(args: {
 }): Report {
   let cohort: ScorableCohort | undefined
   let unavailableIds: string[] = []
+  let libraryOnlyIds: string[] = []
   if (args.cohort === "candidate2") {
     const declared = loadFeatureCohort({
       catalog: featureCatalog(args.contentDir),
@@ -423,10 +428,13 @@ export function buildReport(args: {
         `${manifestPath}: probeHash ${manifest.probeHash} does not match required ${declared.frozenSuiteId}`,
       )
     }
-    // ONE basis, one owner: the required schedule is the source of availability, and the ids it does
-    // not cover are carried as `unavailableIds` (named beside the fraction, never in a denominator).
-    const basis = splitDecidableBasis(declared.measuredIds, manifest.probes.app)
+    // ONE basis, one owner: the required schedule is the source of availability. The split runs over
+    // `scoredIds` (the app-observable rows), so an app-unobservable row can never enter a category
+    // denominator, and the ids the schedule does not cover are carried as `unavailableIds` — named
+    // beside the fraction, never in a denominator.
+    const basis = splitDecidableBasis(declared.scoredIds, manifest.probes.app)
     unavailableIds = [...basis.unavailableIds]
+    libraryOnlyIds = [...declared.libraryOnlyIds]
     cohort = { ...declared, decidableIds: basis.decidableIds }
   }
   const projection = loadCurrentResults(args.contentDir).projection
@@ -488,6 +496,7 @@ export function buildReport(args: {
       ...cohort,
       decidableIds: [...cohort.decidableIds],
       unavailableIds,
+      libraryOnlyIds,
       barRows: barRows.map((row) => cohortRowForSelected(row, cohort)),
       admittedRuns: admitted.map((run) => cohortRun(run, cohort, "admitted")),
       refusedRuns: refused,
@@ -557,10 +566,20 @@ export function categoryShares(cells: ShareCells, categories: readonly CohortCat
  * the required suite; the ids without one are named beside each affected row, never inside a
  * denominator, so no reader has to guess what the numbers are divided by.
  */
-export function categoryBlockHeader(cohortCount: number, decidableCount: number, suiteId: string): string {
+export function categoryBlockHeader(
+  ratifiedCount: number,
+  decidableCount: number,
+  suiteId: string,
+  libraryOnlyCount = 0,
+): string {
+  const libraryOnly =
+    libraryOnlyCount === 0
+      ? ""
+      : `; ${libraryOnlyCount} ${libraryOnlyCount === 1 ? "row is" : "rows are"} library-only and not scored in apps`
   return (
-    `CATEGORIES OF THE ${cohortCount} — n = ${decidableCount} cohort ids with a probe in required suite ` +
-    `${suiteId}; unavailable listed beside — D3 bar per category: >=90% pass, >=70% with gaps, else fail`
+    `CATEGORIES OF THE ${ratifiedCount} — n = ${decidableCount} cohort ids with a probe in required suite ` +
+    `${suiteId} and app-observable${libraryOnly}; unavailable listed beside — ` +
+    `D3 bar per category: >=90% pass, >=70% with gaps, else fail`
   )
 }
 
@@ -573,15 +592,19 @@ export function formatCategoryRow(
   share: DecisiveShare,
   labelWidth: number,
   unavailableIds: readonly string[] = [],
+  libraryOnlyIds: readonly string[] = [],
 ): string[] {
   if (share.denominator !== category.ids.length) {
     throw new Error(
       `category ${category.key} share denominator ${share.denominator} does not match its ${category.ids.length} cohort ids`,
     )
   }
-  const unavailable = unavailableIds.length ? `   (unavailable: ${unavailableIds.join(", ")})` : ""
+  const beside = [
+    ...(unavailableIds.length ? [`unavailable: ${unavailableIds.join(", ")}`] : []),
+    ...(libraryOnlyIds.length ? [`library-only: ${libraryOnlyIds.join(", ")}`] : []),
+  ]
   return [
-    `    ${category.label.padEnd(labelWidth)}  ${share.decisive}/${share.denominator} = ${share.decisivePct}% · ${share.verdict.label}${unavailable}`,
+    `    ${category.label.padEnd(labelWidth)}  ${share.decisive}/${share.denominator} = ${share.decisivePct}% · ${share.verdict.label}${beside.length ? `   (${beside.join("; ")})` : ""}`,
     inconclusiveLine(share.inconclusiveIds, "      "),
     remainderLine(share.remainder, "      "),
   ]
@@ -598,6 +621,7 @@ export function formatCohortRow(
   categories: readonly CohortCategory[],
   labelWidth: number,
   unavailableIds: readonly string[] = [],
+  libraryOnlyIds: readonly string[] = [],
 ): string[] {
   const lines = [`${row.context.terminalId}/${row.context.os}`]
   if ("run" in row) {
@@ -607,18 +631,25 @@ export function formatCohortRow(
     lines.push(`  not measured — ${row.reason}`)
     return lines
   }
-  const unavailable = unavailableIds.length ? `   (unavailable: ${unavailableIds.join(", ")})` : ""
+  // The ratified cohort is the operator's list; the fraction divides over the app-observable rows, so
+  // the header states the ratified size and the moved rows are named and counted, never dropped silently.
+  const ratifiedCount = row.share.denominator + libraryOnlyIds.length
+  const beside = [
+    ...(unavailableIds.length ? [`unavailable: ${unavailableIds.join(", ")}`] : []),
+    ...(libraryOnlyIds.length ? [`library-only: ${libraryOnlyIds.join(", ")}`] : []),
+  ]
   const decidableCount = categories.reduce((count, category) => count + category.ids.length, 0)
   lines.push(
-    `  decisive/${row.share.denominator} ${row.share.decisive}/${row.share.denominator} = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}${unavailable}`,
+    `  decisive/${row.share.denominator} ${row.share.decisive}/${row.share.denominator} = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}${beside.length ? `   (${beside.join("; ")})` : ""}`,
     `  inconclusive/${row.share.denominator} ${row.share.inconclusive}/${row.share.denominator} = ${row.share.inconclusivePct}%`,
     inconclusiveLine(row.share.inconclusiveIds),
     remainderLine(row.share.remainder),
-    `  ${categoryBlockHeader(row.share.denominator, decidableCount, row.run.suiteId)}`,
+    `  ${categoryBlockHeader(ratifiedCount, decidableCount, row.run.suiteId, libraryOnlyIds.length)}`,
   )
   for (const { category, share } of categoryShares(row.run.cells, categories)) {
     const categoryUnavailable = unavailableIds.filter((id) => (id.split(".")[0] ?? "") === category.key)
-    lines.push(...formatCategoryRow(category, share, labelWidth, categoryUnavailable))
+    const categoryLibraryOnly = libraryOnlyIds.filter((id) => (id.split(".")[0] ?? "") === category.key)
+    lines.push(...formatCategoryRow(category, share, labelWidth, categoryUnavailable, categoryLibraryOnly))
   }
   return lines
 }
@@ -713,13 +744,13 @@ function main(): void {
   if (report.candidate2) {
     const cohort = report.candidate2
     console.log(
-      `Candidate 2 classics · ${cohort.measuredIds.length} IDs (${cohort.decidableIds.length} with a probe in required suite ${cohort.frozenSuiteId}) · required suite ${cohort.frozenSuiteId}; ineligible: selected run on suite X, required ${cohort.frozenSuiteId} when live selection moves; only frozen-suite admitted history then receives the cohort verdict`,
+      `Candidate 2 classics · ${cohort.measuredIds.length} IDs (${cohort.decidableIds.length} with a probe in required suite ${cohort.frozenSuiteId} and app-observable) · required suite ${cohort.frozenSuiteId}; ineligible: selected run on suite X, required ${cohort.frozenSuiteId} when live selection moves; only frozen-suite admitted history then receives the cohort verdict`,
     )
     console.log(
       `read ${report.searched} through the published selection projection; skipped ${report.legacySkipped} legacy documents; ${report.rejected} rejected`,
     )
     console.log(
-      `basis: release: the operator's ${cohort.measuredIds.length}, an id with no probe in the required suite counts as not decisive and is named; categories: ids with a probe in the required suite (${cohort.decidableIds.length} of ${cohort.measuredIds.length}), unavailable named beside: ${cohort.unavailableIds.join(", ") || "none"}`,
+      `basis: release: the operator's ${cohort.measuredIds.length} scored over the ${cohort.scoredIds.length} an app run can decide, an id with no probe in the required suite counts as not decisive and is named, and ${cohort.libraryOnlyIds.length} ${cohort.libraryOnlyIds.length === 1 ? "row is" : "rows are"} library-only and not scored in apps; categories: ids with a probe in the required suite (${cohort.decidableIds.length} of ${cohort.measuredIds.length}), unavailable named beside: ${cohort.unavailableIds.join(", ") || "none"}, library-only named beside: ${cohort.libraryOnlyIds.join(", ") || "none"}`,
     )
     const categories = cohortCategories(cohort.decidableIds, loadCategories(contentDir))
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
@@ -727,14 +758,15 @@ function main(): void {
     for (const row of cohort.barRows.filter(
       (row) => !terminalIds.length || terminalIds.includes(row.context.terminalId),
     )) {
-      for (const line of formatCohortRow(row, categories, labelWidth, cohort.unavailableIds)) console.log(line)
+      for (const line of formatCohortRow(row, categories, labelWidth, cohort.unavailableIds, cohort.libraryOnlyIds))
+        console.log(line)
     }
     console.log(`ADMITTED RUNS — every schema-v2 app run the site admits in ${report.searched}`)
     for (const row of cohort.admittedRuns) {
       console.log(
         `  ${row.run.terminalId} ${row.run.version} ${row.run.os} ${row.run.runId} · suite ${row.run.suiteId} · ` +
           (row.measured
-            ? `decisive/${cohort.measuredIds.length} ${row.share.decisive}/${row.share.denominator} = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}`
+            ? `decisive/${cohort.scoredIds.length} ${row.share.decisive}/${row.share.denominator} = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}`
             : row.reason),
       )
     }

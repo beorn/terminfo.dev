@@ -20,8 +20,9 @@ const runSha = ref(defaultRun?.sha256 || '')
 const selectedRun = computed(() => runs.find(run => run.sha256 === runSha.value))
 const counts = computed(() => selectedRun.value?.counts)
 const namedNotTested = computed(() => selectedRun.value?.notTestedCoverage?.namedCount ?? 0)
-const measuredBar = computed(() => barOverMeasured(selectedRun.value?.cells ?? {}, data.releaseScope.measuredIds))
-const includedIds = includedTierOneIds(data.releaseScope.measuredIds)
+const libraryOnlyIds = computed(() => data.releaseScope.libraryOnlyIds)
+const measuredBar = computed(() => barOverMeasured(selectedRun.value?.cells ?? {}, data.releaseScope.scoredIds))
+const includedIds = includedTierOneIds(data.releaseScope.scoredIds)
 const measuredVerdict = computed(() => barVerdict(barOverMeasured(selectedRun.value?.cells ?? {}, includedIds)))
 const stale = computed(() => selectedRun.value ? isStaleRelation(selectedRun.value.suiteRelation) : false)
 const staleText = computed(() => selectedRun.value ? staleCaption(selectedRun.value.measuredAt) : '')
@@ -170,6 +171,7 @@ const breadcrumbParent = (() => {
   </div>
   <p v-if="measuredVerdict" class="result-verdict">{{ measuredVerdict.text }} · <span class="result-verdict-detail">{{ measuredVerdict.pct }}% of the {{ measuredVerdict.denominator }} included capabilities read decisive</span></p>
   <p class="result-share-label">{{ measuredBar.fillPct }}% supported of {{ measuredBar.denominator }} · measured per terminal</p>
+  <p v-if="libraryOnlyIds.length" class="score-detail">{{ libraryOnlyIds.length }} {{ libraryOnlyIds.length === 1 ? 'row is' : 'rows are' }} library-only and not scored in apps: {{ libraryOnlyIds.join(', ') }}.</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
     <span v-if="measuredBar.supported" class="result-share-supported" :style="{ width: `${measuredBar.supported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.unsupported / measuredBar.denominator * 100}%` }"></span>

@@ -103,3 +103,6 @@ export {
 
 export { splitDecidableBasis } from "./decidable-basis.ts"
 export type { DecidableBasis } from "./decidable-basis.ts"
+
+export { APP_UNOBSERVABLE_ROWS, appUnobservableIds, splitAppObservable } from "./app-unobservable.ts"
+export type { AppObservableSplit, AppUnobservableRow } from "./app-unobservable.ts"
