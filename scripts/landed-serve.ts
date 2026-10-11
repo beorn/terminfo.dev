@@ -15,12 +15,14 @@
  * that is accepted, and the readiness ceiling in the declaration covers it.
  *
  * `TERMINFO_SITE_OUT_DIR` roots every build write (see `./site-out.ts`), so this can run from a read-only landing.
+ * While a rebuild runs it writes `rebuild.json` into that root, naming the revision being built TO; the health probe
+ * reads it to answer `starting` (28268 AC4), so a mid-rebuild preview waits for readiness instead of reading stale.
  */
 import { execFileSync, spawnSync } from "node:child_process"
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { siteDistDir } from "./site-out.ts"
+import { siteDistDir, writeSiteRebuildMarker } from "./site-out.ts"
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const distDir = siteDistDir(repoRoot)
@@ -48,6 +50,9 @@ function servedRevision(): string | null {
 
 function build(target: string): void {
   console.log(`terminfo-site: served output is ${servedRevision() ?? "absent"}, landing is ${target} — rebuilding`)
+  // The marker the health probe reads while this rebuild runs (28268 AC4); see `writeSiteRebuildMarker` for why it
+  // is cleared only on success.
+  const clearMarker = writeSiteRebuildMarker(target)
   const result = spawnSync("bun", ["run", "build"], { cwd: repoRoot, stdio: "inherit", env: process.env })
   if (result.error) {
     console.error(`terminfo-site: cannot run the site build: ${result.error.message}`)
@@ -62,6 +67,7 @@ function build(target: string): void {
     console.error(`terminfo-site: build stamped ${built ?? "nothing"}, expected ${target}; refusing to serve`)
     process.exit(1)
   }
+  clearMarker?.()
 }
 
 const target = landingRevision()

@@ -9,7 +9,15 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { spawnSync } from "node:child_process"
 import { describe, expect, it } from "vitest"
-import { siteAnalysisPath, siteCacheDir, siteDistDir, siteOutRoot, siteTempDir } from "./site-out.ts"
+import {
+  siteAnalysisPath,
+  siteCacheDir,
+  siteDistDir,
+  siteOutRoot,
+  siteRebuildMarkerPath,
+  siteTempDir,
+  writeSiteRebuildMarker,
+} from "./site-out.ts"
 
 const repoRoot = join(import.meta.dirname, "..")
 
@@ -71,5 +79,35 @@ it("analysis generation writes under the override and leaves the source tree alo
     expect(JSON.parse(readFileSync(redirected, "utf8"))).toHaveProperty("terminals/kitty")
   } finally {
     rmSync(out, { recursive: true, force: true })
+  }
+})
+
+it("the rebuild marker path is undefined with no state root and lives at the write root otherwise", () => {
+  expect(siteRebuildMarkerPath({})).toBeUndefined()
+  expect(siteRebuildMarkerPath({ TERMINFO_SITE_OUT_DIR: "/var/terminfo-site" })).toBe(
+    join("/var/terminfo-site", "rebuild.json"),
+  )
+})
+
+it("the rebuild marker names the target revision and clears only via the returned action (28268 AC4)", () => {
+  const root = mkdtempSync(join(tmpdir(), "terminfo-site-marker-"))
+  try {
+    // No state root: nothing is written, so a bare developer checkout is unchanged.
+    expect(writeSiteRebuildMarker("a".repeat(40), {})).toBeUndefined()
+
+    const env: NodeJS.ProcessEnv = { TERMINFO_SITE_OUT_DIR: root }
+    const clear = writeSiteRebuildMarker("a".repeat(40), env)
+    const path = join(root, "rebuild.json")
+    expect(existsSync(path)).toBe(true)
+    expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
+      schema: "terminfo-site-rebuild/1",
+      target: "a".repeat(40),
+    })
+    clear?.()
+    expect(existsSync(path)).toBe(false)
+    // Clearing twice is a no-op, never a throw: the caller may exit between the two.
+    expect(() => clear?.()).not.toThrow()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })
