@@ -245,7 +245,7 @@ const EXTENSIONS_CONTRACT: GroupContract = [
     id: "extensions.clipboard-paste",
     expected: "decided",
     claim:
-      "clipboard-paste: owned clipboard nonce then shift+Insert reports CSI 200~nonce201~ after plain-a delivery control and 2004; raw nonce is unsupported",
+      "clipboard-paste: owned clipboard nonce then ctrl+shift+v reports CSI 200~nonce201~ after plain-a delivery control and 2004; raw nonce is unsupported",
   },
   {
     id: "extensions.font-ligatures",

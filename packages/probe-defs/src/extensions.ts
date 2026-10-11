@@ -1257,13 +1257,14 @@ async function clipboardPaste(ctx: TermContext): Promise<ProbeResult> {
     ctx.write("\x1b[?2004h")
     try {
       const arrival = new RegExp(`\\x1b\\[200~[\\s\\S]*?\\x1b\\[201~|${escapeRegex(nonce)}`)
-      const report = (await readInput(arrival, 1000, () => input.injectKey("shift+Insert")))?.[0]
+      // The owned fixture seeds CLIPBOARD; Shift+Insert reads X11 PRIMARY instead.
+      const report = (await readInput(arrival, 1000, () => input.injectKey("ctrl+shift+v")))?.[0]
       if (!report) {
-        throw new Error("XTEST clipboard paste shift+Insert did not reach the app after a successful delivery control")
+        throw new Error("XTEST clipboard paste ctrl+shift+v did not reach the app after a successful delivery control")
       }
       const observed = { mode: "clipboard-paste", control, report }
       const expected =
-        "OS XTEST shift+Insert paste of clipboard nonce as CSI 200~nonce201~ after plain-a delivery control"
+        "OS XTEST ctrl+shift+v paste of clipboard nonce as CSI 200~nonce201~ after plain-a delivery control"
       const encoding = new RegExp(`\\x1b\\[200~${escapeRegex(nonce)}\\x1b\\[201~`)
       if (encoding.test(report)) {
         return {
@@ -1275,7 +1276,7 @@ async function clipboardPaste(ctx: TermContext): Promise<ProbeResult> {
               kind: "positive" as const,
               expected,
               observed: JSON.stringify(observed),
-              action: "clipboard-paste:shift+Insert",
+              action: "clipboard-paste:ctrl+shift+v",
             },
           ],
         }
@@ -1289,7 +1290,7 @@ async function clipboardPaste(ctx: TermContext): Promise<ProbeResult> {
             kind: "negative" as const,
             expected,
             observed: JSON.stringify(observed),
-            action: "clipboard-paste:shift+Insert",
+            action: "clipboard-paste:ctrl+shift+v",
           },
         ],
       }
