@@ -43,7 +43,15 @@ function servedRevision(): string | null {
     if (parsed === null || typeof parsed !== "object") return null
     const source = (parsed as { sourceCommit?: unknown }).sourceCommit
     return typeof source === "string" ? source : null
-  } catch {
+  } catch (error) {
+    // An unreadable or malformed stamp is not the same as an absent one: absent means "no build yet", but a stamp
+    // that exists and cannot be parsed is a surprise worth a line, so the rebuild it triggers is attributable rather
+    // than silent (NO SILENT ERRORS). The caller rebuilds either way, and the build verifies its own stamp after.
+    console.warn(
+      `terminfo-site: unreadable build stamp at ${stamp} (${
+        error instanceof Error ? error.message : String(error)
+      }); rebuilding`,
+    )
     return null
   }
 }
