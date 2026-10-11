@@ -123,14 +123,14 @@ against the live snapshot when this tree's suite is declared.
 
 `content/` — JSON files that humans and AI edit:
 
-| File               | What                                                              | Entries |
-| ------------------ | ----------------------------------------------------------------- | ------- |
-| `features.json`    | Feature metadata: name, slug, tags, body, probe, baseline         | ~133    |
-| `terminals.json`   | Terminal app metadata: label, slug, description, body, url        | ~11     |
-| `standards.json`   | Standard/tag metadata: label, url, description                    | ~10     |
-| `categories.json`  | Category metadata: label, order, description                      | ~13     |
-| `annotations.json` | Result overrides: backend:feature notes explaining failures       | ~88     |
-| `baselines.json`   | Baseline tier metadata: label, emoji, color, description          | 4       |
+| File               | What                                                        | Entries |
+| ------------------ | ----------------------------------------------------------- | ------- |
+| `features.json`    | Feature metadata: name, slug, tags, body, probe, baseline   | ~133    |
+| `terminals.json`   | Terminal app metadata: label, slug, description, body, url  | ~11     |
+| `standards.json`   | Standard/tag metadata: label, url, description              | ~10     |
+| `categories.json`  | Category metadata: label, order, description                | ~13     |
+| `annotations.json` | Result overrides: backend:feature notes explaining failures | ~88     |
+| `baselines.json`   | Baseline tier metadata: label, emoji, color, description    | 4       |
 
 ### Derived: Build-Time Computation
 
