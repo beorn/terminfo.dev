@@ -62,8 +62,8 @@ export function loadFeatureCohort(args: {
     name: raw.name,
     frozenSuiteId: raw.frozenSuiteId,
     measuredIds,
-    scoredIds,
-    libraryOnlyIds,
+    scoredIds: [...scoredIds],
+    libraryOnlyIds: [...libraryOnlyIds],
   }
 }
 
@@ -101,8 +101,8 @@ export function loadReleaseScope(args: {
     tier: declaration.tier,
     method: declaration.method,
     measuredIds,
-    scoredIds,
-    libraryOnlyIds,
+    scoredIds: [...scoredIds],
+    libraryOnlyIds: [...libraryOnlyIds],
     measuredCount: measuredIds.length,
     catalogCount: catalogIds.length,
     unmeasured,
