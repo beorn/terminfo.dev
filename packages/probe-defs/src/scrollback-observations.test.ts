@@ -550,20 +550,44 @@ test("scrollback capture fixtures record control and target frames with honest, 
 
   const alt = findScrollback("scrollback.alt-screen")
   const alts = captureApp(4, 61)
+  // alt-screen now judges through the region-readback oracle, so a surface that cannot report its own
+  // pixels takes the oracle's named geometry refusal instead of ungraded control/target frames.
   const altResult = await alt.term!(alts.context)
-  expect(alts.frames.map(({ role }) => role)).toEqual(["control", "control", "target"])
-  expect(alts.writes).toContain("\x1b[?1049h")
-  expect(altResult.observation?.frames).toHaveLength(3)
+  expect(altResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+  expect(String(altResult.observation?.note)).toContain("cell size in pixels")
+  expect(alts.frames).toEqual([])
+
+  const decstbm = findScrollback("scrollback.decstbm")
+  const decstbms = captureApp(12, 61)
+  // decstbm now judges through the region-readback oracle, so a surface that cannot report its own
+  // pixels takes the oracle's named geometry refusal instead of ungraded control/target frames.
+  const decstbmResult = await decstbm.term!(decstbms.context)
+  expect(decstbmResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+  expect(String(decstbmResult.observation?.note)).toContain("cell size in pixels")
+  expect(decstbms.frames).toEqual([])
 
   const reset = findScrollback("scrollback.decstbm-reset")
   const narrow = captureApp(12, 8)
   expect((await reset.term!(narrow.context)).observation).toMatchObject({ evidence: "none" })
   expect(narrow.writes).toEqual([])
   const resets = captureApp(12, 61)
+  // decstbm-reset likewise judges through the region-readback oracle now.
   const resetResult = await reset.term!(resets.context)
-  expect(resets.frames).toHaveLength(3)
-  expect(resets.writes).toContain("\x1b[5;10r")
-  expect(String(resetResult.observation?.note)).toContain("confinement")
+  expect(resetResult.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+  expect(String(resetResult.observation?.note)).toContain("cell size in pixels")
+  expect(resets.frames).toEqual([])
 
   const setRegion = findScrollback("scrollback.set-region")
   const setSmall = captureApp(12, 5)
@@ -599,4 +623,140 @@ test.each([
   if (!probe?.termless) throw new Error(`Missing ${id} headless callback`)
   const result = probe.termless(headlessContext(createSemanticSurface({ mutations: [mutation] })))
   expect(result.observation?.outcome, `${id} under ${mutation}`).toBe("unsupported")
+})
+
+/** A capture surface that answers the pixel-geometry queries and paints cell-aligned region digests. */
+function readbackApp(rows: number, cols: number, implementsAltScreen: boolean) {
+  const app = captureApp(rows, cols)
+  const inner = app.context.write
+  const events: string[] = []
+  app.context.write = (bytes: string) => {
+    events.push(bytes)
+    inner(bytes)
+  }
+  app.context.queryWithSentinelOutcome = async (sequence: string) => {
+    if (sequence === "\x1b[16t") {
+      return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply" as const, raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply" as const, raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+  }
+  let reads = 0
+  app.context.capture = async (request) => {
+    reads += 1
+    const region = request.cells!
+    const key = `${region.top},${region.left},${region.bottom},${region.right}`
+    const joined = events.join("")
+    const witnessWrite = events.filter((entry) => /^\x1b\[\d+;\d+H.$/u.test(entry)).at(-1)
+    const altActive = implementsAltScreen && joined.lastIndexOf("\x1b[?1049h") > joined.lastIndexOf("\x1b[?1049l")
+    const lastClear = Math.max(joined.lastIndexOf("\x1b[2J"), joined.lastIndexOf("\x1bc"))
+    const mainShowsMarker = joined.lastIndexOf("MAIN_SCREEN_MARKER") > lastClear
+    const content =
+      key === "2,1,2,1" ? (witnessWrite?.slice(-1) ?? "") : altActive ? "blank" : mainShowsMarker ? "main" : "blank"
+    return {
+      role: request.role,
+      label: request.label,
+      capturedAt: reads,
+      ref: `sha256:${String(reads).repeat(64)}`,
+      regionDigest: `sha256:${key}|${content}`,
+      pixelsDigest: `sha256:frame|${content}`,
+    }
+  }
+  return app
+}
+
+/**
+ * @failure The alt-screen app row returned control/target frames and a shrug on a surface that reports
+ *   its own pixels and really implements 1049, so the capability stayed ungraded for want of a comparison
+ *   the code never made. The headless callback cannot catch this: it decides either way, which is why the
+ *   site table showed the gap on every terminal while the probe's own contract test passed.
+ * @level l2
+ * @consumer 28018 candidate-2 Scrollback group; the site table's scrollback rows for every terminal.
+ * @testonly none
+ */
+test.each([true, false])(
+  "scrollback.alt-screen judges the app path from the region readback (alt screen implemented: %s)",
+  async (implementsAltScreen) => {
+    const { context } = readbackApp(4, 61, implementsAltScreen)
+    const result = await findScrollback("scrollback.alt-screen").term!(context)
+    expect(result.observation?.outcome).toBe(implementsAltScreen ? "supported" : "unsupported")
+    expect(result.pass).toBe(implementsAltScreen)
+  },
+)
+
+/** A capture surface that answers the pixel-geometry queries and paints scroll-region readbacks. */
+function scrollRegionApp(rows: number, cols: number, honoursRegion: boolean) {
+  const app = captureApp(rows, cols)
+  const inner = app.context.write
+  const events: string[] = []
+  app.context.write = (bytes: string) => {
+    events.push(bytes)
+    inner(bytes)
+  }
+  app.context.queryWithSentinelOutcome = async (sequence: string) => {
+    if (sequence === "\x1b[16t") {
+      return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply" as const, raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply" as const, raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+  }
+  let reads = 0
+  app.context.capture = async (request) => {
+    reads += 1
+    const region = request.cells!
+    const key = `${region.top},${region.left},${region.bottom},${region.right}`
+    // The 8,1 sentinel paints the running witness glyph; every other read is the compared frame, which
+    // follows the region only on a surface that really honours it.
+    const witnessWrite = events.filter((entry) => /^\x1b\[\d+;\d+H.$/u.test(entry)).at(-1)
+    const glyph = witnessWrite?.slice(-1) ?? ""
+    const step = glyph === "0" ? "seed" : glyph === "1" ? "target" : glyph === "2" ? "expected" : "pre"
+    const content =
+      key === "8,1,8,1"
+        ? glyph
+        : step === "target"
+          ? honoursRegion
+            ? "expected-frame"
+            : "seed-frame"
+          : step === "expected"
+            ? "expected-frame"
+            : "seed-frame"
+    return {
+      role: request.role,
+      label: request.label,
+      capturedAt: reads,
+      ref: `sha256:${String(reads).repeat(64)}`,
+      regionDigest: `sha256:${key}|${content}`,
+      pixelsDigest: `sha256:frame|${content}`,
+    }
+  }
+  return app
+}
+
+/**
+ * @failure The scroll-region rows returned control/target frames and a shrug from a surface that
+ *   really implements DECSTBM (or its reset), so the capability stayed ungraded for want of a
+ *   comparison the app path never made. The headless callback decides either way, which is why the
+ *   site table showed the gap on every terminal while the probe's own contract test passed.
+ * @level l2
+ * @consumer 28018 candidate-2 Scrollback group; the site table's scrollback rows for every terminal.
+ * @testonly none
+ */
+test("scrollback DECSTBM rows judge the app path from the region readback", async () => {
+  for (const [id, honoursRegion, outcome] of [
+    ["scrollback.decstbm", true, "supported"],
+    ["scrollback.decstbm", false, "unsupported"],
+    ["scrollback.decstbm-reset", true, "supported"],
+    ["scrollback.decstbm-reset", false, "unsupported"],
+  ] as const) {
+    const { context } = scrollRegionApp(12, 61, honoursRegion)
+    const result = await findScrollback(id).term!(context)
+    const label = `${id} honours=${String(honoursRegion)}`
+    expect(result.observation?.outcome, label).toBe(outcome)
+    expect(result.pass, label).toBe(honoursRegion)
+    expect(result.assertions ?? [], label).not.toEqual([])
+  }
 })

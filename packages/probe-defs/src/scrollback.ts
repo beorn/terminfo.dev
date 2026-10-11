@@ -57,6 +57,48 @@ const SCROLLBACK_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeome
     minRows: 13,
     minCols: 2,
   },
+  "scrollback.alt-screen": {
+    // Row 1 only: the edit's ALT_SCREEN lands on row 2, outside the compared region, so an
+    // ignored 1049 leaves row 1 exactly as the seed left it — a named unsupported, not a shrug.
+    region: { top: 1, left: 1, bottom: 1, right: 18 },
+    sentinel: { row: 2, col: 1 },
+    cursorRow: 3,
+    seed: "\x1b[0m\x1b[2J\x1b[HMAIN_SCREEN_MARKER",
+    edit: "\x1b[?1049h\x1b[2;1HALT_SCREEN",
+    expected: "\x1b[0m\x1b[2J\x1b[H",
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: 4,
+    minCols: 20,
+  },
+  "scrollback.decstbm": {
+    // Rows 1-5: row 3 changes from A to B only when the region confines the scroll. A terminal that
+    // ignores the region lets the row-6 line feed walk the cursor to row 7 instead, leaving the seed.
+    region: { top: 1, left: 1, bottom: 5, right: 1 },
+    sentinel: { row: 8, col: 1 },
+    cursorRow: 7,
+    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HFIXED\x1b[3;1HA\x1b[4;1HB\x1b[5;1HC",
+    edit: "\x1b[3;6r\x1b[6;1H\n\x1b[r",
+    expected: "\x1b[r\x1b[0m\x1b[2J\x1b[H\x1b[1;1HFIXED\x1b[3;1HB\x1b[4;1HC",
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: 8,
+    minCols: 8,
+  },
+  "scrollback.decstbm-reset": {
+    // Rows 1-2: an honoured ESC[r makes the region the full screen, so CSI S lifts row 3's A onto row
+    // 2. A terminal still holding rows 3-6 scrolls nothing above row 3, leaving the seed frame.
+    region: { top: 1, left: 1, bottom: 2, right: 1 },
+    sentinel: { row: 8, col: 1 },
+    cursorRow: 6,
+    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HFIXED\x1b[3;1HA",
+    edit: "\x1b[3;6r\x1b[r\x1b[S",
+    expected: "\x1b[r\x1b[0m\x1b[2J\x1b[H\x1b[2;1HA",
+    timeoutMs: 5000,
+    pollMs: 250,
+    minRows: 8,
+    minCols: 8,
+  },
 }
 
 function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeResult | undefined {
@@ -697,6 +739,16 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (capture) {
           const refusal = tooSmall(ctx, 2, 19)
           if (refusal) return refusal
+          const readback = SCROLLBACK_READBACK_SPECS["scrollback.alt-screen"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "scrollback.alt-screen", readback)
+            if (verdict) {
+              // The decision's last frame is painted while the alt grid is active; leave it the way the
+              // capture-only finally block used to, before any later probe shares this terminal.
+              ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
+              return verdict
+            }
+          }
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
             ctx.write("MAIN_SCREEN_MARKER")
@@ -808,6 +860,16 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (capture) {
           const refusal = tooSmall(ctx, 10, 10)
           if (refusal) return refusal
+          const readback = SCROLLBACK_READBACK_SPECS["scrollback.decstbm"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "scrollback.decstbm", readback)
+            if (verdict) {
+              // The decision's last frame holds the scrolled region; reset it before any later probe
+              // shares this terminal, exactly as the capture-only finally block did.
+              ctx.write("\x1b[r\x1b[0m\x1b[2J\x1b[H")
+              return verdict
+            }
+          }
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
             ctx.write("FIXED_TOP\r\n")
@@ -925,6 +987,16 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (capture) {
           const refusal = tooSmall(ctx, 10, 9)
           if (refusal) return refusal
+          const readback = SCROLLBACK_READBACK_SPECS["scrollback.decstbm-reset"]
+          if (readback) {
+            const verdict = await captureRegionVerdict(ctx, "scrollback.decstbm-reset", readback)
+            if (verdict) {
+              // The last frame is painted with the region reset; restore it before any later probe
+              // shares this terminal, exactly as the capture-only finally block did.
+              ctx.write("\x1b[r\x1b[0m\x1b[2J\x1b[H")
+              return verdict
+            }
+          }
           try {
             ctx.write("\x1b[0m\x1b[2J\x1b[H")
             ctx.write("FIXED_TOP")
