@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-11T01:00:17Z",
+  "runId": "ec20df478394665096835cd13c41233d",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "ghostty",
+    "version": "1.3.1",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/ghostty-org/ghostty/archive/refs/tags/v1.3.1.tar.gz",
+    "sri": "sha256-WzF6g7Br5Bsm/SmrqD03zabkB+3H3g7XRgv+0HvejyQ=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-+ddMmUe9Jjkun4qqW8XFXVgwVZdVHsGWcQzndgIlBjQ=",
+    "revision": "refs/tags/v1.3.1"
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev3/S+2/linux/ghostty/ec20df478394665096835cd13c41233d/prep/runner-bundle.tar",
+    "sha256": "22f3f03a08b1d878dd851f43fd7dd844f8306105e6d0c9706fbb8f7b33fac101",
+    "narSha256": "sha256-5aJogOzsZX8va88MBgGSpZP3DF9e0fWqw2m2vxb4GJ0=",
+    "frozenRunnerSha256": "4cd756fbe24acf140f31233b7633745cedbb87f54be38463fb8502a33f54f24b",
+    "buildReceiptSha256": "8e310d01250c98a2444b99149e38258227b98832e897e2e5ed43af117ca42c0d",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "267a5d166f08",
+      "collectorRevision": "59fa318d7c6cb7101cae03b5b5befa8f7f82cbba",
+      "manifestSha256": "171e8f98cbec07ff9e92a98eed2ff77a76a7f32eb460f059ed93b5b26a0ee6a6",
+      "bundleSha256": "b1fa2ec7b45a7719878c7cfe363f689b75b27c3d9d44ca89cefe6bcc1da9217d"
+    },
+    "rootBunLockSha256": "d8bd72cfc2aa5bf42cea55238925356759cd277a798eb2b3056875fcc539a18d"
+  },
+  "runtime": {
+    "imageId": "sha256:4909bf449a7b67e8663f1227825b646f4b174bce36c84b209c9374221e5e8727",
+    "imageTarSha256": "02561355f793c985af59daad43a93090472a246a766972cdd0a0141cd86990cd",
+    "arch": "amd64",
+    "nixLockRevision": "ccd7db88387433a2c8cd50663c149de937d43767",
+    "sourceRevision": "59fa318d7c6cb7101cae03b5b5befa8f7f82cbba",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "e70371471ee3b211c7667d6f2a868566af5285dc",
+    "suiteHash": "267a5d166f08"
+  },
+  "status": "raw-unreviewed-history"
+}
