@@ -261,6 +261,7 @@ describe("release 1 decisive-count reader", () => {
     expect(share.decisivePct).toBe(50)
     expect(share.inconclusive).toBe(1)
     expect(share.inconclusivePct).toBe(17)
+    expect(share.inconclusiveIds).toEqual(["d.inconclusive"])
     expect(share.remainder).toEqual([
       { featureId: "e.error", bucket: "error" },
       { featureId: "f.missing", bucket: "untested" },
@@ -466,6 +467,7 @@ describe("release 1 decisive-count reader", () => {
     expect(printed).toContain("suite c6ec4ee8f580")
     expect(printed).toContain("decisive/52     3/4 = 75%  (pass >= 90%)")
     expect(printed).toContain("inconclusive/52 1/4 = 25%")
+    expect(printed).toContain("inconclusive    1 rows: d.inconclusive")
     expect(printed).toContain("verdict         with gaps · 3/4  (75% decisive of the included 4)")
     expect(printed).toContain(
       "context/62      decisive 3/6 = 50%, inconclusive 1/6 = 17%  (context only, not the verdict)",

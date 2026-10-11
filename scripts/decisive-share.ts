@@ -116,6 +116,7 @@ export interface DecisiveShare {
   decisivePct: number
   inconclusive: number
   inconclusivePct: number
+  inconclusiveIds: string[]
   remainder: RemainderRow[]
   verdict: D3Verdict
 }
@@ -135,15 +136,25 @@ function sharePct(count: number, denominator: number): number {
 export function decisiveShare(cells: ShareCells, measuredIds: readonly string[]): DecisiveShare {
   const bar = barOverMeasured(cells, measuredIds)
   const remainder: RemainderRow[] = []
+  const inconclusiveIds: string[] = []
   for (const id of measuredIds) {
     const cell = cells[id]
     if (!cell) remainder.push({ featureId: id, bucket: "untested" })
     else if (cell.outcome === "error") remainder.push({ featureId: id, bucket: "error" })
+    else if (cell.conclusive && cell.outcome === "supported") continue
+    else if (cell.conclusive && cell.outcome === "unsupported") continue
+    else inconclusiveIds.push(id)
   }
   if (remainder.length !== bar.errors + bar.untested) {
     throw new Error(
       `decisive-share remainder ${remainder.length} disagrees with barOverMeasured errors+untested ` +
         `${bar.errors + bar.untested} over ${measuredIds.length} rows`,
+    )
+  }
+  if (inconclusiveIds.length !== bar.inconclusive) {
+    throw new Error(
+      `decisive-share inconclusiveIds ${inconclusiveIds.length} disagrees with barOverMeasured inconclusive ` +
+        `${bar.inconclusive} over ${measuredIds.length} rows`,
     )
   }
   const decisivePct = sharePct(bar.conclusive, bar.denominator)
@@ -154,6 +165,7 @@ export function decisiveShare(cells: ShareCells, measuredIds: readonly string[])
     decisivePct,
     inconclusive: bar.inconclusive,
     inconclusivePct,
+    inconclusiveIds,
     remainder,
     verdict: d3Verdict(bar.conclusive, bar.denominator),
   }
@@ -541,6 +553,7 @@ export function formatCategoryRow(
   const unavailable = unavailableIds.length ? `   (unavailable: ${unavailableIds.join(", ")})` : ""
   return [
     `    ${category.label.padEnd(labelWidth)}  ${share.decisive}/${share.denominator} = ${share.decisivePct}% · ${share.verdict.label}${unavailable}`,
+    inconclusiveLine(share.inconclusiveIds, "      "),
     remainderLine(share.remainder, "      "),
   ]
 }
@@ -570,6 +583,7 @@ export function formatCohortRow(
   lines.push(
     `  decisive/${row.share.denominator} ${row.share.decisive}/${row.share.denominator} = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}${unavailable}`,
     `  inconclusive/${row.share.denominator} ${row.share.inconclusive}/${row.share.denominator} = ${row.share.inconclusivePct}%`,
+    inconclusiveLine(row.share.inconclusiveIds),
     remainderLine(row.share.remainder),
     `  ${categoryBlockHeader(row.share.denominator, decidableCount, row.run.suiteId)}`,
   )
@@ -586,6 +600,11 @@ function remainderLine(remainder: readonly RemainderRow[], indent = "    "): str
   return `${indent}remainder    ${remainder.length} rows: ${named}`
 }
 
+function inconclusiveLine(ids: readonly string[], indent = "    "): string {
+  if (ids.length === 0) return `${indent}inconclusive    0 rows`
+  return `${indent}inconclusive    ${ids.length} rows: ${ids.join(", ")}`
+}
+
 export function formatBarRow(row: BarRow): string[] {
   const label = `${row.context.terminalId}/${row.context.os || "os not recorded"}`
   if (!row.measured) return [label, `  ${row.reason}`]
@@ -600,6 +619,7 @@ export function formatBarRow(row: BarRow): string[] {
   lines.push(
     `    decisive/52     ${tier52.decisive}/${tier52.denominator} = ${tier52.decisivePct}%  (pass >= ${D3_VERDICT_BAR.passPct}%)`,
     `    inconclusive/52 ${tier52.inconclusive}/${tier52.denominator} = ${tier52.inconclusivePct}%`,
+    inconclusiveLine(tier52.inconclusiveIds),
     remainderLine(tier52.remainder),
     `    verdict         ${tier52.verdict.text}  (${tier52.decisivePct}% decisive of the included ${tier52.denominator})`,
     `    context/62      decisive ${tier62.decisive}/${tier62.denominator} = ${tier62.decisivePct}%, inconclusive ${tier62.inconclusive}/${tier62.denominator} = ${tier62.inconclusivePct}%  (context only, not the verdict)`,
