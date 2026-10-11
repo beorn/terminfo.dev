@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { createHash } from "node:crypto"
 import { scrollbackProbes } from "./scrollback.ts"
 import type { ObservationFrame, TermContext, TermlessContext } from "./types.ts"
 import { headlessContext } from "./testing/group-harness.ts"
@@ -625,138 +626,122 @@ test.each([
   expect(result.observation?.outcome, `${id} under ${mutation}`).toBe("unsupported")
 })
 
-/** A capture surface that answers the pixel-geometry queries and paints cell-aligned region digests. */
-function readbackApp(rows: number, cols: number, implementsAltScreen: boolean) {
-  const app = captureApp(rows, cols)
-  const inner = app.context.write
-  const events: string[] = []
-  app.context.write = (bytes: string) => {
-    events.push(bytes)
-    inner(bytes)
-  }
-  app.context.queryWithSentinelOutcome = async (sequence: string) => {
-    if (sequence === "\x1b[16t") {
-      return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply" as const, raw: "", rawBase64: "" }
+const digest = (value: string): string => `sha256:${createHash("sha256").update(value).digest("hex")}`
+
+/**
+ * A `TermContext` over this repository's own semantic terminal. The app callbacks run for real, and
+ * every capture is a cell-aligned crop of the grid the run actually painted, so a region digest follows
+ * the terminal's behaviour instead of a boolean the fixture predicts — the mock that made an ignored
+ * operation look honoured is what let the false "supported" through (#28018).
+ *
+ * `mutations` injects one named fault the surface knows. `strip` models an operation the surface has no
+ * mutation hook for by dropping that exact sequence from every write, which is what an ignoring surface
+ * would render.
+ */
+function regionReadbackApp(
+  rows: number,
+  cols: number,
+  options: { mutations?: readonly string[]; strip?: string } = {},
+) {
+  const surface = createSemanticSurface({ rows, cols, mutations: options.mutations ?? [] })
+  const writes: string[] = []
+  const crop = (top: number, left: number, bottom: number, right: number): string => {
+    const lines: string[] = []
+    for (let y = top - 1; y < bottom; y++) {
+      const line: string[] = []
+      for (let x = left - 1; x < right; x++) line.push(surface.getCell(y, x).char ?? " ")
+      lines.push(line.join(""))
     }
-    if (sequence === "\x1b[14t") {
-      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply" as const, raw: "", rawBase64: "" }
-    }
-    return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+    return JSON.stringify(lines)
   }
-  let reads = 0
-  app.context.capture = async (request) => {
-    reads += 1
-    const region = request.cells!
-    const key = `${region.top},${region.left},${region.bottom},${region.right}`
-    const joined = events.join("")
-    const witnessWrite = events.filter((entry) => /^\x1b\[\d+;\d+H.$/u.test(entry)).at(-1)
-    const altActive = implementsAltScreen && joined.lastIndexOf("\x1b[?1049h") > joined.lastIndexOf("\x1b[?1049l")
-    const lastClear = Math.max(joined.lastIndexOf("\x1b[2J"), joined.lastIndexOf("\x1bc"))
-    const mainShowsMarker = joined.lastIndexOf("MAIN_SCREEN_MARKER") > lastClear
-    const content =
-      key === "2,1,2,1" ? (witnessWrite?.slice(-1) ?? "") : altActive ? "blank" : mainShowsMarker ? "main" : "blank"
-    return {
-      role: request.role,
-      label: request.label,
-      capturedAt: reads,
-      ref: `sha256:${String(reads).repeat(64)}`,
-      regionDigest: `sha256:${key}|${content}`,
-      pixelsDigest: `sha256:frame|${content}`,
-    }
+  const context: TermContext = {
+    rows,
+    cols,
+    write: (bytes) => {
+      writes.push(bytes)
+      surface.feed(options.strip === undefined ? bytes : bytes.replaceAll(options.strip, ""))
+    },
+    queryCursorPosition: async () => ({ row: 1, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async (sequence) => {
+      if (sequence === "\x1b[16t") {
+        return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply" as const, raw: "", rawBase64: "" }
+      }
+      if (sequence === "\x1b[14t") {
+        return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply" as const, raw: "", rawBase64: "" }
+      }
+      return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+    },
+    queryMode: async () => null,
+    capture: async (request) => {
+      const cells = request.cells!
+      return {
+        role: request.role,
+        label: request.label,
+        capturedAt: writes.length,
+        ref: digest(`${request.label}|${writes.join("")}`),
+        regionDigest: digest(crop(cells.top, cells.left, cells.bottom, cells.right)),
+        pixelsDigest: digest(crop(1, 1, rows, cols)),
+      }
+    },
   }
-  return app
+  return { context, writes, surface }
 }
 
 /**
  * @failure The alt-screen app row returned control/target frames and a shrug on a surface that reports
  *   its own pixels and really implements 1049, so the capability stayed ungraded for want of a comparison
  *   the code never made. The headless callback cannot catch this: it decides either way, which is why the
- *   site table showed the gap on every terminal while the probe's own contract test passed.
+ *   site table showed the gap on every terminal while the probe's own contract test passed. A spec that
+ *   compared only the entry also graded a surface that dropped 1049l as supported, because nothing ever
+ *   read the main grid back; the region now carries the restore, so a surface that enters the alt grid
+ *   and never leaves reads the seed frame exactly like one that ignored the switch in the first place.
  * @level l2
  * @consumer 28018 candidate-2 Scrollback group; the site table's scrollback rows for every terminal.
  * @testonly none
  */
-test.each([true, false])(
-  "scrollback.alt-screen judges the app path from the region readback (alt screen implemented: %s)",
-  async (implementsAltScreen) => {
-    const { context } = readbackApp(4, 61, implementsAltScreen)
+test("scrollback.alt-screen reads the entry AND the restore from the region readback", async () => {
+  for (const [label, options, outcome] of [
+    ["the surface really swaps and restores", {}, "supported"],
+    ["the surface ignores 1049h and 1049l", { mutations: ["altscreen-noop"] }, "unsupported"],
+    ["the surface enters the alt grid and never leaves", { strip: "\x1b[?1049l" }, "unsupported"],
+  ] as const) {
+    const { context } = regionReadbackApp(4, 61, options)
     const result = await findScrollback("scrollback.alt-screen").term!(context)
-    expect(result.observation?.outcome).toBe(implementsAltScreen ? "supported" : "unsupported")
-    expect(result.pass).toBe(implementsAltScreen)
-  },
-)
-
-/** A capture surface that answers the pixel-geometry queries and paints scroll-region readbacks. */
-function scrollRegionApp(rows: number, cols: number, honoursRegion: boolean) {
-  const app = captureApp(rows, cols)
-  const inner = app.context.write
-  const events: string[] = []
-  app.context.write = (bytes: string) => {
-    events.push(bytes)
-    inner(bytes)
+    expect(result.observation?.outcome, label).toBe(outcome)
+    expect(result.pass, label).toBe(outcome === "supported")
+    expect(result.assertions ?? [], label).not.toEqual([])
   }
-  app.context.queryWithSentinelOutcome = async (sequence: string) => {
-    if (sequence === "\x1b[16t") {
-      return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply" as const, raw: "", rawBase64: "" }
-    }
-    if (sequence === "\x1b[14t") {
-      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply" as const, raw: "", rawBase64: "" }
-    }
-    return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
-  }
-  let reads = 0
-  app.context.capture = async (request) => {
-    reads += 1
-    const region = request.cells!
-    const key = `${region.top},${region.left},${region.bottom},${region.right}`
-    // The 8,1 sentinel paints the running witness glyph; every other read is the compared frame, which
-    // follows the region only on a surface that really honours it.
-    const witnessWrite = events.filter((entry) => /^\x1b\[\d+;\d+H.$/u.test(entry)).at(-1)
-    const glyph = witnessWrite?.slice(-1) ?? ""
-    const step = glyph === "0" ? "seed" : glyph === "1" ? "target" : glyph === "2" ? "expected" : "pre"
-    const content =
-      key === "8,1,8,1"
-        ? glyph
-        : step === "target"
-          ? honoursRegion
-            ? "expected-frame"
-            : "seed-frame"
-          : step === "expected"
-            ? "expected-frame"
-            : "seed-frame"
-    return {
-      role: request.role,
-      label: request.label,
-      capturedAt: reads,
-      ref: `sha256:${String(reads).repeat(64)}`,
-      regionDigest: `sha256:${key}|${content}`,
-      pixelsDigest: `sha256:frame|${content}`,
-    }
-  }
-  return app
-}
+})
 
 /**
  * @failure The scroll-region rows returned control/target frames and a shrug from a surface that
  *   really implements DECSTBM (or its reset), so the capability stayed ungraded for want of a
  *   comparison the app path never made. The headless callback decides either way, which is why the
- *   site table showed the gap on every terminal while the probe's own contract test passed.
+ *   site table showed the gap on every terminal while the probe's own contract test passed. A reset spec
+ *   whose edit was `set; ESC[r; scroll` then had NO observable difference between "set then reset" and
+ *   "neither honoured" - both left one full-screen scroll - so a surface that ignored DECSTBM entirely
+ *   read supported; the edit now scrolls once INSIDE the region before the reset, which lands both
+ *   ignored shapes one full-screen scroll further down, on the seed frame.
  * @level l2
  * @consumer 28018 candidate-2 Scrollback group; the site table's scrollback rows for every terminal.
  * @testonly none
  */
 test("scrollback DECSTBM rows judge the app path from the region readback", async () => {
-  for (const [id, honoursRegion, outcome] of [
-    ["scrollback.decstbm", true, "supported"],
-    ["scrollback.decstbm", false, "unsupported"],
-    ["scrollback.decstbm-reset", true, "supported"],
-    ["scrollback.decstbm-reset", false, "unsupported"],
+  for (const [label, id, options, outcome] of [
+    ["the set confines the scroll", "scrollback.decstbm", {}, "supported"],
+    ["the set is ignored", "scrollback.decstbm", { mutations: ["scrollregion-noop"] }, "unsupported"],
+    ["the reset restores the full screen", "scrollback.decstbm-reset", {}, "supported"],
+    ["DECSTBM is ignored entirely", "scrollback.decstbm-reset", { mutations: ["scrollregion-noop"] }, "unsupported"],
+    ["the region is set but never reset", "scrollback.decstbm-reset", { strip: "\x1b[r" }, "unsupported"],
   ] as const) {
-    const { context } = scrollRegionApp(12, 61, honoursRegion)
+    const { context } = regionReadbackApp(12, 61, options)
     const result = await findScrollback(id).term!(context)
-    const label = `${id} honours=${String(honoursRegion)}`
     expect(result.observation?.outcome, label).toBe(outcome)
-    expect(result.pass, label).toBe(honoursRegion)
+    expect(result.pass, label).toBe(outcome === "supported")
     expect(result.assertions ?? [], label).not.toEqual([])
   }
 })
