@@ -19,8 +19,6 @@ const manifest: ProbeSuiteManifest = {
   generatedAt: "2026-10-10T22:00:00.000Z",
   probes: { app: [FEATURE], headless: [], mux: [] },
 }
-const suites = new Map([[SUITE, manifest]])
-
 /** The three capture behaviours the collector must survive, plus the geometry refusal. */
 type Mode = "deciding" | "stable" | "unstable" | "sentinel"
 
@@ -130,15 +128,15 @@ function harness(mode: Mode): Harness {
  * adapter adds at collection time and the probe cannot know: every observation and assertion
  * carries its own rawReplyRef, and the run lists every frame ref it captured.
  */
-function assemble(result: ProbeResult, trace: Harness["trace"], frames: ObservationFrame[]) {
+function assemble(result: ProbeResult, trace: Harness["trace"], frames: ObservationFrame[], feature = FEATURE) {
   const observation = {
-    featureId: FEATURE,
+    featureId: feature,
     ...result.observation,
-    rawReplyRef: FEATURE,
+    rawReplyRef: feature,
   }
   return {
     schemaVersion: 2,
-    runId: `region-readback-contract-${FEATURE}`,
+    runId: `region-readback-contract-${feature}`,
     target: {
       kind: "app",
       id: "kitty",
@@ -157,27 +155,37 @@ function assemble(result: ProbeResult, trace: Harness["trace"], frames: Observat
     sourceRevision: "4".repeat(40),
     measuredAt: "2026-10-10T22:10:00.000Z",
     origin: { kind: "collector" },
-    rawReplies: { [FEATURE]: JSON.stringify(trace) },
+    rawReplies: { [feature]: JSON.stringify(trace) },
     assertions: (result.assertions ?? []).map((entry) => ({
       ...entry,
-      featureId: FEATURE,
-      rawReplyRef: FEATURE,
+      featureId: feature,
+      rawReplyRef: feature,
     })),
     screenshotRefs: [...new Set(frames.map((frame) => frame.ref))],
     observations: [observation],
   }
 }
 
-const drive = async (mode: Mode) => {
+const drive = async (mode: Mode, feature = FEATURE) => {
   const { ctx, trace, frames } = harness(mode)
-  const probe = ALL_PROBES.find((candidate) => candidate.id === FEATURE)
+  const probe = ALL_PROBES.find((candidate) => candidate.id === feature)
   expect(probe, "the probe under test exists in ALL_PROBES").toBeDefined()
   const result = await probe!.term!(ctx)
-  return { result, trace, frames, run: assemble(result, trace, frames) }
+  return { result, trace, frames, run: assemble(result, trace, frames, feature) }
 }
 
-const parse = (run: unknown) =>
-  parseRun(`${FEATURE}.json`, JSON.stringify(run), [FEATURE], suites as ReadonlyMap<string, ProbeSuiteManifest>)
+const parse = (run: unknown, feature = FEATURE) => {
+  const featureManifest: ProbeSuiteManifest = {
+    ...manifest,
+    probes: { app: [feature], headless: [], mux: [] },
+  }
+  return parseRun(
+    `${feature}.json`,
+    JSON.stringify(run),
+    [feature],
+    new Map([[SUITE, featureManifest]]) as ReadonlyMap<string, ProbeSuiteManifest>,
+  )
+}
 
 test("a deciding capture readback seals a pixels verdict the raw-run contract admits", async () => {
   const { result, run } = await drive("deciding")
@@ -234,4 +242,33 @@ test("28584 shape B: a sentinel geometry refusal reports query, not none", async
   expect(result.observation?.evidence).toBe("query")
   expect(trace.queries.length).toBeGreaterThan(0)
   expect(() => parse(run)).not.toThrow()
+})
+
+/**
+ * 28638: Erase still captures control/target without a region verdict, so the reader stays at 0/11.
+ * The same deciding harness that admits editing.delete-chars must admit erase.character too.
+ */
+test("erase.character deciding capture readback seals a pixels verdict the raw-run contract admits", async () => {
+  const feature = "erase.character"
+  const { result, run } = await drive("deciding", feature)
+  expect(result.observation?.outcome).toBe("supported")
+  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
+  expect(() => parse(run, feature)).not.toThrow()
+  const loaded = parse(run, feature)
+  expect(loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
+})
+
+/**
+ * 28638: Character Sets still capture control/target without a region verdict, so the reader stays at 0/4.
+ */
+test("charsets.dec-special deciding capture readback seals a pixels verdict the raw-run contract admits", async () => {
+  const feature = "charsets.dec-special"
+  const { result, run } = await drive("deciding", feature)
+  expect(result.observation?.outcome).toBe("supported")
+  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
+  expect(() => parse(run, feature)).not.toThrow()
+  const loaded = parse(run, feature)
+  expect(loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
 })

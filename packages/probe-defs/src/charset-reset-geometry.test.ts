@@ -125,48 +125,54 @@ test("fixed charset and reset fixtures require valid measured room before any by
   }
 })
 
-test("DEC special pixels retain independent glyph controls, exact designation order and ungraded frame bindings", async () => {
+function pixelGeometry(sequence: string) {
+  if (sequence === "\x1b[16t") {
+    return { match: ["\x1b[6;16;8t", "16", "8"] as string[], reason: "reply" as const, raw: "", rawBase64: "" }
+  }
+  if (sequence === "\x1b[14t") {
+    return { match: ["\x1b[4;384;640t", "384", "640"] as string[], reason: "reply" as const, raw: "", rawBase64: "" }
+  }
+  return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+}
+
+test("DEC special pixels take the 28540 region-readback verdict, not ungraded control/target frames", async () => {
   const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
   if (!definition?.term) throw new Error("missing app DEC special callback")
   const events: string[] = []
   const context = app(4, 6, events)
-  const snapshots: string[][] = []
-  const frames: ObservationFrame[] = []
-  context.capture = async ({ role, label }) => {
-    snapshots.push([...events])
-    const frame = { role, label, capturedAt: frames.length + 1, ref: `sha256:${String(frames.length + 1).repeat(64)}` }
-    frames.push(frame)
-    return frame
+  const requests: Array<{ region: { top: number; left: number; bottom: number; right: number }; label: string }> = []
+  let reads = 0
+  context.queryWithSentinelOutcome = async (sequence) => pixelGeometry(sequence)
+  context.capture = async (request) => {
+    reads += 1
+    const region = request.cells!
+    requests.push({ region, label: request.label })
+    const key = `${region.top},${region.left},${region.bottom},${region.right}`
+    const witnessWrite = events.filter((entry) => /^\x1b\[\d+;\d+H.$/.test(entry)).at(-1)
+    const content = key === "3,1,3,1" ? (witnessWrite?.slice(-1) ?? "") : "unmoving"
+    return {
+      role: request.role,
+      label: request.label,
+      capturedAt: reads,
+      ref: `sha256:${String(reads).repeat(64)}`,
+      regionDigest: `sha256:${key}|${content}`,
+      pixelsDigest: `sha256:frame|${content}`,
+    }
   }
   const result = await definition.term(context)
-  const controlWrites = [
-    "\x0f\x1b(B\x1b)B\x1b[0m",
-    "\x1b[1;1H     \x1b[1;1Hqqq",
-    "\x1b[2;1H     \x1b[2;1Hq─q",
-    "\x1b[3;1H     \x1b[3;1Hqqq",
-    "\x1b[4;1H     \x1b[4;1Hqqq",
-    "\x1b[4;6H",
-  ]
-  expect(snapshots).toEqual([
-    controlWrites,
-    [...controlWrites, "\x1b[3;2H\x1b(0q\x1b(Bq", "\x0f\x1b(B\x1b)B\x1b[4;1Hqqq\x1b[4;6H"],
+  expect(String(result.observation?.note)).toContain("seed frame and the expected frame read the same cells")
+  const compared = requests.filter(({ region }) => region.right !== region.left || region.bottom !== region.top)
+  expect(compared.map(({ region }) => region)).toEqual([
+    { top: 1, left: 1, bottom: 1, right: 3 },
+    { top: 1, left: 1, bottom: 1, right: 3 },
+    { top: 1, left: 1, bottom: 1, right: 3 },
   ])
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
-  expect(frames[0]?.label).toContain("row 2")
-  expect(frames[0]?.label).toContain("Unicode")
-  expect(frames[1]?.label).toContain("row 3, column 2")
-  expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "pixels",
-    frames,
-    screenshotRef: frames[1]?.ref,
-    note: expect.stringContaining("horizontal-line appearance"),
-  })
-  expect(result.observation?.note).toContain("independent review")
-  expect(result.assertions ?? []).toEqual([])
-  expect(events.at(-1)).toBe("\x1b[0m\x0f\x1b(B\x1b)B")
+  expect(compared.map(({ label }) => label)).toEqual([
+    "charsets.dec-special: pre-edit seed",
+    "charsets.dec-special: post-sequence target",
+    "charsets.dec-special: expected frame",
+  ])
+  expect(events.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
 })
 
 test("DEC special capture requires safe measured 4x6 before writes or captures", async () => {
@@ -198,51 +204,52 @@ test("DEC special capture requires safe measured 4x6 before writes or captures",
       reason: "insufficient-evidence",
       evidence: "none",
     })
-    expect(result.observation?.note).toContain(`4x6, measured ${rows}x${cols}`)
+    expect(result.observation?.note).toContain(`4x6`)
+    expect(result.observation?.note).toContain(`measured ${rows}x${cols}`)
   }
 })
 
-test("DEC special capture names its measured sample cell and keeps the raw pixels observation", async () => {
+test("DEC special capture names a silent CSI 16 t as query, not ungraded pixels", async () => {
   const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
   if (!definition?.term) throw new Error("missing app DEC special callback")
   const events: string[] = []
   const context = app(4, 6, events)
+  context.queryWithSentinelOutcome = async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" })
   context.capture = async ({ role, label }) => ({ role, label, capturedAt: 1, ref: `sha256:${"c".repeat(64)}` })
   const result = await definition.term(context)
-  expect(JSON.parse(result.response ?? "")).toMatchObject({
-    rows: 4,
-    cols: 6,
-    sampleCell: { row: 3, col: 2 },
-    control: "ASCII q controls on rows 1, 3 and 4; direct Unicode q─q on row 2",
-    target: "DEC Special Graphics sample at row 3, column 2; restored ASCII qqq on row 4",
-  })
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "pixels",
+    evidence: "query",
   })
-  expect(result.observation?.frames).toHaveLength(2)
-  expect(result.assertions).toBeUndefined()
+  expect(String(result.observation?.note)).toContain("CSI 16 t")
+  expect(result.observation?.frames ?? []).toHaveLength(0)
 })
 
-test.each([1, 2])(
-  "DEC special normalizes SGR and both ASCII designations when capture %i rejects",
-  async (failedCapture) => {
-    const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
-    if (!definition?.term) throw new Error("missing app DEC special callback")
-    const events: string[] = []
-    const context = app(4, 6, events)
-    const failure = new Error("owned charset capture failed")
-    let calls = 0
-    context.capture = async ({ role, label }) => {
-      if (++calls === failedCapture) throw failure
-      return { role, label, capturedAt: calls, ref: "control" }
+test.each([1, 2])("DEC special restores DECTCEM when capture %i rejects", async (failedCapture) => {
+  const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
+  if (!definition?.term) throw new Error("missing app DEC special callback")
+  const events: string[] = []
+  const context = app(4, 6, events)
+  context.queryWithSentinelOutcome = async (sequence) => pixelGeometry(sequence)
+  const failure = new Error("owned charset capture failed")
+  let calls = 0
+  context.capture = async ({ role, label }) => {
+    if (++calls === failedCapture) throw failure
+    return {
+      role,
+      label,
+      capturedAt: calls,
+      ref: "control",
+      regionDigest: `sha256:${calls}`,
+      pixelsDigest: `sha256:frame${calls}`,
     }
-    await expect(definition.term(context)).rejects.toBe(failure)
-    expect(calls).toBe(failedCapture)
-    expect(events.at(-1)).toBe("\x1b[0m\x0f\x1b(B\x1b)B")
-  },
-)
+  }
+  await expect(definition.term(context)).rejects.toBe(failure)
+  expect(calls).toBe(failedCapture)
+  expect(events.at(-2)).toBe("\x1b[?25h")
+  expect(events.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
+})
 
 test.each([{ row: 1, col: 2 }, null])(
   "DEC special without capture preserves exact legacy writes and CPR labels for %j",

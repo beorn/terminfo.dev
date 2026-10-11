@@ -1,4 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import {
   probe,
   isBlank,
@@ -7,6 +8,24 @@ import {
   selectiveEraseResult,
   notTestedResult,
 } from "./helpers.ts"
+
+/** Rows whose collector path can decide from the owned window's cells, with 28540's helper. */
+const ERASE_CHARACTER_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 5 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDE\x1b[2;1H",
+  edit: "\x1b[1;2H\x1b[2X\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HA  DE\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 3,
+  minCols: 6,
+}
+
+const ERASE_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
+  "erase.character": ERASE_CHARACTER_READBACK,
+}
 
 type ErasedCell = string | null
 
@@ -532,6 +551,11 @@ export const eraseProbes: ProbeDefinition[] = [
       "erase.character",
       (ctx) => eraseRowResult(ctx, "ABCDE\x1b[1G", "\x1b[3X", ["blank", "blank", "blank", "D", "E"], false, 0),
       async (ctx) => {
+        const readback = ERASE_READBACK_SPECS["erase.character"]
+        if (readback) {
+          const verdict = await captureRegionVerdict(ctx, "erase.character", readback)
+          if (verdict) return verdict
+        }
         const viaCapture = await eraseSequenceCapture(
           ctx,
           1,

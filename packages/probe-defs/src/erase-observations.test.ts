@@ -153,7 +153,7 @@ test.each([
   ["erase.screen.above", 3, 6],
   ["erase.screen.all", 3, 6],
   ["erase.screen.scrollback", 5, 5],
-  ["erase.character", 1, 6],
+  ["erase.character", 3, 6],
   ["erase.selective", 1, 6],
   ["erase.el-with-attrs", 1, 6],
   ["erase.ed-scroll-region", 10, 10],
@@ -200,6 +200,17 @@ test.each([
       noObservable: expect.stringMatching(/XTEST|wheel|scrollback|history/i),
     })
     expect(result.observation).toBeUndefined()
+    return
+  }
+  if (id === "erase.character") {
+    // 28638: region-readback queries CSI 16 t before any paint; a silent geometry reply is query, not none.
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(String(result.observation?.note)).toContain("CSI 16 t")
+    expect(result.observation?.outcome).not.toBe("supported")
     return
   }
   expect(writes.length).toBeGreaterThan(0)
@@ -861,7 +872,6 @@ test("headless erase fixtures require measured rows and columns before writes", 
 })
 
 test.each([
-  ["erase.character", "\x1b[2X", "A__DE"],
   ["erase.selective", "\x1b[?2J", "P survives"],
   ["erase.el-with-attrs", "\x1b[K", "green background"],
   ["erase.ed-scroll-region", "\x1b[J", "KEEP!"],

@@ -1,5 +1,20 @@
 import type { ProbeDefinition } from "./types.ts"
+import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import { parserStateResult, probe } from "./helpers.ts"
+
+/** DEC Special Graphics sample on row 1; paint witness on row 3, matching 28540's helper. */
+const DEC_SPECIAL_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
+  region: { top: 1, left: 1, bottom: 1, right: 3 },
+  sentinel: { row: 3, col: 1 },
+  cursorRow: 2,
+  seed: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1Hqqq\x1b[2;1H",
+  edit: "\x1b[1;2H\x1b(0q\x1b(B\x1b[2;1H",
+  expected: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1Hq─q\x1b[2;1H",
+  timeoutMs: 5000,
+  pollMs: 250,
+  minRows: 4,
+  minCols: 6,
+}
 
 export const charsetsProbes: ProbeDefinition[] = [
   {
@@ -41,6 +56,8 @@ export const charsetsProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
+        const verdict = await captureRegionVerdict(ctx, "charsets.dec-special", DEC_SPECIAL_READBACK)
+        if (verdict) return verdict
         const capture = ctx.capture
         if (capture) {
           const rows = ctx.rows
