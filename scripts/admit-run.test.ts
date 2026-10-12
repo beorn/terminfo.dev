@@ -235,8 +235,34 @@ test("Windows admission requires its measured executable version to match exactl
     executableSha256: "c3".repeat(32),
     sourceArtifact: { kind: "portable-zip" as const, path: String.raw`C:\runner\wt.zip`, sha256: "d4".repeat(32) },
   }
-  const measured = { ...run, origin: { ...run.origin, appLaunch: receipt } }
-  expect(assessRunAdmission(measured)).toMatchObject({ accepted: true })
+  const directory = temp("terminfo-measured-launch-")
+  const host = { ...hostedReceipt("Windows", "1003"), appLaunch: receipt }
+  const ownership = ownershipBesideRun(join(directory, "run.json"), host)
+  const measured = {
+    ...run,
+    origin: { ...run.origin, appLaunch: receipt },
+    rawReplies: { ...run.rawReplies, "collector.disposableOwnership": ownership },
+  }
+  const evidence = { receiptPath: join(directory, "host-measured.json"), contentDir: directory }
+  expect(assessRunAdmission(measured, [], evidence)).toMatchObject({ accepted: true })
+  // AC1: two internally matching copied fields cannot replace the cited measured receipt.
+  // Native mutation probes passed this gap; the earlier single-field version cases could not see it.
+  for (const changed of [
+    {
+      ...measured,
+      target: { ...measured.target, version: "9.99.1" },
+      origin: { ...measured.origin, appLaunch: { ...receipt, productVersion: "9.99.1" } },
+    },
+    {
+      ...measured,
+      origin: { ...measured.origin, appLaunch: { ...receipt, executableSha256: "b7".repeat(32) } },
+    },
+  ]) {
+    expect(assessRunAdmission(changed, [], evidence)).toMatchObject({
+      accepted: false,
+      reason: expect.stringContaining("appLaunch differs from cited ownership receipt"),
+    })
+  }
   for (const version of [`${receipt.productVersion} `, "1.21.2361.0"]) {
     expect(assessRunAdmission({ ...measured, target: { ...measured.target, version } })).toMatchObject({
       accepted: false,

@@ -12,6 +12,7 @@ import { createHash } from "node:crypto"
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { isDeepStrictEqual } from "node:util"
 import type { Interpretation, ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
 import { measuredVersionTokens, parseRun, parseSuiteManifest, type LoadedRun } from "@terminfo/run-parser"
 import {
@@ -244,6 +245,7 @@ export function assessRunAdmission(
         evidence.contentDir ?? dirname(dirname(run.path)),
         evidence.receiptPath ?? join(dirname(dirname(run.path)), "receipts", `${run.runId}.json`),
         evidence.mode === "placement",
+        run,
       )
     } catch (cause) {
       if (!(cause instanceof Error)) throw cause
@@ -466,6 +468,7 @@ function preflightOwnershipReceipt(
   contentDir: string = CONTENT_DIR,
   receiptPath: string = join(dirname(source), RECEIPT_BESIDE_RUN),
   compareHostedHistory = true,
+  run?: LoadedRun,
 ): { bytes?: Buffer; detail: string } {
   if (ownership === undefined) {
     return { detail: "the run cites no collector.disposableOwnership reply" }
@@ -508,6 +511,9 @@ function preflightOwnershipReceipt(
     )
   }
   bindReceiptToRun(receipt, target, `run ${runId}`)
+  if (run && !isDeepStrictEqual(run.origin.appLaunch, receipt.appLaunch)) {
+    throw new Error(`Run ${runId} origin.appLaunch differs from cited ownership receipt ${receiptPath}`)
+  }
   if (receipt.kind === "github-hosted-runner" && compareHostedHistory) {
     // Strict parsing above owns validation. Decode only the already-validated hosted fields here;
     // history is visible to admission, never to the collector's single-receipt parser.
