@@ -74,10 +74,21 @@ export function requireDarwinScale(window: DarwinWindow, pixels: { width: number
   }
 }
 
-const CENSUS = `ObjC.import('CoreGraphics');
+const CENSUS = `ObjC.import('CoreGraphics'); ObjC.import('Foundation');
+function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
+function bounds(dict) {
+  var b = dict.objectForKey('kCGWindowBounds');
+  if (!b) return null;
+  function n(k) { var v = b.objectForKey(k); return v ? Number(v.js) : null; }
+  return { x: n('X'), y: n('Y'), width: n('Width'), height: n('Height') };
+}
 var raw = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID);
 if (!raw) throw new Error('CGWindowListCopyWindowInfo returned null');
-var rows = ObjC.deepUnwrap(raw).map(function(w) { var b=w.kCGWindowBounds; return {id:w.kCGWindowNumber,ownerPid:w.kCGWindowOwnerPID,layer:w.kCGWindowLayer,bounds:{x:b.X,y:b.Y,width:b.Width,height:b.Height}}; });
+var rows = [], count = $.CFArrayGetCount(raw);
+for (var i = 0; i < count; i++) {
+  var w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(raw, i));
+  rows.push({ id: value(w, 'kCGWindowNumber'), ownerPid: value(w, 'kCGWindowOwnerPID'), layer: value(w, 'kCGWindowLayer'), bounds: bounds(w) });
+}
 JSON.stringify(rows);`
 
 /** One screenshot per request. Paint currency belongs to the collector's witness, not this adapter. */
