@@ -19,17 +19,17 @@ export const charsetReadbackRows: readonly RegionReadbackRow[] = [
     id: "charsets.dec-special",
     expected: "ASCII q controls flank DEC Special Graphics q mapped to U+2500",
     seed: "\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2Kqqq",
-    before: ["q", "q", "q"],
+    before: [["q", "q", "q"]],
     steps: [
       { write: "\x1b[1;2H", cursor: { x: 1, y: 0, note: "Target CUP did not reach DEC graphics cell" } },
       // DEC Special Graphics q paints U+2500 into the middle cell. The flanks are the seed's own
       // ASCII qs and the sequence never writes them, so they are real controls.
       { write: "\x1b(0q\x1b(B" },
     ],
-    after: ["q", "\u2500", "q"],
+    after: [["q", "\u2500", "q"]],
     controls: [
-      { col: 0, char: "q" },
-      { col: 2, char: "q" },
+      { row: 0, col: 0, char: "q" },
+      { row: 0, col: 2, char: "q" },
     ],
     seedNote: "ASCII seed was not measured before DEC designation",
     controlNote: "ASCII flank control changed after DEC designation",
@@ -39,7 +39,7 @@ export const charsetReadbackRows: readonly RegionReadbackRow[] = [
     id: "charsets.utf8",
     expected: "Sampled Unicode characters \u00e9 and \u4e16 occupy their target cells with ASCII controls intact",
     seed: "\x1b[1;1H\x1b[2KAxy?Z",
-    before: ["A", "x", "y", "?", "Z"],
+    before: [["A", "x", "y", "?", "Z"]],
     steps: [
       { write: "\x1b[1;2H", cursor: { x: 1, y: 0, note: "First target CUP did not reach Unicode sample cell" } },
       { write: "\u00e9" },
@@ -48,10 +48,10 @@ export const charsetReadbackRows: readonly RegionReadbackRow[] = [
     ],
     // U+4E16 is one WIDE cell: it claims column 3 and its follower claims column 4, whose cell the
     // wide glyph owns. The `?` the seed painted there is what witnesses the takeover.
-    after: ["A", "\u00e9", "\u4e16", "", "Z"],
+    after: [["A", "\u00e9", "\u4e16", "", "Z"]],
     controls: [
-      { col: 0, char: "A" },
-      { col: 4, char: "Z" },
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 4, char: "Z" },
     ],
     seedNote: "ASCII seed was not measured before Unicode samples",
     controlNote: "ASCII control changed after Unicode samples",
@@ -62,16 +62,16 @@ export const charsetReadbackRows: readonly RegionReadbackRow[] = [
     id: "charsets.g0-g1-switching",
     expected: "G0 ASCII l, SO-selected G1 DEC l\u2192U+250C, then SI-selected G0 ASCII l, within A/Z controls",
     seed: "\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2KAlllZ",
-    before: ["A", "l", "l", "l", "Z"],
+    before: [["A", "l", "l", "l", "Z"]],
     steps: [
       { write: "\x1b[1;2H", cursor: { x: 1, y: 0, note: "Target CUP did not reach G0/G1 switching cells" } },
       // G0 l, SO-selected G1 DEC l -> U+250C, then SI-selected G0 ASCII l.
       { write: "\x1b(B\x1b)0l\x0el\x0fl" },
     ],
-    after: ["A", "l", "\u250c", "l", "Z"],
+    after: [["A", "l", "\u250c", "l", "Z"]],
     controls: [
-      { col: 0, char: "A" },
-      { col: 4, char: "Z" },
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 4, char: "Z" },
     ],
     seedNote: "ASCII seed was not measured before G0/G1 switching",
     controlNote: "ASCII A/Z control changed after G0/G1 switching",
@@ -82,13 +82,13 @@ export const charsetReadbackRows: readonly RegionReadbackRow[] = [
     id: "charsets.dec-line-drawing",
     expected: "DEC jklmqx map exactly to \u2518\u2510\u250c\u2514\u2500\u2502 while trailing ASCII j remains unchanged",
     seed: "\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2Kjklmqxj",
-    before: ["j", "k", "l", "m", "q", "x", "j"],
+    before: [["j", "k", "l", "m", "q", "x", "j"]],
     steps: [
       { write: "\x1b[1;1H", cursor: { x: 0, y: 0, note: "Target CUP did not reach line-drawing start cell" } },
       { write: "\x1b(0jklmqx\x1b(B" },
     ],
-    after: ["\u2518", "\u2510", "\u250c", "\u2514", "\u2500", "\u2502", "j"],
-    controls: [{ col: 6, char: "j" }],
+    after: [["\u2518", "\u2510", "\u250c", "\u2514", "\u2500", "\u2502", "j"]],
+    controls: [{ row: 0, col: 6, char: "j" }],
     seedNote: "ASCII seed was not measured before line drawing",
     controlNote: "Trailing ASCII j control changed after DEC line drawing",
     reset: "\x0f\x1b(B\x1b)B",

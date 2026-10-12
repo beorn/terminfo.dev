@@ -67,11 +67,12 @@ test("every kind row decides from its own cells, through the shared kind", async
     expect(probe.termNeedsGeometry, row.id).toBe(true)
     expect(probe.termlessObservationEvidence, row.id).toBe("parser-state")
     const measured = probe.termless!(headlessContext(createSemanticSurface()))
-    const state = JSON.parse(measured.response ?? "null") as { before: string[]; after: string[] }
+    const state = JSON.parse(measured.response ?? "null") as { before: string[][]; after: string[][] }
     // One entry per compared COLUMN, so a wide follower is a cell the array names, not a join that
-    // silently drops it.
-    expect(state.before, `${row.id} reads the row's seed cells`).toEqual([...kindRow.before])
-    expect(state.after, `${row.id} reads the row's target cells`).toEqual([...kindRow.after])
+    // silently drops it; one row per compared ROW, so a multi-row grid can no longer be read as a
+    // single line of cells.
+    expect(state.before, `${row.id} reads the row's seed cells`).toEqual(kindRow.before.map((cells) => [...cells]))
+    expect(state.after, `${row.id} reads the row's target cells`).toEqual(kindRow.after.map((cells) => [...cells]))
     const graded = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
     expect(graded.after, row.id).toBe("supported")
     expect(graded.satisfies, row.id).toBe(true)
@@ -117,10 +118,10 @@ test("every row's controls survive the row's own steps on the reference parser",
     expect(row.controls.length, `${row.id} names at least one control`).toBeGreaterThan(0)
     const ctx = headlessContext(createSemanticSurface())
     ctx.feed(row.seed)
-    for (const control of row.controls) ctx.feed(`\x1b[1;${control.col + 1}H\u00b5`)
+    for (const control of row.controls) ctx.feed(`\x1b[${control.row + 1};${control.col + 1}H\u00b5`)
     for (const step of row.steps) ctx.feed(step.write)
     expect(
-      row.controls.map((control) => ctx.getCell(0, control.col).char),
+      row.controls.map((control) => ctx.getCell(control.row, control.col).char),
       `${row.id} rewrites its own control`,
     ).toEqual(row.controls.map(() => "\u00b5"))
   }
@@ -155,8 +156,14 @@ test("a row whose shape disagrees with itself refuses at load", () => {
   const row = charsetReadbackRows[0]
   expect(row, "the kind table has a first row").toBeDefined()
   if (!row) return
-  expect(() => regionReadbackProbe({ ...row, before: [] })).toThrow(/at least one compared column/)
-  expect(() => regionReadbackProbe({ ...row, after: row.after.slice(0, 1) })).toThrow(/after names 1 cells/)
-  expect(() => regionReadbackProbe({ ...row, ignored: ["q"] })).toThrow(/ignored names 1 cells/)
-  expect(() => regionReadbackProbe({ ...row, controls: [{ col: 9, char: "q" }] })).toThrow(/outside/)
+  expect(() => regionReadbackProbe({ ...row, before: [] })).toThrow(/at least one compared row/)
+  expect(() => regionReadbackProbe({ ...row, before: [[]] })).toThrow(/at least one compared column/)
+  expect(() => regionReadbackProbe({ ...row, before: [["q", "q"], ["q"]] })).toThrow(/compared row 1 names 1 cells/)
+  expect(() => regionReadbackProbe({ ...row, after: [] })).toThrow(/after names 0 rows/)
+  expect(() => regionReadbackProbe({ ...row, after: [["q"]] })).toThrow(/after row 0 names 1 cells/)
+  expect(() => regionReadbackProbe({ ...row, ignored: [["q"]] })).toThrow(/ignored row 0 names 1 cells/)
+  expect(() => regionReadbackProbe({ ...row, controls: [{ row: 0, col: 9, char: "q" }] })).toThrow(/outside/)
+  expect(() => regionReadbackProbe({ ...row, controls: [{ row: 3, col: 0, char: "q" }] })).toThrow(
+    /control row 3 is outside/,
+  )
 })
