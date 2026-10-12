@@ -3,7 +3,7 @@ import type { CapturedFrame, CaptureRectangle, NamedTextOrigin } from "./capture
 
 const BLANK = [0, 0, 0] as const
 const WITNESS = [255, 0, 255] as const
-const CALIBRATION = [0, 255, 255] as const
+const CALIBRATION = [255, 0, 0] as const
 const WITNESS_CELL = { row: 2, col: 2 }
 const CALIBRATION_CELL = { row: 2, col: 3 }
 const background = (rgb: readonly number[]) => `\x1b[48;2;${rgb.join(";")}m`
