@@ -287,7 +287,6 @@ export async function collectProbeRun(
         } catch (cause) {
           const error = cause instanceof Error ? cause : new Error(String(cause))
           calibrationError = error
-          throw error
         }
       }
     }

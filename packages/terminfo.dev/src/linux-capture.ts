@@ -24,8 +24,6 @@ export function assertLiveExecutable(pid: number, expected: LiveExecutable): voi
   }
 }
 
-export { command, cellRectangle, capturePixels } from "./capture-core.ts"
-export type { CaptureRectangle, CapturedFrame, SurfaceMeasurement, TextAreaPlacement } from "./capture-core.ts"
 import {
   command,
   finishCapture,

@@ -19,18 +19,9 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import {
-  capturePixels,
-  cellRectangle,
-  createLinuxCapture,
-  drawnSurface,
-  screenPixels,
-  textAreaOrigin,
-  windowPixels,
-  type CapturedFrame,
-} from "./linux-capture.ts"
+import { createLinuxCapture, drawnSurface, screenPixels, textAreaOrigin, windowPixels } from "./linux-capture.ts"
 
-import { command, finishCapture } from "./capture-core.ts"
+import { capturePixels, cellRectangle, command, finishCapture, type CapturedFrame } from "./capture-core.ts"
 
 const temporary: string[] = []
 const originalPath = process.env.PATH
