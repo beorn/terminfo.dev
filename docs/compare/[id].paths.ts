@@ -2,16 +2,25 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
-import type { PublicCell, PublicVersion } from "../data/public-results"
+import type { PublicVersion } from "../data/public-results"
+import type { CellState } from "../data/release-scope"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
 
-function resultFor(cell: PublicCell | undefined): "yes" | "no" | "unknown" {
-  if (!cell?.conclusive) return "unknown"
-  if (cell.outcome === "supported") return "yes"
-  if (cell.outcome === "unsupported") return "no"
+/**
+ * The reader's ONE classification, said in the compare page's own words. This is presentation over the
+ * state, never a second chain over the raw cell (28792 item 1).
+ */
+function resultFor(state: CellState): "yes" | "no" | "unknown" {
+  if (state === "supported") return "yes"
+  if (state === "unsupported") return "no"
   return "unknown"
+}
+
+/** The two states the reader calls decided; inconclusive, error and untested are all not decided. */
+function decided(state: CellState): boolean {
+  return state === "supported" || state === "unsupported"
 }
 
 function recordedScope(selected: PublicVersion): unknown[] {
@@ -38,6 +47,8 @@ export default {
       const meta = data.meta[b.name] ?? {}
       const selected = data.selectedByBackend[b.name]?.selected
       if (!selected) throw new Error(`Missing selected run for comparison terminal ${b.name}`)
+      const states = data.selectedByBackend[b.name]?.states
+      if (!states) throw new Error(`Missing classified states for comparison terminal ${b.name}`)
       const slug = terminalSlug(b.name, data.meta)
       return {
         name: b.name,
@@ -47,6 +58,7 @@ export default {
         url: meta.url ?? "",
         type: meta.type ?? "",
         selected,
+        states,
       }
     })
 
@@ -108,12 +120,17 @@ export default {
           features: cat.features.map((f) => {
             const cellA = a.selected.cells[f.id]
             const cellB = b.selected.cells[f.id]
-            const resultA = resultFor(cellA)
-            const resultB = resultFor(cellB)
+            const stateA = a.states[f.id] ?? "untested"
+            const stateB = b.states[f.id] ?? "untested"
+            const resultA = resultFor(stateA)
+            const resultB = resultFor(stateB)
             const comparable = Boolean(
               comparableScope &&
-              cellA?.conclusive &&
-              cellB?.conclusive &&
+              decided(stateA) &&
+              decided(stateB) &&
+              cellA !== undefined &&
+              cellB !== undefined &&
+              // Evidence is a raw field, not a classification: the same-method check still reads it.
               cellA.evidence === cellB.evidence &&
               resultA !== "unknown" &&
               resultB !== "unknown",

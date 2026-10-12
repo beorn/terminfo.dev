@@ -12,7 +12,7 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { SelectedCell, SelectedVersion } from "../docs/data/selected-results.ts"
-import type { CellState } from "../docs/data/release-scope.ts"
+import { classifyCells, type CellState } from "../docs/data/release-scope.ts"
 import * as selectedResults from "../docs/data/selected-results.ts"
 import type { EvidenceDocument, PublicVersion } from "../docs/data/public-results.ts"
 
@@ -182,6 +182,11 @@ vi.mock("../docs/data/current-results.ts", async () => {
       ...Object.values(fixture.projection.current),
       ...Object.values(fixture.projection.versions).flat(),
       ...Object.values(fixture.projection.history).flat(),
+      // The mock's targets are fixed, so a test that removes a run from the projection still needs a
+      // classified row for the run its target names (28792 item 1).
+      fixture.selected,
+      fixture.mux,
+      fixture.screen,
     ]
     const table: Record<string, Record<string, CellState>> = {}
     for (const run of runs) table[run.runId] = classifyCells(run.cells)
@@ -980,11 +985,16 @@ describe("selected-run consumer parity", () => {
 
   it("limits comparison claims to the same recorded scope and jointly conclusive evidence method", () => {
     const data = loadProbes()
-    const kitty = data.selectedByBackend.kitty?.selected
-    const screen = data.selectedByBackend.screen?.selected
-    const tmux = data.selectedByBackend.tmux?.selected
+    const kittyEntry = data.selectedByBackend.kitty
+    const screenEntry = data.selectedByBackend.screen
+    const tmuxEntry = data.selectedByBackend.tmux
+    const kitty = kittyEntry?.selected
+    const screen = screenEntry?.selected
+    const tmux = tmuxEntry?.selected
     const bold = kitty?.cells["sgr.bold"]
-    if (!screen || !tmux || !bold) throw new Error("Missing comparison fixture cells")
+    if (!screen || !tmux || !bold || !screenEntry || !tmuxEntry) {
+      throw new Error("Missing comparison fixture cells")
+    }
 
     const mixed = comparePaths
       .paths()
@@ -1016,6 +1026,11 @@ describe("selected-run consumer parity", () => {
         outcome: "supported",
         evidence: "query",
       }
+      // The reader's states are the ONE classification of the run's cells, taken once per build. A
+      // fixture that overrides raw cells re-derives them the same way, so the compare page reads the
+      // cells the fixture named (28792 item 1).
+      Object.assign(screenEntry.states, classifyCells(screen.cells))
+      Object.assign(tmuxEntry.states, classifyCells(tmux.cells))
       const pair = comparePaths
         .paths()
         .find(
@@ -1045,6 +1060,8 @@ describe("selected-run consumer parity", () => {
     } finally {
       Object.assign(screen, originalScreen)
       Object.assign(tmux, originalTmux)
+      Object.assign(screenEntry.states, classifyCells(screen.cells))
+      Object.assign(tmuxEntry.states, classifyCells(tmux.cells))
     }
   })
 
