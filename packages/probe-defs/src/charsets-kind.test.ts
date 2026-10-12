@@ -8,6 +8,7 @@
 import { expect, test } from "vitest"
 import { charsetReadbackRows, charsetsProbes } from "./charsets.ts"
 import { ALL_PROBES } from "./index.ts"
+import { regionReadbackProbe } from "./region-readback-kind.ts"
 import { headlessContext, regradeRow, type ContractRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
@@ -103,4 +104,59 @@ test("an inert designation reads charsets.dec-special unsupported", async () => 
     headless: headlessContext(createSemanticSurface({ mutations: ["charset-noop"] })),
   })
   expect(graded.after, "charsets.dec-special detects an inert designation").toBe("unsupported")
+})
+
+/**
+ * Round 2 (@cto 2026-10-12): a control is a real control only when the sequence does not write it.
+ * Round 1 shipped a step that rewrote its own control with the same character and every test passed,
+ * because nothing measured the control's survival. Here each control column is covered with a marker
+ * AFTER the seed, the row's own steps run on the reference parser, and the markers must still stand.
+ */
+test("every row's controls survive the row's own steps on the reference parser", () => {
+  for (const row of charsetReadbackRows) {
+    expect(row.controls.length, `${row.id} names at least one control`).toBeGreaterThan(0)
+    const ctx = headlessContext(createSemanticSurface())
+    ctx.feed(row.seed)
+    for (const control of row.controls) ctx.feed(`\x1b[1;${control.col + 1}H\u00b5`)
+    for (const step of row.steps) ctx.feed(step.write)
+    expect(
+      row.controls.map((control) => ctx.getCell(0, control.col).char),
+      `${row.id} rewrites its own control`,
+    ).toEqual(row.controls.map(() => "\u00b5"))
+  }
+})
+
+/**
+ * sameCell is new behaviour: one backend reports a wide glyph's follower as reserved-empty, another
+ * as a space. Neither is a failing terminal, so the row has to read supported under both spellings.
+ */
+test("a backend that reports the wide follower as a space still reads charsets.utf8 supported", () => {
+  const probe = charsetsProbes.find((entry) => entry.id === "charsets.utf8")
+  expect(probe, "charsets.utf8 has a kind-built probe").toBeDefined()
+  if (!probe) return
+  const ctx = headlessContext(createSemanticSurface())
+  const spaced = {
+    ...ctx,
+    getCell: (row: number, col: number) => {
+      const cell = ctx.getCell(row, col)
+      return cell.char === "" ? { ...cell, char: " " } : cell
+    },
+  }
+  const result = probe.termless!(spaced)
+  expect(result.observation?.outcome).toBe("supported")
+  expect(result.pass).toBe(true)
+})
+
+/**
+ * NO SILENT ERRORS, at load: a row whose own shape disagrees with itself must never reach a compare
+ * where a missing column is read against a blank and accepted. Each mismatch names the row.
+ */
+test("a row whose shape disagrees with itself refuses at load", () => {
+  const row = charsetReadbackRows[0]
+  expect(row, "the kind table has a first row").toBeDefined()
+  if (!row) return
+  expect(() => regionReadbackProbe({ ...row, before: [] })).toThrow(/at least one compared column/)
+  expect(() => regionReadbackProbe({ ...row, after: row.after.slice(0, 1) })).toThrow(/after names 1 cells/)
+  expect(() => regionReadbackProbe({ ...row, ignored: ["q"] })).toThrow(/ignored names 1 cells/)
+  expect(() => regionReadbackProbe({ ...row, controls: [{ col: 9, char: "q" }] })).toThrow(/outside/)
 })

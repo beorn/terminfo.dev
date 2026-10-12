@@ -78,6 +78,18 @@ function paint(cells: readonly string[]): string {
   return cells.filter((cell) => cell !== "").join("")
 }
 
+/**
+ * Column-by-column equality. A column the row does not name can never match, so a shape that slipped
+ * past the load check fails CLOSED here rather than being read against a blank and accepted.
+ */
+function cellsMatch(measured: readonly string[], expected: readonly string[]): boolean {
+  if (measured.length !== expected.length) return false
+  return measured.every((cell, col) => {
+    const want = expected[col]
+    return want !== undefined && sameCell(cell, want)
+  })
+}
+
 function readRow(ctx: TermlessContext, columns: number): string[] {
   return Array.from({ length: columns }, (_, col) => ctx.getCell(0, col).char)
 }
@@ -103,12 +115,37 @@ function regionReadbackSpec(row: RegionReadbackRow): Omit<RegionReadback, "pixel
 }
 
 /**
+ * A row whose own shape disagrees with itself cannot be right, so it refuses at LOAD instead of
+ * comparing a short array's missing columns against a blank that `sameCell` would happily accept —
+ * a typo must never read as a passing terminal (@cto 2026-10-12, NO SILENT ERRORS). Every index the
+ * arms use below is proven in range here, which is why nothing below needs a fallback.
+ */
+function assertRegionReadbackShape(row: RegionReadbackRow): void {
+  const columns = row.before.length
+  if (columns === 0) {
+    throw new Error(`${row.id}: a region-readback row needs at least one compared column`)
+  }
+  if (row.after.length !== columns) {
+    throw new Error(`${row.id}: after names ${row.after.length} cells for ${columns} compared columns`)
+  }
+  if (row.ignored !== undefined && row.ignored.length !== columns) {
+    throw new Error(`${row.id}: ignored names ${row.ignored.length} cells for ${columns} compared columns`)
+  }
+  for (const control of row.controls) {
+    if (!Number.isSafeInteger(control.col) || control.col < 0 || control.col >= columns) {
+      throw new Error(`${row.id}: control column ${control.col} is outside the compared 0..${columns - 1}`)
+    }
+  }
+}
+
+/**
  * Build the one probe a row describes. The termless arm measures the parser's cells; the term arm
  * hands the derived seed / edit / expected frames to the capture-region oracle. A run with no owned
  * capture cannot read a window back at all, so that arm refuses by NAME and writes nothing: a
  * fixture that can only answer "inconclusive" is not evidence, and is deleted rather than kept.
  */
 export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
+  assertRegionReadbackShape(row)
   const columns = row.before.length
   const readback = regionReadbackSpec(row)
   return {
@@ -127,7 +164,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
       try {
         ctx.feed(row.seed)
         const before = readRow(ctx, columns)
-        if (!before.every((cell, col) => sameCell(cell, row.before[col] ?? ""))) {
+        if (!cellsMatch(before, row.before)) {
           return parserStateResult(null, row.expected, { before }, row.seedNote)
         }
         const setup: { x: number; y: number }[] = []
@@ -141,9 +178,12 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
           }
         }
         const after = readRow(ctx, columns)
-        const controlsValid = row.controls.every((control) => sameCell(after[control.col] ?? "", control.char))
+        const controlsValid = row.controls.every((control) => {
+          const cell = after[control.col]
+          return cell !== undefined && sameCell(cell, control.char)
+        })
         return parserStateResult(
-          controlsValid ? after.every((cell, col) => sameCell(cell, row.after[col] ?? "")) : null,
+          controlsValid ? cellsMatch(after, row.after) : null,
           row.expected,
           { before, setup, after },
           controlsValid ? undefined : row.controlNote,
