@@ -65,9 +65,9 @@ const allAppBackends = computed(() => sortedBackends.value.filter(b => b.type ==
 const headlessBackends = computed(() => sortedBackends.value.filter(b => b.type === 'headless'))
 const muxBackends = computed(() => sortedBackends.value.filter(b => b.type === 'mux'))
 
-// The page names the ONE basis it reads, so a reader can tell which rows a bar, a tooltip and the
-// order below are about (28792 item 1, increment 5).
-const basisNote = `Bars, tooltips and this order all read one basis: the ${data.releaseScope.scoredIds.length} app-scorable rows of this release, classified once in the reader.`
+// The page names the ONE basis it counts, in a visitor's words: which rows this bar, these tooltips and
+// the order below are about (28792 item 1, increment 5).
+const basisNote = `Bars, tooltips and the order all count the same ${data.releaseScope.scoredIds.length} rows this release scores in apps.`
 
 // Filter app backends by platform
 const appBackends = computed(() => {
@@ -143,8 +143,10 @@ function catLabel(cat) {
 
 function barSegmentTooltip(backendName, segment) {
   // The tooltip names the rows of the SEGMENT the reader is hovering, read over the bar's own basis:
-  // the released rows, in their classified state. A red segment lists unsupported rows only, never
-  // the untested ones the old all-results tooltip swept in.
+  // the scored rows, in their classified state. Every row of the basis is named exactly once, by its
+  // own state, so no row of the denominator is left unnamed — a red segment lists unsupported rows
+  // only, never the untested ones the old all-results tooltip swept in, and the error and untested
+  // rows the blank remainder holds are named by their own segment (@cto 2026-10-12).
   const selected = data.selectedByBackend[backendName]?.selected
   const states = selected ? data.releaseTable[selected.runId] : undefined
   if (!states) return ''
@@ -161,10 +163,13 @@ function barSegmentTooltip(backendName, segment) {
     } else if (segment === 'fail' && state === 'unsupported') {
       const note = n[id]
       items.push(note ? `  ✗ ${name}: ${note}` : `  ✗ ${name}`)
+    } else if (segment === 'remainder' && (state === 'error' || state === 'untested')) {
+      items.push(state === 'error' ? `  ! ${name}: error` : `  · ${name}: untested`)
     }
   }
   if (items.length === 0) return ''
-  const label = segment === 'yes' ? 'Supported' : segment === 'partial' ? 'Partial' : 'Not supported'
+  const label =
+    segment === 'yes' ? 'Supported' : segment === 'partial' ? 'Partial' : segment === 'fail' ? 'Not supported' : 'Unmeasured'
   return `${label} (${items.length}):\n${items.join('\n')}`
 }
 
@@ -172,6 +177,14 @@ function failBarWidth(backendName) {
   const bar = data.releaseBars[backendName]
   if (!bar?.denominator) return '0%'
   return (bar.counts.unsupported / bar.denominator * 100) + '%'
+}
+
+// The blank remainder: the scored rows that produced no verdict, an error or nothing measured. It is
+// its own segment so every row of the basis has a place that names it.
+function remainderBarWidth(backendName) {
+  const bar = data.releaseBars[backendName]
+  if (!bar?.denominator) return '0%'
+  return ((bar.counts.error + bar.counts.untested) / bar.denominator * 100) + '%'
 }
 
 function barWidth(backendName, segment) {
@@ -286,6 +299,7 @@ function backendTooltip(name, version) {
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
       <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
+      <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
     </div>
     <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
     <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
@@ -393,6 +407,7 @@ function backendTooltip(name, version) {
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
       <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
+      <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
     </div>
     <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
     <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
@@ -465,6 +480,7 @@ function backendTooltip(name, version) {
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
       <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
+      <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
     </div>
     <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
     <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
@@ -741,6 +757,12 @@ strips, or mishandles.
 }
 
 .bar-fail {
+  height: 100%;
+  background: transparent;
+  transition: width 0.3s ease;
+}
+
+.bar-remainder {
   height: 100%;
   background: transparent;
   transition: width 0.3s ease;
@@ -1079,7 +1101,8 @@ strips, or mishandles.
 /* Bar segment tooltips appear below with opaque background */
 .bar-yes[data-tooltip]:hover::after,
 .bar-partial[data-tooltip]:hover::after,
-.bar-fail[data-tooltip]:hover::after {
+.bar-fail[data-tooltip]:hover::after,
+.bar-remainder[data-tooltip]:hover::after {
   bottom: auto;
   top: 100%;
   margin-top: 4px;
