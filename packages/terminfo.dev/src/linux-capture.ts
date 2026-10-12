@@ -74,19 +74,167 @@ export interface CaptureRectangle {
   height: number
 }
 
+/** One captured frame's raw pixels, exactly the bytes the collector digests. */
+export interface CapturedFrame {
+  width: number
+  height: number
+  rgba: Uint8Array
+}
+
+/** The terminal's own surface in one captured frame, or the named reason it could not be measured. */
+export interface SurfaceMeasurement {
+  surface: CaptureRectangle | null
+  basis: string
+}
+
 /**
- * Map a cell-aligned region to an absolute rectangle from the terminal's OWN pixel report plus the
- * window's measured geometry, and from nothing else: a window width divided by a column count is a
- * guess, and this rectangle decides pixels. A rectangle that leaves the window is a loud error, not
- * a clipped crop, because a clipped crop would silently compare the wrong cells.
+ * The terminal's own drawing surface in one captured frame: the region the terminal painted, which
+ * is the text area's container and nothing else.
+ *
+ * Why not the window. A client-side-decorated window (ghostty, wezterm) draws a title bar and a
+ * border INTO its client area, so the window and the terminal's surface disagree by a title bar's
+ * height. The retained ghostty 1.3.1 frame of run 5f91eb10b6 shows an 800x600 window whose reported
+ * text area is 780x528, while the terminal's own pixels only start 56 down: the window-centred
+ * text area lands 20 pixels too high and row 1's crop reads the blank band under the title bar
+ * (#28756). A window the window manager decorates draws nothing inside its client area, its surface
+ * IS the window, and this measurement is then the identity.
+ *
+ * The measurement needs no colour of its own: a terminal paints its own background across its whole
+ * surface, so the frame's most common colour IS that background, and the surface is the run of rows
+ * and columns it covers. A frame whose content hides its background — a full-screen fill — has no
+ * measurable surface, and says so by name instead of guessing one.
+ */
+export function drawnSurface(frame: CapturedFrame): SurfaceMeasurement {
+  const { width, height, rgba } = frame
+  if (
+    !Number.isSafeInteger(width) ||
+    !Number.isSafeInteger(height) ||
+    width < 1 ||
+    height < 1 ||
+    rgba.length !== width * height * 4
+  ) {
+    throw new Error(`A ${width}x${height} captured frame is ${width * height * 4} rgba bytes; got ${rgba.length}`)
+  }
+  const counts = new Map<number, number>()
+  for (let index = 0; index < width * height; index++) {
+    const at = index * 4
+    const colour = (rgba[at] << 16) | (rgba[at + 1] << 8) | rgba[at + 2]
+    counts.set(colour, (counts.get(colour) ?? 0) + 1)
+  }
+  let background = -1
+  let painted = 0
+  for (const [colour, count] of counts) {
+    if (count > painted) {
+      painted = count
+      background = colour
+    }
+  }
+  const rows = new Array<number>(height).fill(0)
+  const columns = new Array<number>(width).fill(0)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const at = (y * width + x) * 4
+      if (((rgba[at] << 16) | (rgba[at + 1] << 8) | rgba[at + 2]) === background) {
+        rows[y] += 1
+        columns[x] += 1
+      }
+    }
+  }
+  let top = -1
+  let bottom = -1
+  for (let y = 0; y < height; y++) {
+    if (rows[y] * 2 > width) {
+      if (top < 0) top = y
+      bottom = y
+    }
+  }
+  let left = -1
+  let right = -1
+  for (let x = 0; x < width; x++) {
+    if (columns[x] * 2 > height) {
+      if (left < 0) left = x
+      right = x
+    }
+  }
+  if (top < 0 || left < 0) {
+    return {
+      surface: null,
+      basis: `no one colour covers half of any row and column of the ${width}x${height} frame`,
+    }
+  }
+  return {
+    surface: { x: left, y: top, width: right - left + 1, height: bottom - top + 1 },
+    basis: `the ${width}x${height} frame's most common colour covers rows ${top}..${bottom} and columns ${left}..${right}`,
+  }
+}
+
+/** Where the terminal's own text area sits in the captured window, and on what basis. */
+export interface TextAreaPlacement {
+  /** The text area's top-left corner, in the captured window's own pixels. */
+  origin: { x: number; y: number }
+  /** The surface the text area was placed inside. */
+  surface: CaptureRectangle
+  /** What that surface is and why, verbatim, for the capture trace: never a silent placement. */
+  basis: string
+}
+
+/**
+ * Place the terminal's reported text area inside the terminal's OWN surface, centred within it the
+ * way the reported size is centred within the window today. The window is the wrong box whenever the
+ * client area carries its own title bar, and the measured surface is the right one; a frame with no
+ * measurable surface, or one too small to hold the reported text area, falls back to the whole
+ * window — the previous behaviour — and names that fallback in `basis`.
+ */
+export function textAreaOrigin(input: {
+  frame: CapturedFrame
+  pixelGeometry: { textWidth: number; textHeight: number }
+}): TextAreaPlacement {
+  const { frame, pixelGeometry } = input
+  if (
+    !Number.isSafeInteger(pixelGeometry.textWidth) ||
+    !Number.isSafeInteger(pixelGeometry.textHeight) ||
+    pixelGeometry.textWidth < 1 ||
+    pixelGeometry.textHeight < 1
+  ) {
+    throw new Error(`A text area of ${pixelGeometry.textWidth}x${pixelGeometry.textHeight} pixels is not a text area`)
+  }
+  const measurement = drawnSurface(frame)
+  const measured = measurement.surface
+  const whole = { x: 0, y: 0, width: frame.width, height: frame.height }
+  const holds = (rectangle: CaptureRectangle) =>
+    pixelGeometry.textWidth <= rectangle.width && pixelGeometry.textHeight <= rectangle.height
+  const surface = measured !== null && holds(measured) ? measured : whole
+  const basis =
+    measured === null
+      ? `${measurement.basis}; placing the text area in the whole ${frame.width}x${frame.height} frame`
+      : surface === measured
+        ? `${measurement.basis}; centring the reported ${pixelGeometry.textWidth}x${pixelGeometry.textHeight} text area in it`
+        : `${measurement.basis}, smaller than the reported ${pixelGeometry.textWidth}x${pixelGeometry.textHeight} text area; placing the text area in the whole ${frame.width}x${frame.height} frame`
+  return {
+    origin: {
+      x: surface.x + Math.round((surface.width - pixelGeometry.textWidth) / 2),
+      y: surface.y + Math.round((surface.height - pixelGeometry.textHeight) / 2),
+    },
+    surface,
+    basis,
+  }
+}
+
+/**
+ * Map a cell-aligned region to an absolute rectangle from the terminal's OWN pixel report and the
+ * text area's own measured origin (see textAreaOrigin), and from nothing else: a window width
+ * divided by a column count is a guess, and this rectangle decides pixels. A rectangle that leaves
+ * the window is a loud error, not a clipped crop, because a clipped crop would silently compare the
+ * wrong cells.
  */
 export function cellRectangle(input: {
   cells: { top: number; left: number; bottom: number; right: number }
   pixelGeometry: { cellWidth: number; cellHeight: number; textWidth: number; textHeight: number }
+  textOrigin: { x: number; y: number }
   windowWidth: number
   windowHeight: number
 }): CaptureRectangle {
-  const { cells, pixelGeometry: geometry, windowWidth, windowHeight } = input
+  const { cells, pixelGeometry: geometry, textOrigin, windowWidth, windowHeight } = input
   const numbers = [
     cells.top,
     cells.left,
@@ -94,6 +242,8 @@ export function cellRectangle(input: {
     cells.right,
     geometry.cellWidth,
     geometry.cellHeight,
+    textOrigin.x,
+    textOrigin.y,
     windowWidth,
     windowHeight,
   ]
@@ -110,12 +260,9 @@ export function cellRectangle(input: {
   ) {
     throw new Error(`Capture cells-to-pixels mapping got an empty or negative region ${JSON.stringify(input)}`)
   }
-  // The text area sits inside the window; its offsets are whatever the window has left over.
-  const textLeft = Math.round((windowWidth - geometry.textWidth) / 2)
-  const textTop = Math.round((windowHeight - geometry.textHeight) / 2)
   const rectangle: CaptureRectangle = {
-    x: textLeft + (cells.left - 1) * geometry.cellWidth,
-    y: textTop + (cells.top - 1) * geometry.cellHeight,
+    x: textOrigin.x + (cells.left - 1) * geometry.cellWidth,
+    y: textOrigin.y + (cells.top - 1) * geometry.cellHeight,
     width: (cells.right - cells.left + 1) * geometry.cellWidth,
     height: (cells.bottom - cells.top + 1) * geometry.cellHeight,
   }
@@ -284,7 +431,6 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
           `Capture ${featureId} was asked for a cell-aligned digest without both cells and the terminal's pixel report`,
         )
       }
-      const rectangle = cellRectangle({ cells, pixelGeometry, windowWidth: window.width, windowHeight: window.height })
       const rgba = await command("magick", rawCommand, original)
       const expected = window.width * window.height * 4
       if (rgba.length !== expected) {
@@ -301,6 +447,21 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
         )
       }
       pixelsDigest = `sha256:${digest(rgba)}`
+      // The compared region is placed inside the terminal's OWN surface, measured from this very
+      // frame, never inside the whole window: a client-side title bar drawn into the client area
+      // makes the two disagree by a title bar's height, which reads the blank band instead of the
+      // row (#28756). The placement and its basis are recorded below.
+      const placement = textAreaOrigin({
+        frame: { width: window.width, height: window.height, rgba },
+        pixelGeometry,
+      })
+      const rectangle = cellRectangle({
+        cells,
+        pixelGeometry,
+        textOrigin: placement.origin,
+        windowWidth: window.width,
+        windowHeight: window.height,
+      })
       const cropCommand = [
         "xwd:-",
         "-crop",
@@ -321,6 +482,7 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
       regionTrace = {
         cells,
         pixelGeometry,
+        textArea: { origin: placement.origin, surface: placement.surface, basis: placement.basis },
         rectangle,
         rawCommand: ["magick", ...rawCommand],
         cropCommand: ["magick", ...cropCommand],
