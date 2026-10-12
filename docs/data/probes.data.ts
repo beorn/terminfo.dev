@@ -20,12 +20,14 @@ import {
   barOverMeasured,
   coverageSentence,
   d3Verdict,
+  classifyCell,
   includedTierOneIds,
   isStaleRelation,
   staleCaption,
   supportedShare,
   tierLine,
   type D3Verdict,
+  type CellState,
   type MeasuredBar,
   type ReleaseScope,
 } from "./release-scope.ts"
@@ -344,19 +346,9 @@ function computeBaselines(data: ProbeData): void {
     if (!cells) throw new Error(`Missing selected public cells for ${backend.name}`)
     for (const bl of baselineOrder) {
       const ids = baselines[bl] ?? []
-      let supported = 0
-      let unsupported = 0
-      let inconclusive = 0
-      let errors = 0
-      let untested = 0
-      for (const id of ids) {
-        const cell = cells[id]
-        if (!cell) untested++
-        else if (cell.outcome === "error") errors++
-        else if (cell.conclusive && cell.outcome === "supported") supported++
-        else if (cell.conclusive && cell.outcome === "unsupported") unsupported++
-        else inconclusive++
-      }
+      const count: Record<CellState, number> = { supported: 0, unsupported: 0, inconclusive: 0, error: 0, untested: 0 }
+      for (const id of ids) count[classifyCell(cells[id])]++
+      const { supported, unsupported, inconclusive, error: errors, untested } = count
       const total = supported + unsupported
       backendStats[bl] = {
         total,

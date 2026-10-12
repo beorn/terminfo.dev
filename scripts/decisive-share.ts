@@ -53,6 +53,7 @@ import { loadReleaseScope, loadFeatureCohort, type FeatureCohort } from "../docs
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
   barOverMeasured,
+  classifyCell,
   d3Verdict,
   D3_VERDICT_BAR,
   F2_MOVERS,
@@ -174,24 +175,11 @@ export function decisiveShare(cells: ShareCells, measuredIds: readonly string[])
   const remainder: RemainderRow[] = []
   const inconclusiveIds: string[] = []
   for (const id of measuredIds) {
-    const cell = cells[id]
-    if (!cell) remainder.push({ featureId: id, bucket: "untested" })
-    else if (cell.outcome === "error") remainder.push({ featureId: id, bucket: "error" })
-    else if (cell.conclusive && cell.outcome === "supported") continue
-    else if (cell.conclusive && cell.outcome === "unsupported") continue
-    else inconclusiveIds.push(id)
-  }
-  if (remainder.length !== bar.errors + bar.untested) {
-    throw new Error(
-      `decisive-share remainder ${remainder.length} disagrees with barOverMeasured errors+untested ` +
-        `${bar.errors + bar.untested} over ${measuredIds.length} rows`,
-    )
-  }
-  if (inconclusiveIds.length !== bar.inconclusive) {
-    throw new Error(
-      `decisive-share inconclusiveIds ${inconclusiveIds.length} disagrees with barOverMeasured inconclusive ` +
-        `${bar.inconclusive} over ${measuredIds.length} rows`,
-    )
+    // Names and counts come from the same classifyCell, so they cannot drift apart.
+    const state = classifyCell(cells[id])
+    if (state === "untested") remainder.push({ featureId: id, bucket: "untested" })
+    else if (state === "error") remainder.push({ featureId: id, bucket: "error" })
+    else if (state === "inconclusive") inconclusiveIds.push(id)
   }
   const decisivePct = sharePct(bar.conclusive, bar.denominator)
   const inconclusivePct = sharePct(bar.inconclusive, bar.denominator)

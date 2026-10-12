@@ -35,6 +35,21 @@ export interface MeasuredBar {
   fillPct: number
 }
 
+/**
+ * The five states one measured cell can be in. This is the ONE classification: the bar, the
+ * decisive-share CLI and the page templates all read it, so they cannot drift into five copies.
+ */
+export type CellState = "supported" | "unsupported" | "inconclusive" | "error" | "untested"
+
+/** Classify one cell. A missing cell is untested; an error outranks a conclusive value. */
+export function classifyCell(cell: { outcome: string; conclusive?: boolean } | undefined): CellState {
+  if (!cell) return "untested"
+  if (cell.outcome === "error") return "error"
+  if (cell.conclusive && cell.outcome === "supported") return "supported"
+  if (cell.conclusive && cell.outcome === "unsupported") return "unsupported"
+  return "inconclusive"
+}
+
 function utcDate(measuredAt: string): string {
   const value = new Date(measuredAt)
   if (Number.isNaN(value.getTime())) throw new Error(`invalid measuredAt ${measuredAt}`)
@@ -73,28 +88,18 @@ export function barOverMeasured(
   cells: Record<string, { outcome: string; conclusive?: boolean }>,
   measuredIds: readonly string[],
 ): MeasuredBar {
-  let supported = 0
-  let unsupported = 0
-  let inconclusive = 0
-  let errors = 0
-  let untested = 0
-  for (const id of measuredIds) {
-    const cell = cells[id]
-    if (!cell) untested++
-    else if (cell.outcome === "error") errors++
-    else if (cell.conclusive && cell.outcome === "supported") supported++
-    else if (cell.conclusive && cell.outcome === "unsupported") unsupported++
-    else inconclusive++
-  }
+  const count: Record<CellState, number> = { supported: 0, unsupported: 0, inconclusive: 0, error: 0, untested: 0 }
+  for (const id of measuredIds) count[classifyCell(cells[id])]++
   const denominator = measuredIds.length
+  const supported = count.supported
   return {
     denominator,
     supported,
-    unsupported,
-    inconclusive,
-    errors,
-    untested,
-    conclusive: supported + unsupported,
+    unsupported: count.unsupported,
+    inconclusive: count.inconclusive,
+    errors: count.error,
+    untested: count.untested,
+    conclusive: supported + count.unsupported,
     fillPct: denominator === 0 ? 0 : Math.round((supported / denominator) * 100),
   }
 }
