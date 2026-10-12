@@ -100,7 +100,7 @@ export interface RegionReadback {
    * that answers only 14 t and 18 t is `derived from CSI 14 t / CSI 18 t`. Every number then names its
    * basis instead of leaving a derived cell size looking like a reported one.
    */
-  geometrySource?: string
+  geometrySource?: GeometrySource
   /**
    * A write the run needs AFTER its frames — a mode or a scroll region the last frame leaves set,
    * which a later probe sharing this terminal must not inherit. Issued from the run's own `finally`,
@@ -250,7 +250,7 @@ async function awaitPaintWitness(options: {
   label: string
   witnessCell: CellRegion
   pixelGeometry: PixelGeometry
-  geometrySource?: string
+  geometrySource?: GeometrySource
   baseline: RegionCapture
   timeoutMs: number
   pollMs: number
@@ -300,9 +300,17 @@ function witnessed(result: { witness: RegionCapture } | ProbeResult): result is 
 const GEOMETRY_REPORTED = "reported by CSI 16 t"
 const GEOMETRY_DERIVED = "derived from CSI 14 t / CSI 18 t"
 
+/**
+ * The two bases named above, as a literal union (@dev/3's review note, @cto's call 2026-10-12): the
+ * bare `string` this field carried let a THIRD spelling reach the payload without a type error, so a
+ * reader could no longer tell a reported geometry from a derived one. Nothing else changes — the
+ * constants are the only values ever assigned, so this is a type-only tightening.
+ */
+export type GeometrySource = typeof GEOMETRY_REPORTED | typeof GEOMETRY_DERIVED
+
 export async function queryPixelGeometry(
   ctx: TermContext,
-): Promise<{ geometry: PixelGeometry; source: string } | { missing: string }> {
+): Promise<{ geometry: PixelGeometry; source: GeometrySource } | { missing: string }> {
   const cell = await ctx.queryWithSentinelOutcome("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/)
   if (cell.reason !== "reply") return deriveCellSizeFromTextArea(ctx, cell.reason)
   const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
@@ -338,7 +346,7 @@ export async function queryPixelGeometry(
 async function deriveCellSizeFromTextArea(
   ctx: TermContext,
   cellReason: TerminalQueryOutcome["reason"],
-): Promise<{ geometry: PixelGeometry; source: string } | { missing: string }> {
+): Promise<{ geometry: PixelGeometry; source: GeometrySource } | { missing: string }> {
   const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
   if (text.reason !== "reply") {
     return {
