@@ -111,7 +111,7 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
   }
   const acquire = async (deadline?: number) => {
     await assertOwned(deadline)
-    const path = join(directory, `.capture-${randomBytes(16).toString("hex")}.png`)
+    const path = join(directory, `capture-${randomBytes(16).toString("hex")}.png`)
     const file = "/usr/sbin/screencapture"
     const args = ["-l", String(window.id), "-o", "-x", "-t", "png", path]
     let stdout: Buffer | undefined
