@@ -9,6 +9,7 @@ import {
   type SelectedVersion,
 } from "./selected-results.ts"
 import { frozenSuiteIdFor } from "./load-release-scope.ts"
+import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadTerminals } from "@terminfo/catalog"
 
@@ -181,17 +182,26 @@ export function compatibilityTargets(projection: SelectedProjection, contentDir:
   const byTarget = new Map<string, CurrentResult>()
   for (const [targetKey, group] of groups) {
     const review = policy[targetKey]
-    if (group.length > 1 && !review) {
+    // The one run-selection rule; this site and the decisive-share reader must not hold two copies.
+    const byKey = new Map(group.map((entry) => [entry.contextKey, entry]))
+    const picked = pickContextRun(
+      group.map((entry) => candidateFromSelected(entry.contextKey, entry.selected)),
+      review,
+    )
+    if (picked === undefined) throw new Error(`No current run for ${targetKey}`)
+    if ("ambiguous" in picked) {
       throw new Error(
-        `Ambiguous current ${targetKey}: ${group.map((entry) => entry.contextKey).join(", ")}; reviewed defaultContext row required`,
+        `Ambiguous current ${targetKey}: ${picked.ambiguous.join(", ")}; reviewed defaultContext row required`,
       )
     }
-    const chosen = review ? group.find((entry) => entry.contextKey === review.contextKey) : group[0]
-    if (!chosen) {
+    if (review && picked.selection !== "reviewed default-context row") {
       throw new Error(
-        `${join(contentDir, "default-contexts.json")}: ${targetKey} chooses a noncurrent context ${review?.contextKey}`,
+        `${join(contentDir, "default-contexts.json")}: ${targetKey} chooses a noncurrent context ${review.contextKey}`,
       )
     }
+    // pickContextRun returns one of the candidates it was given, so this lookup cannot miss.
+    const chosen = byKey.get(picked.run.key)
+    if (!chosen) throw new Error(`Selected run ${picked.run.key} is not among ${targetKey} current contexts`)
     const key = compatibilityKey(chosen.selected.target.kind, chosen.selected.target.id, catalog)
     if (byTarget.has(key)) throw new Error(`Ambiguous compatibility key ${key}: multiple catalog targets`)
     byTarget.set(key, { ...chosen, ...(review && { policy: review }) })

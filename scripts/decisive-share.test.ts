@@ -19,7 +19,6 @@ import { tmpdir } from "node:os"
 import { createHash } from "node:crypto"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import {
-  type ContextCandidate,
   type CohortBarRow,
   categoryBlockHeader,
   barRowForContext,
@@ -33,11 +32,11 @@ import {
   decisiveShare,
   formatBarRow,
   namedExceptionsLine,
-  pickContextRun,
   formatRefusedRun,
   refusedRunsSection,
   tierOneIds,
 } from "./decisive-share.ts"
+import { pickContextRun, type ContextCandidate } from "../docs/data/run-selection.ts"
 import { d3Verdict, tier1Included } from "../docs/data/release-scope.ts"
 import { loadCategories } from "../docs/data/categories.ts"
 import { loadFeatures } from "@terminfo/catalog"
@@ -842,12 +841,7 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
     const contentDir = mkdtempSync(join(tmpdir(), "reader-empty-refusals-"))
     const real = join(import.meta.dirname, "..", "content")
     try {
-      for (const name of [
-        "features.json",
-        "terminals.json",
-        "categories.json",
-        "default-contexts.json",
-      ]) {
+      for (const name of ["features.json", "terminals.json", "categories.json", "default-contexts.json"]) {
         writeFileSync(join(contentDir, name), readFileSync(join(real, name)))
       }
       mkdirSync(join(contentDir, "suites"))

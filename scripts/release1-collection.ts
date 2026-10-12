@@ -29,7 +29,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
 import { provenanceRefusal, type SelectedVersion } from "../docs/data/selected-results.ts"
-import { pickContextRun, type ContextCandidate } from "./decisive-share.ts"
+import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const ADMIT = "scripts/admit-run.ts"
@@ -234,21 +234,6 @@ export async function engineBackendsFromManifest(): Promise<string[]> {
   return Object.keys(backends).filter((name) => backends[name]?.type !== "os")
 }
 
-const asContextCandidate = (key: string, selected: SelectedVersion): ContextCandidate => ({
-  key,
-  kind: String(selected.target.kind),
-  terminalId: selected.target.id,
-  os: selected.target.os ?? "",
-  permissions: selected.target.permissions ?? null,
-  runId: selected.runId,
-  version: selected.target.version ?? "",
-  measuredAt: selected.measuredAt,
-  suiteId: selected.suiteId,
-  suiteFreshness: selected.suiteFreshness,
-  suiteRelation: selected.suiteRelation,
-  cells: selected.cells,
-})
-
 /** The newest admitted Linux app run for a context the site does not currently select. */
 function newestAdmittedLinuxRun(
   history: Readonly<Record<string, readonly SelectedVersion[]>>,
@@ -348,7 +333,7 @@ export function linuxLedger(contentDir: string): LinuxLedger {
   const ledger: Record<string, LinuxLedgerEntry> = {}
   for (const id of LINUX_TARGET_IDS) {
     const picked = pickContextRun(
-      (current.get(id) ?? []).map(({ key, selected }) => asContextCandidate(key, selected)),
+      (current.get(id) ?? []).map(({ key, selected }) => candidateFromSelected(key, selected)),
       reviewed[`app:${id}`],
     )
     if (picked !== undefined && "ambiguous" in picked) {
