@@ -37,7 +37,7 @@ const TEXT_CONTRACT: GroupContract = [
   {
     id: "text.reverse-index-scroll",
     expected: "decided",
-    claim: "RI moves the measured MARKER to the second row",
+    claim: "reverse index at the top of a non-default scroll region scrolls only that region",
   },
   { id: "text.combining", expected: "decided", claim: "a combining accent keeps X in the next parser cell" },
   { id: "text.hts", expected: "decided", claim: "HTS makes the tab advance to column 6" },
