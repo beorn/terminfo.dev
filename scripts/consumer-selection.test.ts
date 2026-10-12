@@ -24,7 +24,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import probesLoader from "../docs/data/probes.data.ts"
 import { generateApi } from "./generate-api.ts"
-import { generateAnalysis } from "./generate-analysis.ts"
+import { loadAnalysis } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
@@ -301,7 +301,8 @@ describe("consumer selection", () => {
         current: Record<string, unknown>
         history: Record<string, Array<{ suiteId: string; counts: { conclusive: number } }>>
       }
-      const analysis = generateAnalysis()
+      // Share the site's analysis loader with terminal paths, as the real site does.
+      const analysis = loadAnalysis()
       const legacy = Object.values(v2.history)
         .flat()
         .filter((entry) => entry.suiteId === "legacy")
