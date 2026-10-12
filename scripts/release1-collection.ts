@@ -13,9 +13,9 @@
  *      `target.permissions` in `content/probes-apps/`), the run the SITE selects via
  *      `docs/data/current-results.ts` — never a preset/profile handed to this file by hand. Kitty
  *      takes `--preset baseline|current` and would refuse the launcher's own default;
- *   2. the pre-flight — refuse unless this tree's own suite is the frozen suite;
- *   3. admission and the refusal checks — admit each produced run through `scripts/admit-run.ts` and
- *      refuse BY CONTEXT when a run is dirty, stale or unadmitted;
+ *   2. the explicit frozen suite — pass it to the admission owner;
+ *   3. admission — hand each produced run to `scripts/admit-run.ts`, propagating its refusal before
+ *      crediting the admitted target to collection coverage;
  *   4. the ending — `bun run decisive-share` (#27909), so the collection's result is the bar's own
  *      instrument.
  *
@@ -24,15 +24,15 @@
  * the receipt producer and `scripts/admit-run.ts`'s admission rules; no deploy.
  */
 import { spawnSync } from "node:child_process"
-import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
-import { provenanceRefusal, type SelectedVersion } from "../docs/data/selected-results.ts"
+import type { SelectedVersion } from "../docs/data/selected-results.ts"
+import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
 import { pickContextRun, type ContextCandidate } from "./decisive-share.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
-const ADMIT = "scripts/admit-run.ts"
 const CONTENT = join(ROOT, "content")
 
 /**
@@ -371,87 +371,20 @@ export function linuxLedger(contentDir: string): LinuxLedger {
   return ledger
 }
 
-export type RefusalKind = "dirty-tree" | "missing-provenance" | "suite-stale" | "unadmitted"
-
-export interface RunRefusal {
-  readonly kind: RefusalKind
-  readonly context: string
-  readonly detail: string
-}
-
-/** The run fields the refusal checks read. Loosely typed: an unknown document must REFUSE, not crash. */
+/** Admission supplies the validated target; coverage needs no second raw-run parser. */
 export interface ProducedRun {
-  readonly schemaVersion?: unknown
-  readonly suiteId?: unknown
-  readonly target?: { readonly kind?: unknown; readonly id?: unknown; readonly os?: unknown }
-  readonly provenance?: { readonly runtime?: { readonly cleanTree?: unknown } }
+  readonly target: Pick<AdmissionPlan["target"], "kind" | "id" | "os">
 }
 
-export interface RefusalOptions {
-  /** The frozen suite id, an explicit asserted input — never inferred from the tree. */
-  readonly frozenSuiteId: string
-  /** Whether the run has been admitted through `scripts/admit-run.ts`. */
-  readonly admitted: boolean
-}
-
-const contextOf = (run: ProducedRun): string =>
-  `${String(run.target?.id ?? "unknown")}/${String(run.target?.os ?? "unknown")}`
-
-/**
- * The refusal options the `--admit` call site passes. The CLI is where admission HAPPENS, so only the
- * admission-independent gates — a dirty tree and a suite that is not the frozen one — are checked
- * before the run is handed to `scripts/admit-run.ts`; that hand-off IS the admission, so `admitted` is
- * `true` here. Passing `admitted: false` would make the classifier refuse EVERY clean frozen run as
- * `unadmitted` before `admit-run` could ever run, so the collection could admit nothing at all. A
- * caller that has not yet admitted a run passes `admitted: false` (see the classifier's own test).
- */
-export const preAdmissionRefusalOptions = (frozenSuiteId: string): RefusalOptions => ({
-  frozenSuiteId,
-  admitted: true,
-})
-
-/**
- * The one refusal classifier. A run is refused BY NAME when it is dirty, stale or unadmitted, so a
- * row can never land on the bar from a collection that does not count. A missing clean-tree proof is
- * NOT clean: only an explicit `true` passes.
- */
-export function refusalForProducedRun(run: ProducedRun, options: RefusalOptions): RunRefusal | null {
-  const context = contextOf(run)
-  if (run.schemaVersion !== 2) {
-    return {
-      kind: "unadmitted",
-      context,
-      detail: `not a schema-v2 run (schemaVersion ${String(run.schemaVersion)})`,
-    }
+/** The owner completes admission before a produced input earns collection coverage. */
+export function admitProducedRuns(paths: readonly string[], frozenSuiteId: string): ProducedRun[] {
+  const produced: ProducedRun[] = []
+  for (const path of paths) {
+    const plan = planAdmission(path, undefined, { frozenSuiteId })
+    admitRun(plan)
+    produced.push({ target: plan.target })
   }
-  // The site's OWN provenance gate, shared rather than reimplemented: only a linux app run must carry
-  // a provenance block, so a headless (or macOS) run with none passes here exactly as the bar passes
-  // it. A gate that demanded `cleanTree === true` refused EVERY headless run as `dirty-tree` (#27929 D6).
-  const provenance = provenanceRefusal(run)
-  if (provenance !== null) {
-    return {
-      kind: provenance === "native-provenance-missing" ? "missing-provenance" : "dirty-tree",
-      context,
-      detail:
-        `provenance is ${provenance}; only a linux app run must carry a provenance block, and any run ` +
-        `that carries one must prove provenance.runtime.cleanTree is true`,
-    }
-  }
-  if (run.suiteId !== options.frozenSuiteId) {
-    return {
-      kind: "suite-stale",
-      context,
-      detail: `suiteId ${String(run.suiteId)} is not the frozen suite ${options.frozenSuiteId}`,
-    }
-  }
-  if (!options.admitted) {
-    return {
-      kind: "unadmitted",
-      context,
-      detail: `not admitted through ${ADMIT}`,
-    }
-  }
-  return null
+  return produced
 }
 
 /**
@@ -476,38 +409,6 @@ export function uncoveredContexts(
         entry.uncollectable ??
         (entry.route === null ? "no collection route" : `no run produced by the ${entry.route} route`),
     }))
-}
-
-/** Refuse unless this tree's own suite is the frozen suite (@chief's "a HEAD that is not the frozen suite"). */
-export function assertFrozenSuite(treeSuiteId: string, frozenSuiteId: string): void {
-  if (treeSuiteId !== frozenSuiteId) {
-    throw new Error(
-      `This tree's probe suite is ${treeSuiteId}, not the frozen suite ${frozenSuiteId}; ` +
-        `commit the probe state and collect on the frozen suite, or pass the id you froze`,
-    )
-  }
-}
-
-function readRun(path: string): ProducedRun {
-  try {
-    return JSON.parse(readFileSync(path, "utf8")) as ProducedRun
-  } catch (cause) {
-    throw new Error(`Cannot read the produced run ${path}`, { cause })
-  }
-}
-
-/**
- * A Linux container row is unusable without the host-composed run-receipt.json the launcher
- * writes only after attach returns. Measured #28552: a completed kitty batch (v2-run.json
- * present) left no receipt when attach hit SIGTERM, and the other contexts in the same pass
- * could still admit. Name the context; do not read a missing receipt as "no run".
- */
-export function requireLinuxRunReceipt(runPath: string, run: ProducedRun): void {
-  if (run.target?.kind !== "app" || run.target?.os !== "linux") return
-  const receipt = join(dirname(runPath), "run-receipt.json")
-  if (!existsSync(receipt)) {
-    throw new Error(`${contextOf(run)}: missing run-receipt.json next to ${runPath}`)
-  }
 }
 
 function planLines(census: readonly CollectionContext[]): string[] {
@@ -546,8 +447,8 @@ function usage(): never {
       "  (bare)   print the census — the default: every Release 1 context, the entry point that\n" +
       "           measures it, and the committed run each Linux row's flags were read from. Read-only.\n" +
       "  --plan   the same census, named explicitly.\n" +
-      "  --admit  refuse any produced run that is dirty, stale or unadmitted, admit the rest through\n" +
-      "           scripts/admit-run.ts, then print the decisive-share table. The frozen suite id is\n" +
+      "  --admit  admit produced runs through scripts/admit-run.ts, then report admitted coverage\n" +
+      "           and print the decisive-share table. The frozen suite id is\n" +
       "           required and asserted against this tree; it is never inferred. Nothing is collected\n" +
       "           without this flag (or the per-row commands above), so a bare run never starts a\n" +
       "           multi-row collection by accident.",
@@ -587,20 +488,7 @@ if (import.meta.main) {
     if (runs.length === 0) {
       throw new Error("--admit needs at least one produced run; nothing was admitted")
     }
-    const { probeHash } = await import("../packages/admin/versions.ts")
-    assertFrozenSuite(probeHash(), frozenSuite)
-
-    const produced: ProducedRun[] = []
-    for (const path of runs) {
-      const run = readRun(path)
-      requireLinuxRunReceipt(path, run)
-      const refusal = refusalForProducedRun(run, preAdmissionRefusalOptions(frozenSuite))
-      if (refusal !== null) {
-        throw new Error(`Refusing ${refusal.context} (${refusal.kind}): ${refusal.detail}`)
-      }
-      runChild(["bun", ADMIT, "--for", path], `admit-run ${contextOf(run)}`)
-      produced.push(run)
-    }
+    const produced = admitProducedRuns(runs, frozenSuite)
     const gaps = uncoveredContexts(census, produced)
     console.log(
       gaps.length === 0

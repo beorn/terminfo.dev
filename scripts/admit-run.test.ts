@@ -7,9 +7,9 @@
  * @testonly none
  */
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { afterEach, expect, test } from "vitest"
 import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
@@ -22,6 +22,8 @@ import {
   planAdmission,
 } from "./admit-run.ts"
 import { object } from "./interpretations.ts"
+import { parseDisposableReceipt } from "terminfo.dev/src/disposable-receipt.ts"
+import { derivedSuiteManifest } from "./suite-manifest.ts"
 
 const temporaryPaths: string[] = []
 afterEach(() => {
@@ -36,36 +38,124 @@ const temp = (prefix: string): string => {
 function runFixture(overrides: Record<string, unknown> = {}): string {
   const directory = temp("terminfo-admit-")
   const path = join(directory, "run.json")
-  // Planning now assesses the full run. Reuse a genuinely complete clean collection rather than
-  // letting filename-only fixtures bypass the contract these callers must satisfy.
-  const complete = parseJsonStrict(
-    "complete clean admission fixture",
-    readFileSync(
-      join(
-        import.meta.dirname,
-        "..",
-        "content",
-        "probes-apps",
-        "kitty-0.49.2-linux-dfd4cd08416fb5f3be3eaeed5acce782.json",
-      ),
-      "utf8",
-    ),
-  )
-  if (!object(complete) || !object(complete.provenance) || !object(complete.provenance.runtime)) {
+  const content = join(import.meta.dirname, "..", "content")
+  const original = join(content, "probes-apps", "kitty-0.49.2-linux-dfd4cd08416fb5f3be3eaeed5acce782.json")
+  const originalBytes = readFileSync(original, "utf8")
+  const complete = parseJsonStrict(original, originalBytes)
+  if (
+    !object(complete) ||
+    typeof complete.probeHash !== "string" ||
+    !object(complete.provenance) ||
+    !object(complete.provenance.runtime)
+  ) {
     throw new Error("Complete clean admission fixture has no runtime provenance")
   }
-  complete.provenance.runtime.suiteHash = probeSuiteSnapshot().probeHash
+  const manifestPath = join(content, "suites", `${complete.probeHash}.json`)
+  const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+  const catalog = parseJsonStrict("feature catalog", readFileSync(join(content, "features.json"), "utf8"))
+  if (!object(catalog)) throw new Error("Admission fixture catalog is not an object")
+  const loaded = parseRun(
+    original,
+    originalBytes,
+    Object.keys(catalog).filter((id) => !id.startsWith("$")),
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  const hostBytes = readFileSync(join(content, "receipts", `${loaded.runId}.json`))
+  parseDisposableReceipt(hostBytes.toString("utf8"))
+  const hostPath = join(directory, "host-measured.json")
+  writeFileSync(hostPath, hostBytes)
+  mkdirSync(join(directory, "artifacts"))
+  for (const ref of loaded.screenshotRefs) {
+    const filename = `${ref.slice("sha256:".length)}.png`
+    copyFileSync(join(content, "artifacts", filename), join(directory, "artifacts", filename))
+  }
+  // Only this test run's ID/suite are synthetic. Ownership and PNG bytes remain the committed
+  // specimen's genuine retained evidence; this fixture makes no claim to have run the live suite.
+  const liveSuite = probeSuiteSnapshot().probeHash
+  complete.provenance.runtime.suiteHash = liveSuite
+  const fixture = { ...complete, suiteId: liveSuite, probeHash: liveSuite, runId: "run1", ...overrides }
+  const bytes = JSON.stringify(fixture)
+  writeFileSync(path, bytes)
+  // Synthetic test-only composer output, not a production completion receipt or measured claim.
+  const host = parseJsonStrict(hostPath, hostBytes.toString("utf8"))
+  if (!object(host)) throw new Error("Admission fixture ownership receipt is not an object")
   writeFileSync(
-    path,
+    join(directory, "run-receipt.json"),
     JSON.stringify({
-      ...complete,
-      probeHash: probeSuiteSnapshot().probeHash,
-      runId: "run1",
-      ...overrides,
+      ...host,
+      probeRun: { path: "run.json", runId: fixture.runId, sha256: createHash("sha256").update(bytes).digest("hex") },
+      receiptInputs: { hostSha256: createHash("sha256").update(hostBytes).digest("hex") },
     }),
   )
   return path
 }
+
+// Placement must prove that the host composer completed THIS raw run, before authoring anything.
+test.each(["missing", "malformed", "wrong-hash", "wrong-probe-run", "wrong-host-hash"] as const)(
+  "planning refuses %s Linux completion evidence before any placement",
+  (fault) => {
+    const source = runFixture()
+    const receipt = join(dirname(source), "run-receipt.json")
+    const destination = join(temp("terminfo-completion-dest-"), "run.json")
+    if (fault === "missing") rmSync(receipt)
+    else if (fault === "malformed") writeFileSync(receipt, "{broken")
+    else {
+      const completion = parseJsonStrict(receipt, readFileSync(receipt, "utf8"))
+      if (!object(completion) || !object(completion.probeRun) || !object(completion.receiptInputs)) {
+        throw new Error("Synthetic composer fixture lacks completion binding")
+      }
+      if (fault === "wrong-hash") completion.probeRun.sha256 = "0".repeat(64)
+      if (fault === "wrong-probe-run") completion.probeRun.runId = "different-run"
+      if (fault === "wrong-host-hash") completion.receiptInputs.hostSha256 = "0".repeat(64)
+      writeFileSync(receipt, JSON.stringify(completion))
+    }
+    expect(() => planAdmission(source, destination)).toThrow(/run-receipt\.json/)
+    expect(existsSync(destination)).toBe(false)
+  },
+)
+
+test("planning refuses run/tree/frozen-suite disagreement before placement", () => {
+  const source = runFixture()
+  const destination = join(temp("terminfo-frozen-dest-"), "run.json")
+  expect(() => planAdmission(source, destination, { frozenSuiteId: "f".repeat(12) })).toThrow(/frozen suite/)
+  expect(existsSync(destination)).toBe(false)
+  const foreignSuite = "c3d1fbb77561"
+  const document = parseJsonStrict(source, readFileSync(source, "utf8"))
+  if (!object(document) || !object(document.provenance) || !object(document.provenance.runtime)) {
+    throw new Error("Synthetic frozen-suite fixture lacks runtime provenance")
+  }
+  document.probeHash = foreignSuite
+  document.suiteId = foreignSuite
+  document.provenance.runtime.suiteHash = foreignSuite
+  writeFileSync(source, JSON.stringify(document))
+  expect(() => planAdmission(source, destination, { frozenSuiteId: foreignSuite })).toThrow(/this tree runs suite/)
+  expect(existsSync(destination)).toBe(false)
+})
+
+test("planning refuses a missing cited ownership receipt before placement", () => {
+  const source = runFixture()
+  const destination = join(temp("terminfo-owner-dest-"), "run.json")
+  rmSync(join(dirname(source), "host-measured.json"))
+  const content = join(import.meta.dirname, "..", "content")
+  const catalog = parseJsonStrict("feature catalog", readFileSync(join(content, "features.json"), "utf8"))
+  if (!object(catalog)) throw new Error("Ownership fixture catalog is not an object")
+  const manifest = derivedSuiteManifest(probeSuiteSnapshot())
+  const loaded = parseRun(
+    source,
+    readFileSync(source, "utf8"),
+    Object.keys(catalog).filter((id) => !id.startsWith("$")),
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  const assessment = assessRunAdmission(loaded, [], {
+    receiptPath: join(dirname(source), "host-measured.json"),
+    contentDir: content,
+    mode: "placement",
+  })
+  expect(assessment).toMatchObject({ accepted: false, reason: expect.stringContaining("host-measured.json") })
+  if (assessment.accepted) throw new Error("Missing ownership receipt was unexpectedly accepted")
+  expect(() => planAdmission(source, destination)).toThrow(`${source}: ${assessment.reason}`)
+  expect(existsSync(destination)).toBe(false)
+})
 
 // AC1 and the CTO's shared-checklist amendment: these real historical runs are complete for their
 // own suites but record dirty collection provenance. Planning must preserve that refusal before
@@ -177,6 +267,10 @@ test("admission carries every screenshot the run cites, and refuses a missing or
   expect(placeScreenshots(source, [ref], content)).toEqual({ created: 0, existing: 1 })
 
   const absent = `sha256:${"a".repeat(64)}`
+  // AC1: preflight every cited artifact before any placement; the old loop wrote the first PNG.
+  const unplacedContent = temp("terminfo-preflight-content-")
+  expect(() => placeScreenshots(source, [ref, absent], unplacedContent)).toThrow(/does not exist beside the run/)
+  expect(existsSync(join(unplacedContent, "artifacts", `${digest}.png`))).toBe(false)
   expect(() => placeScreenshots(source, [absent], content)).toThrow(/does not exist beside the run/)
   const wrong = digest.slice(0, 63) + (digest[63] === "a" ? "b" : "a")
   writeFileSync(join(source, "..", "artifacts", `${wrong}.png`), png)

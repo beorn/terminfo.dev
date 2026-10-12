@@ -36,7 +36,6 @@ import {
   validatePresentationSupersession,
 } from "../../scripts/interpretations.ts"
 export { parseInterpretations } from "../../scripts/interpretations.ts"
-export { provenanceRefusal } from "../../scripts/admit-run.ts"
 
 export interface SelectedCell extends Observation {
   conclusive: boolean

@@ -217,12 +217,13 @@ function admissionRefusal(
 }
 
 /**
- * docs/ imports this pure assessor only. Keep module scope effect-free and this path read-only;
+ * docs/ imports this read-only assessor only. Keep module scope effect-free and this path read-only;
  * placement and the CLI must never run as part of site projection.
  */
 export function assessRunAdmission(
   run: LoadedRun,
   active: readonly Interpretation[] = [],
+  evidence: { receiptPath?: string; contentDir?: string; mode?: "historical" | "placement" } = {},
 ):
   | { accepted: true; identityAdmission: IdentityAdmission | null }
   | { accepted: false; reason: string; identityAdmission: IdentityAdmission | null } {
@@ -230,7 +231,23 @@ export function assessRunAdmission(
   const reviewed = active.some(
     (entry) => entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.reviewed,
   )
-  const reason = admissionRefusal(run, active, reviewed, identityAdmission)
+  let reason = admissionRefusal(run, active, reviewed, identityAdmission)
+  if (reason === null) {
+    try {
+      preflightOwnershipReceipt(
+        run.path,
+        run.rawReplies["collector.disposableOwnership"],
+        run.runId,
+        { kind: run.target.kind, id: run.target.id, os: run.target.os ?? "" },
+        evidence.contentDir ?? dirname(dirname(run.path)),
+        evidence.receiptPath ?? join(dirname(dirname(run.path)), "receipts", `${run.runId}.json`),
+        evidence.mode === "placement",
+      )
+    } catch (cause) {
+      if (!(cause instanceof Error)) throw cause
+      reason = cause.message
+    }
+  }
   return reason === null ? { accepted: true, identityAdmission } : { accepted: false, reason, identityAdmission }
 }
 
@@ -246,6 +263,7 @@ export interface AdmissionPlan {
   probeHash: string
   target: { kind: ProbeTarget["kind"]; id: string; version: string; os: string }
   runId: string
+  frozenSuiteId?: string
 }
 
 function catalogIds(): string[] {
@@ -256,7 +274,7 @@ function catalogIds(): string[] {
 }
 
 /** Compute where a run lands, from its own target and run id — never from a caller-supplied name. */
-export function planAdmission(source: string, into?: string): AdmissionPlan {
+export function planAdmission(source: string, into?: string, options: { frozenSuiteId?: string } = {}): AdmissionPlan {
   let parsed: unknown
   try {
     parsed = JSON.parse(readFileSync(source, "utf8"))
@@ -300,10 +318,33 @@ export function planAdmission(source: string, into?: string): AdmissionPlan {
   const interpretations = activeInterpretations(
     parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), ids),
   )
-  const assessment = assessRunAdmission(loaded, interpretations)
+  const assessment = assessRunAdmission(loaded, interpretations, {
+    receiptPath: join(dirname(source), RECEIPT_BESIDE_RUN),
+    contentDir: CONTENT_DIR,
+    mode: "placement",
+  })
   if (!assessment.accepted) throw new Error(`${source}: ${assessment.reason}`)
+  if (parsed.probeHash !== snapshot.probeHash) {
+    throw new Error(
+      `Refusing to admit a run from suite ${parsed.probeHash}: this tree runs suite ${snapshot.probeHash}. ` +
+        "Admit from a tree at the run's suite (its sourceRevision).",
+    )
+  }
+  if (
+    options.frozenSuiteId !== undefined &&
+    (loaded.suiteId !== options.frozenSuiteId || snapshot.probeHash !== options.frozenSuiteId)
+  ) {
+    throw new Error(
+      `Run suite ${loaded.suiteId} and tree suite ${snapshot.probeHash} must equal frozen suite ${options.frozenSuiteId}`,
+    )
+  }
+  if (existsSync(manifestPath)) verifySuiteManifest(manifestPath, snapshot)
+  preflightLinuxCompletionReceipt(source, loaded)
+  preflightScreenshots(source, loaded.screenshotRefs)
   const destination = into ?? join(CONTENT_DIR, RUN_DIRS[kind], `${id}-${version}-${os}-${runId}.json`)
-  return { source, destination, probeHash: parsed.probeHash, target: { kind, id, version, os }, runId }
+  preflightDestination(destination, readFileSync(source), "admitted run")
+  assertDeclareIsAuthoring(ROOT, parsed.probeHash)
+  return { source, destination, probeHash: parsed.probeHash, target: { kind, id, version, os }, runId, ...options }
 }
 
 /**
@@ -311,6 +352,12 @@ export function planAdmission(source: string, into?: string): AdmissionPlan {
  * the existing bytes are identical: two branches admitting the same hash must both compose, so
  * "exists and verifies" is never a conflict. Different bytes at the same name are loud.
  */
+function preflightDestination(destination: string, bytes: Uint8Array, what: string): void {
+  if (existsSync(destination) && !readFileSync(destination).equals(bytes)) {
+    throw new Error(`Refusing to overwrite a different ${what} at ${destination}`)
+  }
+}
+
 function placeExclusive(destination: string, bytes: Uint8Array, what: string): "created" | "existing" {
   mkdirSync(dirname(destination), { recursive: true })
   let descriptor: number
@@ -345,14 +392,13 @@ const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
  * next to the run file — the collector's `/out/artifacts/`. Each must hash to its cited digest and
  * be a PNG; a missing or mismatched source refuses BY NAME before the run is placed.
  */
-export function placeScreenshots(
+function preflightScreenshots(
   source: string,
   refs: readonly string[],
   contentDir: string = CONTENT_DIR,
-): { created: number; existing: number } {
+): Array<{ destination: string; bytes: Buffer }> {
   const directory = join(dirname(source), "artifacts")
-  let created = 0
-  let existing = 0
+  const artifacts: Array<{ destination: string; bytes: Buffer }> = []
   for (const ref of refs) {
     const digest = ref.slice("sha256:".length)
     const origin = join(directory, `${digest}.png`)
@@ -363,8 +409,23 @@ export function placeScreenshots(
     const actual = createHash("sha256").update(bytes).digest("hex")
     if (actual !== digest) throw new Error(`Screenshot ${origin} hashes to ${actual}, not its cited ${digest}`)
     if (!bytes.subarray(0, 8).equals(PNG_SIGNATURE)) throw new Error(`Screenshot ${origin} is not a PNG`)
-    const placed = placeExclusive(join(contentDir, "artifacts", `${digest}.png`), bytes, "screenshot")
-    if (placed === "created") created += 1
+    const destination = join(contentDir, "artifacts", `${digest}.png`)
+    preflightDestination(destination, bytes, "screenshot")
+    artifacts.push({ destination, bytes })
+  }
+  return artifacts
+}
+
+export function placeScreenshots(
+  source: string,
+  refs: readonly string[],
+  contentDir: string = CONTENT_DIR,
+): { created: number; existing: number } {
+  const artifacts = preflightScreenshots(source, refs, contentDir)
+  let created = 0
+  let existing = 0
+  for (const artifact of artifacts) {
+    if (placeExclusive(artifact.destination, artifact.bytes, "screenshot") === "created") created += 1
     else existing += 1
   }
   return { created, existing }
@@ -398,15 +459,17 @@ const RECEIPT_BESIDE_RUN = "host-measured.json"
  * A run collected against a shared terminal cites no receipt ({kind:"shared"}) and places nothing;
  * that is the untouched default path, and the F2 write gate is a separate question.
  */
-export function placeOwnershipReceipt(
+function preflightOwnershipReceipt(
   source: string,
   ownership: string | undefined,
   runId: string,
   target: ReceiptTarget,
   contentDir: string = CONTENT_DIR,
-): { placed: "created" | "existing" | "none"; detail: string } {
+  receiptPath: string = join(dirname(source), RECEIPT_BESIDE_RUN),
+  compareHostedHistory = true,
+): { bytes?: Buffer; detail: string } {
   if (ownership === undefined) {
-    return { placed: "none", detail: "the run cites no collector.disposableOwnership reply" }
+    return { detail: "the run cites no collector.disposableOwnership reply" }
   }
   let citation: unknown
   try {
@@ -419,7 +482,7 @@ export function placeOwnershipReceipt(
   }
   const kind = citation.kind
   if (kind === "shared") {
-    return { placed: "none", detail: "collected against a shared terminal: it cites no receipt, so none is placed" }
+    return { detail: "collected against a shared terminal: it cites no receipt, so none is placed" }
   }
   const cited = citation.receiptSha256
   if (typeof cited !== "string" || !/^[0-9a-f]{64}$/.test(cited)) {
@@ -428,7 +491,6 @@ export function placeOwnershipReceipt(
         "so the receipt it trusted cannot be re-checked",
     )
   }
-  const receiptPath = join(dirname(source), RECEIPT_BESIDE_RUN)
   if (!existsSync(receiptPath)) {
     throw new Error(
       `Run ${runId} cites ownership receipt ${cited}, but ${receiptPath} does not exist beside the run: ` +
@@ -447,7 +509,7 @@ export function placeOwnershipReceipt(
     )
   }
   bindReceiptToRun(receipt, target, `run ${runId}`)
-  if (receipt.kind === "github-hosted-runner") {
+  if (receipt.kind === "github-hosted-runner" && compareHostedHistory) {
     // Strict parsing above owns validation. Decode only the already-validated hosted fields here;
     // history is visible to admission, never to the collector's single-receipt parser.
     type HostedFields = {
@@ -499,8 +561,52 @@ export function placeOwnershipReceipt(
       }
     }
   }
-  const placed = placeExclusive(join(contentDir, "receipts", `${runId}.json`), bytes, "disposable-ownership receipt")
-  return { placed, detail: `${placed} content/receipts/${runId}.json (${RECEIPT_BESIDE_RUN}, ${actual})` }
+  preflightDestination(join(contentDir, "receipts", `${runId}.json`), bytes, "disposable-ownership receipt")
+  return { bytes, detail: `content/receipts/${runId}.json (${receiptPath}, ${actual})` }
+}
+
+export function placeOwnershipReceipt(
+  source: string,
+  ownership: string | undefined,
+  runId: string,
+  target: ReceiptTarget,
+  contentDir: string = CONTENT_DIR,
+): { placed: "created" | "existing" | "none"; detail: string } {
+  const receipt = preflightOwnershipReceipt(source, ownership, runId, target, contentDir)
+  const placed =
+    receipt.bytes === undefined
+      ? "none"
+      : placeExclusive(join(contentDir, "receipts", `${runId}.json`), receipt.bytes, "disposable-ownership receipt")
+  return { placed, detail: receipt.detail }
+}
+
+/** Host composition happens only after a completed Linux attach; bind those bytes to this run. */
+function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
+  if (run.target.kind !== "app" || run.target.os !== "linux") return
+  const path = join(dirname(source), "run-receipt.json")
+  if (!existsSync(path)) throw new Error(`${run.target.id}/linux: missing run-receipt.json next to ${source}`)
+  let receipt: unknown
+  try {
+    receipt = JSON.parse(readFileSync(path, "utf8"))
+  } catch (cause) {
+    throw new Error(`Cannot read Linux completion receipt ${path}`, { cause })
+  }
+  if (
+    !isRecord(receipt) ||
+    !isRecord(receipt.probeRun) ||
+    receipt.probeRun.runId !== run.runId ||
+    receipt.probeRun.sha256 !== run.sha256
+  ) {
+    throw new Error(`Linux completion receipt ${path} does not bind probeRun.runId and sha256 to ${source}`)
+  }
+  const hostPath = join(dirname(source), RECEIPT_BESIDE_RUN)
+  if (!existsSync(hostPath)) {
+    throw new Error(`Linux completion receipt ${path} requires missing host receipt ${hostPath}`)
+  }
+  const hostSha256 = createHash("sha256").update(readFileSync(hostPath)).digest("hex")
+  if (!isRecord(receipt.receiptInputs) || receipt.receiptInputs.hostSha256 !== hostSha256) {
+    throw new Error(`Linux completion receipt ${path} does not bind receiptInputs.hostSha256 to ${hostPath}`)
+  }
 }
 
 /**
@@ -522,7 +628,14 @@ export function admitRun(plan: AdmissionPlan): {
         "Admit from a tree at the run's suite (its sourceRevision).",
     )
   }
-  assertDeclareIsAuthoring(ROOT, plan.probeHash)
+  const validated = planAdmission(plan.source, plan.destination, { frozenSuiteId: plan.frozenSuiteId })
+  if (
+    validated.probeHash !== plan.probeHash ||
+    validated.runId !== plan.runId ||
+    JSON.stringify(validated.target) !== JSON.stringify(plan.target)
+  ) {
+    throw new Error("Admission plan no longer matches the collected run; plan admission again")
+  }
   const declaration = declareCurrentSuiteManifest()
   const manifestPath = join(CONTENT_DIR, "suites", `${snapshot.probeHash}.json`)
   const manifest = verifySuiteManifest(manifestPath, snapshot)

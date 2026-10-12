@@ -4,30 +4,24 @@
  *   carries (kitty takes `--preset baseline|current`, never the launcher's default, and a clipboard
  *   override is not `default`), or admit a run collected from a dirty tree, on a suite that is not
  *   the frozen one, or never admitted at all — so a row would land on the bar from a collection that
- *   does not count, and the census would read complete while it is not.
+ *   does not count, and the census would read complete while it is not. Admission rejection must
+ *   propagate from the single owner before the caller credits coverage.
  * @level l2
  * @consumer Release 1 final re-collection runner (scripts/release1-collection.ts)
- * @source-grep no real collection can run in a test and no fixture carries an admitted-run
- *   directory: the census (fed a fixture ledger), the flag read-back from the corpus, the three
- *   refusals and the frozen-suite pre-flight are the whole surface, and the engine count is asserted
- *   against the same eleven the collector asserts.
  * @testonly none
  */
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { describe, expect, it } from "vitest"
+import { existsSync } from "node:fs"
+import { describe, expect, it, vi } from "vitest"
+import * as admission from "./admit-run.ts"
 import { RELEASE_1_CONTEXTS } from "./decisive-share.ts"
 import {
-  assertFrozenSuite,
+  admitProducedRuns,
   clipboardProfileFor,
   linuxLedger,
-  preAdmissionRefusalOptions,
   presetFor,
   release1Census,
-  refusalForProducedRun,
-  requireLinuxRunReceipt,
   uncoveredContexts,
   type LinuxLedger,
   type ProducedRun,
@@ -90,10 +84,7 @@ const ENGINE_BACKENDS = [
 ]
 
 const cleanRun = (overrides: Partial<ProducedRun> = {}): ProducedRun => ({
-  schemaVersion: 2,
-  suiteId: "frozen01",
   target: { kind: "app", id: "xterm", os: "linux" },
-  provenance: { runtime: { cleanTree: true } },
   ...overrides,
 })
 
@@ -161,7 +152,7 @@ describe("release 1 collection census", () => {
     // ("linux"), so a key of id/os matched no headless run and every engine row read "no run produced"
     // right after its run was admitted (rehearsed on 950882d4f34d, xtermjs 7866d892).
     const all = census()
-    const headless = cleanRun({ target: { kind: "headless", id: "xtermjs", os: "linux" }, provenance: undefined })
+    const headless = cleanRun({ target: { kind: "headless", id: "xtermjs", os: "linux" } })
     const uncovered = uncoveredContexts(all, [headless]).map((entry) => `${entry.context.kind}:${entry.context.id}`)
     expect(uncovered).not.toContain("headless:xtermjs")
     expect(uncovered).toContain("app:xterm")
@@ -229,127 +220,66 @@ describe("release 1 Linux launcher flags", () => {
   })
 })
 
-describe("release 1 collection refusal checks", () => {
-  const options = { frozenSuiteId: "frozen01", admitted: false }
-
-  it("refuses a dirty tree, and a linux app run with no provenance block", () => {
-    const dirty = refusalForProducedRun(cleanRun({ provenance: { runtime: { cleanTree: false } } }), options)
-    expect(dirty?.kind).toBe("dirty-tree")
-    expect(dirty?.detail).toMatch(/native-provenance-dirty/)
-
-    const unknown = refusalForProducedRun(cleanRun({ provenance: { runtime: {} } }), options)
-    expect(unknown?.kind).toBe("dirty-tree")
-
-    const missing = refusalForProducedRun(cleanRun({ provenance: undefined }), options)
-    expect(missing?.kind).toBe("missing-provenance")
-    expect(missing?.detail).toMatch(/native-provenance-missing/)
-  })
-
-  it("passes a headless or macOS run, which carries no provenance block by construction", () => {
-    // `scripts/linux-container-run.sh` is the only collector that writes a provenance block, so a
-    // headless row — or a macOS app row — has none. Only a LINUX APP run must carry one; gating on
-    // `cleanTree === true` would refuse every headless run as `dirty-tree` (#27929 D6).
-    expect(
-      refusalForProducedRun(
-        cleanRun({ target: { kind: "headless", id: "xtermjs", os: "linux" }, provenance: undefined }),
-        { frozenSuiteId: "frozen01", admitted: true },
-      ),
-    ).toBeNull()
-
-    expect(
-      refusalForProducedRun(cleanRun({ target: { kind: "app", id: "kitty", os: "macos" }, provenance: undefined }), {
-        frozenSuiteId: "frozen01",
-        admitted: true,
-      }),
-    ).toBeNull()
-  })
-
-  it("refuses a run measured on a suite that is not the frozen one", () => {
-    const stale = refusalForProducedRun(cleanRun({ suiteId: "oldersuite" }), options)
-    expect(stale?.kind).toBe("suite-stale")
-    expect(stale?.detail).toMatch(/not the frozen suite frozen01/)
-  })
-
-  it("refuses a run that was not admitted, and a non-schema-v2 document", () => {
-    const unadmitted = refusalForProducedRun(cleanRun(), options)
-    expect(unadmitted?.kind).toBe("unadmitted")
-    const legacy = refusalForProducedRun(cleanRun({ schemaVersion: 1 }), {
-      frozenSuiteId: "frozen01",
-      admitted: true,
+// Requirement: admission is the only authority for coverage credit. The former pure refusal
+// cases never invoked the owner, so they missed a caller ignoring an admission rejection.
+describe("release collection hands every produced run to the admission owner", () => {
+  const source = "/private/produced-xterm.json"
+  const frozenSuiteId = "frozen01"
+  const plan: admission.AdmissionPlan = {
+    source,
+    destination: "/private/admitted-xterm.json",
+    probeHash: frozenSuiteId,
+    target: { kind: "app", id: "xterm", version: "411", os: "linux" },
+    runId: "c3".repeat(16),
+  }
+  it("credits the owner's target only after admission and forwards the explicit frozen suite", () => {
+    const planner = vi.spyOn(admission, "planAdmission").mockReturnValue(plan)
+    const writer = vi.spyOn(admission, "admitRun").mockReturnValue({
+      manifest: "existing",
+      run: "created",
+      screenshots: { created: 0, existing: 0 },
+      receipt: { placed: "none", detail: "fixture" },
     })
-    expect(legacy?.kind).toBe("unadmitted")
-  })
-
-  it("names the context in every refusal", () => {
-    const refusal = refusalForProducedRun(cleanRun(), options)
-    expect(refusal?.context).toBe("xterm/linux")
-  })
-
-  it("passes a clean, frozen, admitted run", () => {
-    expect(refusalForProducedRun(cleanRun(), { frozenSuiteId: "frozen01", admitted: true })).toBeNull()
-  })
-
-  it("passes a clean, frozen run under the CLI admission options, so --admit reaches admit-run", () => {
-    // The `--admit` call site is where admission HAPPENS, so it must classify with the admission
-    // options. If it passed `admitted: false` the classifier would refuse every clean frozen run as
-    // `unadmitted` before scripts/admit-run.ts could ever run, and the collection could admit nothing.
-    // Bound to the exported call-site options so this can never drift from what the CLI actually passes.
-    expect(refusalForProducedRun(cleanRun(), preAdmissionRefusalOptions("frozen01"))).toBeNull()
-    expect(preAdmissionRefusalOptions("frozen01").frozenSuiteId).toBe("frozen01")
-  })
-
-  it("still refuses as unadmitted when a caller has not admitted the run", () => {
-    // The other side of the same coin: the pre-admission options differ from `admitted: false` ONLY in
-    // that they let a clean frozen run through; the unadmitted refusal must remain reachable by name.
-    const beforeAdmission = refusalForProducedRun(cleanRun(), { frozenSuiteId: "frozen01", admitted: false })
-    expect(beforeAdmission?.kind).toBe("unadmitted")
-    expect(beforeAdmission?.detail).toMatch(/admit-run/)
-  })
-})
-
-describe("release 1 frozen-suite pre-flight", () => {
-  it("refuses a tree whose own suite is not the frozen suite", () => {
-    expect(() => assertFrozenSuite("currentsuite", "frozen01")).toThrow(/not the frozen suite frozen01/)
-    expect(() => assertFrozenSuite("frozen01", "frozen01")).not.toThrow()
-  })
-})
-
-/**
- * @failure --admit would silently skip a linux app context whose launcher left v2-run.json but no
- *   sibling run-receipt.json, so a truncated kitty batch can still enter the census.
- * @level l2 — temp-dir fixtures next to a produced-run path; no real container.
- * @consumer scripts/release1-collection.ts requireLinuxRunReceipt (#28552)
- */
-describe("linux run-receipt.json per context (#28552)", () => {
-  it("names the linux context when the launcher left no run-receipt.json beside the v2 run", () => {
-    const raw = mkdtempSync(join(tmpdir(), "terminfo-28552-receipt-"))
-    const runPath = join(raw, "v2-run.json")
-    writeFileSync(runPath, "{}\n")
     try {
-      expect(() =>
-        requireLinuxRunReceipt(runPath, cleanRun({ target: { kind: "app", id: "kitty", os: "linux" } })),
-      ).toThrow(/kitty\/linux: missing run-receipt\.json/)
+      const produced = admitProducedRuns([source], frozenSuiteId)
+      expect(planner).toHaveBeenCalledWith(source, undefined, { frozenSuiteId })
+      expect(writer).toHaveBeenCalledWith(plan)
+      expect(produced).toEqual([{ target: plan.target }])
+      expect(
+        uncoveredContexts(census(), produced).some(({ context }) => context.id === "xterm" && context.os === "linux"),
+      ).toBe(false)
     } finally {
-      // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; raw is this test's own mkdtemp scratch root
-      rmSync(raw, { recursive: true, force: true })
+      planner.mockRestore()
+      writer.mockRestore()
     }
   })
-
-  it("passes when the sibling run-receipt.json exists, and ignores a non-linux row", () => {
-    const raw = mkdtempSync(join(tmpdir(), "terminfo-28552-receipt-ok-"))
-    const runPath = join(raw, "v2-run.json")
-    writeFileSync(runPath, "{}\n")
-    writeFileSync(join(raw, "run-receipt.json"), "{}\n")
-    try {
-      expect(() =>
-        requireLinuxRunReceipt(runPath, cleanRun({ target: { kind: "app", id: "kitty", os: "linux" } })),
-      ).not.toThrow()
-      expect(() =>
-        requireLinuxRunReceipt(runPath, cleanRun({ target: { kind: "app", id: "kitty", os: "macos" } })),
-      ).not.toThrow()
-    } finally {
-      // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; raw is this test's own mkdtemp scratch root
-      rmSync(raw, { recursive: true, force: true })
-    }
-  })
+  it.each(["planning", "placement"])(
+    "propagates owner %s rejection before any coverage credit or later input",
+    (phase) => {
+      const rejection = new Error("Owner refused xterm/linux: required receipt is absent")
+      const planner = vi.spyOn(admission, "planAdmission").mockImplementation(() => {
+        if (phase === "planning") throw rejection
+        return plan
+      })
+      const writer = vi.spyOn(admission, "admitRun").mockImplementation(() => {
+        throw rejection
+      })
+      try {
+        let produced: ProducedRun[] | undefined
+        let failure: unknown
+        try {
+          produced = admitProducedRuns([source, "/private/later.json"], frozenSuiteId)
+        } catch (error) {
+          failure = error
+        }
+        expect(failure).toBe(rejection)
+        expect(produced).toBeUndefined()
+        expect(planner).toHaveBeenCalledTimes(1)
+        expect(writer).toHaveBeenCalledTimes(phase === "planning" ? 0 : 1)
+      } finally {
+        planner.mockRestore()
+        writer.mockRestore()
+      }
+    },
+  )
 })
