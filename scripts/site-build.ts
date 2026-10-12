@@ -10,7 +10,7 @@
  * moves it under `<out>/temp`; unset, VitePress's own default is used unchanged.
  *
  * It also enforces the build's resident-memory ceiling (28662 AC3): an in-process guard samples the resident set and
- * fails the build LOUDLY the moment it passes `TERMINFO_SITE_PEAK_CEILING_BYTES` (default 13 GiB, the declared value),
+ * fails the build LOUDLY the moment it passes `TERMINFO_SITE_PEAK_CEILING_BYTES` (default 16 GiB, the declared value),
  * naming the peak and the phase. See `./build-peak-guard.ts` for why a silent continue is not an option here.
  */
 import { dirname, join, relative, resolve } from "node:path"

@@ -8,13 +8,23 @@
  * phase it was in: `landed-serve` already refuses to serve the output of a failed build, so the preview answers
  * `starting` instead of serving a half-built corpus.
  *
+ * The default is 16 GiB, raised from the 13 GiB this guard first declared (28679). 13 GiB sat INSIDE the build's own
+ * 8-13 GB range, so a build behaving exactly as it always had failed by chance and paged its owner (measured: 13.17
+ * and 13.24 GB at 06:37 and 06:39 PDT 2026-10-11, both over the line; 7.91 and 10.67 GB under it). 16 GiB leaves
+ * 2.76 GB above the worst build ever observed, stops firing on a normal build, and is still far below this host's
+ * 121 GB and the 28503 stall regime, so a genuinely runaway build trips it long before the host is at risk.
+ *
+ * The 8-13 GB footprint itself is NOT fixed by this: the spread lives in the SSR render's allocation high-water, and
+ * bounding that render (batch, stream, or limit its concurrency) is its own item on the host-resources epic 27335,
+ * cross-linked from 28679. The ceiling is a policy value protecting the HOST, not a measurement of the build.
+ *
  * The ceiling is a declared value with an environment override, so a test can drive it below the ceiling's real
  * magnitude; an override that is not a positive byte count is refused loudly rather than ignored.
  */
 import { existsSync, rmSync } from "node:fs"
 import { join } from "node:path"
 
-export const DEFAULT_PEAK_CEILING_BYTES = 13 * 1024 ** 3
+export const DEFAULT_PEAK_CEILING_BYTES = 16 * 1024 ** 3
 export const PEAK_CEILING_ENV = "TERMINFO_SITE_PEAK_CEILING_BYTES"
 export const DEFAULT_SAMPLE_MS = 500
 

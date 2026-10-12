@@ -23,8 +23,8 @@ afterEach(() => {
 })
 
 describe("peakCeilingBytes", () => {
-  it("defaults to the declared 13 GiB ceiling", () => {
-    expect(DEFAULT_PEAK_CEILING_BYTES).toBe(13 * 1024 ** 3)
+  it("defaults to the declared 16 GiB ceiling", () => {
+    expect(DEFAULT_PEAK_CEILING_BYTES).toBe(16 * 1024 ** 3)
     expect(peakCeilingBytes({})).toBe(DEFAULT_PEAK_CEILING_BYTES)
   })
 
