@@ -64,6 +64,11 @@ const ADMISSION_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
     da1Pattern: /\?6c/,
     forbidXtversion: true,
   },
+  "windows-terminal": {
+    terminal: "windows-terminal",
+    da1Pattern: /\?61;/,
+    forbidXtversion: true,
+  },
 }
 
 function identityMatch(run: LoadedRun): IdentityAdmission | null {
@@ -88,6 +93,17 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
   if (rule.da1Pattern && !rule.da1Pattern.test(identity.da1)) return null
   if (rule.forbidXtversion) {
     const os = (run.target.os ?? "").toLowerCase()
+    // Windows Terminal does not report XTVERSION. The hosted apparatus measures the launched
+    // executable; identity is its byte-exact ProductVersion, never the installation template.
+    if (run.target.id === "windows-terminal" && os.startsWith("win")) {
+      const receipt = run.origin.appLaunch
+      if (!receipt || receipt.platform !== "win32" || receipt.productVersion !== run.target.version) return null
+      return {
+        rule: run.target.id,
+        da1: identity.da1,
+        executable: { version: receipt.productVersion, sha256: receipt.executableSha256 },
+      }
+    }
     // Linux: a terminal that answers no XTVERSION (alacritty) is attested by the APPARATUS, not by
     // itself. The container launcher runs the launched binary's own --version and exits on a
     // disagreement, and records the executable's path and sha256; parseRunProvenance carries that

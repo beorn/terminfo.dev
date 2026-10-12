@@ -11,8 +11,17 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
+import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
-import { admitRun, placeOwnershipReceipt, placeRun, placeScreenshots, planAdmission } from "./admit-run.ts"
+import {
+  admitRun,
+  assessRunAdmission,
+  placeOwnershipReceipt,
+  placeRun,
+  placeScreenshots,
+  planAdmission,
+} from "./admit-run.ts"
+import { object } from "./interpretations.ts"
 
 const temporaryPaths: string[] = []
 afterEach(() => {
@@ -29,7 +38,8 @@ function runFixture(overrides: Record<string, unknown> = {}): string {
   const path = join(directory, "run.json")
   // Planning now assesses the full run. Reuse a genuinely complete clean collection rather than
   // letting filename-only fixtures bypass the contract these callers must satisfy.
-  const complete = JSON.parse(
+  const complete = parseJsonStrict(
+    "complete clean admission fixture",
     readFileSync(
       join(
         import.meta.dirname,
@@ -41,6 +51,9 @@ function runFixture(overrides: Record<string, unknown> = {}): string {
       "utf8",
     ),
   )
+  if (!object(complete) || !object(complete.provenance) || !object(complete.provenance.runtime)) {
+    throw new Error("Complete clean admission fixture has no runtime provenance")
+  }
   complete.provenance.runtime.suiteHash = probeSuiteSnapshot().probeHash
   writeFileSync(
     path,
@@ -66,6 +79,46 @@ test.each(["8c50df5834ccb938c208aa91467e9a2b", "2912118b74039bf72ac84070921836ce
     expect(existsSync(destination)).toBe(false)
   },
 )
+
+// AC1: Windows has no XTVERSION profile. The measured portable executable version must supply
+// whole-run identity, and comparison is byte-exact; macOS parser cases cannot prove this decision.
+test("Windows admission requires its measured executable version to match exactly", () => {
+  const content = join(import.meta.dirname, "..", "content")
+  const source = join(
+    content,
+    "probes-apps",
+    "windows-terminal-1.23.20211.0-windows-5ce6e5804f4f8eb592f0b83c1f68e166.json",
+  )
+  const bytes = readFileSync(source, "utf8")
+  const document = parseJsonStrict(source, bytes)
+  if (!object(document) || typeof document.probeHash !== "string") throw new Error("Windows fixture has no suite")
+  const manifestPath = join(content, "suites", `${document.probeHash}.json`)
+  const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+  const catalog = parseJsonStrict("feature catalog", readFileSync(join(content, "features.json"), "utf8"))
+  if (!object(catalog)) throw new Error("Windows fixture catalog is not an object")
+  const run = parseRun(
+    source,
+    bytes,
+    Object.keys(catalog).filter((id) => !id.startsWith("$")),
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  const receipt = {
+    platform: "win32" as const,
+    executablePath: String.raw`C:\runner\WindowsTerminal.exe`,
+    productVersion: run.target.version,
+    executableSha256: "c3".repeat(32),
+    sourceArtifact: { kind: "portable-zip" as const, path: String.raw`C:\runner\wt.zip`, sha256: "d4".repeat(32) },
+  }
+  const measured = { ...run, origin: { ...run.origin, appLaunch: receipt } }
+  expect(assessRunAdmission(measured)).toMatchObject({ accepted: true })
+  for (const version of [`${receipt.productVersion} `, "1.21.2361.0"]) {
+    expect(assessRunAdmission({ ...measured, target: { ...measured.target, version } })).toMatchObject({
+      accepted: false,
+      reason: "identity-replies-mismatch",
+    })
+  }
+  expect(assessRunAdmission(run)).toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
+})
 
 test("a run is named from its own target and run id", () => {
   const into = join(temp("terminfo-admit-dest-"), "out.json")
