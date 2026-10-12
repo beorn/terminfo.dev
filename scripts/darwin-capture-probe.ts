@@ -672,86 +672,112 @@ if (!after) {
     }
   } else {
     const diff = comparison.rectangle
-    const derivedOrigin = {
-      x: diff.minX - (calCol - 1) * cellSize.cellWidth,
-      y: diff.minY - (calRow - 1) * cellSize.cellHeight,
-    }
-    const repoPlacement = first.textAreaPlacement as { origin?: { x: number; y: number } } | undefined
-    const repoOrigin = repoPlacement?.origin ?? null
-    // The cell the calibration painted, in the frame's own pixels and derived from the diff alone.
-    // Its digest must change between the two captures that contain it; a rectangle that does not
-    // change the pixels it was derived from would be a contradiction, not a measurement.
-    const calibratedCell = {
-      x: derivedOrigin.x + (calCol - 1) * cellSize.cellWidth,
-      y: derivedOrigin.y + (calRow - 1) * cellSize.cellHeight,
-      width: cellSize.cellWidth,
-      height: cellSize.cellHeight,
-    }
-    // Round 2 asks for one known row PLACED with the derived origin, with its region digest moving
-    // around a provable paint. Row 1 is the banner line, which reads "PHASE A" before the phase-B
-    // paint and "PHASE B" after it, so a rectangle placed at the derived origin must change around
-    // that paint and must NOT change around the calibration, which touched row 3.
-    //
-    // The band has to cover the pixels that PROVABLY change: the A/B difference sits at column 31 of
-    // row 1, not in its first ten columns, which spell "TERMINFO" in both frames and would report a
-    // row that never moved. It is clamped to the columns the window actually holds, so the placement
-    // stays the repo's own cells-to-pixels rectangle and still refuses by name if it leaves the frame.
-    const fittingColumns = Math.floor((before.width - derivedOrigin.x) / cellSize.cellWidth)
-    const knownRowCells = {
-      top: 1,
-      left: 1,
-      bottom: 1,
-      right: replies.grid ? Math.min(replies.grid.cols, fittingColumns) : 0,
-    }
-    let knownRow: Record<string, unknown>
-    if (!replies.textArea || !replies.grid || !third) {
-      knownRow = {
-        skipped: `a known row needs a 14 t text area, an 18 t grid and a settled banner frame; got textArea=${JSON.stringify(replies.textArea ?? null)} grid=${JSON.stringify(replies.grid ?? null)} bannerFrame=${third ? "settled" : "absent"}`,
-      }
-    } else if (knownRowCells.right < 1) {
-      knownRow = {
-        refused: `the derived origin ${JSON.stringify(derivedOrigin)} leaves no column of row 1 inside the ${before.width}px window`,
+    const matchesReportedCell = diff.width === cellSize.cellWidth && diff.height === cellSize.cellHeight
+    // The refusal rule C must carry (@cto round 2 §3.2, @dev/10's review of run 38274110192): a
+    // difference that is not ONE solid axis-aligned rectangle of the terminal's own cell size is a
+    // refusal by name, never an origin. Run 38274110192 was the case in point — 4 changed pixels in a
+    // 14x8 bounding box across 8 ragged rows, from which the earlier revision still derived an origin
+    // of (16,-22) and refused only its known row. The measured rectangle is kept INSIDE the refusal as
+    // evidence; nothing is derived from it.
+    const refusal = diff.solid
+      ? matchesReportedCell
+        ? null
+        : `the changed pixels are one solid ${diff.width}x${diff.height} rectangle, but the terminal's own CSI 16 t cell is ${cellSize.cellWidth}x${cellSize.cellHeight}`
+      : `the changed pixels are not one solid axis-aligned rectangle: ${diff.raggedRows.length} of the ${diff.height} rows of the ${diff.width}x${diff.height} bounding box are not changed across its full width`
+    if (refusal) {
+      report.calibration = {
+        refused: refusal,
+        cellSizeFromTerminal: cellSize,
+        rectangle: diff,
+        changedPixels: diff.changedPixels,
+        boundingArea: diff.boundingArea,
+        solid: diff.solid,
+        rowWidths: diff.raggedRows.map((row) => ({ y: row.y, minX: row.minX, maxX: row.maxX, changed: row.changed })),
+        derivedOrigin: null,
+        derived: "no origin is derived from a rectangle that refused by name",
       }
     } else {
-      try {
-        const rectangle = cellRectangle({
-          cells: knownRowCells,
-          pixelGeometry: { cellWidth: cellSize.cellWidth, cellHeight: cellSize.cellHeight, ...replies.textArea },
-          textOrigin: derivedOrigin,
-          windowWidth: before.width,
-          windowHeight: before.height,
-        })
-        const phaseA = regionDigest(before, rectangle)
-        const phaseA2 = regionDigest(after, rectangle)
-        const phaseB = regionDigest(third, rectangle)
-        knownRow = {
-          cells: knownRowCells,
-          rectangle,
-          digestPhaseA: phaseA,
-          digestPhaseA2: phaseA2,
-          digestPhaseB: phaseB,
-          changedAroundTheCalibration: phaseA !== phaseA2,
-          changedAroundTheBannerPaint: phaseA2 !== phaseB,
-        }
-      } catch (error) {
-        // A derived origin that cannot place a known row inside the window is a refusal by name, not
-        // a thrown script: the calibration result is the measurement, and losing it would be worse.
-        knownRow = { refused: String(error) }
+      const derivedOrigin = {
+        x: diff.minX - (calCol - 1) * cellSize.cellWidth,
+        y: diff.minY - (calRow - 1) * cellSize.cellHeight,
       }
-    }
-    report.calibration = {
-      cell: { row: calRow, col: calCol },
-      cellSizeFromTerminal: cellSize,
-      rectangle: diff,
-      matchesReportedCell: diff.width === cellSize.cellWidth && diff.height === cellSize.cellHeight,
-      derivedOrigin,
-      repoTextAreaOrigin: repoOrigin,
-      originDeltaFromRepoTextAreaOrigin: repoOrigin
-        ? { x: derivedOrigin.x - repoOrigin.x, y: derivedOrigin.y - repoOrigin.y }
-        : null,
-      calibratedCell,
-      calibratedCellDigest: { a: regionDigest(before, calibratedCell), a2: regionDigest(after, calibratedCell) },
-      knownRowPlacedWithDerivedOrigin: knownRow,
+      const repoPlacement = first.textAreaPlacement as { origin?: { x: number; y: number } } | undefined
+      const repoOrigin = repoPlacement?.origin ?? null
+      // The cell the calibration painted, in the frame's own pixels and derived from the diff alone.
+      // Its digest must change between the two captures that contain it; a rectangle that does not
+      // change the pixels it was derived from would be a contradiction, not a measurement.
+      const calibratedCell = {
+        x: derivedOrigin.x + (calCol - 1) * cellSize.cellWidth,
+        y: derivedOrigin.y + (calRow - 1) * cellSize.cellHeight,
+        width: cellSize.cellWidth,
+        height: cellSize.cellHeight,
+      }
+      // Round 2 asks for one known row PLACED with the derived origin, with its region digest moving
+      // around a provable paint. Row 1 is the banner line, which reads "PHASE A" before the phase-B
+      // paint and "PHASE B" after it, so a rectangle placed at the derived origin must change around
+      // that paint and must NOT change around the calibration, which touched row 3.
+      //
+      // The band has to cover the pixels that PROVABLY change: the A/B difference sits at column 31 of
+      // row 1, not in its first ten columns, which spell "TERMINFO" in both frames and would report a
+      // row that never moved. It is clamped to the columns the window actually holds, so the placement
+      // stays the repo's own cells-to-pixels rectangle and still refuses by name if it leaves the frame.
+      const fittingColumns = Math.floor((before.width - derivedOrigin.x) / cellSize.cellWidth)
+      const knownRowCells = {
+        top: 1,
+        left: 1,
+        bottom: 1,
+        right: replies.grid ? Math.min(replies.grid.cols, fittingColumns) : 0,
+      }
+      let knownRow: Record<string, unknown>
+      if (!replies.textArea || !replies.grid || !third) {
+        knownRow = {
+          skipped: `a known row needs a 14 t text area, an 18 t grid and a settled banner frame; got textArea=${JSON.stringify(replies.textArea ?? null)} grid=${JSON.stringify(replies.grid ?? null)} bannerFrame=${third ? "settled" : "absent"}`,
+        }
+      } else if (knownRowCells.right < 1) {
+        knownRow = {
+          refused: `the derived origin ${JSON.stringify(derivedOrigin)} leaves no column of row 1 inside the ${before.width}px window`,
+        }
+      } else {
+        try {
+          const rectangle = cellRectangle({
+            cells: knownRowCells,
+            pixelGeometry: { cellWidth: cellSize.cellWidth, cellHeight: cellSize.cellHeight, ...replies.textArea },
+            textOrigin: derivedOrigin,
+            windowWidth: before.width,
+            windowHeight: before.height,
+          })
+          const phaseA = regionDigest(before, rectangle)
+          const phaseA2 = regionDigest(after, rectangle)
+          const phaseB = regionDigest(third, rectangle)
+          knownRow = {
+            cells: knownRowCells,
+            rectangle,
+            digestPhaseA: phaseA,
+            digestPhaseA2: phaseA2,
+            digestPhaseB: phaseB,
+            changedAroundTheCalibration: phaseA !== phaseA2,
+            changedAroundTheBannerPaint: phaseA2 !== phaseB,
+          }
+        } catch (error) {
+          // A derived origin that cannot place a known row inside the window is a refusal by name, not
+          // a thrown script: the calibration result is the measurement, and losing it would be worse.
+          knownRow = { refused: String(error) }
+        }
+      }
+      report.calibration = {
+        cell: { row: calRow, col: calCol },
+        cellSizeFromTerminal: cellSize,
+        rectangle: diff,
+        matchesReportedCell,
+        derivedOrigin,
+        repoTextAreaOrigin: repoOrigin,
+        originDeltaFromRepoTextAreaOrigin: repoOrigin
+          ? { x: derivedOrigin.x - repoOrigin.x, y: derivedOrigin.y - repoOrigin.y }
+          : null,
+        calibratedCell,
+        calibratedCellDigest: { a: regionDigest(before, calibratedCell), a2: regionDigest(after, calibratedCell) },
+        knownRowPlacedWithDerivedOrigin: knownRow,
+      }
     }
   }
 }
