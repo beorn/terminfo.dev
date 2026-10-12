@@ -1406,8 +1406,8 @@ it("keeps today's graceful absence row when no capture callback is installed", a
     {
       featureId: "cursor.shape",
       outcome: "inconclusive",
-      reason: "no-response",
-      evidence: "query",
+      reason: "insufficient-evidence",
+      evidence: "none",
       note: "DECRQSS cursor-style report unanswered; no pixel readback for shape",
     },
   ])
