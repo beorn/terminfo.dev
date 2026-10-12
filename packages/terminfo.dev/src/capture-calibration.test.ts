@@ -15,7 +15,7 @@ function frame(
   second?: { x: number; y: number; rgb: number[] },
 ): CapturedFrame {
   const rgba = new Uint8Array(12 * 12 * 4)
-  for (let offset = 0; offset < rgba.length; offset += 4) rgba.set([17, 23, 31, 255], offset)
+  for (let offset = 0; offset < rgba.length; offset += 4) rgba.set([0, 0, 0, 255], offset)
   for (const paint of [rect, second]) {
     if (paint) {
       for (let y = paint.y; y < paint.y + 2; y++) {
@@ -28,9 +28,9 @@ function frame(
   return { width: 12, height: 12, rgba }
 }
 const blank = frame()
-const witnessPaint = { x: 4, y: 4, rgb: [41, 73, 109] }
+const witnessPaint = { x: 4, y: 4, rgb: [255, 0, 255] }
 const witness = frame(witnessPaint)
-const painted = frame(witnessPaint, { x: 6, y: 4, rgb: [127, 151, 173] })
+const painted = frame(witnessPaint, { x: 6, y: 4, rgb: [0, 255, 255] })
 function calibration(frames: CapturedFrame[], timeoutMs = 100) {
   const writes: string[] = []
   const budgets: Array<{ label: string; deadline: number }> = []
@@ -76,7 +76,7 @@ test("calibration waits through stale equal frames, confirms every paint, and re
   ])
   expect((await run.promise).origin).toEqual({ x: 2, y: 2 })
   expect(run.reads()).toBe(13)
-  expect(run.writes.some((write) => write.includes("48;2;127;151;173"))).toBe(true)
+  expect(run.writes.some((write) => write.includes("48;2;0;255;255"))).toBe(true)
   expect(run.writes.at(-1)).toContain("?25l")
   // The real adapter needs an absolute deadline to terminate a blocked subprocess, rather than
   // let its ordinary 10-second command timeout outlive the oracle budget.
@@ -98,6 +98,12 @@ test.each([
   ["no calibration paint", [blank, witness, witness], /calibration paint.*timeout/],
   ["no restore paint", [blank, witness, witness, painted, painted], /restore paint.*timeout/],
   ["unconfirmed baseline", [blank, witness, blank], /baseline paint witness.*timeout/],
+  // A capture's one-channel discrepancy must remain a refusal, even with endpoint fixtures.
+  [
+    "one-channel witness mismatch",
+    [blank, frame({ x: 4, y: 4, rgb: [254, 0, 255] })],
+    /baseline paint witness.*timeout/,
+  ],
 ] as const)("calibration refuses %s without deriving an origin", async (_name, frames, message) => {
   await expect(calibration([...frames], 1).promise).rejects.toThrow(message)
 })
@@ -105,11 +111,11 @@ test.each([
 test.each(["hole", "separate rectangle", "wrong cell size"])(
   "calibration refuses %s instead of deriving an origin from a bounding box",
   async (fault) => {
-    const broken = frame(witnessPaint, { x: 6, y: 4, rgb: [127, 151, 173] })
-    if (fault === "hole") broken.rgba.set([17, 23, 31, 255], (4 * 12 + 6) * 4)
-    if (fault === "separate rectangle") broken.rgba.set([127, 151, 173, 255], 0)
+    const broken = frame(witnessPaint, { x: 6, y: 4, rgb: [0, 255, 255] })
+    if (fault === "hole") broken.rgba.set([0, 0, 0, 255], (4 * 12 + 6) * 4)
+    if (fault === "separate rectangle") broken.rgba.set([0, 255, 255, 255], 0)
     if (fault === "wrong cell size") {
-      for (let y = 4; y < 6; y++) broken.rgba.set([127, 151, 173, 255], (y * 12 + 8) * 4)
+      for (let y = 4; y < 6; y++) broken.rgba.set([0, 255, 255, 255], (y * 12 + 8) * 4)
     }
     await expect(calibration([blank, witness, witness, broken, broken]).promise).rejects.toThrow(
       fault === "wrong cell size" ? /differs from terminal own cell/ : /non-solid/,
