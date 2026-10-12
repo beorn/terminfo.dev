@@ -689,13 +689,28 @@ if (!after) {
     }
     // Round 2 asks for one known row PLACED with the derived origin, with its region digest moving
     // around a provable paint. Row 1 is the banner line, which reads "PHASE A" before the phase-B
-    // paint and "PHASE B" after it, so a rectangle placed one row below the derived origin must
-    // change around that paint — and must NOT change around the calibration, which touched row 3.
-    const knownRowCells = { top: 1, left: 1, bottom: 1, right: 10 }
+    // paint and "PHASE B" after it, so a rectangle placed at the derived origin must change around
+    // that paint and must NOT change around the calibration, which touched row 3.
+    //
+    // The band has to cover the pixels that PROVABLY change: the A/B difference sits at column 31 of
+    // row 1, not in its first ten columns, which spell "TERMINFO" in both frames and would report a
+    // row that never moved. It is clamped to the columns the window actually holds, so the placement
+    // stays the repo's own cells-to-pixels rectangle and still refuses by name if it leaves the frame.
+    const fittingColumns = Math.floor((before.width - derivedOrigin.x) / cellSize.cellWidth)
+    const knownRowCells = {
+      top: 1,
+      left: 1,
+      bottom: 1,
+      right: replies.grid ? Math.min(replies.grid.cols, fittingColumns) : 0,
+    }
     let knownRow: Record<string, unknown>
-    if (!replies?.textArea || !replies.grid || !third) {
+    if (!replies.textArea || !replies.grid || !third) {
       knownRow = {
-        skipped: `a known row needs a 14 t text area, an 18 t grid and a settled banner frame; got textArea=${JSON.stringify(replies?.textArea ?? null)} grid=${JSON.stringify(replies?.grid ?? null)} bannerFrame=${third ? "settled" : "absent"}`,
+        skipped: `a known row needs a 14 t text area, an 18 t grid and a settled banner frame; got textArea=${JSON.stringify(replies.textArea ?? null)} grid=${JSON.stringify(replies.grid ?? null)} bannerFrame=${third ? "settled" : "absent"}`,
+      }
+    } else if (knownRowCells.right < 1) {
+      knownRow = {
+        refused: `the derived origin ${JSON.stringify(derivedOrigin)} leaves no column of row 1 inside the ${before.width}px window`,
       }
     } else {
       try {
