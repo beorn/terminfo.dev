@@ -115,10 +115,15 @@ export function drawnSurface(frame: CapturedFrame): SurfaceMeasurement {
   ) {
     throw new Error(`A ${width}x${height} captured frame is ${width * height * 4} rgba bytes; got ${rgba.length}`)
   }
+  // Read through a view, never by bare index: every byte lies inside the frame the length above
+  // pins, and a read outside it is a loud RangeError rather than an undefined that would silently
+  // count colour 0 as a background nobody painted.
+  const pixels = new DataView(rgba.buffer, rgba.byteOffset, rgba.byteLength)
+  const colourAt = (at: number) =>
+    (pixels.getUint8(at) << 16) | (pixels.getUint8(at + 1) << 8) | pixels.getUint8(at + 2)
   const counts = new Map<number, number>()
   for (let index = 0; index < width * height; index++) {
-    const at = index * 4
-    const colour = (rgba[at] << 16) | (rgba[at + 1] << 8) | rgba[at + 2]
+    const colour = colourAt(index * 4)
     counts.set(colour, (counts.get(colour) ?? 0) + 1)
   }
   let background = -1
@@ -129,21 +134,22 @@ export function drawnSurface(frame: CapturedFrame): SurfaceMeasurement {
       background = colour
     }
   }
-  const rows = new Array<number>(height).fill(0)
-  const columns = new Array<number>(width).fill(0)
+  // Each array is sized to the rows and columns that index it, so the `?? 0` below is the zero a
+  // counter starts at, never a swallowed miss.
+  const rows = new Uint32Array(height)
+  const columns = new Uint32Array(width)
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const at = (y * width + x) * 4
-      if (((rgba[at] << 16) | (rgba[at + 1] << 8) | rgba[at + 2]) === background) {
-        rows[y] += 1
-        columns[x] += 1
+      if (colourAt((y * width + x) * 4) === background) {
+        rows[y] = (rows[y] ?? 0) + 1
+        columns[x] = (columns[x] ?? 0) + 1
       }
     }
   }
   let top = -1
   let bottom = -1
   for (let y = 0; y < height; y++) {
-    if (rows[y] * 2 > width) {
+    if ((rows[y] ?? 0) * 2 > width) {
       if (top < 0) top = y
       bottom = y
     }
@@ -151,7 +157,7 @@ export function drawnSurface(frame: CapturedFrame): SurfaceMeasurement {
   let left = -1
   let right = -1
   for (let x = 0; x < width; x++) {
-    if (columns[x] * 2 > height) {
+    if ((columns[x] ?? 0) * 2 > height) {
       if (left < 0) left = x
       right = x
     }
