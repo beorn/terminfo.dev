@@ -1,17 +1,17 @@
-import type { ProbeDefinition } from "./types.ts"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
-import { parserStateResult } from "./helpers.ts"
 /**
- * The region-readback OBSERVATION KIND (@cto A2, 2026-10-12): one factory, one row per probe, both
+ * The region-readback OBSERVATION KIND (@cto A2, 2026-10-12): one factory, one row per probe, BOTH
  * arms derived from that row. A family repairs its hand-written probes by declaring rows; a probe
  * that needs something this kind cannot express adds a KIND — once, reviewed — never another
  * hand-written callback of its own.
  *
- * The two arms grade ONE effect: the termless arm reads the cells the row's sequence must leave and
- * the capture-region oracle decides the same seed / sequence / expected writes from pixels. That is
- * why the row carries both the parser-state steps and the capture spec, and why the compared cell
- * count is the seed's own length rather than a second number that could drift from it.
+ * The row holds the claim ONCE. The capture-region oracle's seed, edit and expected frames are
+ * derived from the row's own seed, steps and cells here, so the parser-state arm and the pixel arm
+ * cannot drift into grading two different fixtures (which is how the first revision of this kind
+ * shipped an edit that rewrote its own control).
  */
+import type { ProbeDefinition, TermlessContext } from "./types.ts"
+import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { parserStateResult } from "./helpers.ts"
 
 /** One write between the seed frame and the final read, and the cursor report it must reach. */
 export interface RegionReadbackStep {
@@ -34,52 +34,100 @@ export interface RegionReadbackRow {
   expected: string
   /** The seed frame's writes. */
   seed: string
-  /** The cells the seed frame must show at row 1, columns 1..n. Their count is the row's min columns. */
-  before: string
+  /** The cells the seed frame must show: one entry per compared COLUMN. A wide follower is `""`. */
+  before: readonly string[]
   /** The writes between the seed and the final read, in order. */
   steps: readonly RegionReadbackStep[]
-  /** The cells the sequence under test must show, as one char per compared column. */
-  after: string
-  /** Cells whose position the sequence must preserve. Only when every one holds is `after` the claim. */
+  /**
+   * The cells the sequence under test must show, one entry per compared column. A column a wide
+   * glyph's follower claims is `""` — the backend may report it as reserved-empty or as a space, and
+   * the kind accepts both rather than failing a correct terminal for choosing one spelling.
+   */
+  after: readonly string[]
+  /**
+   * Cells whose position the sequence must preserve. A control is a real control only when the
+   * sequence does not write it. Only when every one holds is `after` a verdict; a moved control means
+   * the fixture, not the capability, is what failed, so the row reads inconclusive instead.
+   */
   controls: readonly RegionReadbackControl[]
   /** The note when the seed frame was not measured. */
   seedNote: string
   /** The note when a control cell moved, so the claim cannot be read. */
   controlNote: string
-  /** The normalizing write the termless arm makes whether or not it decided. */
+  /** The normalizing write the termless arm makes whether or not it decided, and the pixel prelude. */
   reset: string
-  /** The capture-region readback the collector decides from; its bounds are this row's min geometry. */
-  readback: Omit<RegionReadback, "pixelGeometry">
-  /** The writes the term arm makes when no owned capture is installed: consumption only, never a verdict. */
-  fallbackWrites: readonly string[]
-  /** Room the fallback's own fixture needs before it writes a byte. */
-  fallbackMinCols: number
+  /** The frame the sequence would leave if it IGNORED the one attribute it claims, one entry per column. */
+  ignored?: readonly string[]
+}
+
+/** The one-row fixture's paint witness, cursor row and capture timing: kind constants, not rows. */
+const SENTINEL = { row: 3, col: 1 } as const
+const CURSOR_ROW = 2
+const TIMEOUT_MS = 5000
+const POLL_MS = 250
+/** Clear, home, and the row's own designation reset, so every derived frame starts from one state. */
+const PRELUDE = "\x1b[0m\x1b[2J\x1b[H"
+
+/** A wide follower may be reported reserved-empty or as a space; both are the same cell. */
+function sameCell(measured: string, expected: string): boolean {
+  return expected === "" ? measured === "" || measured === " " : measured === expected
+}
+
+/** A wide follower paints nothing of its own: its lead glyph already claimed the column. */
+function paint(cells: readonly string[]): string {
+  return cells.filter((cell) => cell !== "").join("")
+}
+
+function readRow(ctx: TermlessContext, columns: number): string[] {
+  return Array.from({ length: columns }, (_, col) => ctx.getCell(0, col).char)
+}
+
+/** The capture-region spec the row implies, so the two arms grade one fixture. */
+function regionReadbackSpec(row: RegionReadbackRow): Omit<RegionReadback, "pixelGeometry"> {
+  const columns = row.before.length
+  const park = `\x1b[${CURSOR_ROW};1H`
+  const prelude = PRELUDE + row.reset
+  return {
+    region: { top: 1, left: 1, bottom: 1, right: columns },
+    sentinel: SENTINEL,
+    cursorRow: CURSOR_ROW,
+    seed: prelude + row.seed + park,
+    edit: row.steps.map((step) => step.write).join("") + park,
+    expected: prelude + "\x1b[1;1H" + paint(row.after) + park,
+    ...(row.ignored === undefined ? {} : { ignored: prelude + "\x1b[1;1H" + paint(row.ignored) + park }),
+    timeoutMs: TIMEOUT_MS,
+    pollMs: POLL_MS,
+    minRows: SENTINEL.row,
+    minCols: columns + 2,
+  }
 }
 
 /**
  * Build the one probe a row describes. The termless arm measures the parser's cells; the term arm
- * hands the same seed / sequence / expected writes to the capture-region oracle, and falls back to a
- * named consumption record only when the run has no owned capture at all.
+ * hands the derived seed / edit / expected frames to the capture-region oracle. A run with no owned
+ * capture cannot read a window back at all, so that arm refuses by NAME and writes nothing: a
+ * fixture that can only answer "inconclusive" is not evidence, and is deleted rather than kept.
  */
 export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
-  const cells = row.before.length
+  const columns = row.before.length
+  const readback = regionReadbackSpec(row)
   return {
     id: row.id,
     termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
     termless(ctx) {
-      if (!Number.isSafeInteger(ctx.cols) || ctx.cols < cells) {
+      if (!Number.isSafeInteger(ctx.cols) || ctx.cols < columns) {
         return parserStateResult(
           null,
           row.expected,
           { cols: ctx.cols },
-          `Need at least ${cells} measured columns for this charset fixture`,
+          `Need at least ${columns} measured columns for this region fixture`,
         )
       }
       try {
         ctx.feed(row.seed)
-        const before = Array.from({ length: cells }, (_, col) => ctx.getCell(0, col).char)
-        if (before.join("") !== row.before) {
+        const before = readRow(ctx, columns)
+        if (!before.every((cell, col) => sameCell(cell, row.before[col] ?? ""))) {
           return parserStateResult(null, row.expected, { before }, row.seedNote)
         }
         const setup: { x: number; y: number }[] = []
@@ -92,10 +140,10 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
             return parserStateResult(null, row.expected, { before, setup }, step.cursor.note)
           }
         }
-        const after = Array.from({ length: cells }, (_, col) => ctx.getCell(0, col).char)
-        const controlsValid = row.controls.every((control) => after[control.col] === control.char)
+        const after = readRow(ctx, columns)
+        const controlsValid = row.controls.every((control) => sameCell(after[control.col] ?? "", control.char))
         return parserStateResult(
-          controlsValid ? after.join("") === row.after : null,
+          controlsValid ? after.every((cell, col) => sameCell(cell, row.after[col] ?? "")) : null,
           row.expected,
           { before, setup, after },
           controlsValid ? undefined : row.controlNote,
@@ -105,43 +153,15 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
       }
     },
     async term(ctx) {
-      const decided = await captureRegionVerdict(ctx, row.id, row.readback)
+      const decided = await captureRegionVerdict(ctx, row.id, readback)
       if (decided) return decided
-      const cols = ctx.cols
-      if (
-        !Number.isSafeInteger(ctx.rows) ||
-        !Number.isSafeInteger(cols) ||
-        ctx.rows < 1 ||
-        cols < row.fallbackMinCols
-      ) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "none",
-            note: `Charset fixture needs at least 1x${row.fallbackMinCols}, measured ${ctx.rows}x${cols}`,
-          },
-        }
-      }
-      for (const write of row.fallbackWrites) ctx.write(write)
-      const pos = await ctx.queryCursorPosition()
-      if (!pos) {
-        return {
-          pass: false,
-          note: "No cursor response",
-          observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
-        }
-      }
       return {
         pass: false,
-        response: JSON.stringify(pos),
-        note: "Cursor movement does not verify charset glyph rendering or mapping",
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "Cursor movement does not verify charset glyph rendering or mapping",
+          evidence: "none",
+          note: `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`,
         },
       }
     },

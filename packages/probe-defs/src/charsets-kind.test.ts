@@ -67,8 +67,10 @@ test("every kind row decides from its own cells, through the shared kind", async
     expect(probe.termlessObservationEvidence, row.id).toBe("parser-state")
     const measured = probe.termless!(headlessContext(createSemanticSurface()))
     const state = JSON.parse(measured.response ?? "null") as { before: string[]; after: string[] }
-    expect(state.before.join(""), `${row.id} reads the row's seed cells`).toBe(kindRow.before)
-    expect(state.after.join(""), `${row.id} reads the row's target cells`).toBe(kindRow.after)
+    // One entry per compared COLUMN, so a wide follower is a cell the array names, not a join that
+    // silently drops it.
+    expect(state.before, `${row.id} reads the row's seed cells`).toEqual([...kindRow.before])
+    expect(state.after, `${row.id} reads the row's target cells`).toEqual([...kindRow.after])
     const graded = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
     expect(graded.after, row.id).toBe("supported")
     expect(graded.satisfies, row.id).toBe(true)
