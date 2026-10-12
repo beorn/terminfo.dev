@@ -146,7 +146,9 @@ function optionalNumber(path: string, id: string, field: string, value: unknown)
 function optionalTier1(path: string, id: string, value: unknown): Tier1 | undefined {
   if (value === undefined) return undefined
   if (!TIER1_VALUES.includes(value as Tier1)) {
-    throw new Error(`${path}: entry "${id}" has an invalid tier1 "${String(value)}"; expected ${TIER1_VALUES.join(" or ")}`)
+    throw new Error(
+      `${path}: entry "${id}" has an invalid tier1 "${String(value)}"; expected ${TIER1_VALUES.join(" or ")}`,
+    )
   }
   return value as Tier1
 }
