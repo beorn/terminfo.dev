@@ -359,9 +359,7 @@
     "body": "DECSCUSR (DEC Set Cursor Style) changes the cursor appearance. The sequence is <code>ESC [ N SP q</code> where N is: 0 or 1 (blinking block), 2 (steady block), 3 (blinking underline), 4 (steady underline), 5 (blinking bar/I-beam), 6 (steady bar). Applications use this to signal editing mode — for example, vim uses a block cursor in normal mode and a bar cursor in insert mode.",
     "probe": "Headless: send <code>\\x1b[6 q</code> (steady bar) and verify parser cursor style is <code>\"beam\"</code>. App: capture the default cursor, send <code>\\x1b[5 q</code> (blinking bar), capture again, then restore the default shape. The app result remains inconclusive pending shape review; a still image cannot establish blinking.",
     "baseline": "modern",
-    "sequence": "ESC [ N SP q",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ N SP q"
   },
   "cursor.move.absolute": {
     "name": "Cursor position (CUP)",
@@ -458,9 +456,7 @@
     "body": "DSR 6 (Device Status Report) queries the current cursor position. The application sends <code>ESC [ 6 n</code> and the terminal responds with <code>ESC [ row ; col R</code>. This request-response mechanism is used by shell integration scripts, TUI frameworks, and applications that need to know where the cursor is before rendering content.",
     "probe": "Move cursor to row 3, col 5 via <code>\\x1b[3;5H</code>, send DSR 6 (<code>\\x1b[6n</code>), verify response contains <code>3;5R</code>.",
     "baseline": "modern",
-    "sequence": "ESC [ 6 n → ESC [ row ; col R",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 6 n → ESC [ row ; col R"
   },
   "cursor.save-restore": {
     "name": "Save/restore cursor (DECSC)",
@@ -470,9 +466,7 @@
     "body": "DECSC saves the cursor position and attributes; DECRC restores them. Save: <code>ESC 7</code>. Restore: <code>ESC 8</code>. Also available as CSI variants: <code>ESC [ s</code> (save) and <code>ESC [ u</code> (restore). The saved state includes cursor position, character attributes, character set, and origin mode. Applications use this to temporarily move the cursor for status updates without disrupting the main content area.",
     "probe": "Write \"AB\", save with <code>\\x1b7</code> (DECSC), move to (5,5), restore with <code>\\x1b8</code> (DECRC), verify cursor returned to col 2, row 0.",
     "baseline": "core",
-    "sequence": "ESC 7 / ESC 8",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC 7 / ESC 8"
   },
   "cursor.ansi-save": {
     "name": "ANSI save cursor (CSI s)",
@@ -482,9 +476,7 @@
     "body": "ANSI save cursor (<code>CSI s</code>, i.e. <code>ESC [ s</code>) saves the current cursor position. This is the SCO/ANSI variant of cursor save and is distinct from DECSC (<code>ESC 7</code>): the ANSI form only saves the cursor position (row, column), while DECSC additionally saves character attributes, the active character set, and origin mode.\n\nThe sequence collides with DECSLRM (Set Left/Right Margins, also <code>CSI Pl ; Pr s</code>) — when DECLRMM (mode 69) is enabled, terminals interpret <code>CSI s</code> with parameters as DECSLRM and the parameter-less form as save cursor. Modern xterm-derived terminals all implement this disambiguation, but some legacy terminals may treat <code>CSI s</code> only as DECSLRM.",
     "probe": "Position cursor at (3,5), send <code>\\x1b[s</code> (CSI s), move to (10,10), send <code>\\x1b[u</code> (CSI u) to restore, verify cursor is back at (3,5).",
     "baseline": "modern",
-    "sequence": "CSI s",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI s"
   },
   "cursor.ansi-restore": {
     "name": "ANSI restore cursor (CSI u)",
@@ -494,9 +486,7 @@
     "body": "ANSI restore cursor (<code>CSI u</code>, i.e. <code>ESC [ u</code>) restores the cursor position previously saved with ANSI save cursor (<code>CSI s</code>). This is the SCO/ANSI variant of cursor restore and is distinct from DECRC (<code>ESC 8</code>): the ANSI form only restores cursor position, while DECRC also restores character attributes, character set, and origin mode.\n\nNote that <code>CSI u</code> is also used by the Kitty keyboard protocol as a key event reporting sequence (with parameters and a different context). When sent as input from terminal to application it's a key report; when sent as output from application to terminal it's a cursor restore. Most xterm-derived terminals implement both meanings unambiguously based on direction.",
     "probe": "Position cursor at (3,5), send <code>\\x1b[s</code> to save, move to (10,10), send <code>\\x1b[u</code> (CSI u) to restore, verify cursor returned to (3,5).",
     "baseline": "modern",
-    "sequence": "CSI u",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI u"
   },
   "cursor.reverse-wrap": {
     "name": "Reverse Wrap (Mode 45)",
@@ -505,9 +495,7 @@
     "baseline": "rich",
     "body": "Reverse wrap mode (mode 45) allows backspace at column 0 to wrap to the end of the previous line. Without this mode, backspace at column 0 is a no-op. Useful for command-line editing across wrapped lines.\n\nReverse wrap is an xterm compatibility mode for editing across visually wrapped lines. It lets a backspace at the left edge move to the previous row's right edge, matching how users expect command-line editing to behave on soft-wrapped input. Because it changes a normally clamped control character, applications should not assume it is enabled.",
     "probe": "Enable auto-wrap + reverse wrap, fill row 0 to trigger wrap to row 1, backspace — verify cursor reverse-wraps to end of row 0 via <code>getCursor()</code>.",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character_s_"
   },
   "cursor.cup-boundaries": {
     "name": "CUP at screen boundaries",
@@ -516,9 +504,7 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "CUP (Cursor Position, CSI row ; col H) with out-of-bounds parameters should clamp the cursor to the screen edges rather than wrapping or producing undefined behavior. Sending <code>CSI 999 ; 999 H</code> should place the cursor at the last row and last column of the visible screen. This is important for applications that use CUP with large values as a shorthand for \"move to bottom-right corner\" without querying screen dimensions first.",
-    "probe": "Send <code>\\x1b[999;999H</code>, verify cursor is at (rows-1, cols-1) — not beyond the screen boundaries.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Send <code>\\x1b[999;999H</code>, verify cursor is at (rows-1, cols-1) — not beyond the screen boundaries."
   },
   "cursor.cuu-past-top": {
     "name": "CUU stops at top",
@@ -536,9 +522,7 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "CUD (Cursor Down, CSI Pn B) should stop at the bottom margin of the scroll region, or the last row if no scroll region is set. Moving down with a count exceeding the remaining rows should clamp to the last row rather than scrolling or wrapping. Unlike a linefeed at the bottom margin, CUD never triggers scrolling — it simply stops.",
-    "probe": "Position at row 0, send <code>\\x1b[999B</code> (CUD with count 999), verify cursor stopped at the last row.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Position at row 0, send <code>\\x1b[999B</code> (CUD with count 999), verify cursor stopped at the last row."
   },
   "cursor.cup-scroll-region": {
     "name": "CUP with DECOM",
@@ -547,9 +531,7 @@
     "tags": ["dec-private-modes", "vt100"],
     "baseline": "core",
     "body": "When DECOM (Origin Mode, CSI ? 6 h) is set, CUP coordinates become relative to the current scroll region set by DECSTBM. With a scroll region of rows 5-15 and DECOM enabled, <code>CSI 1 ; 1 H</code> moves the cursor to row 5 (the top of the scroll region) rather than the absolute top of the screen. This interaction between DECSTBM and DECOM is fundamental to how full-screen applications partition the terminal into independently scrolling regions.",
-    "probe": "Set DECSTBM 5;15, enable DECOM, send <code>\\x1b[1;1H</code>, verify cursor is at row 4 (0-based scroll region top). Disable DECOM and reset scroll region.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Set DECSTBM 5;15, enable DECOM, send <code>\\x1b[1;1H</code>, verify cursor is at row 4 (0-based scroll region top). Disable DECOM and reset scroll region."
   },
   "cursor.vpa": {
     "name": "VPA vertical position absolute (CSI d)",
@@ -590,9 +572,7 @@
     "body": "EL 0 erases from the cursor position to the end of the line. The sequence is <code>ESC [ 0 K</code> or <code>ESC [ K</code> (parameter defaults to 0). This is the most commonly used erase sequence — TUI applications use it after writing content on a line to clear any leftover characters from a previous render.",
     "probe": "Write \"XXXXX\", move to col 1 via <code>\\x1b[1G</code>, send <code>\\x1b[K</code> (EL 0), verify cell at (0,0) is blank.",
     "baseline": "core",
-    "sequence": "ESC [ 0 K",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 0 K"
   },
   "erase.line.left": {
     "name": "Erase to BOL (EL 1)",
@@ -603,9 +583,7 @@
     "body": "EL 1 erases from the beginning of the line to the cursor position (inclusive). The sequence is <code>ESC [ 1 K</code>. Less commonly used than EL 0 (erase to end of line).\n\nEL 1 is the mirror image of the common EL 0 erase-to-end operation. It is useful for redrawing the left side of a prompt or clearing a partially typed command while preserving content to the right. Because the cursor does not move, applications can combine it with precise cursor addressing instead of repainting an entire row.",
     "probe": "Write \"XXXXX\", move to col 3, send <code>\\x1b[1K</code> (EL 1), verify cell at (0,0) is blank.",
     "baseline": "core",
-    "sequence": "ESC [ 1 K",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 1 K"
   },
   "erase.line.all": {
     "name": "Erase line (EL 2)",
@@ -616,9 +594,7 @@
     "body": "EL 2 erases the entire current line. The sequence is <code>ESC [ 2 K</code>. The cursor position is not changed. Used to clear a full line before rewriting it.\n\nEL belongs to the ECMA-48 erase family inherited by VT-style terminals. Full-line erase is commonly paired with carriage return when redrawing progress bars, prompts, and status rows. A useful compatibility check is that EL clears cells without moving the cursor, because applications often erase and then immediately write replacement content at the same location.",
     "probe": "Write \"XXXXX\", send <code>\\x1b[2K</code> (EL 2), verify cell at (0,0) is blank.",
     "baseline": "core",
-    "sequence": "ESC [ 2 K",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 2 K"
   },
   "erase.screen.above": {
     "name": "Erase above (ED 1)",
@@ -629,9 +605,7 @@
     "body": "ED 1 erases from the beginning of the screen to the cursor position (inclusive). The sequence is <code>ESC [ 1 J</code>. Clears all content above and to the left of the cursor.\n\nED 1 is less visible than clear-screen operations, but it completes the ECMA-48 erase triad: below, above, and all. Full-screen applications use it when restoring or redrawing only part of a viewport. Like the rest of the ED family, it acts on displayed cells and should not be confused with scrollback erasure.",
     "probe": "Write three lines, position cursor at row 3 col 2, send <code>\\x1b[1J</code> (ED 1), verify cell at (0,0) is blank.",
     "baseline": "core",
-    "sequence": "ESC [ 1 J",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 1 J"
   },
   "erase.screen.all": {
     "name": "Erase screen (ED 2)",
@@ -642,9 +616,7 @@
     "body": "ED 2 erases the entire visible screen. The sequence is <code>ESC [ 2 J</code>. The cursor position is not changed. It does not erase saved scrollback lines — use ED 3 for that.\n\nED 2 is what many users think of as 'clear screen', but its erasure target is the visible display. Some terminals move the old displayed rows into scrollback while clearing it. Xterm-style ED 3 exists to erase saved lines. This distinction matters for security and debugging, because wiping the viewport does not necessarily destroy the user's history.",
     "probe": "Write three lines, send <code>\\x1b[2J</code> (ED 2), verify all visible content is cleared.",
     "baseline": "core",
-    "sequence": "ESC [ 2 J",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 2 J"
   },
   "erase.screen.below": {
     "name": "Erase below (ED 0)",
@@ -655,9 +627,7 @@
     "body": "ED 0 erases from the cursor position to the end of the screen. The sequence is <code>ESC [ 0 J</code> or <code>ESC [ J</code> (parameter defaults to 0). Commonly used to clear the screen below a status bar or after repositioning content.\n\nED 0 is the default ED operation and one of the most common screen-cleanup sequences. Shell prompts, pagers, and TUIs use it after moving the cursor to a known point so stale content below the new layout disappears. Like other erase operations, it should leave cursor position unchanged.",
     "probe": "Write three lines, move home, send <code>\\x1b[J</code> (ED 0), verify line 2 content is gone.",
     "baseline": "core",
-    "sequence": "ESC [ 0 J",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 0 J"
   },
   "erase.screen.scrollback": {
     "name": "Erase scrollback (ED 3)",
@@ -668,9 +638,7 @@
     "body": "ED 3 clears the scrollback buffer. The sequence is <code>ESC [ 3 J</code>. An xterm extension not part of ECMA-48. Applications may use this for security purposes (clearing sensitive output from scrollback after a password prompt) or to implement a \"clear\" command that truly clears all terminal history.",
     "probe": "Write 30 lines to fill scrollback, send <code>\\x1b[3J</code> (ED 3), verify total line count is at most screen height.",
     "baseline": "core",
-    "sequence": "ESC [ 3 J",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 3 J"
   },
   "erase.character": {
     "name": "Erase character (ECH)",
@@ -680,9 +648,7 @@
     "body": "ECH replaces N characters at the cursor position with blank spaces. The sequence is <code>ESC [ N X</code> (default N=1). Unlike delete (DCH), erase does not shift subsequent characters — it overwrites in place. The cursor position is not changed.\n\nECH is an in-place eraser: it blanks cells without shifting the rest of the row. That makes it different from DCH, which deletes and pulls later cells left. The distinction matters for editors and form UIs that clear a fixed-width field while leaving surrounding content exactly where it is.",
     "probe": "Write \"ABCDE\", move to col 1, send <code>\\x1b[3X</code> (ECH 3), verify first 3 cells are blank and \"D\" remains at col 3.",
     "baseline": "core",
-    "sequence": "ESC [ N X",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ N X"
   },
   "erase.selective": {
     "name": "Selective Erase (DECSED)",
@@ -691,9 +657,7 @@
     "baseline": "rich",
     "body": "DECSED (CSI ? Ps J) erases only unprotected characters, leaving characters with the protected attribute (DECSCA, SGR 1 m) intact. Used for form-based applications where static labels should survive screen clears.\n\nSelective erase belongs to DEC's form-oriented terminal model. Protected fields let host applications clear user-entered data while preserving labels and layout, a pattern common in data-entry systems before graphical forms. It survives mostly in xterm and high-compatibility emulators, but it explains why protected attributes exist at all.",
     "probe": "Write \"ABCDE\", move cursor home, send DECSED (<code>CSI ? 2 J</code>), verify the text is erased. Confirms selective erase display is recognized.",
-    "url": "https://vt100.net/docs/vt510-rm/DECSED.html",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://vt100.net/docs/vt510-rm/DECSED.html"
   },
   "erase.el-with-attrs": {
     "name": "EL erases with bg color",
@@ -702,9 +666,7 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "EL (Erase in Line) should fill erased cells with the current background color, not the default background. When a background color is set via SGR (e.g., SGR 42 for green) before issuing EL, the erased area should be painted with that background color. This is how TUI applications create colored status bars, highlighted regions, and filled backgrounds — they set a background color and erase the line to paint the entire line with that color.",
-    "probe": "Set green background with <code>\\x1b[42m</code>, write text, move to start of line, send <code>\\x1b[K</code> (EL 0), verify erased cells have the green background color.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Set green background with <code>\\x1b[42m</code>, write text, move to start of line, send <code>\\x1b[K</code> (EL 0), verify erased cells have the green background color."
   },
   "erase.ed-scroll-region": {
     "name": "ED at scroll region boundary",
@@ -713,9 +675,7 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "ED (Erase in Display) behavior when a scroll region (DECSTBM) is active varies by terminal. Some terminals erase only within the scroll region, while others erase the full screen regardless. The key edge case is that content outside the scroll region should generally be preserved by ED operations performed inside the region. This matters for applications that use scroll regions with fixed header/footer areas.",
-    "probe": "Write \"KEEP_THIS\" on row 0, set scroll region 3;10, move cursor inside region, send <code>\\x1b[J</code> (ED 0), verify row 0 still contains \"KEEP_THIS\".",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Write \"KEEP_THIS\" on row 0, set scroll region 3;10, move cursor inside region, send <code>\\x1b[J</code> (ED 0), verify row 0 still contains \"KEEP_THIS\"."
   },
   "editing.insert-chars": {
     "name": "Insert characters (ICH)",
@@ -929,9 +889,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "modern",
     "body": "modifyOtherKeys (CSI > 4 ; Pv m) enables extended key reporting that distinguishes modified key combinations that would otherwise be ambiguous. At level 2, keys like Ctrl+I are reported distinctly from Tab, and Ctrl+M from Enter.\n\nmodifyOtherKeys is xterm's opt-in path for less ambiguous keyboard reporting. It predates the Kitty keyboard protocol and is still relevant because many applications learned to parse it first. The tradeoff is compatibility: once enabled, key sequences change shape, so applications must enable it deliberately and restore terminal state on exit.",
-    "probe": "Enable modifyOtherKeys 2 (CSI > 4 ; 2 m), confirm XTEST delivery with plain a, then inject ctrl+i. CSI 27;5;105~ or CSI 105;5u is supported; Tab means the mode was ignored (unsupported). Missing OS XTEST adapter is not tested. Reset with CSI > 4 ; 0 m.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Enable modifyOtherKeys 2 (CSI > 4 ; 2 m), confirm XTEST delivery with plain a, then inject ctrl+i. CSI 27;5;105~ or CSI 105;5u is supported; Tab means the mode was ignored (unsupported). Missing OS XTEST adapter is not tested. Reset with CSI > 4 ; 0 m."
   },
   "input.csi-u": {
     "tier1": "included",
@@ -950,9 +908,7 @@
     "baseline": "rich",
     "body": "SGR-Pixels mouse mode (mode 1016) reports mouse coordinates in pixels rather than cells. This enables sub-cell precision for applications that need exact pointer positioning, such as terminal-based drawing tools or image viewers.\n\nPixel mouse mode is the precision extension to SGR mouse reporting. Cell coordinates are enough for text widgets, but drawing tools, image viewers, and high-DPI terminal UIs need sub-cell location. The mode uses the familiar SGR mouse response shape, replacing cell units with pixel units.",
     "probe": "Inconclusive until controlled mouse events and their pixel-coordinate reports are checked. A parser mode flag alone does not verify coordinate encoding.",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.urxvt-mouse": {
     "name": "urxvt Mouse Reporting (1015)",
@@ -961,9 +917,7 @@
     "baseline": "rich",
     "body": "urxvt-style mouse reporting (mode 1015) uses decimal encoding for coordinates, extending reporting beyond the 223-column limit of traditional X10 encoding. Less common than SGR mouse (1006) but still supported by some terminals.\n\nURxvt mode was an intermediate answer to xterm's coordinate limit: it kept the mouse idea but reported decimal coordinates. SGR mouse later became the cleaner and more widely adopted version, so mode 1015 is mostly legacy. Testing it still catches parsers that hard-code only the oldest byte-encoded mouse format.",
     "probe": "Inconclusive until controlled mouse events and their urxvt-encoded reports are checked. A generic mouse-tracking flag does not verify this encoding.",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.x10-mouse": {
     "name": "X10 Mouse Tracking (9)",
@@ -972,9 +926,7 @@
     "baseline": "modern",
     "body": "X10 compatibility mouse tracking (mode 9) reports only button press events, not releases or motion. This is the oldest mouse tracking mode, limited to coordinates up to 223 and press-only events.\n\nX10 mode is the ancestor of terminal mouse reporting. It came from xterm and reports only button presses using compact byte-encoded coordinates, which creates the classic 223-column limit. Modern applications should prefer SGR mouse, but X10 remains useful for understanding the compatibility stack that later mouse modes extended.",
     "probe": "Inconclusive until controlled button events and their X10 reports are checked. A parser mode flag alone does not verify event encoding.",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.button-event-mouse": {
     "name": "Button-Event Mouse (1002)",
@@ -983,9 +935,7 @@
     "baseline": "modern",
     "body": "Button-event tracking (mode 1002) reports mouse button press, release, and motion while a button is held. More detailed than basic tracking (1000) but less verbose than all-motion tracking (1003).\n\nMode 1002 was one of xterm's steps from click-only reporting toward interactive mouse tracking. It reports drags only while a button is held, which is enough for selection, resize handles, and sliders without the volume of all-motion mode. The later SGR coordinate encoding made the same event model practical on large terminals.",
     "probe": "Inconclusive until controlled button and motion events are generated and their reports checked. A parser mode flag alone does not verify button-event tracking.",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "modes.alt-screen.enter": {
     "name": "Enter alt screen (DECSET 1049)",
@@ -996,9 +946,7 @@
     "body": "DECSET 1049 switches to the alternate screen buffer and saves the cursor position. The sequence is <code>ESC [ ? 1049 h</code>. The alternate screen is a separate buffer used by full-screen TUI applications (vim, less, htop, tmux) so they can render without disturbing the user's scrollback history.\n\nWhen the application exits and sends DECRST 1049, the terminal restores the original buffer contents and cursor position — the user's previous shell output reappears as if the TUI never ran. This is why closing vim brings back the terminal content that was there before.\n\nMode 1049 combines three operations: save cursor (DECSC), switch to alt screen (?47), and clear the alt screen. Universally supported in modern terminals.",
     "probe": "App probe: query DECRPM for private mode 1049. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure the alternate-buffer switch or cursor restore.",
     "baseline": "core",
-    "sequence": "ESC [ ? 1049 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 1049 h"
   },
   "modes.alt-screen.exit": {
     "name": "Exit alt screen (DECRST 1049)",
@@ -1009,9 +957,7 @@
     "body": "DECRST 1049 exits the alternate screen buffer and restores the cursor position. The sequence is <code>ESC [ ? 1049 l</code>. Restores the main screen buffer, including all scrollback content that was present before the application entered the alternate screen.",
     "probe": "Enter then exit alt screen via <code>\\x1b[?1049h</code> / <code>\\x1b[?1049l</code>, verify <code>altScreen</code> mode is off.",
     "baseline": "core",
-    "sequence": "ESC [ ? 1049 l",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 1049 l"
   },
   "modes.bracketed-paste": {
     "name": "Bracketed paste (DECSET 2004)",
@@ -1021,9 +967,7 @@
     "body": "Bracketed paste mode wraps pasted text in special escape sequences so applications can distinguish pasted content from typed input. Enable with <code>ESC [ ? 2004 h</code>. When active, pasted text is bracketed between <code>ESC [ 200 ~</code> (start) and <code>ESC [ 201 ~</code> (end).\n\nThis is a security feature: without bracketed paste, pasting text containing newlines into a shell prompt would immediately execute commands. With bracketed paste, the shell can treat the entire paste as literal text. This also enables editors to handle paste correctly — vim can enter paste mode automatically, preserving indentation rather than auto-indenting each line.\n\nWidely adopted. Most modern shells (bash, zsh, fish) and editors (vim, emacs) enable bracketed paste by default.",
     "probe": "App probe: query DECRPM for private mode 2004. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure paste delimiters.",
     "baseline": "modern",
-    "sequence": "ESC [ ? 2004 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 2004 h"
   },
   "modes.synchronized-output": {
     "name": "Synchronized output (DECSET 2026)",
@@ -1033,9 +977,7 @@
     "body": "Synchronized output prevents flicker during screen updates by batching terminal output. The application sends <code>ESC [ ? 2026 h</code> before a render and <code>ESC [ ? 2026 l</code> after. The terminal buffers all output between these markers and renders it as a single atomic frame.\n\nWithout synchronized output, complex TUI updates (clearing screen, repositioning cursor, writing content) may partially render between frames, causing visible tearing or flicker. This is especially noticeable over slow connections or with complex layouts.\n\nThis protocol was proposed by the terminal-wg (Terminal Working Group) and adopted by Ghostty, Kitty, WezTerm, foot, Contour, and other modern terminals. It has become the standard way to achieve flicker-free TUI rendering.",
     "probe": "App probe: query DECRPM for private mode 2026. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure atomic frame rendering.",
     "baseline": "modern",
-    "sequence": "ESC [ ? 2026 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 2026 h"
   },
   "modes.mouse-tracking": {
     "name": "Mouse tracking (DECSET 1000)",
@@ -1045,9 +987,7 @@
     "body": "DECSET 1000 enables basic mouse click reporting (Normal tracking mode). The sequence is <code>ESC [ ? 1000 h</code>. When enabled, button press and release events are reported to the application. The legacy X10 encoding reports coordinates as single bytes offset by 32, limiting reports to the first 223 columns/rows. For larger terminals, use SGR mouse mode (DECSET 1006) instead.",
     "probe": "App probe: query DECRPM for private mode 1000. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure mouse event bytes.",
     "baseline": "modern",
-    "sequence": "ESC [ ? 1000 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 1000 h"
   },
   "modes.mouse-sgr": {
     "name": "SGR mouse mode (DECSET 1006)",
@@ -1057,9 +997,7 @@
     "body": "SGR mouse mode replaces the legacy X10 mouse encoding with a format that supports arbitrarily large coordinates. Enable with <code>ESC [ ? 1006 h</code> (in addition to a tracking mode like ?1000 or ?1003). Mouse events are reported as <code>ESC [ &lt; button ; col ; row M</code> for press and <code>ESC [ &lt; button ; col ; row m</code> for release.\n\nThe SGR format solves critical limitations of legacy mouse reporting: coordinates are decimal (no 223-column limit), button press and release are distinguishable by the final character (M vs m), and the format is unambiguous (no byte-value collisions with control characters). All modern TUI frameworks use SGR mouse mode.",
     "probe": "App probe: query DECRPM for private mode 1006. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure SGR-encoded mouse event bytes.",
     "baseline": "modern",
-    "sequence": "ESC [ ? 1006 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 1006 h"
   },
   "modes.mouse-all": {
     "name": "All motion mouse (DECSET 1003)",
@@ -1069,9 +1007,7 @@
     "body": "DECSET 1003 enables all-motion mouse tracking — the terminal reports mouse movement events even when no button is pressed. The sequence is <code>ESC [ ? 1003 h</code>. This generates significantly more traffic than normal tracking (?1000) or button-event tracking (?1002), so applications should only enable it when hover effects are needed.",
     "probe": "App probe: query DECRPM for private mode 1003. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure motion event bytes.",
     "baseline": "modern",
-    "sequence": "ESC [ ? 1003 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 1003 h"
   },
   "modes.focus-tracking": {
     "name": "Focus tracking (DECSET 1004)",
@@ -1081,9 +1017,7 @@
     "body": "DECSET 1004 enables focus in/out event reporting. The sequence is <code>ESC [ ? 1004 h</code>. When the terminal window gains focus, it sends <code>ESC [ I</code>; when it loses focus, it sends <code>ESC [ O</code>. Applications use this to pause animations, dim the UI, or refresh data when the user returns to the window.",
     "probe": "App probe: query DECRPM for private mode 1004. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure focus event bytes.",
     "baseline": "modern",
-    "sequence": "ESC [ ? 1004 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 1004 h"
   },
   "modes.reverse-video": {
     "name": "Reverse video (DECSCNM)",
@@ -1093,9 +1027,7 @@
     "body": "DECSCNM (Screen Mode) swaps the default foreground and background colors for the entire screen. Enable with <code>ESC [ ? 5 h</code>, disable with <code>ESC [ ? 5 l</code>. This is a global mode that affects all displayed content, distinct from SGR 7 which only affects individual character cells.",
     "probe": "App probe: query DECRPM for private mode 5. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure rendered colors.",
     "baseline": "core",
-    "sequence": "ESC [ ? 5 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 5 h"
   },
   "modes.origin": {
     "name": "Origin mode (DECOM)",
@@ -1105,9 +1037,7 @@
     "body": "DECOM (Origin Mode) changes how cursor positioning works relative to scroll margins. Enable with <code>ESC [ ? 6 h</code>. When active, cursor coordinates are relative to the scroll region rather than the entire screen, and the cursor is confined within the scroll region boundaries. Used by applications that operate within scroll regions to simplify coordinate calculations.",
     "probe": "App probe: query DECRPM for private mode 6. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure cursor addressing within margins.",
     "baseline": "modern",
-    "sequence": "ESC [ ? 6 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 6 h"
   },
   "modes.left-right-margin": {
     "name": "Left/Right Margins (DECLRMM, Mode 69)",
@@ -1116,9 +1046,7 @@
     "baseline": "rich",
     "body": "DECLRMM (mode 69) enables left and right scroll margins, similar to top/bottom margins set by DECSTBM. When enabled, DECSLRM sets the left and right margins. Scrolling and editing operations are confined to the margin area.\n\nLeft/right margins extend DEC's top/bottom scroll-region idea into two dimensions. They are useful for forms, panes, and rectangular editing operations, but many modern terminals skip them because most contemporary TUIs manage rectangles in application code. Correct behavior requires editing and scrolling operations to honor both horizontal and vertical margins.",
     "probe": "Enable DECLRMM (<code>CSI ? 69 h</code>), check <code>getMode(\"leftRightMargin\")</code> returns true. Confirms the backend tracks left/right margin mode.",
-    "url": "https://vt100.net/docs/vt510-rm/DECLRMM.html",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://vt100.net/docs/vt510-rm/DECLRMM.html"
   },
   "modes.insert-replace": {
     "name": "Insert/replace mode (IRM)",
@@ -1128,9 +1056,7 @@
     "body": "IRM (Insert/Replace Mode) controls whether new characters insert (shifting existing content right) or replace (overwriting) at the cursor. Enable insert mode with <code>ESC [ 4 h</code>, disable (replace mode) with <code>ESC [ 4 l</code>. Replace mode is the default. Most modern TUI applications use explicit ICH/DCH sequences rather than IRM.",
     "probe": "Write \"ABC\", move to col 1, send <code>\\x1b[4h</code> (IRM), write \"X\", verify X is at col 0 and A shifted to col 1.",
     "baseline": "modern",
-    "sequence": "ESC [ 4 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 4 h"
   },
   "modes.application-cursor": {
     "name": "App cursor keys (DECCKM)",
@@ -1140,9 +1066,7 @@
     "body": "DECCKM changes the escape sequences generated by arrow keys. Enable with <code>ESC [ ? 1 h</code>. In normal mode, arrow keys send CSI sequences (<code>ESC [ A</code>); in application mode, they send SS3 sequences (<code>ESC O A</code>). Full-screen applications typically enable application cursor mode to get unambiguous key input.",
     "probe": "App probe: query DECRPM for private mode 1. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure generated cursor-key bytes.",
     "baseline": "modern",
-    "sequence": "ESC [ ? 1 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 1 h"
   },
   "modes.application-keypad": {
     "name": "Application keypad (DECKPAM)",
@@ -1152,9 +1076,7 @@
     "body": "DECKPAM switches the numeric keypad to application mode, where numpad keys send escape sequences instead of numeric characters. Enable with <code>ESC =</code>, disable with <code>ESC &gt;</code>. This allows applications to distinguish numpad keys from the main keyboard number row.",
     "probe": "Send <code>\\x1b=</code> (DECKPAM), verify <code>applicationKeypad</code> is active. Then send <code>\\x1b></code> (DECKPNM), verify it is off.",
     "baseline": "modern",
-    "sequence": "ESC =",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ="
   },
   "modes.auto-wrap": {
     "name": "Auto-wrap (DECAWM)",
@@ -1164,9 +1086,7 @@
     "body": "DECAWM controls whether text automatically wraps to the next line when it reaches the right margin. Enable with <code>ESC [ ? 7 h</code> (default on), disable with <code>ESC [ ? 7 l</code>. When disabled, characters written past the right margin overwrite the last column. Most terminals default to auto-wrap enabled.",
     "probe": "App probe: query DECRPM for private mode 7. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure line wrapping (the headless probe measures wrapping separately).",
     "baseline": "core",
-    "sequence": "ESC [ ? 7 h",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? 7 h"
   },
   "modes.altscreen-47": {
     "name": "Alt screen legacy (?47)",
@@ -1177,9 +1097,7 @@
     "body": "DECSET 47 is the original alternate screen buffer mode. The sequence is <code>ESC [ ? 47 h</code> to enter and <code>ESC [ ? 47 l</code> to exit. Unlike the modern <code>?1049</code> mode, ?47 does not save or restore the cursor position, and switching back does not clear the alt screen on the next entry.\n\nThis legacy mode predates the unified <code>?1049</code> sequence (which combines DECSC + ?47 + clear). Modern applications should use <code>?1049</code> instead — ?47 is preserved for backwards compatibility with older xterm clients and historical TUI software. Most terminal emulators still implement it, though some treat it as an alias for <code>?1047</code>.",
     "probe": "Send <code>\\x1b[?47h</code> (DECSET 47), verify <code>altScreen</code> mode is active, then exit with <code>\\x1b[?47l</code>.",
     "baseline": "modern",
-    "sequence": "CSI ? 47 h/l",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI ? 47 h/l"
   },
   "modes.altscreen-1047": {
     "name": "Alt screen clear-on-enter (?1047)",
@@ -1190,9 +1108,7 @@
     "body": "DECSET 1047 enters the alternate screen buffer and clears it on entry. The sequence is <code>ESC [ ? 1047 h</code> to enter, <code>ESC [ ? 1047 l</code> to exit (which also clears the alt screen before switching back). Unlike <code>?1049</code>, mode 1047 does not save or restore the cursor position — applications using ?1047 must combine it with explicit DECSC/DECRC (<code>ESC 7</code> / <code>ESC 8</code>) if they want cursor preservation.\n\nMode 1047 is one of the building blocks that mode 1049 composes (along with cursor save and clear). Most terminal emulators implement all three (?47, ?1047, ?1049) so legacy software keeps working alongside modern apps.",
     "probe": "Send <code>\\x1b[?1047h</code>, verify <code>altScreen</code> mode is active.",
     "baseline": "modern",
-    "sequence": "CSI ? 1047 h/l",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI ? 1047 h/l"
   },
   "modes.altscreen-1048": {
     "name": "Save/restore cursor (?1048)",
@@ -1203,9 +1119,7 @@
     "body": "DECSET 1048 saves the current cursor position and attributes; DECRST 1048 restores them. The sequences are <code>ESC [ ? 1048 h</code> (save) and <code>ESC [ ? 1048 l</code> (restore). Unlike <code>?1049</code>, this mode does not switch to the alternate screen — it only manipulates the cursor save/restore state.\n\nMode 1048 is one of the three ingredients that <code>?1049</code> combines (cursor save + ?1047 alt screen + clear). Applications that need to checkpoint the cursor without entering the alt screen can use ?1048 directly, or use the older DECSC/DECRC (<code>ESC 7</code> / <code>ESC 8</code>) which performs the same operation.",
     "probe": "Position cursor, send <code>\\x1b[?1048h</code> (save), move elsewhere, send <code>\\x1b[?1048l</code> (restore), verify cursor returned to saved position.",
     "baseline": "modern",
-    "sequence": "CSI ? 1048 h/l",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI ? 1048 h/l"
   },
   "modes.alt-scroll-1007": {
     "name": "Alt-scroll mouse wheel (?1007)",
@@ -1215,9 +1129,7 @@
     "body": "DECSET 1007 enables alternate scroll mode: when the alternate screen buffer is active, mouse wheel events are translated into cursor up/down key presses (or the equivalent application keypad sequences) instead of being reported as mouse events. The sequence is <code>ESC [ ? 1007 h</code> to enable, <code>ESC [ ? 1007 l</code> to disable.\n\nThis lets users scroll TUI applications that don't natively handle mouse events (like <code>less</code>, <code>man</code>, or <code>vim</code> in default mode) by simply using the mouse wheel — the terminal converts the wheel motion into the same arrow-key sequences a keyboard press would produce. When disabled, mouse wheel events in the alt screen are sent as proper mouse reports instead.",
     "probe": "App probe: query DECRPM for private mode 1007. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure wheel-to-cursor-key behavior.",
     "baseline": "modern",
-    "sequence": "CSI ? 1007 h/l",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI ? 1007 h/l"
   },
   "modes.utf8-mouse-1005": {
     "name": "UTF-8 mouse mode (?1005)",
@@ -1227,9 +1139,7 @@
     "body": "DECSET 1005 enables UTF-8 mouse encoding, an early extension that worked around the 223-column limit of legacy X10 mouse reporting by encoding coordinates as UTF-8 multibyte sequences. The sequence is <code>ESC [ ? 1005 h</code>. Mouse reports use the same format as X10 (<code>ESC [ M</code> + button + col + row) but each coordinate byte may be a multibyte UTF-8 character, supporting columns up to 2015.\n\nMode 1005 sits between the legacy X10 encoding (<code>?1000</code>) and the modern SGR encoding (<code>?1006</code>). It was a transitional standard and is rarely used today — applications and terminals have largely standardized on SGR mouse mode, which avoids the parsing ambiguities of UTF-8 (some bytes can collide with control characters or get corrupted by non-UTF-8-aware middleware). Still implemented by xterm and a few derivatives for backwards compatibility.",
     "probe": "App probe: query DECRPM for private mode 1005. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure UTF-8 mouse event bytes.",
     "baseline": "rich",
-    "sequence": "CSI ? 1005 h/l",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI ? 1005 h/l"
   },
   "modes.deccolm": {
     "name": "DECCOLM 80/132 column switch (?3)",
@@ -1239,9 +1149,7 @@
     "body": "DECCOLM (DEC Column Mode) switches the terminal between 80- and 132-column display widths. The sequences are <code>ESC [ ? 3 h</code> for 132 columns and <code>ESC [ ? 3 l</code> for 80 columns. On real VT100 hardware, this changed the dot clock and reprogrammed the CRT to display either 80 or 132 character cells per row, and clearing the screen as a side effect.\n\nDECCOLM is a historical VT100/VT220 feature from the era when terminals had fixed character cell sizes and switching column count required physically reprogramming the display. Modern terminal emulators with resizable windows have made it largely obsolete — most ignore DECCOLM unless explicitly enabled (DECSET 40 must be set first to allow column changes). Some emulators like xterm still implement it correctly for compatibility with applications that drive serial terminals or DEC hardware emulators.",
     "probe": "App probe: query DECRPM for private mode 3. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure an 80/132-column width transition.",
     "baseline": "legacy",
-    "sequence": "CSI ? 3 h/l",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI ? 3 h/l"
   },
   "scrollback.accumulate": {
     "name": "Scrollback accumulates",
@@ -1250,9 +1158,7 @@
     "body": "Tests whether lines scrolled off the top of the visible screen are preserved in the scrollback buffer. This is fundamental terminal behavior — without scrollback accumulation, users cannot scroll up to see previous output. Virtually all modern terminals maintain a scrollback buffer, though the maximum size varies.",
     "probe": "Write 30 lines (exceeding the 24-row screen), verify total line count exceeds 24.",
     "baseline": "core",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html"
   },
   "scrollback.total-lines": {
     "name": "Total line count",
@@ -1261,9 +1167,7 @@
     "body": "Tests whether the terminal can report the total number of lines in the buffer (visible + scrollback). This is used by testing frameworks and terminal introspection tools to verify scrollback behavior.\n\nScrollback size is not standardized by ECMA-48, DEC manuals, or terminfo. This probe exists for terminal testing and introspection: a harness needs to know whether output entered scrollback and how much history exists. Real terminal emulators expose this information inconsistently, so Termless treats it as a backend capability rather than a portable app feature.",
     "probe": "Write 30 lines, verify total line count is at least 30.",
     "baseline": "core",
-    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html"
   },
   "scrollback.scroll-up": {
     "name": "Scroll up (SU)",
@@ -1273,9 +1177,7 @@
     "body": "SU scrolls the content within the scroll region up by N lines, inserting blank lines at the bottom. The sequence is <code>ESC [ N S</code> (default N=1). Lines scrolled off the top enter the scrollback buffer (on the main screen). Used by applications to scroll content without moving the cursor.",
     "probe": "Write \"TOP\" on row 1 then fill the screen, send <code>\\x1b[S</code> (SU 1), verify row 0 no longer starts with \"T\".",
     "baseline": "core",
-    "sequence": "ESC [ N S",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ N S"
   },
   "scrollback.scroll-down": {
     "name": "Scroll down (SD)",
@@ -1285,9 +1187,7 @@
     "body": "SD scrolls the content within the scroll region down by N lines, inserting blank lines at the top. The sequence is <code>ESC [ N T</code> (default N=1). Lines scrolled off the bottom margin are lost. The counterpart of SU (scroll up).\n\nSD scrolls content down inside the scroll region; it is not the same as moving the viewport through scrollback history. The command is useful for inserting visual space above existing content or implementing smooth-scroll effects. Emulators must discard lines leaving the bottom margin and insert blank lines at the top.",
     "probe": "Write 3 lines, send <code>\\x1b[T</code> (SD 1), verify row 0 is now blank (content shifted down).",
     "baseline": "core",
-    "sequence": "ESC [ N T",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ N T"
   },
   "scrollback.reverse-index": {
     "name": "Reverse index (RI)",
@@ -1297,9 +1197,7 @@
     "body": "RI moves the cursor up one line. If the cursor is at the top margin of the scroll region, the content scrolls down and a blank line is inserted at the top. The sequence is <code>ESC M</code>. This is the reverse of a line feed at the bottom of the scroll region. Used by applications that need to insert content above the current cursor position.",
     "probe": "Write 3 lines, move to row 0, send <code>\\x1bM</code> (RI), verify row 0 is now blank.",
     "baseline": "core",
-    "sequence": "ESC M",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC M"
   },
   "scrollback.set-region": {
     "name": "Scroll region (DECSTBM)",
@@ -1309,9 +1207,7 @@
     "body": "DECSTBM (Set Top and Bottom Margins) defines a scroll region — a subset of rows where scrolling operations take effect. The sequence is <code>ESC [ top ; bottom r</code>, where top and bottom are 1-based row numbers. <code>ESC [ r</code> resets to the full screen.\n\nScroll regions are fundamental to TUI applications. A terminal multiplexer like tmux uses them to scroll one pane without affecting others. Editors use them to scroll the document area while keeping status bars fixed. When content scrolls within the region, lines outside the region remain untouched.\n\nVirtually every full-screen terminal application depends on DECSTBM. Universally supported since the VT100.",
     "probe": "Send <code>\\x1b[5;10r</code> (DECSTBM), verify cursor moves to home position (0,0). Then reset with <code>\\x1b[r</code>.",
     "baseline": "core",
-    "sequence": "ESC [ top ; bottom r",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ top ; bottom r"
   },
   "scrollback.alt-screen": {
     "name": "Alt screen separate scrollback",
@@ -1320,9 +1216,7 @@
     "tags": ["xterm-extensions"],
     "body": "Tests whether the alternate screen buffer maintains its own separate scrollback, independent from the main screen's scrollback. Full-screen applications often manage their own scrolling. Screen switching and cursor positions alone cannot establish whether either screen retains scrollback.",
     "probe": "Enter and leave the alternate screen, then inspect cursor position. This cannot establish independent retained scrollback without history readback, so the result remains inconclusive.",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "scrollback.decstbm": {
     "name": "DECSTBM constrains scrolling",
@@ -1331,9 +1225,7 @@
     "tags": ["dec-private-modes", "vt100"],
     "baseline": "core",
     "body": "When a scroll region is set via DECSTBM, scrolling (line feeds, index, SU/SD) should be constrained to the defined region. Lines outside the scroll region must remain fixed. This is the fundamental mechanism that enables fixed headers, footers, and split-screen layouts in TUI applications. Without proper scroll region isolation, tmux panes, vim status bars, and editor chrome would be disrupted by scrolling content.",
-    "probe": "Write \"FIXED_TOP\" on row 0, set DECSTBM 3;10, move inside region, write enough lines to trigger scrolling, verify row 0 still contains \"FIXED_TOP\".",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Write \"FIXED_TOP\" on row 0, set DECSTBM 3;10, move inside region, write enough lines to trigger scrolling, verify row 0 still contains \"FIXED_TOP\"."
   },
   "scrollback.decstbm-reset": {
     "name": "DECSTBM reset to full screen",
@@ -1342,9 +1234,7 @@
     "tags": ["dec-private-modes", "vt100"],
     "baseline": "core",
     "body": "DECSTBM with no parameters (<code>ESC [ r</code>) resets the scroll region to the full screen. After reset, scrolling operations should affect all rows. Applications use this to restore normal scrolling behavior after using scroll regions. Failing to properly reset can leave the terminal in a state where only part of the screen scrolls, causing rendering corruption for subsequent applications.",
-    "probe": "Set DECSTBM 5;10, then send <code>\\x1b[r</code> (no params), write 30 lines, verify full-screen scrolling works (total lines > screen height).",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Set DECSTBM 5;10, then send <code>\\x1b[r</code> (no params), write 30 lines, verify full-screen scrolling works (total lines > screen height)."
   },
   "scrollback.viewport-hold-output": {
     "name": "Viewport holds on output",
@@ -1385,9 +1275,7 @@
     "tags": ["sixel"],
     "body": "Sixel is DEC’s raster graphics format, documented in the <a href=\"https://vt100.net/dec/ek-vt3xx-hr-002.pdf\">VT330/VT340 Programmer Pocket Guide</a>. A data character represents a vertical column of six pixels; color-register commands select the palette entry. <code>$</code> returns to the left edge of a band and <code>-</code> advances to the next band.\n\n<a href=\"https://invisible-island.net/xterm/xterm.log.html#xterm_294\">xterm added experimental Sixel support in July 2013</a>. Sixel predates Kitty graphics, but age does not establish support in a particular terminal or transport path.\n\nThe current probe does not decode an image or collect rendered pixels. A terminal declaration or cursor movement alone remains inconclusive for image rendering.",
     "probe": "Inconclusive: no decoded image or rendered pixel observation is collected. A Sixel declaration or cursor movement does not verify rendering.",
-    "baseline": "rich",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "rich"
   },
   "extensions.osc8": {
     "name": "Hyperlinks (OSC 8)",
@@ -1407,9 +1295,7 @@
     "body": "OSC 2 sets the terminal window title. The sequence is <code>ESC ] 2 ; title ST</code> where ST is the string terminator (<code>ESC \\</code> or BEL). Used by shells to display the current directory or running command in the window title bar or tab header.\n\nWindow-title setting is one of the oldest and most widely used OSC conventions. Shells use it to show the current directory, editors use it for the open file, and multiplexers often rewrite it. Because the payload is arbitrary text, terminals must parse terminators carefully and applications should avoid emitting untrusted control characters in titles.",
     "probe": "Send <code>\\x1b]2;Test Title\\x07</code> (OSC 2), verify <code>getTitle()</code> contains \"Test Title\".",
     "baseline": "modern",
-    "sequence": "ESC ] 2 ; title BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 2 ; title BEL"
   },
   "extensions.osc0-icon-title": {
     "name": "Icon and title (OSC 0)",
@@ -1466,9 +1352,7 @@
     "body": "OSC 7 reports the current working directory to the terminal. The sequence is <code>ESC ] 7 ; file://hostname/path ST</code>. Shells emit this after each command so the terminal knows the working directory. Terminals use this to open new tabs/splits in the same directory and to make file paths in output clickable with correct relative path resolution.",
     "probe": "Inconclusive: no terminal-owned current-directory metadata is read back. A declaration or cursor reply does not verify that the directory was recorded.",
     "baseline": "modern",
-    "sequence": "ESC ] 7 ; file://host/path BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 7 ; file://host/path BEL"
   },
   "extensions.reflow": {
     "name": "Text reflow on resize",
@@ -1478,9 +1362,7 @@
     "body": "Text reflow on resize refers to the terminal's behavior when its window is resized: a reflowing terminal rewraps long lines to match the new width, preserving logical line boundaries, whereas a non-reflowing terminal keeps hard wraps at the original width, leaving jagged line endings or truncated content.\n\nReflow matters most for the scrollback buffer — when you widen a narrow window, a reflowing terminal joins previously-wrapped lines back into their original long form, while a non-reflowing terminal leaves them broken at the old wrap points. This makes selection, copy, and search dramatically better on reflowing terminals for normal shell output and log files.\n\nReflow is complicated to implement correctly: the terminal must distinguish between soft wraps (inserted by the renderer when a line overflows) and hard wraps (explicit newlines from the application), track logical line boundaries through scrollback eviction, and handle wide characters and combining marks that cross the old wrap boundary. The main screen, alternate screen, and scrollback need separate checks. [Kitty’s changelog](https://sw.kovidgoyal.net/kitty/changelog/) records disabling text rewrap in the alternate screen buffer; [Alacritty’s 0.3.0 release](https://alacritty.org/changelog_0_3_0.html) introduced text reflow. These upstream descriptions provide context, not measurements of the terminal versions listed here.\n\nThere is no escape sequence to query reflow support — behavior can only be observed by resizing the terminal and inspecting the scrollback.",
     "probe": "The current automated result is inconclusive: no controlled resize and post-resize layout readback. Ordinary line wrapping is tested separately.",
     "baseline": "rich",
-    "sequence": "(behavioral — resize the terminal)",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "(behavioral — resize the terminal)"
   },
   "extensions.semantic-prompts": {
     "name": "Semantic prompts (OSC 133)",
@@ -1490,9 +1372,7 @@
     "body": "Semantic prompts use OSC 133 markers to tell the terminal where each shell prompt, command input, and command output begins and ends. The markers are: <code>A</code> (prompt start), <code>B</code> (command input start — after prompt, before the user types), <code>C</code> (command output start — after Enter), and <code>D</code> (command finished, with exit code).\n\nWith these markers, terminals can implement features that were previously impossible: click-to-navigate between prompts, select entire command output, scroll by command boundaries, mark failed commands with a red indicator, and provide command completion times. Shell integration scripts (for bash, zsh, fish) emit these markers automatically.\n\nAlso known as shell integration or command decoration. Supported by iTerm2 (which originated the protocol), Ghostty, WezTerm, Kitty, and VS Code's integrated terminal.",
     "probe": "Inconclusive: no shell-integration metadata or behavior is observed. Backend declarations remain diagnostic context; the app probe does not send markers merely to check terminal responsiveness.",
     "baseline": "rich",
-    "sequence": "ESC ] 133 ; A BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 133 ; A BEL"
   },
   "extensions.osc-633-vscode": {
     "name": "VS Code Shell Integration (OSC 633)",
@@ -1502,9 +1382,7 @@
     "body": "<p><strong>OSC 633</strong> is VS Code's shell integration protocol, extending <a href=\"/extensions/osc-133-semantic-prompts\" class=\"hover-link\">OSC 133</a> with additional markers for command detection, output boundaries, and shell state. It enables features like command decorations (green/red markers showing success/failure), run-recent-command, and sticky scroll for terminal output.</p>\n<p>The protocol uses escape sequences to mark four boundaries: <strong>prompt start</strong> (A), <strong>command start</strong> (B), <strong>command executed</strong> (C), and <strong>command finished</strong> (D, with exit code). VS Code's built-in shell integration scripts for bash, zsh, fish, and PowerShell emit these markers automatically. The terminal then knows exactly where each prompt, command, and output block begins and ends.</p>\n<p>OSC 633 adds VS Code-specific extensions beyond OSC 133: <strong>property reporting</strong> (P;key=value) for shell state like current directory and shell type, <strong>command line reporting</strong> (E) for the exact command text, and <strong>continuation prompt marking</strong> for multi-line commands. Other terminals (Kitty, WezTerm) support the base OSC 133 protocol but not the VS Code-specific extensions.</p>",
     "probe": "Inconclusive: no VS Code shell-integration metadata or behavior is observed. A semantic-prompts declaration does not verify OSC 633, and the app probe does not send markers merely to check terminal responsiveness.",
     "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
-    "sequence": "ESC ] 633 ; A BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 633 ; A BEL"
   },
   "extensions.osc133-a": {
     "name": "OSC 133;A prompt start (FTCS_PROMPT)",
@@ -1622,9 +1500,7 @@
     "tags": ["osc"],
     "baseline": "rich",
     "body": "<p><strong>Desktop notifications</strong> allow terminal applications to trigger system notifications. Two competing escape sequences exist: <strong>OSC 9</strong> (iTerm2/ConEmu) sends a simple notification string, while <strong>OSC 777</strong> (rxvt-unicode) supports structured notifications with title and body. Neither is standardized — support varies widely across terminals.</p>\n<p>Common use case: long-running commands that notify when complete. Shells like zsh have plugins that automatically send a notification when a command takes longer than N seconds. The BEL character (0x07) is a simpler alternative — most terminals can be configured to show a visual bell or system notification on BEL.</p>",
-    "probe": "Inconclusive: no desktop notification or permission outcome is observed. The probe does not send a notification merely to check terminal responsiveness.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Inconclusive: no desktop notification or permission outcome is observed. The probe does not send a notification merely to check terminal responsiveness."
   },
   "extensions.iterm2-images": {
     "name": "iTerm2 Inline Images (OSC 1337)",
@@ -1633,9 +1509,7 @@
     "baseline": "rich",
     "body": "<p><strong>iTerm2 inline images</strong> use the proprietary <strong>OSC 1337</strong> protocol to display images directly in terminal output. The image data is base64-encoded and transmitted inline with the escape sequence. iTerm2 supports PNG, JPEG, GIF, and other formats.</p>\n<p>This protocol predates the Kitty graphics protocol and is simpler but less capable — it lacks features like image placement, animation control, and chunked transfer. Several other terminals (WezTerm, mintty) have adopted the iTerm2 protocol alongside or instead of Kitty graphics. The protocol is documented in iTerm2's documentation but has no formal specification.</p>",
     "probe": "Inconclusive: no image-decoding or rendering observation is collected. A capability declaration or cursor reply does not verify inline images.",
-    "url": "https://iterm2.com/documentation-images.html",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://iterm2.com/documentation-images.html"
   },
   "extensions.truecolor": {
     "name": "24-bit truecolor",
@@ -1645,9 +1519,7 @@
     "body": "24-bit truecolor allows terminals to display any of 16.7 million colors (256 values per R/G/B channel), far beyond the 256-color palette. The escape sequences are <code>ESC [ 38 ; 2 ; R ; G ; B m</code> for foreground and <code>ESC [ 48 ; 2 ; R ; G ; B m</code> for background.\n\nThere are two syntax variants: the original semicolon-separated format (<code>38;2;R;G;B</code>) introduced by xterm, and the colon-separated format (<code>38:2::R:G:B</code>) defined by ITU T.416. The colon format is technically more correct and avoids parsing ambiguities, but the semicolon format has wider support. Applications should use the semicolon variant for maximum compatibility.\n\nApplications can detect truecolor support via the <code>COLORTERM=truecolor</code> environment variable. Nearly all modern terminals support 24-bit color; the main exceptions are older versions of macOS Terminal.app and some minimal terminal emulators.",
     "probe": "Write text with 24-bit RGB foreground color (<code>ESC [ 38;2;R;G;B m</code>) and verify the cell stores the exact RGB values.",
     "baseline": "modern",
-    "sequence": "ESC [ 38;2;R;G;B m",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 38;2;R;G;B m"
   },
   "text.basic": {
     "name": "Basic text rendering",
@@ -1655,9 +1527,7 @@
     "tags": ["ecma-48", "vt100"],
     "body": "Tests whether the terminal can render plain ASCII text at the cursor position. This is the most fundamental terminal capability — writing characters to the screen.\n\nThis is not an escape-sequence feature so much as the base invariant beneath every other probe. If plain printable bytes do not land in the expected cell, higher-level features such as SGR, cursor addressing, wrapping, and Unicode width cannot be trusted. Termless keeps it as a first-line sanity check for backend reset and initial cursor state.",
     "probe": "Write \"Hello\", verify the text buffer contains \"Hello\". In app mode, verify cursor advanced to column 6.",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "text.wrap": {
     "name": "Text wraps at width",
@@ -1665,9 +1535,7 @@
     "tags": ["ecma-48", "vt100"],
     "body": "Tests whether text that exceeds the terminal width automatically wraps to the next line. This is controlled by DECAWM (auto-wrap mode), which is enabled by default on virtually all terminals.\n\nAutowrap is deceptively subtle. Terminals usually enter a pending-wrap state after writing in the last column, then wrap only when the next printable character arrives. Applications and emulators get visible artifacts if they wrap too early, wrap cursor motions, or mishandle wide characters at the boundary.",
     "probe": "Write 85 characters, verify text wrapped and a character appears on row 1.",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "text.wide.cjk": {
     "name": "CJK wide chars (2 cols)",
@@ -1677,9 +1545,7 @@
     "body": "Tests whether CJK (Chinese, Japanese, Korean) ideographs correctly occupy two terminal columns. The Unicode Standard Annex #11 defines East Asian Width properties. Terminals must account for this in cursor positioning — after rendering a CJK character, the cursor advances by 2 columns, not 1. Incorrect width handling breaks TUI layouts and cursor alignment.",
     "probe": "Write U+4E2D (CJK character), verify the cell has <code>wide=true</code> (occupies 2 columns).",
     "baseline": "core",
-    "url": "https://unicode.org/reports/tr11/",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://unicode.org/reports/tr11/"
   },
   "text.wide.emoji": {
     "name": "Emoji wide chars (2 cols)",
@@ -1689,9 +1555,7 @@
     "body": "Tests whether emoji characters correctly occupy two terminal columns. Emoji width handling is more complex than CJK — it involves variation selectors (VS15 for text, VS16 for emoji presentation), zero-width joiners (ZWJ sequences like family emoji), and skin tone modifiers. Terminals frequently disagree on emoji widths, especially for newer Unicode additions.",
     "probe": "Write U+1F389 (party popper emoji), verify the cell has <code>wide=true</code> (occupies 2 columns).",
     "baseline": "unicode",
-    "url": "https://unicode.org/reports/tr51/",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://unicode.org/reports/tr51/"
   },
   "text.wide.emoji-zwj": {
     "name": "Emoji ZWJ sequences (2 cols)",
@@ -1701,9 +1565,7 @@
     "body": "Zero Width Joiner (ZWJ) sequences combine multiple emoji into a single glyph. For example, 👨‍👩‍👧‍👦 (family) is four person emoji joined with ZWJ characters. A terminal that handles ZWJ correctly renders this as a single 2-column wide glyph, not as four separate emoji.",
     "probe": "Write a ZWJ sequence (e.g., family emoji), verify it renders as a single 2-column glyph rather than separate emoji.",
     "baseline": "unicode",
-    "url": "https://unicode.org/reports/tr51/#ZWJ_Sequences",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://unicode.org/reports/tr51/#ZWJ_Sequences"
   },
   "text.wide.emoji-flags": {
     "name": "Regional indicator flags (2 cols)",
@@ -1713,9 +1575,7 @@
     "body": "Regional Indicator symbols are paired to form flag emoji. For example, 🇺🇸 (US flag) is the sequence U+1F1FA U+1F1F8. A terminal that handles these correctly renders the pair as a single 2-column wide flag glyph.\n\nFlag emoji are not single code points; they are pairs of Regional Indicator symbols interpreted as one grapheme cluster. Terminals need both Unicode segmentation and width logic to keep the cursor aligned. Incorrect handling commonly shows two letter-like glyphs, a four-column result, or cursor drift after the flag.",
     "probe": "Write a regional indicator pair (e.g., U+1F1FA U+1F1F8 for US flag), verify it renders as a single 2-column glyph.",
     "baseline": "unicode",
-    "url": "https://unicode.org/reports/tr51/#Flags",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://unicode.org/reports/tr51/#Flags"
   },
   "text.wide.emoji-vs16": {
     "name": "Variation selector 16 (emoji presentation)",
@@ -1725,9 +1585,7 @@
     "body": "Variation Selector 16 (VS-16, U+FE0F) forces emoji presentation for characters that have both text and emoji forms. For example, ☺ (U+263A) is 1 column in text presentation, but ☺️ (U+263A + VS-16) should be 2 columns in emoji presentation.\n\nVS-16 is how Unicode asks for emoji presentation when a character has both text and emoji forms. Terminals must combine presentation selection with width calculation: the same base character can occupy one column as text and two columns as emoji. This is why emoji support cannot be reduced to a single wcwidth table.",
     "probe": "Write a character with Variation Selector 16 (e.g., U+263A + U+FE0F), verify it occupies 2 columns in emoji presentation.",
     "baseline": "unicode",
-    "url": "https://unicode.org/reports/tr51/#Presentation_Style",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://unicode.org/reports/tr51/#Presentation_Style"
   },
   "text.combining": {
     "name": "Combining characters (0 cols)",
@@ -1736,9 +1594,7 @@
     "body": "Combining characters (like accents, diacritical marks) attach to the preceding base character and should occupy zero additional columns. For example, é can be written as e + U+0301 (combining acute accent) — the cursor should advance by 1 column, not 2.\n\nCombining marks are central to Unicode normalization: the same visible glyph may be precomposed or represented as a base character plus one or more marks. Terminals need to attach those marks to the previous cell without advancing the cursor. Failure shows up as stray accents, cursor drift, or broken search/highlight alignment.",
     "probe": "Write a base character followed by a combining accent (e.g., e + U+0301), verify the combined character occupies 1 column, not 2.",
     "baseline": "unicode",
-    "url": "https://unicode.org/reports/tr29/",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://unicode.org/reports/tr29/"
   },
   "unicode.east-asian-ambiguous": {
     "name": "East Asian Ambiguous Width",
@@ -1747,9 +1603,7 @@
     "tags": ["unicode"],
     "baseline": "unicode",
     "body": "Characters with East_Asian_Width=Ambiguous (e.g., Greek letters, mathematical symbols, box-drawing characters) have context-dependent width. In CJK contexts they're typically rendered as wide (2 cells), in Western contexts as narrow (1 cell). Terminal width calculation must match the terminal's rendering.",
-    "probe": "Write an Ambiguous-width character (e.g., U+00A7 Section Sign), measure cursor displacement.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Write an Ambiguous-width character (e.g., U+00A7 Section Sign), measure cursor displacement."
   },
   "unicode.grapheme-cursor": {
     "name": "ZWJ Emoji Sample Display Width",
@@ -1767,9 +1621,7 @@
     "baseline": "unicode",
     "body": "When a wide character (CJK or emoji) would begin in the last column of the line, it should wrap to the next line rather than being split across the boundary. The last column should be left blank.\n\nThis is where Unicode width meets terminal grid physics. A wide glyph cannot be split across two rows without corrupting both display and cursor accounting. Correct behavior leaves a spacer cell at the line end, wraps the glyph to the next row, and keeps subsequent cursor motion aligned with UAX #11 width expectations.",
     "probe": "Fill line to last column, write a wide character, verify it appears on the next line.",
-    "url": "https://unicode.org/reports/tr11/",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://unicode.org/reports/tr11/"
   },
   "text.tab": {
     "name": "Tab stops",
@@ -1778,9 +1630,7 @@
     "tags": ["ecma-48", "vt100"],
     "body": "HT (Horizontal Tab) advances the cursor to the next tab stop. Default tab stops are set every 8 columns. The tab character (0x09) does not produce visible output — it moves the cursor forward. Tab stops can be set with HTS and cleared with TBC.\n\nTabs are cursor motion, not spacing characters painted into the grid. The default eight-column stops are a convention inherited from mechanical devices and codified in terminal behavior. Custom stops are rarely used by modern TUIs, but correct HT behavior is still visible in shells, logs, Makefile output, and legacy full-screen programs.",
     "probe": "Write tab then \"X\", verify X appears at column 8 (after the default 8-column tab stop).",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "unicode.tab-stops": {
     "name": "Tab Stops (HT)",
@@ -1789,9 +1639,7 @@
     "tags": ["ecma-48", "vt100"],
     "baseline": "core",
     "body": "HT (0x09) advances the cursor to the next tab stop. Default tab stops are at every 8th column. Terminals should support HTS (ESC H) to set custom tab stops and TBC (CSI 3 g) to clear them.\n\nHorizontal tab predates video terminals: it comes from mechanical tab stops on typewriters and teletypes. Video terminals inherited the every-eight-columns convention, then added HTS and TBC so full-screen applications could manage tab positions. Modern apps often avoid relying on custom tab stops, but emulators still need them for compatibility.",
-    "probe": "Send a tab character, verify cursor moves to column 8.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Send a tab character, verify cursor moves to column 8."
   },
   "text.cr": {
     "name": "Carriage return",
@@ -1800,9 +1648,7 @@
     "tags": ["ecma-48", "vt100"],
     "body": "CR (0x0D) moves the cursor to the beginning of the current line without advancing to the next line. Used in combination with LF for line endings, and on its own for overwriting the current line (e.g., progress bars).\n\nCarriage return is a direct inheritance from mechanical printers: it returns the carriage to the start of the line without advancing paper. Terminals kept that behavior, which is why progress bars can redraw one row by emitting CR and replacement text. Newline handling differs by environment because LF and CR remain separate controls.",
     "probe": "Write \"AB\\rC\", verify C overwrote A at col 0 while B remains at col 1.",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "text.newline": {
     "name": "Line feed",
@@ -1811,9 +1657,7 @@
     "tags": ["ecma-48", "vt100"],
     "body": "LF (0x0A) moves the cursor down one line. If the cursor is at the bottom of the scroll region, the content scrolls up and a blank line appears at the bottom. Terminal newline mode or TTY output processing can also cause a carriage return to column 1. The observed cursor position alone does not distinguish these causes.",
     "probe": "Headless: write \"A\\r\\nB\" and verify A and B on consecutive rows. App: establish row 3, column 5, write LF, and measure advancement to row 4; retain the final column without requiring it to stay unchanged.",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "text.backspace": {
     "name": "Backspace (BS)",
@@ -1822,9 +1666,7 @@
     "tags": ["ecma-48", "vt100"],
     "body": "BS (0x08) moves the cursor one position to the left. It does not delete the character — the character remains until overwritten. The cursor stops at column 1 and does not wrap to the previous line.\n\nBackspace is a control character, not an erase command. The hardware-era distinction still matters: BS moves the print position, while the application must overwrite with a space if it wants deletion. Shells and line editors combine BS, space, and BS again for the familiar destructive-backspace visual effect.",
     "probe": "Write \"AB\\x08C\", verify backspace moved cursor back so C overwrote B at col 1, while A remains at col 0.",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "text.index": {
     "name": "Index (IND)",
@@ -1833,9 +1675,7 @@
     "tags": ["ecma-48", "vt100"],
     "body": "IND (Index) moves the cursor down one line without changing the column. The sequence is <code>ESC D</code>. If the cursor is at the bottom margin of the scroll region, the content scrolls up. Unlike LF, IND never performs a carriage return.\n\nIND is line-feed-like vertical motion without carriage return. It descends from hardware terminal controls where moving down and returning to the left edge were separate operations. At the bottom margin it scrolls the region, making it part of the scrolling model rather than just cursor movement.",
     "probe": "Write \"A\" then send <code>\\x1bD</code> (IND), verify cursor moved down to row 1.",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "text.next-line": {
     "name": "Next line (NEL)",
@@ -1844,9 +1684,7 @@
     "tags": ["ecma-48", "vt100"],
     "body": "NEL (Next Line) moves the cursor to the beginning of the next line. The sequence is <code>ESC E</code>. Equivalent to a carriage return followed by a line feed (CR + LF). If the cursor is at the bottom margin, the content scrolls up.\n\nNEL is a single control for the CR+LF combination. It reflects the standard's attempt to describe character-imaging devices more generally than Unix line feeds. Many applications just emit CR and LF directly, but NEL support matters for standards-complete parsers and software that targets 8-bit control environments.",
     "probe": "Write \"ABC\" then send <code>\\x1bE</code> (NEL), verify cursor is at row 1, col 0.",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "text.reverse-index-scroll": {
     "name": "Reverse Index at Scroll Top",
@@ -1855,9 +1693,7 @@
     "baseline": "core",
     "body": "RI (ESC M) at the top of the scroll region scrolls the entire region down, inserting a blank line at the top. This is the inverse of a newline at the bottom of the scroll region. Used for smooth scrolling and status line implementations.\n\nReverse Index is the upward-scrolling counterpart to a newline at the bottom margin. DEC terminals used it for smooth scrolling and region-local updates; modern terminal emulators still need it for applications that manipulate split panes or status areas by moving content down instead of repainting.",
     "probe": "Set scroll region, write text at top row, send Reverse Index (<code>ESC M</code>), verify content shifted down by one line.",
-    "url": "https://vt100.net/docs/vt510-rm/chapter4.html",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://vt100.net/docs/vt510-rm/chapter4.html"
   },
   "text.overwrite": {
     "name": "Overwrite at cursor",
@@ -1865,9 +1701,7 @@
     "tags": ["ecma-48", "vt100"],
     "body": "Tests whether writing a character at the cursor position overwrites the existing character at that position. This is the default behavior in replace mode (IRM off) — characters replace whatever was previously at the cursor location.\n\nReplace-mode writing is the default mental model for terminal grids: a printable cell overwrites the cell under the cursor. Insert mode is the explicit exception. Testing overwrite behavior catches backends that accidentally append, preserve stale attributes, or fail to advance the cursor after replacing content.",
     "probe": "Write \"AB\", move to col 1 via <code>\\x1b[1G</code>, write \"C\", verify cell (0,0) is \"C\" (overwrote \"A\").",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "text.hts": {
     "name": "HTS set tab stop (ESC H)",
@@ -1877,9 +1711,7 @@
     "body": "HTS (Horizontal Tab Set) sets a tab stop at the current cursor column. The sequence is <code>ESC H</code>. After setting a custom tab stop, subsequent HT (tab) characters will stop at that column. HTS works in conjunction with TBC (Tab Clear) to allow applications to define custom tab layouts. Default tab stops are every 8 columns, but HTS allows finer control for columnar data alignment.",
     "probe": "Clear all tab stops with <code>\\x1b[3g</code>, position cursor at column 5 and send <code>\\x1bH</code> (HTS), return to column 0 and send a tab — verify cursor advances to column 5.",
     "baseline": "core",
-    "sequence": "ESC H",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC H"
   },
   "text.tbc": {
     "name": "TBC clear tab stop (CSI g)",
@@ -1918,9 +1750,7 @@
     "body": "Tests whether SGR 0 (<code>ESC [ 0 m</code>) correctly clears all text attributes — bold, faint, italic, underline, blink, inverse, hidden, strikethrough, overline, and colors. This is the most basic reset and should leave the terminal in its default text rendering state.",
     "probe": "Apply bold+italic+inverse via <code>\\x1b[1;3;7m</code>X then send <code>\\x1b[0m</code>Y, verify the second cell has all attributes cleared.",
     "baseline": "core",
-    "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://ecma-international.org/publications-and-standards/standards/ecma-48/"
   },
   "reset.ris": {
     "name": "Full reset (RIS)",
@@ -1930,9 +1760,7 @@
     "body": "RIS (Reset to Initial State) performs a complete terminal reset. The sequence is <code>ESC c</code>. This resets all modes, clears the screen, resets scroll regions, restores default character sets, clears tab stops, and resets cursor position and attributes. Equivalent to power-cycling the terminal. The <code>reset</code> command in most shells sends RIS.",
     "probe": "Write text, send <code>\\x1bc</code> (RIS), verify cursor reset to (0,0).",
     "baseline": "core",
-    "sequence": "ESC c",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC c"
   },
   "reset.soft": {
     "name": "Soft reset (DECSTR)",
@@ -1942,18 +1770,14 @@
     "body": "DECSTR (Soft Terminal Reset) resets terminal modes and attributes without clearing the screen. The sequence is <code>ESC [ ! p</code>. Unlike RIS (full reset), DECSTR does not clear the display, scrollback, or cursor position. It resets modes (auto-wrap, origin, insert), SGR attributes, character sets, and scroll regions.",
     "probe": "Enable app cursor mode (<code>\\x1b[?1h</code>), write text, send <code>\\x1b[!p</code> (DECSTR), verify <code>applicationCursor</code> mode is off.",
     "baseline": "core",
-    "sequence": "ESC [ ! p",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ! p"
   },
   "reset.method": {
     "name": "Backend reset() method",
     "slug": "backend-reset-method",
     "body": "Tests whether the terminal backend provides a programmatic reset method that returns the terminal to a clean initial state. This is specific to the Termless testing framework — it verifies that the backend can be reset between test cases.\n\nThis is deliberately a Termless harness capability rather than a terminal escape sequence. Reliable reset is what lets the same backend run hundreds of probes without state leaking between them. It is the testing equivalent of SGR 0 plus mode resets, scrollback cleanup, cursor normalization, and buffer selection all returning to a known baseline.",
     "probe": "Write text, call backend <code>reset()</code> method, verify cursor returned to (0,0). Specific to the Termless testing framework.",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "reset.decaln": {
     "name": "DECALN screen alignment (ESC # 8)",
@@ -1963,9 +1787,7 @@
     "body": "DECALN (DEC Screen Alignment Test) fills the entire screen with the letter 'E'. The sequence is <code>ESC # 8</code>. Originally designed for service technicians to verify screen alignment on CRT displays, it is now primarily used as a quick way to fill the screen with known content for testing purposes. DECALN also resets scroll margins and moves the cursor to the home position (row 1, column 1).",
     "probe": "Send <code>\\x1b#8</code> (DECALN), verify cell at (0,0) contains 'E'.",
     "baseline": "modern",
-    "sequence": "ESC # 8",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC # 8"
   },
   "charsets.dec-special": {
     "name": "DEC Special Graphics",
@@ -2147,9 +1969,7 @@
     "baseline": "rich",
     "body": "XTWINOPS subcode 20 queries the current icon label (the short title shown when the window is minimized to the taskbar/dock). The query is <code>CSI 20 t</code>; the response is <code>OSC L label ST</code>. Applications that previously set the icon label via OSC 1 can use this to read it back.\n\nIcon label is conceptually distinct from window title (queried via CSI 21 t / set via OSC 2). Many modern terminals collapse the two into a single string, in which case CSI 20 t and CSI 21 t return the same value. Some terminals refuse to report titles for security reasons (a hostile process running in your terminal could otherwise exfiltrate any title set by another process).",
     "probe": "Send <code>\\x1b[20t</code>, verify the terminal sends an <code>OSC L</code> response. Headless emulators that don't store icon labels return <code>partial</code>.",
-    "sequence": "ESC [ 20 t",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 20 t"
   },
   "device.xtwinops-21": {
     "tier1": "included",
@@ -2160,9 +1980,7 @@
     "baseline": "rich",
     "body": "XTWINOPS subcode 21 queries the current window title. The query is <code>CSI 21 t</code>; the response is <code>OSC l title ST</code>. Applications use this to save the current title before overwriting it (so they can restore it on exit) — historically the only reliable way before XTPUSH/POP TITLE (CSI 22/23 t) was added.\n\nMany modern terminals refuse to report window titles by default for security reasons. A hostile escape sequence injected into the terminal could otherwise read a title set by a different application and exfiltrate it. xterm controls this via the <code>allowWindowOps</code> resource. Applications that need title save/restore should prefer the title stack (CSI 22/23 t) which works without exposing the title to other processes.",
     "probe": "Send <code>\\x1b[21t</code>, verify the terminal sends an <code>OSC l</code> response. Many real terminals refuse to report titles for security; headless emulators that don't store titles return <code>partial</code>.",
-    "sequence": "ESC [ 21 t",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 21 t"
   },
   "device.xtwinops-22": {
     "name": "Push title/icon stack (CSI 22 ; 0 t)",
@@ -2172,9 +1990,7 @@
     "baseline": "rich",
     "body": "XTWINOPS subcode 22 pushes the current window title and icon label onto an internal stack. The sequence is <code>CSI 22 ; 0 t</code> (push both), <code>CSI 22 ; 1 t</code> (push icon only), or <code>CSI 22 ; 2 t</code> (push title only). XTWINOPS 23 pops the matching stack.\n\nThe title stack solves a longstanding ergonomics problem: applications that change the terminal title (vim, ssh, tmux) want to restore it on exit, but the only way to do that previously was to query the current title with CSI 21 t — which many terminals refuse for security reasons. Push/pop avoids exposing the title to the application: the terminal saves it internally and the application can restore it without ever seeing the value. Adopted by xterm, Ghostty, Kitty, WezTerm, foot, and others.",
     "probe": "Send <code>\\x1b[22;0t</code>, verify the sequence is consumed without crashing. Headless emulators verify the stack push happened internally where possible.",
-    "sequence": "ESC [ 22 ; 0 t",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 22 ; 0 t"
   },
   "device.xtwinops-23": {
     "name": "Pop title/icon stack (CSI 23 ; 0 t)",
@@ -2184,9 +2000,7 @@
     "baseline": "rich",
     "body": "XTWINOPS subcode 23 pops the most recent title and icon label from the internal stack pushed by CSI 22 t. The sequence is <code>CSI 23 ; 0 t</code> (pop both), <code>CSI 23 ; 1 t</code> (pop icon only), or <code>CSI 23 ; 2 t</code> (pop title only). Always paired with a matching CSI 22 t push earlier in the session.\n\nUsed by long-running TUI applications (vim, tmux, ssh) to restore the original window title on exit. Push/pop is preferred over query/restore (CSI 21 t followed by OSC 2) because it doesn't expose the saved title to user-space processes — many modern terminals refuse to report titles for security but happily maintain a private title stack.",
     "probe": "Send <code>\\x1b[22;0t</code> followed by <code>\\x1b[23;0t</code>, verify both sequences are consumed and the terminal stays responsive.",
-    "sequence": "ESC [ 23 ; 0 t",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ 23 ; 0 t"
   },
   "device.xtreportcolors": {
     "tier1": "included",
@@ -2386,9 +2200,7 @@
     "tags": ["xterm-extensions"],
     "body": "Private mode 2031 enables unsolicited notifications when the terminal's color scheme changes between dark and light. When enabled, the terminal sends <code>CSI ? 997 ; Ps n</code> (DECDSR) whenever the scheme changes, where Ps=1 for dark and Ps=2 for light.\n\nApplications can also synchronously query the current scheme via <code>CSI ? 997 n</code> (DECDSR 997). This solves a longstanding problem for TUI applications that need to adapt their color palette to the terminal's dark/light mode. Supported by iTerm2 (3.6.6+), tmux 3.6, Contour, foot, and kitty.",
     "probe": "Check DECRPM for mode 2031. Fallback: query current scheme via <code>DECDSR 997</code> and check for response.",
-    "baseline": "modern",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "modern"
   },
   "modes.xtpushsgr": {
     "name": "XTPUSHSGR — push SGR stack (CSI # {)",
@@ -2398,9 +2210,7 @@
     "baseline": "rich",
     "body": "XTPUSHSGR pushes the current SGR (Select Graphic Rendition) state onto an internal stack. The sequence is <code>CSI # {</code> (or <code>CSI Pt # {</code> with a parameter mask to push only specific attributes). XTPOPSGR (<code>CSI # }</code>) pops the most recent state.\n\nThis solves a recurring TUI problem: a function that wants to set its own SGR state, render some output, and restore the caller's state. Without push/pop, the function would need to query SGR via DECRQSS, save the result, and write it back — far more error-prone and slower. SGR push/pop also enables nested attribute scopes (e.g., bold inside an italic block) without losing state.\n\nIntroduced by xterm in patch #357 (2018), now adopted by Ghostty, foot, Contour, and other modern terminals. Often paired with XTPUSHCOLORS (<code>CSI # P</code>) for a complete \"push graphics state\" idiom.",
     "probe": "Send <code>\\x1b[#{</code> (XTPUSHSGR), verify the sequence is consumed and the terminal stays responsive.",
-    "sequence": "ESC [ # {",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ # {"
   },
   "modes.xtpopsgr": {
     "name": "XTPOPSGR — pop SGR stack (CSI # })",
@@ -2410,9 +2220,7 @@
     "baseline": "rich",
     "body": "XTPOPSGR restores the SGR (Select Graphic Rendition) state most recently pushed by XTPUSHSGR (<code>CSI # {</code>). The sequence is <code>CSI # }</code>. Always paired with a matching push earlier in the same session — pops without a corresponding push are no-ops on most terminals.\n\nThis sequence is the second half of the SGR push/pop pattern that lets TUI code temporarily change attributes without permanently affecting the caller's state. Library authors can wrap subroutines in <code>CSI # {</code> ... <code>CSI # }</code> and trust that the caller's bold/color/underline state survives unchanged. Adopted by xterm, Ghostty, foot, Contour, and others.",
     "probe": "Send <code>\\x1b[#{</code> followed by <code>\\x1b[#}</code>, verify the sequences are consumed and the terminal stays responsive.",
-    "sequence": "ESC [ # }",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ # }"
   },
   "modes.xtsave": {
     "name": "XTSAVE — save DEC private modes (CSI ? Pm s)",
@@ -2422,9 +2230,7 @@
     "baseline": "rich",
     "body": "XTSAVE saves one or more DEC private modes by recording their current values. The sequence is <code>CSI ? Pm s</code> where <code>Pm</code> is a semicolon-separated list of mode numbers. XTRESTORE (<code>CSI ? Pm r</code>) restores the most recent saved values.\n\nThis is the canonical xterm pattern for temporarily changing modes. For example, a TUI that wants to enter mouse-tracking and bracketed-paste during its run can <code>CSI ? 1000 ; 2004 s</code> at startup, then <code>CSI ? 1000 ; 2004 r</code> on exit — the previous values are restored regardless of what the calling shell had configured. Without XTSAVE, applications must query DECRPM for each mode, store the result, and write it back manually.\n\n<a href=\"https://invisible-island.net/xterm/ctlseqs/ctlseqs.html\">xterm specifies this sequence</a>, and <a href=\"https://sw.kovidgoyal.net/kitty/misc-protocol/#simple-save-restore-of-all-terminal-modes\">Kitty documents an extension</a> for saving all side-effect-free modes when no list is given. Other implementations and individual mode behavior require separate evidence.",
     "probe": "Send <code>\\x1b[?7s</code> (save DECAWM), verify the sequence is consumed and the terminal stays responsive.",
-    "sequence": "ESC [ ? Pm s",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? Pm s"
   },
   "modes.xtrestore": {
     "name": "XTRESTORE — restore DEC private modes (CSI ? Pm r)",
@@ -2434,9 +2240,7 @@
     "baseline": "rich",
     "body": "XTRESTORE restores the most recently saved values for one or more DEC private modes. The sequence is <code>CSI ? Pm r</code> where <code>Pm</code> is a semicolon-separated list of mode numbers. Always paired with a matching XTSAVE (<code>CSI ? Pm s</code>) earlier in the session.\n\nApplications use this to clean up mode changes on exit without needing to remember (or query) the original values. Note that <code>CSI Pt ; Pb r</code> without the <code>?</code> intermediate is DECSTBM (set top/bottom margin) — the question mark distinguishes the private-mode restore. <a href=\"https://invisible-island.net/xterm/ctlseqs/ctlseqs.html\">xterm specifies this sequence</a>, and <a href=\"https://sw.kovidgoyal.net/kitty/misc-protocol/#simple-save-restore-of-all-terminal-modes\">Kitty documents an extension</a> for saving all side-effect-free modes when no list is given. Other implementations and individual mode behavior require separate evidence.",
     "probe": "Send <code>\\x1b[?7s</code> followed by <code>\\x1b[?7r</code>, verify the sequences are consumed and the terminal stays responsive.",
-    "sequence": "ESC [ ? Pm r",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ ? Pm r"
   },
   "modes.xtpushcolors": {
     "name": "Push color palette (CSI # P)",
@@ -2446,9 +2250,7 @@
     "baseline": "rich",
     "body": "XTPUSHCOLORS pushes the current color palette (the 256-color ANSI palette plus the default fg/bg) onto an internal stack. The sequence is <code>CSI # P</code> (or <code>CSI Pi # P</code> to push at a specific stack index). XTPOPCOLORS (<code>CSI # Q</code>) pops the most recent palette; XTREPORTCOLORS (<code>CSI # R</code>) reports the current stack depth.\n\nApplications use this when they want to install a custom palette (e.g., a specific set of OSC 4 colors for syntax highlighting) without permanently overriding the user's theme. Push the current palette, install the new one, do the work, pop on exit. Without XTPUSHCOLORS, applications need to query every palette slot via OSC 4 ; n ; ? (slow and not universally supported) or simply leave the user's terminal in a modified state.\n\nIntroduced by xterm in patch #357, paired with XTPUSHSGR. Adopted by Ghostty, foot, Contour, and other modern terminals.",
     "probe": "Send <code>\\x1b[#P</code> (XTPUSHCOLORS), verify the sequence is consumed and the terminal stays responsive.",
-    "sequence": "ESC [ # P",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ # P"
   },
   "modes.xtpopcolors": {
     "name": "Pop color palette (CSI # Q)",
@@ -2458,9 +2260,7 @@
     "baseline": "rich",
     "body": "XTPOPCOLORS restores the color palette most recently pushed by XTPUSHCOLORS (<code>CSI # P</code>). The sequence is <code>CSI # Q</code>. Always paired with a matching push earlier in the session — pops without a corresponding push are no-ops on most terminals.\n\nUsed by TUI applications that install a custom palette during their run and want to restore the user's theme on exit. The push/pop pattern avoids needing to query every palette slot via OSC 4 ; n ; ? and write each one back manually. Adopted by xterm (patch #357), Ghostty, foot, Contour, and other modern terminals.",
     "probe": "Send <code>\\x1b[#P</code> followed by <code>\\x1b[#Q</code>, verify the sequences are consumed and the terminal stays responsive.",
-    "sequence": "ESC [ # Q",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ # Q"
   },
   "input.modify-other-keys-3": {
     "name": "modifyOtherKeys mode 3",
@@ -2469,9 +2269,7 @@
     "tags": ["xterm-extensions"],
     "body": "xterm's modifyOtherKeys mode 3 (patch 398, April 2025) makes ALL keyboard input — including unmodified keys — send escape sequences. Mode 2 only affects modified keys (Ctrl+X, Alt+X), while mode 3 extends this to every keypress. The sequence is <code>CSI > 4 ; 3 m</code>.\n\nMode 3 also extends modifier encoding to cursor-keys, function-keys, keypad-keys, modifier-keys, and special-keys, with subparameters in XTMODKEYS for selective modifier masking. This provides applications with unambiguous key identification similar to the kitty keyboard protocol, but using xterm's native encoding.",
     "probe": "Confirm XTEST delivery with plain a, then enable modifyOtherKeys 3 (CSI > 4 ; 3 m) and inject unmodified i. CSI 27;1;105~ or CSI 105;1u is supported; bare i means the mode was ignored (unsupported). Missing OS XTEST adapter is not tested. Reset with CSI > 4 ; 0 m.",
-    "baseline": "rich",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "rich"
   },
   "input.xtest-click": {
     "name": "OS XTEST: button-1 click injection",
@@ -2480,9 +2278,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "OS-level XTEST click injection presses a real mouse button inside the terminal window, so the terminal's own mouse-tracking path produces the report rather than the probe synthesizing one. The probe enables modes 1000 and 1006, performs a control click and requires an SGR mouse report, then repeats the click and records the report from the same run.\n\nBecause the click is a genuine platform event, it only works where the harness holds an input adapter; elsewhere the capability is reported not tested. Testing click delivery under 1000+1006 is the prerequisite for grading the richer mouse encodings, which each replace the report shape only after a control click has proved the path itself works.",
-    "probe": "Enable 1000+1006, click button 1 as the delivery control, then click again and require the SGR report (CSI &lt; btn;x;y M/m). A missing OS XTEST adapter is not tested; a delivery-control failure is an error, never a negative.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Enable 1000+1006, click button 1 as the delivery control, then click again and require the SGR report (CSI &lt; btn;x;y M/m). A missing OS XTEST adapter is not tested; a delivery-control failure is an error, never a negative."
   },
   "input.xtest-key": {
     "name": "OS XTEST: ctrl+a key injection",
@@ -2491,9 +2287,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "OS-level XTEST key injection delivers a real key press into the terminal's own input path instead of feeding the parser a synthetic escape sequence, so it measures the terminal's genuine keyboard handling. The probe first injects plain <code>a</code> as a delivery control, then injects <code>ctrl+a</code> and records the forwarded report; a control failure is an error rather than a negative result.\n\nXTEST needs a platform input adapter: a Linux X server in the container fixture, or the native owner assertion for Terminal.app. Without an adapter the capability is reported not tested, so an absent harness is never recorded as missing support. This is the groundwork for grading modified-key encodings, like modifyOtherKeys, against real key events.",
-    "probe": "Confirm XTEST delivery with plain <code>a</code> as the control, then inject <code>ctrl+a</code> and require a modified-key report (CSI 27;1;97~, CSI 97;5u, or the raw ctrl-A byte). A missing OS XTEST adapter is not tested; a delivery-control failure is an error, never a negative.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Confirm XTEST delivery with plain <code>a</code> as the control, then inject <code>ctrl+a</code> and require a modified-key report (CSI 27;1;97~, CSI 97;5u, or the raw ctrl-A byte). A missing OS XTEST adapter is not tested; a delivery-control failure is an error, never a negative."
   },
   "input.xtest-wheel": {
     "name": "OS XTEST: wheel injection",
@@ -2502,9 +2296,7 @@
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "body": "OS-level XTEST wheel injection scrolls a real wheel notch inside the terminal window, so the button-4 and button-5 reports come from the terminal's own input path. The probe enables modes 1000 and 1006, performs a control click and requires an SGR mouse report, then injects a wheel-up notch and records the report from the same run.\n\nThe control click matters: wheel reporting rides the same mouse-tracking modes as clicks, so a wheel report only means something once a plain click has proved delivery through those modes. As with the other XTEST probes, a missing input adapter is reported as not tested rather than as a negative result.",
-    "probe": "Enable 1000+1006, click button 1 as the delivery control, then inject a wheel-up notch and require the resulting SGR button-4 report. A missing OS XTEST adapter is not tested; a delivery-control failure is an error, never a negative.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Enable 1000+1006, click button 1 as the delivery control, then inject a wheel-up notch and require the resulting SGR button-4 report. A missing OS XTEST adapter is not tested; a delivery-control failure is an error, never a negative."
   },
   "extensions.kitty-keyboard.disambiguate": {
     "tier1": "included",
@@ -2583,9 +2375,7 @@
     "tags": ["kitty-extensions"],
     "body": "The animation frame action (<code>a=f</code>) adds animation frames to a previously transmitted image. Supports frame composition modes (overwrite, blend), per-frame timing, and looping. Not all terminals that support kitty graphics support animation.\n\nAnimation is one of the least portable parts of the Kitty graphics protocol. It assumes the terminal stores image state, composes frames, and schedules timing rather than just painting cells. Applications should detect support and provide a static-image fallback, especially through multiplexers or remote sessions.",
     "probe": "Inconclusive: no timed sequence of rendered animation frames is collected. Graphics declarations and upload acknowledgements do not verify animation.",
-    "baseline": "rich",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "rich"
   },
   "extensions.kitty-graphics.unicode-placeholders": {
     "name": "Kitty graphics: Unicode placeholders",
@@ -2594,9 +2384,7 @@
     "tags": ["kitty-extensions"],
     "body": "Unicode placeholders (<code>U=1</code>) allow images to be placed using special Unicode characters in the text grid rather than absolute positioning. The terminal replaces placeholder characters with image content. This enables images to participate in text reflow, scrolling, and selection — unlike absolutely-positioned images which are fixed to screen coordinates.",
     "probe": "Inconclusive: no controlled placeholder cells and corresponding rendered image are observed. Graphics declarations and cursor movement do not verify Unicode placeholders.",
-    "baseline": "rich",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "rich"
   },
   "extensions.osc52-write": {
     "tier1": "excluded",
@@ -2630,9 +2418,7 @@
     "body": "OSC 1 sets the icon name (without changing the window title). The sequence is <code>ESC ] 1 ; Pt BEL</code> where Pt is the icon name string. This is the companion to OSC 0 (which sets both icon name and title) and OSC 2 (which sets only the title). Originally used by X11 window managers to label minimized windows, icon name is less commonly used in modern terminals but remains part of the xterm protocol. Some terminals treat OSC 1 identically to OSC 0 or ignore the icon name entirely.",
     "probe": "Any headless title change is diagnostic only: title text does not establish icon-name behavior. No icon-name readback is available, so the result remains inconclusive.",
     "baseline": "core",
-    "sequence": "ESC ] 1 ; Pt BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 1 ; Pt BEL"
   },
   "extensions.osc4-palette": {
     "tier1": "included",
@@ -2676,9 +2462,7 @@
     "body": "OSC 104 resets one or all palette colors to their default values. To reset a specific color: <code>ESC ] 104 ; c BEL</code> where c is the palette index. To reset all 256 colors: <code>ESC ] 104 BEL</code> (no argument). This is the companion to OSC 4 — applications that modify the palette at startup should send OSC 104 on exit to restore the user's original colors. Most terminals that support OSC 4 also support OSC 104.",
     "probe": "Modify palette color 0 via OSC 4, then send <code>OSC 104 ; 0 BEL</code> to reset it. Verify the terminal consumes the sequence by checking cursor position remains stable.",
     "baseline": "modern",
-    "sequence": "ESC ] 104 ; c BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 104 ; c BEL"
   },
   "extensions.osc110-reset-fg": {
     "tier1": "included",
@@ -2689,9 +2473,7 @@
     "body": "OSC 110 resets the default foreground color to the terminal's configured default. The sequence is simply <code>ESC ] 110 BEL</code>. This is the companion to OSC 10 — after changing the foreground color with <code>OSC 10 ; color BEL</code>, send OSC 110 to restore it. Applications that modify the default foreground (e.g. for theme switching) should reset on exit to avoid leaving the terminal in a modified state.",
     "probe": "Send <code>OSC 110 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
     "baseline": "modern",
-    "sequence": "ESC ] 110 BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 110 BEL"
   },
   "extensions.osc111-reset-bg": {
     "tier1": "included",
@@ -2702,9 +2484,7 @@
     "body": "OSC 111 resets the default background color to the terminal's configured default. The sequence is <code>ESC ] 111 BEL</code>. This is the companion to OSC 11 — after changing the background color with <code>OSC 11 ; color BEL</code>, send OSC 111 to restore it. Essential for well-behaved TUI applications that modify terminal colors and need to clean up on exit.",
     "probe": "Send <code>OSC 111 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
     "baseline": "modern",
-    "sequence": "ESC ] 111 BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 111 BEL"
   },
   "extensions.osc112-reset-cursor": {
     "tier1": "included",
@@ -2715,9 +2495,7 @@
     "body": "OSC 112 resets the cursor color to the terminal's configured default. The sequence is <code>ESC ] 112 BEL</code>. This is the companion to OSC 12 — after changing the cursor color, send OSC 112 to restore it. Applications that modify cursor color for visual feedback (e.g. mode indicators in vim-like editors) should send this on exit.",
     "probe": "Send <code>OSC 112 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
     "baseline": "modern",
-    "sequence": "ESC ] 112 BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 112 BEL"
   },
   "extensions.osc117-reset-highlight-bg": {
     "name": "Reset highlight background (OSC 117)",
@@ -2727,9 +2505,7 @@
     "body": "OSC 117 resets the selection highlight background color to the terminal's default. The sequence is <code>ESC ] 117 BEL</code>. The highlight background is set via OSC 17. Terminals that support customizable selection colors use this to restore the default appearance. Support is limited to xterm and terminals with full xterm color protocol compatibility.",
     "probe": "Send <code>OSC 117 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
     "baseline": "rich",
-    "sequence": "ESC ] 117 BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 117 BEL"
   },
   "extensions.osc119-reset-highlight-fg": {
     "name": "Reset highlight foreground (OSC 119)",
@@ -2739,9 +2515,7 @@
     "body": "OSC 119 resets the selection highlight foreground color to the terminal's default. The sequence is <code>ESC ] 119 BEL</code>. The highlight foreground is set via OSC 19. Like OSC 117, this is part of the xterm extended color reset protocol. Support is primarily in xterm itself, with partial adoption in other terminals that implement the full xterm color management suite.",
     "probe": "Send <code>OSC 119 BEL</code> and verify the terminal remains responsive (sequence consumed without error).",
     "baseline": "rich",
-    "sequence": "ESC ] 119 BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 119 BEL"
   },
   "extensions.osc17-highlight-bg": {
     "tier1": "included",
@@ -2828,9 +2602,7 @@
     "body": "OSC 113 resets the mouse pointer foreground color to the terminal's configured default. The sequence is <code>ESC ] 113 BEL</code>. This is the companion reset for OSC 13, which sets the pointer foreground color. The pointer color set originated in xterm to allow applications to customize the mouse cursor when hovering over the terminal — historically useful on X11 where the X cursor was not styled by the GUI toolkit. Support is mostly limited to xterm and a small number of xterm-compatible terminals that implement the full color management protocol.",
     "probe": "Headless: query OSC 13 foreground color, set a distinct color and verify it, send OSC 113, then query again to compare the restored value with the original. App: send OSC 113 and read text cursor position; this does not measure pointer-color restoration, so the app result is inconclusive.",
     "baseline": "rich",
-    "sequence": "ESC ] 113 BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 113 BEL"
   },
   "extensions.osc114-reset-pointer-bg": {
     "tier1": "included",
@@ -2841,9 +2613,7 @@
     "body": "OSC 114 resets the mouse pointer background color to the terminal's configured default. The sequence is <code>ESC ] 114 BEL</code>. This is the companion reset for OSC 14, which sets the pointer background color. Together with OSC 113, these complete the xterm pointer color management protocol. Most modern terminals delegate cursor styling to the host operating system or window manager and ignore these sequences entirely; xterm is essentially the reference implementation.",
     "probe": "Headless: query OSC 14 background color, set a distinct color and verify it, send OSC 114, then query again to compare the restored value with the original. App: send OSC 114 and read text cursor position; this does not measure pointer-color restoration, so the app result is inconclusive.",
     "baseline": "rich",
-    "sequence": "ESC ] 114 BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 114 BEL"
   },
   "extensions.osc21-kitty-color": {
     "tier1": "included",
@@ -2865,9 +2635,7 @@
     "body": "OSC 30001 saves the terminal's current color state to a stack maintained by the terminal emulator. The sequence is <code>ESC ] 30001 BEL</code> and snapshots the foreground, background, cursor, selection, and full palette colors. This pairs with OSC 30101 (pop) to give applications a clean way to temporarily change colors and reliably restore them later — useful for theme previews, colorized diffs, or full-screen applications that want to leave the terminal in its original state on exit. Originally introduced by Kitty as part of its color management work; foot and Ghostty have adopted the same protocol.",
     "probe": "Send <code>OSC 30001 BEL</code> and verify the terminal remains responsive (push sequence consumed without error).",
     "baseline": "rich",
-    "sequence": "ESC ] 30001 BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 30001 BEL"
   },
   "extensions.osc30101-color-stack-pop": {
     "tier1": "included",
@@ -2878,9 +2646,7 @@
     "body": "OSC 30101 restores the most recently saved color state from the terminal's color stack. The sequence is <code>ESC ] 30101 BEL</code> and reverts the foreground, background, cursor, selection, and palette colors to the snapshot captured by the matching OSC 30001 push. This is the reliable cleanup primitive for applications that have changed any of the terminal's colors at runtime — instead of re-emitting individual reset sequences (OSC 110, 111, 112, 104), one pop restores everything atomically. Defined alongside OSC 30001 by Kitty, also supported by foot and Ghostty.",
     "probe": "Send <code>OSC 30001 BEL</code> followed by <code>OSC 30101 BEL</code> and verify the pop sequence is consumed without error.",
     "baseline": "rich",
-    "sequence": "ESC ] 30101 BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 30101 BEL"
   },
   "extensions.osc176-app-id": {
     "tier1": "excluded",
@@ -2977,9 +2743,7 @@
     "body": "OSC 720 scrolls the visible terminal view up by N lines into the scrollback buffer, as if the user pressed Shift+PageUp. The sequence is <code>ESC ] 720 BEL</code> (some forms accept a count parameter). The companion <strong>OSC 721</strong> scrolls back down toward the live region. Both are <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a>-only extensions, intended for scripts that wanted to drive the scrollback view from inside the terminal. Modern terminals do not expose scrollback navigation over escape sequences — the scrollback is considered a user-interface concept owned by the emulator, not the application — so these sequences are silently consumed everywhere except urxvt.",
     "probe": "Populate scrollback, send <code>OSC 720 BEL</code>, and verify the visible viewport moves up into scrollback.",
     "baseline": "legacy",
-    "sequence": "ESC ] 720 BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 720 BEL"
   },
   "extensions.osc776-cell-size": {
     "tier1": "included",
@@ -2999,9 +2763,7 @@
     "tags": ["xterm-extensions"],
     "body": "System clipboard paste describes how pasted text enters the terminal. Modern terminals support <em>bracketed paste mode</em> (DEC private mode 2004) — when enabled, pasted text is wrapped in <code>ESC [ 200 ~</code> ... <code>ESC [ 201 ~</code> markers so applications can distinguish it from typed input, disable autoindent, suppress history expansion, and treat the block atomically. Without bracketed paste, pasted text arrives as raw keystrokes indistinguishable from typing, which causes problems with shells, editors, and REPLs that interpret the first few characters before the rest of the paste arrives.\n\nThis feature is distinct from OSC 52, which is a <em>programmatic</em> clipboard protocol for applications to push data to or read from the system clipboard via escape sequences. OSC 52 is about app-to-clipboard; system clipboard paste is about clipboard-to-app. Both typically coexist: bracketed paste for user-initiated pastes, OSC 52 for programmatic copy.\n\nBracketed paste mode enablement can be probed (DECRPM mode 2004), but <em>whether pasted text actually arrives bracketed in practice</em> depends on the host terminal emulator, operating system paste mechanism, and user settings — and cannot be verified from inside a terminal session without an external paste action.",
     "probe": "Manual verification required — no automated probe available.",
-    "baseline": "modern",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "modern"
   },
   "extensions.font-ligatures": {
     "name": "Font ligatures",
@@ -3039,9 +2801,7 @@
     "tags": ["vt510", "dec-private-modes"],
     "body": "DECSCLM (Scrolling Mode) toggles between smooth and jump scrolling via <code>CSI ? 4 h</code> (smooth) and <code>CSI ? 4 l</code> (jump). On the original VT100, smooth scrolling animated text line-by-line at a visible speed, while jump scrolling snapped instantly — a noticeable difference on 1978 CRT hardware.\n\nOn modern terminals this distinction is largely cosmetic. Most terminals either ignore DECSCLM entirely or treat it as a no-op since rendering is already instantaneous. Contour implements it for completeness. xterm supports it and actually does render line-by-line in smooth mode, creating a retro scrolling effect.",
     "probe": "App probe: query DECRPM for private mode 4. A set/reset reply establishes mode recognition only; unknown or no reply is inconclusive. This does not measure smooth-scroll timing.",
-    "baseline": "legacy",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "legacy"
   },
   "device.dsr-996-color-scheme": {
     "tier1": "included",
