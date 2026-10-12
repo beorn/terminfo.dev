@@ -43,6 +43,7 @@ import { join } from "node:path"
 import { parseArgs } from "node:util"
 import { parseJsonStrict, parseSuiteManifest } from "@terminfo/run-parser"
 import { splitDecidableBasis } from "@terminfo/probe-defs"
+import { loadFeatures } from "@terminfo/catalog"
 import {
   loadCurrentResults,
   loadDefaultContextPolicy,
@@ -213,18 +214,7 @@ export function tierOneIds(contentDir: string): string[] {
 }
 
 function featureCatalog(contentDir: string): Record<string, { name: string }> {
-  const featuresPath = join(contentDir, "features.json")
-  const raw = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8"))
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`${featuresPath}: expected a feature catalog object`)
-  }
-  const catalog: Record<string, { name: string }> = {}
-  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (id.startsWith("$")) continue
-    const declared = typeof value === "object" && value !== null ? (value as { name?: unknown }).name : value
-    catalog[id] = { name: typeof declared === "string" && declared ? declared : id }
-  }
-  return catalog
+  return loadFeatures(contentDir)
 }
 
 /** One candidate context the site currently selects, reduced to what the reader consumes. */

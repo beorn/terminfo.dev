@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { verifyTerminalIdentity } from "../packages/terminfo.dev/src/identity-guard.ts"
 import { ALL_PROBES } from "../packages/probe-defs/src/index.ts"
 import { loadCategories } from "../docs/data/categories.ts"
+import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,19 +56,7 @@ function listJsonFiles(dir: string): string[] {
 
 const contentDir = join(import.meta.dir, "..", "content")
 
-const features = loadJson(join(contentDir, "features.json")) as Record<
-  string,
-  {
-    name?: string
-    slug?: string
-    baseline?: string
-    tags?: string[]
-    body?: string
-    probe?: string
-    probeStatus?: string
-    [key: string]: unknown
-  }
->
+const features: Record<string, FeatureRecord> = loadFeatures(contentDir)
 
 const VALID_PROBE_STATUSES = new Set(["automated", "partial", "manual", "unprobed"])
 const MIN_FEATURE_BODY_LENGTH = 260
@@ -79,18 +68,7 @@ const standards = loadJson(join(contentDir, "standards.json")) as Record<
 
 const categories = loadCategories(contentDir)
 
-const terminals = loadJson(join(contentDir, "terminals.json")) as Record<
-  string,
-  {
-    label: string
-    slug: string
-    description?: string
-    body?: string
-    headlessBackends?: string[]
-    manifestBackend?: string
-    [key: string]: unknown
-  }
->
+const terminals: Record<string, TerminalRecord> = loadTerminals(contentDir)
 
 const platforms = loadJson(join(contentDir, "platforms.json")) as Record<
   string,

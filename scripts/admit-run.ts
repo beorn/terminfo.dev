@@ -14,6 +14,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
+import { loadFeatures } from "@terminfo/catalog"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import {
   bindReceiptToRun,
@@ -46,10 +47,7 @@ export interface AdmissionPlan {
 }
 
 function catalogIds(): string[] {
-  const path = join(CONTENT_DIR, "features.json")
-  const features: unknown = JSON.parse(readFileSync(path, "utf8"))
-  if (!isRecord(features)) throw new Error(`Invalid feature catalog ${path}`)
-  return Object.keys(features).filter((id) => !id.startsWith("$"))
+  return Object.keys(loadFeatures(CONTENT_DIR))
 }
 
 /** Compute where a run lands, from its own target and run id — never from a caller-supplied name. */

@@ -169,7 +169,7 @@ describe("website sidebar metadata", () => {
 
   it.each([
     ["features", "features.json"],
-    ["terminals", 'terminal "ghostty" requires a nonempty label'],
+    ["terminals", 'entry "ghostty" is missing a non-empty "label"'],
   ])("rejects malformed %s metadata during config evaluation", (kind, expected) => {
     const script = `
       import * as fs from "node:fs";

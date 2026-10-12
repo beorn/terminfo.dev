@@ -1,18 +1,23 @@
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { loadFeatures } from "@terminfo/catalog"
 import {
   loadProbes,
   featureSlug,
   terminalSlug,
-  loadFeaturesMeta,
   tagLabel as getTagLabel,
   catLabel,
   loadAnalysis,
 } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
 
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const contentDir = join(__dirname, "..", "..", "content")
+
 export default {
   paths() {
     const data = loadProbes()
-    const featuresMeta = loadFeaturesMeta()
+    const featuresMeta = loadFeatures(contentDir)
     const allAnalysis = loadAnalysis()
 
     return data.features.map((f) => {

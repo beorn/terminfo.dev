@@ -11,6 +11,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
+import { loadFeatures, loadTerminals } from "@terminfo/catalog"
 import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories } from "./categories.ts"
@@ -133,47 +134,10 @@ interface BaselineStats {
 }
 
 function loadFeatureDescriptions(): Record<string, FeatureMeta> {
-  const path = join(__dirname, "..", "..", "content", "features.json")
-  if (!existsSync(path)) {
-    throw new Error(`features.json not found at ${path}`)
-  }
-  {
-    const raw: unknown = JSON.parse(readFileSync(path, "utf-8"))
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`Invalid feature catalog ${path}`)
-    // Normalize: strings become { name: string }, objects stay as-is
-    const result: Record<string, FeatureMeta> = {}
-    for (const [id, val] of Object.entries(raw as Record<string, unknown>)) {
-      if (id.startsWith("$")) continue
-      if (typeof val === "string") result[id] = { name: val }
-      else {
-        if (!val || typeof val !== "object" || Array.isArray(val)) {
-          throw new Error(`${path}: ${id} requires a feature name`)
-        }
-        const v = val as Record<string, unknown>
-        if (typeof v.name !== "string") throw new Error(`${path}: ${id} requires a feature name`)
-        const optionalString = (field: string): string | undefined => {
-          const value = v[field]
-          if (value === undefined) return undefined
-          if (typeof value !== "string") throw new Error(`${path}: invalid ${id}.${field}`)
-          return value
-        }
-        if (v.tags !== undefined && (!Array.isArray(v.tags) || !v.tags.every((tag) => typeof tag === "string"))) {
-          throw new Error(`${path}: invalid ${id}.tags`)
-        }
-        result[id] = {
-          name: v.name,
-          slug: optionalString("slug"),
-          url: optionalString("url"),
-          tags: v.tags as string[] | undefined,
-          group: optionalString("group"),
-          body: optionalString("body"),
-          probe: optionalString("probe"),
-          baseline: optionalString("baseline"),
-        }
-      }
-    }
-    return result
-  }
+  // The feature catalog, through its one loader (@terminfo/catalog). The loader already refuses a
+  // nameless entry and drops $-prefixed comment keys, so the old string-vs-object normalization and
+  // its per-field checks live in one place now.
+  return loadFeatures(contentDir)
 }
 
 function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
@@ -242,17 +206,9 @@ export function loadFullProbes(): ProbeData {
   const categories: Record<string, FeatureResult[]> = {}
   for (const feature of features) (categories[feature.category] ??= []).push(feature)
 
-  const terminalPath = join(contentDir, "terminals.json")
-  const terminalContent = parseJsonStrict(terminalPath, readFileSync(terminalPath, "utf8"))
-  if (!terminalContent || typeof terminalContent !== "object" || Array.isArray(terminalContent)) {
-    throw new Error(`${terminalPath}: expected terminal catalog object`)
-  }
   const meta = loadBackendMeta()
-  for (const [id, terminal] of Object.entries(terminalContent)) {
-    if (!terminal || typeof terminal !== "object" || Array.isArray(terminal)) {
-      throw new Error(`${terminalPath}: ${id} requires a terminal metadata object`)
-    }
-    meta[id] = { ...meta[id], ...(terminal as BackendMeta) }
+  for (const [id, terminal] of Object.entries(loadTerminals(contentDir))) {
+    meta[id] = { ...meta[id], ...terminal }
   }
   for (const [key, { selected }] of byTarget) {
     const id = selected.target.id

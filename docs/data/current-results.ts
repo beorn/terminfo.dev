@@ -10,6 +10,7 @@ import {
 } from "./selected-results.ts"
 import { loadFeatureCohort } from "./load-release-scope.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
+import { loadFeatures, loadTerminals } from "@terminfo/catalog"
 
 export interface DefaultContextReview {
   contextKey: string
@@ -56,8 +57,7 @@ function isIdList(value: unknown): value is string[] {
 /** Stable compatibility names come from declarations, never the runs that happen to exist today. */
 function loadCatalogKeys(contentDir: string): CatalogKeys {
   const catalogPath = join(contentDir, "terminals.json")
-  const rawCatalog = parseJsonStrict(catalogPath, readFileSync(catalogPath, "utf8"))
-  if (!isRecord(rawCatalog)) throw new Error(`${catalogPath}: expected terminal catalog object`)
+  const rawCatalog = loadTerminals(contentDir)
   const catalog = new Map<string, CatalogTarget>()
   const kinds = new Map<string, Set<TargetKind>>()
   const declare = (id: string, kind: TargetKind): void => {
@@ -66,7 +66,6 @@ function loadCatalogKeys(contentDir: string): CatalogKeys {
     kinds.set(id, declared)
   }
   for (const [id, value] of Object.entries(rawCatalog)) {
-    if (!isRecord(value)) throw new Error(`${catalogPath}: invalid ${id} entry`)
     if (value.historical === true) continue
     if (!isTargetKind(value.kind) || typeof value.slug !== "string" || !value.slug) {
       throw new Error(`${catalogPath}: ${id} requires a declared kind and slug`)
@@ -137,9 +136,7 @@ function releaseSuiteIdFor(contentDir: string): string {
         'without it every run on that suite is relabelled "older suite" and the tree-move banner is suppressed',
     )
   }
-  const featuresPath = join(contentDir, "features.json")
-  const catalog = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8")) as Record<string, { name: string }>
-  return loadFeatureCohort({ catalog, declarationPath }).frozenSuiteId
+  return loadFeatureCohort({ catalog: loadFeatures(contentDir), declarationPath }).frozenSuiteId
 }
 
 /**

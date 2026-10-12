@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { loadFeatures, type FeatureRecord } from "@terminfo/catalog"
 import { loadFullProbes } from "./probes.data"
 import type { ProbeData } from "./probes.data"
 import { loadCategories } from "./categories.ts"
@@ -23,42 +24,20 @@ export function loadProbes(): ProbeData {
   return _cached
 }
 
-export interface FeatureMeta {
-  name: string
-  slug?: string
-  url?: string
-  tags?: string[]
-  group?: string
-  body?: string
-  probe?: string
-  baseline?: string
-  probeStatus?: string
-  sequence?: string
-}
+/**
+ * The feature catalog, through its one loader (@terminfo/catalog). The older `loadFeaturesMeta`
+ * export is gone: it was a second door onto content/features.json, and the four route generators
+ * that used it now import the catalog loader directly.
+ */
+const contentDir = join(__dirname, "..", "..", "content")
 
-let _featuresMeta: Record<string, FeatureMeta> | null = null
-
-/** Load features.json with tags and groups (richer than probes featureDescriptions) */
-export function loadFeaturesMeta(): Record<string, FeatureMeta> {
-  if (_featuresMeta) return _featuresMeta
-  const path = join(__dirname, "..", "..", "content", "features.json")
-  try {
-    const raw: unknown = JSON.parse(readFileSync(path, "utf-8"))
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-      throw new Error("Expected a feature metadata object")
-    }
-    const metadata = raw as Record<string, FeatureMeta>
-    delete metadata.$comment
-    _featuresMeta = metadata
-    return metadata
-  } catch (cause) {
-    throw new Error(`${path}: required feature metadata could not be read or parsed`, { cause })
-  }
+function features(): Record<string, FeatureRecord> {
+  return loadFeatures(contentDir)
 }
 
 /** Get all unique tags from features.json, validating against standards.json */
 export function getAllTags(): string[] {
-  const meta = loadFeaturesMeta()
+  const meta = features()
   const standards = loadStandards()
   const validTags = new Set(Object.keys(standards))
   const tags = new Set<string>()
@@ -78,7 +57,7 @@ export function getAllTags(): string[] {
 
 /** Get feature IDs that have a given tag */
 export function getFeaturesForTag(tag: string): string[] {
-  const meta = loadFeaturesMeta()
+  const meta = features()
   return Object.entries(meta)
     .filter(([_, entry]) => entry.tags?.includes(tag))
     .map(([id]) => id)
@@ -86,7 +65,7 @@ export function getFeaturesForTag(tag: string): string[] {
 
 /** Convert feature dot-path ID to URL slug, using features.json slug if available */
 export function featureSlug(id: string): string {
-  const meta = loadFeaturesMeta()
+  const meta = features()
   return meta[id]?.slug ?? id.replaceAll(".", "-")
 }
 

@@ -1,5 +1,11 @@
-import { loadProbes, featureSlug, catLabel, terminalSlug, loadFeaturesMeta } from "../data/load-probes"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { loadFeatures } from "@terminfo/catalog"
+import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
 import type { PublicCell, PublicVersion } from "../data/public-results"
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const contentDir = join(__dirname, "..", "..", "content")
 
 function resultFor(cell: PublicCell | undefined): "yes" | "no" | "unknown" {
   if (!cell?.conclusive) return "unknown"
@@ -25,7 +31,7 @@ function recordedScope(selected: PublicVersion): unknown[] {
 export default {
   paths() {
     const data = loadProbes()
-    const featuresMeta = loadFeaturesMeta()
+    const featuresMeta = loadFeatures(contentDir)
 
     // Build terminal info from reviewed selected runs.
     const terminals = data.backends.map((b) => {

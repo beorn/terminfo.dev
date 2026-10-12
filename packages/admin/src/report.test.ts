@@ -40,7 +40,15 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     const fixtureFeatures = ["cursor.position", "sgr.bold", "extensions.query", "modes.autowrap", "sgr.italic"]
     writeFileSync(
       join(root, "content", "features.json"),
-      JSON.stringify(Object.fromEntries(fixtureFeatures.map((id) => [id, {}]))),
+      // @terminfo/catalog's one shape requires a full record per row; this fixture only reads the ids.
+      JSON.stringify(
+        Object.fromEntries(
+          fixtureFeatures.map((id) => [
+            id,
+            { name: id, slug: id.replaceAll(".", "-"), body: "fixture", probe: "fixture", baseline: "supported" },
+          ]),
+        ),
+      ),
     )
     writeFileSync(
       join(root, "content", "release-scope-candidate2.json"),

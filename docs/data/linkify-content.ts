@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { createLinkifier } from "vitepress-enrich"
+import { loadFeatures, loadTerminals, type FeatureRecord } from "@terminfo/catalog"
 import { loadCategories } from "./categories.ts"
 
 interface GlossaryEntity {
@@ -22,19 +23,6 @@ interface GlossaryEntry {
   expansion?: string
   description?: string
   link?: string
-}
-
-interface FeatureEntry {
-  name?: string
-  slug?: string
-  body?: string
-  probe?: string
-}
-
-interface TerminalEntry {
-  label?: string
-  slug?: string
-  description?: string
 }
 
 interface FrameworkEntry {
@@ -79,7 +67,7 @@ function summarize(value: unknown, fallback: string | undefined): string {
   return `${text.slice(0, 177).trimEnd()}...`
 }
 
-function featureHref(id: string, entry: FeatureEntry): string {
+function featureHref(id: string, entry: FeatureRecord): string {
   const category = id.split(".")[0] || id
   const slug = entry.slug ?? id.replaceAll(".", "-")
   return `/${category}/${slug}`
@@ -117,7 +105,7 @@ export function loadTerminfoEntities(options: TerminfoEntitiesOptions = {}): Glo
     pushEntity(entities, term, entry.link, tooltip, tooltipOnlyHrefs, 0)
   }
 
-  const features = readContentJson<FeatureEntry>("features.json")
+  const features = loadFeatures(contentDir)
   for (const [id, entry] of Object.entries(features)) {
     if (!entry.name) continue
     const href = featureHref(id, entry)
@@ -128,12 +116,12 @@ export function loadTerminfoEntities(options: TerminfoEntitiesOptions = {}): Glo
     }
   }
 
-  const terminals = readContentJson<TerminalEntry>("terminals.json")
+  const terminals = loadTerminals(contentDir)
   for (const entry of Object.values(terminals)) {
     pushEntity(
       entities,
       entry.label,
-      entry.slug ? `/terminals/${entry.slug}` : undefined,
+      `/terminals/${entry.slug}`,
       summarize(entry.description, `${entry.label} terminal emulator`),
       tooltipOnlyHrefs,
       3,

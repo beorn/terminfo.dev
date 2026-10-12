@@ -6,8 +6,11 @@
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { expect, test, vi } from "vitest"
+
+const contentDir = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
 
 const fixture = vi.hoisted(() => ({ path: "", catalogs: {} as Record<string, string> }))
 vi.mock("node:fs", async (importOriginal) => {
@@ -40,8 +43,9 @@ test.each(["missing", "malformed", "non-object"] as const)(
     vi.resetModules()
 
     try {
-      const { loadFeaturesMeta, featureSlug, getFeaturesForTag } = await import("../docs/data/load-probes.ts")
-      expect(() => loadFeaturesMeta()).toThrow(/content\/features\.json/)
+      const { loadFeatures } = await import("@terminfo/catalog")
+      const { featureSlug, getFeaturesForTag } = await import("../docs/data/load-probes.ts")
+      expect(() => loadFeatures(contentDir)).toThrow(/content\/features\.json/)
 
       writeFileSync(
         fixture.path,
@@ -53,10 +57,13 @@ test.each(["missing", "malformed", "non-object"] as const)(
             tags: ["ecma-48"],
             probeStatus: "partial",
             sequence: "\\x1b[1m",
+            body: "Bold sets the bold attribute.",
+            probe: "Send SGR 1 and read the cell.",
+            baseline: "supported",
           },
         }),
       )
-      const metadata = loadFeaturesMeta()
+      const metadata = loadFeatures(contentDir)
       expect(metadata).not.toHaveProperty("$comment")
       expect(metadata["sgr.bold"]).toMatchObject({
         name: "Bold",
@@ -96,7 +103,15 @@ test.each(["terminals", "annotations", "categories"] as const)(
       }
       const valid =
         name === "terminals"
-          ? { kitty: { label: "Kitty fixture", slug: "kitty-fixture" } }
+          ? {
+              kitty: {
+                label: "Kitty fixture",
+                slug: "kitty-fixture",
+                url: "https://example.invalid/kitty",
+                description: "A terminal fixture.",
+                body: "<p>A terminal fixture.</p>",
+              },
+            }
           : name === "annotations"
             ? { "kitty:sgr.bold": { note: "fixture" } }
             : { sgr: { label: "Styles", order: 1, description: "styles fixture" } }

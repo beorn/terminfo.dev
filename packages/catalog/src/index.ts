@@ -13,6 +13,10 @@
  *
  * `content/categories.json` is deliberately NOT here — it already has one owner
  * (`docs/data/categories.ts`), and folding it in belongs to the separate layer-loop work.
+ *
+ * Writers that read-modify-write a catalog as raw JSON — `scripts/watch-releases.ts` (terminals)
+ * and `scripts/candidates.ts` (features) — keep their own read, because they round-trip fields this
+ * loader does not model (`latestRelease`). This module is the ONE reader's door, not the writer's.
  */
 import { existsSync, readFileSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
@@ -61,16 +65,17 @@ const cache = new Map<string, unknown>()
 /** Parse one catalog file into a record of entries, dropping `$`-prefixed comment keys. */
 function readObject(contentDir: string, fileName: string): Record<string, unknown> {
   if (!isAbsolute(contentDir)) throw new Error(`Content directory must be absolute: ${contentDir}`)
-  const cacheKey = `${contentDir}#${fileName}`
-  const cached = cache.get(cacheKey)
-  if (cached) return cached as Record<string, unknown>
   const path = join(contentDir, fileName)
   if (!existsSync(path)) throw new Error(`Missing required content catalog: ${path}`)
-  const root = parseJsonStrict(path, readFileSync(path, "utf-8"))
+  let root: unknown
+  try {
+    root = parseJsonStrict(path, readFileSync(path, "utf-8"))
+  } catch (cause) {
+    throw new Error(`${path}: required content catalog could not be read or parsed`, { cause })
+  }
   if (root === null || typeof root !== "object" || Array.isArray(root)) {
     throw new Error(`${path}: expected a catalog object`)
   }
-  cache.set(cacheKey, root)
   return root as Record<string, unknown>
 }
 
@@ -109,12 +114,12 @@ function optionalNumber(path: string, id: string, field: string, value: unknown)
   return value
 }
 
-function entries(root: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
+function entries(path: string, root: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
   const out: Array<[string, Record<string, unknown>]> = []
   for (const [id, value] of Object.entries(root)) {
     if (id.startsWith("$")) continue
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
-      throw new Error(`Catalog entry "${id}" is not an object`)
+      throw new Error(`${path}: entry "${id}" is not an object`)
     }
     out.push([id, value as Record<string, unknown>])
   }
@@ -165,7 +170,7 @@ export function loadFeatures(contentDir: string): FeatureCatalog {
   const path = join(contentDir, "features.json")
   const root = readObject(contentDir, "features.json")
   const catalog: Record<string, FeatureRecord> = {}
-  for (const [id, raw] of entries(root)) catalog[id] = parseFeature(path, id, raw)
+  for (const [id, raw] of entries(path, root)) catalog[id] = parseFeature(path, id, raw)
   const frozen = Object.freeze(catalog)
   cache.set(cacheKey, frozen)
   return frozen
@@ -179,7 +184,7 @@ export function loadTerminals(contentDir: string): TerminalCatalog {
   const path = join(contentDir, "terminals.json")
   const root = readObject(contentDir, "terminals.json")
   const catalog: Record<string, TerminalRecord> = {}
-  for (const [id, raw] of entries(root)) catalog[id] = parseTerminal(path, id, raw)
+  for (const [id, raw] of entries(path, root)) catalog[id] = parseTerminal(path, id, raw)
   const frozen = Object.freeze(catalog)
   cache.set(cacheKey, frozen)
   return frozen

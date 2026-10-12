@@ -55,6 +55,21 @@ function writeCatalog(content: string): void {
   )
 }
 
+/**
+ * A features.json fixture that satisfies @terminfo/catalog's one shape. The selection consumers
+ * these tests police read only the catalog ids, so the record fields are inert placeholders.
+ */
+function featureCatalog(...ids: string[]): string {
+  return JSON.stringify(
+    Object.fromEntries(
+      ids.map((id) => [
+        id,
+        { name: id, slug: id.replaceAll(".", "-"), body: "fixture", probe: "fixture", baseline: "supported" },
+      ]),
+    ),
+  )
+}
+
 describe("consumer selection", () => {
   it("refuses failed discovery and corrupt retained radar records without changing prior findings", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-discovery-errors-"))
@@ -125,7 +140,7 @@ describe("consumer selection", () => {
       symlinkSync(join(source, "node_modules"), join(root, "node_modules"), "dir")
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(root, "content", dir))
       writeCatalog(join(root, "content"))
-      writeFileSync(join(root, "content", "features.json"), '{"sgr.bold":{"name":"Bold"}}')
+      writeFileSync(join(root, "content", "features.json"), featureCatalog("sgr.bold"))
       writeFileSync(
         join(root, "content", "release-scope-candidate2.json"),
         '{"name":"candidate2","frozenSuiteId":"deadbeefcafe","featureIds":["sgr.bold"]}',
@@ -332,7 +347,7 @@ describe("consumer selection", () => {
   it("refuses a malformed required result with its path", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-malformed-selection-"))
     try {
-      writeFileSync(join(content, "features.json"), '{"sgr.bold":{"name":"Bold"}}')
+      writeFileSync(join(content, "features.json"), featureCatalog("sgr.bold"))
       writeFileSync(
         join(content, "release-scope-candidate2.json"),
         '{"name":"candidate2","frozenSuiteId":"deadbeefcafe","featureIds":["sgr.bold"]}',
@@ -348,7 +363,7 @@ describe("consumer selection", () => {
   it("fails loudly when the required release declaration is missing", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-missing-declaration-"))
     try {
-      writeFileSync(join(content, "features.json"), '{"sgr.bold":{"name":"Bold"}}')
+      writeFileSync(join(content, "features.json"), featureCatalog("sgr.bold"))
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(content, dir))
       expect(() => loadCurrentResults(content)).toThrow(/release-scope-candidate2\.json/)
     } finally {

@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { loadTerminals as loadTerminalCatalog } from "@terminfo/catalog"
 import { loadProbes, terminalSlug, loadPlatformsMeta } from "../data/load-probes"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -35,7 +35,7 @@ interface TerminalRow {
 }
 
 function loadTerminals(): Record<string, TerminalMeta> {
-  return JSON.parse(readFileSync(join(contentDir, "terminals.json"), "utf-8")) as Record<string, TerminalMeta>
+  return loadTerminalCatalog(contentDir)
 }
 
 export default {

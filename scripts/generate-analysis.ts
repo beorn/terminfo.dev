@@ -18,6 +18,7 @@ import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
+import { loadFeatures as loadFeatureCatalog, loadTerminals as loadTerminalCatalog } from "@terminfo/catalog"
 import { siteAnalysisPath } from "./site-out.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -120,21 +121,11 @@ function loadJson<T>(path: string, description: string): T {
 }
 
 function loadFeatures(): Record<string, FeatureMeta> {
-  const raw = loadJson<Record<string, FeatureMeta>>(join(contentDir, "features.json"), "feature metadata")
-  delete (raw as Record<string, unknown>).$comment
-  for (const [id, feat] of Object.entries(raw)) {
-    assert(typeof feat.name === "string" && feat.name.length > 0, `Feature '${id}' missing name`)
-  }
-  return raw
+  return loadFeatureCatalog(contentDir)
 }
 
 function loadTerminals(): Record<string, TerminalMeta> {
-  const raw = loadJson<Record<string, TerminalMeta>>(join(contentDir, "terminals.json"), "terminal metadata")
-  for (const [id, term] of Object.entries(raw)) {
-    assert(typeof term.label === "string", `Terminal '${id}' missing label`)
-    assert(typeof term.slug === "string", `Terminal '${id}' missing slug`)
-  }
-  return raw
+  return loadTerminalCatalog(contentDir)
 }
 
 function loadStandards(): Record<string, StandardMeta> {
