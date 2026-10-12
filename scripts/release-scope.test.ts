@@ -4,6 +4,7 @@
  * @consumer terminfo.dev front page and every terminal page
  * @source-grep the VitePress pages and the probes.data.ts loader are wired by text, and the browser-bundled release-scope
  *   helper must import no node:fs; only a full site build exercises either at runtime
+ * @reach fs-walk vendor/terminfo.dev/docs/** vendor/terminfo.dev/scripts/**
  * @testonly none
  */
 import { readFileSync, readdirSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs"
