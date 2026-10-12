@@ -1,25 +1,17 @@
 import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { isBlank, parserStateResult, probe, unmeasuredCellResult } from "./helpers.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
 /**
- * The measured readback for the two text rows that capture an owned window. Same three-frame shape
- * as the editing specs: seed, the sequence applied on top of it, and the frame it must leave,
- * written PLAINLY in the same run, so the app path decides from its own cells.
+ * The one remaining hand-written capture spec: `text.reverse-index-scroll`. Its conversion to the
+ * region-readback kind is HELD for @cto's consolidation ruling (it asserts the same RI capability as
+ * the converted `scrollback.reverse-index` and carries three disagreeing fixtures). Same three-frame
+ * shape as the editing specs: seed, the sequence applied on top of it, and the frame it must leave,
+ * written PLAINLY in the same run, so the app path decides from its own cells. `text.overwrite` is a
+ * row of the region-readback kind below.
  */
 const TEXT_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "text.overwrite": {
-    region: { top: 1, left: 1, bottom: 1, right: 2 },
-    sentinel: { row: 3, col: 1 },
-    cursorRow: 2,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAB\x1b[2;1H",
-    edit: "\x1b[1;2HX\x1b[2;1H",
-    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAX\x1b[2;1H",
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: 3,
-    minCols: 3,
-  },
   "text.reverse-index-scroll": {
     region: { top: 1, left: 1, bottom: 2, right: 7 },
     sentinel: { row: 7, col: 1 },
@@ -33,6 +25,36 @@ const TEXT_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">>
     minCols: 8,
   },
 }
+
+/**
+ * The measured region-readback row of Text (28450; @cto 218ec7fe's rule applied to Text). The row
+ * holds its claim ONCE: the termless arm reads its seed, its step and its target cells against the
+ * parser, and the kind derives the capture-region oracle's frames from the same fields, so the two
+ * arms cannot grade two fixtures.
+ *
+ * Decision named in this diff: `text.overwrite` shipped TWO fixtures that disagreed — a termless one
+ * that wrote C at column 1 and expected "CB", and the readback one below that writes X at column 2
+ * and expects "AX". One row removes the disagreement; the READBACK fixture wins, exactly as it did
+ * for `erase.character` and DECERA. The claim is the readback's.
+ *
+ * `text.reverse-index-scroll` is NOT here. It asserts the same RI capability as the converted
+ * `scrollback.reverse-index` and carries three disagreeing fixtures, so its conversion waits on
+ * @cto's consolidation ruling (retire as superseded, or keep as RI-inside-a-non-default-region).
+ */
+export const textReadbackRows: readonly RegionReadbackRow[] = [
+  {
+    id: "text.overwrite",
+    expected: "writing X over the second cell overwrites B while A remains",
+    seed: "\x1b[1;1HAB",
+    before: [["A", "B"]],
+    steps: [{ write: "\x1b[1;2HX" }],
+    after: [["A", "X"]],
+    controls: [{ row: 0, col: 0, char: "A" }],
+    seedNote: "AB control was not measured",
+    controlNote: "the overwrite control cell changed",
+    reset: "",
+  },
+]
 
 /** Each tab probe owns its stops; the app runner supplies a disposable terminal fixture. */
 function installTabFixture(write: (sequence: string) => void): void {
@@ -380,6 +402,8 @@ function emojiWidthResult(ctx: TermlessContext, { sample, maxColumns }: Declared
 }
 
 export const textProbes: ProbeDefinition[] = [
+  ...regionReadbackProbes(textReadbackRows),
+
   {
     ...probe(
       "text.basic",
@@ -764,80 +788,6 @@ export const textProbes: ProbeDefinition[] = [
             },
           ],
         }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  {
-    ...probe(
-      "text.overwrite",
-      (ctx) => {
-        ctx.feed("AB")
-        const before = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
-        ctx.feed("\x1b[1GC")
-        const first = ctx.getCell(0, 0)
-        const second = ctx.getCell(0, 1)
-        const ready = before[0]?.char === "A" && before[1]?.char === "B"
-        return parserStateResult(
-          ready ? first.char === "C" && second.char === "B" : null,
-          "C overwrites A while B remains",
-          { before, first, second },
-          ready ? undefined : "AB control was not measured",
-        )
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const refusal = tooSmall(ctx, 1, 3)
-          if (refusal) return refusal
-          const readback = TEXT_READBACK_SPECS["text.overwrite"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "text.overwrite", readback)
-            if (verdict) return verdict
-          }
-          try {
-            ctx.write("\x1b[0m\x1b[1;1H\x1b[2K")
-            ctx.write("AB")
-            const control = await capture({
-              role: "control",
-              label: "Row 1 shows AB before the overwrite write",
-            })
-            ctx.write("\x1b[1;2H")
-            ctx.write("X")
-            const target = await capture({
-              role: "target",
-              label: "Row 1 shows AX after writing X over B at column 2",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows: ctx.rows,
-                cols: ctx.cols,
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "The second cell changing from B to X requires independent pixel review; cursor position does not measure cell contents",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[0m\x1b[1;1H\x1b[2K")
-          }
-        }
-        const refusal = tooSmall(ctx, 1, 3)
-        if (refusal) return refusal
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("AB") // cursor at col 3
-        ctx.write("\x1b[1;2H") // move back to col 2
-        ctx.write("X") // overwrite B
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "overwritten B cell")
       },
     ),
     termNeedsGeometry: true,
