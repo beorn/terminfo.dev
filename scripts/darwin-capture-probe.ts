@@ -126,7 +126,15 @@ await waitFor(join(out, "phase-a"), 60_000, "the terminal's phase-A marker")
 report.phaseAAt = new Date().toISOString()
 write()
 
+// A window launched from a background step may never be ordered on screen, so the app is asked to
+// come to the front before the census. Both the request and its outcome are recorded.
+record("activate", ["/usr/bin/open", "-a", "/Applications/Ghostty.app"])
+await new Promise((resolve) => setTimeout(resolve, 2000))
+
 // 4. The CoreGraphics census: window number, owner PID, layer and bounds IN POINTS.
+// OptionAll, not OnScreenOnly: the first probe found five windows (Control Center, Window Server,
+// Dock) and no terminal at all, so the diagnostic must see off-screen windows too and say which is
+// which rather than conclude "no window exists".
 const censusScript = `ObjC.import("CoreGraphics"); ObjC.import("Foundation");
 function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
 function bounds(dict) {
@@ -135,12 +143,12 @@ function bounds(dict) {
   function n(k) { var v = b.objectForKey(k); return v ? Number(v.js) : null; }
   return { X: n("X"), Y: n("Y"), Width: n("Width"), Height: n("Height") };
 }
-var raw = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID);
+var raw = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionAll | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID);
 if (!raw) throw new Error("CGWindowListCopyWindowInfo returned null");
 var rows = [], count = $.CFArrayGetCount(raw);
 for (var i = 0; i < count; i++) {
   var w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(raw, i));
-  rows.push({ number: value(w, "kCGWindowNumber"), owner: value(w, "kCGWindowOwnerName"), pid: value(w, "kCGWindowOwnerPID"), layer: value(w, "kCGWindowLayer"), bounds: bounds(w) });
+  rows.push({ number: value(w, "kCGWindowNumber"), owner: value(w, "kCGWindowOwnerName"), pid: value(w, "kCGWindowOwnerPID"), layer: value(w, "kCGWindowLayer"), onscreen: value(w, "kCGWindowIsOnscreen"), alpha: value(w, "kCGWindowAlpha"), name: value(w, "kCGWindowName"), bounds: bounds(w) });
 }
 JSON.stringify({ windows: rows });`
 
@@ -157,14 +165,31 @@ async function capture(phase: string): Promise<Record<string, unknown>> {
       owner: string | null
       pid: number | null
       layer: number
+      onscreen: boolean | null
+      alpha: number | null
+      name: string | null
       bounds: Record<string, number> | null
     }[]
   }
-  const owned = census.windows.filter((w) => w.owner === "ghostty")
+  const owned = census.windows.filter((w) => (w.owner ?? "").trim().toLowerCase() === "ghostty")
   row.ghosttyWindows = owned
   row.censusTotal = census.windows.length
-  const target = owned.find((w) => w.layer === 0)
-  if (!target) throw new Error(`No layer-0 ghostty window in the ${census.windows.length}-window census`)
+  // Prefer an on-screen layer-0 window, then any layer-0 one, and record which rule matched so a
+  // future reader can tell a real capture from a lucky one.
+  const target =
+    owned.find((w) => w.layer === 0 && w.onscreen === true) ??
+    owned.find((w) => w.layer === 0) ??
+    owned.find((w) => w.onscreen === true)
+  if (!target) {
+    const summary = census.windows.map((w) => `${w.owner ?? "?"}/${w.layer}/${String(w.onscreen)}`).join(", ")
+    throw new Error(`No ghostty window in the ${census.windows.length}-window census: ${summary}`)
+  }
+  row.targetRule =
+    target.layer === 0 && target.onscreen === true
+      ? "layer 0 and on screen"
+      : target.layer === 0
+        ? "layer 0, NOT on screen"
+        : "on screen, layer " + String(target.layer)
   row.ownerPidMatchesApp = target.pid === child.pid
   row.windowNumber = target.number
   row.windowBoundsPoints = target.bounds
