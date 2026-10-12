@@ -43,12 +43,20 @@ const baselineFeatureIds = computed(() => {
 const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'editing', 'modes', 'scrollback', 'reset', 'extensions', 'charsets', 'device', 'input', 'graphics', 'unicode']
 const categoryLabels = data.categoryLabels ?? {}
 
-// Sort backends by score (highest first)
+// ONE basis for this page: the release bar. Its widths, its tooltips and this order all fold the same
+// classified rows, so no two of them can tell a different story about a terminal (28792 item 1). The
+// share read here is the bar's own SUPPORTED share of its denominator — the green segment's fraction.
+function releaseSharePct(backendName) {
+  const bar = data.releaseBars[backendName]
+  if (!bar?.denominator) return -1
+  return (bar.counts.supported / bar.denominator) * 100
+}
+
+// Sort backends by that one basis (highest first), then by name so the order is deterministic.
 const sortedBackends = computed(() => {
   return [...data.backends].sort((a, b) => {
-    const aPct = data.stats[a.name]?.pct ?? 0
-    const bPct = data.stats[b.name]?.pct ?? 0
-    return bPct - aPct
+    const delta = releaseSharePct(b.name) - releaseSharePct(a.name)
+    return delta !== 0 ? delta : a.name.localeCompare(b.name)
   })
 })
 
@@ -56,6 +64,10 @@ const sortedBackends = computed(() => {
 const allAppBackends = computed(() => sortedBackends.value.filter(b => b.type === 'app'))
 const headlessBackends = computed(() => sortedBackends.value.filter(b => b.type === 'headless'))
 const muxBackends = computed(() => sortedBackends.value.filter(b => b.type === 'mux'))
+
+// The page names the ONE basis it reads, so a reader can tell which rows a bar, a tooltip and the
+// order below are about (28792 item 1, increment 5).
+const basisNote = `Bars, tooltips and this order all read one basis: the ${data.releaseScope.scoredIds.length} app-scorable rows of this release, classified once in the reader.`
 
 // Filter app backends by platform
 const appBackends = computed(() => {
@@ -130,17 +142,23 @@ function catLabel(cat) {
 }
 
 function barSegmentTooltip(backendName, segment) {
-  const r = data.results[backendName] ?? {}
+  // The tooltip names the rows of the SEGMENT the reader is hovering, read over the bar's own basis:
+  // the released rows, in their classified state. A red segment lists unsupported rows only, never
+  // the untested ones the old all-results tooltip swept in.
+  const selected = data.selectedByBackend[backendName]?.selected
+  const states = selected ? data.releaseTable[selected.runId] : undefined
+  if (!states) return ''
   const n = data.notes[backendName] ?? {}
   const items = []
-  for (const [id, v] of Object.entries(r)) {
+  for (const id of data.releaseScope.scoredIds) {
+    const state = states[id] ?? 'untested'
     const name = data.featureDescriptions[id]?.name ?? id
-    if (segment === 'yes' && v === 'yes') {
+    if (segment === 'yes' && state === 'supported') {
       items.push(`  ✓ ${name}`)
-    } else if (segment === 'partial' && v === 'partial') {
+    } else if (segment === 'partial' && state === 'inconclusive') {
       const note = n[id]
       items.push(note ? `  ~ ${name}: ${note}` : `  ~ ${name}`)
-    } else if (segment === 'fail' && v !== 'yes' && v !== 'partial') {
+    } else if (segment === 'fail' && state === 'unsupported') {
       const note = n[id]
       items.push(note ? `  ✗ ${name}: ${note}` : `  ✗ ${name}`)
     }
@@ -230,6 +248,7 @@ function backendTooltip(name, version) {
   <p>Does your terminal support truecolor, modern keyboard protocols, or image rendering? Real data from automated tests (<a href="https://termless.dev">Termless</a>) and <a href="/contribute">user contributions</a>.</p>
   <p class="tier-line">{{ data.releaseScope.line }}</p>
   <p v-if="data.releaseScope.libraryOnlyIds.length" class="tier-line">{{ data.releaseScope.libraryOnlyIds.length }} {{ data.releaseScope.libraryOnlyIds.length === 1 ? 'row is' : 'rows are' }} library-only and not scored in apps: {{ data.releaseScope.libraryOnlyIds.join(', ') }}.</p>
+  <p class="tier-line">{{ basisNote }}</p>
   <details class="unmeasured">
     <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
     <ul>
