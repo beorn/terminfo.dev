@@ -6,14 +6,14 @@
  * multi-context tie with the reviewed `default-contexts.json` row, and `decisive-share` printed the
  * choice of a private fallback chain beside it. One rule, two callers.
  */
-import { isStaleRelation, type SuiteRelation } from "./release-scope.ts"
+import { isStaleRelation, type CellState, type SuiteRelation } from "./release-scope.ts"
 import type { SelectedVersion } from "./selected-results.ts"
 
 /**
- * Minimal cell view `barOverMeasured` consumes; `SelectedCell` satisfies it structurally. `reason`
- * and `note` are carried so a consumer can print the RUN'S OWN words for an inconclusive row (the
- * named cause, such as a terminal that never answers `CSI 16 t`) instead of paraphrasing one of its
- * own.
+ * Minimal cell view a reader keeps beside the classified `states`; `SelectedCell` satisfies it
+ * structurally. `reason` and `note` are carried so a consumer can print the RUN'S OWN words for an
+ * inconclusive row (the named cause, such as a terminal that never answers `CSI 16 t`) instead of
+ * paraphrasing one of its own. Bars are cut over `states`; this raw view is only the run's own words.
  */
 export type ShareCells = Record<string, { outcome: string; conclusive?: boolean; reason?: string; note?: string }>
 
@@ -31,10 +31,19 @@ export interface ContextCandidate {
   suiteFreshness: string
   suiteRelation: SuiteRelation
   cells: ShareCells
+  /**
+   * The run's cells, classified once by the projection (28792 item 1). A reader cuts its bars over
+   * this, never over `cells`, so `classifyCell` never runs outside the projection.
+   */
+  states: Readonly<Record<string, CellState>>
 }
 
 /** The candidate for one context key, from the projection's own selected version. */
-export function candidateFromSelected(key: string, selected: SelectedVersion): ContextCandidate {
+export function candidateFromSelected(
+  key: string,
+  selected: SelectedVersion,
+  states: Readonly<Record<string, CellState>>,
+): ContextCandidate {
   return {
     key,
     kind: selected.target.kind,
@@ -48,6 +57,7 @@ export function candidateFromSelected(key: string, selected: SelectedVersion): C
     suiteFreshness: selected.suiteFreshness,
     suiteRelation: selected.suiteRelation,
     cells: selected.cells,
+    states,
   }
 }
 

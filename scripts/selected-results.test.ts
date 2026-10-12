@@ -16,7 +16,7 @@ import {
   readVerifiedScreenshot,
 } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
-import { aggregateCells, barOverMeasured, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
+import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
@@ -461,7 +461,7 @@ describe("selected results", () => {
     expect(isStaleRelation(onOther!.suiteRelation)).toBe(true)
   })
 
-  it("classifies once into the projection table, and the retired bar equals the table for every basis (28792 item 1)", () => {
+  it("classifies every read run once into the projection table, one row per feature, named per basis (28792)", () => {
     const parsed = parseRun(
       "table-parity.json",
       JSON.stringify(
@@ -475,31 +475,28 @@ describe("selected results", () => {
       catalog,
     )
     const projection = projectResults([parsed], [reviewFor(parsed)], catalog, { currentProbeHash: "current" })
-    const keys = Object.keys(projection.current)
-    expect(keys.length).toBeGreaterThan(0)
-    for (const key of keys) {
-      const version = projection.current[key]!
-      const table = projection.table[key]!
+    const versions = Object.values(projection.history).flat()
+    expect(versions.length).toBeGreaterThan(0)
+    // Every run the projection read has exactly one classified row, and no run is classified twice.
+    expect(Object.keys(projection.table).sort()).toEqual(versions.map((value) => value.runId).sort())
+    for (const version of versions) {
+      const table = projection.table[version.runId]!
       // The table IS the classification: one call per cell, made once in the projection.
       for (const [featureId, cell] of Object.entries(version.cells)) {
         expect(table[featureId]).toBe(classifyCell(cell))
       }
       const present = Object.keys(version.cells)
-      // Every basis shape the consumers use: the selected cells, a basis naming an absent cell, and none.
+      // Every basis shape the consumers use: the run's own cells, a basis naming an absent cell, and none.
       for (const ids of [present, [...present, "not.a.catalog.id"], []]) {
-        const bar = barOverMeasured(version.cells, ids)
         const aggregate = aggregateCells(table, ids)
-        expect(aggregate.denominator).toBe(bar.denominator)
-        expect(aggregate.counts).toEqual({
-          supported: bar.supported,
-          unsupported: bar.unsupported,
-          inconclusive: bar.inconclusive,
-          error: bar.errors,
-          untested: bar.untested,
-        })
+        // The fold's denominator is the basis, and every basis id lands in exactly one named state.
+        expect(aggregate.denominator).toBe(ids.length)
+        expect(Object.values(aggregate.counts).reduce((sum, count) => sum + count, 0)).toBe(ids.length)
         expect(Object.values(aggregate.idsByState).flat()).toHaveLength(ids.length)
       }
     }
+    // The selected run is one of them, so a bar consumer reads `table[current[context].runId]`.
+    expect(projection.table[projection.current["app:kitty"]!.runId]).toBeDefined()
   })
 
   it("verifies screenshot bytes without writing and refuses missing, modified, or non-PNG artifacts", () => {

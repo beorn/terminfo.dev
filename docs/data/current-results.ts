@@ -7,6 +7,7 @@ import {
   maskRunnerStorePath,
   type SelectedProjection,
   type SelectedVersion,
+  statesFor,
 } from "./selected-results.ts"
 import { frozenSuiteIdFor } from "./load-release-scope.ts"
 import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
@@ -115,12 +116,41 @@ function compatibilityKey(kind: TargetKind, id: string, catalog: CatalogKeys): s
   return kind === owner ? bare : `${kind}-${bare}`
 }
 
+/**
+ * The projection is the ONE read of the committed corpus, and it is expensive: it parses every run,
+ * verifies every screenshot digest and classifies every cell. Each published consumer used to call the
+ * reader for itself, so one `bun run build` read the same corpus once per consumer (measured 2026-10-12:
+ * sixteen times) when it needed one read (28792 item 1 — project once per build).
+ *
+ * The memo cannot live at module scope: VitePress bundles each data loader's module graph separately
+ * (seven `*.paths.ts` files, `probes.data.ts`, `candidate-2.data.ts` and `config.ts` each carry their
+ * own copy of this module), so a module-level Map would still read the corpus once per BUNDLE. The
+ * cache therefore hangs off `globalThis` under a registered symbol, which every copy in one process
+ * shares — the corpus is read once per process.
+ *
+ * The cache never outlives its process: content/ is read with `node:fs`, not imported, so a consumer
+ * asks a new process for new data (a site build, a CLI run) — the same freshness the reader had before
+ * this cache, since VitePress never watched content/. Nothing goes stale silently.
+ */
+const RESULTS_CACHE = Symbol.for("terminfo.dev/currentResultsCache")
+const cacheHost = globalThis as unknown as { [k: symbol]: Map<string, CurrentResults> | undefined }
+
+function currentResultsCache(): Map<string, CurrentResults> {
+  return (cacheHost[RESULTS_CACHE] ??= new Map())
+}
+
 export function loadCurrentResults(contentDir: string, options: { artifactDir?: string } = {}): CurrentResults {
-  const projection = loadSelectedResults(contentDir, probeHash(), {
-    ...options,
-    releaseSuiteId: releaseSuiteIdFor(contentDir),
-  })
-  return { projection }
+  // `releaseSuiteIdFor` is read first and throws loudly when the registry names no suite, exactly as the
+  // argument it used to be evaluated as did.
+  const releaseSuiteId = releaseSuiteIdFor(contentDir)
+  const key = `${contentDir}\u0000${probeHash()}\u0000${options.artifactDir ?? ""}\u0000${releaseSuiteId}`
+  const cache = currentResultsCache()
+  const memoized = cache.get(key)
+  if (memoized) return memoized
+  const projection = loadSelectedResults(contentDir, probeHash(), { ...options, releaseSuiteId })
+  const results: CurrentResults = { projection }
+  cache.set(key, results)
+  return results
 }
 
 /**
@@ -185,7 +215,7 @@ export function compatibilityTargets(projection: SelectedProjection, contentDir:
     // The one run-selection rule; this site and the decisive-share reader must not hold two copies.
     const byKey = new Map(group.map((entry) => [entry.contextKey, entry]))
     const picked = pickContextRun(
-      group.map((entry) => candidateFromSelected(entry.contextKey, entry.selected)),
+      group.map((entry) => candidateFromSelected(entry.contextKey, entry.selected, statesFor(projection, entry.selected.runId))),
       review,
     )
     if (picked === undefined) throw new Error(`No current run for ${targetKey}`)

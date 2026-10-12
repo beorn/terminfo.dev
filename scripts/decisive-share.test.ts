@@ -37,7 +37,7 @@ import {
   tierOneIds,
 } from "./decisive-share.ts"
 import { pickContextRun, type ContextCandidate } from "../docs/data/run-selection.ts"
-import { d3Verdict, tier1Included } from "../docs/data/release-scope.ts"
+import { classifyCells, d3Verdict, tier1Included } from "../docs/data/release-scope.ts"
 import { loadCategories } from "../docs/data/categories.ts"
 import { loadFeatures } from "@terminfo/catalog"
 
@@ -52,6 +52,9 @@ const cells = {
 }
 
 function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate {
+  // The run's states are the ONE classification of its cells: a fixture that overrides `cells` gets the
+  // matching `states` for free, so a reader cutting a bar over `states` sees the run the fixture names.
+  const runCells = overrides.cells ?? cells
   return {
     key: "app:alacritty@[linux]",
     kind: "app",
@@ -66,7 +69,8 @@ function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate 
     // so through overrides — never by re-parsing the label the change removed.
     suiteFreshness: "tree suite 21739d9e768f",
     suiteRelation: "tree",
-    cells,
+    cells: runCells,
+    states: classifyCells(runCells),
     ...overrides,
   }
 }
@@ -269,7 +273,7 @@ describe("release 1 decisive-count reader", () => {
   })
 
   it("splits a fixture run into decisive, inconclusive and named remainder buckets", () => {
-    const share = decisiveShare(cells, IDS)
+    const share = decisiveShare(classifyCells(cells), IDS)
     expect(share.denominator).toBe(6)
     expect(share.decisive).toBe(3)
     expect(share.decisivePct).toBe(50)
@@ -285,7 +289,7 @@ describe("release 1 decisive-count reader", () => {
 
   it("names every row of a 62-row remainder as untested when only a few cells exist", () => {
     const measured = Array.from({ length: 62 }, (_, index) => `f.${index}`)
-    const share = decisiveShare({ "f.0": { outcome: "supported", conclusive: true } }, measured)
+    const share = decisiveShare(classifyCells({ "f.0": { outcome: "supported", conclusive: true } }), measured)
     expect(share.decisive).toBe(1)
     expect(share.decisivePct).toBe(2)
     expect(share.inconclusive).toBe(0)
@@ -294,7 +298,9 @@ describe("release 1 decisive-count reader", () => {
   })
 
   it("counts a supported outcome on non-measuring evidence as inconclusive, not decisive", () => {
-    const share = decisiveShare({ "a.supported": { outcome: "supported", conclusive: false } }, ["a.supported"])
+    const share = decisiveShare(classifyCells({ "a.supported": { outcome: "supported", conclusive: false } }), [
+      "a.supported",
+    ])
     expect(share.decisive).toBe(0)
     expect(share.inconclusive).toBe(1)
     expect(share.remainder).toEqual([])
@@ -312,7 +318,7 @@ describe("release 1 decisive-count reader", () => {
     expect(d3Verdict(0, 52).label).toBe("fail")
 
     const allDecisive = Object.fromEntries(IDS.map((id) => [id, { outcome: "supported", conclusive: true }]))
-    const pass = decisiveShare(allDecisive, IDS)
+    const pass = decisiveShare(classifyCells(allDecisive), IDS)
     expect(pass.decisivePct).toBe(100)
     expect(pass.verdict.text).toBe("pass · 6/6")
     // A verdict over zero included capabilities is not "fail" — it is not measured, and it refuses.
@@ -592,7 +598,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       "erase.a": { outcome: "error" },
     }
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
-    const shares = categoryShares(cells, categories)
+    const shares = categoryShares(classifyCells(cells), categories)
     const sgr = shares.find((entry) => entry.category.key === "sgr")
     if (!sgr) throw new Error("sgr share absent")
     expect(sgr.share).toMatchObject({ denominator: 2, decisive: 1, verdict: { label: "fail" } })
@@ -611,7 +617,7 @@ describe("per-category decisive share (28018 AC2)", () => {
   it("keeps each category's remainder disjoint — an error in one category never bleeds into another", () => {
     const categories = cohortCategories(["sgr.a", "cursor.a", "cursor.b"], catalog)
     const cells = { "sgr.a": { outcome: "error" }, "cursor.a": { outcome: "supported", conclusive: true } }
-    const shares = categoryShares(cells, categories)
+    const shares = categoryShares(classifyCells(cells), categories)
     const sgr = shares.find((entry) => entry.category.key === "sgr")
     const cursor = shares.find((entry) => entry.category.key === "cursor")
     if (!sgr || !cursor) throw new Error("category share absent")
@@ -627,8 +633,12 @@ describe("per-category decisive share (28018 AC2)", () => {
       ...Array.from({ length: 9 }, (_, index) => [`sgr.${index}`, { outcome: "supported", conclusive: true }]),
       ["cursor.0", { outcome: "error" }],
     ])
-    expect(decisiveShare(cells, ids)).toMatchObject({ denominator: 10, decisive: 9, verdict: { label: "pass" } })
-    const shares = categoryShares(cells, categories)
+    expect(decisiveShare(classifyCells(cells), ids)).toMatchObject({
+      denominator: 10,
+      decisive: 9,
+      verdict: { label: "pass" },
+    })
+    const shares = categoryShares(classifyCells(cells), categories)
     expect(shares.find((entry) => entry.category.key === "sgr")?.share.verdict.label).toBe("pass")
     expect(shares.find((entry) => entry.category.key === "cursor")?.share.verdict.label).toBe("fail")
   })
@@ -642,7 +652,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       selection: "only current",
       measured: true,
       run: candidate({ cells }),
-      share: decisiveShare(cells, ["sgr.a"]),
+      share: decisiveShare(classifyCells(cells), ["sgr.a"]),
     }
     const measuredLines = formatCohortRow(measured, categories, labelWidth)
     expect(
@@ -669,7 +679,7 @@ describe("per-category decisive share (28018 AC2)", () => {
     expect(header.toLowerCase()).not.toContain("group")
     const categories = cohortCategories(["sgr.a"], catalog)
     const cells = { "sgr.a": { outcome: "supported", conclusive: true } }
-    const printed = formatCategoryRow(categories[0]!, decisiveShare(cells, ["sgr.a"]), 19)
+    const printed = formatCategoryRow(categories[0]!, decisiveShare(classifyCells(cells), ["sgr.a"]), 19)
     expect(printed[0]).toContain("SGR (Text Styling)")
     expect(printed[0]!.toLowerCase()).not.toContain("group")
   })
@@ -774,9 +784,9 @@ describe("per-category decisive share (28018 AC2)", () => {
     for (const row of report.candidate2.barRows) {
       if (!("run" in row) || !row.measured) continue
       for (const category of categories) {
-        const before = decisiveShare(row.run.cells, category.ids)
+        const before = decisiveShare(row.run.states, category.ids)
         const after = decisiveShare(
-          row.run.cells,
+          row.run.states,
           category.ids.filter((id) => !unavailable.has(id)),
         )
         if (before.verdict.label !== after.verdict.label) flips++

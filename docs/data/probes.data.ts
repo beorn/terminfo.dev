@@ -16,19 +16,19 @@ import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories } from "./categories.ts"
 import { loadReleaseScope } from "./load-release-scope.ts"
+import { type CellTable } from "./selected-results.ts"
 import {
-  barOverMeasured,
+  aggregateCells,
   coverageSentence,
   d3Verdict,
-  classifyCell,
   isStaleRelation,
   staleCaption,
   supportedShare,
   tier1Included,
   tierLine,
   type D3Verdict,
+  type CellAggregate,
   type CellState,
-  type MeasuredBar,
   type ReleaseScope,
 } from "./release-scope.ts"
 
@@ -101,13 +101,19 @@ export interface ProbeData {
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
   releaseScope: ReleaseScope & { line: string }
-  releaseBars: Record<string, MeasuredBar>
+  releaseBars: Record<string, CellAggregate>
   /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
   releaseShares: Record<string, string>
   /** Backend name -> the D3 release verdict over the INCLUDED 52 (@chief 2026-10-07). */
   releaseVerdicts: Record<string, D3Verdict>
   /** Default-run stale caption when suiteFreshness is not current; null when current. */
   releaseStale: Record<string, string | null>
+  /**
+   * The reader's classified table for every run a terminal page can pick, keyed by run id: one
+   * classification per cell, made once in the projection. A page folds it (`aggregateCells`) for the
+   * basis it shows rather than walking the run's raw cells, so no page holds a second classifier.
+   */
+  releaseTable: Record<string, Readonly<Record<string, CellState>>>
   /** The two suite facts, and whether the live tree has moved past the release suite (one banner when it has). */
   suiteMove: { treeSuiteId: string; releaseSuiteId: string | null; treeMovedPastRelease: boolean }
 }
@@ -255,7 +261,7 @@ export function loadFullProbes(): ProbeData {
     ...release,
     line: tierLine(release, generated ? { measuredAt: generated } : undefined),
   }
-  const releaseBars: Record<string, MeasuredBar> = {}
+  const releaseBars: Record<string, CellAggregate> = {}
   const releaseShares: Record<string, string> = {}
   const releaseVerdicts: Record<string, D3Verdict> = {}
   const releaseStale: Record<string, string | null> = {}
@@ -265,15 +271,28 @@ export function loadFullProbes(): ProbeData {
   // the labels and the D3 rule).
   const includedIds = tier1Included(featureDescriptions, release.scoredIds)
   for (const [key, { selected }] of byTarget) {
-    const bar = barOverMeasured(selected.cells, release.scoredIds)
+    // One fold over the reader's classified table, never a second walk over the run's raw cells.
+    const table = projection.table[selected.runId]
+    if (!table) throw new Error(`release bar ${key}: the projection classified no row for run ${selected.runId}`)
+    const bar = aggregateCells(table, release.scoredIds)
     if (bar.denominator && coverageSentence(bar) === "No selected run") {
       throw new Error(`release bar ${key} has a denominator but no coverage sentence`)
     }
     releaseBars[key] = bar
     releaseShares[key] = supportedShare(bar)
-    const includedBar = barOverMeasured(selected.cells, includedIds)
-    if (includedBar.denominator > 0) releaseVerdicts[key] = d3Verdict(includedBar.conclusive, includedBar.denominator)
+    const includedBar = aggregateCells(table, includedIds)
+    if (includedBar.denominator > 0) {
+      const decisive = includedBar.counts.supported + includedBar.counts.unsupported
+      releaseVerdicts[key] = d3Verdict(decisive, includedBar.denominator)
+    }
     releaseStale[key] = isStaleRelation(selected.suiteRelation) ? staleCaption(selected.measuredAt) : null
+  }
+  // The table slice a terminal page folds: every run its run picker can select, classified once here.
+  const releaseTable: Record<string, Readonly<Record<string, CellState>>> = {}
+  for (const run of Object.values(published.projection.versions).flat()) {
+    const rows = projection.table[run.runId]
+    if (!rows) throw new Error(`The projection classified no row for version run ${run.runId}`)
+    releaseTable[run.runId] = rows
   }
   const result: ProbeData = {
     backends,
@@ -297,13 +316,14 @@ export function loadFullProbes(): ProbeData {
     releaseShares,
     releaseVerdicts,
     releaseStale,
+    releaseTable,
     suiteMove: {
       treeSuiteId: projection.treeSuiteId,
       releaseSuiteId: projection.releaseSuiteId,
       treeMovedPastRelease: projection.treeMovedPastRelease,
     },
   }
-  computeBaselines(result)
+  computeBaselines(result, projection.table)
   return result
 }
 
@@ -314,7 +334,7 @@ export default {
   },
 }
 
-function computeBaselines(data: ProbeData): void {
+function computeBaselines(data: ProbeData, table: CellTable): void {
   const baselineOrder = ["core", "modern", "rich", "unicode", "legacy"]
   const baselines: Record<string, string[]> = {}
   for (const bl of baselineOrder) baselines[bl] = []
@@ -329,13 +349,13 @@ function computeBaselines(data: ProbeData): void {
   for (const backend of data.backends) {
     const backendStats: Record<string, BaselineStats> = {}
     baselineStats[backend.name] = backendStats
-    const cells = data.selectedByBackend[backend.name]?.selected.cells
-    if (!cells) throw new Error(`Missing selected public cells for ${backend.name}`)
+    const selected = data.selectedByBackend[backend.name]?.selected
+    if (!selected) throw new Error(`Missing selected public run for ${backend.name}`)
+    const rows = table[selected.runId]
+    if (!rows) throw new Error(`The projection classified no row for run ${selected.runId}`)
     for (const bl of baselineOrder) {
       const ids = baselines[bl] ?? []
-      const count: Record<CellState, number> = { supported: 0, unsupported: 0, inconclusive: 0, error: 0, untested: 0 }
-      for (const id of ids) count[classifyCell(cells[id])]++
-      const { supported, unsupported, inconclusive, error: errors, untested } = count
+      const { supported, unsupported, inconclusive, error: errors, untested } = aggregateCells(rows, ids).counts
       const total = supported + unsupported
       backendStats[bl] = {
         total,

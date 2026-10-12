@@ -153,14 +153,14 @@ function barSegmentTooltip(backendName, segment) {
 function failBarWidth(backendName) {
   const bar = data.releaseBars[backendName]
   if (!bar?.denominator) return '0%'
-  return (bar.unsupported / bar.denominator * 100) + '%'
+  return (bar.counts.unsupported / bar.denominator * 100) + '%'
 }
 
 function barWidth(backendName, segment) {
   const bar = data.releaseBars[backendName]
   if (!bar?.denominator) return '0%'
-  if (segment === 'yes') return (bar.supported / bar.denominator * 100) + '%'
-  if (segment === 'partial') return (bar.inconclusive / bar.denominator * 100) + '%'
+  if (segment === 'yes') return (bar.counts.supported / bar.denominator * 100) + '%'
+  if (segment === 'partial') return (bar.counts.inconclusive / bar.denominator * 100) + '%'
   return '0%'
 }
 

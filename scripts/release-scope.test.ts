@@ -19,7 +19,8 @@ import {
   loadReleaseScope,
 } from "../docs/data/load-release-scope.ts"
 import {
-  barOverMeasured,
+  aggregateCells,
+  classifyCells,
   coverageSentence,
   supportedShare,
   isStaleRelation,
@@ -140,31 +141,32 @@ describe("release 1 measurement scope", () => {
     const firstMeasured = scope.measuredIds[0]
     if (!firstMeasured) throw new Error("release scope has no measured ids")
     cells[firstMeasured] = { outcome: "unsupported", conclusive: true }
-    const bar = barOverMeasured(cells, scope.measuredIds)
+    const bar = aggregateCells(classifyCells(cells), scope.measuredIds)
     expect(bar.denominator).toBe(62)
-    expect(bar.supported).toBe(0)
-    expect(bar.unsupported).toBe(1)
-    expect(bar.fillPct).toBe(0)
-    expect(bar.untested).toBe(61)
+    expect(bar.counts.supported).toBe(0)
+    expect(bar.counts.unsupported).toBe(1)
+    expect(supportedShare(bar)).toBe("0% supported of 62")
+    expect(bar.counts.untested).toBe(61)
   })
 
   it("scores fill percent over the 62 even when every measured cell is untested", () => {
-    const bar = barOverMeasured({}, scope.measuredIds)
+    const bar = aggregateCells({}, scope.measuredIds)
     expect(bar.denominator).toBe(62)
-    expect(bar.conclusive).toBe(0)
-    expect(bar.fillPct).toBe(0)
-    expect(bar.untested).toBe(62)
+    expect(bar.counts.supported + bar.counts.unsupported).toBe(0)
+    expect(supportedShare(bar)).toBe("0% supported of 62")
+    expect(bar.counts.untested).toBe(62)
   })
 
   it("names each row's SUPPORTED share over the 62, never as the decisive share", () => {
     const firstMeasured = scope.measuredIds[0]
     if (!firstMeasured) throw new Error("release scope has no measured ids")
-    const oneSupported = barOverMeasured(
-      { [firstMeasured]: { outcome: "supported", conclusive: true } },
+    const oneSupported = aggregateCells(
+      classifyCells({ [firstMeasured]: { outcome: "supported", conclusive: true } }),
       scope.measuredIds,
     )
-    expect(supportedShare(oneSupported)).toBe(`${oneSupported.fillPct}% supported of 62`)
-    expect(supportedShare(barOverMeasured({}, scope.measuredIds))).toBe("0% supported of 62")
+    // 1/62 rounds to 2%: the label reads the SUPPORTED share of the 62, never the decisive share.
+    expect(supportedShare(oneSupported)).toBe("2% supported of 62")
+    expect(supportedShare(aggregateCells({}, scope.measuredIds))).toBe("0% supported of 62")
     expect(supportedShare({ ...oneSupported, denominator: 0 })).toBe("No selected run")
   })
 
@@ -174,9 +176,9 @@ describe("release 1 measurement scope", () => {
     const firstMeasured = scope.measuredIds[0]
     if (!firstMeasured) throw new Error("release scope has no measured ids")
     cells[firstMeasured] = { outcome: "supported", conclusive: true }
-    const bar = barOverMeasured(cells, scope.measuredIds)
+    const bar = aggregateCells(classifyCells(cells), scope.measuredIds)
     expect(coverageSentence(bar)).toBe("1 supported · 0 unsupported · 0 inconclusive · 0 errors · 61 untested")
-    expect(coverageSentence(barOverMeasured({}, scope.measuredIds))).toBe(
+    expect(coverageSentence(aggregateCells({}, scope.measuredIds))).toBe(
       "0 supported · 0 unsupported · 0 inconclusive · 0 errors · 62 untested",
     )
   })
@@ -187,7 +189,7 @@ describe("release 1 measurement scope", () => {
     const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
     expect(home).toContain("data.releaseVerdicts[backendName]")
     expect(home).toContain("verdict.text")
-    expect(terminal).toContain("barVerdict(barOverMeasured(")
+    expect(terminal).toContain("barVerdict(aggregateCells(")
     expect(terminal).toContain("tier1Included(data.featureDescriptions, data.releaseScope.scoredIds)")
     expect(terminal).toContain("measuredVerdict.text")
     expect(loader).toContain("tier1Included(featureDescriptions, release.scoredIds)")
@@ -202,19 +204,19 @@ describe("release 1 measurement scope", () => {
       expect(source).toContain("not measured in this release")
     }
     expect(terminal).toContain("staleCaption")
-    expect(terminal).toContain("barOverMeasured")
+    expect(terminal).toContain("aggregateCells")
     expect(home).toContain("coverageSentence")
     // The label is one owner: the loader computes it with supportedShare, the page only prints it.
     expect(home).toContain("data.releaseShares[backendName]")
     expect(home).not.toMatch(/function coverageLabel[\s\S]*selected\.counts/)
-    expect(terminal).toContain("measuredBar.fillPct")
-    expect(terminal).toContain("% supported of")
+    expect(terminal).toContain("measuredShare")
+    expect(terminal).toContain("supportedShare(")
     // One word, one number: the D3 verdict owns "decisive"; the bar's fill is "supported".
     expect(terminal).not.toContain("% decisive of")
     expect(home).not.toContain("decisive of ${bar.denominator}")
-    expect(terminal).toContain("measuredBar.supported")
-    expect(terminal).toContain("measuredBar.inconclusive")
-    expect(terminal).toContain("measuredBar.untested")
+    expect(terminal).toContain("measuredBar.counts.supported")
+    expect(terminal).toContain("measuredBar.counts.inconclusive")
+    expect(terminal).toContain("measuredBar.counts.untested")
     const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
     expect(loader).toContain("isStaleRelation")
     expect(loader).toContain("staleCaption")

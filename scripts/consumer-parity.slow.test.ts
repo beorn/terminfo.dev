@@ -12,6 +12,7 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { SelectedCell, SelectedVersion } from "../docs/data/selected-results.ts"
+import type { CellState } from "../docs/data/release-scope.ts"
 import * as selectedResults from "../docs/data/selected-results.ts"
 import type { EvidenceDocument, PublicVersion } from "../docs/data/public-results.ts"
 
@@ -172,15 +173,30 @@ const fixture = vi.hoisted(() => {
   }
 })
 
-vi.mock("../docs/data/current-results.ts", () => ({
-  loadCurrentResults: () => ({ projection: fixture.projection }),
-  compatibilityTargets: () =>
-    new Map([
-      ["kitty", { contextKey: "app:kitty", selected: fixture.selected }],
-      ["tmux", { contextKey: "mux:tmux", selected: fixture.mux }],
-      ["screen", { contextKey: "mux:screen", selected: fixture.screen }],
-    ]),
-}))
+vi.mock("../docs/data/current-results.ts", async () => {
+  // The projection owns the ONE classified table every reader folds (28792 item 1), so the fixture
+  // classifies its own runs with the same function `loadFullProbes` would read from the real reader.
+  const { classifyCells } = await import("../docs/data/release-scope.ts")
+  const build = () => {
+    const runs = [
+      ...Object.values(fixture.projection.current),
+      ...Object.values(fixture.projection.versions).flat(),
+      ...Object.values(fixture.projection.history).flat(),
+    ]
+    const table: Record<string, Record<string, CellState>> = {}
+    for (const run of runs) table[run.runId] = classifyCells(run.cells)
+    return { ...fixture.projection, table }
+  }
+  return {
+    loadCurrentResults: () => ({ projection: build() }),
+    compatibilityTargets: () =>
+      new Map([
+        ["kitty", { contextKey: "app:kitty", selected: fixture.selected }],
+        ["tmux", { contextKey: "mux:tmux", selected: fixture.mux }],
+        ["screen", { contextKey: "mux:screen", selected: fixture.screen }],
+      ]),
+  }
+})
 
 import probesLoader from "../docs/data/probes.data.ts"
 import { loadProbes } from "../docs/data/load-probes.ts"
