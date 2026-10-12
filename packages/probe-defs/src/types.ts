@@ -155,14 +155,23 @@ export interface RunOrigin {
   appLaunch?: AppLaunchReceipt
 }
 
-export interface AppLaunchReceipt {
-  bundlePath: string
-  cfBundleShortVersionString: string
-  cfBundleVersion: string
-  executablePath: string
-  executableSha256: string
-  sourceArtifact: AppSourceArtifact
-}
+export type AppLaunchReceipt =
+  | {
+      platform?: never
+      bundlePath: string
+      cfBundleShortVersionString: string
+      cfBundleVersion: string
+      executablePath: string
+      executableSha256: string
+      sourceArtifact: AppSourceArtifact
+    }
+  | {
+      platform: "win32"
+      executablePath: string
+      productVersion: string
+      executableSha256: string
+      sourceArtifact: { kind: "portable-zip"; path: string; sha256: string }
+    }
 
 /**
  * A source artifact DERIVED from an upstream tree: a deterministic tar of a recursive `src`, flat

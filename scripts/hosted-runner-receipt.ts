@@ -6,6 +6,7 @@ import { createHash } from "node:crypto"
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { HOSTED_IDENTITY_SOURCES, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
+import { parseAppLaunchReceipt } from "../packages/run-parser/src/app-launch.ts"
 
 function required(key: string): string {
   const value = process.env[key]
@@ -193,6 +194,42 @@ function measureAppLaunch(): Record<string, unknown> {
   }
 }
 
+/** Measure the portable app process and the ZIP this job retained, through the existing apparatus. */
+function measureWindowsAppLaunch() {
+  if (required("APP_ID") !== "windows-terminal") {
+    throw new Error("Hosted Windows receipt requires APP_ID=windows-terminal")
+  }
+  required("APP_EXECUTABLE")
+  required("APP_SOURCE_ARTIFACT")
+  const script = `$ErrorActionPreference = 'Stop'
+$expected = Get-Item -LiteralPath $env:APP_EXECUTABLE
+if ($expected.PSIsContainer -or $expected.Name -cne 'WindowsTerminal.exe') { throw 'APP_EXECUTABLE must name WindowsTerminal.exe, not its wt.exe launcher' }
+$processes = @(Get-CimInstance Win32_Process -Filter "Name='WindowsTerminal.exe'" | Where-Object { $_.ExecutablePath -ieq $expected.FullName })
+if ($processes.Count -ne 1) { throw "Expected exactly one launched WindowsTerminal.exe at $($expected.FullName); found $($processes.Count)" }
+$executable = Get-Item -LiteralPath $processes[0].ExecutablePath
+$zip = Get-Item -LiteralPath $env:APP_SOURCE_ARTIFACT
+if ($zip.PSIsContainer -or $zip.Extension -ine '.zip' -or $zip.Length -eq 0 -or $executable.Length -eq 0) { throw 'Windows executable and retained portable ZIP must be nonempty files' }
+$productVersion = $executable.VersionInfo.ProductVersion
+if ([string]::IsNullOrWhiteSpace($productVersion)) { throw "No measured ProductVersion on $($executable.FullName)" }
+[ordered]@{
+  platform = 'win32'
+  executablePath = $executable.FullName
+  productVersion = $productVersion
+  executableSha256 = (Get-FileHash -LiteralPath $executable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  sourceArtifact = @{ kind = 'portable-zip'; path = $zip.FullName; sha256 = (Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+} | ConvertTo-Json -Compress -Depth 4`
+  const value: unknown = JSON.parse(
+    measured("launched WindowsTerminal.exe version and retained ZIP bytes", "powershell.exe", [
+      "-NoProfile",
+      "-Command",
+      script,
+    ]),
+  )
+  const receipt = parseAppLaunchReceipt(value, "collector", "app", "Hosted Windows launch measurement")
+  if (receipt?.platform !== "win32") throw new Error("Hosted Windows launch measurement has no win32 receipt")
+  return receipt
+}
+
 async function context() {
   const repository = required("GITHUB_REPOSITORY")
   const githubRunId = decimal("GITHUB_RUN_ID")
@@ -307,9 +344,9 @@ async function main(): Promise<void> {
     )
     .digest("hex")
     .slice(0, 32)
-  // The launch receipt is measured ONLY on macOS, and required there: a macOS collection with no
-  // APP_BUNDLE is a silent gap, not a normal state (28216).
-  const appLaunch = required("RUNNER_OS") === "macOS" ? measureAppLaunch() : undefined
+  // Both hosted app routes measure their launch; a declared installation version is never evidence.
+  const os = required("RUNNER_OS")
+  const appLaunch = os === "macOS" ? measureAppLaunch() : os === "Windows" ? measureWindowsAppLaunch() : undefined
   const bytes =
     JSON.stringify(
       {
