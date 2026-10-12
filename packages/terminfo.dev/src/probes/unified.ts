@@ -147,6 +147,8 @@ export type ProbeCapture = (checkpoint: {
   pixelGeometry?: CapturePixelGeometry
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
 
+type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>
+
 export interface GeometryCorroboration {
   status: "agree" | "conflict" | "uncorroborated" | "silent" | "malformed"
   query: {
@@ -223,6 +225,12 @@ export async function runProbeBatch(
   options: {
     ids?: string[]
     capture?: ProbeCapture
+    /** Prepare an owned capture calibration before the first geometry-requiring mutating callback. */
+    prepareCapture?: (input: {
+      context: TermContext
+      featureId: string
+      recordCapture: (result: CapturedProbeFrame) => void
+    }) => Promise<void>
     input?: InputFixture
     ownedTerminal?: OwnedTerminal
     captureRunId?: string
@@ -288,6 +296,7 @@ export async function runProbeBatch(
         }
       : { kind: "shared" },
   )
+  let capturePrepared = false
   for (const probe of selected) {
     const writes: string[] = []
     const queries: TTYQueryTrace[] = []
@@ -295,6 +304,17 @@ export async function runProbeBatch(
     const clipboardEvents: ClipboardTraceEvent[] = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
+    const recordCapture = (result: CapturedProbeFrame, expectedRole?: ObservationFrame["role"]) => {
+      captureAttempted = true
+      if (
+        (expectedRole !== undefined && result.frame.role !== expectedRole) ||
+        !/^sha256:[a-f0-9]{64}$/.test(result.frame.ref)
+      ) {
+        throw new Error(`Capture adapter returned an invalid frame for ${probe.id}`)
+      }
+      captures.push(result)
+      if (!batch.screenshotRefs.includes(result.frame.ref)) batch.screenshotRefs.push(result.frame.ref)
+    }
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
     const refusedBecause = !needsOwnership
       ? undefined
@@ -370,11 +390,7 @@ export async function runProbeBatch(
       context.capture = async (checkpoint) => {
         captureAttempted = true
         const result = await capture({ featureId: probe.id, ...checkpoint })
-        if (result.frame.role !== checkpoint.role || !/^sha256:[a-f0-9]{64}$/.test(result.frame.ref)) {
-          throw new Error(`Capture adapter returned an invalid frame for ${probe.id} ${checkpoint.role}`)
-        }
-        captures.push(result)
-        if (!batch.screenshotRefs.includes(result.frame.ref)) batch.screenshotRefs.push(result.frame.ref)
+        recordCapture(result, checkpoint.role)
         return result.frame
       }
     }
@@ -383,7 +399,26 @@ export async function runProbeBatch(
       const callback = probe.term
       let result
       try {
-        result = await withTTYOperation(() => withTTYQueryTrace(queries, events, () => callback(context)), out)
+        result = await withTTYOperation(
+          () =>
+            withTTYQueryTrace(queries, events, async () => {
+              if (
+                options.prepareCapture &&
+                !capturePrepared &&
+                probe.termNeedsGeometry === true &&
+                probe.termWrites !== "query"
+              ) {
+                capturePrepared = true
+                await options.prepareCapture({
+                  context,
+                  featureId: probe.id,
+                  recordCapture: (captured) => recordCapture(captured),
+                })
+              }
+              return callback(context)
+            }),
+          out,
+        )
       } finally {
         if (geometryCheck) geometryCheck.post = await readGeometry()
       }

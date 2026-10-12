@@ -44,6 +44,7 @@ export {
   captureRegionVerdict,
   collectorRegionRead,
   queryPixelGeometry,
+  DEFAULT_TIMEOUT_MS,
   type CellRegion,
   type PixelGeometry,
   type RegionCapture,

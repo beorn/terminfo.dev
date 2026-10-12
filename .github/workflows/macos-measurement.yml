@@ -73,6 +73,7 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
           set -euo pipefail
+          brew install imagemagick
           case "$APP_ID" in
             terminal-app) ;;
             iterm2) brew install --cask iterm2 ;;
@@ -98,6 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           OUT="$RUNNER_TEMP/measurement-artifacts"
+          mkdir -p "$OUT/captures"
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
           COMMAND_PATH="$RUNNER_TEMP/collect.command"
           NODE_DIR="$(dirname "$(command -v node)")"
@@ -123,6 +125,7 @@ jobs:
           $TARGET_VERSION_EXPORT
           export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
           export TERMINFO_DISPOSABLE_RECEIPT="$OUT/host-measured.json"
+          export TERMINFO_CAPTURE_DIRECTORY="$OUT/captures"
           attempts=0
           while [ ! -f "$OUT/collector-ready" ]; do
             attempts=\$((attempts + 1))
@@ -192,7 +195,7 @@ jobs:
             ghostty)
               mkdir -p "$HOME/.config/ghostty"
               printf 'command = /bin/bash %s\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
-              "$APP_BUNDLE/Contents/MacOS/ghostty" > "$OUT/launcher.log" 2>&1 &
+              nohup "$APP_BUNDLE/Contents/MacOS/ghostty" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             alacritty)
               "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &

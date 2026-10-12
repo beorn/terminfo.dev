@@ -100,7 +100,7 @@ export interface RegionReadback {
  * pixel report is validated separately, and this value never reaches a capture request.
  */
 const PENDING_GEOMETRY: PixelGeometry = { cellWidth: 1, cellHeight: 1, textWidth: 1, textHeight: 1 }
-const DEFAULT_TIMEOUT_MS = 5000
+export const DEFAULT_TIMEOUT_MS = 5000
 const DEFAULT_POLL_MS = 250
 
 /**

@@ -780,6 +780,72 @@ it("declines a declared callback with missing or conflicting owned geometry befo
   })
 })
 
+it("prepares capture once before the first eligible callback and retains its calibration trace", async () => {
+  verifiedBatchFixture()
+  const ids = ["reset.ris", "reset.decaln"]
+  const definitions = ids.map((id) => ALL_PROBES.find((item) => item.id === id)!)
+  const originals = definitions.map(({ term, termNeedsGeometry, termWrites }) => ({
+    term,
+    termNeedsGeometry,
+    termWrites,
+  }))
+  const order: string[] = []
+  const writes: string[] = []
+  let prepared = false
+  const captureRef = `sha256:${"a".repeat(64)}`
+  process.stdout.write = ((text: string) => {
+    writes.push(text)
+    return true
+  }) as typeof process.stdout.write
+  try {
+    for (const [index, definition] of definitions.entries()) {
+      definition.termNeedsGeometry = true
+      definition.term = async (context) => {
+        expect(prepared, `${ids[index]} must observe capture preparation`).toBe(true)
+        order.push(`callback:${ids[index]}`)
+        context.write(`fixture:${ids[index]}`)
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "none",
+            note: "Lifecycle fixture does not measure terminal support",
+          },
+        }
+      }
+    }
+    const batch = await runProbeBatch({
+      ids,
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      prepareCapture: async ({ context, recordCapture }) => {
+        expect(prepared).toBe(false)
+        order.push("prepare")
+        context.write("calibration:paint-witness")
+        prepared = true
+        recordCapture({
+          frame: { role: "control", ref: captureRef, capturedAt: 1, label: "origin calibration" },
+          trace: { captureCommand: "fixture-capture" },
+        })
+      },
+    })
+    expect(order).toEqual(["prepare", "callback:reset.ris", "callback:reset.decaln"])
+    expect(writes).toContain("calibration:paint-witness")
+    expect(writes.indexOf("calibration:paint-witness")).toBeLessThan(writes.indexOf("fixture:reset.ris"))
+    expect(writes).not.toContain("calibration:paint-witness\n")
+    expect(batch.screenshotRefs).toEqual([captureRef])
+    expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toMatchObject({
+      writes: expect.arrayContaining(["calibration:paint-witness", "fixture:reset.ris"]),
+      captures: [{ frame: { ref: captureRef }, trace: { captureCommand: "fixture-capture" } }],
+    })
+    expect(JSON.parse(batch.rawReplies["reset.decaln"]!)).toMatchObject({
+      writes: ["fixture:reset.decaln"],
+    })
+  } finally {
+    definitions.forEach((definition, index) => Object.assign(definition, originals[index]))
+  }
+})
+
 it("keeps query-only and nongeometry callbacks runnable when owned size is unavailable", async () => {
   verifiedBatchFixture()
   const writes: string[] = []
