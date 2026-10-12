@@ -9,7 +9,7 @@ import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { eraseProbes, eraseReadbackRows } from "./erase.ts"
 import { ALL_PROBES } from "./index.ts"
-import { regionReadbackProbe } from "./region-readback-kind.ts"
+import { regionReadbackProbe, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { headlessContext, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ProbeResult, TermContext, TermlessContext } from "./types.ts"
@@ -45,7 +45,7 @@ const KIND_TABLE_ROWS = eraseReadbackRows.map((row) => ({
  *    belonged to the deleted hand-written callback; no erase capability claim depends on them.
  *  - "selective erasure observes protected cells and the unprotected target" -> the row's own `ignored`
  *    measured negative plus the per-row loop; the pixel arm's proof of the same shape is
- *    region-readback-contract.test.ts.
+ *    testing/region-readback-contract.test.ts.
  *  - "region erase requires changed cells and a preserved preceding row" -> the row's own `controls`.
  */
 
@@ -123,7 +123,11 @@ function appWithEvents(rows: number, cols: number, events: string[]): TermContex
  * ignored that operation". The declared grid is the terminal's own behaviour, so a row reads supported
  * only when its frame agrees with a terminal the test drove independently.
  */
-function declaredScreen(screens: Record<string, readonly (readonly string[])[]>, cols: number): TermlessContext {
+function declaredScreen(
+  screens: Record<string, readonly (readonly string[])[]>,
+  cols: number,
+  cursor: { x: number; y: number } = { x: 0, y: 0 },
+): TermlessContext {
   let cells: readonly (readonly string[])[] = []
   return headless({
     cols,
@@ -132,7 +136,22 @@ function declaredScreen(screens: Record<string, readonly (readonly string[])[]>,
       if (next !== undefined) cells = next
     },
     getCell: (row, col) => ({ char: cells[row]?.[col] ?? " " }) as ReturnType<TermlessContext["getCell"]>,
+    getCursor: () => ({ x: cursor.x, y: cursor.y, visible: true, style: null }),
   })
+}
+
+/** The table row a test names, so a row that lost its definition fails here rather than as a gap. */
+function rowById(id: string): RegionReadbackRow {
+  const row = eraseReadbackRows.find((entry) => entry.id === id)
+  if (row === undefined) throw new Error(`missing erase row ${id}`)
+  return row
+}
+
+/** The 0-based cursor each row's single step must reach (its CUP) — the setup's own witness. */
+function stepCursor(id: string): { x: number; y: number } {
+  const cursor = rowById(id).steps[0]?.cursor
+  if (cursor === undefined) throw new Error(`missing step cursor for ${id}`)
+  return { x: cursor.x, y: cursor.y }
 }
 
 /** The kind reads a blank as `""` or `" "` alike, so a compare normalizes BOTH grids to spaces. */
@@ -206,18 +225,19 @@ test("the kind table replays every row deterministically", async () => {
  * written control cell is wrong reads inconclusive - so the table is a measurement, not a stamp.
  */
 for (const row of eraseReadbackRows) {
-  test(`${row.id} binds its claim to its own cells and calibrated controls`, () => {
+  test(`${row.id} binds its claim to its own cells`, () => {
     const probe = eraseProbes.find((entry) => entry.id === row.id)
     if (!probe?.termless) throw new Error(`Missing headless ${row.id}`)
     const cols = 24
     const step = firstStep(row.id)
+    const cursor = stepCursor(row.id)
     const right = (row.region?.left ?? 1) + (row.before[0]?.length ?? 0) - 1
 
-    const supported = probe.termless(declaredScreen({ [row.seed]: row.before, [step]: row.after }, cols))
+    const supported = probe.termless(declaredScreen({ [row.seed]: row.before, [step]: row.after }, cols, cursor))
     expect(supported.observation, row.id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
     expect(supported.assertions?.[0], row.id).toMatchObject({ kind: "positive" })
 
-    const ignored = probe.termless(declaredScreen({ [row.seed]: row.before }, cols))
+    const ignored = probe.termless(declaredScreen({ [row.seed]: row.before }, cols, cursor))
     expect(ignored.observation, row.id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
     expect(ignored.assertions?.[0], row.id).toMatchObject({ kind: "negative" })
 
@@ -227,18 +247,8 @@ for (const row of eraseReadbackRows) {
       reason: "insufficient-evidence",
     })
 
-    const control = row.controls[0]
-    if (control !== undefined) {
-      const moved = row.after.map((cells) => [...cells])
-      moved[control.row]![control.col] = "?"
-      expect(
-        probe.termless(declaredScreen({ [row.seed]: row.before, [step]: moved }, cols)).observation,
-        `${row.id} moved control ${control.row},${control.col}`,
-      ).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-    }
-
     // A grid narrower than the row's own right edge refuses before a single byte is fed.
-    const narrow = declaredScreen({ [row.seed]: row.before, [step]: row.after }, right - 1)
+    const narrow = declaredScreen({ [row.seed]: row.before, [step]: row.after }, right - 1, cursor)
     const fed: string[] = []
     const watched = { ...narrow, feed: (sequence: string) => fed.push(sequence) }
     expect(probe.termless(watched).observation, `${row.id} at ${right - 1} columns`).toMatchObject({
@@ -250,25 +260,43 @@ for (const row of eraseReadbackRows) {
 }
 
 /**
- * Controls are what stops a fixture failure being read as a capability verdict, so each must be a REAL
- * control: a column the row's own sequence never writes. This is the shape that let a first revision of
- * the kind ship a step that rewrote its own control with every test passing, because nothing measured
- * the control's survival. Here each control cell is covered with a marker AFTER the seed, the row's own
- * steps run on the reference parser, and the markers must still stand.
+ * The base's named erase failure tests, ported to the kind table (@cto 28450 must-fix 2). A terminal
+ * that erases too much — EL2 its neighbour row, ED the wrong side, ED everything — must read
+ * UNSUPPORTED, because every preserved erase cell is a claim cell now and a grid mismatch is the
+ * capability's, not the fixture's. Before must-fix 2 these read inconclusive behind a moved control.
  */
-test("every row's controls survive the row's own steps on the reference parser", () => {
-  for (const row of eraseReadbackRows) {
-    // ED2 has no preserved cell; SL/SR-style rows shift every compared column and declare none.
-    if (row.controls.length === 0) continue
-    const ctx = headlessContext(createSemanticSurface())
-    ctx.feed(row.seed)
-    for (const control of row.controls) ctx.feed(`\x1b[${control.row + 1};${control.col + 1}H\u00b5`)
-    for (const step of row.steps) ctx.feed(step.write)
-    expect(
-      row.controls.map((control) => ctx.getCell(control.row, control.col).char),
-      `${row.id} rewrites its own control`,
-    ).toEqual(row.controls.map(() => "\u00b5"))
-  }
+test.each([
+  ["erase.line.all", ["     ", "GONE!"], "EL2 erased the neighbouring row"],
+  ["erase.screen.below", ["AAAAA", "   BB", "CCCCC"], "ED0 erased on the wrong side"],
+  ["erase.screen.above", ["AAAAA", "BBBBB", "     "], "ED1 erased everything below"],
+  ["erase.screen.all", ["AAAAA", "     ", "CCCCC"], "ED2 left a row behind"],
+] as const)("%s reads an over-erase or wrong side unsupported (%s)", (id, lines, label) => {
+  const row = rowById(id)
+  const probe = eraseProbes.find((entry) => entry.id === id)
+  if (!probe?.termless) throw new Error(`Missing headless ${id}`)
+  const after = lines.map((line) => line.split(""))
+  const result = probe.termless(declaredScreen({ [row.seed]: row.before, [firstStep(id)]: after }, 24, stepCursor(id)))
+  expect(result.observation, `${id}: ${label}`).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(result.assertions?.[0], id).toMatchObject({ kind: "negative" })
+})
+
+/**
+ * The setup's own witness, at kind-table scale: every erase row's single step declares the CUP cursor
+ * it must reach, and a terminal whose CUP never moved the cursor reads inconclusive — the base's
+ * "does not blame erasure when CHA setup is ignored", now the kind's step check (@cto 28450 must-fix
+ * 2). erase.selective's CUP reaches column 1 already, so its cursor is not a deviation and is skipped.
+ */
+test.each(eraseReadbackRows.map((row) => row.id))("%s reads an ignored CUP inconclusive, not a bad erase", (id) => {
+  const row = rowById(id)
+  const probe = eraseProbes.find((entry) => entry.id === id)
+  if (!probe?.termless) throw new Error(`Missing headless ${id}`)
+  const cursor = stepCursor(id)
+  if (cursor.x === 0 && cursor.y === 0) return
+  const result = probe.termless(
+    declaredScreen({ [row.seed]: row.before, [firstStep(id)]: row.after }, 24, { x: 0, y: 0 }),
+  )
+  expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.assertions, id).toBeUndefined()
 })
 
 /**

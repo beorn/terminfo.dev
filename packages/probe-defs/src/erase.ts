@@ -17,21 +17,30 @@ import { probe, isBlank, parserStateResult, unmeasuredCellResult, notTestedResul
  *  - erase.screen.scrollback: the claim is HISTORY (ED3 removes measured scrollback while screen
  *    geometry stays), not a cell window.
  */
+/**
+ * A control is a cell OUTSIDE the claim whose change means the FIXTURE failed; a cell whose
+ * preservation IS the claim is a claim cell and stays in `after`. Every erase row's preserved cells
+ * are part of its claim — the un-erased side of EL or ED, the neighbour row of EL 2, the cells past
+ * ECH's span — so none of these rows declares a control, and an over-erase reads unsupported instead
+ * of inconclusive (@cto 28450 must-fix 2, 2026-10-12). The setup's own witness is each step's CUP
+ * cursor report.
+ */
 export const eraseReadbackRows: readonly RegionReadbackRow[] = [
   {
     id: "erase.character",
     expected: "ECH erases the requested cells from the cursor, leaving the preceding column intact",
     seed: "\x1b[1;1HABCDE",
     before: [["A", "B", "C", "D", "E"]],
-    steps: [{ write: "\x1b[1;2H\x1b[2X" }],
-    after: [["A", " ", " ", "D", "E"]],
-    controls: [
-      { row: 0, col: 0, char: "A" },
-      { row: 0, col: 3, char: "D" },
-      { row: 0, col: 4, char: "E" },
+    steps: [
+      {
+        write: "\x1b[1;2H\x1b[2X",
+        cursor: { x: 1, y: 0, note: "ECH erases at the cursor; a CUP the terminal ignored erases the wrong cells" },
+      },
     ],
+    after: [["A", " ", " ", "D", "E"]],
+    controls: [],
     seedNote: "ECH seed was not measured",
-    controlNote: "ECH outside control changed",
+    controlNote: "ECH names no control: its preserved cells are the claim",
     reset: "",
   },
   {
@@ -42,18 +51,19 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
       ["A", "B", "C", "D", "E"],
       ["K", "E", "E", "P", "!"],
     ],
-    steps: [{ write: "\x1b[1;3H\x1b[0K" }],
+    steps: [
+      {
+        write: "\x1b[1;3H\x1b[K",
+        cursor: { x: 2, y: 0, note: "EL0 erases from the cursor; a CUP the terminal ignored erases the wrong span" },
+      },
+    ],
     after: [
       ["A", "B", " ", " ", " "],
       ["K", "E", "E", "P", "!"],
     ],
-    controls: [
-      { row: 0, col: 0, char: "A" },
-      { row: 0, col: 1, char: "B" },
-      { row: 1, col: 0, char: "K" },
-    ],
+    controls: [],
     seedNote: "EL0 seed was not measured",
-    controlNote: "EL0 preserved cell or adjacent row control changed",
+    controlNote: "EL0 names no control: its preserved cells are the claim",
     reset: "",
   },
   {
@@ -64,18 +74,19 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
       ["A", "B", "C", "D", "E"],
       ["K", "E", "E", "P", "!"],
     ],
-    steps: [{ write: "\x1b[1;3H\x1b[1K" }],
+    steps: [
+      {
+        write: "\x1b[1;3H\x1b[1K",
+        cursor: { x: 2, y: 0, note: "EL1 erases through the cursor; a CUP the terminal ignored erases the wrong span" },
+      },
+    ],
     after: [
       [" ", " ", " ", "D", "E"],
       ["K", "E", "E", "P", "!"],
     ],
-    controls: [
-      { row: 0, col: 3, char: "D" },
-      { row: 0, col: 4, char: "E" },
-      { row: 1, col: 0, char: "K" },
-    ],
+    controls: [],
     seedNote: "EL1 seed was not measured",
-    controlNote: "EL1 preserved cell or adjacent row control changed",
+    controlNote: "EL1 names no control: its preserved cells are the claim",
     reset: "",
   },
   {
@@ -86,14 +97,19 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
       ["A", "B", "C", "D", "E"],
       ["K", "E", "E", "P", "!"],
     ],
-    steps: [{ write: "\x1b[1;3H\x1b[2K" }],
+    steps: [
+      {
+        write: "\x1b[1;3H\x1b[2K",
+        cursor: { x: 2, y: 0, note: "EL2 erases the whole row at the cursor; an ignored CUP would still erase it" },
+      },
+    ],
     after: [
       [" ", " ", " ", " ", " "],
       ["K", "E", "E", "P", "!"],
     ],
-    controls: [{ row: 1, col: 0, char: "K" }],
+    controls: [],
     seedNote: "EL2 seed was not measured",
-    controlNote: "EL2 adjacent row control changed",
+    controlNote: "EL2 names no control: its neighbour row is the claim",
     reset: "",
   },
   {
@@ -105,15 +121,20 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
       ["B", "B", "B", "B", "B"],
       ["C", "C", "C", "C", "C"],
     ],
-    steps: [{ write: "\x1b[2;3H\x1b[0J" }],
+    steps: [
+      {
+        write: "\x1b[2;3H\x1b[J",
+        cursor: { x: 2, y: 1, note: "ED0 erases below the cursor; a CUP the terminal ignored erases the wrong side" },
+      },
+    ],
     after: [
       ["A", "A", "A", "A", "A"],
       ["B", "B", " ", " ", " "],
       [" ", " ", " ", " ", " "],
     ],
-    controls: [{ row: 0, col: 0, char: "A" }],
+    controls: [],
     seedNote: "ED0 seed was not measured",
-    controlNote: "ED0 preceding row control changed",
+    controlNote: "ED0 names no control: its preserved row is the claim",
     reset: "",
   },
   {
@@ -125,15 +146,20 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
       ["B", "B", "B", "B", "B"],
       ["C", "C", "C", "C", "C"],
     ],
-    steps: [{ write: "\x1b[2;3H\x1b[1J" }],
+    steps: [
+      {
+        write: "\x1b[2;3H\x1b[1J",
+        cursor: { x: 2, y: 1, note: "ED1 erases above the cursor; a CUP the terminal ignored erases the wrong side" },
+      },
+    ],
     after: [
       [" ", " ", " ", " ", " "],
       [" ", " ", " ", "B", "B"],
       ["C", "C", "C", "C", "C"],
     ],
-    controls: [{ row: 2, col: 0, char: "C" }],
+    controls: [],
     seedNote: "ED1 seed was not measured",
-    controlNote: "ED1 following row control changed",
+    controlNote: "ED1 names no control: its preserved row is the claim",
     reset: "",
   },
   {
@@ -145,7 +171,12 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
       ["B", "B", "B", "B", "B"],
       ["C", "C", "C", "C", "C"],
     ],
-    steps: [{ write: "\x1b[2;3H\x1b[2J" }],
+    steps: [
+      {
+        write: "\x1b[2;3H\x1b[2J",
+        cursor: { x: 2, y: 1, note: "ED2 erases the screen at the cursor; the cursor must not move" },
+      },
+    ],
     after: [
       [" ", " ", " ", " ", " "],
       [" ", " ", " ", " ", " "],
@@ -153,7 +184,7 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
     ],
     controls: [],
     seedNote: "ED2 seed was not measured",
-    controlNote: "ED2 has no preserved cell",
+    controlNote: "ED2 names no control: nothing is preserved",
     reset: "",
   },
   {
@@ -161,7 +192,16 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
     expected: "Selective erase clears unprotected cells and keeps the DECSCA-protected cell",
     seed: '\x1b[1;1H\x1b[1"qP\x1b[0"qABCDE',
     before: [["P", "A", "B", "C", "D", "E"]],
-    steps: [{ write: "\x1b[1;1H\x1b[?2J" }],
+    steps: [
+      {
+        write: "\x1b[1;1H\x1b[?2J",
+        cursor: {
+          x: 0,
+          y: 0,
+          note: "Selective erase runs from the cursor; a CUP the terminal ignored clears the wrong cells",
+        },
+      },
+    ],
     after: [["P", " ", " ", " ", " ", " "]],
     // NO control, deliberately: the discriminator is the DECSCA-protected P. A terminal that takes it
     // also clears every other cell, so a flank control would move and the row would read inconclusive
@@ -182,15 +222,24 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
       [" ", " ", " ", " ", " "],
       ["E", "R", "A", "S", "E"],
     ],
-    steps: [{ write: "\x1b[3;10r\x1b[3;1H\x1b[J" }],
+    steps: [
+      {
+        write: "\x1b[3;10r\x1b[3;1H\x1b[J",
+        cursor: {
+          x: 0,
+          y: 2,
+          note: "Scroll-region ED0 runs from the cursor; a CUP the terminal ignored erases the wrong row",
+        },
+      },
+    ],
     after: [
       ["K", "E", "E", "P", "!"],
       [" ", " ", " ", " ", " "],
       [" ", " ", " ", " ", " "],
     ],
-    controls: [{ row: 0, col: 0, char: "K" }],
+    controls: [],
     seedNote: "Scroll-region ED0 seed was not measured",
-    controlNote: "Scroll-region ED0 preceding row control changed",
+    controlNote: "Scroll-region ED0 names no control: its preserved row is the claim",
     reset: "\x1b[r",
     cleanup: "\x1b[r",
     // The sequence sets a scroll region whose bottom is row 10, so the fixture needs ten rows even

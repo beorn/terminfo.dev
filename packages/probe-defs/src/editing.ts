@@ -310,12 +310,15 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
     // the erase when it receives THESE bytes.
     steps: [{ write: "\x1b[1;1;1;5${" }],
     after: [["P", " ", " ", " ", " ", "Z"]],
-    // NO control, deliberately. This row's DISCRIMINATOR is the DECSCA-protected P: it survives
-    // because the seed protected it, and @chief ruled (2026-10-11T22:58Z) that an erase taking it is a
-    // measured NEGATIVE, not an unattributable one. A control on the Z flank cannot coexist with that:
-    // a terminal that takes the protected cell also clears the flank, so the control moves and the row
-    // would read inconclusive instead of unsupported. The claim is carried by the `after` grid alone.
+    // NO control, deliberately. DECSERA's rectangle is columns 1-5, so Z at column 6 lies OUTSIDE it
+    // and survives whatever the sequence does; as a control it could never fire, and a never-firing
+    // control is vacuous. Every discriminating cell (the protected P, and the ABCD the sequence
+    // clears) sits INSIDE the rectangle, where the sequence DOES write, so none of them may be a
+    // control. By @chief's ruling (2026-10-11T22:58Z) an erase that takes the protected P is a measured
+    // NEGATIVE, and `ignored` names the frame such a terminal would leave — P gone, Z kept — so taking
+    // the protected cell reads unsupported instead of unattributable.
     controls: [],
+    ignored: [[" ", " ", " ", " ", " ", "Z"]],
     cursorRow: 2,
     sentinel: { row: 3, col: 1 },
     seedNote: "Selective erase seed was not measured",
@@ -439,16 +442,20 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
     expected: "DECDC deletes two columns at column 3 on three measured rows",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HABCDEFGHIJ\x1b[2;1HIJKLMNOPQR\x1b[3;1HQRSTUVWXab",
+    // Ten compared columns, not eight: the seed writes ten, and the two incoming columns the delete
+    // pulls left into the compared span (row 1 I,J; row 2 Q,R; row 3 a,b) are part of the claim. At
+    // eight the ninth and tenth seed cells were stored but never verified, so a seed that wrote blanks
+    // there could only fail later with an unattributable note (@cto 28450 should-fix).
     before: [
-      ["A", "B", "C", "D", "E", "F", "G", "H"],
-      ["I", "J", "K", "L", "M", "N", "O", "P"],
-      ["Q", "R", "S", "T", "U", "V", "W", "X"],
+      ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+      ["I", "J", "K", "L", "M", "N", "O", "P", "Q", "R"],
+      ["Q", "R", "S", "T", "U", "V", "W", "X", "a", "b"],
     ],
     steps: [{ write: "\x1b[2;3H\x1b[2'~" }],
     after: [
-      ["A", "B", "E", "F", "G", "H", "I", "J"],
-      ["I", "J", "M", "N", "O", "P", "Q", "R"],
-      ["Q", "R", "U", "V", "W", "X", "a", "b"],
+      ["A", "B", "E", "F", "G", "H", "I", "J", " ", " "],
+      ["I", "J", "M", "N", "O", "P", "Q", "R", " ", " "],
+      ["Q", "R", "U", "V", "W", "X", "a", "b", " ", " "],
     ],
     controls: [
       { row: 0, col: 0, char: "A" },

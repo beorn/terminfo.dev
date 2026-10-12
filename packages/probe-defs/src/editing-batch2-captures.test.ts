@@ -68,8 +68,8 @@ function find(id: string): ProbeDefinition {
 /**
  * 28450 slice C moved every editing capture row onto the region verdict, so the ungraded
  * pre-edit-control/post-edit-target pixel pair is no longer reachable for any of them. The decision
- * itself is asserted per id by `region-readback-contract.test.ts`; what stays unique to this file is
- * the guard behaviour, asserted below.
+ * itself is asserted per id by `testing/region-readback-contract.test.ts`; what stays unique to this
+ * file is the guard behaviour, asserted below.
  */
 test("every editing capture row asks the terminal's pixel report before painting", async () => {
   for (const id of CAPTURE_IDS) {
