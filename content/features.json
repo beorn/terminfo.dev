@@ -105,7 +105,9 @@
     "body": "SGR 58;5;N sets the underline color to one of the 256 indexed palette colors, mirroring the SGR 38;5 syntax used for foreground color. The sequence is <code>ESC [ 58 ; 5 ; N m</code>, where N is a palette index (0-15 system colors, 16-231 6×6×6 RGB cube, 232-255 grayscale ramp). The colon-separated form <code>ESC [ 58 : 5 : N m</code> is also accepted by terminals that support ECMA-48 sub-parameter syntax.\n\nKitty specifies indexed underline color; WezTerm documents SGR 58:5, and Alacritty lists support from version 0.11.0. These are documentation examples, not visual measurements by this site. Combine with curly underlines (SGR 4:3) to render diagnostic indicators in palette colors that match the user's theme.\n\nReset the underline color to default (typically the foreground color) with SGR 59.\n\nSources: <a href=\"https://sw.kovidgoyal.net/kitty/underlines/\">Kitty underline specification</a>, <a href=\"https://wezterm.org/escape-sequences.html\">WezTerm escape reference</a>, <a href=\"https://github.com/alacritty/alacritty/blob/v0.11.0/CHANGELOG.md#0110\">Alacritty 0.11.0 changelog</a>.",
     "probe": "Headless: compare exposed underline colors for requested palette indices 5 and 4 against distinct palette/default control cells. An unsupported result requires calibrated control readback; missing target colors are inconclusive. App: cursor advance alone is inconclusive for exact underline color.",
     "baseline": "rich",
-    "sequence": "CSI 58 ; 5 ; N m"
+    "sequence": "CSI 58 ; 5 ; N m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.underline-color-rgb": {
     "name": "Underline color, truecolor (SGR 58;2)",
@@ -127,7 +129,9 @@
     "body": "SGR 59 resets the underline color to its default value, which typically matches the current text foreground color. The sequence is <code>ESC [ 59 m</code>. This is the companion reset for SGR 58 (set underline color), analogous to how SGR 39 resets the foreground color set by SGR 38.\n\nUsing SGR 59 allows applications to clear an explicit underline color without resetting other attributes — the underline style itself (single, double, curly, dotted, dashed) and any other SGR state remain in effect. To remove the underline entirely, use SGR 24 instead.\n\nKitty specifies SGR 59, WezTerm documents it, and Alacritty lists support from version 0.11.0. Other terminals need a matching source or measurement before reset behavior is claimed.\n\nSources: <a href=\"https://sw.kovidgoyal.net/kitty/underlines/\">Kitty underline specification</a>, <a href=\"https://wezterm.org/escape-sequences.html\">WezTerm escape reference</a>, <a href=\"https://github.com/alacritty/alacritty/blob/v0.11.0/CHANGELOG.md#0110\">Alacritty 0.11.0 changelog</a>.",
     "probe": "Headless: first verify the requested colored underline, then compare SGR 59 reset with a measured reset-state control. Missing or ambiguous cell/color readback is inconclusive. App: the cursor-position check does not verify underline color or its reset.",
     "baseline": "rich",
-    "sequence": "CSI 59 m"
+    "sequence": "CSI 59 m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.blink": {
     "name": "Blink (SGR 5)",
@@ -188,7 +192,9 @@
     "body": "SGR 30-37 set the foreground text color to one of 8 standard colors: black (30), red (31), green (32), yellow (33), blue (34), magenta (35), cyan (36), white (37). Universally supported. The actual displayed color depends on the terminal's color scheme — \"red\" in one theme may look very different from \"red\" in another.",
     "probe": "Headless: compare neutral C with SGR 31 X and SGR 34 Y; X must differ from the measured baseline and Y from X to show named foreground-color selection. Theme RGB values are not fixed; equality or missing values are inconclusive. TTY cursor advance does not verify color.",
     "baseline": "core",
-    "sequence": "ESC [ 30–37 m"
+    "sequence": "ESC [ 30–37 m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.bg.standard": {
     "name": "Standard bg colors (SGR 40-47)",
@@ -199,7 +205,9 @@
     "body": "SGR 40-47 set the background color to one of 8 standard colors: black (40), red (41), green (42), yellow (43), blue (44), magenta (45), cyan (46), white (47). Universally supported. As with foreground colors, the actual RGB values depend on the terminal's configured color scheme.",
     "probe": "Headless: compare neutral C with SGR 41 X and SGR 44 Y; X must differ from the measured baseline and Y from X to show named background-color selection. Theme RGB values are not fixed; equality or missing values are inconclusive. TTY cursor advance does not verify color.",
     "baseline": "core",
-    "sequence": "ESC [ 40–47 m"
+    "sequence": "ESC [ 40–47 m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.fg.bright": {
     "name": "Bright fg colors (SGR 90-97)",
@@ -210,7 +218,9 @@
     "body": "SGR 90-97 set the foreground to one of 8 bright (high-intensity) colors, corresponding to the standard colors at higher intensity. Originally an xterm extension, now universally supported. These provide 8 additional named colors beyond SGR 30-37 without requiring 256-color or truecolor support.",
     "probe": "Headless: compare neutral C with SGR 91 X and SGR 94 Y; X must differ from the measured baseline and Y from X to show bright named foreground-color selection. Intensity and theme RGB are not assumed; equality is inconclusive.",
     "baseline": "modern",
-    "sequence": "ESC [ 90–97 m"
+    "sequence": "ESC [ 90–97 m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.bg.bright": {
     "name": "Bright bg colors (SGR 100-107)",
@@ -221,7 +231,9 @@
     "body": "SGR 100-107 set the background to one of 8 bright (high-intensity) colors. The bright background counterpart to SGR 90-97 bright foreground colors. Originally an xterm extension, now universally supported.\n\nBright background colors are the high-intensity half of the 16-color ANSI palette. They began as terminal-emulator extensions rather than original VT100 hardware behavior, but are now expected by color libraries and themes. The exact RGB values are theme-defined, so applications should treat them as named slots, not fixed colors.",
     "probe": "Headless: compare neutral C with SGR 101 X and SGR 104 Y; X must differ from the measured baseline and Y from X to show bright named background-color selection. Intensity and theme RGB are not assumed; equality is inconclusive.",
     "baseline": "modern",
-    "sequence": "ESC [ 100–107 m"
+    "sequence": "ESC [ 100–107 m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.fg.default": {
     "name": "Default fg color (SGR 39)",
@@ -232,7 +244,9 @@
     "body": "SGR 39 resets the foreground color to the terminal's default, without affecting other attributes. The sequence is <code>ESC [ 39 m</code>. This is more targeted than SGR 0, which resets all attributes. Useful when you want to clear a color change while preserving bold, underline, or other active attributes.",
     "probe": "Headless: measure neutral C, SGR 31 colored X, then SGR 39 reset R; require X to differ from C and R to match the measured foreground default, which may be RGB or null. TTY cursor advance is inconclusive.",
     "baseline": "core",
-    "sequence": "ESC [ 39 m"
+    "sequence": "ESC [ 39 m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.bg.default": {
     "name": "Default bg color (SGR 49)",
@@ -243,7 +257,9 @@
     "body": "SGR 49 resets the background color to the terminal's default, without affecting other attributes. The sequence is <code>ESC [ 49 m</code>. The counterpart of SGR 39 (default foreground).\n\nDefault-color resets let applications return to the user's theme instead of assuming black, white, or any particular palette entry. This is especially important for translucent terminals, dark/light theme switching, and accessibility themes. Use SGR 49 for background cleanup when foreground color and other attributes should remain active.",
     "probe": "Headless: measure neutral C, SGR 42 colored X, then SGR 49 reset R; require X to differ from C and R to match the measured background default, which may be RGB or null. TTY cursor advance is inconclusive.",
     "baseline": "core",
-    "sequence": "ESC [ 49 m"
+    "sequence": "ESC [ 49 m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.fg.256": {
     "name": "256-color fg (SGR 38;5)",
@@ -254,7 +270,9 @@
     "body": "SGR 38;5;N sets the foreground to one of 256 colors. The sequence is <code>ESC [ 38;5;N m</code> where N is 0-255. Colors 0-7 are the standard colors, 8-15 are bright, 16-231 are a 6x6x6 color cube, and 232-255 are a grayscale ramp. This palette provides a reasonable range of colors that works across most modern terminals without requiring truecolor support.",
     "probe": "Headless: compare foreground SGR 38;5;67 and 38;5;173 cells with two independently exact direct-RGB cube reference cells. Matching both supports these sampled canonical colors; unknown or custom palette mappings remain inconclusive.",
     "baseline": "modern",
-    "sequence": "ESC [ 38;5;N m"
+    "sequence": "ESC [ 38;5;N m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.bg.256": {
     "name": "256-color bg (SGR 48;5)",
@@ -265,7 +283,9 @@
     "body": "SGR 48;5;N sets the background to one of 256 colors. The sequence is <code>ESC [ 48;5;N m</code>. Same palette as SGR 38;5 (256-color foreground): 0-15 standard/bright, 16-231 color cube, 232-255 grayscale.\n\nThe 256-color palette is the bridge between named ANSI colors and truecolor. It combines 16 theme colors, a 6x6x6 RGB cube, and a grayscale ramp. Background 256-color support is still important when truecolor is unavailable or disabled, especially over older SSH, tmux, or terminfo configurations.",
     "probe": "Headless: compare background SGR 48;5;67 and 48;5;173 cells with two independently exact direct-RGB cube reference cells. Matching both supports these sampled canonical colors; unknown or custom palette mappings remain inconclusive.",
     "baseline": "modern",
-    "sequence": "ESC [ 48;5;N m"
+    "sequence": "ESC [ 48;5;N m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.fg.truecolor": {
     "name": "24-bit fg (SGR 38;2)",
@@ -276,7 +296,9 @@
     "body": "SGR 38;2;R;G;B sets the foreground to a 24-bit RGB color. The sequence is <code>ESC [ 38;2;R;G;B m</code> where R, G, B are 0-255. There is also a colon-separated variant <code>ESC [ 38:2::R:G:B m</code> per ITU T.416, but the semicolon format has wider compatibility.\n\nThis gives applications access to 16.7 million colors. Applications can check for truecolor support via <code>COLORTERM=truecolor</code> or <code>COLORTERM=24bit</code> in the environment.",
     "probe": "Headless: require two distinct foreground SGR 38;2 RGB cells to match their requested values exactly, with the preceding named-color control exposed and different from the first requested RGB. A mismatch is negative only when independent named-color controls calibrate the channel; missing or colliding readback is inconclusive.",
     "baseline": "modern",
-    "sequence": "ESC [ 38;2;R;G;B m"
+    "sequence": "ESC [ 38;2;R;G;B m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.bg.truecolor": {
     "name": "24-bit bg (SGR 48;2)",
@@ -287,7 +309,9 @@
     "body": "SGR 48;2;R;G;B sets the background to a 24-bit RGB color. The sequence is <code>ESC [ 48;2;R;G;B m</code>. Same syntax variants and compatibility notes as SGR 38;2 (24-bit foreground).\n\nThe background form follows the same direct-color convention as SGR 38;2 for foregrounds. In practice, the semicolon form is what most terminals and applications emit, while the colon-separated ISO/ITU-style form is less consistently supported. Background truecolor is what makes theme previews, color pickers, and high-fidelity terminal screenshots possible.",
     "probe": "Headless: require two distinct background SGR 48;2 RGB cells to match their requested values exactly, with the preceding named-color control exposed and different from the first requested RGB. A mismatch is negative only when independent named-color controls calibrate the channel; missing or colliding readback is inconclusive.",
     "baseline": "modern",
-    "sequence": "ESC [ 48;2;R;G;B m"
+    "sequence": "ESC [ 48;2;R;G;B m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.selective-reset.bold": {
     "name": "Reset bold/dim (SGR 22)",
@@ -297,7 +321,9 @@
     "group": "selective-reset",
     "body": "SGR 22 resets both bold (SGR 1) and faint/dim (SGR 2) attributes. The sequence is <code>ESC [ 22 m</code>. There is no way to reset bold without also resetting faint, or vice versa — they share this single reset code.\n\nThis paired reset is one of the awkward corners of SGR. ECMA-48 uses SGR 22 for both bold and faint, so applications cannot clear only one of those attributes portably. Emulators should preserve that shared reset behavior even if their internal style model stores bold and dim separately.",
     "probe": "In a headless backend, compare neutral C, bold/dim/italic X, and SGR 22 Y: bold and dim must clear while italic remains. Missing style readback is inconclusive; a TTY cursor reply does not verify styling.",
-    "baseline": "core"
+    "baseline": "core",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.selective-reset.underline": {
     "name": "Reset underline (SGR 24)",
@@ -307,7 +333,9 @@
     "group": "selective-reset",
     "body": "SGR 24 resets all underline styles — single, double, curly, dotted, and dashed. The sequence is <code>ESC [ 24 m</code>.\n\nTargeted resets are important for nested styling: an application can clear an underline without also discarding color, bold, inverse video, or other active SGR attributes. Modern terminals map SGR 24 across both classic ECMA-48 underline and newer styled underline variants, so it is the safe cleanup sequence after curly, dotted, dashed, or colored underline output.",
     "probe": "In a headless backend, compare neutral C, bold/underlined X, and SGR 24 Y: underline must clear while bold remains. Missing setup readback is inconclusive; a TTY cursor reply does not verify styling.",
-    "baseline": "core"
+    "baseline": "core",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.selective-reset.inverse": {
     "name": "Reset inverse (SGR 27)",
@@ -317,7 +345,9 @@
     "group": "selective-reset",
     "body": "SGR 27 resets the inverse video (SGR 7) attribute, restoring the original foreground/background color relationship. The sequence is <code>ESC [ 27 m</code>.\n\nInverse video was one of the hardware-era highlight mechanisms, long before terminals had theme-aware selection colors. SGR 27 matters because status bars, menus, and cursor renderers often combine inverse video with explicit colors; using SGR 0 would clear every attribute, while SGR 27 restores only the foreground/background relationship.",
     "probe": "In a headless backend, compare neutral C, bold/inverse X, and SGR 27 Y: inverse must clear while bold remains. Missing setup readback is inconclusive; a TTY cursor reply does not verify styling.",
-    "baseline": "core"
+    "baseline": "core",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.selective-reset.italic": {
     "name": "Reset italic (SGR 23)",
@@ -327,7 +357,9 @@
     "group": "selective-reset",
     "body": "SGR 23 resets the italic (SGR 3) attribute, returning text to upright rendering. The sequence is <code>ESC [ 23 m</code>. This is a targeted reset that does not affect other active attributes like bold, underline, or colors.\n\nItalic reset became more visible once terminal fonts gained real italic variants. A targeted SGR 23 lets syntax highlighters and markdown renderers end emphasis without disturbing color, underline, or bold state. Older terminals that fake or ignore italic should still parse and clear the attribute cleanly.",
     "probe": "In a headless backend, compare neutral C, bold/italic X, and SGR 23 Y: italic must clear while bold remains. Missing setup readback is inconclusive; a TTY cursor reply does not verify styling.",
-    "baseline": "core"
+    "baseline": "core",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "sgr.reset": {
     "name": "Reset all (SGR 0)",
@@ -337,7 +369,9 @@
     "body": "SGR 0 resets all text attributes to their defaults: removes bold, faint, italic, underline, blink, inverse, hidden, strikethrough, overline, and resets foreground and background colors. The sequence is <code>ESC [ 0 m</code> or simply <code>ESC [ m</code> (parameter defaults to 0). Universally supported and the most fundamental SGR sequence.",
     "probe": "In a headless backend, compare neutral C, bold/italic/underlined X, and SGR 0 Y: all three measured attributes must clear. Missing setup readback is inconclusive; a TTY cursor reply does not verify styling.",
     "baseline": "core",
-    "sequence": "ESC [ 0 m"
+    "sequence": "ESC [ 0 m",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "cursor.hide": {
     "name": "Hide cursor (DECTCEM)",
@@ -346,7 +380,6 @@
     "tags": ["dec-private-modes", "vt510"],
     "body": "DECTCEM (DEC Text Cursor Enable Mode) controls cursor visibility. Hide cursor: <code>ESC [ ? 25 l</code>. Show cursor: <code>ESC [ ? 25 h</code>. TUI applications typically hide the cursor during rendering to avoid flicker, then restore it at the final cursor position. Universally supported.",
     "probe": "Headless: measure initial visibility, establish a shown control, check the hidden state and verify restoration. Missing readback or an invalid control stays inconclusive. This measures parser state; app cursor replies do not verify visible pixels.",
-    "probeStatus": "partial",
     "baseline": "core",
     "sequence": "ESC [ ? 25 l"
   },
@@ -682,7 +715,6 @@
     "tags": ["ecma-48", "vt220"],
     "body": "ICH inserts N blank characters at the cursor position, shifting existing characters to the right. The sequence is <code>ESC [ N @</code> (default N=1). Characters pushed past the right margin are lost. Used by editors (vim, emacs) and terminal multiplexers (tmux, screen) for inline text insertion without redrawing the entire line.",
     "probe": "Headless: measure seeded cells and cursor position, insert one blank at column 3, and check the shifted text with an unchanged prefix. The app cursor reply does not establish edited cells or rendering.",
-    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC [ N @"
   },
@@ -693,7 +725,6 @@
     "tags": ["ecma-48", "vt220"],
     "body": "DCH deletes N characters at the cursor position, shifting subsequent characters to the left. The sequence is <code>ESC [ N P</code> (default N=1). Blank characters are inserted at the right margin to fill the vacated space. The complement of ICH (insert characters).",
     "probe": "Headless: measure eight seeded cells and cursor position, delete at column 3, and check the known shifted span with an unchanged prefix. This does not check right-margin blank filling. The app cursor reply does not establish edited cells or rendering.",
-    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC [ N P"
   },
@@ -704,7 +735,6 @@
     "tags": ["ecma-48", "vt100"],
     "body": "IL inserts N blank lines at the cursor row, scrolling existing lines down within the scroll region. The sequence is <code>ESC [ N L</code> (default N=1). Lines scrolled past the bottom margin are lost. Used by full-screen applications to make room for new content without redrawing the entire screen.",
     "probe": "Headless: measure four seeded rows and cursor position, insert one blank row at row 2, then check the shifted known rows with row 1 unchanged. The app cursor reply does not establish edited cells or scrolling-region margins.",
-    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC [ N L"
   },
@@ -715,7 +745,6 @@
     "tags": ["ecma-48", "vt100"],
     "body": "DL deletes N lines at the cursor row, scrolling lines below upward within the scroll region. The sequence is <code>ESC [ N M</code> (default N=1). Blank lines are inserted at the bottom margin. The complement of IL (insert lines).\n\nDL is part of the terminal editing toolbox that predates full-screen repainting. Instead of redrawing every row, an application can delete lines inside the scroll region and let the terminal shift the remaining content. It is still useful for efficient editors, but correctness depends on honoring margins and inserting blank rows at the far edge.",
     "probe": "Headless: measure four seeded rows and cursor position, delete row 2, then check the known rows shifted up with row 1 unchanged. This does not check bottom-margin blank filling; the app cursor reply does not establish edited cells or scrolling-region margins.",
-    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC [ N M"
   },
@@ -726,7 +755,6 @@
     "tags": ["ecma-48"],
     "body": "REP repeats the preceding graphic character N times. The sequence is <code>ESC [ N b</code> (default N=1). This is a bandwidth optimization — instead of sending the same character hundreds of times (e.g., filling a row with dashes), the application sends the character once followed by REP. Not all terminals implement this sequence.",
     "probe": "Headless: measure the preceding X and cursor position, repeat it three times, and check the repeated cells between unchanged controls. The app cursor reply does not establish edited cells or rendering.",
-    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC [ N b"
   },
@@ -737,7 +765,6 @@
     "tags": ["xterm-extensions"],
     "body": "SL (Shift Left) horizontally scrolls the display contents left by N columns within the current scroll region. The sequence is <code>ESC [ Ps SP @</code> — note the literal space character before <code>@</code>, which distinguishes SL from ICH (<code>ESC [ Ps @</code>). Default Ps=1.\n\nColumns shifted off the left edge are discarded; blank columns are inserted at the right edge. SL is the horizontal counterpart of SU (Scroll Up) and is rarely used in modern TUI applications — most full-screen apps redraw their content rather than rely on terminal-side horizontal scrolling. Some xterm-derived terminals implement it for compatibility with applications that drive horizontal panning displays. Originally specified in ECMA-48 alongside SU/SD but not implemented by all terminals.",
     "probe": "Headless: measure the first nine cells of two rows plus incoming source cells through column 11 when present, verify cursor setup, shift left by two, then compare each destination cell to its measured source; require blanks only beyond the screen edge. The app cursor reply does not establish shifted cells or margin behavior.",
-    "probeStatus": "partial",
     "baseline": "rich",
     "sequence": "CSI Ps SP @"
   },
@@ -748,7 +775,6 @@
     "tags": ["xterm-extensions"],
     "body": "SR (Shift Right) horizontally scrolls the display contents right by N columns within the current scroll region. The sequence is <code>ESC [ Ps SP A</code> — note the literal space character before <code>A</code>, which distinguishes SR from CUU (<code>ESC [ Ps A</code>). Default Ps=1.\n\nColumns shifted off the right edge are discarded; blank columns are inserted at the left edge. SR is the horizontal counterpart of SD (Scroll Down) and the inverse of SL (Shift Left). Like SL, it's rarely used in modern terminal applications and many emulators either don't implement it or treat it as a no-op. Specified in ECMA-48 alongside SU/SD/SL.",
     "probe": "Headless: measure the first nine cells of two rows and cursor setup, shift right by two, then compare each destination cell to its measured source and check the two inserted left blanks. The app cursor reply does not establish shifted cells or margin behavior.",
-    "probeStatus": "partial",
     "baseline": "rich",
     "sequence": "CSI Ps SP A"
   },
@@ -759,7 +785,6 @@
     "tags": ["xterm-extensions"],
     "body": "DECIC (DEC Insert Column) inserts N blank columns at the cursor's column position, shifting all content to the right of the cursor further right. The sequence is <code>ESC [ Ps ' }</code> — note the apostrophe (intermediate) before <code>}</code>. Default Ps=1.\n\nColumns shifted past the right margin are discarded. DECIC is the horizontal/column counterpart of IL (Insert Lines): IL inserts blank rows by shifting content down, DECIC inserts blank columns by shifting content right. It only operates on cells within the current scroll region (top/bottom margins) and the current left/right margin region if DECLRMM (mode 69) is enabled. Originally a VT420 feature, supported by xterm and some other modern terminals but not universally implemented.",
     "probe": "Headless: measure the first eight cells of three rows and cursor setup, insert two columns at column 3, then check inserted blank cells, shifted cells against their measured sources, and unchanged prefixes. The app cursor reply does not establish column editing or margins.",
-    "probeStatus": "partial",
     "baseline": "rich",
     "sequence": "CSI Ps ' }"
   },
@@ -770,7 +795,6 @@
     "tags": ["xterm-extensions"],
     "body": "DECDC (DEC Delete Column) deletes N columns at the cursor's column position, shifting all content to the right of the cursor further left. The sequence is <code>ESC [ Ps ' ~</code> — note the apostrophe (intermediate) before <code>~</code>. Default Ps=1.\n\nBlank columns are inserted at the right margin to fill the vacated space. DECDC is the horizontal counterpart of DL (Delete Lines) and the inverse of DECIC (Insert Column). It only operates within the current scroll region's vertical bounds, and within the left/right margin bounds when DECLRMM (mode 69) is enabled. Originally a VT420 feature, supported by xterm but rarely used in practice — most TUI applications redraw their content rather than use column-based editing.",
     "probe": "Headless: measure the first eight cells of three rows plus incoming source cells through column 10 when present, verify cursor setup, delete two columns at column 3, then compare destinations to measured sources and check unchanged prefixes; require right blanks only beyond the screen edge. The app cursor reply does not establish column editing or margins.",
-    "probeStatus": "partial",
     "baseline": "rich",
     "sequence": "CSI Ps ' ~"
   },
@@ -782,7 +806,6 @@
     "baseline": "legacy",
     "body": "DECFRA (<code>CSI Pc ; Pt ; Pl ; Pb ; Pr $ x</code>) fills a rectangular area with character <code>Pc</code> from rows <code>Pt</code> through <code>Pb</code> and columns <code>Pl</code> through <code>Pr</code>. Introduced on the DEC VT420 in 1990 for form-fill applications and spreadsheets that needed to paint rectangular regions of the screen — drawing dividers, padding fields, or clearing a region with a fill character — without touching cells outside the rectangle. xterm and mintty implement DECFRA; nearly every other modern terminal skips it. The character must be in the printable ASCII range or DEC supplemental graphic range.",
     "probe": "Headless: measure a 3x5 seeded area and right-flank controls, fill with X, and read back all target cells. The app cursor reply does not establish filled cells.",
-    "probeStatus": "partial",
     "sequence": "CSI Pc ; Pt ; Pl ; Pb ; Pr $ x"
   },
   "editing.decera": {
@@ -793,7 +816,6 @@
     "baseline": "legacy",
     "body": "DECERA (<code>CSI Pt ; Pl ; Pb ; Pr $ z</code>) erases characters and visual attributes in a rectangular region from rows <code>Pt</code>-<code>Pb</code>, columns <code>Pl</code>-<code>Pr</code>, replacing characters with spaces. It does not preserve characters protected by DECSCA; use DECSERA for selective erasure. Line attributes and the active cursor position are unchanged. Companion to DECFRA.",
     "probe": "Headless: measure a 3x5 nonblank seed and right-flank controls, erase the area, and read back all target cells. The app cursor reply does not establish erased cells.",
-    "probeStatus": "partial",
     "sequence": "CSI Pt ; Pl ; Pb ; Pr $ z"
   },
   "editing.decsera": {
@@ -804,7 +826,6 @@
     "baseline": "legacy",
     "body": "DECSERA (<code>CSI Pt ; Pl ; Pb ; Pr $ {</code>) is the selective-erase variant of DECERA: it erases unprotected characters within the rectangle but leaves any cell marked with the DECSCA character protection attribute intact. This is the rectangular companion to DECSED (selective erase in display). On VT420-era hardware, form designers used DECSCA to protect field labels and DECSERA to clear input fields between records without disturbing the form structure.",
     "probe": "Headless: seed one row with protected P, unprotected ABCD and an outside Z; verify that selective erasure clears ABCD and preserves both controls. Multi-row extent and visual attributes are not measured. The app cursor reply does not establish selective erasure.",
-    "probeStatus": "partial",
     "sequence": "CSI Pt ; Pl ; Pb ; Pr $ {"
   },
   "editing.deccra": {
@@ -815,7 +836,6 @@
     "baseline": "legacy",
     "body": "DECCRA (<code>CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v</code>) copies a rectangular area from one location to another. The source rectangle is <code>Pts</code>;<code>Pls</code>-<code>Pbs</code>;<code>Prs</code> on page <code>Pps</code>; the destination's top-left is <code>Ptd</code>;<code>Pld</code>. The most complex of the VT420 rectangle operations: cells are copied including their SGR attributes, source and destination may overlap (the result is as if the source were captured first), and the operation can cross page boundaries on terminals that implement multi-page memory. xterm implements all of this. Almost nothing else does.",
     "probe": "Headless: measure a 2x5 source at the top and destination at rows 5-6 column 10, copy, then read back both destination rows with source and outside controls. The app cursor reply does not establish copied cells.",
-    "probeStatus": "partial",
     "sequence": "CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v"
   },
   "editing.deccara": {
@@ -826,7 +846,6 @@
     "baseline": "legacy",
     "body": "DECCARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ r</code>) changes the SGR attributes of every cell in a rectangular region without touching the characters themselves. The <code>Ps</code> parameters are SGR codes (1=bold, 4=underline, 7=inverse, etc.), accumulated and applied to the rectangle. Whether DECCARA operates on a true rectangle or on the stream of cells between the corners depends on DECSACE. Used by VT420-era forms to highlight an entire input field, error message, or table cell without rewriting its contents.",
     "probe": "Headless: measure text and initially clear inverse attributes in a 3x5 rectangle, apply inverse, then read back target attributes with unchanged characters and right-flank controls. The app cursor reply does not establish attributes or DECSACE extent variants.",
-    "probeStatus": "partial",
     "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ r"
   },
   "editing.decrara": {
@@ -837,7 +856,6 @@
     "baseline": "legacy",
     "body": "DECRARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ t</code>) toggles the listed SGR attributes within a rectangular region. Each cell flips the listed bits — bold cells become non-bold, non-bold cells become bold, and so on. Like DECCARA, it leaves the characters alone and obeys DECSACE to operate on a rectangle or a stream. VT420-era applications used DECRARA to flash highlight a field on validation errors or to invert a selected row in a list.",
     "probe": "Headless: measure text and initially set inverse attributes in a 3x5 rectangle, reverse inverse, then read back target attributes with unchanged characters and right-flank controls. The app cursor reply does not establish attributes or DECSACE extent variants.",
-    "probeStatus": "partial",
     "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ t"
   },
   "editing.decsace": {
@@ -848,7 +866,6 @@
     "baseline": "legacy",
     "body": "DECSACE (<code>CSI Ps * x</code>) selects how DECCARA and DECRARA interpret their coordinates. <code>Ps</code>=1 (the default) treats the corners as endpoints of a stream of cells in scan order, so the operation affects the partial rows at the top and bottom plus every cell on the rows between. <code>Ps</code>=2 treats the coordinates as a true rectangle, affecting only the cells inside the box. Modern users almost always want the rectangle interpretation; the stream default is a relic of how DEC originally specified the operations.",
     "probe": "Not measured: the headless callback checks sequence consumption only, without comparing attribute effects in stream and rectangle modes. The app callback leaves the mode unchanged. Neither establishes attribute-change extent.",
-    "probeStatus": "partial",
     "sequence": "CSI Ps * x"
   },
   "editing.decrqcra": {
@@ -859,7 +876,6 @@
     "baseline": "legacy",
     "body": "DECRQCRA (<code>CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y</code>) computes a 16-bit checksum of the cells in a rectangular region and reports it back to the host as a DCS response (<code>DCS Pid ! ~ checksum ST</code>). <code>Pid</code> is a request identifier echoed in the response; <code>Ppid</code> is the page number. The checksum hashes both characters and SGR attributes, which is why it's used by DEC's terminal conformance test suites — a test script can paint a known pattern, ask the terminal for the checksum, and compare against an expected value to confirm the terminal rendered the pattern correctly. xterm still implements this. Almost no application has ever used it outside of test suites.",
     "probe": "Request a checksum and check for a complete DCS reply with request ID 1 and four hexadecimal digits. The headless request covers five cells; the app request covers one. A positive result establishes reply capability only; checksum arithmetic is not verified.",
-    "probeStatus": "partial",
     "sequence": "CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y"
   },
   "input.modify-other-keys": {
@@ -887,7 +903,6 @@
     "baseline": "rich",
     "body": "SGR-Pixels mouse mode (mode 1016) reports mouse coordinates in pixels rather than cells. This enables sub-cell precision for applications that need exact pointer positioning, such as terminal-based drawing tools or image viewers.\n\nPixel mouse mode is the precision extension to SGR mouse reporting. Cell coordinates are enough for text widgets, but drawing tools, image viewers, and high-DPI terminal UIs need sub-cell location. The mode uses the familiar SGR mouse response shape, replacing cell units with pixel units.",
     "probe": "Inconclusive until controlled mouse events and their pixel-coordinate reports are checked. A parser mode flag alone does not verify coordinate encoding.",
-    "probeStatus": "unprobed",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.urxvt-mouse": {
@@ -897,7 +912,6 @@
     "baseline": "rich",
     "body": "urxvt-style mouse reporting (mode 1015) uses decimal encoding for coordinates, extending reporting beyond the 223-column limit of traditional X10 encoding. Less common than SGR mouse (1006) but still supported by some terminals.\n\nURxvt mode was an intermediate answer to xterm's coordinate limit: it kept the mouse idea but reported decimal coordinates. SGR mouse later became the cleaner and more widely adopted version, so mode 1015 is mostly legacy. Testing it still catches parsers that hard-code only the oldest byte-encoded mouse format.",
     "probe": "Inconclusive until controlled mouse events and their urxvt-encoded reports are checked. A generic mouse-tracking flag does not verify this encoding.",
-    "probeStatus": "unprobed",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.x10-mouse": {
@@ -907,7 +921,6 @@
     "baseline": "modern",
     "body": "X10 compatibility mouse tracking (mode 9) reports only button press events, not releases or motion. This is the oldest mouse tracking mode, limited to coordinates up to 223 and press-only events.\n\nX10 mode is the ancestor of terminal mouse reporting. It came from xterm and reports only button presses using compact byte-encoded coordinates, which creates the classic 223-column limit. Modern applications should prefer SGR mouse, but X10 remains useful for understanding the compatibility stack that later mouse modes extended.",
     "probe": "Inconclusive until controlled button events and their X10 reports are checked. A parser mode flag alone does not verify event encoding.",
-    "probeStatus": "unprobed",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "input.button-event-mouse": {
@@ -917,7 +930,6 @@
     "baseline": "modern",
     "body": "Button-event tracking (mode 1002) reports mouse button press, release, and motion while a button is held. More detailed than basic tracking (1000) but less verbose than all-motion tracking (1003).\n\nMode 1002 was one of xterm's steps from click-only reporting toward interactive mouse tracking. It reports drags only while a button is held, which is enough for selection, resize handles, and sliders without the volume of all-motion mode. The later SGR coordinate encoding made the same event model practical on large terminals.",
     "probe": "Inconclusive until controlled button and motion events are generated and their reports checked. A parser mode flag alone does not verify button-event tracking.",
-    "probeStatus": "unprobed",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking"
   },
   "modes.alt-screen.enter": {
@@ -1227,7 +1239,8 @@
     "baseline": "modern",
     "body": "Tests whether the visible scrollback viewport stays anchored when new output arrives while the user is scrolled up in the main screen. This is a terminal UI policy, not a VT escape sequence: the application can write output, but the terminal emulator owns the user's viewport position.\n\nThis behavior matters for long-running inline applications, build logs, and agent UIs. If output forces the viewport back to the live bottom, users lose their place while reading history. If the viewport stays anchored, the newest output remains below the visible region until the user scrolls back down or presses a key that the terminal treats as an explicit return to the live region.\n\nTerminals expose this policy under different names and defaults. xterm has <code>scrollTtyOutput</code>; Ghostty exposes <code>scroll-to-bottom</code> with separate <code>keystroke</code> and <code>output</code> flags. Synchronized output (<code>DECSET 2026</code>) should only batch painting, but the manual probe repeats the test inside a synchronized-output block because terminal UI policies can still differ around batched output.",
     "probe": "Manual UI probe. Fill scrollback with at least two pages of lines, scroll the viewport up until the live bottom is no longer visible, then emit a uniquely named marker line without keyboard input. Pass if the viewport remains on the old lines; fail if it jumps to the marker at the bottom. Repeat with the marker wrapped in <code>\\x1b[?2026h</code> ... <code>\\x1b[?2026l</code> to check synchronized output, and record any terminal setting that changes the result.",
-    "probeStatus": "manual"
+    "probeStatus": "manual",
+    "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "extensions.kitty-keyboard": {
     "name": "Kitty keyboard protocol",
@@ -1255,7 +1268,6 @@
     "tags": ["sixel"],
     "body": "Sixel is DEC’s raster graphics format, documented in the <a href=\"https://vt100.net/dec/ek-vt3xx-hr-002.pdf\">VT330/VT340 Programmer Pocket Guide</a>. A data character represents a vertical column of six pixels; color-register commands select the palette entry. <code>$</code> returns to the left edge of a band and <code>-</code> advances to the next band.\n\n<a href=\"https://invisible-island.net/xterm/xterm.log.html#xterm_294\">xterm added experimental Sixel support in July 2013</a>. Sixel predates Kitty graphics, but age does not establish support in a particular terminal or transport path.\n\nThe current probe does not decode an image or collect rendered pixels. A terminal declaration or cursor movement alone remains inconclusive for image rendering.",
     "probe": "Inconclusive: no decoded image or rendered pixel observation is collected. A Sixel declaration or cursor movement does not verify rendering.",
-    "probeStatus": "unprobed",
     "baseline": "rich"
   },
   "extensions.osc8": {
@@ -1266,7 +1278,9 @@
     "body": "OSC 8 adds clickable hyperlinks to terminal output, similar to HTML anchor tags. The format is <code>ESC ] 8 ; params ; uri ST</code> to start a link and <code>ESC ] 8 ; ; ST</code> to end it. Text between these markers becomes a clickable hyperlink.\n\nThe <code>params</code> field supports an <code>id=value</code> parameter that groups non-contiguous text into a single link — essential for links that span multiple lines or are broken by line wrapping. When the user hovers over any part of a multi-segment link with the same <code>id</code>, all segments highlight together.\n\nTerminals typically render hyperlinks with an underline and open them in the default browser on click or Ctrl+click. Tools like <code>ls --hyperlink=auto</code>, <code>gcc</code>, and <code>grep</code> can emit OSC 8 links to file paths and URLs. Widely adopted across modern terminals including Ghostty, iTerm2, WezTerm, GNOME Terminal, and Windows Terminal.",
     "probe": "Headless: write linked text between plain and trailing controls; inspect each cell for the exact URI on linked text and no URI outside the close. App: write the same text and read cursor position only; this cannot establish the URI, click target, or styling, so the app result is inconclusive.",
     "baseline": "rich",
-    "sequence": "ESC ] 8 ; params ; uri BEL"
+    "sequence": "ESC ] 8 ; params ; uri BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc2-title": {
     "name": "Window title (OSC 2)",
@@ -1285,7 +1299,6 @@
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 0 sets both the icon name and window title simultaneously. The sequence is <code>ESC ] 0 ; title ST</code>. In practice, the \"icon name\" is a legacy concept from X11 window managers — most modern terminals treat OSC 0 identically to OSC 2 (window title only).",
     "probe": "Headless title changes are retained as partial diagnostic evidence. Icon-name behavior is not read back, so the combined feature remains inconclusive.",
-    "probeStatus": "partial",
     "baseline": "modern",
     "sequence": "ESC ] 0 ; title BEL"
   },
@@ -1326,7 +1339,6 @@
     "tags": ["osc"],
     "body": "OSC 7 reports the current working directory to the terminal. The sequence is <code>ESC ] 7 ; file://hostname/path ST</code>. Shells emit this after each command so the terminal knows the working directory. Terminals use this to open new tabs/splits in the same directory and to make file paths in output clickable with correct relative path resolution.",
     "probe": "Inconclusive: no terminal-owned current-directory metadata is read back. A declaration or cursor reply does not verify that the directory was recorded.",
-    "probeStatus": "unprobed",
     "baseline": "modern",
     "sequence": "ESC ] 7 ; file://host/path BEL"
   },
@@ -1338,7 +1350,6 @@
     "body": "Text reflow on resize refers to the terminal's behavior when its window is resized: a reflowing terminal rewraps long lines to match the new width, preserving logical line boundaries, whereas a non-reflowing terminal keeps hard wraps at the original width, leaving jagged line endings or truncated content.\n\nReflow matters most for the scrollback buffer — when you widen a narrow window, a reflowing terminal joins previously-wrapped lines back into their original long form, while a non-reflowing terminal leaves them broken at the old wrap points. This makes selection, copy, and search dramatically better on reflowing terminals for normal shell output and log files.\n\nReflow is complicated to implement correctly: the terminal must distinguish between soft wraps (inserted by the renderer when a line overflows) and hard wraps (explicit newlines from the application), track logical line boundaries through scrollback eviction, and handle wide characters and combining marks that cross the old wrap boundary. The main screen, alternate screen, and scrollback need separate checks. [Kitty’s changelog](https://sw.kovidgoyal.net/kitty/changelog/) records disabling text rewrap in the alternate screen buffer; [Alacritty’s 0.3.0 release](https://alacritty.org/changelog_0_3_0.html) introduced text reflow. These upstream descriptions provide context, not measurements of the terminal versions listed here.\n\nThere is no escape sequence to query reflow support — behavior can only be observed by resizing the terminal and inspecting the scrollback.",
     "probe": "The current automated result is inconclusive: no controlled resize and post-resize layout readback. Ordinary line wrapping is tested separately.",
     "baseline": "rich",
-    "probeStatus": "unprobed",
     "sequence": "(behavioral — resize the terminal)"
   },
   "extensions.semantic-prompts": {
@@ -1348,7 +1359,6 @@
     "tags": ["osc"],
     "body": "Semantic prompts use OSC 133 markers to tell the terminal where each shell prompt, command input, and command output begins and ends. The markers are: <code>A</code> (prompt start), <code>B</code> (command input start — after prompt, before the user types), <code>C</code> (command output start — after Enter), and <code>D</code> (command finished, with exit code).\n\nWith these markers, terminals can implement features that were previously impossible: click-to-navigate between prompts, select entire command output, scroll by command boundaries, mark failed commands with a red indicator, and provide command completion times. Shell integration scripts (for bash, zsh, fish) emit these markers automatically.\n\nAlso known as shell integration or command decoration. Supported by iTerm2 (which originated the protocol), Ghostty, WezTerm, Kitty, and VS Code's integrated terminal.",
     "probe": "Inconclusive: no shell-integration metadata or behavior is observed. Backend declarations remain diagnostic context; the app probe does not send markers merely to check terminal responsiveness.",
-    "probeStatus": "unprobed",
     "baseline": "rich",
     "sequence": "ESC ] 133 ; A BEL"
   },
@@ -1359,7 +1369,6 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 633</strong> is VS Code's shell integration protocol, extending <a href=\"/extensions/osc-133-semantic-prompts\" class=\"hover-link\">OSC 133</a> with additional markers for command detection, output boundaries, and shell state. It enables features like command decorations (green/red markers showing success/failure), run-recent-command, and sticky scroll for terminal output.</p>\n<p>The protocol uses escape sequences to mark four boundaries: <strong>prompt start</strong> (A), <strong>command start</strong> (B), <strong>command executed</strong> (C), and <strong>command finished</strong> (D, with exit code). VS Code's built-in shell integration scripts for bash, zsh, fish, and PowerShell emit these markers automatically. The terminal then knows exactly where each prompt, command, and output block begins and ends.</p>\n<p>OSC 633 adds VS Code-specific extensions beyond OSC 133: <strong>property reporting</strong> (P;key=value) for shell state like current directory and shell type, <strong>command line reporting</strong> (E) for the exact command text, and <strong>continuation prompt marking</strong> for multi-line commands. Other terminals (Kitty, WezTerm) support the base OSC 133 protocol but not the VS Code-specific extensions.</p>",
     "probe": "Inconclusive: no VS Code shell-integration metadata or behavior is observed. A semantic-prompts declaration does not verify OSC 633, and the app probe does not send markers merely to check terminal responsiveness.",
-    "probeStatus": "unprobed",
     "url": "https://code.visualstudio.com/docs/terminal/shell-integration#_vs-code-custom-sequences-osc-633-st",
     "sequence": "ESC ] 633 ; A BEL"
   },
@@ -1371,7 +1380,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 133;A</strong> (also known as <code>FTCS_PROMPT</code>) marks the start of a shell prompt — the first of the FinalTerm semantic prompt markers. It tells the terminal: <em>everything from here until the next marker is the prompt itself</em>. Shells emit this immediately before drawing the prompt string.</p>\n<p>This marker enables click-to-navigate between prompts, jump-to-previous-command, and visual command boundaries. Without it, the terminal has no way to know where one command ends and the next begins — it just sees a stream of characters. Combined with <a href=\"/extensions/osc133-b-command-start\" class=\"hover-link\">133;B</a>, <a href=\"/extensions/osc133-c-command-executed\" class=\"hover-link\">133;C</a>, and <a href=\"/extensions/osc133-d-command-finished\" class=\"hover-link\">133;D</a>, it forms the complete FinalTerm semantic prompt protocol.</p>",
     "probe": "Send <code>OSC 133 ; A BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 133 ; A BEL"
+    "sequence": "ESC ] 133 ; A BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc133-b": {
     "name": "OSC 133;B command start (FTCS_COMMAND_START)",
@@ -1381,7 +1392,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 133;B</strong> (also known as <code>FTCS_COMMAND_START</code>) marks the end of the prompt and the start of the user's command line. Shells emit this immediately after drawing the prompt and before the user begins typing. It tells the terminal: <em>everything from here until Enter is what the user is typing</em>.</p>\n<p>This marker lets the terminal distinguish prompt text (which it shouldn't let users edit) from command text (which is the user's input). Editors and shell-aware terminals use this to implement features like command-line history navigation, syntax highlighting of the typed command, and copy-command-only operations that exclude the prompt.</p>",
     "probe": "Send <code>OSC 133 ; B BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 133 ; B BEL"
+    "sequence": "ESC ] 133 ; B BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc133-c": {
     "name": "OSC 133;C command executed (FTCS_COMMAND_EXECUTED)",
@@ -1391,7 +1404,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 133;C</strong> (also known as <code>FTCS_COMMAND_EXECUTED</code>) marks the transition from the command line to command output. Shells emit this immediately after the user presses Enter and before the command begins producing output. It tells the terminal: <em>everything from here until 133;D is the command's output</em>.</p>\n<p>This marker lets the terminal group output blocks for selection, scrolling, and folding. Features like \"copy command output\" and \"scroll by command\" depend on knowing where output begins. Combined with <a href=\"/extensions/osc133-d-command-finished\" class=\"hover-link\">133;D</a>, it enables the terminal to compute command duration and show success/failure decorations.</p>",
     "probe": "Send <code>OSC 133 ; C BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 133 ; C BEL"
+    "sequence": "ESC ] 133 ; C BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc133-d": {
     "name": "OSC 133;D command finished (FTCS_COMMAND_FINISHED)",
@@ -1401,7 +1416,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 133;D</strong> (also known as <code>FTCS_COMMAND_FINISHED</code>) marks the end of command output, with an optional exit code as a parameter. Shells emit this immediately after the command exits and before the next prompt is drawn. The format is <code>OSC 133 ; D ; exitcode BEL</code>, where exitcode is the shell's <code>$?</code> value.</p>\n<p>With this marker plus the exit code, terminals can show success/failure decorations (green check, red X) next to each command, compute command duration (time between 133;C and 133;D), and let users jump to the previous failed command. This is the marker that enables most of the visible \"command decoration\" features in modern terminals like Ghostty, iTerm2, and VS Code.</p>",
     "probe": "Send <code>OSC 133 ; D ; 0 BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 133 ; D ; exitcode BEL"
+    "sequence": "ESC ] 133 ; D ; exitcode BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc133-p": {
     "name": "OSC 133;P properties",
@@ -1411,7 +1428,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 133;P</strong> sets properties or metadata about the current command. The format is <code>OSC 133 ; P ; key=value BEL</code>, where common keys include <code>Cwd</code> (current working directory), <code>CmdLine</code> (the literal command text), and shell-specific state.</p>\n<p>Property reporting lets the terminal track shell state without parsing command output or relying on environment variables. For example, the terminal can know the working directory of each command in scrollback, enabling features like \"open this command's directory\" or \"reproduce this command in a new tab with the same cwd\". <a href=\"/extensions/osc-633-vscode\" class=\"hover-link\">VS Code's OSC 633</a> extends this concept with additional VS Code-specific properties.</p>",
     "probe": "Send <code>OSC 133 ; P ; Cwd=/tmp BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 133 ; P ; key=value BEL"
+    "sequence": "ESC ] 133 ; P ; key=value BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc633-a": {
     "name": "OSC 633;A prompt start",
@@ -1421,7 +1440,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 633;A</strong> is VS Code's prompt start marker, mirroring <a href=\"/extensions/osc133-a-prompt-start\" class=\"hover-link\">OSC 133;A</a>. It marks the beginning of a shell prompt so VS Code's integrated terminal (and other OSC 633-aware terminals) can identify where prompts start in scrollback.</p>\n<p>VS Code defined OSC 633 as a parallel namespace to OSC 133 so it could add VS Code-specific extensions without conflicting with the FinalTerm spec. Shells configured with VS Code's shell integration scripts emit both 133 and 633 markers, so the terminal works with whichever protocol is supported.</p>",
     "probe": "Send <code>OSC 633 ; A BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 633 ; A BEL"
+    "sequence": "ESC ] 633 ; A BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc633-b": {
     "name": "OSC 633;B prompt end",
@@ -1431,7 +1452,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 633;B</strong> marks the end of the shell prompt and the start of the user's command line, mirroring <a href=\"/extensions/osc133-b-command-start\" class=\"hover-link\">OSC 133;B</a>. VS Code uses this to identify where the prompt ends and the editable command region begins.</p>\n<p>This is essential for VS Code's command decoration system: it lets the terminal draw decorations alongside the prompt without overlapping the user's input area, and lets it correctly identify which characters in scrollback are prompt vs command.</p>",
     "probe": "Send <code>OSC 633 ; B BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 633 ; B BEL"
+    "sequence": "ESC ] 633 ; B BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc633-c": {
     "name": "OSC 633;C pre-execution",
@@ -1441,7 +1464,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 633;C</strong> is VS Code's pre-execution marker, emitted just before a command begins executing. It mirrors <a href=\"/extensions/osc133-c-command-executed\" class=\"hover-link\">OSC 133;C</a> and marks the boundary between the command line and command output.</p>\n<p>VS Code uses this marker to start tracking command duration, group output for the run-recent-command picker, and prepare command decoration UI. When combined with <a href=\"/extensions/osc633-d-command-finished\" class=\"hover-link\">OSC 633;D</a>, it gives VS Code precise timing for each command execution.</p>",
     "probe": "Send <code>OSC 633 ; C BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 633 ; C BEL"
+    "sequence": "ESC ] 633 ; C BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc633-d": {
     "name": "OSC 633;D command finished",
@@ -1451,7 +1476,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 633;D</strong> marks command completion and includes the exit code as a parameter, mirroring <a href=\"/extensions/osc133-d-command-finished\" class=\"hover-link\">OSC 133;D</a>. The format is <code>OSC 633 ; D ; exitcode BEL</code>.</p>\n<p>This is the marker that drives VS Code's command decoration gutter: green check for success (exit 0), red X for failure (non-zero exit). It's also what enables the run-recent-command picker to filter by success/failure status, and what gives the terminal command duration data for performance analysis.</p>",
     "probe": "Send <code>OSC 633 ; D ; 0 BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 633 ; D ; exitcode BEL"
+    "sequence": "ESC ] 633 ; D ; exitcode BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc633-e": {
     "name": "OSC 633;E set commandline",
@@ -1461,7 +1488,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 633;E</strong> reports the explicit command line text along with a verification nonce. The format is <code>OSC 633 ; E ; commandline ; nonce BEL</code>. The nonce is a per-session secret known only to the shell integration script and VS Code, preventing replay attacks where malicious output could spoof a command.</p>\n<p>This is unique to OSC 633 — OSC 133 has no equivalent. It exists because VS Code's run-recent-command and command-line history features need to know exactly what the user typed, not what the terminal can infer from cell contents (which loses information about quoting, escapes, and multi-line input). The nonce makes the protocol safe to use even when running untrusted commands that might emit arbitrary escape sequences.</p>",
     "probe": "Send <code>OSC 633 ; E ; ls -la ; nonce123 BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 633 ; E ; commandline ; nonce BEL"
+    "sequence": "ESC ] 633 ; E ; commandline ; nonce BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.osc633-p": {
     "name": "OSC 633;P properties",
@@ -1471,7 +1500,9 @@
     "baseline": "rich",
     "body": "<p><strong>OSC 633;P</strong> sets VS Code-specific properties about the current shell state. The format is <code>OSC 633 ; P ; key=value BEL</code>, with VS Code-defined keys including <code>Cwd</code> (current working directory), <code>IsWindows</code> (whether running under Windows-style path semantics), and shell environment metadata used for git status and other integrations.</p>\n<p>VS Code uses these properties to drive features like the explorer's \"reveal in terminal\" command (which needs to know the terminal's cwd), the terminal tab's git branch indicator, and Windows/WSL path translation. While <a href=\"/extensions/osc133-p-properties\" class=\"hover-link\">OSC 133;P</a> defines a similar mechanism, OSC 633;P uses VS Code-specific keys that the editor recognizes natively.</p>",
     "probe": "Send <code>OSC 633 ; P ; Cwd=/tmp BEL</code> and verify the terminal consumes the sequence (cursor doesn't advance, terminal remains responsive).",
-    "sequence": "ESC ] 633 ; P ; key=value BEL"
+    "sequence": "ESC ] 633 ; P ; key=value BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "acceptance-only evidence: the definition declares consumed, so the probe establishes the sequence was accepted, not the feature's effect"
   },
   "extensions.notifications": {
     "name": "Desktop Notifications (OSC 9/777)",
@@ -1479,8 +1510,7 @@
     "tags": ["osc"],
     "baseline": "rich",
     "body": "<p><strong>Desktop notifications</strong> allow terminal applications to trigger system notifications. Two competing escape sequences exist: <strong>OSC 9</strong> (iTerm2/ConEmu) sends a simple notification string, while <strong>OSC 777</strong> (rxvt-unicode) supports structured notifications with title and body. Neither is standardized — support varies widely across terminals.</p>\n<p>Common use case: long-running commands that notify when complete. Shells like zsh have plugins that automatically send a notification when a command takes longer than N seconds. The BEL character (0x07) is a simpler alternative — most terminals can be configured to show a visual bell or system notification on BEL.</p>",
-    "probe": "Inconclusive: no desktop notification or permission outcome is observed. The probe does not send a notification merely to check terminal responsiveness.",
-    "probeStatus": "unprobed"
+    "probe": "Inconclusive: no desktop notification or permission outcome is observed. The probe does not send a notification merely to check terminal responsiveness."
   },
   "extensions.iterm2-images": {
     "name": "iTerm2 Inline Images (OSC 1337)",
@@ -1489,7 +1519,6 @@
     "baseline": "rich",
     "body": "<p><strong>iTerm2 inline images</strong> use the proprietary <strong>OSC 1337</strong> protocol to display images directly in terminal output. The image data is base64-encoded and transmitted inline with the escape sequence. iTerm2 supports PNG, JPEG, GIF, and other formats.</p>\n<p>This protocol predates the Kitty graphics protocol and is simpler but less capable — it lacks features like image placement, animation control, and chunked transfer. Several other terminals (WezTerm, mintty) have adopted the iTerm2 protocol alongside or instead of Kitty graphics. The protocol is documented in iTerm2's documentation but has no formal specification.</p>",
     "probe": "Inconclusive: no image-decoding or rendering observation is collected. A capability declaration or cursor reply does not verify inline images.",
-    "probeStatus": "unprobed",
     "url": "https://iterm2.com/documentation-images.html"
   },
   "extensions.truecolor": {
@@ -1777,7 +1806,6 @@
     "tags": ["vt100"],
     "body": "The DEC Special Graphics character set provides box-drawing characters. Activate with <code>ESC ( 0</code> (designate G0 as Special Graphics), deactivate with <code>ESC ( B</code> (restore ASCII). When active, ASCII characters like <code>j k l m q x</code> render as box-drawing glyphs (corners, horizontal/vertical lines).\n\nUsed by legacy TUI applications (dialog, mc, ncurses programs) to draw borders and frames. Modern applications typically use Unicode box-drawing characters (U+2500 block) instead, but DEC Special Graphics remains relevant for environments where UTF-8 is not available.",
     "probe": "Headless: qualify ASCII controls and require exactly U+2500 after DEC Special Graphics designation. The app cursor reply does not establish glyph rendering.",
-    "probeStatus": "partial",
     "baseline": "core"
   },
   "charsets.utf8": {
@@ -1786,7 +1814,6 @@
     "tags": ["unicode"],
     "body": "Tests whether the terminal correctly handles UTF-8 encoded text. Virtually all modern terminals default to UTF-8 mode. UTF-8 encodes Unicode code points as 1-4 byte sequences, allowing the full range of Unicode characters (emoji, CJK, mathematical symbols, etc.) to be displayed in the terminal.",
     "probe": "Headless: retain measured ASCII controls and require the sampled characters é and 世 in their target cells. This samples Unicode cell handling; it does not cover all UTF-8 byte forms or app-rendered pixels.",
-    "probeStatus": "partial",
     "baseline": "core",
     "url": "https://unicode.org/faq/utf_bom.html"
   },
@@ -1797,8 +1824,7 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "SI (Shift In, 0x0F) and SO (Shift Out, 0x0E) switch between G0 and G1 character sets. The G0 and G1 sets can be independently designated using <code>ESC ( X</code> (G0) and <code>ESC ) X</code> (G1), where X selects the character set (B=ASCII, 0=DEC Special Graphics). This mechanism allows applications to quickly toggle between text and line-drawing characters without re-designating the character set each time.",
-    "probe": "Headless: designate G0 as ASCII and G1 as DEC Special Graphics, then use SI/SO to require l, U+250C, l across three target cells with separate ASCII controls. The app callback does not verify G1 switching.",
-    "probeStatus": "partial"
+    "probe": "Headless: designate G0 as ASCII and G1 as DEC Special Graphics, then use SI/SO to require l, U+250C, l across three target cells with separate ASCII controls. The app callback does not verify G1 switching."
   },
   "charsets.dec-line-drawing": {
     "name": "DEC line drawing character set",
@@ -1807,8 +1833,7 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "The DEC Special Graphics character set (activated via <code>ESC ( 0</code>) maps ASCII characters to box-drawing glyphs. Key mappings: j=\\u2518 (bottom-right corner), k=\\u2510 (top-right corner), l=\\u250C (top-left corner), m=\\u2514 (bottom-left corner), q=\\u2500 (horizontal line), x=\\u2502 (vertical line). These six characters form the basis for drawing boxes and borders in non-Unicode environments. Legacy applications like dialog, mc, and ncurses-based programs rely on this mapping.",
-    "probe": "Headless: qualify the ASCII seed and unchanged control, then require exactly ┘┐┌└─│ for jklmqx under DEC Special Graphics. Arbitrary non-ASCII or blank cells do not pass; app pixels remain unmeasured.",
-    "probeStatus": "partial"
+    "probe": "Headless: qualify the ASCII seed and unchanged control, then require exactly ┘┐┌└─│ for jklmqx under DEC Special Graphics. Arbitrary non-ASCII or blank cells do not pass; app pixels remain unmeasured."
   },
   "device.primary-da": {
     "name": "Primary device attributes (DA1)",
@@ -1896,8 +1921,7 @@
     "tags": ["iterm2"],
     "baseline": "rich",
     "body": "TERM_FEATURES carries the feature string defined by iTerm2's feature-reporting specification: encoded feature values are concatenated, without semicolon separators. A terminal may also answer an OSC 1337 Capabilities query. An inherited environment value can be stale or supplied by another process, so its presence alone does not establish the current terminal's capabilities.",
-    "probe": "Record whether TERM_FEATURES is advertised; without an authenticated terminal source, its presence is inconclusive.",
-    "probeStatus": "partial"
+    "probe": "Record whether TERM_FEATURES is advertised; without an authenticated terminal source, its presence is inconclusive."
   },
   "device.xtwinops-14": {
     "name": "Report window size in pixels (CSI 14 t)",
@@ -1997,7 +2021,8 @@
     "sequence": "$TERM (environment variable)",
     "body": "The <code>TERM</code> environment variable identifies the terminal type for terminfo/termcap lookup. It is set by the terminal emulator at startup and is the oldest and most widely supported mechanism for terminal self-identification. Applications use <code>TERM</code> to load capability databases and decide which escape sequences are safe to emit.\n\nCommon values include <code>xterm-256color</code>, <code>screen-256color</code>, <code>tmux-256color</code>, <code>xterm-kitty</code>, <code>wezterm</code>, <code>foot</code>, and <code>ghostty</code>. Some terminals expose a custom value to enable terminfo entries that describe their extensions; others choose a generic value like <code>xterm-256color</code> to maximize compatibility with software that only ships with a small terminfo database.",
     "probe": "Manual verification required — no automated probe available.",
-    "probeStatus": "manual"
+    "probeStatus": "manual",
+    "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "device.env-colorterm": {
     "name": "COLORTERM env variable",
@@ -2007,7 +2032,8 @@
     "sequence": "$COLORTERM",
     "body": "The <code>COLORTERM</code> environment variable indicates that the terminal supports truecolor (24-bit) output beyond what <code>TERM</code> implies. The de facto standard values are <code>truecolor</code> and <code>24bit</code>; either signals that applications can safely emit SGR 38;2;R;G;B and SGR 48;2;R;G;B sequences.\n\nBecause <code>TERM</code> values rarely encode truecolor capability accurately and terminfo's <code>RGB</code> capability is unevenly populated, <code>COLORTERM</code> has become the most reliable runtime hint for truecolor support. Most modern terminals — kitty, WezTerm, Ghostty, foot, iTerm2, Alacritty, Windows Terminal — set it automatically.",
     "probe": "Manual verification required — no automated probe available.",
-    "probeStatus": "manual"
+    "probeStatus": "manual",
+    "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "device.env-term-program": {
     "name": "TERM_PROGRAM env variable",
@@ -2017,7 +2043,8 @@
     "sequence": "$TERM_PROGRAM",
     "body": "The <code>TERM_PROGRAM</code> environment variable identifies the specific terminal emulator running the session, independent of the more generic <code>TERM</code> value. Common values include <code>iTerm.app</code>, <code>Apple_Terminal</code>, <code>WezTerm</code>, <code>vscode</code>, <code>ghostty</code>, and <code>Hyper</code>.\n\nA companion variable, <code>TERM_PROGRAM_VERSION</code>, reports the emulator's version string and lets applications gate features on minimum versions. The pair was popularized by Apple Terminal and iTerm2 and is now widely set by macOS-friendly terminals as well as several cross-platform emulators.",
     "probe": "Manual verification required — no automated probe available.",
-    "probeStatus": "manual"
+    "probeStatus": "manual",
+    "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "device.env-lc-terminal": {
     "name": "LC_TERMINAL env variable",
@@ -2027,7 +2054,8 @@
     "sequence": "$LC_TERMINAL",
     "body": "The <code>LC_TERMINAL</code> environment variable was introduced by iTerm2 as a way to identify the terminal across SSH sessions. Because <code>LC_*</code> variables are forwarded by default in OpenSSH's <code>SendEnv</code> configuration, <code>LC_TERMINAL</code> survives the hop from local shell into a remote host where <code>TERM_PROGRAM</code> would otherwise be lost.\n\niTerm2 sets <code>LC_TERMINAL=iTerm2</code> and <code>LC_TERMINAL_VERSION</code> to the build number. Other terminals occasionally adopt the convention to advertise themselves through SSH in the same way.",
     "probe": "Manual verification required — no automated probe available.",
-    "probeStatus": "manual"
+    "probeStatus": "manual",
+    "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "device.env-vte-version": {
     "name": "VTE_VERSION env variable",
@@ -2037,7 +2065,8 @@
     "sequence": "$VTE_VERSION",
     "body": "The <code>VTE_VERSION</code> environment variable is set by terminals built on the VTE widget library — GNOME Terminal, Tilix, Terminator, Xfce Terminal, Guake, and others. Its value is a packed version number such as <code>6200</code> (meaning VTE 0.62.0), letting applications detect not just that they are running inside a VTE-based terminal but also which features the underlying widget supports.\n\nShell integration scripts commonly check <code>VTE_VERSION</code> to decide whether to enable OSC 7 (working directory reporting) and other VTE-specific behaviors.",
     "probe": "Manual verification required — no automated probe available.",
-    "probeStatus": "manual"
+    "probeStatus": "manual",
+    "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "device.env-kitty": {
     "name": "KITTY_* env variables",
@@ -2047,7 +2076,8 @@
     "sequence": "$KITTY_PID, $KITTY_WINDOW_ID, $KITTY_INSTALLATION_DIR",
     "body": "The kitty terminal sets a family of <code>KITTY_*</code> environment variables to expose runtime information to child processes. <code>KITTY_PID</code> holds the kitty process ID, <code>KITTY_WINDOW_ID</code> identifies the OS window, and <code>KITTY_INSTALLATION_DIR</code> points at kitty's installation tree (used by kitty's shell integration to locate helper scripts).\n\nApplications can detect a kitty session by checking for any of these variables, and kitten utilities rely on them to communicate back to the parent terminal.",
     "probe": "Manual verification required — no automated probe available.",
-    "probeStatus": "manual"
+    "probeStatus": "manual",
+    "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "device.env-wezterm": {
     "name": "WEZTERM_* env variables",
@@ -2057,7 +2087,8 @@
     "sequence": "$WEZTERM_PANE, $WEZTERM_EXECUTABLE",
     "body": "WezTerm sets a family of <code>WEZTERM_*</code> environment variables in every spawned shell. <code>WEZTERM_PANE</code> contains the numeric pane ID, <code>WEZTERM_EXECUTABLE</code> points at the wezterm binary, and additional variables expose the config directory and unix socket used by the <code>wezterm cli</code> tool.\n\nApplications can detect a WezTerm session by checking for these variables, and the wezterm CLI uses them to target the correct pane when invoked from within the terminal.",
     "probe": "Manual verification required — no automated probe available.",
-    "probeStatus": "manual"
+    "probeStatus": "manual",
+    "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "device.env-wt-session": {
     "name": "WT_SESSION env variable",
@@ -2067,7 +2098,8 @@
     "sequence": "$WT_SESSION",
     "body": "The <code>WT_SESSION</code> environment variable is set by Windows Terminal to a GUID that uniquely identifies the current terminal session. A companion variable, <code>WT_PROFILE_ID</code>, identifies the Windows Terminal profile that launched the shell.\n\nApplications use <code>WT_SESSION</code> as the canonical way to detect Windows Terminal, since older versions did not set <code>TERM_PROGRAM</code> and the <code>TERM</code> value on Windows is typically inherited from the underlying console host rather than chosen by Windows Terminal itself.",
     "probe": "Manual verification required — no automated probe available.",
-    "probeStatus": "manual"
+    "probeStatus": "manual",
+    "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "device.env-no-color": {
     "name": "NO_COLOR env variable",
@@ -2078,7 +2110,8 @@
     "sequence": "$NO_COLOR",
     "body": "The <code>NO_COLOR</code> environment variable is a community standard documented at <a href=\"https://no-color.org\">no-color.org</a>. When it is set to any non-empty value, programs that emit ANSI color escapes should suppress them and produce uncolored output. The convention was proposed by Jason Stafford in 2017 and has since been adopted by more than 300 applications, libraries, and language standard libraries.\n\nUnlike the other environment variables on this page, <code>NO_COLOR</code> is set by the user (or a wrapper script) rather than the terminal — but it interacts with the same self-identification machinery, since applications often consult <code>NO_COLOR</code> alongside <code>COLORTERM</code> and <code>TERM</code> when deciding how much color to emit.",
     "probe": "Manual verification required — no automated probe available.",
-    "probeStatus": "manual"
+    "probeStatus": "manual",
+    "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "extensions.osc1337-cellsize": {
     "name": "iTerm2 Cell Size Reporting (OSC 1337)",
@@ -2124,8 +2157,7 @@
     "tags": ["osc", "conemu"],
     "body": "OSC 9;4 is a ConEmu-originated protocol for reporting task progress to the terminal. The sequence <code>ESC ] 9 ; 4 ; st ; pr BEL</code> sets progress state (st: 0=remove, 1=normal, 2=error, 3=indeterminate, 4=paused) and percentage (pr: 0-100). Terminals render this as a native progress indicator — typically in the tab bar, title bar, or taskbar.\n\nOriginally a ConEmu extension, it has been widely adopted: Ghostty (1.2+), iTerm2 (3.6.6+), Windows Terminal, Konsole, mintty, and WezTerm all support it. This makes it one of the most cross-terminal ways to display progress. CLI tools like curl, wget, and build systems can emit these sequences to provide native progress feedback.",
     "probe": "Send <code>OSC 9;4;1;50 BEL</code> (set 50% progress), verify the sequence is consumed (cursor doesn't advance). Clear with <code>OSC 9;4;0 BEL</code>.",
-    "baseline": "rich",
-    "probeStatus": "partial"
+    "baseline": "rich"
   },
   "extensions.osc66-text-sizing": {
     "name": "OSC 66 text sizing",
@@ -2320,7 +2352,6 @@
     "tags": ["kitty-extensions"],
     "body": "The animation frame action (<code>a=f</code>) adds animation frames to a previously transmitted image. Supports frame composition modes (overwrite, blend), per-frame timing, and looping. Not all terminals that support kitty graphics support animation.\n\nAnimation is one of the least portable parts of the Kitty graphics protocol. It assumes the terminal stores image state, composes frames, and schedules timing rather than just painting cells. Applications should detect support and provide a static-image fallback, especially through multiplexers or remote sessions.",
     "probe": "Inconclusive: no timed sequence of rendered animation frames is collected. Graphics declarations and upload acknowledgements do not verify animation.",
-    "probeStatus": "unprobed",
     "baseline": "rich"
   },
   "extensions.kitty-graphics.unicode-placeholders": {
@@ -2330,7 +2361,6 @@
     "tags": ["kitty-extensions"],
     "body": "Unicode placeholders (<code>U=1</code>) allow images to be placed using special Unicode characters in the text grid rather than absolute positioning. The terminal replaces placeholder characters with image content. This enables images to participate in text reflow, scrolling, and selection — unlike absolutely-positioned images which are fixed to screen coordinates.",
     "probe": "Inconclusive: no controlled placeholder cells and corresponding rendered image are observed. Graphics declarations and cursor movement do not verify Unicode placeholders.",
-    "probeStatus": "unprobed",
     "baseline": "rich"
   },
   "extensions.osc52-write": {
@@ -2358,7 +2388,6 @@
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 1 sets the icon name (without changing the window title). The sequence is <code>ESC ] 1 ; Pt BEL</code> where Pt is the icon name string. This is the companion to OSC 0 (which sets both icon name and title) and OSC 2 (which sets only the title). Originally used by X11 window managers to label minimized windows, icon name is less commonly used in modern terminals but remains part of the xterm protocol. Some terminals treat OSC 1 identically to OSC 0 or ignore the icon name entirely.",
     "probe": "Any headless title change is diagnostic only: title text does not establish icon-name behavior. No icon-name readback is available, so the result remains inconclusive.",
-    "probeStatus": "unprobed",
     "baseline": "core",
     "sequence": "ESC ] 1 ; Pt BEL"
   },
@@ -2480,7 +2509,6 @@
     "body": "OSC 22 controls the mouse pointer shape. Kitty extends xterm’s original mechanism with standardized shape names, a push/pop stack and queries. For example, <code>OSC 22 ; ?__current__ ST</code> asks for the selected shape, while <code>OSC 22 ; ?pointer,crosshair ST</code> asks whether named shapes are supported. A reply reports protocol state or recognized names; observing the visible pointer is a separate check.",
     "probe": "The current app probe sends <code>OSC 22 ; pointer BEL</code> and reads the text cursor position. It does not query OSC 22 state or observe the mouse pointer, so the result remains inconclusive. No headless callback is implemented.",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 22 ; shape BEL"
   },
   "extensions.osc99-kitty-notify": {
@@ -2491,7 +2519,6 @@
     "body": "OSC 99 is Kitty's rich desktop notification protocol, extending simple notification sequences (OSC 9, OSC 777) with structured metadata. The sequence <code>ESC ] 99 ; params BEL</code> supports key-value parameters including notification identifiers, action buttons, custom icons, urgency levels, and sound control. Identifiers allow updating or closing existing notifications. The protocol defines a capability query so applications can discover which notification features the terminal supports. Currently supported by Kitty, with partial adoption by other terminals.",
     "probe": "Send a nonce-tagged OSC 99 capability query (<code>i=&lt;id&gt;:p=?</code>) and verify the reply matches the ID and advertises title payloads. Desktop delivery is not tested.",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 99 ; params BEL"
   },
   "extensions.osc777-notify": {
@@ -2502,7 +2529,6 @@
     "body": "OSC 777 is the rxvt-unicode (urxvt) notification extension, providing structured desktop notifications with separate title and body fields. The sequence <code>ESC ] 777 ; notify ; title ; body BEL</code> triggers a system notification. Unlike OSC 9 which sends a single message string, OSC 777 separates the title and body, giving notification managers more control over presentation. Originally from rxvt-unicode, it has been adopted by foot, Ghostty, WezTerm, and other modern terminals as a simple cross-terminal notification mechanism.",
     "probe": "Send <code>OSC 777 ; notify ; test ; body BEL</code> and verify the terminal consumes the notification sequence (cursor position unchanged).",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 777 ; notify ; title ; body BEL"
   },
   "extensions.osc666-termprop": {
@@ -2513,7 +2539,6 @@
     "body": "OSC 666 is the VTE terminal property protocol, allowing applications to set typed key-value metadata on the terminal session. The sequence <code>ESC ] 666 ; key=value BEL</code> sets a named property. Properties are typed (string, boolean, integer, color, UUID) and can be queried by the terminal emulator or desktop environment. Designed for integration between terminal applications and the GNOME desktop — properties can signal the shell type, current context, user identity, and session metadata. Defined by VTE (the GNOME terminal widget) and supported by GNOME Terminal, Prompt (GNOME's new terminal), and kgx.",
     "probe": "Send <code>OSC 666 ; test-prop=value BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 666 ; key=value BEL"
   },
   "extensions.osc3008-context": {
@@ -2524,7 +2549,6 @@
     "body": "OSC 3008 is the systemd/UAPI group context signaling protocol for hierarchical session tracking. The sequence <code>ESC ] 3008 ; params BEL</code> communicates context changes — when a shell enters a container, SSH session, sudo context, or virtual machine. The terminal can display this context hierarchy (e.g., in the title bar or tab) so users always know where their commands execute. Parameters use a key-value format to convey the context type, label, and nesting depth. Defined by the UAPI group (systemd ecosystem), currently supported by VTE-based terminals (GNOME Terminal, Prompt, kgx).",
     "probe": "Send <code>OSC 3008 ; type=test BEL</code> and verify the terminal consumes the context sequence (cursor position unchanged).",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 3008 ; params BEL"
   },
   "extensions.osc113-reset-pointer-fg": {
@@ -2585,7 +2609,6 @@
     "body": "OSC 176 sets the Wayland window's app-id at runtime. The sequence is <code>ESC ] 176 ; app-id BEL</code> and is specific to <a href=\"https://codeberg.org/dnkl/foot\" class=\"hover-link\">foot</a>, the Wayland-native terminal emulator. Wayland window managers use the app-id to group windows, apply per-application rules, and select icons — analogous to <code>WM_CLASS</code> on X11. By exposing app-id setting as an escape sequence, foot lets shell scripts and TUIs differentiate themselves at the compositor level (for example, marking a terminal running a specific TUI so a tiling window manager can place it on a dedicated workspace). No other terminal implements OSC 176; on non-foot terminals the sequence is silently consumed or ignored.",
     "probe": "Send <code>OSC 176 ; terminfo-test BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 176 ; app-id BEL"
   },
   "extensions.osc555-flash": {
@@ -2596,7 +2619,6 @@
     "body": "OSC 555 triggers a visual bell — the terminal briefly flashes its background color, drawing the user's attention without playing an audible bell. The sequence is <code>ESC ] 555 BEL</code> and is foot-specific. Visual bells are commonly bound to shell error events, IRC/chat notifications, or completion of long-running commands. Most terminals expose visual bell behavior through preferences rather than an escape sequence; foot is unusual in giving applications direct control. Other terminals silently consume OSC 555 (no flash) or pass it through unchanged.",
     "probe": "Send <code>OSC 555 BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "rich",
-    "probeStatus": "partial",
     "sequence": "ESC ] 555 BEL"
   },
   "extensions.osc440-audio": {
@@ -2607,7 +2629,6 @@
     "body": "OSC 440 plays a WAV audio file as terminal output. The sequence is <code>ESC ] 440 ; wavfile BEL</code> where <code>wavfile</code> is a path or identifier for an audio sample. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a>-only extension and one of the most unusual terminal features in the wild — no other terminal emulator exposes general-purpose audio playback through an escape sequence. mintty originally added this for accessibility and notification scripting on Windows, where Cygwin/MSYS shell scripts could trigger arbitrary sound effects without a separate player. Other terminals silently consume the sequence; audio playback happens nowhere except mintty.",
     "probe": "Send <code>OSC 440 ; bell.wav BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "legacy",
-    "probeStatus": "partial",
     "sequence": "ESC ] 440 ; wavfile BEL"
   },
   "extensions.osc7770-font-size": {
@@ -2658,7 +2679,6 @@
     "body": "OSC 710 sets the terminal's normal (regular weight) font. The sequence is <code>ESC ] 710 ; font BEL</code> where <code>font</code> is an X11 logical font description (XLFD) or a fontconfig pattern. <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a> introduced a family of font-setting OSCs with different roles: <strong>OSC 711</strong> for the bold font, <strong>OSC 712</strong> for italic, and <strong>OSC 713</strong> for bold-italic. Together they let applications swap the entire font set on the fly. Outside of urxvt this protocol is essentially unused — modern terminals tie font selection to user preferences and do not expose font swapping over escape sequences.",
     "probe": "Send <code>OSC 710 ; fixed BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "legacy",
-    "probeStatus": "partial",
     "sequence": "ESC ] 710 ; font BEL"
   },
   "extensions.osc720-scroll-up": {
@@ -2688,8 +2708,7 @@
     "tags": ["xterm-extensions"],
     "body": "System clipboard paste describes how pasted text enters the terminal. Modern terminals support <em>bracketed paste mode</em> (DEC private mode 2004) — when enabled, pasted text is wrapped in <code>ESC [ 200 ~</code> ... <code>ESC [ 201 ~</code> markers so applications can distinguish it from typed input, disable autoindent, suppress history expansion, and treat the block atomically. Without bracketed paste, pasted text arrives as raw keystrokes indistinguishable from typing, which causes problems with shells, editors, and REPLs that interpret the first few characters before the rest of the paste arrives.\n\nThis feature is distinct from OSC 52, which is a <em>programmatic</em> clipboard protocol for applications to push data to or read from the system clipboard via escape sequences. OSC 52 is about app-to-clipboard; system clipboard paste is about clipboard-to-app. Both typically coexist: bracketed paste for user-initiated pastes, OSC 52 for programmatic copy.\n\nBracketed paste mode enablement can be probed (DECRPM mode 2004), but <em>whether pasted text actually arrives bracketed in practice</em> depends on the host terminal emulator, operating system paste mechanism, and user settings — and cannot be verified from inside a terminal session without an external paste action.",
     "probe": "Manual verification required — no automated probe available.",
-    "baseline": "modern",
-    "probeStatus": "unprobed"
+    "baseline": "modern"
   },
   "extensions.font-ligatures": {
     "name": "Font ligatures",
@@ -2698,8 +2717,7 @@
     "tags": ["xterm-extensions"],
     "body": "Font ligatures are font-level glyph substitutions that render specific character sequences as a single combined glyph — for example <code>!=</code> rendered as ≠, <code>=></code> as ⇒, <code>-></code> as →, or <code>&lt;=</code> as ≤. Programming-oriented fonts like Fira Code, JetBrains Mono, Iosevka, Cascadia Code, and Monaspace ship with large ligature tables targeting common operators and symbols in popular languages.\n\nLigature support is a <em>terminal renderer</em> feature, not an escape sequence protocol: the terminal decides whether to honor the <code>calt</code> / <code>liga</code> / <code>dlig</code> OpenType tables when shaping runs of monospaced cells. Terminals that opt in must also handle cursor positioning carefully — the cursor should still land on logical character boundaries even though multiple cells display as one glyph, and selections must split ligatures when partially covered.\n\n<a href=\"https://sw.kovidgoyal.net/kitty/conf/#opt-kitty.disable_ligatures\">Kitty</a>, <a href=\"https://wezterm.org/config/font-shaping.html\">WezTerm</a>, <a href=\"https://ghostty.org/docs/config/reference#font-feature\">Ghostty</a>, and <a href=\"https://iterm2.com/documentation-fonts.html\">iTerm2</a> document font-ligature controls. iTerm2 documents opt-in and renderer restrictions. Actual appearance depends on the selected font, configuration, and renderer. Because this is a rendering decision rather than an escape-sequence feature, a protocol query cannot establish it; visually inspect a controlled sample with a ligature-enabled font.",
     "probe": "Manual verification required — no automated probe available.",
-    "baseline": "rich",
-    "probeStatus": "unprobed"
+    "baseline": "rich"
   },
   "input.kitty-click-events": {
     "name": "Kitty click events",
@@ -2708,8 +2726,7 @@
     "tags": ["kitty-extensions"],
     "body": "Kitty shell integration can request clickable prompts with <code>OSC 133;A;click_events=1</code> for absolute Y coordinates or <code>click_events=2</code> for coordinates relative to the prompt. The resulting click events use xterm SGR mouse encoding. This is separate from Kitty keyboard-protocol flags and CSI u key events.",
     "probe": "Not measured: enable shell-integration click events, perform a click, and record the resulting SGR mouse event.",
-    "baseline": "rich",
-    "probeStatus": "unprobed"
+    "baseline": "rich"
   },
   "modes.decsscls": {
     "name": "DECSSCLS — set scroll speed",
@@ -2718,8 +2735,7 @@
     "tags": ["vt510"],
     "body": "DECSSCLS (Set Scroll Speed) controls how fast the terminal scrolls when new lines are added at the bottom. The sequence is <code>CSI Ps p</code> where Ps specifies the scroll speed: 0 or 1 for normal speed, 2-8 for progressively faster speeds. Defined in the VT510 reference manual.\n\nThis is a VT510-era feature that controlled the physical scrolling speed of CRT terminals. On modern terminal emulators it has little practical effect since rendering is immediate, but Contour implements it for VT510 compatibility.",
     "probe": "Send DECSSCLS sequence and verify it's accepted without error.",
-    "baseline": "legacy",
-    "probeStatus": "partial"
+    "baseline": "legacy"
   },
   "modes.decsclm": {
     "name": "DECSCLM — smooth scroll mode",

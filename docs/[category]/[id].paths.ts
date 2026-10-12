@@ -10,6 +10,7 @@ import {
   loadAnalysis,
 } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
+import { probeStatusOf } from "../data/probe-status"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -126,7 +127,7 @@ export default {
           featureBody: linkifyContentExcluding(meta?.body ?? "", selfHrefs),
           probeMethod: linkifyContentExcluding(meta?.probe ?? "", selfHrefs),
           baseline: meta?.baseline ?? "",
-          probeStatus: meta?.probeStatus ?? "automated",
+          probeStatus: probeStatusOf(f.id, featuresMeta),
           sequence: meta?.sequence ?? "",
           featureTags: JSON.stringify(tags),
           backendResults: JSON.stringify(backendResults),

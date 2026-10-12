@@ -34,6 +34,8 @@ export interface FeatureRecord {
   sequence?: string
   group?: string
   probeStatus?: string
+  /** Why a reviewed probeStatus override is what it is; required beside any override. */
+  probeStatusReason?: string
 }
 
 export type FeatureCatalog = Readonly<Record<string, FeatureRecord>>
@@ -138,6 +140,7 @@ function parseFeature(path: string, id: string, raw: Record<string, unknown>): F
     sequence: optionalString(path, id, "sequence", raw.sequence),
     group: optionalString(path, id, "group", raw.group),
     probeStatus: optionalString(path, id, "probeStatus", raw.probeStatus),
+    probeStatusReason: optionalString(path, id, "probeStatusReason", raw.probeStatusReason),
   }
 }
 

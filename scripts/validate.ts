@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { verifyTerminalIdentity } from "../packages/terminfo.dev/src/identity-guard.ts"
 import { ALL_PROBES } from "../packages/probe-defs/src/index.ts"
 import { loadCategories } from "../docs/data/categories.ts"
+import { probeStatusOf } from "../docs/data/probe-status.ts"
 import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
 
 // ---------------------------------------------------------------------------
@@ -58,7 +59,6 @@ const contentDir = join(import.meta.dir, "..", "content")
 
 const features: Record<string, FeatureRecord> = loadFeatures(contentDir)
 
-const VALID_PROBE_STATUSES = new Set(["automated", "partial", "manual", "unprobed"])
 const MIN_FEATURE_BODY_LENGTH = 260
 
 const standards = loadJson(join(contentDir, "standards.json")) as Record<
@@ -277,20 +277,27 @@ for (const { backendName } of probeFiles) {
   if (!found) info("All feature category prefixes match categories.json")
 }
 
-// 4b. Invalid probeStatus values
+// 4b. Reviewed probeStatus overrides only: manual or partial, each carrying its reason.
+// The bulk (automated / unprobed) is derived from the definitions, so it cannot drift.
 {
   let found = false
   for (const [id, feat] of Object.entries(features)) {
     if (id === "$comment") continue
-    if (feat.probeStatus !== undefined && !VALID_PROBE_STATUSES.has(feat.probeStatus)) {
+    const status = feat.probeStatus
+    if (status === undefined) continue
+    if (status !== "manual" && status !== "partial") {
       error(
-        `Feature "${id}" has invalid probeStatus "${feat.probeStatus}" (must be one of: ${[...VALID_PROBE_STATUSES].join(", ")})`,
+        `Feature "${id}" declares probeStatus "${status}" — only "manual" and "partial" are reviewed overrides; automated and unprobed derive from the definitions`,
       )
+      errors++
+      found = true
+    } else if (!feat.probeStatusReason) {
+      error(`Feature "${id}" overrides probeStatus to "${status}" without a probeStatusReason`)
       errors++
       found = true
     }
   }
-  if (!found) info("All feature probeStatus values are valid")
+  if (!found) info("All feature probeStatus overrides are reviewed (manual or partial, with a reason)")
 }
 
 // 4c. Duplicate feature names (same display name, different IDs)
@@ -719,16 +726,16 @@ heading("Info (summary)")
     info(`  ${tag}: ${cnt}`)
   }
 
-  // Probe status distribution (default: automated)
+  // Probe status distribution (derived from the definitions, with reviewed overrides)
   const statusCounts: Record<string, number> = {
     automated: 0,
     partial: 0,
     manual: 0,
     unprobed: 0,
   }
-  for (const [id, feat] of Object.entries(features)) {
+  for (const id of Object.keys(features)) {
     if (id === "$comment") continue
-    const status = feat.probeStatus ?? "automated"
+    const status = probeStatusOf(id, features)
     statusCounts[status] = (statusCounts[status] ?? 0) + 1
   }
   info(
