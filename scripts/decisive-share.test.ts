@@ -235,7 +235,7 @@ describe("release 1 decisive-count reader", () => {
     const args = { contentDir: join(import.meta.dirname, "..", "content"), cohort: "candidate2" as const }
     const report = buildReport(args)
     expect(report).toHaveProperty("candidate2.name", "candidate2")
-    expect(report).toHaveProperty("candidate2.frozenSuiteId", "f8771563588b")
+    expect(report).toHaveProperty("candidate2.frozenSuiteId", "c3d1fbb77561")
     expect(report).toHaveProperty(
       "candidate2.measuredIds",
       expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
@@ -256,14 +256,14 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
     for (const row of report.candidate2.admittedRuns) {
-      expect(row.measured).toBe(row.run.suiteId === "f8771563588b")
+      expect(row.measured).toBe(row.run.suiteId === "c3d1fbb77561")
       // The RELEASE share is the operator's D3 over the ratified cohort (125) MINUS the app-unobservable
       // rows the @chief option-B ruling moved out (three here, so 122); only the per-category block
       // divides over the decidable basis (@chief 2026-10-10T15:56Z).
       if (row.measured) expect(row.share.denominator).toBe(122)
       else {
         expect(row).not.toHaveProperty("share")
-        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required f8771563588b`)
+        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required c3d1fbb77561`)
       }
     }
   })
@@ -688,7 +688,7 @@ describe("per-category decisive share (28018 AC2)", () => {
 
     const categories = cohortCategories(report.candidate2.decidableIds, catalog)
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
-    // 28450 Shape B: the required suite is now f8771563588b, and the site SELECTS the admitted
+    // 28450 Shape B: the required suite is now c3d1fbb77561, and the site SELECTS the admitted
     // kitty/linux run on it as the current row — so the row is real. The 28018-era construction built
     // this from the refused 95ea run; that run is no longer the required suite's, so it would print
     // the wrong suite in the block header.
@@ -696,7 +696,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       (entry) => entry.measured && entry.context.terminalId === "kitty" && entry.context.os === "linux",
     )
     if (!row || !row.measured || !("run" in row)) throw new Error("kitty/linux measured bar row absent")
-    expect(row.run.suiteId).toBe("f8771563588b")
+    expect(row.run.suiteId).toBe("c3d1fbb77561")
     const printed = formatCohortRow(
       row,
       categories,
@@ -737,7 +737,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       printed.some(
         (line) =>
           line.includes("CATEGORIES OF THE 125") &&
-          line.includes("n = 121 cohort ids with a probe in required suite f8771563588b and app-observable") &&
+          line.includes("n = 121 cohort ids with a probe in required suite c3d1fbb77561 and app-observable") &&
           line.includes("; 3 rows are library-only and not scored in apps"),
       ),
     ).toBe(true)
@@ -749,7 +749,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       printed.some(
         (line) =>
           line.includes("Scrollback") &&
-          line.includes(`4/${scrollback.ids.length} = 57% · fail`) &&
+          line.includes(`7/${scrollback.ids.length} = 100% · pass`) &&
           line.includes(
             "(unavailable: scrollback.viewport-hold-output; library-only: scrollback.accumulate, scrollback.total-lines)",
           ),
