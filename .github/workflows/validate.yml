@@ -1,9 +1,9 @@
 # Content Validation
 #
-# Runs `bun scripts/validate.ts` weekly (Monday 09:00 UTC) and on demand.
-# The per-push trigger was dropped on 2026-10-08 (D4 of the terminfo replan, bead 28018): it cost
-# ~83 GitHub runs in 2.5 days and judged nothing another gate does not — `bun fix` runs in each
-# change's own worktree, and the weekly run below still judges the whole repository.
+# Main pushes run the unit suite only; weekly (Monday 09:00 UTC) and default manual runs
+# keep content validation, site build and link checks. Manual unit_only runs support replay.
+# Per-push Content Validation was retired on 2026-10-08. The unit-only trigger restores the
+# missing component-test coverage measured in 28585 without reinstating those build steps.
 # - Errors (exit code 1): workflow fails
 # - Warnings: opens/updates a rolling GitHub issue with label "content-refresh"
 #
@@ -14,6 +14,8 @@
 name: Content Validation
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: "0 9 * * 1" # Every Monday 9am UTC
   workflow_dispatch:
@@ -32,7 +34,7 @@ concurrency:
 
 jobs:
   unit:
-    if: github.event_name == 'workflow_dispatch' && inputs.unit_only
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.unit_only)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -48,7 +50,7 @@ jobs:
         run: bun --bun vitest run --maxWorkers 2
 
   validate:
-    if: github.event_name != 'workflow_dispatch' || !inputs.unit_only
+    if: github.event_name != 'push' && (github.event_name != 'workflow_dispatch' || !inputs.unit_only)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
