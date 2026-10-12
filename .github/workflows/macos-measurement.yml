@@ -40,6 +40,12 @@ jobs:
           brew install --cask ghostty
           test -x /Applications/Ghostty.app/Contents/MacOS/ghostty
           sudo xattr -cr /Applications/Ghostty.app
+          # The runner image ships no ImageMagick (measured 2026-10-12: `magick` not in PATH), and the
+          # adapter's decode path needs one. Installing it here also proves the workflow-install route
+          # that the darwin capture adapter will depend on.
+          brew install imagemagick
+          command -v magick
+          magick -version
       - name: Probe window capture
         run: |
           set -euo pipefail

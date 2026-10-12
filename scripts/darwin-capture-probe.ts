@@ -52,12 +52,16 @@ function record(label: string, argv: string[]): { code: number; stdout: string; 
   return row
 }
 
-// 1. Decoder availability: the plan uses magick at depth 8 on both platforms.
-try {
-  const version = await command("magick", ["-version"])
-  report.magick = { present: true, version: version.toString("utf8").split("\n")[0] }
-} catch (error) {
-  report.magick = { present: false, error: String(error) }
+// 1. Decoder availability: the plan uses magick at depth 8 on both platforms, and the runner image
+//    is not assumed to ship it. Both the ImageMagick 7 name and the version 6 name are recorded,
+//    because a missing decoder is a named refusal in the adapter, never a silent default.
+for (const decoder of ["magick", "convert"]) {
+  try {
+    const version = await command(decoder, ["-version"])
+    report[decoder] = { present: true, version: version.toString("utf8").split("\n")[0] }
+  } catch (error) {
+    report[decoder] = { present: false, error: String(error) }
+  }
 }
 write()
 
@@ -71,7 +75,8 @@ set -u
 OUT=${JSON.stringify(out)}
 # read one CSI reply: every reply this probe asks for ends with "t".
 ask() {
-  printf '%s' "$1" > /dev/tty
+  local reply=""
+  printf '%b' "$1" > /dev/tty
   IFS= read -rs -t 2 -d t reply < /dev/tty || true
   printf '%s -> %s\\n' "$1" "$reply"
 }
@@ -89,11 +94,11 @@ paint() {
   printf 'painted-phase-A %s\\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 } > "$OUT/terminal-replies.txt" 2>&1
 cat "$OUT/terminal-replies.txt" > /dev/tty
-date -u '+%Y-%m-%dT%H:%M:%S.%NZ' > "$OUT/phase-a"
+date -u '+%Y-%m-%dT%H:%M:%SZ' > "$OUT/phase-a"
 sleep 12
 paint B
 printf 'painted-phase-B %s\\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > /dev/tty
-date -u '+%Y-%m-%dT%H:%M:%S.%NZ' > "$OUT/phase-b"
+date -u '+%Y-%m-%dT%H:%M:%SZ' > "$OUT/phase-b"
 sleep 60
 `,
   { mode: 0o755 },
