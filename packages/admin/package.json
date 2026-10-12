@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@silvery/commander": "0.26.0",
+    "@terminfo/catalog": "workspace:*",
     "@terminfo/probe-defs": "workspace:*",
     "@termless/core": "0.10.2",
     "loggily": "0.12.0",

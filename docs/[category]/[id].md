@@ -62,6 +62,7 @@ function termTooltip(r) {
   <span v-else-if="p.probeStatus === 'partial'" class="probe-badge probe-partial" title="Probe definition covers only part of this feature">partial</span>
   <span v-else-if="p.probeStatus === 'manual'" class="probe-badge probe-manual" title="Not automated — support data is from manual testing or documentation">manual</span>
   <span v-else-if="p.probeStatus === 'unprobed'" class="probe-badge probe-unprobed" title="Tracked but no verification yet — manual verification required">unprobed</span>
+  <span v-else-if="p.probeStatus === 'undeclared'" class="probe-badge probe-undeclared" title="This probe's evidence kind is declared when its family converts to an observation kind.">evidence undeclared</span>
   <br><span v-html="p.probeMethod"></span>
   <p class="probe-note">The probe definition describes the intended check. Open a reviewed result to see what was recorded for that target and method.</p>
 </div>
@@ -271,6 +272,11 @@ function termTooltip(r) {
 .probe-unprobed {
   background: rgba(139, 92, 246, 0.15);
   color: #8b5cf6;
+}
+
+.probe-undeclared {
+  background: rgba(107, 114, 128, 0.15);
+  color: #6b7280;
 }
 
 .baseline-badge {

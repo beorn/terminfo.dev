@@ -6,11 +6,18 @@
  *   helper must import no node:fs; only a full site build exercises either at runtime
  * @testonly none
  */
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs"
+import { readFileSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
-import { loadReleaseScope, loadFeatureCohort } from "../docs/data/load-release-scope.ts"
+import { loadFeatures } from "@terminfo/catalog"
+import { loadCategories } from "../docs/data/categories.ts"
+import {
+  classicCohortIds,
+  frozenSuiteIdFor,
+  loadFeatureCohort,
+  loadReleaseScope,
+} from "../docs/data/load-release-scope.ts"
 import {
   barOverMeasured,
   coverageSentence,
@@ -18,63 +25,82 @@ import {
   isStaleRelation,
   treeMovedPastRelease,
   staleCaption,
+  tier1Included,
   tierLine,
 } from "../docs/data/release-scope.ts"
 
 const root = join(import.meta.dirname, "..")
 
-describe("named feature cohort declaration", () => {
-  // Existing site-scope tests never read this second declaration shape or exercise corrupt inputs.
-  it.each([
-    [{ name: "candidate1", frozenSuiteId: "hash", featureIds: ["known"] }, /candidate2/],
-    [{ name: "candidate2", frozenSuiteId: " ", featureIds: ["known"] }, /frozenSuiteId/],
-    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: [] }, /nonempty array/],
-    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: [""] }, /nonempty strings/],
-    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: ["known", "known"] }, /unique/],
-    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: ["unknown"] }, /unknown features unknown/],
-  ])("rejects invalid curated cohort %j with its queried path", (declaration, reason) => {
-    const dir = mkdtempSync(join(tmpdir(), "cohort-declaration-"))
-    const declarationPath = join(dir, "cohort.json")
-    try {
-      writeFileSync(declarationPath, JSON.stringify(declaration))
-      const load = () => loadFeatureCohort({ declarationPath, catalog: { known: { name: "Known" } } })
-      expect(load).toThrow(reason)
-      expect(load).toThrow(declarationPath)
-    } finally {
-      rmSync(dir, { recursive: true })
-    }
+const contentDir = join(root, "content")
+const catalog = loadFeatures(contentDir)
+const categories = loadCategories(contentDir)
+
+/** Write one suite manifest from a freeze pointer, for the registry tests below. */
+function writeSuite(dir: string, probeHash: string, freeze?: { release: string; at: string }): void {
+  writeFileSync(
+    join(dir, `${probeHash}.json`),
+    JSON.stringify({
+      probeHash,
+      adapterVersion: "4.0.0",
+      ...(freeze === undefined ? {} : { freeze }),
+      probes: { app: [], headless: [], mux: [] },
+    }),
+  )
+}
+
+describe("the derived scope, the classic cohort and the suite pointer", () => {
+  it("derives the declared 62 tier-1 rows from the catalog's tier1 labels, never a scope file", () => {
+    const scope = loadReleaseScope({ catalog, categories })
+    expect(scope.measuredCount).toBe(62)
+    expect(scope.measuredIds).toEqual([...scope.measuredIds].sort())
+    expect(tier1Included(catalog, scope.measuredIds)).toHaveLength(52)
+    expect(scope.measuredIds).toContain("device.primary-da")
+    expect(tier1Included(catalog, scope.measuredIds)).not.toContain("extensions.osc777-notify")
   })
 
-  it("names missing and malformed declaration paths", () => {
-    const dir = mkdtempSync(join(tmpdir(), "cohort-declaration-"))
-    const declarationPath = join(dir, "cohort.json")
+  it("derives the 125 classic cohort in the category catalog's order and refuses an empty classics slice", () => {
+    const ids = classicCohortIds(catalog, categories)
+    expect(ids).toHaveLength(125)
+    // The two classic rows that also carry a tier1 field stay in the cohort: the filter is the
+    // CATEGORY slice, matching 28018's accepted 125.
+    expect(ids).toContain("cursor.position-report")
+    expect(ids).toContain("editing.decrqcra")
+    // ONE category order: the cohort follows each category's own `order`, the same field the site's
+    // category blocks print in, so Erase (order 4) precedes Editing (order 5) and Scrollback (7)
+    // precedes Reset (8). The 125-member SET is pinned by SHA in decisive-share.test.ts.
+    expect(ids.indexOf("erase.character")).toBeLessThan(ids.indexOf("editing.decrqcra"))
+    expect(ids.indexOf("scrollback.accumulate")).toBeLessThan(ids.indexOf("reset.method"))
+    const cohort = loadFeatureCohort({ catalog, categories, frozenSuiteId: "abc123abc123" })
+    expect(cohort.name).toBe("candidate2")
+    expect(cohort.frozenSuiteId).toBe("abc123abc123")
+    expect(cohort.measuredIds).toEqual(ids)
+    expect(() => classicCohortIds(catalog, { sgr: { slice: "extensions", order: 1 } })).toThrow(
+      /classics cohort is empty/,
+    )
+  })
+
+  it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
+    expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("c3d1fbb77561")
+    const dir = mkdtempSync(join(tmpdir(), "suite-registry-"))
     try {
-      const load = () => loadFeatureCohort({ declarationPath, catalog: {} })
-      expect(load).toThrow(declarationPath)
-      writeFileSync(declarationPath, "{")
-      expect(load).toThrow(declarationPath)
+      mkdirSync(join(dir, "suites"))
+      const at = "2026-10-12T03:33:42.000Z"
+      writeSuite(join(dir, "suites"), "aaaa00000000", { release: "candidate2", at })
+      expect(frozenSuiteIdFor(dir, "candidate2")).toBe("aaaa00000000")
+      expect(() => frozenSuiteIdFor(dir, "candidate9")).toThrow(
+        /no suite manifest declares freeze.release "candidate9"/,
+      )
+      writeSuite(join(dir, "suites"), "bbbb11111111", { release: "candidate2", at })
+      expect(() => frozenSuiteIdFor(dir, "candidate2")).toThrow(/2 suite manifests claim release "candidate2"/)
+      expect(() => frozenSuiteIdFor(join(dir, "absent"), "candidate2")).toThrow(/the suite registry is required/)
     } finally {
       rmSync(dir, { recursive: true })
     }
   })
 })
 
-function catalogNames(): Record<string, { name: string }> {
-  const raw = JSON.parse(readFileSync(join(root, "content", "features.json"), "utf8")) as Record<string, unknown>
-  const names: Record<string, { name: string }> = {}
-  for (const [id, value] of Object.entries(raw)) {
-    if (id.startsWith("$")) continue
-    names[id] = { name: typeof value === "string" ? value : String((value as { name: string }).name) }
-  }
-  return names
-}
-
 describe("release 1 measurement scope", () => {
-  const catalog = catalogNames()
-  const scope = loadReleaseScope({
-    catalog,
-    declarationPath: join(root, "content", "release-scope.json"),
-  })
+  const scope = loadReleaseScope({ catalog, categories })
 
   it("declares 62 of 273 features as tier 1 query/reply", () => {
     expect(scope.catalogCount).toBe(273)
@@ -162,9 +188,9 @@ describe("release 1 measurement scope", () => {
     expect(home).toContain("data.releaseVerdicts[backendName]")
     expect(home).toContain("verdict.text")
     expect(terminal).toContain("barVerdict(barOverMeasured(")
-    expect(terminal).toContain("includedTierOneIds(data.releaseScope.scoredIds)")
+    expect(terminal).toContain("tier1Included(data.featureDescriptions, data.releaseScope.scoredIds)")
     expect(terminal).toContain("measuredVerdict.text")
-    expect(loader).toContain("includedTierOneIds(release.scoredIds)")
+    expect(loader).toContain("tier1Included(featureDescriptions, release.scoredIds)")
     expect(loader).toContain("releaseVerdicts[key] = d3Verdict(")
   })
 

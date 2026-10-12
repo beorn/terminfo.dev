@@ -35,6 +35,21 @@ export interface MeasuredBar {
   fillPct: number
 }
 
+/**
+ * The five states one measured cell can be in. This is the ONE classification: the bar, the
+ * decisive-share CLI and the page templates all read it, so they cannot drift into five copies.
+ */
+export type CellState = "supported" | "unsupported" | "inconclusive" | "error" | "untested"
+
+/** Classify one cell. A missing cell is untested; an error outranks a conclusive value. */
+export function classifyCell(cell: { outcome: string; conclusive?: boolean } | undefined): CellState {
+  if (!cell) return "untested"
+  if (cell.outcome === "error") return "error"
+  if (cell.conclusive && cell.outcome === "supported") return "supported"
+  if (cell.conclusive && cell.outcome === "unsupported") return "unsupported"
+  return "inconclusive"
+}
+
 function utcDate(measuredAt: string): string {
   const value = new Date(measuredAt)
   if (Number.isNaN(value.getTime())) throw new Error(`invalid measuredAt ${measuredAt}`)
@@ -73,28 +88,18 @@ export function barOverMeasured(
   cells: Record<string, { outcome: string; conclusive?: boolean }>,
   measuredIds: readonly string[],
 ): MeasuredBar {
-  let supported = 0
-  let unsupported = 0
-  let inconclusive = 0
-  let errors = 0
-  let untested = 0
-  for (const id of measuredIds) {
-    const cell = cells[id]
-    if (!cell) untested++
-    else if (cell.outcome === "error") errors++
-    else if (cell.conclusive && cell.outcome === "supported") supported++
-    else if (cell.conclusive && cell.outcome === "unsupported") unsupported++
-    else inconclusive++
-  }
+  const count: Record<CellState, number> = { supported: 0, unsupported: 0, inconclusive: 0, error: 0, untested: 0 }
+  for (const id of measuredIds) count[classifyCell(cells[id])]++
   const denominator = measuredIds.length
+  const supported = count.supported
   return {
     denominator,
     supported,
-    unsupported,
-    inconclusive,
-    errors,
-    untested,
-    conclusive: supported + unsupported,
+    unsupported: count.unsupported,
+    inconclusive: count.inconclusive,
+    errors: count.error,
+    untested: count.untested,
+    conclusive: supported + count.unsupported,
     fillPct: denominator === 0 ? 0 : Math.round((supported / denominator) * 100),
   }
 }
@@ -159,37 +164,11 @@ export function barVerdict(bar: MeasuredBar): D3Verdict | undefined {
 }
 
 /**
- * The included tier-1 52 = the declared 62 minus the ten F2 movers (silent-consumed / fixture-gated
- * osc rows) named in the 27832 audit § "F2 mover list". There is no machine-readable mover list yet;
- * this is the audited list, hard-coded, and the 62-vs-52 disagreement is a separate ruling. The ten
- * are excluded by contract and are never counted as included.
+ * The included tier-1 rows of a declared set: those whose `tier1` label is `included`. The ten rows
+ * excluded by contract (the silent-consumed or fixture-gated osc rows the 27832 audit names) carry
+ * `tier1: "excluded"` in the catalog, so the included set is a filter of a stored label, never a
+ * second hard-coded mover list that can drift from it.
  */
-export const F2_MOVERS = [
-  "extensions.osc777-notify",
-  "extensions.osc666-termprop",
-  "extensions.osc3008-context",
-  "extensions.osc440-audio",
-  "extensions.osc555-flash",
-  "extensions.osc176-app-id",
-  "extensions.osc22-pointer",
-  "extensions.osc52-clipboard",
-  "extensions.osc52-read",
-  "extensions.osc52-write",
-] as const
-
-export const INCLUDED_TIER1_COUNT = 52
-
-/** The included 52: the declared 62 minus the F2 movers, refusing loudly if the audited list no longer fits. */
-export function includedTierOneIds(declaredIds: readonly string[]): string[] {
-  const declared = new Set(declaredIds)
-  const missing = F2_MOVERS.filter((id) => !declared.has(id))
-  if (missing.length) {
-    throw new Error(`F2 movers (27832) are not all in the declared tier-1 set: ${missing.join(", ")}`)
-  }
-  const movers = new Set<string>(F2_MOVERS)
-  const included = declaredIds.filter((id) => !movers.has(id))
-  if (included.length !== INCLUDED_TIER1_COUNT) {
-    throw new Error(`included tier-1 set is ${included.length}, expected ${INCLUDED_TIER1_COUNT}`)
-  }
-  return included
+export function tier1Included(catalog: Readonly<Record<string, { tier1?: string }>>, ids: readonly string[]): string[] {
+  return ids.filter((id) => catalog[id]?.tier1 === "included")
 }

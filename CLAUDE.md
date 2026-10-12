@@ -159,7 +159,6 @@ bun run update --discover   # Run explore + show radar
 bun run update --probe      # Re-probe headless backends
 bun run update --validate   # Validate + build + check 404s
 bun run watch-releases      # Check tracked terminals for new versions
-bun run sync-probe-status   # Derive probeStatus from probe code
 
 # Individual tools
 bun run validate            # Check tag consistency, duplicates, missing fields
@@ -367,20 +366,21 @@ bun run build
 
 ### Probe Status
 
-Features can declare a `probeStatus` field describing how thoroughly they're verified.
-Omit the field for normal automated probes — it defaults to `"automated"`. Set it only
-for features that aren't fully verifiable:
+`probeStatus` is DERIVED at build time (`docs/data/probe-status.ts`), never hand-kept per row:
+a feature with a probe definition reads `"automated"`, one with no definition reads `"unprobed"`.
 
-- `"automated"` — fully probed by termless and/or real-terminal probes (default)
-- `"partial"` — probe only checks acceptance (e.g., sequence consumed, cursor didn't
-  advance), not the visual or behavioral result. Examples: OSC notifications, OSC 22
-  pointer shape, OSC 9;4 progress — the terminal silently consumes the sequence, so we
-  can tell it didn't crash but not whether anything actually happened.
-- `"manual"` — support data was gathered by reading docs or manual testing; no
-  automated probe runs for this feature.
-- `"unprobed"` — feature is tracked on the site but has no verification at all yet.
-  Use this for features that are fundamentally unprobeable from within a terminal
-  session (text reflow on resize, font ligatures, user-initiated paste).
+The catalog may declare a reviewed override for exactly two statuses, each with a
+`probeStatusReason`:
+
+- `"partial"` — the definition establishes acceptance only (evidence `consumed`): we can tell the
+  sequence was accepted, not that its effect happened. Examples: the SGR colour resets, OSC 8 and
+  the OSC 133 / OSC 633 prompt marks.
+- `"manual"` — support data comes from docs or manual testing and no automatable probe exists
+  (the nine `device.env-*` rows and `scrollback.viewport-hold-output`).
+
+An `"automated"` or `"unprobed"` override is not honoured; those derive from the definitions, so
+they cannot drift. `bun run validate` refuses any other override value, or an override with no
+reason.
 
 For `"manual"` and `"unprobed"` features, set the `probe` field to
 `"Manual verification required — no automated probe available."` and don't add a

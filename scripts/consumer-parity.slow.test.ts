@@ -368,10 +368,10 @@ it("analysis rejects malformed required catalogs before replacing its output", (
       "frameworks",
       "glossary",
       "annotations",
-      "release-scope-candidate2",
     ]) {
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
+    cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
     const control = spawnSync(process.execPath, [script, "--dry-run"], { cwd: out, encoding: "utf8", timeout: 10_000 })
     expect(control.error).toBeUndefined()
     expect(control.status, control.stderr).toBe(0)
@@ -423,10 +423,10 @@ it("analysis validation refuses stale live values and key drift but labels histo
       "frameworks",
       "glossary",
       "annotations",
-      "release-scope-candidate2",
     ]) {
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
+    cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
     const run = (args: string[]) =>
       spawnSync(process.execPath, [script, ...args], { cwd: out, encoding: "utf8", timeout: 10_000 })
     const generated = run([])

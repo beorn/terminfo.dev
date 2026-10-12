@@ -1,10 +1,12 @@
-import { loadProbes, featureSlug, terminalSlug, loadFeaturesMeta, loadAnalysis } from "../data/load-probes"
+import { loadProbes, featureSlug, terminalSlug, loadAnalysis } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
 import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { loadFeatures } from "@terminfo/catalog"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const contentDir = join(__dirname, "..", "..", "content")
 
 interface BaselineMeta {
   label: string
@@ -20,7 +22,7 @@ interface BaselineMeta {
 export default {
   paths() {
     const data = loadProbes()
-    const featuresMeta = loadFeaturesMeta()
+    const featuresMeta = loadFeatures(contentDir)
 
     // Load baselines.json
     const baselinesPath = join(__dirname, "..", "..", "content", "baselines.json")

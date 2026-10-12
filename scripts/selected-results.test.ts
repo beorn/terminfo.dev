@@ -128,7 +128,18 @@ function temporaryContent() {
   for (const [hash, declaration] of manifests) {
     writeFileSync(join(path, "suites", `${hash}.json`), JSON.stringify(declaration))
   }
-  writeFileSync(join(path, "features.json"), JSON.stringify(Object.fromEntries(catalog.map((id) => [id, {}]))))
+  // @terminfo/catalog's one shape requires a full record per row; this fixture only reads the ids.
+  writeFileSync(
+    join(path, "features.json"),
+    JSON.stringify(
+      Object.fromEntries(
+        catalog.map((id) => [
+          id,
+          { name: id, slug: id.replaceAll(".", "-"), body: "fixture", probe: "fixture", baseline: "supported" },
+        ]),
+      ),
+    ),
+  )
   return path
 }
 

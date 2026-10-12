@@ -1,9 +1,10 @@
 /**
  * VitePress build-time data loader for the terminfo v0.1 candidate 2 preview page.
  *
- * This page is its own surface for ONE reason: the published matrix keeps its Release-1 scope
- * (`content/release-scope.json`), so the 125 classics the epic (bead 28018) lists need a page that can
- * claim them WITHOUT editing that file, moving the frozen probe suite, or touching the D3 bar.
+ * This page is its own surface for ONE reason: the published matrix keeps its Release-1 tier-1 scope,
+ * so the 125 classics the epic (bead 28018) lists need a page that can claim them WITHOUT moving the
+ * frozen probe suite or touching the D3 bar. Both scopes are labels in the catalog now (item 3): the
+ * tier-1 rows carry a `tier1` field, and the classics are the rows whose category slice is `classics`.
  *
  * It re-derives nothing. The numbers come from the ONE reader (`scripts/decisive-share.ts`
  * `buildReport`), which resolves the ONE selection (`docs/data/current-results.ts`) — so this page and
@@ -20,10 +21,9 @@
  * reader's own refusal reason and renders as named-ineligible — no share, no fraction. A page that
  * printed one would be publishing a row on an older suite.
  */
-import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { parseJsonStrict } from "@terminfo/run-parser"
+import { loadFeatures } from "@terminfo/catalog"
 import { loadCategories } from "./categories.ts"
 import type { D3Label } from "./release-scope.ts"
 import {
@@ -109,32 +109,14 @@ export interface Candidate2Data {
 }
 
 /**
- * Feature display names, from the same catalog the declarations are validated against. A catalog
- * entry is either a bare string or an object carrying `name`; an id with neither is a LOUD fault, not
- * a quiet fallback to printing the id twice — every cohort id is in this catalog by construction
- * (`loadFeatureCohort` refuses an unknown feature), so a nameless entry means the catalog shape
- * changed under us and the page would otherwise start labelling rows with their own ids.
+ * Feature display names, from the same catalog the declarations are validated against. The catalog
+ * loader refuses a nameless entry before this page ever runs, so a row can never be labelled with its
+ * own id through a quiet fallback: every cohort id is a catalog row by construction
+ * (`classicCohortIds` filters the catalog itself).
  */
 function loadCatalogNames(): Record<string, string> {
-  const path = join(contentDir, "features.json")
-  const raw = parseJsonStrict(path, readFileSync(path, "utf8"))
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`${path}: expected a feature catalog object`)
-  }
   const names: Record<string, string> = {}
-  for (const [id, declared] of Object.entries(raw as Record<string, unknown>)) {
-    if (id.startsWith("$")) continue
-    const name =
-      typeof declared === "string"
-        ? declared
-        : declared !== null && typeof declared === "object" && !Array.isArray(declared)
-          ? (declared as { name?: unknown }).name
-          : undefined
-    if (typeof name !== "string" || !name) {
-      throw new Error(`${path}: ${id} carries no usable name; the page must never label a row with its id`)
-    }
-    names[id] = name
-  }
+  for (const [id, entry] of Object.entries(loadFeatures(contentDir))) names[id] = entry.name
   return names
 }
 

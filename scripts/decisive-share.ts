@@ -43,29 +43,35 @@ import { join } from "node:path"
 import { parseArgs } from "node:util"
 import { parseJsonStrict, parseSuiteManifest } from "@terminfo/run-parser"
 import { splitDecidableBasis } from "@terminfo/probe-defs"
+import { loadFeatures, type FeatureCatalog } from "@terminfo/catalog"
 import {
   loadCurrentResults,
   loadDefaultContextPolicy,
   type DefaultContextReview,
 } from "../docs/data/current-results.ts"
-import { loadReleaseScope, loadFeatureCohort, type FeatureCohort } from "../docs/data/load-release-scope.ts"
+import {
+  frozenSuiteIdFor,
+  loadReleaseScope,
+  loadFeatureCohort,
+  type FeatureCohort,
+} from "../docs/data/load-release-scope.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
   barOverMeasured,
+  classifyCell,
   d3Verdict,
   D3_VERDICT_BAR,
-  F2_MOVERS,
-  INCLUDED_TIER1_COUNT,
-  includedTierOneIds,
-  isStaleRelation,
+  tier1Included,
   type D3Verdict,
-  type SuiteRelation,
 } from "../docs/data/release-scope.ts"
 
-// The included-52 set and the D3 verdict rule are ONE owner, in docs/data/release-scope.ts, so the
-// site's label and this reader's verdict can never be two copies. Re-exported for the reader's callers.
-export { F2_MOVERS, INCLUDED_TIER1_COUNT, includedTierOneIds }
-import type { SelectedVersion } from "../docs/data/selected-results.ts"
+import {
+  candidateFromSelected,
+  pickContextRun,
+  type ContextCandidate,
+  type RunSelection,
+  type ShareCells,
+} from "../docs/data/run-selection.ts"
 
 /** The eleven Release 1 desktop contexts (15323 § Release 1; children 27834 Mac, 27835 Linux+Windows). */
 export const RELEASE_1_CONTEXTS = [
@@ -129,13 +135,6 @@ export interface DecisiveShare {
   verdict: D3Verdict
 }
 
-/**
- * Minimal cell view barOverMeasured consumes; SelectedCell satisfies it structurally. `reason` and
- * `note` are carried so a consumer can print the RUN'S OWN words for an inconclusive row (the named
- * cause, such as a terminal that never answers `CSI 16 t`) instead of paraphrasing one of its own.
- */
-export type ShareCells = Record<string, { outcome: string; conclusive?: boolean; reason?: string; note?: string }>
-
 /** One inconclusive row, with the run's own reason and note when the cell carries them. */
 export interface InconclusiveRow {
   featureId: string
@@ -173,24 +172,11 @@ export function decisiveShare(cells: ShareCells, measuredIds: readonly string[])
   const remainder: RemainderRow[] = []
   const inconclusiveIds: string[] = []
   for (const id of measuredIds) {
-    const cell = cells[id]
-    if (!cell) remainder.push({ featureId: id, bucket: "untested" })
-    else if (cell.outcome === "error") remainder.push({ featureId: id, bucket: "error" })
-    else if (cell.conclusive && cell.outcome === "supported") continue
-    else if (cell.conclusive && cell.outcome === "unsupported") continue
-    else inconclusiveIds.push(id)
-  }
-  if (remainder.length !== bar.errors + bar.untested) {
-    throw new Error(
-      `decisive-share remainder ${remainder.length} disagrees with barOverMeasured errors+untested ` +
-        `${bar.errors + bar.untested} over ${measuredIds.length} rows`,
-    )
-  }
-  if (inconclusiveIds.length !== bar.inconclusive) {
-    throw new Error(
-      `decisive-share inconclusiveIds ${inconclusiveIds.length} disagrees with barOverMeasured inconclusive ` +
-        `${bar.inconclusive} over ${measuredIds.length} rows`,
-    )
+    // Names and counts come from the same classifyCell, so they cannot drift apart.
+    const state = classifyCell(cells[id])
+    if (state === "untested") remainder.push({ featureId: id, bucket: "untested" })
+    else if (state === "error") remainder.push({ featureId: id, bucket: "error" })
+    else if (state === "inconclusive") inconclusiveIds.push(id)
   }
   const decisivePct = sharePct(bar.conclusive, bar.denominator)
   const inconclusivePct = sharePct(bar.inconclusive, bar.denominator)
@@ -206,41 +192,14 @@ export function decisiveShare(cells: ShareCells, measuredIds: readonly string[])
   }
 }
 
-/** The declared 62 tier-1 ids, validated against the feature catalog by the declaration's owner. */
+/** The declared 62 tier-1 ids: the catalog rows whose slice is `tier1`, ascending. */
 export function tierOneIds(contentDir: string): string[] {
   const catalog = featureCatalog(contentDir)
-  return loadReleaseScope({ catalog, declarationPath: join(contentDir, "release-scope.json") }).measuredIds
+  return loadReleaseScope({ catalog, categories: loadCategories(contentDir) }).measuredIds
 }
 
-function featureCatalog(contentDir: string): Record<string, { name: string }> {
-  const featuresPath = join(contentDir, "features.json")
-  const raw = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8"))
-  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error(`${featuresPath}: expected a feature catalog object`)
-  }
-  const catalog: Record<string, { name: string }> = {}
-  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
-    if (id.startsWith("$")) continue
-    const declared = typeof value === "object" && value !== null ? (value as { name?: unknown }).name : value
-    catalog[id] = { name: typeof declared === "string" && declared ? declared : id }
-  }
-  return catalog
-}
-
-/** One candidate context the site currently selects, reduced to what the reader consumes. */
-export interface ContextCandidate {
-  key: string
-  kind: string
-  terminalId: string
-  os: string
-  permissions: string | null
-  runId: string
-  version: string
-  measuredAt: string
-  suiteId: string
-  suiteFreshness: string
-  suiteRelation: SuiteRelation
-  cells: ShareCells
+function featureCatalog(contentDir: string): FeatureCatalog {
+  return loadFeatures(contentDir)
 }
 
 export interface ContextShares {
@@ -263,50 +222,6 @@ export interface NotMeasuredRow {
 }
 
 export type BarRow = MeasuredRow | NotMeasuredRow
-
-/** How the one run for a context was chosen, printed with the row so the choice is auditable. */
-export type RunSelection = "only current" | "reviewed default-context row" | "default profile"
-
-export type PickedContextRun = { run: ContextCandidate; selection: RunSelection } | { ambiguous: string[] }
-
-/**
- * Choose the one run the site selects for a (terminal id, os) context. The site's own selection keys by
- * terminal id, not by id+os, so a context can carry several current entries: kitty/linux has the
- * default and two clipboard-override profiles, and xterm/linux carries one entry per frozen-runner
- * store path. The site resolves such a tie by the reviewed `default-contexts.json` row
- * (`compatibilityTargets`), and so does this reader.
- *
- * The bar keys rows by terminal id + os while the review is keyed by terminal id alone, so a review
- * is a tie-break ONLY for the group whose context it names — `app:kitty` names the macOS context, and
- * kitty/linux must still resolve on its own. A review that names no candidate of this group is
- * therefore not this group's tie-break and the fallbacks below apply; the single permissions-free
- * entry is the row, and anything still ambiguous is reported with its contexts, never guessed.
- *
- * The fallbacks consider only CURRENT-suite candidates whenever any are present: the bar reports a
- * run's decisive share on the current suite, so an older-suite entry can never be the measured row,
- * and letting it tie up the choice reports a false ambiguity (kitty/linux: one stale permissions-free
- * entry beside the current one and a current clipboard override, which read "ambiguous" until this
- * rule). With no current-suite candidate the fallbacks are unchanged, and a review still names any
- * candidate it likes — this rule is the tie-break of last resort, not a filter on the review.
- */
-export function pickContextRun(
-  candidates: readonly ContextCandidate[],
-  reviewed?: DefaultContextReview,
-): PickedContextRun | undefined {
-  if (candidates.length === 0) return undefined
-  if (reviewed !== undefined) {
-    const chosen = candidates.find((candidate) => candidate.key === reviewed.contextKey)
-    if (chosen) return { run: chosen, selection: "reviewed default-context row" }
-  }
-  const current = candidates.filter((candidate) => !isStaleRelation(candidate.suiteRelation))
-  const considered = current.length > 0 ? current : candidates
-  const [only] = considered
-  if (considered.length === 1 && only) return { run: only, selection: "only current" }
-  const defaults = considered.filter((candidate) => candidate.permissions === null)
-  const [onlyDefault] = defaults
-  if (defaults.length === 1 && onlyDefault) return { run: onlyDefault, selection: "default profile" }
-  return { ambiguous: considered.map((candidate) => candidate.key) }
-}
 
 export function barRowForContext(args: {
   context: ReleaseContext
@@ -341,23 +256,6 @@ export function barRowForContext(args: {
       tier62: decisiveShare(picked.run.cells, args.tier62Ids),
       tier52: decisiveShare(picked.run.cells, args.tier52Ids),
     },
-  }
-}
-
-function candidateFromSelected(key: string, selected: SelectedVersion): ContextCandidate {
-  return {
-    key,
-    kind: selected.target.kind,
-    terminalId: selected.target.id,
-    os: selected.target.os ?? "",
-    permissions: selected.target.permissions ?? null,
-    runId: selected.runId,
-    version: selected.target.version ?? "",
-    measuredAt: selected.measuredAt,
-    suiteId: selected.suiteId,
-    suiteFreshness: selected.suiteFreshness,
-    suiteRelation: selected.suiteRelation,
-    cells: selected.cells,
   }
 }
 
@@ -447,9 +345,11 @@ export function buildReport(args: {
   let unavailableIds: string[] = []
   let libraryOnlyIds: string[] = []
   if (args.cohort === "candidate2") {
+    const categories = loadCategories(args.contentDir)
     const declared = loadFeatureCohort({
       catalog: featureCatalog(args.contentDir),
-      declarationPath: join(args.contentDir, "release-scope-candidate2.json"),
+      categories,
+      frozenSuiteId: frozenSuiteIdFor(args.contentDir, "candidate2"),
     })
     const manifestPath = join(args.contentDir, "suites", `${declared.frozenSuiteId}.json`)
     const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
@@ -497,7 +397,7 @@ export function buildReport(args: {
   admitted.sort(byRunIdOrder)
   refused.sort((left, right) => byRunIdOrder(left.run, right.run))
   const tier62Ids = tierOneIds(args.contentDir)
-  const tier52Ids = includedTierOneIds(tier62Ids)
+  const tier52Ids = tier1Included(featureCatalog(args.contentDir), tier62Ids)
   const contexts = args.contexts ?? RELEASE_1_CONTEXTS
   const barRows = contexts.map((context) =>
     barRowForContext({
