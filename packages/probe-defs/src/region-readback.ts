@@ -25,7 +25,14 @@
  * offset rectangle reads the same pixels in all three frames, so the worst a wrong one can do is
  * miss the edited cells and leave seed and expected equal — inconclusive BY NAME, never a verdict.
  */
-import type { CaptureCells, CapturePixelGeometry, ObservationFrame, ProbeResult, TermContext } from "./types.ts"
+import type {
+  CaptureCells,
+  CapturePixelGeometry,
+  ObservationFrame,
+  ProbeResult,
+  TermContext,
+  TerminalQueryOutcome,
+} from "./types.ts"
 
 export type CellRegion = CaptureCells
 export type PixelGeometry = CapturePixelGeometry
@@ -274,12 +281,14 @@ function witnessed(result: { witness: RegionCapture } | ProbeResult): result is 
  * The terminal's own pixel report: CSI 16 t (cell size in pixels) and CSI 14 t (text area in
  * pixels). A context that answers neither cannot map cells onto the captured window at all, and
  * says so BY NAME instead of falling back to a window width divided by a column count.
+ *
+ * A terminal that answers no 16 t — alacritty, on Linux and macOS — is not a terminal without a
+ * report: it answers the SAME text area twice, in pixels (14 t) and in characters (18 t), so its
+ * cell size is the whole-number division of the two (28763).
  */
 export async function queryPixelGeometry(ctx: TermContext): Promise<{ geometry: PixelGeometry } | { missing: string }> {
   const cell = await ctx.queryWithSentinelOutcome("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/)
-  if (cell.reason !== "reply") {
-    return { missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cell.reason}` }
-  }
+  if (cell.reason !== "reply") return deriveCellSizeFromTextArea(ctx, cell.reason)
   const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
   if (text.reason !== "reply") {
     return { missing: `the terminal answered CSI 14 t (text area in pixels) with ${text.reason}` }
@@ -299,6 +308,48 @@ export async function queryPixelGeometry(ctx: TermContext): Promise<{ geometry: 
     return { missing: `the terminal's pixel report did not parse as positive numbers: ${JSON.stringify(geometry)}` }
   }
   return { geometry }
+}
+
+/**
+ * The cell size of a terminal that answers no 16 t, from the two replies it does answer: the text
+ * area in pixels (14 t) and that same area in rows and columns (18 t). The division IS the
+ * measurement, so it has to be exact — 640 pixels over 80 columns and 384 over 24 rows is an 8x16
+ * cell, and 641 over 80 is not a cell size at all, but two replies that disagree about the text
+ * area. A rounded cell would put the compared rectangle on the wrong pixels, which this oracle,
+ * which has no tolerance, must never do. Every way it can fail is named, so the refusal says which
+ * reply was asked for and what came back.
+ */
+async function deriveCellSizeFromTextArea(
+  ctx: TermContext,
+  cellReason: TerminalQueryOutcome["reason"],
+): Promise<{ geometry: PixelGeometry } | { missing: string }> {
+  const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
+  if (text.reason !== "reply") {
+    return {
+      missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cellReason} and CSI 14 t (text area in pixels) with ${text.reason}, so no cell size can be mapped`,
+    }
+  }
+  const area = await ctx.queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/)
+  if (area.reason !== "reply") {
+    return {
+      missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cellReason} and CSI 18 t (text area in characters) with ${area.reason}, so no cell size can be mapped`,
+    }
+  }
+  const textHeight = Number(text.match?.[1])
+  const textWidth = Number(text.match?.[2])
+  const rows = Number(area.match?.[1])
+  const columns = Number(area.match?.[2])
+  if (!positive(textHeight) || !positive(textWidth) || !positive(rows) || !positive(columns)) {
+    return {
+      missing: `the terminal reported a text area that did not parse as positive numbers: ${textWidth}x${textHeight} pixels over ${columns}x${rows} characters`,
+    }
+  }
+  if (textHeight % rows !== 0 || textWidth % columns !== 0) {
+    return {
+      missing: `the terminal reported a ${textWidth}x${textHeight} pixel text area over ${columns}x${rows} characters, which does not divide into a whole-pixel cell size`,
+    }
+  }
+  return { geometry: { cellHeight: textHeight / rows, cellWidth: textWidth / columns, textHeight, textWidth } }
 }
 
 /**

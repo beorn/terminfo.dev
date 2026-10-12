@@ -13,6 +13,7 @@ import { expect, test } from "vitest"
 import {
   captureRegionReadbackDecision,
   captureRegionVerdict,
+  queryPixelGeometry,
   type CellRegion,
   type PixelGeometry,
   type RegionCapture,
@@ -398,6 +399,58 @@ test("a pixel query answered with a sentinel reports query evidence, not a zero-
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.evidence).toBe("query")
   expect(result.observation.note).toContain("CSI 16 t")
+})
+
+/**
+ * @failure A terminal that answers no CSI 16 t (alacritty, on Linux and macOS) reads as having no
+ *   pixel report at all, so every region row on it stays undecided although the same terminal
+ *   reports the text area twice — in pixels and in characters (28763).
+ * @level l1
+ * @consumer The capture-region readback, on every app row that needs a cells-to-pixels rectangle.
+ * @testonly none
+ */
+test("a terminal with no CSI 16 t maps cells from its own 14 t and 18 t text area by whole-number division", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  const asked: string[] = []
+  fake.ctx.queryWithSentinelOutcome = async (sequence) => {
+    asked.push(sequence)
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[18t") {
+      return { match: ["\x1b[8;24;80t", "24", "80"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const mapped = await queryPixelGeometry(fake.ctx)
+  if (!("geometry" in mapped)) throw new Error(`expected a mapped cell size, got: ${mapped.missing}`)
+  expect(asked).toEqual(["\x1b[16t", "\x1b[14t", "\x1b[18t"])
+  expect(mapped.geometry).toEqual({ cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 })
+  // And the row DECIDES with it, which is the whole point of the mapping: the same fixture that
+  // answers no cell size now reads its compared cells at the derived 8x16.
+  const result = await decide(fake, { pixelGeometry: mapped.geometry })
+  expect(result.observation.outcome).toBe("supported")
+  expect(result.observation.evidence).toBe("pixels")
+  for (const { pixelGeometry } of fake.requests) expect(pixelGeometry).toEqual(mapped.geometry)
+})
+
+test("a text area that does not divide into whole pixels refuses BY NAME and maps nothing", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  fake.ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;385;640t", "385", "640"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[18t") {
+      return { match: ["\x1b[8;24;80t", "24", "80"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const mapped = await queryPixelGeometry(fake.ctx)
+  if ("geometry" in mapped) throw new Error("385 pixels over 24 rows is not a cell height to round")
+  // 385 pixels over 24 rows is not a cell height at all: these are two replies that disagree about
+  // the text area, so the refusal names the numbers instead of picking one.
+  expect(mapped.missing).toContain("640x385 pixel text area over 80x24 characters")
+  expect(mapped.missing).toContain("does not divide into a whole-pixel cell size")
 })
 
 test("an unstable capture cites the capture it took, so the run stays writable", async () => {
