@@ -112,15 +112,25 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
   const acquire = async (deadline?: number) => {
     await assertOwned(deadline)
     const path = join(directory, `.capture-${randomBytes(16).toString("hex")}.png`)
+    const file = "/usr/sbin/screencapture"
+    const args = ["-l", String(window.id), "-o", "-x", "-t", "png", path]
+    let stdout: Buffer | undefined
+    let stderr: Buffer = Buffer.alloc(0)
     let bytes: Buffer
     try {
-      await command(
-        "/usr/sbin/screencapture",
-        ["-l", String(window.id), "-o", "-x", "-t", "png", path],
-        undefined,
-        deadline,
-      )
+      stdout = await command(file, args, undefined, deadline, (output) => {
+        stderr = output
+      })
       bytes = readFileSync(path)
+    } catch (cause) {
+      const underlying =
+        cause instanceof Error ? { name: cause.name, message: cause.message } : { message: String(cause) }
+      const error = new Error(
+        `Darwin screenshot capture failed: ${JSON.stringify({ file, args, outputPath: path, stdout: stdout?.toString() ?? null, stdoutBase64: stdout?.toString("base64") ?? null, stderr: stderr.toString(), stderrBase64: stderr.toString("base64"), cause: underlying })}`,
+        { cause },
+      )
+      error.name = stdout === undefined ? "DarwinCaptureCommandFailed" : "DarwinCaptureOutputMissing"
+      throw error
     } finally {
       try {
         unlinkSync(path)

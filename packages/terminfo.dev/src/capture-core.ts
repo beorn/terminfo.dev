@@ -4,7 +4,13 @@ import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ProbeCapture } from "./probes/unified.ts"
 
-export function command(file: string, args: string[], input?: Buffer, deadline?: number): Promise<Buffer> {
+export function command(
+  file: string,
+  args: string[],
+  input?: Buffer,
+  deadline?: number,
+  onStderr?: (stderr: Buffer) => void,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     let timeout = 10_000
     if (deadline !== undefined) {
@@ -29,7 +35,13 @@ export function command(file: string, args: string[], input?: Buffer, deadline?:
         maxBuffer: 32 * 1024 * 1024,
         ...(deadline !== undefined ? { killSignal: "SIGKILL" as const } : {}),
       },
-      (error, stdout) => {
+      (error, stdout, stderr) => {
+        try {
+          onStderr?.(Buffer.isBuffer(stderr) ? stderr : Buffer.from(stderr))
+        } catch (observerError) {
+          reject(observerError)
+          return
+        }
         if (error) reject(error)
         else if (stdinError) reject(stdinError)
         else resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout))

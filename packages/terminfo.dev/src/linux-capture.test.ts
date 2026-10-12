@@ -36,6 +36,20 @@ const temporary: string[] = []
 const originalPath = process.env.PATH
 const originalDisplay = process.env.DISPLAY
 
+// A successful screenshot command can still explain a missing PNG only on stderr.
+test("capture command preserves zero-exit stderr before resolving unchanged stdout bytes", async () => {
+  const observed: Buffer[] = []
+  const stdout = await command(
+    process.execPath,
+    ["-e", "process.stdout.write(Buffer.from([17, 0, 23])); process.stderr.write(Buffer.from([0, 255, 10]))"],
+    undefined,
+    undefined,
+    (stderr) => observed.push(stderr),
+  )
+  expect(stdout).toEqual(Buffer.from([17, 0, 23]))
+  expect(observed).toEqual([Buffer.from([0, 255, 10])])
+})
+
 // Calibration's oracle deadline bounds the running child, not just the next polling iteration.
 test("capture command terminates a real child at its supplied deadline and never starts after expiry", async () => {
   const { directory } = fixture()
