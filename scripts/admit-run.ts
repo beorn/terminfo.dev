@@ -55,6 +55,48 @@ export interface IdentityAdmission {
   executable?: { version: string; sha256: string }
 }
 
+type ReceiptRefusalCode =
+  | "windows-hosted-receipt-required"
+  | "ownership-citation-invalid"
+  | "ownership-receipt-missing"
+  | "ownership-receipt-digest-mismatch"
+  | "ownership-receipt-kind-mismatch"
+  | "ownership-receipt-invalid"
+  | "ownership-receipt-target-mismatch"
+  | "ownership-receipt-app-launch-mismatch"
+  | "ownership-receipt-run-required"
+  | "ownership-receipt-non-reuse"
+  | "ownership-receipt-collision"
+
+export type AdmissionExclusionCode =
+  | ReceiptRefusalCode
+  | "identity-disputed"
+  | "identity-unverified"
+  | "identity-unreviewed"
+  | "runtime-identity-unverified"
+  | "identity-no-profile"
+  | "identity-replies-mismatch"
+  | "native-provenance-missing"
+  | "native-provenance-dirty"
+  | "source-uncommitted"
+  | "community-unreviewed"
+  | "suite-incomplete"
+
+/** Only expected admission refusals become public exclusions; detail stays in authoring diagnostics. */
+class ReceiptRefusal extends Error {
+  constructor(
+    readonly code: ReceiptRefusalCode,
+    readonly detail: string,
+    cause?: unknown,
+  ) {
+    super(detail, { cause })
+  }
+}
+
+function isLinux(os: string | null | undefined): boolean {
+  return (os ?? "").toLowerCase().startsWith("linux")
+}
+
 function xtversionVersionEquals(payload: string, declared: string): boolean {
   const paren = /^(?:[A-Za-z][\w.+-]*)\(([^)]+)\)$/.exec(payload)
   if (paren) return paren[1] === declared
@@ -101,7 +143,14 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
     // executable; identity is its byte-exact ProductVersion, never the installation template.
     if (run.target.id === "windows-terminal" && os.startsWith("win")) {
       const receipt = run.origin.appLaunch
-      if (!receipt || receipt.platform !== "win32" || receipt.productVersion !== run.target.version) return null
+      if (
+        run.target.version === "unknown" ||
+        !receipt ||
+        receipt.platform !== "win32" ||
+        receipt.productVersion !== run.target.version
+      ) {
+        return null
+      }
       return {
         rule: run.target.id,
         da1: identity.da1,
@@ -113,7 +162,7 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
     // disagreement, and records the executable's path and sha256; parseRunProvenance carries that
     // receipt here as `provenance` (@cto 2026-10-07, 31d5bdd0 option b). `?6c` alone is too weak to
     // identify — VT102 is a whole class — so the executable version CONFIRMS what DA1 only bounds.
-    if (os.startsWith("linux")) {
+    if (isLinux(run.target.os)) {
       const provenance = run.provenance
       if (run.target.version === "unknown" || !provenance || !provenance.runtime.cleanTree) return null
       const { version, sha256 } = provenance.executable
@@ -159,7 +208,7 @@ function identityDecision(
   run: LoadedRun,
   active: readonly Interpretation[],
   identityAdmission: IdentityAdmission | null,
-): string | null {
+): AdmissionExclusionCode | null {
   if (run.identity === "disputed") return "identity-disputed"
   const pin = pinnedIdentity(run, active)
   if (run.target.kind === "headless") {
@@ -176,33 +225,11 @@ function identityDecision(
   return identityAdmission ? null : "identity-replies-mismatch"
 }
 
-/**
- * The run fields the native-provenance gate reads, written structurally so the SITE and the Release 1
- * re-collection runner (`scripts/release1-collection.ts`) share ONE gate: the runner reads unknown
- * documents, and a document it cannot recognise must be judged, never crash.
- */
-export interface ProvenanceSubject {
-  readonly target?: { readonly kind?: unknown; readonly os?: unknown }
-  readonly provenance?: { readonly runtime?: { readonly cleanTree?: unknown } }
-}
-
-/**
- * The ONE native-provenance gate (#27929 D6). Only a LINUX APP run must carry a provenance block, and
- * any run that carries one must prove its tree was clean. `scripts/linux-container-run.sh` is the only
- * collector that writes a provenance block, so a headless or macOS run has none BY CONSTRUCTION — a
- * gate that demanded `cleanTree === true` would refuse every such run as `native-provenance-dirty`,
- * and no headless row could ever be admitted.
- */
-export function provenanceRefusal(subject: ProvenanceSubject): string | null {
-  const kind = subject.target?.kind
-  const os = typeof subject.target?.os === "string" ? subject.target.os.toLowerCase() : undefined
-  if (kind === "app" && os?.startsWith("linux") && !subject.provenance) return "native-provenance-missing"
-  if (subject.provenance && !subject.provenance.runtime?.cleanTree) return "native-provenance-dirty"
+/** Linux app runs require apparatus provenance; every supplied provenance must be clean. */
+function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
+  if (run.target.kind === "app" && isLinux(run.target.os) && !run.provenance) return "native-provenance-missing"
+  if (run.provenance && !run.provenance.runtime.cleanTree) return "native-provenance-dirty"
   return null
-}
-
-function provenanceDecision(run: LoadedRun): string | null {
-  return provenanceRefusal(run)
 }
 
 function admissionRefusal(
@@ -210,7 +237,7 @@ function admissionRefusal(
   active: readonly Interpretation[],
   reviewed: boolean,
   identityAdmission: IdentityAdmission | null,
-): string | null {
+): AdmissionExclusionCode | null {
   return (
     identityDecision(run, active, identityAdmission) ??
     provenanceDecision(run) ??
@@ -226,16 +253,16 @@ function admissionRefusal(
  */
 export function assessRunAdmission(
   run: LoadedRun,
-  active: readonly Interpretation[] = [],
-  evidence: { receiptPath?: string; contentDir?: string; mode?: "historical" | "placement" } = {},
+  active: readonly Interpretation[],
+  evidence: { receiptPath?: string; contentDir?: string; mode: "historical" | "placement" },
 ):
   | { accepted: true; identityAdmission: IdentityAdmission | null }
-  | { accepted: false; reason: string; identityAdmission: IdentityAdmission | null } {
+  | { accepted: false; reason: AdmissionExclusionCode; detail?: string; identityAdmission: null } {
   const identityAdmission = identityMatch(run)
   const reviewed = active.some(
     (entry) => entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.reviewed,
   )
-  let reason = admissionRefusal(run, active, reviewed, identityAdmission)
+  const reason = admissionRefusal(run, active, reviewed, identityAdmission)
   if (reason === null) {
     try {
       preflightOwnershipReceipt(
@@ -243,17 +270,19 @@ export function assessRunAdmission(
         run.rawReplies["collector.disposableOwnership"],
         run.runId,
         { kind: run.target.kind, id: run.target.id, os: run.target.os ?? "" },
+        run,
         evidence.contentDir ?? dirname(dirname(run.path)),
         evidence.receiptPath ?? join(dirname(dirname(run.path)), "receipts", `${run.runId}.json`),
         evidence.mode === "placement",
-        run,
       )
     } catch (cause) {
-      if (!(cause instanceof Error)) throw cause
-      reason = cause.message
+      if (!(cause instanceof ReceiptRefusal)) {
+        throw new Error(`Cannot assess ownership receipt for run ${run.runId}`, { cause })
+      }
+      return { accepted: false, reason: cause.code, detail: cause.detail, identityAdmission: null }
     }
   }
-  return reason === null ? { accepted: true, identityAdmission } : { accepted: false, reason, identityAdmission }
+  return reason === null ? { accepted: true, identityAdmission } : { accepted: false, reason, identityAdmission: null }
 }
 
 const SAFE_COMPONENT = /^[a-zA-Z0-9._-]+$/
@@ -330,7 +359,7 @@ export function planAdmission(
     contentDir: CONTENT_DIR,
     mode: "placement",
   })
-  if (!assessment.accepted) throw new Error(`${source}: ${assessment.reason}`)
+  if (!assessment.accepted) throw new Error(`${source}: ${assessment.detail ?? assessment.reason}`)
   if (parsed.probeHash !== snapshot.probeHash) {
     throw new Error(
       `Refusing to admit a run from suite ${parsed.probeHash}: this tree runs suite ${snapshot.probeHash}. ` +
@@ -475,54 +504,116 @@ function preflightOwnershipReceipt(
   ownership: string | undefined,
   runId: string,
   target: ReceiptTarget,
+  run: LoadedRun | undefined,
   contentDir: string = CONTENT_DIR,
   receiptPath: string = join(dirname(source), RECEIPT_BESIDE_RUN),
   compareHostedHistory = true,
-  run?: LoadedRun,
 ): { bytes?: Buffer; detail: string } {
+  const windowsIdentity = run?.origin.appLaunch?.platform === "win32"
+  const requireWindowsHostedReceipt = () => {
+    throw new ReceiptRefusal(
+      "windows-hosted-receipt-required",
+      `Run ${runId}: win32 identity requires a cited github-hosted-runner ownership receipt`,
+    )
+  }
   if (ownership === undefined) {
+    if (windowsIdentity) requireWindowsHostedReceipt()
     return { detail: "the run cites no collector.disposableOwnership reply" }
   }
   let citation: unknown
   try {
     citation = JSON.parse(ownership)
   } catch (cause) {
-    throw new Error(`Run ${runId} has an unparsable collector.disposableOwnership reply: ${source}`, { cause })
+    if (!(cause instanceof SyntaxError)) throw cause
+    throw new ReceiptRefusal(
+      "ownership-citation-invalid",
+      `Run ${runId} has an unparsable collector.disposableOwnership reply: ${source}`,
+      cause,
+    )
   }
   if (!isRecord(citation)) {
-    throw new Error(`Run ${runId} has a collector.disposableOwnership reply that is not an object: ${source}`)
+    throw new ReceiptRefusal(
+      "ownership-citation-invalid",
+      `Run ${runId} has a collector.disposableOwnership reply that is not an object: ${source}`,
+    )
   }
   const kind = citation.kind
+  if (windowsIdentity && kind !== "github-hosted-runner") requireWindowsHostedReceipt()
   if (kind === "shared") {
     return { detail: "collected against a shared terminal: it cites no receipt, so none is placed" }
   }
   const cited = citation.receiptSha256
   if (typeof cited !== "string" || !/^[0-9a-f]{64}$/.test(cited)) {
-    throw new Error(
+    throw new ReceiptRefusal(
+      "ownership-citation-invalid",
       `Run ${runId} cites disposable ownership kind ${JSON.stringify(kind)} but no sha256 receiptSha256, ` +
         "so the receipt it trusted cannot be re-checked",
     )
   }
-  if (!existsSync(receiptPath)) {
-    throw new Error(
+  let bytes: Buffer
+  try {
+    bytes = readFileSync(receiptPath)
+  } catch (cause) {
+    if (!isRecord(cause) || cause.code !== "ENOENT") throw cause
+    throw new ReceiptRefusal(
+      "ownership-receipt-missing",
       `Run ${runId} cites ownership receipt ${cited}, but ${receiptPath} does not exist beside the run: ` +
         "the bytes the claim rests on were not handed in",
+      cause,
     )
   }
-  const bytes = readFileSync(receiptPath)
   const actual = createHash("sha256").update(bytes).digest("hex")
   if (actual !== cited) {
-    throw new Error(`Receipt ${receiptPath} hashes to ${actual}, not the ${cited} the run cites`)
+    throw new ReceiptRefusal(
+      "ownership-receipt-digest-mismatch",
+      `Receipt ${receiptPath} hashes to ${actual}, not the ${cited} the run cites`,
+    )
   }
-  const receipt = parseDisposableReceipt(bytes.toString("utf8"))
+  let receipt: ReturnType<typeof parseDisposableReceipt>
+  try {
+    receipt = parseDisposableReceipt(bytes.toString("utf8"))
+  } catch (cause) {
+    // This existing strict parser names every expected validation error. Unknown faults stay faults.
+    if (!(cause instanceof Error) || !/^Disposable ownership receipt(?: \(| is not JSON)/.test(cause.message)) {
+      throw cause
+    }
+    throw new ReceiptRefusal("ownership-receipt-invalid", cause.message, cause)
+  }
   if (receipt.kind !== kind) {
-    throw new Error(
+    throw new ReceiptRefusal(
+      "ownership-receipt-kind-mismatch",
       `Receipt ${receiptPath} is kind ${JSON.stringify(receipt.kind)} but the run records ${JSON.stringify(kind)}`,
     )
   }
-  bindReceiptToRun(receipt, target, `run ${runId}`)
+  try {
+    bindReceiptToRun(receipt, target, `run ${runId}`)
+  } catch (cause) {
+    if (!(cause instanceof Error) || !cause.message.startsWith("Disposable ownership receipt (")) throw cause
+    throw new ReceiptRefusal("ownership-receipt-target-mismatch", cause.message, cause)
+  }
+  if (receipt.appLaunch && !run) {
+    throw new ReceiptRefusal(
+      "ownership-receipt-run-required",
+      `Receipt ${receiptPath} carries appLaunch; supply the loaded run to bind its copied identity`,
+    )
+  }
   if (run && !isDeepStrictEqual(run.origin.appLaunch, receipt.appLaunch)) {
-    throw new Error(`Run ${runId} origin.appLaunch differs from cited ownership receipt ${receiptPath}`)
+    const launch = run.origin.appLaunch
+    const measured = receipt.appLaunch
+    const differing =
+      launch && measured
+        ? Object.keys({ ...launch, ...measured }).find(
+            (key) =>
+              !isDeepStrictEqual(
+                (launch as unknown as Record<string, unknown>)[key],
+                (measured as unknown as Record<string, unknown>)[key],
+              ),
+          )
+        : undefined
+    throw new ReceiptRefusal(
+      "ownership-receipt-app-launch-mismatch",
+      `Run ${runId} origin.appLaunch${differing ? `.${differing}` : ""} differs from cited ownership receipt ${receiptPath}`,
+    )
   }
   if (receipt.kind === "github-hosted-runner" && compareHostedHistory) {
     // Strict parsing above owns validation. Decode only the already-validated hosted fields here;
@@ -535,7 +626,8 @@ function preflightOwnershipReceipt(
     const current = JSON.parse(bytes.toString("utf8")) as HostedFields
     const os = current.runner.os
     if (!Object.hasOwn(HOSTED_IDENTITY_SOURCES, os)) {
-      throw new Error(
+      throw new ReceiptRefusal(
+        "ownership-receipt-invalid",
         `Hosted receipt ${receiptPath}: runner.os ${JSON.stringify(os)} has no ratified identity source/scope table`,
       )
     }
@@ -567,7 +659,8 @@ function preflightOwnershipReceipt(
       if (previous.job.githubRunId === current.job.githubRunId && previous.job.jobId === current.job.jobId) continue
       for (const field of HOSTED_IDENTITY_SOURCES[os as keyof typeof HOSTED_IDENTITY_SOURCES].nonReuse) {
         if (previous.vm.identityAtJobStart[field] === current.vm.identityAtJobStart[field]) {
-          throw new Error(
+          throw new ReceiptRefusal(
+            "ownership-receipt-non-reuse",
             `Hosted receipt non-reuse: ${field} repeats between jobs ` +
               `${previous.job.githubRunId}/${previous.job.jobId} (${path}) and ` +
               `${current.job.githubRunId}/${current.job.jobId} (${receiptPath}); refusing before placement. Recollect in a fresh hosted job`,
@@ -576,7 +669,13 @@ function preflightOwnershipReceipt(
       }
     }
   }
-  preflightDestination(join(contentDir, "receipts", `${runId}.json`), bytes, "disposable-ownership receipt")
+  const destination = join(contentDir, "receipts", `${runId}.json`)
+  if (existsSync(destination) && !readFileSync(destination).equals(bytes)) {
+    throw new ReceiptRefusal(
+      "ownership-receipt-collision",
+      `Refusing to overwrite a different disposable-ownership receipt at ${destination}`,
+    )
+  }
   return { bytes, detail: `content/receipts/${runId}.json (${receiptPath}, ${actual})` }
 }
 
@@ -586,8 +685,9 @@ export function placeOwnershipReceipt(
   runId: string,
   target: ReceiptTarget,
   contentDir: string = CONTENT_DIR,
+  run?: LoadedRun,
 ): { placed: "created" | "existing" | "none"; detail: string } {
-  const receipt = preflightOwnershipReceipt(source, ownership, runId, target, contentDir)
+  const receipt = preflightOwnershipReceipt(source, ownership, runId, target, run, contentDir)
   const placed =
     receipt.bytes === undefined
       ? "none"
@@ -597,9 +697,14 @@ export function placeOwnershipReceipt(
 
 /** Host composition happens only after a completed Linux attach; bind those bytes to this run. */
 function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
-  if (run.target.kind !== "app" || run.target.os !== "linux") return
+  if (run.target.kind !== "app" || !isLinux(run.target.os)) return
   const hostPath = join(dirname(source), RECEIPT_BESIDE_RUN)
-  const host: unknown = existsSync(hostPath) ? JSON.parse(readFileSync(hostPath, "utf8")) : undefined
+  let host: unknown
+  try {
+    host = existsSync(hostPath) ? JSON.parse(readFileSync(hostPath, "utf8")) : undefined
+  } catch (cause) {
+    throw new Error(`Cannot read/parse Linux host-measured.json receipt ${hostPath}`, { cause })
+  }
   const launcher =
     isRecord(host) &&
     typeof host.preset === "string" &&
@@ -676,11 +781,18 @@ export function admitRun(plan: AdmissionPlan): {
 
   // Refuse a cited receipt that is missing, mismatched, degenerate or bound to another target,
   // BEFORE placing the run: the ownership claim the run makes is part of what admission admits.
-  const receipt = placeOwnershipReceipt(plan.source, loaded.rawReplies["collector.disposableOwnership"], loaded.runId, {
-    kind: loaded.target.kind,
-    id: loaded.target.id,
-    os: loaded.target.os ?? "",
-  })
+  const receipt = placeOwnershipReceipt(
+    plan.source,
+    loaded.rawReplies["collector.disposableOwnership"],
+    loaded.runId,
+    {
+      kind: loaded.target.kind,
+      id: loaded.target.id,
+      os: loaded.target.os ?? "",
+    },
+    CONTENT_DIR,
+    loaded,
+  )
 
   const screenshots = placeScreenshots(plan.source, loaded.screenshotRefs)
   const run = placeRun(plan.destination, bytes)

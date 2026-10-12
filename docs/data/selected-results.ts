@@ -17,7 +17,6 @@ import {
 } from "@terminfo/probe-defs"
 import {
   type LoadedRun,
-  parseJsonStrict,
   parseSuiteManifest,
   parseRun,
   parseObservationFrames,
@@ -31,7 +30,6 @@ import {
   fail,
   hasPresentationDecision,
   nonempty,
-  object,
   parseInterpretations,
   validatePresentationShape,
   validatePresentationSupersession,
@@ -480,7 +478,7 @@ export function projectResults(
   for (const run of runs) {
     const key = keyFor(run)
     history[key] ??= []
-    const assessment = assessRunAdmission(run, active)
+    const assessment = assessRunAdmission(run, active, { mode: "historical" })
     assessments.set(run.runId, assessment)
     history[key].push(
       projectRun(run, active, catalogIds, policy.currentProbeHash, releaseSuiteId, assessment.identityAdmission),

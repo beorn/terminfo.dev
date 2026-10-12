@@ -3,14 +3,25 @@
  * @level l1
  * @consumer The one declare-and-admit entry point (27859)
  * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/
- * @reach fs-walk <fixture-only: mkdtempSync run and destination directories>
+ * @reach fs-walk <fixture-only: mkdtempSync run, destination, and Git authoring directories>
  * @testonly none
  */
+import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
+import * as suiteManifest from "./suite-manifest.ts"
 import * as versions from "../packages/admin/versions.ts"
 import { decodeCollectorRun, parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "terminfo.dev/src/daemon-client.ts"
@@ -30,12 +41,48 @@ import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
 
 const temporaryPaths: string[] = []
 afterEach(() => {
+  vi.restoreAllMocks()
   for (const path of temporaryPaths.splice(0)) rmSync(path, { recursive: true, force: true })
 })
 const temp = (prefix: string): string => {
   const directory = mkdtempSync(join(tmpdir(), prefix))
   temporaryPaths.push(directory)
   return directory
+}
+
+// Planning success must not depend on whether the test runner's checkout has already landed.
+// Redirect only the existing authoring seam; the real guard sees real fixture ancestry.
+function authoringFixture(): void {
+  const directory = temp("terminfo-admission-authoring-")
+  const git = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+  git("init", "-q", "-b", "main")
+  git("config", "user.email", "fixture@example.invalid")
+  git("config", "user.name", "fixture")
+  writeFileSync(join(directory, "fixture.txt"), "main\n")
+  git("add", "fixture.txt")
+  git("commit", "-q", "-m", "main fixture")
+  git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
+  const assertAuthoring = suiteManifest.assertDeclareIsAuthoring
+  expect(() => assertAuthoring(directory)).toThrow(/origin\/main/)
+  writeFileSync(join(directory, "fixture.txt"), "authoring\n")
+  git("add", "fixture.txt")
+  git("commit", "-q", "-m", "authoring fixture")
+  vi.spyOn(suiteManifest, "assertDeclareIsAuthoring").mockImplementation((_root, hash) =>
+    assertAuthoring(directory, hash),
+  )
+}
+
+function declaredRelease(): string {
+  const suites = join(import.meta.dirname, "..", "content", "suites")
+  const releases = readdirSync(suites).flatMap((name) => {
+    if (!name.endsWith(".json")) return []
+    const path = join(suites, name)
+    const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+    return manifest.freeze ? [manifest.freeze.release] : []
+  })
+  if (releases.length !== 1) throw new Error(`Expected one declared release in ${suites}, found ${releases.length}`)
+  return releases[0]!
 }
 
 function runFixture(overrides: Record<string, unknown> = {}): string {
@@ -153,7 +200,8 @@ test.each(["missing", "malformed", "wrong-hash", "wrong-probe-run", "wrong-host-
 )
 
 test("release admission cannot relabel the current suite as the declared freeze", () => {
-  const declared = frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), "candidate2")
+  const release = declaredRelease()
+  const declared = frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), release)
   // Keep the actual declaration reader; isolate a different current snapshot so the test remains
   // meaningful when Thursday's freeze later catches up with the live source tree.
   const current = declared === "fa".repeat(6) ? "fb".repeat(6) : "fa".repeat(6)
@@ -163,14 +211,32 @@ test("release admission cannot relabel the current suite as the declared freeze"
   try {
     const source = runFixture()
     const destination = join(temp("terminfo-release-authority-"), "content", "run.json")
-    expect(() => planAdmission(source, destination, { release: "candidate2", frozenSuiteId: current })).toThrow(
+    expect(() => planAdmission(source, destination, { release, frozenSuiteId: current })).toThrow(
       /declared frozen suite/,
     )
-    expect(() => planAdmission(source, destination, { release: "candidate2" })).toThrow(/declared frozen suite/)
+    expect(() => planAdmission(source, destination, { release })).toThrow(/declared frozen suite/)
     expect(existsSync(destination)).toBe(false)
   } finally {
     snapshot.mockRestore()
   }
+})
+
+// Requirement 3: admitRun must retain the declared release when it validates a plan again.
+// If release is dropped, the declaration sentinel prevents any content write and exposes the bug.
+test("admission replans against the plan's declared release before declaring or placing", () => {
+  authoringFixture()
+  const release = declaredRelease()
+  const declared = frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), release)
+  const current = declared === "fa".repeat(6) ? "fb".repeat(6) : "fa".repeat(6)
+  vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({ ...probeSuiteSnapshot(), probeHash: current })
+  const declaration = vi.spyOn(suiteManifest, "declareCurrentSuiteManifest").mockImplementation(() => {
+    throw new Error("Unexpected declaration before release validation")
+  })
+  const destination = join(temp("terminfo-release-replan-"), "run.json")
+  const plan = planAdmission(runFixture(), destination)
+  expect(() => admitRun({ ...plan, release })).toThrow(/declared frozen suite/)
+  expect(declaration).not.toHaveBeenCalled()
+  expect(existsSync(destination)).toBe(false)
 })
 
 test("planning refuses run/tree/frozen-suite disagreement before placement", () => {
@@ -210,9 +276,13 @@ test("planning refuses a missing cited ownership receipt before placement", () =
     contentDir: content,
     mode: "placement",
   })
-  expect(assessment).toMatchObject({ accepted: false, reason: expect.stringContaining("host-measured.json") })
+  expect(assessment).toMatchObject({
+    accepted: false,
+    reason: "ownership-receipt-missing",
+    detail: expect.stringContaining("host-measured.json"),
+  })
   if (assessment.accepted) throw new Error("Missing ownership receipt was unexpectedly accepted")
-  expect(() => planAdmission(source, destination)).toThrow(`${source}: ${assessment.reason}`)
+  expect(() => planAdmission(source, destination)).toThrow(`${source}: ${assessment.detail ?? assessment.reason}`)
   expect(existsSync(destination)).toBe(false)
 })
 
@@ -266,8 +336,12 @@ test("Windows admission requires its measured executable version to match exactl
     origin: { ...run.origin, appLaunch: receipt },
     rawReplies: { ...run.rawReplies, "collector.disposableOwnership": ownership },
   }
-  const evidence = { receiptPath: join(directory, "host-measured.json"), contentDir: directory }
-  expect(assessRunAdmission(measured, [], evidence)).toMatchObject({ accepted: true })
+  const evidence = {
+    receiptPath: join(directory, "host-measured.json"),
+    contentDir: directory,
+    mode: "placement" as const,
+  }
+  expect.soft(assessRunAdmission(measured, [], evidence)).toMatchObject({ accepted: true })
   // AC1: two internally matching copied fields cannot replace the cited measured receipt.
   // Native mutation probes passed this gap; the earlier single-field version cases could not see it.
   for (const changed of [
@@ -281,21 +355,98 @@ test("Windows admission requires its measured executable version to match exactl
       origin: { ...measured.origin, appLaunch: { ...receipt, executableSha256: "b7".repeat(32) } },
     },
   ]) {
-    expect(assessRunAdmission(changed, [], evidence)).toMatchObject({
+    expect.soft(assessRunAdmission(changed, [], evidence)).toMatchObject({
       accepted: false,
-      reason: expect.stringContaining("appLaunch differs from cited ownership receipt"),
+      reason: "ownership-receipt-app-launch-mismatch",
+      detail: expect.stringMatching(/origin\.appLaunch\.(productVersion|executableSha256) differs/),
+      identityAdmission: null,
     })
   }
+  // Requirement 2: copied executable identity cannot stand without hosted evidence.
+  for (const ownership of [undefined, JSON.stringify({ kind: "shared" })]) {
+    const rawReplies: Record<string, string> = { ...measured.rawReplies }
+    const changed = {
+      ...measured,
+      target: { ...measured.target, version: "9.99.1" },
+      origin: { ...measured.origin, appLaunch: { ...receipt, productVersion: "9.99.1" } },
+      rawReplies,
+    }
+    if (ownership === undefined) delete changed.rawReplies["collector.disposableOwnership"]
+    else changed.rawReplies["collector.disposableOwnership"] = ownership
+    expect.soft(assessRunAdmission(changed, [], evidence)).toMatchObject({
+      accepted: false,
+      reason: "windows-hosted-receipt-required",
+      identityAdmission: null,
+    })
+  }
+  // Receipt equality covers every measured launch field, not only the version and digest.
+  for (const [field, appLaunch] of [
+    ["executablePath", { ...receipt, executablePath: String.raw`C:\other\WindowsTerminal.exe` }],
+    [
+      "sourceArtifact",
+      { ...receipt, sourceArtifact: { ...receipt.sourceArtifact, path: String.raw`C:\other\wt.zip` } },
+    ],
+    ["sourceArtifact", { ...receipt, sourceArtifact: { ...receipt.sourceArtifact, sha256: "e5".repeat(32) } }],
+    [
+      "platform",
+      {
+        bundlePath: "/Applications/Terminal.app",
+        cfBundleShortVersionString: run.target.version,
+        cfBundleVersion: "1",
+        executablePath: receipt.executablePath,
+        executableSha256: receipt.executableSha256,
+        sourceArtifact: receipt.sourceArtifact,
+      },
+    ],
+  ] as const) {
+    expect
+      .soft(assessRunAdmission({ ...measured, origin: { ...measured.origin, appLaunch } }, [], evidence))
+      .toMatchObject({
+        accepted: false,
+        reason: field === "platform" ? "identity-replies-mismatch" : "ownership-receipt-app-launch-mismatch",
+        ...(field === "platform" ? {} : { detail: expect.stringContaining(`origin.appLaunch.${field} differs`) }),
+        identityAdmission: null,
+      })
+  }
+  const unknownReceipt = { ...receipt, productVersion: "unknown" }
+  const unknownDirectory = temp("terminfo-unknown-launch-")
+  const unknownOwnership = ownershipBesideRun(join(unknownDirectory, "run.json"), {
+    ...hostedReceipt("Windows", "1004"),
+    appLaunch: unknownReceipt,
+  })
+  expect
+    .soft(
+      assessRunAdmission(
+        {
+          ...measured,
+          target: { ...measured.target, version: "unknown" },
+          origin: { ...measured.origin, appLaunch: unknownReceipt },
+          rawReplies: { ...measured.rawReplies, "collector.disposableOwnership": unknownOwnership },
+        },
+        [],
+        {
+          receiptPath: join(unknownDirectory, "host-measured.json"),
+          contentDir: unknownDirectory,
+          mode: "placement",
+        },
+      ),
+    )
+    .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
   for (const version of [`${receipt.productVersion} `, "1.21.2361.0"]) {
-    expect(assessRunAdmission({ ...measured, target: { ...measured.target, version } })).toMatchObject({
-      accepted: false,
-      reason: "identity-replies-mismatch",
-    })
+    expect
+      .soft(assessRunAdmission({ ...measured, target: { ...measured.target, version } }, [], evidence))
+      .toMatchObject({
+        accepted: false,
+        reason: "identity-replies-mismatch",
+      })
   }
-  expect(assessRunAdmission(run)).toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
+  expect
+    .soft(assessRunAdmission(run, [], evidence))
+    .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
 })
 
 test("a run is named from its own target and run id", () => {
+  authoringFixture()
   const into = join(temp("terminfo-admit-dest-"), "out.json")
   const plan = planAdmission(runFixture(), into)
   expect(plan.destination).toBe(into)
@@ -319,6 +470,7 @@ test("a run that is not schema v2 refuses", () => {
  * refuse by name, before any write, rather than compute `probes` from this tree's probe-defs.
  */
 test("admission refuses a run whose suite this tree does not run", () => {
+  authoringFixture()
   const plan = planAdmission(runFixture())
   const foreign = { ...plan, probeHash: "f".repeat(12) }
   expect(() => admitRun(foreign)).toThrow(/Admit from a tree at the run's suite/)
