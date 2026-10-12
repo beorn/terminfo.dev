@@ -1,7 +1,6 @@
 {
   "name": "terminfo.dev-root",
   "private": true,
-  "packageManager": "bun@1.4.3",
   "license": "CC-BY-4.0",
   "workspaces": [
     "packages/*"
@@ -62,6 +61,7 @@
   "engines": {
     "node": ">=24"
   },
+  "packageManager": "bun@1.4.3",
   "verifyPublishable": {
     "build": "bun run validate && bun run --cwd packages/probe-defs build && bun run --cwd packages/terminfo.dev build"
   }
