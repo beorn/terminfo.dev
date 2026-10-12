@@ -20,7 +20,14 @@ import {
   type RegionRead,
   type RegionReadback,
 } from "./region-readback.ts"
-import type { CaptureCells, CapturePixelGeometry, MeasuredProbeResult, ObservationFrame, TermContext } from "./types.ts"
+import type {
+  CaptureCells,
+  CapturePixelGeometry,
+  MeasuredProbeResult,
+  ObservationFrame,
+  TermContext,
+  TerminalQueryOutcome,
+} from "./types.ts"
 
 const SEED = "\x1b[1;1Hseed"
 const EDIT = "\x1b[1;3H\x1b[1P"
@@ -426,12 +433,28 @@ test("a terminal with no CSI 16 t maps cells from its own 14 t and 18 t text are
   if (!("geometry" in mapped)) throw new Error(`expected a mapped cell size, got: ${mapped.missing}`)
   expect(asked).toEqual(["\x1b[16t", "\x1b[14t", "\x1b[18t"])
   expect(mapped.geometry).toEqual({ cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 })
+  // @cto fix 1 (2026-10-12): every number names its basis.
+  expect(mapped.source).toBe("derived from CSI 14 t / CSI 18 t")
   // And the row DECIDES with it, which is the whole point of the mapping: the same fixture that
-  // answers no cell size now reads its compared cells at the derived 8x16.
-  const result = await decide(fake, { pixelGeometry: mapped.geometry })
+  // answers no cell size now reads its compared cells at the derived 8x16 — and its observation
+  // records WHERE that geometry came from, beside the geometry itself.
+  const result = await decide(fake, { pixelGeometry: mapped.geometry, geometrySource: mapped.source })
   expect(result.observation.outcome).toBe("supported")
   expect(result.observation.evidence).toBe("pixels")
   for (const { pixelGeometry } of fake.requests) expect(pixelGeometry).toEqual(mapped.geometry)
+  expect(JSON.parse(result.response ?? "null")).toMatchObject({
+    pixelGeometry: mapped.geometry,
+    geometrySource: "derived from CSI 14 t / CSI 18 t",
+  })
+  // A terminal that DOES answer 16 t names the other basis, so the two are never confused.
+  const reporting = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  reporting.ctx.queryWithSentinelOutcome = async (sequence) =>
+    sequence === "\x1b[16t"
+      ? { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply", raw: "", rawBase64: "" }
+      : { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+  const reported = await queryPixelGeometry(reporting.ctx)
+  if (!("geometry" in reported)) throw new Error("16 t and 14 t both replied, so a cell size is reported")
+  expect(reported.source).toBe("reported by CSI 16 t")
 })
 
 test("a text area that does not divide into whole pixels refuses BY NAME and maps nothing", async () => {
@@ -451,6 +474,79 @@ test("a text area that does not divide into whole pixels refuses BY NAME and map
   // the text area, so the refusal names the numbers instead of picking one.
   expect(mapped.missing).toContain("640x385 pixel text area over 80x24 characters")
   expect(mapped.missing).toContain("does not divide into a whole-pixel cell size")
+})
+
+/**
+ * 28763 fix 2 (@cto 2026-10-12): the failure NAMES are the contract, so each one gets its own test.
+ * Every case asserts the reply it names AND that no geometry is mapped — a refusal is not a guess.
+ */
+test("a terminal that answers neither CSI 16 t nor CSI 14 t names both replies it got", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  const reasons: Record<string, TerminalQueryOutcome["reason"]> = {
+    "\x1b[16t": "sentinel",
+    "\x1b[14t": "timeout",
+  }
+  fake.ctx.queryWithSentinelOutcome = async (sequence) => ({
+    match: null,
+    reason: reasons[sequence] ?? "timeout",
+    raw: "\x1b[?6c",
+    rawBase64: "",
+  })
+  const mapped = await queryPixelGeometry(fake.ctx)
+  if ("geometry" in mapped) throw new Error("a terminal that answered neither report has no cell size to map")
+  expect(mapped.missing).toContain("CSI 16 t")
+  expect(mapped.missing).toContain("sentinel")
+  expect(mapped.missing).toContain("CSI 14 t")
+  expect(mapped.missing).toContain("timeout")
+})
+
+test("a 14 t reply behind a silent CSI 16 t names 16 t and the 18 t that never came", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  fake.ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const mapped = await queryPixelGeometry(fake.ctx)
+  if ("geometry" in mapped) throw new Error("18 t is what makes the division exact, so its absence maps nothing")
+  expect(mapped.missing).toContain("CSI 16 t")
+  expect(mapped.missing).toContain("sentinel")
+  expect(mapped.missing).toContain("CSI 18 t")
+})
+
+test("a report that parses to zero or to non-numbers names the numbers, on both paths", async () => {
+  // The 16 t / 14 t path: the cell size came back zero, so the refusal quotes the parsed geometry.
+  const reported = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  reported.ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (sequence === "\x1b[16t") {
+      return { match: ["\x1b[6;0;8t", "0", "8"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const zeroCell = await queryPixelGeometry(reported.ctx)
+  if ("geometry" in zeroCell) throw new Error("a zero cell height is not a pixel report")
+  expect(zeroCell.missing).toContain("did not parse as positive numbers")
+  expect(zeroCell.missing).toContain('"cellHeight":0')
+
+  // The derived path: both text areas parsed, but as zeros, so the refusal quotes them by number.
+  const derived = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  derived.ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;0;0t", "0", "0"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[18t") {
+      return { match: ["\x1b[8;24;80t", "24", "80"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const zeroArea = await queryPixelGeometry(derived.ctx)
+  if ("geometry" in zeroArea) throw new Error("a 0x0 text area is not a measurement")
+  expect(zeroArea.missing).toContain("did not parse as positive numbers")
+  expect(zeroArea.missing).toContain("0x0 pixels over 80x24 characters")
 })
 
 test("an unstable capture cites the capture it took, so the run stays writable", async () => {

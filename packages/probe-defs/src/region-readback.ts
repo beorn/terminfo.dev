@@ -95,6 +95,13 @@ export interface RegionReadback {
   /** The terminal's own pixel report, carried into every capture request. */
   pixelGeometry: PixelGeometry
   /**
+   * WHERE that report came from, in words, so a reader can tell a geometry problem from a slow paint
+   * (@cto 2026-10-12, 28763 fix 1): a terminal that answers CSI 16 t is `reported by CSI 16 t`, and one
+   * that answers only 14 t and 18 t is `derived from CSI 14 t / CSI 18 t`. Every number then names its
+   * basis instead of leaving a derived cell size looking like a reported one.
+   */
+  geometrySource?: string
+  /**
    * A write the run needs AFTER its frames — a mode or a scroll region the last frame leaves set,
    * which a later probe sharing this terminal must not inherit. Issued from the run's own `finally`,
    * so it lands exactly when this oracle wrote bytes: a refusal that wrote none leaves a zero-byte
@@ -243,11 +250,12 @@ async function awaitPaintWitness(options: {
   label: string
   witnessCell: CellRegion
   pixelGeometry: PixelGeometry
+  geometrySource?: string
   baseline: RegionCapture
   timeoutMs: number
   pollMs: number
 }): Promise<{ witness: RegionCapture } | ProbeResult> {
-  const { read, id, label, witnessCell, pixelGeometry, baseline, timeoutMs, pollMs } = options
+  const { read, id, label, witnessCell, pixelGeometry, geometrySource, baseline, timeoutMs, pollMs } = options
   const deadline = Date.now() + timeoutMs
   for (;;) {
     const painted = await read({
@@ -262,7 +270,7 @@ async function awaitPaintWitness(options: {
       return inconclusive(
         id,
         frameMoved
-          ? `${id}: paint witnessed outside the sentinel region after ${label} within ${timeoutMs} ms; the frame moved while witness cell ${witnessCell.top},${witnessCell.left} stood still, so the cells-to-pixels geometry is wrong for this context`
+          ? `${id}: paint witnessed outside the sentinel region after ${label} within ${timeoutMs} ms; the frame moved while witness cell ${witnessCell.top},${witnessCell.left} stood still, so the cells-to-pixels geometry is wrong for this context (cell geometry ${geometrySource ?? "unknown"})`
           : `${id}: no paint witness within ${timeoutMs} ms after ${label}; the terminal left the witness cell unpainted, so this run cannot separate a painted frame from a stale one`,
         "timeout",
         "pixels",
@@ -288,7 +296,13 @@ function witnessed(result: { witness: RegionCapture } | ProbeResult): result is 
  * report: it answers the SAME text area twice, in pixels (14 t) and in characters (18 t), so its
  * cell size is the whole-number division of the two (28763).
  */
-export async function queryPixelGeometry(ctx: TermContext): Promise<{ geometry: PixelGeometry } | { missing: string }> {
+/** The two bases a pixel geometry can rest on, named once so a reader sees one spelling. */
+const GEOMETRY_REPORTED = "reported by CSI 16 t"
+const GEOMETRY_DERIVED = "derived from CSI 14 t / CSI 18 t"
+
+export async function queryPixelGeometry(
+  ctx: TermContext,
+): Promise<{ geometry: PixelGeometry; source: string } | { missing: string }> {
   const cell = await ctx.queryWithSentinelOutcome("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/)
   if (cell.reason !== "reply") return deriveCellSizeFromTextArea(ctx, cell.reason)
   const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
@@ -309,7 +323,7 @@ export async function queryPixelGeometry(ctx: TermContext): Promise<{ geometry: 
   ) {
     return { missing: `the terminal's pixel report did not parse as positive numbers: ${JSON.stringify(geometry)}` }
   }
-  return { geometry }
+  return { geometry, source: GEOMETRY_REPORTED }
 }
 
 /**
@@ -324,7 +338,7 @@ export async function queryPixelGeometry(ctx: TermContext): Promise<{ geometry: 
 async function deriveCellSizeFromTextArea(
   ctx: TermContext,
   cellReason: TerminalQueryOutcome["reason"],
-): Promise<{ geometry: PixelGeometry } | { missing: string }> {
+): Promise<{ geometry: PixelGeometry; source: string } | { missing: string }> {
   const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
   if (text.reason !== "reply") {
     return {
@@ -351,7 +365,10 @@ async function deriveCellSizeFromTextArea(
       missing: `the terminal reported a ${textWidth}x${textHeight} pixel text area over ${columns}x${rows} characters, which does not divide into a whole-pixel cell size`,
     }
   }
-  return { geometry: { cellHeight: textHeight / rows, cellWidth: textWidth / columns, textHeight, textWidth } }
+  return {
+    geometry: { cellHeight: textHeight / rows, cellWidth: textWidth / columns, textHeight, textWidth },
+    source: GEOMETRY_DERIVED,
+  }
 }
 
 /**
@@ -380,7 +397,12 @@ export async function captureRegionVerdict(
       "query",
     )
   }
-  return captureRegionReadbackDecision(ctx, id, { ...spec, pixelGeometry: reported.geometry }, read)
+  return captureRegionReadbackDecision(
+    ctx,
+    id,
+    { ...spec, pixelGeometry: reported.geometry, geometrySource: reported.source },
+    read,
+  )
 }
 
 /**
@@ -460,6 +482,7 @@ export async function captureRegionReadbackDecision(
         label: step.label,
         witnessCell,
         pixelGeometry: spec.pixelGeometry,
+        geometrySource: spec.geometrySource,
         baseline,
         timeoutMs,
         pollMs,
@@ -494,6 +517,7 @@ export async function captureRegionReadbackDecision(
       sentinel: spec.sentinel,
       cursorRow: spec.cursorRow,
       pixelGeometry: spec.pixelGeometry,
+      geometrySource: spec.geometrySource,
       seed,
       after,
       expected,
