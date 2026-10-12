@@ -87,8 +87,10 @@ export interface RegionReadbackRow {
   cursorRow?: number
   sentinel?: { row: number; col?: number }
   /**
-   * A write the capture oracle needs AFTER its decision frame — a mode or a scroll region the
-   * decision frame leaves set, which a later probe sharing this terminal must not inherit.
+   * A write the capture oracle needs AFTER its frames — a mode or a scroll region the last frame
+   * leaves set, which a later probe sharing this terminal must not inherit. The oracle issues it from
+   * its own `finally`, so it lands exactly when the oracle wrote bytes and never on a pre-write
+   * refusal: a `none` observation has to leave a zero-byte trace (run-parser's zero-byte rule).
    */
   afterVerdict?: string
   /** Explicit minimum terminal geometry; derived from the row when absent. */
@@ -254,6 +256,7 @@ function regionReadbackSpec(
     edit: row.steps.map((step) => step.write).join("") + geometry.park,
     expected: prelude + paintFrame(row.after, geometry) + geometry.park,
     ...(row.ignored === undefined ? {} : { ignored: prelude + paintFrame(row.ignored, geometry) + geometry.park }),
+    ...(row.afterVerdict === undefined ? {} : { afterVerdict: row.afterVerdict }),
     timeoutMs: TIMEOUT_MS,
     pollMs: POLL_MS,
     minRows: row.minRows ?? geometry.sentinelRow,
@@ -318,7 +321,6 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
     },
     async term(ctx) {
       const decided = await captureRegionVerdict(ctx, row.id, readback)
-      if (row.afterVerdict) ctx.write(row.afterVerdict)
       if (decided) return decided
       return {
         pass: false,
