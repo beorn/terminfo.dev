@@ -992,7 +992,9 @@ describe("selected results", () => {
     const published = publicResults(
       {
         current: { "app:kitty": selected },
-        table: { "app:kitty": Object.fromEntries(Object.entries(selected.cells).map(([id, cell]) => [id, classifyCell(cell)])) },
+        table: {
+          "app:kitty": Object.fromEntries(Object.entries(selected.cells).map(([id, cell]) => [id, classifyCell(cell)])),
+        },
         versions: {},
         history: {},
         exclusions: [],
