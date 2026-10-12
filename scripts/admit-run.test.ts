@@ -10,7 +10,8 @@ import { createHash } from "node:crypto"
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import { afterEach, expect, test } from "vitest"
+import { afterEach, expect, test, vi } from "vitest"
+import * as versions from "../packages/admin/versions.ts"
 import { decodeCollectorRun, parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "terminfo.dev/src/daemon-client.ts"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
@@ -25,6 +26,7 @@ import {
 import { object } from "./interpretations.ts"
 import { parseDisposableReceipt } from "terminfo.dev/src/disposable-receipt.ts"
 import { derivedSuiteManifest } from "./suite-manifest.ts"
+import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
 
 const temporaryPaths: string[] = []
 afterEach(() => {
@@ -149,6 +151,27 @@ test.each(["missing", "malformed", "wrong-hash", "wrong-probe-run", "wrong-host-
     expect(existsSync(destination)).toBe(false)
   },
 )
+
+test("release admission cannot relabel the current suite as the declared freeze", () => {
+  const declared = frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), "candidate2")
+  // Keep the actual declaration reader; isolate a different current snapshot so the test remains
+  // meaningful when Thursday's freeze later catches up with the live source tree.
+  const current = declared === "fa".repeat(6) ? "fb".repeat(6) : "fa".repeat(6)
+  const snapshot = vi
+    .spyOn(versions, "probeSuiteSnapshot")
+    .mockReturnValue({ ...probeSuiteSnapshot(), probeHash: current })
+  try {
+    const source = runFixture()
+    const destination = join(temp("terminfo-release-authority-"), "content", "run.json")
+    expect(() => planAdmission(source, destination, { release: "candidate2", frozenSuiteId: current })).toThrow(
+      /declared frozen suite/,
+    )
+    expect(() => planAdmission(source, destination, { release: "candidate2" })).toThrow(/declared frozen suite/)
+    expect(existsSync(destination)).toBe(false)
+  } finally {
+    snapshot.mockRestore()
+  }
+})
 
 test("planning refuses run/tree/frozen-suite disagreement before placement", () => {
   const source = runFixture()

@@ -232,27 +232,33 @@ describe("release collection hands every produced run to the admission owner", (
     target: { kind: "app", id: "xterm", version: "411", os: "linux" },
     runId: "c3".repeat(16),
   }
-  it("credits the owner's target only after admission and forwards the explicit frozen suite", () => {
-    const planner = vi.spyOn(admission, "planAdmission").mockReturnValue(plan)
-    const writer = vi.spyOn(admission, "admitRun").mockReturnValue({
-      manifest: "existing",
-      run: "created",
-      screenshots: { created: 0, existing: 0 },
-      receipt: { placed: "none", detail: "fixture" },
-    })
-    try {
-      const produced = admitProducedRuns([source], frozenSuiteId)
-      expect(planner).toHaveBeenCalledWith(source, undefined, { frozenSuiteId })
-      expect(writer).toHaveBeenCalledWith(plan)
-      expect(produced).toEqual([{ target: plan.target }])
-      expect(
-        uncoveredContexts(census(), produced).some(({ context }) => context.id === "xterm" && context.os === "linux"),
-      ).toBe(false)
-    } finally {
-      planner.mockRestore()
-      writer.mockRestore()
-    }
-  })
+  it.each([frozenSuiteId, undefined])(
+    "credits the owner's target after candidate2 admission with assertion %s",
+    (assertedSuiteId) => {
+      const planner = vi.spyOn(admission, "planAdmission").mockReturnValue(plan)
+      const writer = vi.spyOn(admission, "admitRun").mockReturnValue({
+        manifest: "existing",
+        run: "created",
+        screenshots: { created: 0, existing: 0 },
+        receipt: { placed: "none", detail: "fixture" },
+      })
+      try {
+        const produced = admitProducedRuns([source], assertedSuiteId)
+        expect(planner).toHaveBeenCalledWith(source, undefined, {
+          release: "candidate2",
+          ...(assertedSuiteId === undefined ? {} : { frozenSuiteId: assertedSuiteId }),
+        })
+        expect(writer).toHaveBeenCalledWith(plan)
+        expect(produced).toEqual([{ target: plan.target }])
+        expect(
+          uncoveredContexts(census(), produced).some(({ context }) => context.id === "xterm" && context.os === "linux"),
+        ).toBe(false)
+      } finally {
+        planner.mockRestore()
+        writer.mockRestore()
+      }
+    },
+  )
   it.each(["planning", "placement"])(
     "propagates owner %s rejection before any coverage credit or later input",
     (phase) => {

@@ -35,6 +35,7 @@ import {
   assertDeclareIsAuthoring,
   declareCurrentSuiteManifest,
   derivedSuiteManifest,
+  frozenSuiteIdFor,
   verifySuiteManifest,
 } from "./suite-manifest.ts"
 
@@ -268,6 +269,7 @@ export interface AdmissionPlan {
   target: { kind: ProbeTarget["kind"]; id: string; version: string; os: string }
   runId: string
   frozenSuiteId?: string
+  release?: string
 }
 
 function catalogIds(): string[] {
@@ -275,7 +277,11 @@ function catalogIds(): string[] {
 }
 
 /** Compute where a run lands, from its own target and run id — never from a caller-supplied name. */
-export function planAdmission(source: string, into?: string, options: { frozenSuiteId?: string } = {}): AdmissionPlan {
+export function planAdmission(
+  source: string,
+  into?: string,
+  options: { frozenSuiteId?: string; release?: string } = {},
+): AdmissionPlan {
   let parsed: unknown
   try {
     parsed = JSON.parse(readFileSync(source, "utf8"))
@@ -331,12 +337,16 @@ export function planAdmission(source: string, into?: string, options: { frozenSu
         "Admit from a tree at the run's suite (its sourceRevision).",
     )
   }
-  if (
-    options.frozenSuiteId !== undefined &&
-    (loaded.suiteId !== options.frozenSuiteId || snapshot.probeHash !== options.frozenSuiteId)
-  ) {
+  const frozenSuiteId =
+    options.release === undefined ? options.frozenSuiteId : frozenSuiteIdFor(CONTENT_DIR, options.release)
+  if (options.release !== undefined && options.frozenSuiteId !== undefined && options.frozenSuiteId !== frozenSuiteId) {
     throw new Error(
-      `Run suite ${loaded.suiteId} and tree suite ${snapshot.probeHash} must equal frozen suite ${options.frozenSuiteId}`,
+      `Asserted suite ${options.frozenSuiteId} is not the declared frozen suite ${frozenSuiteId} for ${options.release}`,
+    )
+  }
+  if (frozenSuiteId !== undefined && (loaded.suiteId !== frozenSuiteId || snapshot.probeHash !== frozenSuiteId)) {
+    throw new Error(
+      `Run suite ${loaded.suiteId} and tree suite ${snapshot.probeHash} must equal ${options.release ? "declared " : ""}frozen suite ${frozenSuiteId}`,
     )
   }
   if (existsSync(manifestPath)) verifySuiteManifest(manifestPath, snapshot)
@@ -643,7 +653,10 @@ export function admitRun(plan: AdmissionPlan): {
         "Admit from a tree at the run's suite (its sourceRevision).",
     )
   }
-  const validated = planAdmission(plan.source, plan.destination, { frozenSuiteId: plan.frozenSuiteId })
+  const validated = planAdmission(plan.source, plan.destination, {
+    frozenSuiteId: plan.frozenSuiteId,
+    release: plan.release,
+  })
   if (
     validated.probeHash !== plan.probeHash ||
     validated.runId !== plan.runId ||

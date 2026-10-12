@@ -13,7 +13,7 @@
  *      `target.permissions` in `content/probes-apps/`), the run the SITE selects via
  *      `docs/data/current-results.ts` — never a preset/profile handed to this file by hand. Kitty
  *      takes `--preset baseline|current` and would refuse the launcher's own default;
- *   2. the explicit frozen suite — pass it to the admission owner;
+ *   2. the frozen suite — the owner reads candidate2's manifest freeze; a CLI id only asserts it;
  *   3. admission — hand each produced run to `scripts/admit-run.ts`, propagating its refusal before
  *      crediting the admitted target to collection coverage;
  *   4. the ending — `bun run decisive-share` (#27909), so the collection's result is the bar's own
@@ -362,10 +362,13 @@ export interface ProducedRun {
 }
 
 /** The owner completes admission before a produced input earns collection coverage. */
-export function admitProducedRuns(paths: readonly string[], frozenSuiteId: string): ProducedRun[] {
+export function admitProducedRuns(paths: readonly string[], assertedSuiteId?: string): ProducedRun[] {
   const produced: ProducedRun[] = []
   for (const path of paths) {
-    const plan = planAdmission(path, undefined, { frozenSuiteId })
+    const plan = planAdmission(path, undefined, {
+      release: "candidate2",
+      ...(assertedSuiteId === undefined ? {} : { frozenSuiteId: assertedSuiteId }),
+    })
     admitRun(plan)
     produced.push({ target: plan.target })
   }
@@ -428,13 +431,13 @@ function runChild(argv: readonly string[], label: string): void {
 function usage(): never {
   console.error(
     "Usage: bun run release1-collection [--plan]\n" +
-      "       bun run release1-collection --admit --frozen-suite <id> <run.json>...\n" +
+      "       bun run release1-collection --admit [--frozen-suite <id>] <run.json>...\n" +
       "  (bare)   print the census — the default: every Release 1 context, the entry point that\n" +
       "           measures it, and the committed run each Linux row's flags were read from. Read-only.\n" +
       "  --plan   the same census, named explicitly.\n" +
       "  --admit  admit produced runs through scripts/admit-run.ts, then report admitted coverage\n" +
-      "           and print the decisive-share table. The frozen suite id is\n" +
-      "           required and asserted against this tree; it is never inferred. Nothing is collected\n" +
+      "           and print the decisive-share table. The owner reads candidate2's manifest freeze;\n" +
+      "           --frozen-suite optionally asserts that id. Nothing is collected\n" +
       "           without this flag (or the per-row commands above), so a bare run never starts a\n" +
       "           multi-row collection by accident.",
   )
@@ -450,8 +453,10 @@ if (import.meta.main) {
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--plan") plan = true
     else if (argv[index] === "--admit") admit = true
-    else if (argv[index] === "--frozen-suite") frozenSuite = argv[++index]
-    else {
+    else if (argv[index] === "--frozen-suite") {
+      frozenSuite = argv[++index]
+      if (frozenSuite === undefined || frozenSuite.startsWith("--")) usage()
+    } else {
       const value = argv[index]
       if (value === undefined) usage()
       runs.push(value)
@@ -469,7 +474,6 @@ if (import.meta.main) {
       if (!admit) process.exit(0)
     }
     if (!admit) process.exit(0)
-    if (frozenSuite === undefined) usage()
     if (runs.length === 0) {
       throw new Error("--admit needs at least one produced run; nothing was admitted")
     }
