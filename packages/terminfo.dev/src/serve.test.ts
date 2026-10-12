@@ -225,7 +225,7 @@ describe("private finite daemon startup", () => {
       // Actual run 38303792334 reported stale detection 1.23.20211.0 despite measured executable
       // ProductVersion 1.21.240823001. Earlier macOS/receipt-copy assertions did not cover this.
       terminal={name:"windows-terminal",version:"1.23.20211.0",os:"windows",osVersion:"fixture"}
-      for(const productVersion of ["1.21.240823001","1.21.240823001 "]){
+      for(const productVersion of ["1.21.240823001","1.21.240823001-build42"]){
         launch=parseAppLaunchReceipt({platform:"win32",executablePath:"C:/runner/WindowsTerminal.exe",
           productVersion,executableSha256:"c3".repeat(32),
           sourceArtifact:{kind:"portable-zip",path:"C:/runner/wt.zip",sha256:"d4".repeat(32)}},"collector","app","fixture")

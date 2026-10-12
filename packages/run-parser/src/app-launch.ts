@@ -99,6 +99,9 @@ export function parseAppLaunchReceipt(
     }
     const productVersion = asString(value.productVersion, path, "appLaunch.productVersion")
     if (productVersion.trim().length === 0) fail(path, "missing appLaunch.productVersion")
+    if (productVersion !== productVersion.trim() || /[\r\n]/.test(productVersion)) {
+      fail(path, "appLaunch.productVersion has surrounding whitespace or a newline")
+    }
     const executableSha256 = measuredDigest(value.executableSha256, path, "appLaunch.executableSha256")
     if (!object(value.sourceArtifact)) fail(path, "missing appLaunch.sourceArtifact")
     if (value.sourceArtifact.kind !== "portable-zip") fail(path, "win32 appLaunch.sourceArtifact must be portable-zip")
