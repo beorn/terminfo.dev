@@ -90,16 +90,30 @@ export interface RegionReadbackRow {
    * A write the capture oracle needs AFTER its frames — a mode or a scroll region the last frame
    * leaves set, which a later probe sharing this terminal must not inherit. The oracle issues it from
    * its own `finally`, so it lands exactly when the oracle wrote bytes and never on a pre-write
-   * refusal: a `none` observation has to leave a zero-byte trace (run-parser's zero-byte rule).
+   * refusal: a `none` observation has to leave a zero-byte trace (run-parser's zero-byte rule). Named
+   * for the JOB, not the moment it runs (@cto 2026-10-12): `afterVerdict` named a time, and this is the
+   * write that clears the mode the last frame left set.
    */
-  afterVerdict?: string
-  /** Explicit minimum terminal geometry; derived from the row when absent. */
+  cleanup?: string
+  /**
+   * An explicit minimum terminal geometry. Absent, it DERIVES from the row (max(cursor row, sentinel
+   * row) rows; max(region right, sentinel column) columns plus the family's two-column margin). An
+   * explicit value below that need can only make an arm run on a grid smaller than it addresses, so it
+   * refuses at LOAD; a larger value is kept only with a one-line reason on the row.
+   */
   minRows?: number
   minCols?: number
 }
 
 const TIMEOUT_MS = 5000
 const POLL_MS = 250
+/**
+ * Columns of slack past the cells a row addresses. The parked cursor and the sentinel both sit on
+ * column 1 of their own rows, so the region's right edge is the true column need; this margin is the
+ * one the family has always declared (a hand-written row's `right + 2`), kept so a grid one column
+ * narrower than a row's fixture is refused rather than driven.
+ */
+const COLUMN_MARGIN = 2
 /** Clear, home, and the row's own designation reset, so every derived frame starts from one state. */
 const PRELUDE = "\x1b[0m\x1b[2J\x1b[H"
 
@@ -115,6 +129,9 @@ interface RegionReadbackGeometry {
   sentinelRow: number
   sentinelCol: number
   park: string
+  /** The grid this row actually addresses: `minRows` / `minCols` fall back here. */
+  minRows: number
+  minCols: number
 }
 
 /** A wide follower may be reported reserved-empty or as a space; both are the same cell. */
@@ -228,6 +245,26 @@ function assertRegionReadbackShape(row: RegionReadbackRow): RegionReadbackGeomet
       throw new Error(`${row.id}: control column ${control.col} is outside the compared 0..${columns - 1}`)
     }
   }
+  // The geometry this row really addresses (@cto 2026-10-12, must-fix 2). The parked cursor AND the
+  // sentinel are screen rows, so the need is the larger of the two: deriving it from the sentinel alone
+  // let a row declare a minimum that parked its own cursor off-screen (reverse-index: cursor 6,
+  // sentinel 5, so the old rule derived 5 and only an explicit 7 hid it). The column need is the
+  // region's own right edge with the sentinel's column folded in and the family margin added, because
+  // the region's bottom and right already derive from the grid. An explicit minimum below this need can
+  // only make an arm run on a grid smaller than the fixture addresses, so it refuses at LOAD and names
+  // both numbers; a larger explicit value is for a row to justify in one line.
+  const minRows = Math.max(cursorRow, sentinelRow)
+  const minCols = Math.max(right, sentinelCol) + COLUMN_MARGIN
+  if (row.minRows !== undefined && row.minRows < minRows) {
+    throw new Error(
+      `${row.id}: explicit minRows ${row.minRows} is below the ${minRows} rows this row uses (cursor row ${cursorRow}, sentinel row ${sentinelRow})`,
+    )
+  }
+  if (row.minCols !== undefined && row.minCols < minCols) {
+    throw new Error(
+      `${row.id}: explicit minCols ${row.minCols} is below the ${minCols} columns this row uses (region right ${right}, sentinel column ${sentinelCol}, margin ${COLUMN_MARGIN})`,
+    )
+  }
   return {
     rows,
     columns,
@@ -239,6 +276,8 @@ function assertRegionReadbackShape(row: RegionReadbackRow): RegionReadbackGeomet
     sentinelRow,
     sentinelCol,
     park: cup(cursorRow, 1),
+    minRows,
+    minCols,
   }
 }
 
@@ -256,11 +295,11 @@ function regionReadbackSpec(
     edit: row.steps.map((step) => step.write).join("") + geometry.park,
     expected: prelude + paintFrame(row.after, geometry) + geometry.park,
     ...(row.ignored === undefined ? {} : { ignored: prelude + paintFrame(row.ignored, geometry) + geometry.park }),
-    ...(row.afterVerdict === undefined ? {} : { afterVerdict: row.afterVerdict }),
+    ...(row.cleanup === undefined ? {} : { cleanup: row.cleanup }),
     timeoutMs: TIMEOUT_MS,
     pollMs: POLL_MS,
-    minRows: row.minRows ?? geometry.sentinelRow,
-    minCols: row.minCols ?? geometry.right + 2,
+    minRows: row.minRows ?? geometry.minRows,
+    minCols: row.minCols ?? geometry.minCols,
   }
 }
 

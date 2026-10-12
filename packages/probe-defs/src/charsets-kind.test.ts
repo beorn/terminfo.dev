@@ -167,3 +167,30 @@ test("a row whose shape disagrees with itself refuses at load", () => {
     /control row 3 is outside/,
   )
 })
+
+/**
+ * NO SILENT ERRORS, at load (@cto 2026-10-12, must-fix 2): the minimum geometry DERIVES from the row
+ * (the larger of cursor row and sentinel row; the region's right edge with the sentinel column folded
+ * in and the family margin added). An explicit minimum below that need can only make an arm run on a
+ * grid smaller than the fixture addresses, so it refuses at LOAD and names both numbers; a larger one
+ * is for the row to justify in a line.
+ */
+test("an explicit minimum geometry below what a row uses refuses at load", () => {
+  const row = charsetReadbackRows[0]
+  expect(row, "the kind table has a first row").toBeDefined()
+  if (!row) return
+  // charsets.dec-special addresses one 3-column row, so its need is 3 rows (sentinel row 3) by 5
+  // columns (region right 3 plus the family's two-column margin).
+  expect(() => regionReadbackProbe({ ...row, minRows: 2 })).toThrow(/explicit minRows 2 is below the 3 rows/)
+  expect(() => regionReadbackProbe({ ...row, minCols: 4 })).toThrow(/explicit minCols 4 is below the 5 columns/)
+  // The need is the LARGER of the cursor row and the sentinel row, so a row whose cursor outruns its
+  // sentinel needs the cursor's row — the shape that used a hand-picked minimum to park its own cursor
+  // off-screen (reverse-index: cursor row 6, sentinel row 5, so a sentinel-only rule derived 5).
+  expect(() => regionReadbackProbe({ ...row, cursorRow: 6, sentinel: { row: 5, col: 1 } })).not.toThrow()
+  expect(() => regionReadbackProbe({ ...row, cursorRow: 6, sentinel: { row: 5, col: 1 }, minRows: 5 })).toThrow(
+    /explicit minRows 5 is below the 6 rows this row uses \(cursor row 6, sentinel row 5\)/,
+  )
+  // At the derived need the row loads; a larger explicit value is kept for the row to justify.
+  expect(() => regionReadbackProbe({ ...row, minRows: 3, minCols: 5 })).not.toThrow()
+  expect(() => regionReadbackProbe({ ...row, minRows: 8, minCols: 9 })).not.toThrow()
+})

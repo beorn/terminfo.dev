@@ -217,11 +217,12 @@ test("cursor replies do not qualify app scrollback contents or region behavior",
 test("DECSTBM reset declines a grid below its measured minimum before writing", async () => {
   const probe = scrollbackProbes.find((entry) => entry.id === "scrollback.decstbm-reset")
   if (!probe?.term) throw new Error("missing scrollback.decstbm-reset app callback")
-  // This row's row-2 witness sits on row 6, so a 7-row or an 7-column grid cannot carry the fixture
-  // the row declares. Both refuse before a byte, which is what keeps a `none` observation zero-byte.
+  // This row's cursor sits on row 6 and its sentinel on row 8, so the derived minimum is 8 rows by 3
+  // columns (the region's right edge plus the family margin). A 7-row or a 2-column grid cannot carry
+  // the fixture; both refuse before a byte, which is what keeps a `none` observation zero-byte.
   for (const geometry of [
     { rows: 7, cols: 61 },
-    { rows: 12, cols: 7 },
+    { rows: 12, cols: 2 },
   ]) {
     const app = captureApp(geometry.rows, geometry.cols)
     const result = await probe.term(app.context)
@@ -586,12 +587,12 @@ test("scrollback capture fixtures record control and target frames with honest, 
   expect(decstbms.frames).toEqual([])
 
   const reset = findScrollback("scrollback.decstbm-reset")
-  // Under the row's own minimum of 8 rows the region cannot carry its row-2 witness on row 6, so the
-  // run refuses BY NAME before a byte.
+  // The row's minimum now DERIVES (cursor row 6, sentinel row 8) instead of being hand-picked, so a
+  // 7-row grid cannot carry the row-2 witness on row 6 and the run refuses BY NAME before a byte.
   const short = captureApp(7, 61)
   const shortResult = await reset.term!(short.context)
   expect(shortResult.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
-  expect(String(shortResult.observation?.note)).toContain("at least 8x8")
+  expect(String(shortResult.observation?.note)).toContain("at least 8x3")
   expect(short.writes).toEqual([])
   const resets = captureApp(12, 61)
   // decstbm-reset likewise judges through the region-readback oracle now.
@@ -605,11 +606,12 @@ test("scrollback capture fixtures record control and target frames with honest, 
   expect(resets.frames).toEqual([])
 
   const setRegion = findScrollback("scrollback.set-region")
-  // The row compares a cell on column 1 of a 7-row region, so a 1-column grid is refused before a byte.
+  // The derived minimum is 12 rows (cursor row 11, sentinel row 12) by 3 columns (region right 1 plus
+  // the family's two-column margin), so a 1-column grid is refused before a byte.
   const setSmall = captureApp(12, 1)
   const setSmallResult = await setRegion.term!(setSmall.context)
   expect(setSmallResult.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
-  expect(String(setSmallResult.observation?.note)).toContain("at least 13x2")
+  expect(String(setSmallResult.observation?.note)).toContain("at least 12x3")
   expect(setSmall.writes).toEqual([])
 })
 
@@ -714,8 +716,10 @@ function regionReadbackApp(
  *   the code never made. The headless callback cannot catch this: it decides either way, which is why the
  *   site table showed the gap on every terminal while the probe's own contract test passed. A spec that
  *   compared only the entry also graded a surface that dropped 1049l as supported, because nothing ever
- *   read the main grid back; the region now carries the restore, so a surface that enters the alt grid
- *   and never leaves reads the seed frame exactly like one that ignored the switch in the first place.
+ *   read the main grid back. The frame after the leave now carries a LIVE main marker, so a surface that
+ *   never leaves has main row 1 blank: it differs from the seed, the expected frame and the one
+ *   ignored-attribute frame, so it reads inconclusive BY NAME — never supported — while a surface that
+ *   ignores 1049 outright lands on the ignored-attribute frame and reads unsupported.
  * @level l2
  * @consumer 28018 candidate-2 Scrollback group; the site table's scrollback rows for every terminal.
  * @testonly none
@@ -724,14 +728,58 @@ test("scrollback.alt-screen reads the entry AND the restore from the region read
   for (const [label, options, outcome] of [
     ["the surface really swaps and restores", {}, "supported"],
     ["the surface ignores 1049h and 1049l", { mutations: ["altscreen-noop"] }, "unsupported"],
-    ["the surface enters the alt grid and never leaves", { strip: "\x1b[?1049l" }, "unsupported"],
+    ["the surface enters the alt grid and never leaves", { strip: "\x1b[?1049l" }, "inconclusive"],
   ] as const) {
     const { context } = regionReadbackApp(4, 61, options)
     const result = await findScrollback("scrollback.alt-screen").term!(context)
     expect(result.observation?.outcome, label).toBe(outcome)
     expect(result.pass, label).toBe(outcome === "supported")
-    expect(result.assertions ?? [], label).not.toEqual([])
+    // A decided row carries the assertion behind its verdict; an inconclusive one names why instead,
+    // so it carries none — which is what keeps "neither supported nor a named negative" from reading
+    // as a verdict.
+    if (outcome === "inconclusive") {
+      expect(result.assertions ?? [], label).toEqual([])
+    } else {
+      expect(result.assertions ?? [], label).not.toEqual([])
+    }
   }
+})
+
+/**
+ * @failure ESC[?1049l is read as restoring the measured main grid when the surface CLEARS it instead,
+ *   so a terminal that loses its main grid on exit still reads supported. That is the one shape the
+ *   bare enter/leave frame could not separate (@cto 2026-10-12, must-fix 1): the frame after the leave
+ *   must carry a LIVE main marker, not merely the absence of the alt grid.
+ * @level l1
+ * @consumer Headless Scrollback observations used by the support tables.
+ * @testonly none
+ */
+test("scrollback.alt-screen refuses a surface that clears the main grid on 1049l", () => {
+  const probe = scrollbackProbes.find((item) => item.id === "scrollback.alt-screen")
+  if (!probe?.termless) throw new Error("Missing scrollback.alt-screen headless callback")
+  const row = readbackRow("scrollback.alt-screen")
+  const mainRow = ["M", "A", "I", "N", "_", "S", "C", "R", "E", "E", "N", "_", "M", "A", "R", "K", "E", "R"]
+  const blankRow = mainRow.map(() => "")
+  const okRow = ["O", "K", ...mainRow.slice(2).map(() => "")]
+  const altMarked = [..."ALT_SCREEN_MARKER", ""]
+  const [enterAlt, writeAlt, leaveAlt, writeOk] = row.steps.map((entry) => entry.write)
+  if (!enterAlt || !writeAlt || !leaveAlt || !writeOk) throw new Error("alt-screen row is missing a step")
+  // The SAME terminal is declared for both arms, keyed by the sequence each write feeds. The only
+  // difference is what `1049l` restores to: the seed's main row (a real restore) or a blank screen
+  // (a surface that clears main on exit). Everything downstream is identical, so the frame after the
+  // leave has to carry the live main marker for either to read supported.
+  const screens = (mainAfterExit: readonly string[]) => ({
+    [row.seed]: [mainRow, blankRow],
+    [enterAlt]: [blankRow, blankRow],
+    [writeAlt]: [blankRow, altMarked],
+    [leaveAlt]: [mainAfterExit, blankRow],
+    [writeOk]: [mainAfterExit, okRow],
+  })
+  const restored = probe.termless(declaredScreen(screens(mainRow)))
+  expect(restored.observation?.outcome).toBe("supported")
+  const cleared = probe.termless(declaredScreen(screens(blankRow)))
+  expect(cleared.observation?.outcome).toBe("unsupported")
+  expect(cleared.pass).toBe(false)
 })
 
 /**

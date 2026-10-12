@@ -10,9 +10,12 @@ import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-
  * terminal failure.
  *
  * Each row keeps the region WIDTH, the cursor row and the sentinel the hand-written spec measured,
- * and each declares its own park, mode reset and minimum geometry, so nothing about the fixture is
- * implied twice. `region` is a top-left corner — its bottom and right derive from the grid, so a
- * region can no longer disagree with the cells it compares.
+ * and each declares its own mode reset, so nothing about the fixture is implied twice. `region` is a
+ * top-left corner — its bottom and right derive from the grid, so a region can no longer disagree
+ * with the cells it compares — and the MINIMUM GEOMETRY derives from the cursor row, the sentinel and
+ * the region (the kind's `assertRegionReadbackShape`), because a hand-picked minimum was itself a
+ * hiding place: reverse-index's explicit 7 was the only thing keeping a cursor-row-6 fixture inside a
+ * need of 5.
  *
  * Two deliberate changes, both named in the diff that carries this table to @cto:
  *  - scroll-up's region is rows 1..5, not rows 2..4: its claim ("A and E stay") controls the rows
@@ -35,10 +38,8 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     ],
     cursorRow: 6,
     sentinel: { row: 7, col: 1 },
-    minRows: 8,
-    minCols: 2,
     reset: "\x1b[r",
-    afterVerdict: "\x1b[r",
+    cleanup: "\x1b[r",
     seedNote: "Interior-region SU seed or history was not established",
     controlNote: "Interior-region SU controls or output were not measured",
   },
@@ -53,8 +54,6 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     controls: [],
     cursorRow: 6,
     sentinel: { row: 5, col: 1 },
-    minRows: 7,
-    minCols: 2,
     reset: "",
     seedNote: "Seed marker rows were not measured",
     controlNote: "Seed marker rows were lost or did not move together; cannot attribute a blank-row insertion",
@@ -78,8 +77,6 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     controls: [],
     cursorRow: 5,
     sentinel: { row: 6, col: 1 },
-    minRows: 7,
-    minCols: 6,
     reset: "",
     seedNote: "Seed marker rows were not measured",
     controlNote: "Marker rows were lost or did not move together; cannot attribute a blank-row insertion",
@@ -95,14 +92,20 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     controls: [{ row: 0, col: 0, char: "F" }],
     cursorRow: 11,
     sentinel: { row: 12, col: 1 },
-    minRows: 13,
-    minCols: 2,
     reset: "\x1b[r",
-    afterVerdict: "\x1b[r",
+    cleanup: "\x1b[r",
     seedNote: "Region-top markers were not measured",
     controlNote: "The row above the region moved with the region",
   },
   {
+    // The claim is two-sided — ENTER the alt grid and LEAVE it — so the frame after ONE pass has to
+    // witness both: main row 1 restored AND a live mark written on main row 2 after the leave (@cto
+    // 2026-10-12, must-fix 1). A different marker inside the alt grid plus a live marker on main
+    // separates the failures that a bare enter/leave could not:
+    //  - ignoring 1049 leaves the alt marker on main row 2, so OK overwrites only its first two cells;
+    //  - staying on the alt grid leaves main row 1 blank;
+    //  - clearing main on exit leaves main row 1 blank too.
+    // Each differs from `after`, and `after` differs from the seed frame, so no survivor reads supported.
     id: "scrollback.alt-screen",
     expected: "ESC[?1049h swaps to a separate alt grid and ESC[?1049l restores the measured main grid",
     region: { top: 1, left: 1 },
@@ -113,21 +116,25 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     ],
     steps: [
       { write: "\x1b[?1049h" },
-      { write: "\x1b[2;1HMAIN_SCREEN_MARKER" },
+      { write: "\x1b[2;1HALT_SCREEN_MARKER" },
       { write: "\x1b[?1049l" },
-      { write: "\x1b[S" },
+      { write: "\x1b[2;1HOK" },
     ],
     after: [
-      ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
-      ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+      ["M", "A", "I", "N", "_", "S", "C", "R", "E", "E", "N", "_", "M", "A", "R", "K", "E", "R"],
+      ["O", "K", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+    ],
+    // The frame a surface that IGNORES 1049 leaves: the alt marker stays on main row 2 and OK
+    // overwrites only its first two cells. A measured negative, so it reads unsupported BY NAME.
+    ignored: [
+      ["M", "A", "I", "N", "_", "S", "C", "R", "E", "E", "N", "_", "M", "A", "R", "K", "E", "R"],
+      ["O", "K", "T", "_", "S", "C", "R", "E", "E", "N", "_", "M", "A", "R", "K", "E", "R", ""],
     ],
     controls: [],
     cursorRow: 3,
     sentinel: { row: 4, col: 1 },
-    minRows: 4,
-    minCols: 19,
     reset: "\x1b[?1049l",
-    afterVerdict: "\x1b[?1049l",
+    cleanup: "\x1b[?1049l",
     seedNote: "Main-screen marker was not measured",
     controlNote: "The main grid changed while the alt grid was active",
   },
@@ -142,10 +149,8 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     controls: [{ row: 0, col: 0, char: "F" }],
     cursorRow: 7,
     sentinel: { row: 8, col: 1 },
-    minRows: 8,
-    minCols: 8,
     reset: "\x1b[r",
-    afterVerdict: "\x1b[r",
+    cleanup: "\x1b[r",
     seedNote: "FIXED_TOP or the inner markers were not measured",
     controlNote: "FIXED_TOP outside the region moved with the region",
   },
@@ -160,10 +165,8 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     controls: [],
     cursorRow: 6,
     sentinel: { row: 8, col: 1 },
-    minRows: 8,
-    minCols: 8,
     reset: "\x1b[r",
-    afterVerdict: "\x1b[r",
+    cleanup: "\x1b[r",
     seedNote: "The row-3 marker or the row-1 control was not measured",
     controlNote: "The measured rows did not move as a full-screen scroll, so the reset cannot be read",
   },

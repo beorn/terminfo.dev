@@ -98,9 +98,11 @@ export interface RegionReadback {
    * A write the run needs AFTER its frames — a mode or a scroll region the last frame leaves set,
    * which a later probe sharing this terminal must not inherit. Issued from the run's own `finally`,
    * so it lands exactly when this oracle wrote bytes: a refusal that wrote none leaves a zero-byte
-   * trace, which run-parser's zero-byte rule requires of every `none` observation.
+   * trace, which run-parser's zero-byte rule requires of every `none` observation. Named for the JOB
+   * (@cto 2026-10-12): `afterVerdict` named the moment it runs, and this is the write that clears the
+   * mode the last frame left set.
    */
-  afterVerdict?: string
+  cleanup?: string
   /** Bound on one paint witness, in ms. A timeout is inconclusive by name, never unsupported. */
   timeoutMs: number
   /** Floor between witness reads. The collector's own capture settle dominates it. */
@@ -555,7 +557,7 @@ export async function captureRegionReadbackDecision(
     // The row's own cleanup first — it clears the mode the last frame left set, which the prelude
     // below cannot reach — then DECTCEM restored and the screen reset, so a refused or thrown run
     // leaves no hidden cursor and no inherited mode.
-    if (spec.afterVerdict !== undefined) ctx.write(spec.afterVerdict)
+    if (spec.cleanup !== undefined) ctx.write(spec.cleanup)
     ctx.write("\x1b[?25h")
     ctx.write("\x1b[0m\x1b[2J\x1b[H")
   }
