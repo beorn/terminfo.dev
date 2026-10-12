@@ -51,6 +51,13 @@ export {
   type RegionReadback,
 } from "./region-readback.ts"
 
+// The kind tables, so a real-backend test (packages/probes) can run every kind row's parser arm
+// against a terminal that actually implements the sequences (@cto 28450 must-fix 1, 2026-10-12).
+export { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
+export { editingReadbackRows } from "./editing.ts"
+export { eraseReadbackRows } from "./erase.ts"
+export { textReadbackRows } from "./text.ts"
+
 import { sgrProbes } from "./sgr.ts"
 import { cursorProbes } from "./cursor.ts"
 import { textProbes } from "./text.ts"

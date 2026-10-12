@@ -16,7 +16,7 @@
  */
 import type { ProbeDefinition, TermlessContext } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
-import { parserStateResult } from "./helpers.ts"
+import { isBlank, parserStateResult } from "./helpers.ts"
 
 /** One write between the seed frame and the final read, and the cursor report it must reach. */
 export interface RegionReadbackStep {
@@ -55,9 +55,10 @@ export interface RegionReadbackRow {
   /** The writes between the seed and the final read, in order. */
   steps: readonly RegionReadbackStep[]
   /**
-   * The cells the sequence under test must show, in the same grid shape. A column a wide glyph's
-   * follower claims is `""` — the backend may report it as reserved-empty or as a space, and the kind
-   * accepts both rather than failing a correct terminal for choosing one spelling.
+   * The cells the sequence under test must show, in the same grid shape. A blank cell — never
+   * written, erased, vacated, or a wide glyph's follower — is compared by blank equality: `""` and
+   * `" "` on either side are the same blank (see `sameCell`), so a correct terminal is never graded
+   * unsupported for choosing the backend's own spelling.
    */
   after: readonly (readonly string[])[]
   /**
@@ -134,9 +135,16 @@ interface RegionReadbackGeometry {
   minCols: number
 }
 
-/** A wide follower may be reported reserved-empty or as a space; both are the same cell. */
+/**
+ * A blank cell is ONE cell in two spellings: a never-written, erased or vacated cell reads `""` on
+ * every real backend (xterm.js, Ghostty WASM, vt100.js and vterm all measured) while the fixture
+ * spells it `" "`, and a wide glyph's follower is the reserved-empty `""`. Either spelling, on
+ * either side, is the same blank (the shared `isBlank` helper) — a terminal that implements a
+ * sequence must never grade unsupported for choosing the other spelling (@cto 28450 must-fix 1,
+ * 2026-10-12).
+ */
 function sameCell(measured: string, expected: string): boolean {
-  return expected === "" ? measured === "" || measured === " " : measured === expected
+  return isBlank(expected) ? isBlank(measured) : measured === expected
 }
 
 /** A wide follower paints nothing of its own: its lead glyph already claimed the column. */
