@@ -104,6 +104,40 @@ export function barOverMeasured(
   }
 }
 
+/**
+ * One basis counted over a CLASSIFIED cell map (28792 item 1). This is the ONE aggregation: the
+ * projection classifies every cell once, and every bar, page and CLI view folds that table here
+ * instead of walking raw cells itself. `MeasuredBar` and `barOverMeasured` — the raw-cell fold — are
+ * retired with it, so no second copy can survive behind a parity test.
+ */
+export interface CellAggregate {
+  denominator: number
+  counts: Readonly<Record<CellState, number>>
+  /**
+   * The named ids in each state, in basis order. A basis that is short prints WHICH rows are short, so
+   * no page or CLI has to re-walk the basis to say so.
+   */
+  idsByState: Readonly<Record<CellState, readonly string[]>>
+}
+
+/** Fold one basis over a classified cell map. A cell the map does not name is untested, as in the table. */
+export function aggregateCells(cells: Readonly<Record<string, CellState>>, ids: readonly string[]): CellAggregate {
+  const counts: Record<CellState, number> = { supported: 0, unsupported: 0, inconclusive: 0, error: 0, untested: 0 }
+  const idsByState: Record<CellState, string[]> = {
+    supported: [],
+    unsupported: [],
+    inconclusive: [],
+    error: [],
+    untested: [],
+  }
+  for (const id of ids) {
+    const state = cells[id] ?? "untested"
+    counts[state]++
+    idsByState[state].push(id)
+  }
+  return { denominator: ids.length, counts, idsByState }
+}
+
 export function coverageSentence(bar: MeasuredBar): string {
   if (!bar.denominator) return "No selected run"
   return `${bar.supported} supported · ${bar.unsupported} unsupported · ${bar.inconclusive} inconclusive · ${bar.errors} errors · ${bar.untested} untested`

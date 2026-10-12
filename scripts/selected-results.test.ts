@@ -16,7 +16,7 @@ import {
   readVerifiedScreenshot,
 } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
-import { isStaleRelation } from "../docs/data/release-scope.ts"
+import { aggregateCells, barOverMeasured, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
@@ -459,6 +459,47 @@ describe("selected results", () => {
     expect(onOther?.suiteFreshness).toMatch(/^older suite \(\d+ probes\)$/)
     expect(onOther?.suiteRelation).toBe("older")
     expect(isStaleRelation(onOther!.suiteRelation)).toBe(true)
+  })
+
+  it("classifies once into the projection table, and the retired bar equals the table for every basis (28792 item 1)", () => {
+    const parsed = parseRun(
+      "table-parity.json",
+      JSON.stringify(
+        run("table-parity", {
+          observations: [
+            observation("extensions.query", "supported", "query"),
+            observation("extensions.graphics", "error", "behavior", "timeout"),
+          ],
+        }),
+      ),
+      catalog,
+    )
+    const projection = projectResults([parsed], [reviewFor(parsed)], catalog, { currentProbeHash: "current" })
+    const keys = Object.keys(projection.current)
+    expect(keys.length).toBeGreaterThan(0)
+    for (const key of keys) {
+      const version = projection.current[key]!
+      const table = projection.table[key]!
+      // The table IS the classification: one call per cell, made once in the projection.
+      for (const [featureId, cell] of Object.entries(version.cells)) {
+        expect(table[featureId]).toBe(classifyCell(cell))
+      }
+      const present = Object.keys(version.cells)
+      // Every basis shape the consumers use: the selected cells, a basis naming an absent cell, and none.
+      for (const ids of [present, [...present, "not.a.catalog.id"], []]) {
+        const bar = barOverMeasured(version.cells, ids)
+        const aggregate = aggregateCells(table, ids)
+        expect(aggregate.denominator).toBe(bar.denominator)
+        expect(aggregate.counts).toEqual({
+          supported: bar.supported,
+          unsupported: bar.unsupported,
+          inconclusive: bar.inconclusive,
+          error: bar.errors,
+          untested: bar.untested,
+        })
+        expect(Object.values(aggregate.idsByState).flat()).toHaveLength(ids.length)
+      }
+    }
   })
 
   it("verifies screenshot bytes without writing and refuses missing, modified, or non-PNG artifacts", () => {
@@ -954,6 +995,7 @@ describe("selected results", () => {
     const published = publicResults(
       {
         current: { "app:kitty": selected },
+        table: { "app:kitty": Object.fromEntries(Object.entries(selected.cells).map(([id, cell]) => [id, classifyCell(cell)])) },
         versions: {},
         history: {},
         exclusions: [],

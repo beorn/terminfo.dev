@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
-import { treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
+import { classifyCell, treeMovedPastRelease, type CellState, type SuiteRelation } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import {
   type Interpretation,
@@ -109,9 +109,19 @@ export interface SelectedVersion {
   }
 }
 
+/**
+ * The reader's one product: the classified state of every selected (context, feature) cell. Every bar,
+ * page and CLI view folds THIS table (`aggregateCells` in `release-scope.ts`) rather than walking raw
+ * cells, so `classifyCell` runs once per cell, in the projection, and no consumer can drift into a
+ * second copy of the classification (28792 item 1).
+ */
+export type CellTable = Readonly<Record<string, Readonly<Record<string, CellState>>>>
+
 export interface SelectedProjection {
   current: Record<string, SelectedVersion>
   versions: Record<string, SelectedVersion[]>
+  /** The classified state of every selected cell, keyed per context and then per feature id. */
+  table: CellTable
   /** Includes every valid raw run, even ones excluded from selection. */
   history: Record<string, SelectedVersion[]>
   exclusions: Array<{ runId: string; path: string; reason: string }>
@@ -829,8 +839,15 @@ export function projectResults(
     if (!selected) throw new Error(`missing selected version for ${key}`)
     current[key] = selected
   }
+  const table: Record<string, Record<string, CellState>> = {}
+  for (const [key, version] of Object.entries(current)) {
+    const states: Record<string, CellState> = {}
+    for (const [featureId, cell] of Object.entries(version.cells)) states[featureId] = classifyCell(cell)
+    table[key] = states
+  }
   return {
     current,
+    table,
     versions,
     history,
     exclusions,
